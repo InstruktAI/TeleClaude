@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from inspect import signature
-from typing import Any, Optional, TypedDict, cast
+from typing import Any, Literal, Optional, TypedDict, cast
 from uuid import uuid4
 
 from teleclaude.core.command_input import CommandInputMode
@@ -33,6 +33,7 @@ class CommandType(str, Enum):
     SYSTEM = "system_command"
     SET_VOICE_FOCUS = "set_voice_focus"
     DISCORD_THREAD_CLAIM = "discord_thread_claim"
+    ACTIVATE_PROCEDURE = "activate_procedure"
 
 
 class ResponseMode(str, Enum):
@@ -118,6 +119,13 @@ class RestartAgentResult(TypedDict):
     ok: bool
     error: str | None
     selected_agent: str | None
+
+
+class ProcedureActivationResult(TypedDict):
+    """Outcome of waking or starting a procedure's standing agent."""
+
+    session_id: str
+    outcome: Literal["started", "woken"]
 
 
 @dataclass(kw_only=True)
@@ -225,6 +233,7 @@ class CreateSessionCommand(InternalCommand):
     launch_intent: Optional["SessionLaunchIntent"] = None
     system_role: str | None = None
     job: str | None = None
+    company: str | None = None
     command: str | None = None
     working_slug: str | None = None
     entry_point: SessionEntryPoint | None = None
@@ -739,6 +748,37 @@ class HandoffAgentCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
+class ActivateProcedureCommand(InternalCommand):
+    """Intent to wake or start a procedure's standing agent for a company."""
+
+    procedure_id: str
+    company: str
+    event_json: str
+
+    def __init__(
+        self,
+        *,
+        procedure_id: str,
+        company: str,
+        event_json: str,
+        request_id: str | None = None,
+    ):
+        super().__init__(
+            command_type=CommandType.ACTIVATE_PROCEDURE,
+            request_id=request_id,
+            response_mode=ResponseMode.RECEIPT,
+            success_event="agent_runtime.procedure_activation.completed",
+            failure_event="agent_runtime.procedure_activation.failed",
+        )
+        self.procedure_id = procedure_id
+        self.company = company
+        self.event_json = event_json
+
+    def to_payload(self) -> dict[str, object]:
+        return {"session_id": "", "args": [self.procedure_id, self.company]}
+
+
+@dataclass(kw_only=True)
 class GetSessionDataCommand(InternalCommand):
     """Intent to fetch session transcript data."""
 
@@ -887,6 +927,7 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.SYSTEM: SystemCommand,
     CommandType.SET_VOICE_FOCUS: SetVoiceFocusCommand,
     CommandType.DISCORD_THREAD_CLAIM: DiscordThreadClaimCommand,
+    CommandType.ACTIVATE_PROCEDURE: ActivateProcedureCommand,
 }
 
 

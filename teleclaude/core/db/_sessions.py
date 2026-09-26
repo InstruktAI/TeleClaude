@@ -63,6 +63,7 @@ class DbSessionsMixin:
         title: str,
         system_role: str | None = None,
         job: str | None = None,
+        company: str | None = None,
         project_path: str | None = None,
         subdir: str | None = None,
         description: str | None = None,
@@ -94,6 +95,7 @@ class DbSessionsMixin:
             title: Optional session title
             system_role: Optional system role (worker, orchestrator, integrator, system)
             job: Optional job role value
+            company: Optional company slug this session operates the business of
             project_path: Base project path (no subdir)
             subdir: Optional subdirectory/worktree relative to project_path
             description: Optional description (for AI-to-AI sessions)
@@ -124,6 +126,7 @@ class DbSessionsMixin:
             title=title or f"[{computer_name}] Untitled",
             system_role=system_role,
             job=job,
+            company=company,
             created_at=now,
             last_activity=now,
             project_path=project_path,
@@ -156,6 +159,7 @@ class DbSessionsMixin:
             origin_metadata=json.dumps(origin_meta),
             system_role=session.system_role,
             job=session.job,
+            company=session.company,
             created_at=session.created_at,
             last_activity=session.last_activity,
             project_path=session.project_path,

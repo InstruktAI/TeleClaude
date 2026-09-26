@@ -7,6 +7,7 @@ import hmac
 import inspect
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import cast
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -15,6 +16,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.hooks.webhook_models import HookEvent
 
 logger = get_logger(__name__)
+
+_INBOUND_WEBHOOK_EVENT_ACCEPTED = "inbound_webhook_event_accepted"
 
 # guard: loose-dict - Inbound payload is dynamic JSON.
 NormalizerResult = HookEvent | list[HookEvent]
@@ -59,6 +62,7 @@ class InboundEndpointRegistry:
         path: str,
         normalizer_key: str,
         verify_config: dict[str, object] | None = None,  # guard: loose-dict - Verify config is dynamic JSON
+        company: str | None = None,
     ) -> None:
         """Register an inbound webhook endpoint.
 
@@ -66,6 +70,8 @@ class InboundEndpointRegistry:
             path: URL path (e.g., "/hooks/whatsapp")
             normalizer_key: Key in NormalizerRegistry
             verify_config: Optional verification config (verify_token, secret, etc.)
+            company: The source's declared company, stamped onto every event this
+                source produces, overriding any payload-supplied value.
         """
         if path in self._registered_paths:
             logger.warning("Inbound path already registered: %s", path)
@@ -130,6 +136,16 @@ class InboundEndpointRegistry:
                 events = normalized
             else:
                 events = [normalized]
+
+            events = [replace(event, properties={**event.properties, "company": company}) for event in events]
+            for event in events:
+                logger.info(
+                    _INBOUND_WEBHOOK_EVENT_ACCEPTED,
+                    source=event.source,
+                    type=event.type,
+                    event_ts=event.timestamp,
+                    company=company or "",
+                )
 
             try:
                 for event in events:

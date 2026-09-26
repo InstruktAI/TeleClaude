@@ -55,6 +55,7 @@ from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
+from teleclaude.hooks import procedure_activation
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.config import load_hooks_config
@@ -647,6 +648,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             contract_registry,
             inbound_registry=inbound_registry,
         )
+        procedure_activation.install(contract_registry, handler_registry, dispatcher)
 
         if project_config.channel_subscriptions:
             redis_adapter = self.client.transport

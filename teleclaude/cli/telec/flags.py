@@ -47,6 +47,7 @@ FLAG_DETACH = Flag(
     arity=SWITCH,
 )
 FLAG_PATH = Flag("--path", desc="Path to the project directory (optional; defaults to cwd)", arity=VALUE)
+FLAG_COMPANY = Flag("--company", desc="Company this session operates the business of", arity=VALUE)
 FLAG_PROJECT_FILTER = Flag("--project", desc="Filter by project name", arity=VALUE)
 FLAG_PROJECT_TRUSTED = Flag("--project", desc="Project name (from trusted_dirs)", arity=VALUE)
 FLAG_SESSION = Flag("--session", "-s", "Session ID", arity=VALUE)

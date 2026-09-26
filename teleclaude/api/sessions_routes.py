@@ -302,6 +302,7 @@ async def _prepare_create_session(
         origin_metadata=origin_meta,
         system_role=req_system_role,
         job=req_job,
+        company=request.company,
     )
 
     initial_input = None if request.direct and identity.session_id else request.message

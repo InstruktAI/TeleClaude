@@ -124,6 +124,7 @@ class CreateSessionArgs(TypedDict, total=False):
     metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
     command_input_mode: NotRequired[CommandInputMode]
     command_input_source_text: NotRequired[str | None]
+    company: NotRequired[str | None]
 
 
 class RunSessionArgs(TypedDict, total=False):
@@ -138,6 +139,7 @@ class RunSessionArgs(TypedDict, total=False):
     detach: NotRequired[bool]
     additional_context: NotRequired[str]
     entry_point: NotRequired[str]
+    company: NotRequired[str | None]
 
 
 class APIError(Exception):
@@ -645,6 +647,9 @@ class _TelecSessionAPI:
             payload["subdir"] = subdir
         if kwargs.get("skip_listener_registration", False):
             payload["skip_listener_registration"] = True
+        company = kwargs.get("company")
+        if company is not None:
+            payload["company"] = company
         resp = await self._request(
             "POST",
             "/sessions",
@@ -665,6 +670,9 @@ class _TelecSessionAPI:
         }
         if "thinking_mode" in kwargs:
             request_data["thinking_mode"] = kwargs["thinking_mode"]
+        company = kwargs.get("company")
+        if company is not None:
+            request_data["company"] = company
         request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})

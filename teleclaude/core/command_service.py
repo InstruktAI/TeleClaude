@@ -54,11 +54,13 @@ from teleclaude.core.integration.discord_admin_state import (
     DiscordThreadClaimLifecycle as PersistedDiscordThreadClaimLifecycle,
 )
 from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
+from teleclaude.core.procedure_activation_runner import activate as _activate_procedure
 from teleclaude.core.session_launcher import create_session
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_startup_message import resolve_slash_command
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.types.commands import (
+    ActivateProcedureCommand,
     CloseSessionCommand,
     CreateSessionCommand,
     DiscordThreadClaimCommand,
@@ -67,6 +69,7 @@ from teleclaude.types.commands import (
     HandleVoiceCommand,
     HandoffAgentCommand,
     KeysCommand,
+    ProcedureActivationResult,
     ProcessMessageCommand,
     RestartAgentCommand,
     RestartAgentResult,
@@ -226,6 +229,9 @@ class CommandService:
 
     async def handoff_agent(self, cmd: HandoffAgentCommand) -> None:
         await handoff_agent(cmd, self.client, self._execute_terminal_command)
+
+    async def activate_procedure(self, cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
+        return await _activate_procedure(cmd)
 
     async def run_agent_command(self, cmd: RunAgentCommand) -> None:
         await run_agent_command(cmd, self.client, self._execute_terminal_command)

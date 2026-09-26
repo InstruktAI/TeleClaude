@@ -101,7 +101,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Start a new agent session",
                 args=(
                     "[--computer <host>] [--path <path>] [--agent <name>] [--mode <mode>]"
-                    " [--message <msg>] [--direct] [--detach]"
+                    " [--message <msg>] [--direct] [--detach] [--company <slug>]"
                 ),
                 flags=[
                     F.FLAG_HELP,
@@ -112,6 +112,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_MESSAGE,
                     F.FLAG_DIRECT_START,
                     F.FLAG_DETACH,
+                    F.FLAG_COMPANY,
                 ],
                 notes=[
                     (
@@ -179,7 +180,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args=(
                     "[--command <cmd>] [--path <path>] [--args <val>] [--agent <name>]"
                     " [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach]"
-                    " [--additional-context <ctx>]"
+                    " [--additional-context <ctx>] [--company <slug>]"
                 ),
                 flags=[
                     F.FLAG_HELP,
@@ -192,6 +193,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_RUN_SUBFOLDER,
                     F.FLAG_DETACH,
                     F.FLAG_RUN_ADDITIONAL_CONTEXT,
+                    F.FLAG_COMPANY,
                 ],
                 notes=[
                     "Creates a fresh session and runs the bare canonical command as the first agent message.",

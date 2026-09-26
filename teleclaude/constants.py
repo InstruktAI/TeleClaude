@@ -342,6 +342,7 @@ class SlashCommand(StrEnum):
     DEFER = "sdlc/defer"
     ASSIST = "sdlc/assist"
     RUN_JOB = "general/run-job"
+    ACTIVATE_PROCEDURE = "general/activate-procedure"
 
 
 # Canonical lifecycle commands that may run without a todo slug: the prepare
@@ -358,6 +359,7 @@ NON_SLUG_BOUND_COMMANDS = frozenset(
         SlashCommand.COORDINATE,
         SlashCommand.RUN_JOB,
         SlashCommand.CREATE,
+        SlashCommand.ACTIVATE_PROCEDURE,
     }
 )
 
@@ -384,6 +386,7 @@ class JobRole(str, Enum):
     FRONTENDER = "frontender"
     INTEGRATOR = "integrator"
     JOB_RUNNER = "job-runner"
+    PROCEDURE_AGENT = "procedure-agent"
 
 
 # Maps slash commands to the (system_role, job_role) a session running that command holds.
@@ -421,6 +424,7 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.COORDINATE: (ROLE_ORCHESTRATOR, JobRole.COORDINATOR),
     SlashCommand.CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
     SlashCommand.RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
+    SlashCommand.ACTIVATE_PROCEDURE: (ROLE_TASKER, JobRole.PROCEDURE_AGENT),
 }
 
 # The job roles the prepare lifecycle confers on a session that derives a prepare

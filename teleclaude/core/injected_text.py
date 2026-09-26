@@ -34,6 +34,7 @@ class InjectedTextSourceFeature(StrEnum):
     AGENT_RESTART = "agent_restart"
     AGENT_HANDOFF = "agent_handoff"
     REMINDER = "reminder"
+    PROCEDURE_ACTIVATION = "procedure_activation"
 
 
 class PlatformTextLabel(StrEnum):

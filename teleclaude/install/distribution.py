@@ -223,6 +223,7 @@ class SnippetIndexEntry(TypedDict, total=False):
     scope: str
     domain: str
     activation_trigger: str | None
+    subscriptions: list[str]
     path: str
 
 
@@ -232,6 +233,14 @@ class ActivatableEntry(NamedTuple):
     snippet_id: str
     description: str
     trigger: str
+
+
+class ConfiguredResponsibilityEntry(NamedTuple):
+    """A subscribed procedure auto-collected for one agent-output scope."""
+
+    snippet_id: str
+    description: str
+    events: tuple[str, ...]
 
 
 class DomainScope(NamedTuple):
@@ -538,6 +547,17 @@ def _render_activatable_procedures_section(activatable_entries: list[Activatable
     return header + "\n".join(lines)
 
 
+def _render_configured_responsibilities_section(configured_entries: list[ConfiguredResponsibilityEntry]) -> str:
+    if not configured_entries:
+        return ""
+    sorted_entries = sorted(configured_entries, key=lambda entry: entry.snippet_id)
+    lines = [
+        f"- `{entry.snippet_id}` — {entry.description} — answers: {', '.join(entry.events)}" for entry in sorted_entries
+    ]
+    header = "## Configured Responsibilities — started by the platform when their events arrive\n\n"
+    return header + "\n".join(lines)
+
+
 def _activatable_entry_from_index(entry: SnippetIndexEntry) -> ActivatableEntry | None:
     """Construct an :class:`ActivatableEntry` from an index entry, or ``None`` if not activatable.
 
@@ -563,13 +583,37 @@ def _activatable_entry_from_index(entry: SnippetIndexEntry) -> ActivatableEntry 
     return ActivatableEntry(snippet_id=snippet_id, description=description, trigger=trigger.strip())
 
 
-def _discover_activatables(
+def _configured_responsibility_from_index(entry: SnippetIndexEntry) -> ConfiguredResponsibilityEntry | None:
+    """Construct a :class:`ConfiguredResponsibilityEntry` from an index entry, or ``None`` if not subscribed.
+
+    An entry is a configured responsibility only when it is a ``procedure``
+    carrying a non-empty ``subscriptions`` list and no pending
+    ``delivered_by``. A subscribed procedure missing its ``description``
+    fails fast, exactly like its activatable twin.
+    """
+    if entry.get("type") != "procedure":
+        return None
+    if _is_pending(entry):
+        return None
+    subscriptions = entry.get("subscriptions")
+    if not isinstance(subscriptions, list) or not subscriptions:
+        return None
+    snippet_id = entry.get("id")
+    if not isinstance(snippet_id, str) or not snippet_id:
+        return None
+    description = entry.get("description")
+    if not isinstance(description, str) or not description:
+        raise ValueError(f"Subscribed procedure is missing a description: {snippet_id}")
+    return ConfiguredResponsibilityEntry(snippet_id=snippet_id, description=description, events=tuple(subscriptions))
+
+
+def _scope_filtered_source_entries(
     scope: ActivatableScope,
     *,
     project_root: Path,
     entries_by_id: dict[str, SnippetIndexEntry] | None = None,
-) -> list[ActivatableEntry]:
-    """Discover a scope's triggered procedures from index declarations, never a manifest.
+) -> list[SnippetIndexEntry]:
+    """Resolve a scope's candidate index entries, shared by every auto-collector.
 
     ``DomainScope`` filters the merged deploy index (``entries_by_id``) to one
     domain. ``ProjectScope`` filters the project's own index load to
@@ -581,18 +625,39 @@ def _discover_activatables(
     """
     if isinstance(scope, DomainScope):
         candidates = (entries_by_id or {}).values()
-        source_entries = [entry for entry in candidates if entry.get("domain") == scope.domain]
-    elif isinstance(scope, ProjectScope):
-        source_entries = [
+        return [entry for entry in candidates if entry.get("domain") == scope.domain]
+    if isinstance(scope, ProjectScope):
+        return [
             entry for entry in _load_snippet_index_entries(project_root).values() if entry.get("scope") == "project"
         ]
-    else:
-        source_entries = [
-            entry
-            for entry in _load_index_entries(scope.deploy_root / "index.yaml").values()
-            if entry.get("domain") == _DOMAIN_AGNOSTIC_DIR
-        ]
+    return [
+        entry
+        for entry in _load_index_entries(scope.deploy_root / "index.yaml").values()
+        if entry.get("domain") == _DOMAIN_AGNOSTIC_DIR
+    ]
+
+
+def _discover_activatables(
+    scope: ActivatableScope,
+    *,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
+) -> list[ActivatableEntry]:
+    """Discover a scope's triggered procedures from index declarations, never a manifest."""
+    source_entries = _scope_filtered_source_entries(scope, project_root=project_root, entries_by_id=entries_by_id)
     collected = (_activatable_entry_from_index(entry) for entry in source_entries)
+    return [entry for entry in collected if entry is not None]
+
+
+def _discover_configured_responsibilities(
+    scope: ActivatableScope,
+    *,
+    project_root: Path,
+    entries_by_id: dict[str, SnippetIndexEntry] | None = None,
+) -> list[ConfiguredResponsibilityEntry]:
+    """Discover a scope's subscribed procedures from index declarations, never a manifest."""
+    source_entries = _scope_filtered_source_entries(scope, project_root=project_root, entries_by_id=entries_by_id)
+    collected = (_configured_responsibility_from_index(entry) for entry in source_entries)
     return [entry for entry in collected if entry is not None]
 
 
@@ -640,6 +705,7 @@ def _collect_baseline_index_entries(
         description = entry.get("description")
         snippet_type = entry.get("type")
         activation_trigger = entry.get("activation_trigger")
+        subscriptions = entry.get("subscriptions")
 
         if snippet_type == "procedure" and isinstance(activation_trigger, str) and activation_trigger.strip():
             try:
@@ -648,6 +714,16 @@ def _collect_baseline_index_entries(
                 manifest_display = ref_file
             raise ValueError(
                 "Triggered procedure is auto-included via its frontmatter; remove it from the manifest: "
+                f"{manifest_display} lists {ref}"
+            )
+
+        if snippet_type == "procedure" and isinstance(subscriptions, list) and subscriptions:
+            try:
+                manifest_display = ref_file.relative_to(project_root)
+            except ValueError:
+                manifest_display = ref_file
+            raise ValueError(
+                "Subscribed procedure is auto-included via its frontmatter; remove it from the manifest: "
                 f"{manifest_display} lists {ref}"
             )
 
@@ -672,9 +748,10 @@ def _progressive_sibling_sections(
     The sibling is detected by location — ``base_dir / "baseline-progressive.md"``
     — never by a Source ``@``-ref; returns ``""`` when it does not exist. Renders
     the manifest's curated Baseline index, then the scope's activatable
-    procedures auto-collected from index declarations. This is the single
-    routine every surface (domain bundle, project ``AGENTS.md``, global agent
-    config) calls; only the scope of the activatable set differs per caller.
+    procedures, then its configured responsibilities — both auto-collected
+    from index declarations. This is the single routine every surface (domain
+    bundle, project ``AGENTS.md``, global agent config) calls; only the scope
+    differs per caller.
     """
     progressive_src = base_dir / "baseline-progressive.md"
     if not progressive_src.exists():
@@ -683,11 +760,15 @@ def _progressive_sibling_sections(
         progressive_src, project_root=project_root, entries_by_id=entries_by_id, warn_only=warn_only
     )
     activatable_entries = _discover_activatables(scope, project_root=project_root, entries_by_id=entries_by_id)
+    configured_entries = _discover_configured_responsibilities(
+        scope, project_root=project_root, entries_by_id=entries_by_id
+    )
     blocks = [
         block
         for block in (
             _render_progressive_index_section(baseline_entries, scope) if baseline_entries else "",
             _render_activatable_procedures_section(activatable_entries),
+            _render_configured_responsibilities_section(configured_entries),
         )
         if block
     ]

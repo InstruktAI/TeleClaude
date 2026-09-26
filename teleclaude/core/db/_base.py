@@ -151,6 +151,7 @@ class DbBase:
             origin_metadata=origin_metadata,
             system_role=row.system_role if hasattr(row, "system_role") else None,
             job=row.job if hasattr(row, "job") else None,
+            company=row.company if hasattr(row, "company") else None,
             created_at=DbBase._coerce_datetime(row.created_at),
             last_activity=DbBase._coerce_datetime(row.last_activity),
             runtime_start_observed=bool(getattr(row, "runtime_start_observed", False)),

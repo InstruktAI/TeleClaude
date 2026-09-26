@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     origin_metadata TEXT,
     system_role TEXT,
     job TEXT,
+    company TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP,

@@ -33,6 +33,7 @@ from teleclaude.api.auth import (
     resolve_caller_provenance,
 )
 from teleclaude.api.run_session_job import normalize_job_run_request
+from teleclaude.api.run_session_procedure import normalize_procedure_activation_request
 from teleclaude.api.run_session_refusals import (
     RunSessionRefusal,
     normalize_run_session_command,
@@ -136,9 +137,9 @@ WORKTREE_BOUND_WORKER_COMMANDS = {
     SlashCommand.FINALIZE,
 }
 
-NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.REVIEW_COMMITS, SlashCommand.RUN_JOB}
+NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.REVIEW_COMMITS, SlashCommand.RUN_JOB, SlashCommand.ACTIVATE_PROCEDURE}
 
-_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job must be dispatched through /sessions/run"
+_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job and activate-procedure must be dispatched through /sessions/run"
 
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
@@ -336,7 +337,7 @@ async def guard_generic_create_session(
     if not isinstance(cmd, CreateSessionCommand):
         return DriverStartGuardResult()
     leading_command = _leading_command(request.message)
-    if _normalize_command(leading_command) is SlashCommand.RUN_JOB:
+    if _normalize_command(leading_command) in (SlashCommand.RUN_JOB, SlashCommand.ACTIVATE_PROCEDURE):
         raise RunSessionRefusal(
             status_code=400,
             detail=_JOB_COMMAND_GENERIC_CREATE_DETAIL,
@@ -387,12 +388,23 @@ def _prepare_run_session(
     except ValueError:
         slash_cmd = None
     is_job_command = slash_cmd is SlashCommand.RUN_JOB
+    is_activation_command = slash_cmd is SlashCommand.ACTIVATE_PROCEDURE
+    company: str | None = request.company
     if is_job_command:
         candidate_order, thinking_mode, job = normalize_job_run_request(request, normalized_args)
         effective_agent = None
         dispatch_mode = AgentDispatchMode.AUTOMATIC
         preferred_agent = None
         entry_point = SessionEntryPoint.CRON
+    elif is_activation_command:
+        launch = normalize_procedure_activation_request(request, normalized_args, identity)
+        job = launch.job
+        company = launch.company
+        candidate_order = None
+        thinking_mode = resolve_run_session_thinking_mode(caller_mode=None, command=slash_cmd)
+        effective_agent = preferred_agent = None
+        dispatch_mode = AgentDispatchMode.AUTOMATIC
+        entry_point = SessionEntryPoint.PROCEDURE_ACTIVATION
     else:
         effective_agent = resolve_run_session_agent(request)
         dispatch_mode, preferred_agent = classify_fresh_agent_preference(
@@ -468,7 +480,8 @@ def _prepare_run_session(
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
         system_role=role_info[0] if role_info else None,
-        job=job if is_job_command else role_info[1].value if role_info else None,
+        job=job if (is_job_command or is_activation_command) else role_info[1].value if role_info else None,
+        company=company,
         command=normalized_cmd,
         working_slug=working_slug,
         entry_point=entry_point,
@@ -822,6 +835,7 @@ async def _run_session(
         origin_metadata=plan.origin_metadata,
         system_role=plan.system_role,
         job=plan.job,
+        company=plan.company,
     )
     metadata.launch_intent = plan.launch_intent
     dispatch_mode = plan.launch_intent.dispatch_mode or dispatch_mode

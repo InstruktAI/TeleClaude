@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from dataclasses import replace
 from typing import Any
 
 from teleclaude.cli.session_auth import (
@@ -15,6 +16,7 @@ from teleclaude.cli.session_auth import (
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import MarkerState
 from teleclaude.core.identity import NoIdentityCliCaller, PersonCliCaller, authorizing_role
+from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.session_identity import inspect_session_identity_marker
 
 _UNUSABLE_SESSION_IDENTITY_MESSAGE = "The current session carries no usable identity."
@@ -108,6 +110,27 @@ def _handle_login(args: list[str]) -> None:
     print(f"Session auth file updated: {auth_state.context.auth_path}")
 
 
+def _print_company_line(session_id: str) -> None:
+    """Print the session's resolved company context, read through its record."""
+    from teleclaude.core import db  # noqa: PLC0415 - deferred: core.db reaches this CLI module during startup
+    from teleclaude.core.organization import (  # noqa: PLC0415
+        SessionCompanyState,
+        resolve_session_company_context,
+    )
+
+    session = db.get_session_identity_sync(str(MAIN_DB_PATH), session_id)
+    if session is None:
+        return
+    company = db.get_session_company_sync(str(MAIN_DB_PATH), session_id)
+    context = resolve_session_company_context(replace(session, company=company))
+    if context.state is SessionCompanyState.RESOLVED:
+        print(f"Company: {context.company}")
+    elif context.state is SessionCompanyState.AMBIGUOUS:
+        print(f"Company: ambiguous ({', '.join(context.eligible)}) — select one with --company <slug>")
+    else:
+        print("Company: none")
+
+
 def _handle_whoami(args: list[str]) -> None:
     """Handle telec auth whoami."""
     if args:
@@ -130,6 +153,8 @@ def _handle_whoami(args: list[str]) -> None:
         role = authorizing_role(identity.caller, identity.system_role)
         if role:
             print(f"Role: {role}")
+        if identity.session_id:
+            _print_company_line(identity.session_id)
         return
 
     context = get_current_session_context()

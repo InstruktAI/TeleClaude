@@ -40,6 +40,8 @@ EventType = Literal[
     "operation.todo_work.failed",
     "operation.task_run.completed",
     "operation.task_run.failed",
+    "agent_runtime.procedure_activation.completed",
+    "agent_runtime.procedure_activation.failed",
     "session.close.completed",
     "session.close.failed",
     "session_close_requested",

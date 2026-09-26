@@ -42,6 +42,7 @@ from teleclaude.resource_validation._todo_status import TodoStatusFact, build_to
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
     SnippetClassification,
+    SnippetScope,
     SnippetTaxonomy,
     derive_snippet_classification,
     generated_domain_bundle_domain,
@@ -232,6 +233,40 @@ def _validate_activation_trigger(path: Path, meta: Mapping[str, object], *, snip
         _error("snippet_activation_trigger_empty", path=str(path))
 
 
+def _validate_subscriptions(
+    path: Path,
+    meta: Mapping[str, object],
+    classification: SnippetClassification | None,
+    *,
+    snippet_type: str | None,
+) -> None:
+    subscriptions = meta.get("subscriptions")
+    if subscriptions is None:
+        return
+    if snippet_type != "procedure":
+        _error("snippet_subscriptions_invalid_type", path=str(path))
+        return
+    if (
+        not isinstance(subscriptions, list)
+        or not subscriptions
+        or not all(isinstance(item, str) and item.strip() for item in subscriptions)
+    ):
+        _error("snippet_subscriptions_invalid_value", path=str(path))
+        return
+    if classification is None or classification.scope not in (SnippetScope.GLOBAL, SnippetScope.COMPANY):
+        _error("snippet_subscriptions_invalid_tier", path=str(path))
+
+
+def _validate_activation_mode_exclusivity(path: Path, meta: Mapping[str, object]) -> None:
+    """A procedure declares event activation or the self-selection trigger, never both.
+
+    Kept independent of either individual validator's early returns, so a
+    shape defect in one field never masks the exclusivity finding.
+    """
+    if meta.get("activation_trigger") is not None and meta.get("subscriptions") is not None:
+        _error("snippet_activation_mode_conflict", path=str(path))
+
+
 def _validate_delivered_by(
     path: Path,
     meta: Mapping[str, object],
@@ -311,6 +346,8 @@ def validate_snippet(
     _validate_visibility(path, meta)
     snippet_type = _snippet_type_for_validation(classification)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
+    _validate_subscriptions(path, meta, classification, snippet_type=snippet_type)
+    _validate_activation_mode_exclusivity(path, meta)
     _validate_delivered_by(path, meta)
     if todo_status_facts is not None:
         _validate_delivered_by_todo(path, meta, todo_status_facts, project_root)

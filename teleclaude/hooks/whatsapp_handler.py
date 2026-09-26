@@ -25,7 +25,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
-from teleclaude.hooks.webhook_models import HookEvent
+from teleclaude.hooks.webhook_models import Contract, HookEvent
 from teleclaude.services.whatsapp import fetch_whatsapp_media_bytes
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
@@ -271,8 +271,9 @@ async def _handle_media_event(
     )
 
 
-async def handle_whatsapp_event(event: HookEvent) -> None:
+async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
     """Handle normalized WhatsApp message events."""
+    del contract
     phone_number = _normalize_phone_number(str(event.properties.get("phone_number") or ""))
     if not phone_number:
         logger.warning("WhatsApp event missing phone_number")

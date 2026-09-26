@@ -228,6 +228,7 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.CREATE_HTML: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.ASSIST: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.ACTIVATE_PROCEDURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
 }
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 _MODEL_SKIP_REASON_PREFIX = "model_"

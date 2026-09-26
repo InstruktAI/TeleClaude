@@ -24,7 +24,7 @@ from sqlmodel import select
 
 from teleclaude import paths as tc_paths
 from teleclaude.cli.session_auth import read_current_session_email
-from teleclaude.config.loader import load_company_config, load_declared_project_config, load_global_config
+from teleclaude.config.loader import load_company_config_for_slug, load_global_config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HeadlessBootstrapField, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
@@ -35,6 +35,7 @@ from teleclaude.core.events import RECEIVER_HANDLED_HOOK_EVENTS, AgentHookEvents
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
 from teleclaude.core.models import JsonDict
+from teleclaude.core.organization import CompanyMembership, resolve_organization
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
 from teleclaude.hooks.adapters.contracts import (
@@ -312,11 +313,11 @@ def _resolve_identity_context(
     session_id: str,
     *,
     receiver_ingress_id: str = _EMPTY_LOG_VALUE,
-) -> tuple[str | None, str | None]:
-    """Return identity-key and person header metadata for additional context."""
+) -> tuple[str | None, str | None, bool]:
+    """Return identity-key, person header, and whether memberships were listed."""
     row = _load_session_row(session_id)
     if not row:
-        return None, None
+        return None, None, False
     identity_key: str | None = None
     if row.origin_metadata:
         try:
@@ -327,16 +328,23 @@ def _resolve_identity_context(
             pass
     human_email = getattr(row, "human_email", None)
     if not human_email:
-        return identity_key, None
+        return identity_key, None, False
     people = load_global_config().people
     person = next((person for person in people if person.email == human_email), None)
     if person is None:
-        return identity_key, None
-    return identity_key, _render_person_header(
+        return identity_key, None, False
+    memberships: tuple[CompanyMembership, ...] = ()
+    memberships_listed = False
+    if person.slug is not None:
+        memberships = resolve_organization(person.slug).memberships
+        memberships_listed = True
+    person_header = _render_person_header(
         person,
+        memberships=memberships,
         receiver_ingress_id=receiver_ingress_id,
         session_id=session_id,
     )
+    return identity_key, person_header, memberships_listed
 
 
 def _build_receiver_error_payload(
@@ -464,11 +472,16 @@ def _maybe_checkpoint_output(
 def _render_person_header(
     person: PersonEntry,
     *,
+    memberships: tuple[CompanyMembership, ...] = (),
     receiver_ingress_id: str = _EMPTY_LOG_VALUE,
     session_id: str = _EMPTY_LOG_VALUE,
 ) -> str:
-    """Render the complete non-null person entry as human-readable YAML."""
+    """Render the complete non-null person entry, with company memberships, as human-readable YAML."""
     person_data = person.model_dump(mode=_MODEL_DUMP_MODE, exclude_none=True)
+    if memberships:
+        person_data["memberships"] = [
+            {"company": membership.company_slug, "role": membership.role.value} for membership in memberships
+        ]
     included_fields = list(person_data)
     logger.info(
         EVENT_HOOK_PROFILE_SERIALIZED,
@@ -494,33 +507,24 @@ def _render_company_header(company: CompanyConfig) -> str:
     return f"Company: {name}\n{description}"
 
 
-def _resolve_company_header(cwd: str | None) -> str | None:
-    """Resolve the active project's company-profile header, or ``None``.
+def _resolve_company_header(session_id: str) -> tuple[str | None, str | None]:
+    """Resolve the session's company slug and its rendered profile header.
 
-    The PROJECT determines the company (a project belongs to exactly one company),
-    not the owning human's company set. No project context, no project ``company``,
-    or an unknown company yields no header — never another company's profile.
+    The SESSION's own company determines the header — never the project it
+    happens to stand in. A session created without a company carries no
+    header; an unknown company cannot reach the row at all, because the
+    create door validates it before the row ever exists.
     """
-    if not cwd:
-        return None
-    declared_project = load_declared_project_config(Path(cwd))
-    if declared_project is None:
-        return None
-    company_slug = declared_project.company
+    row = _load_session_row(session_id)
+    if not row:
+        return None, None
+    company_slug = getattr(row, "company", None)
     if not company_slug:
-        return None
-    company_yml = tc_paths.COMPANIES_ROOT / company_slug / tc_paths.ConfigFileName.OVERLAY
-    if not company_yml.exists():
-        # A declared-but-unconfigured company is a misconfiguration, not a no-op:
-        # surface it visibly rather than silently injecting nothing (which reads as
-        # "no company"). No other company's profile is leaked.
-        logger.warning("project_company_unconfigured", company=company_slug)
-        return (
-            f"WARNING: this project declares company '{company_slug}', but no such company is "
-            f"configured under {tc_paths.COMPANIES_ROOT}. No company profile injected — fix the "
-            "project's `company:` membership or onboard the company."
-        )
-    return _render_company_header(load_company_config(company_yml))
+        return None, None
+    company_config = load_company_config_for_slug(company_slug)
+    if company_config is None:
+        return company_slug, None
+    return company_slug, _render_company_header(company_config)
 
 
 def _print_additional_context(
@@ -537,17 +541,19 @@ def _print_additional_context(
 
     identity_key: str | None = None
     person_header: str | None = None
+    memberships_listed = False
     try:
-        identity_key, person_header = _resolve_identity_context(
+        identity_key, person_header, memberships_listed = _resolve_identity_context(
             session_id,
             receiver_ingress_id=receiver_ingress_id,
         )
     except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
         logger.debug(_IDENTITY_PERSON_RESOLUTION_FAILED, session_id=session_id)
 
+    company: str | None = None
     company_header: str | None = None
     try:
-        company_header = _resolve_company_header(cwd)
+        company, company_header = _resolve_company_header(session_id)
     except (OSError, ValueError):
         logger.debug(_COMPANY_RESOLUTION_FAILED, project_name=project_name)
 
@@ -559,8 +565,10 @@ def _print_additional_context(
             domain_baseline_injected=False,
             additional_context_emitted=False,
             company_context_present=False,
+            company=company or "",
             person_context_present=False,
             memory_context_present=False,
+            memberships_listed=memberships_listed,
         )
         return None
 
@@ -582,8 +590,10 @@ def _print_additional_context(
         domain_baseline_injected=False,
         additional_context_emitted=bool(context),
         company_context_present=bool(company_header),
+        company=company or "",
         person_context_present=bool(person_header),
         memory_context_present=bool(memory_context),
+        memberships_listed=memberships_listed,
     )
     return context
 

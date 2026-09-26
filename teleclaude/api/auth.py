@@ -155,6 +155,7 @@ class CallerIdentity:
     principal_role: str | None = None  # role resolved from the current principal owner
     entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
     job: str | None = None  # session.job, when resolved from a loaded session
+    company: str | None = None  # session.company, when resolved from a loaded session
 
 
 def caller_from_verified_identity(identity: CallerIdentity) -> CliCaller:
@@ -251,6 +252,7 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
         principal_role=principal_role,
         entry_point=EntryPoint.AGENT,
         job=session.job,
+        company=session.company,
     )
 
 
@@ -356,6 +358,7 @@ async def _verify_session_identity(
         principal_role=principal_role,
         entry_point=EntryPoint.AGENT,
         job=session.job,
+        company=session.company,
     )
 
 

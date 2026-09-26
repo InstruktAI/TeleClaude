@@ -69,6 +69,7 @@ class MessageMetadata:
     origin_metadata: SessionOriginMetadata | None = None
     system_role: str | None = None
     job: str | None = None
+    company: str | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     cleanup_trigger: str | None = None
     target_adapter_key: str | None = None
@@ -192,6 +193,7 @@ class SessionEntryPoint(StrEnum):
     CRON = "cron"
     SYSTEM = "system"
     AGENT_HANDOFF = "agent_handoff"
+    PROCEDURE_ACTIVATION = "procedure_activation"
 
 
 FIELD_KIND = "kind"
@@ -249,6 +251,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     origin_metadata: SessionOriginMetadata = field(default_factory=lambda: cast(SessionOriginMetadata, {}))
     system_role: str | None = None
     job: str | None = None
+    company: str | None = None
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
@@ -434,6 +437,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             origin_metadata=origin_metadata,
             system_role=_get_optional_str("system_role"),
             job=_get_optional_str("job"),
+            company=_get_optional_str("company"),
             created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,
             last_activity=ensure_utc(last_activity) if isinstance(last_activity, datetime) else None,
             closed_at=ensure_utc(closed_at) if isinstance(closed_at, datetime) else None,

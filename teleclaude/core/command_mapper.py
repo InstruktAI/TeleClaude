@@ -118,6 +118,7 @@ class CommandMapper:
                     launch_intent=metadata.launch_intent,
                     system_role=metadata.system_role,
                     job=metadata.job,
+                    company=metadata.company,
                     skip_listener_registration=skip_listener_registration,
                     initiator_session_id=initiator_session_id,
                     initiator_computer=config.computer.name if initiator_session_id else None,

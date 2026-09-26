@@ -34,6 +34,7 @@ class CreateSessionRequest(BaseModel):
     native_session_id: str | None = None
     subdir: str | None = None
     human_role: Literal["admin", "member", "contributor", "newcomer"] | None = None
+    company: str | None = None
     metadata: dict[str, object] | None = None  # guard: loose-dict
     origin: str | None = None
     origin_metadata: dict[str, object] | None = None  # guard: loose-dict
@@ -876,6 +877,7 @@ class RunSessionRequest(BaseModel):
     thinking_mode: Literal["fast", "med", "slow"] | None = None
     detach: bool = False
     additional_context: str = ""
+    company: str | None = None
 
 
 class SendResultRequest(BaseModel):

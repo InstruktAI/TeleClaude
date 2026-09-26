@@ -6,11 +6,11 @@ from collections.abc import Awaitable, Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.hooks.webhook_models import HookEvent
+from teleclaude.hooks.webhook_models import Contract, HookEvent
 
 logger = get_logger(__name__)
 
-InternalHandler = Callable[[HookEvent], Awaitable[None]]
+InternalHandler = Callable[[HookEvent, Contract], Awaitable[None]]
 
 
 class HandlerRegistry:

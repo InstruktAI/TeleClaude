@@ -44,6 +44,7 @@ from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
+from teleclaude.core.session_company import record_session_company_resolved, resolve_session_creation_company
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_startup_message import prepare_startup_message, resolve_command_input
 from teleclaude.core.session_title import compose_command_session_title
@@ -345,6 +346,8 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         if not principal and parent_session.principal:
             principal = parent_session.principal
 
+    parent_company = parent_session.company if parent_session else None
+    company, company_source = resolve_session_creation_company(cmd.request_id, cmd.company, human_email, parent_company)
     prepare_interactive_create_command(cmd, human_role)
 
     computer_name = config.computer.name
@@ -479,6 +482,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         lifecycle_status="headless" if cmd.headless else "initializing",
         system_role=cmd_system_role,
         job=cmd_job,
+        company=company,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
         native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
@@ -486,6 +490,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         emit_session_started=False,
     )
 
+    record_session_company_resolved(cmd.request_id, session.session_id, company, company_source, initiator_session_id)
     # AI-to-AI starts should register a one-shot stop listener so the initiator
     # receives completion notifications for the spawned child session.
     if initiator_session_id and initiator_session_id != session_id and not cmd.skip_listener_registration:

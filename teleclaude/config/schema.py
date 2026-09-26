@@ -390,6 +390,19 @@ class InboundSourceConfig(ClosedModel):
     verify_token: str | None = None
     secret: str | None = None
     normalizer: str | None = None
+    company: str | None = None
+
+    @field_validator("company")
+    @classmethod
+    def validate_inbound_source_company(cls, value: str | None) -> str | None:
+        """Enforce slug format on the declared company, like ``CompanyConfig.slug``."""
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        validate_slug(stripped)
+        return stripped
 
 
 class SubscriptionContractConfig(ClosedModel):

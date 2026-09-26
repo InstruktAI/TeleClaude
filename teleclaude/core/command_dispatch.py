@@ -56,6 +56,7 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.SYSTEM: "system_command",
     CommandType.SET_VOICE_FOCUS: "set_voice_focus",
     CommandType.DISCORD_THREAD_CLAIM: "discord_thread_claim",
+    CommandType.ACTIVATE_PROCEDURE: "activate_procedure",
 }
 
 PEER_NAME_FIELD = "name"

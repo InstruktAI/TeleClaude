@@ -88,7 +88,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.identity import PersonCliCaller, authorizing_role
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
-from teleclaude.core.operations.service import all_outcome_events
+from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.hooks.api_routes import router as hooks_router

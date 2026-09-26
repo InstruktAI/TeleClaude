@@ -210,6 +210,9 @@ def handle_sessions_start(args: list[str]) -> None:
         body["direct"] = True
     if parsed.has(F.FLAG_DETACH):
         body["skip_listener_registration"] = True
+    company = parsed.value(F.FLAG_COMPANY)
+    if company is not None:
+        body["company"] = company
 
     if not body.get("project_path"):
         body["project_path"] = str(resolve_invocation_cwd())
@@ -399,6 +402,9 @@ def handle_sessions_run(args: list[str]) -> None:
     additional_context = parsed.value(F.FLAG_RUN_ADDITIONAL_CONTEXT)
     if additional_context is not None:
         body["additional_context"] = additional_context
+    company = parsed.value(F.FLAG_COMPANY)
+    if company is not None:
+        body["company"] = company
     if not body.get("command"):
         print("Error: --command is required", file=sys.stderr)
         raise SystemExit(1)

@@ -114,6 +114,7 @@ class SnippetEntry(TypedDict):
     visibility: NotRequired[str]
     delivered_by: NotRequired[list[str]]
     superseded_by: NotRequired[list[str]]
+    subscriptions: NotRequired[list[str]]
 
 
 class IndexPayload(TypedDict):
@@ -152,6 +153,12 @@ def _copy_delivered_by_metadata(entry: SnippetEntry, metadata: Mapping[str, obje
     raw_delivered_by = metadata.get("delivered_by")
     if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by):
         entry["delivered_by"] = list(raw_delivered_by)
+
+
+def _copy_subscriptions_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
+    raw_subscriptions = metadata.get("subscriptions")
+    if isinstance(raw_subscriptions, list) and all(isinstance(event_type, str) for event_type in raw_subscriptions):
+        entry["subscriptions"] = list(raw_subscriptions)
 
 
 def _extract_description_from_md(file_path: Path) -> str:
@@ -395,6 +402,7 @@ def _build_snippet_entry(
     else:
         entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
     _copy_delivered_by_metadata(entry, metadata)
+    _copy_subscriptions_metadata(entry, metadata)
     _attach_superseding_slugs(entry, file_path)
     return entry
 
@@ -550,18 +558,18 @@ def _build_tier_index_payload(
             if isinstance(raw_visibility, str) and raw_visibility in SNIPPET_VISIBILITY_VALUES
             else SNIPPET_VISIBILITY_INTERNAL
         )
-        snippets.append(
-            {
-                "id": classification.id,
-                "description": description,
-                "type": classification.type.value,
-                "scope": classification.scope.value,
-                "domain": classification.domain,
-                "activation_trigger": None,
-                "path": str(file_path.relative_to(tier_docs_root)),
-                "visibility": visibility,
-            }
-        )
+        entry: SnippetEntry = {
+            "id": classification.id,
+            "description": description,
+            "type": classification.type.value,
+            "scope": classification.scope.value,
+            "domain": classification.domain,
+            "activation_trigger": None,
+            "path": str(file_path.relative_to(tier_docs_root)),
+            "visibility": visibility,
+        }
+        _copy_subscriptions_metadata(entry, metadata)
+        snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])
     return {"project_root": str(tier_docs_root), "snippets_root": str(tier_docs_root), "snippets": snippets}

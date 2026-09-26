@@ -21,6 +21,7 @@ class RunSessionPlan:
     origin_metadata: TerminalOriginMetadata | None
     system_role: str | None
     job: str | None
+    company: str | None
     command: str
     working_slug: str | None
     entry_point: SessionEntryPoint

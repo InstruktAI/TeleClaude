@@ -92,6 +92,7 @@ class OperationSucceededEventDTO(BaseModel):
         "session.close.completed",
         "agent.restart.completed",
         "agent_runtime.handoff.completed",
+        "agent_runtime.procedure_activation.completed",
     ]
     operation_id: str
 
@@ -112,6 +113,7 @@ class OperationFailedEventDTO(BaseModel):
         "session.close.failed",
         "agent.restart.failed",
         "agent_runtime.handoff.failed",
+        "agent_runtime.procedure_activation.failed",
     ]
     operation_id: str
     error: str

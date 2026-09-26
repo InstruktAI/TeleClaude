@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.hooks.webhook_models import HookEvent
+from teleclaude.hooks.webhook_models import Contract, HookEvent
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -66,6 +66,7 @@ def _log_execute_update_task_exception(task: asyncio.Task) -> None:  # type: ign
 
 async def handle_deployment_event(
     event: HookEvent,
+    contract: Contract,
 ) -> None:
     """Handle GitHub push/release events and deployment fan-out events.
 
@@ -79,6 +80,7 @@ async def handle_deployment_event(
         github source  → publish version_available to Redis + execute locally
         deployment source → execute locally only (prevents re-broadcast loops)
     """
+    del contract
     channel = _config.deployment.channel
     pinned_minor = _config.deployment.pinned_minor
 

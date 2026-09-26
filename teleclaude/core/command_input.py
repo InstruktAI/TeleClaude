@@ -27,10 +27,11 @@ _DEFER_COMMAND = SlashCommand.DEFER.value
 # same qualified value or the required-argument guard silently stops matching.
 _RESEARCH_COMMAND = "sdlc/research"
 _RUN_JOB_COMMAND = SlashCommand.RUN_JOB.value
+_ACTIVATE_PROCEDURE_COMMAND = SlashCommand.ACTIVATE_PROCEDURE.value
 _SESSIONS_RUN_COMMAND = "telec sessions run"
 _COMMAND_INPUT_CLEARANCE_DETAIL = "caller is not permitted to invoke command input"
 _MISSING_ARGUMENT_TEMPLATE = "/{command} requires a slug argument"
-_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job must be dispatched through /sessions/run"
+_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job and activate-procedure must be dispatched through /sessions/run"
 
 
 class CommandInputMode(StrEnum):
@@ -121,7 +122,7 @@ def admit_command_input(command: str, args: str, human_role: str | None) -> Comm
     if not is_command_allowed(_SESSIONS_RUN_COMMAND, None, human_role):
         raise CommandInputError(_COMMAND_INPUT_CLEARANCE_DETAIL)
     metadata = infer_command_input_metadata(command, args)
-    if command == _RUN_JOB_COMMAND:
+    if command in (_RUN_JOB_COMMAND, _ACTIVATE_PROCEDURE_COMMAND):
         raise CommandInputError(_JOB_COMMAND_GENERIC_CREATE_DETAIL)
     if command in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not args:
         raise CommandInputError(_MISSING_ARGUMENT_TEMPLATE.format(command=command))

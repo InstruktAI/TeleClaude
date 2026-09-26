@@ -71,7 +71,7 @@ def _build_config_contract(sub: dict[str, Any]) -> Contract:  # guard: loose-dic
 def _resolve_inbound_registration(
     source_name: str,
     source_config: dict[str, Any],  # guard: loose-dict - YAML config
-) -> tuple[str, str, dict[str, Any] | None]:  # guard: loose-dict - YAML config
+) -> tuple[str, str, dict[str, Any] | None, str | None]:  # guard: loose-dict - YAML config
     """Resolve an inbound endpoint definition from config."""
     path = source_config.get("path")
     if not path:
@@ -79,7 +79,8 @@ def _resolve_inbound_registration(
         logger.info("Inbound path derived from source name: %s -> %s", source_name, path)
     normalizer_key = source_config.get("normalizer") or source_name
     verify_config = {key: source_config[key] for key in ("verify_token", "secret") if key in source_config}
-    return path, normalizer_key, verify_config or None
+    company = source_config.get("company")
+    return path, normalizer_key, verify_config or None, company if isinstance(company, str) else None
 
 
 async def load_hooks_config(
@@ -119,8 +120,8 @@ async def load_hooks_config(
         inbound = hooks_config.get("inbound", {})
         for source_name, source_config in inbound.items():
             try:
-                path, normalizer_key, verify_config = _resolve_inbound_registration(source_name, source_config)
-                inbound_registry.register(path, normalizer_key, verify_config)
+                path, normalizer_key, verify_config, company = _resolve_inbound_registration(source_name, source_config)
+                inbound_registry.register(path, normalizer_key, verify_config, company)
                 logger.info("Loaded inbound endpoint: %s → %s", source_name, path)
             except (AttributeError, TypeError, ValueError) as exc:
                 logger.error("Failed to load inbound %s: %s", source_name, exc, exc_info=True)

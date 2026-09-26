@@ -145,6 +145,23 @@ def get_session_identity_sync(db_path: str, session_id: str) -> SessionRecord | 
         engine.dispose()
 
 
+def get_session_company_sync(db_path: str, session_id: str) -> str | None:
+    """Load one session's company, selecting only that column.
+
+    Kept separate from ``get_session_identity_sync`` so the query every
+    in-session command's caller resolution runs never selects a column that
+    may not exist yet on an unmigrated row.
+    """
+    engine = create_sync_db_engine(db_path)
+    try:
+        with SqlSession(engine) as session:
+            stmt = select(db_models.Session.company).where(db_models.Session.session_id == session_id)
+            row = session.exec(stmt).first()
+            return row if row is None else str(row)
+    finally:
+        engine.dispose()
+
+
 def get_session_ids_by_native_sync(db_path: str, native_session_ids: Sequence[str]) -> dict[str, str]:
     """Map native ids to the newest TeleClaude session record, including closed rows."""
     if not native_session_ids:

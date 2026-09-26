@@ -32,6 +32,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     origin_metadata: str | None = None
     system_role: str | None = None
     job: str | None = None
+    company: str | None = None
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
