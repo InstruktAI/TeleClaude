@@ -37,8 +37,10 @@ delivered_by: [config-migration-chain]
   holds. The reader asks the migration list's published in-transit query, which
   answers from each migration's own definition of what it moves and only for
   documents below that migration; neither the query nor the reader writes.
-  Consumers outside the configuration context use the destination's published
-  reader alone.
+  Where the destination already holds a different value for the same key, or two
+  documents in transit hold different values for it, the reader answers with
+  neither: a read never settles a conflict. Consumers outside the configuration
+  context use the destination's published reader alone.
 - **A step may retire config-owned records the list declares obsolete.** A retirement
   effect removes config-owned records that no current code reads. It is idempotent, never touches a configuration document, and runs on every
   migration run whatever any document's version, so an installation whose documents are
@@ -77,7 +79,9 @@ neither can be chosen without judgment. A read drops the moved value from its
 view of the document, and a run can fail, be delayed, or not yet have reached
 the document, so a destination reader that consulted only the destination would
 lose a value that is still on disk. Taking the value from the migration's own
-definition keeps one statement of what moves.
+definition keeps one statement of what moves. A reader that answered with either
+side of a conflict would make, silently and on every read, the choice the run
+leaves to judgment.
 
 A retirement effect is keyed to the run rather than to a document's version because the
 records it removes belong to no document: an installation can be current in every document

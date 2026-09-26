@@ -206,6 +206,12 @@ And no migration run or writer has yet stored that document past that migration
 When a consumer looks the value up in its destination store
 Then it finds the value the document holds
 And the document and the destination store are unchanged by the lookup
+
+Given a configuration document at an older version holding a value a migration moves to another config-owned store
+And that store already holds a different value for the same key
+When a consumer looks that key up in the store
+Then it is answered with neither value
+And the document and the destination store are unchanged by the lookup
 ```
 
 ### Cross-context references
