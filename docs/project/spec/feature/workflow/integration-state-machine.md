@@ -471,7 +471,6 @@ And a firing that finds a candidate cancels the queue watcher before continuing 
 And an empty queue leaves the watcher live until an explicit lifecycle condition cancels it
 ```
 
-<!-- planned:fix-pre-push-hook-s-integration-worktree-exc -->
 #### UC-WISM39: The integration worktree cannot delete origin/main
 
 ```gherkin
@@ -480,7 +479,6 @@ When the session pushes a deletion of the main branch to origin
 Then the push is refused, and the refusal is never reported as a content-gate failure
 And origin/main is unchanged
 ```
-<!-- /planned:fix-pre-push-hook-s-integration-worktree-exc -->
 
 ### Cross-context references
 
