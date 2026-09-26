@@ -77,7 +77,6 @@ And this holds whatever the number of registered people, including zero or one
 And no role is granted to a call that names no person
 ```
 
-
 #### UC-CV-DAEMON-SELF: The daemon's own calls resolve to its system principal, never to a person
 
 ```
@@ -96,6 +95,7 @@ When caller verification runs
 Then the credential resolves no identity
 And verification continues with the caller's remaining signals, rejecting the call when none of them resolve
 ```
+
 #### UC-CV-SESSION-PRINCIPAL-HUMAN: A human-rooted session resolves to a human principal and clears the human gate
 
 ```
@@ -140,7 +140,7 @@ And the terminal-email signal is consulted only for a session record that carrie
 
 - Consumed by every protected operation in the identity context, either directly or transitively through the command-clearance capability.
 - Reads from the `agent_runtime` bounded context (sessions, via the session loader) and from the `config` bounded context (the human-identity resolution capability for email→Role mapping).
-- The session-token branch interlocks with session-token issuance — see `feature/identity/session-token-issuance` and `feature/identity/session-token-validation`. The derived system_role is the same value principal resolution would stamp on a token — see `feature/identity/principal-resolution`.
+- The session-token branch interlocks with session-token issuance — see `project/spec/identity-and-auth` §3. The derived system_role is the same value principal resolution would stamp on a token — see `feature/identity/principal-resolution`.
 - In v2 this collapses into `identity.resolve(headers)` returning a typed `Principal` (or Anonymous); the v2 model unifies token-auth, session-id-auth, and email-trust under one resolution call.
 
 ## Known caveats

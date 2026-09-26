@@ -61,7 +61,7 @@ And every session with no human origin shares that one principal, distinguished 
 
 <!-- planned-change:telec-startup-does-only-auth -->
 - Consumer: `agent_runtime` session bootstrap calls this capability to decide whether to issue a session token (system-principal sessions only).
-- The returned `principal` value is stamped into the session-token ledger entry at issuance, and read back by caller verification on the token path — see `feature/identity/session-token-issuance` and `feature/identity/caller-verification`.
+- The returned `principal` value is stamped into the session-token ledger entry at issuance, and read back by caller verification on the token path — see `project/spec/identity-and-auth` §3 and `feature/identity/caller-verification`.
 <!-- change:telec-startup-does-only-auth -->
 - Consumer: the client-side caller resolution (`project/spec/identity-and-auth` §6) resolves a session caller's principal through this capability.
 <!-- /planned-change:telec-startup-does-only-auth -->

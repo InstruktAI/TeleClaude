@@ -46,7 +46,7 @@ And the document is written with stable key ordering and a trailing newline
 ```
 Given a session whose resolved principal is "system:daemon"
 When the bootstrap writer runs
-Then session-token issuance produces a fresh UUID4 (see `feature/identity/session-token-issuance`)
+Then session-token issuance produces a fresh UUID4 (see `project/spec/identity-and-auth` §3)
 And the identity file carries that UUID4 in the session_token field
 And the file's system_role mirrors the session's system_role (lowercased, stripped)
 And the file's human_role mirrors the session's human_role
@@ -192,7 +192,7 @@ And no "access: denied" notice is shown for it
 
 - The session TMPDIR itself is allocated by `agent_runtime` via the tmux bridge; this snippet owns the file's contract, not the directory's lifecycle.
 <!-- planned-change:telec-startup-does-only-auth -->
-- The `session_token` field is produced by `feature/identity/session-token-issuance` (system principals only) and consumed by `feature/identity/session-token-validation` inside the identity context.
+- The `session_token` field is produced by session-token issuance (system principals only) and consumed by token validation inside the identity context (`project/spec/identity-and-auth` §3).
 - The `session_id` field is the binding key for `feature/identity/caller-verification`'s dual-factor path: the identity context cross-checks the inbound caller-session-id against the live tmux-session signal before honoring it.
 - `system_role` and `human_role` mirror the columns on the session record; they are written into the file as a convenience for CLI tools that want to surface the role locally without an extra round-trip — the identity context never trusts a client-supplied role.
 - `principal` mirrors the principal `feature/identity/principal-resolution` resolves for the session record — its lineage root: the owning person for work with human lineage, the system principal for work without. No caller resolution reads it: a process inside the session resolves the caller it acts as from the session record that `session_id` names, through the same principal resolution the identity context applies, so the document and the identity context cannot disagree about who the session is. A caller's role is read from the people registry when it is needed, never copied here.
