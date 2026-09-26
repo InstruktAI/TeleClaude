@@ -382,8 +382,7 @@ telec code commit --approved "feat(scope): subject"
   → commit gate satisfied (--approved present)
   → lock acquired
   → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
-  → workspace scope = WORKTREE → writer job (builder, finalizer, integrator): all dirty paths;
-    other job: live declarations ∩ dirty paths (job read from the session record)
+  → workspace scope = WORKTREE → the acting session's commit-owned dirty paths
   → pathspec = scope (no includes)
   → drop untracked-new files from pathspec (require explicit declaration)
   → stage ONLY untracked-or-unmerged files that are in pathspec
@@ -396,6 +395,9 @@ telec code commit --approved "feat(scope): subject"
   → real git commit --no-verify -F <msg> -- <pathspec>
   → lock released
 ```
+
+The commit-owned set in a worktree follows the writer rule in
+`sdlc/design/workspace-scoping`.
 <!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ### Agent commit on main
