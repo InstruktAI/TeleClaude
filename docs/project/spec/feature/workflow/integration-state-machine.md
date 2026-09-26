@@ -428,7 +428,7 @@ And the path was not modified within the current clearance interval
 And its uncommitted diff names no todo slug in a pending-doc marker
 When the integrator's clearance beat resolves that path
 Then it sends one message listing the path to every live session of the project on the same computer that is an orchestrator in a prepare phase or carries no system role
-And the message tells each recipient to arm halt-to-respond first when it was in the middle of work, then to commit the path when it is its own or reply that it is still working on it, and otherwise to end its turn with NOOP
+And the message tells each recipient to arm halt-to-respond first when it was in the middle of work, then to commit a path of its own that is ready and released for commit or reply that it is still working on it, and otherwise to end its turn with NOOP
 And no worker, tasker, integrator, coordinator, work orchestrator, create orchestrator, job runner, or system session receives it
 And the path is never sent again to the same recipient
 And when the path is still dirty, still unmodified within the interval, and claimed by no recipient on a later beat, the integrator commits it as-is under a message naming it as stranded work

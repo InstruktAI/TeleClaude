@@ -296,7 +296,7 @@ one unit.
    `prepare-orchestrator`, `intaker`, `architect`, or `planner`, and sessions carrying
    no system role (`telec sessions list --all`). Each recipient receives one message
    listing the paths:
-   `These paths are dirty on main and block integration: <paths>. If you were in the middle of work, arm halt-to-respond first. Then: if any of these paths are yours, commit them now or reply that you are still working on them; if none are yours, end your turn with NOOP.`
+   `These paths are dirty on main and block integration: <paths>. If you were in the middle of work, arm halt-to-respond first. Then: for each path that is yours, commit it now if it is ready and released for commit, otherwise reply that you are still working on it; if none are yours, end your turn with NOOP.`
 4. **Claimed.** A recipient that replies that a path is its own and still in progress
    owns that path. Keep waiting for its commit.
 5. **Quiet and unclaimed on a later beat.** A path still dirty, not recently written,
