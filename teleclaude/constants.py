@@ -439,6 +439,15 @@ PREPARE_AUTHOR_JOB_ROLES: frozenset[str] = frozenset(
     }
 )
 
+# Lifecycle build/finalize jobs are the todo-worktree source writers. The
+# checkpoint matches the job and worktree slug before selecting their dirty set.
+TODO_WORKTREE_WRITER_JOB_ROLES: frozenset[str] = frozenset(
+    {
+        JobRole.BUILDER.value,
+        JobRole.FINALIZER.value,
+    }
+)
+
 # Standing roles carry no commanding session, whatever door created them. The
 # integrator and the coordinator are identified by the session's `job` field;
 # the job runner is identified by `system_role`, because its own command

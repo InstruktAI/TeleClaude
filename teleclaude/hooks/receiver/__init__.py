@@ -431,6 +431,7 @@ def _maybe_checkpoint_output(
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
         system_role=getattr(row, "system_role", None),
+        job=getattr(row, "job", None),
         receiver_ingress_id=receiver_ingress_id,
     )
     if not checkpoint_reason:

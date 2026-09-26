@@ -6,6 +6,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_project_capability_state
 from teleclaude.checkpoint_model import checkpoint_model_from_project_config
+from teleclaude.constants import TODO_WORKTREE_WRITER_JOB_ROLES
 from teleclaude.core.agents import AgentName
 from teleclaude.hooks.checkpoint._composition import _compose_checkpoint_message
 from teleclaude.hooks.checkpoint._evidence import (
@@ -25,7 +26,7 @@ from teleclaude.hooks.checkpoint._heuristics import run_heuristics
 from teleclaude.hooks.checkpoint._integrator import _integrator_judgment_checkpoint
 from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.hooks.checkpoint_flags import consume_authored_main_commit_flag, has_authored_main_commit_flag
-from teleclaude.project_root import declaration_root
+from teleclaude.project_root import declaration_root, is_slug_worktree
 from teleclaude.session_scoping import WorkspaceKind, live_declarations, resolve_workspace
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
@@ -56,6 +57,7 @@ def get_checkpoint_content(
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
     system_role: str | None = None,
+    job: str | None = None,
     receiver_ingress_id: str = "",
 ) -> str | None:
     """Build context-aware checkpoint content for both hook and codex routes.
@@ -74,6 +76,7 @@ def get_checkpoint_content(
             "receiver_ingress_id": receiver_ingress_id,
             "session_id": session_id,
             "project_path": project_path or "",
+            "job": job or "",
             "working_slug": working_slug or "",
             "transcript_present": bool(transcript_path),
             "transcript_path": transcript_meta["transcript_path"],
@@ -115,14 +118,14 @@ def get_checkpoint_content(
 
         workspace = resolve_workspace(project_path)
         declared_paths = {declaration.path for declaration in live_declarations(session_id)}
-        # Declarations answer ownership only where sessions share a branch. A
-        # worktree is one todo's task scope with a single writer, so its
-        # obligation is the dirty tree itself; intersecting it with declarations
-        # would withhold the obligation from the session that owns every path
-        # in it.
         dirty_paths = _dirty_repo_paths(project_path)
+        worktree_root = Path(workspace.root) if workspace.root is not None else None
         if workspace.kind is WorkspaceKind.GIT_WORKTREE:
-            effective_files = sorted(dirty_paths)
+            if worktree_root is not None and is_slug_worktree(worktree_root):
+                is_writer = job in TODO_WORKTREE_WRITER_JOB_ROLES and working_slug == worktree_root.name
+                effective_files = sorted(dirty_paths) if is_writer else []
+            else:
+                effective_files = sorted(dirty_paths)
         else:
             effective_files = sorted(declared_paths & dirty_paths)
         authored_main_commit = has_authored_main_commit_flag(session_id)

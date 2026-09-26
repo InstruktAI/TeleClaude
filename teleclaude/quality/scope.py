@@ -20,7 +20,9 @@ from teleclaude.core.reconciliation.home_retained_set import HomeMembership, hom
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
-from teleclaude.todo_scaffold import collect_declared_paths  # deferred: heavy transitive imports
+from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
+    collect_declared_paths,
+)
 
 logger = logging.getLogger(__name__)
 
