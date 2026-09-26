@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from teleclaude.git import is_linked_worktree
+from teleclaude.project_root import resolve_git_root
 
 from ._types import ResolvedWorkspace, WorkspaceKind
 
@@ -14,17 +15,10 @@ def resolve_workspace(workspace_root: str | None) -> ResolvedWorkspace:
     if not workspace_root:
         return ResolvedWorkspace(root=None, kind=WorkspaceKind.NONE)
 
-    current = Path(workspace_root).expanduser().resolve()
-    if current.is_file():
-        current = current.parent
-    original = current
+    root = resolve_git_root(workspace_root)
+    git_path = root / ".git"
+    if git_path.is_dir() or git_path.is_file():
+        kind = WorkspaceKind.GIT_WORKTREE if is_linked_worktree(root) else WorkspaceKind.GIT_SHARED
+        return ResolvedWorkspace(root=str(root), kind=kind)
 
-    while current != current.parent:
-        git_path = current / ".git"
-        if git_path.is_dir():
-            return ResolvedWorkspace(root=str(current), kind=WorkspaceKind.GIT_SHARED)
-        if git_path.is_file():
-            return ResolvedWorkspace(root=str(current), kind=WorkspaceKind.GIT_WORKTREE)
-        current = current.parent
-
-    return ResolvedWorkspace(root=str(original), kind=WorkspaceKind.NON_GIT)
+    return ResolvedWorkspace(root=str(root), kind=WorkspaceKind.NON_GIT)

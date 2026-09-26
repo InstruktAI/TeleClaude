@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 import tomllib
 from dataclasses import dataclass
 from enum import Enum, StrEnum
@@ -17,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from teleclaude.core.reconciliation.home_retained_set import HomeMembership, home_membership
-from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
+from teleclaude.git import GitCommandError, Repo, is_linked_worktree
 from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
@@ -44,6 +43,7 @@ _PRETTIER_EXTENSIONS = (
     ".cjs",
 )
 _ROOT_RUST_METADATA = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml"}
+_WORKTREE_CLASSIFICATION_FAILURE = "Failed to resolve workspace worktree classification"
 
 
 class WorkspaceScopeKind(Enum):
@@ -118,32 +118,6 @@ class CargoWorkspaceError(RuntimeError):
         super().__init__(f"Cargo workspace manifest not found: {manifest_path}")
 
 
-def is_worktree(project_root: Path) -> bool:
-    """Check if the project is in a git worktree (not the main repo).
-
-    Compares git rev-parse --git-common-dir vs --git-dir. In a worktree
-    these differ; in the main repo they are identical.
-
-    Justified subprocess: git plumbing has no Python API.
-    """
-    try:
-        git_common = subprocess.run(
-            [GIT_EXECUTABLE, "-C", str(project_root), "rev-parse", "--git-common-dir"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        git_dir = subprocess.run(
-            [GIT_EXECUTABLE, "-C", str(project_root), "rev-parse", "--git-dir"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        return git_common != git_dir
-    except subprocess.CalledProcessError:
-        return False
-
-
 def resolve_workspace_scope_resolution(
     project_root: Path,
     *,
@@ -156,7 +130,12 @@ def resolve_workspace_scope_resolution(
     session_id = get_session_id()
     has_session_identity = bool(session_id)
 
-    if is_worktree(project_root):
+    try:
+        linked_worktree = is_linked_worktree(project_root)
+    except GitCommandError as exc:
+        raise RuntimeError(f"{_WORKTREE_CLASSIFICATION_FAILURE}: {exc}") from exc
+
+    if linked_worktree:
         return WorkspaceScopeResolution(
             kind=WorkspaceScopeKind.WORKTREE,
             has_session_identity=has_session_identity,

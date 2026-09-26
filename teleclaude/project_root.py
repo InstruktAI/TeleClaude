@@ -145,7 +145,7 @@ def resolve_project_root(start: str | Path) -> Path:
 def is_integration_worktree(root: Path) -> bool:
     """Return True when root is the integrator's fold worktree (trees/_integration).
 
-    `is_worktree` (and the `WorkspaceScopeKind.WORKTREE` it drives in
+    `is_linked_worktree` (and the `WorkspaceScopeKind.WORKTREE` it drives in
     `code.py`) is true for both a slug worktree and `trees/_integration` — the
     integrator's own fold worktree, which legitimately commits `docs/**` when
     landing the doc layer. Shared home for the slug-vs-integration boundary so

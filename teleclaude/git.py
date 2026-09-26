@@ -19,6 +19,7 @@ from pathlib import Path
 from teleclaude.paths import BIN_DIR, DEFAULT_BIN_DIR
 
 _GIT_LOCAL_ENV_VARS_ARGUMENT = "--local-env-vars"
+_GIT_LINKED_WORKTREE_ARGUMENTS = ("--path-format=absolute", "--git-dir", "--git-common-dir")
 
 
 def _wrapper_dirs() -> set[Path]:
@@ -57,7 +58,7 @@ os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = GIT_EXECUTABLE  # fmt: skip  # guard: 
 # regardless of whether the caller used with_extended_output or not.
 # ---------------------------------------------------------------------------
 import time as _time  # noqa: E402
-from typing import Any  # noqa: E402
+from typing import Any, cast  # noqa: E402
 
 from git import Repo as Repo  # noqa: E402
 from git.cmd import Git as _Git  # noqa: E402
@@ -142,7 +143,15 @@ __all__ = [
     "InvalidGitRepositoryError",
     "NoSuchPathError",
     "Repo",
+    "is_linked_worktree",
 ]
+
+
+def is_linked_worktree(path: str | Path) -> bool:
+    """Return whether Git identifies path as a linked worktree."""
+    git_directories = cast(list[str], _Git(str(path)).rev_parse(*_GIT_LINKED_WORKTREE_ARGUMENTS).splitlines())
+    git_dir, git_common_dir = git_directories
+    return git_dir != git_common_dir
 
 
 def no_autostash_env() -> dict[str, str]:
