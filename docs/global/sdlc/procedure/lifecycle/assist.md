@@ -64,13 +64,16 @@ none of them and need nothing.
   accumulates. To the producer.
 - The target moving between passes, so each review reads something different.
   To the producer: settle it before the next pass.
+- Findings that are leftovers of the last fix: statements still asserting a
+  premise the producer already changed. To the producer: carry the premise
+  through the target before the next pass
+  (`sdlc/policy/preparation-artifact-quality`).
 - The target or its remediation outgrowing the concern it was meant to resolve:
-  scope, mechanism, or risk keeps expanding while the observable outcome stays
-  narrow. A remediation chain, where each fix answers the last finding and
-  becomes the subject of the next, is the place to look for it. The chain alone
-  is not the shape; a loop working through remediation-induced findings is
-  still working. The shape is present when the mechanism the chain adds keeps
-  growing while the outcome it serves does not. Before acting on it, ask which
+  mechanism, verification, or scope keeps expanding while the outcome it serves
+  stays fixed. A remediation chain, where each fix answers the last finding and
+  becomes the subject of the next, is where it shows. Act on its first clear
+  occurrence; a growing target does not converge by being reviewed again
+  (`sdlc/policy/preparation-artifact-quality`, Rationale). Before acting on it, ask which
   contract governs the disputed demand; a more specific one may already decide
   it, and then the party misreading it is the one to correct. Otherwise, to the
   orchestrator: stop the review loop and return the target to its owning phase

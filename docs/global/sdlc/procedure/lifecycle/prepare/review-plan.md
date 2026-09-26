@@ -120,12 +120,15 @@ plan's own inventory:
    inventory with no map entry is a **Requirement-Violation** — map coverage
    checked only against the plan's own list is self-consistency dressed as
    coverage.
-2. **Judge each predicate's discriminating power.** For each map entry, ask
-   what plausible broken behavior would still satisfy the stated opportunity →
-   outcome predicate. An entry whose predicate passes on broken behavior —
+2. **Judge each entry against the failure it names.** For each map entry,
+   take the failure it exists to catch (`sdlc/spec/observation-map`,
+   What an entry must discriminate) and ask whether its acceptance authority,
+   reading the bound evidence, would see that failure. An entry that would not —
    wrong correlation fields, an outcome record emitted before the fact it
    claims, a negative behavior mapped to silence instead of an affirmative
-   decision record — is a **Critical** finding.
+   decision record — is a **Critical** finding. A wrong implementation outside
+   the named failure, constructed to show an entry could pass it, is not a
+   finding; neither is a demand that an entry restate its scenario's branches.
 
 The check also confirms the map honors the contract's shape: lean core fields
 only, facing derived from the scenarios rather than restated, defaults not
@@ -137,7 +140,8 @@ output is itself the product, an entry binding that native output with its
 facing-derived authority is armable as stated. An "unarmable map" finding may
 not prescribe new instrumentation — emitters, record schemas, correlation
 identifiers — as the remedy; that prescription enlarges the horizon and is not
-a finding.
+a finding. Additive observation the planner chose within the spec's bound is
+part of the delivered behavior, not a scope finding.
 
 3. **Judge each opportunity's reachability.** For each entry, ask whether its
    opportunity record would still fire if this change were wrong in the way it
@@ -529,7 +533,10 @@ fourth tier. There is no Suggestion bucket.
 - **Re-opening passed text.** A re-review after remediation judges the changed
   text and the resolution of the prior findings. A new finding against text the
   prior pass reviewed unchanged must name why the prior pass missed it; absent
-  that, the finding is dropped.
+  that, the finding is dropped. A premise the disposition records as changed is
+  part of that resolution: a statement still asserting the old premise, changed
+  text or not, is a finding against the incomplete carry-through
+  (`sdlc/policy/preparation-artifact-quality`).
 
 When the dispatch comes with a digest-mismatch header (the message includes
 a `telec todo artifacts diff` command with old and new digests), the plan

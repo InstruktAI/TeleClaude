@@ -62,6 +62,17 @@ authority existing reviewers apply when the reviewed delta is a relaxation.
 Maintenance framing, convenience, a spent review count, or perceived alignment
 with intent supplies no justification.
 
+### The judged never rewrite their judge
+
+A session whose artifact is in an open review loop does not change, in either
+direction, a contract that review applies to it: the observation-map spec, the
+review procedures, the artifact-quality policy, or any other contract a finding
+against it cites. A defect it finds in such a contract leaves the loop as a
+contract dispute routed to that contract's owner
+(`sdlc/procedure/lifecycle/assist`), and a session with no artifact under that
+review authors the change. The pending contract a todo delivers under its own
+slug is the work under review, not a judging contract, and stays its author's.
+
 ### Operation and recovery remain with intelligence
 
 Classifying a halt, selecting remediation ownership, resolving technical
@@ -105,6 +116,10 @@ expansion and is rejected normally.
   them is stronger and simpler than human approval or a parallel review system.
 - The no-stake rule addresses the real conflict: an agent must not lower the wall
   that blocks its own work. It does not make every process improvement suspect.
+- A judging contract edited by the session it judges stops being an independent
+  standard. Tightened or loosened, the edit is shaped by what lets the author's
+  own artifact pass, and the review that follows measures the artifact against
+  its author.
 - Consequence-based ownership preserves the human's actual domain without using
   `process` as a keyword that claims their attention.
 
@@ -119,6 +134,8 @@ expansion and is rejected normally.
   process contract is a Requirement-Violation.
 - A control relaxation without explicit approval from an independent no-stake
   reviewer is Critical.
+- An edit to a judging contract by a session with an artifact in that review
+  loop is Critical.
 - An author approving its own process change or review finding is a violation of
   reviewer separation.
 - Asking the human to decide process mechanics is a human-contract finding.

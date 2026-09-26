@@ -141,12 +141,19 @@ header. Pick your behavior from the reason:
   plan; each finding receives exactly one disposition:
   - **Fix** — the finding cites a clause that applies, establishes the
     contradiction, and its closure stays inside the authorized outcome and the
-    behavior's established domain owner. Apply the targeted fix.
+    behavior's established domain owner. Apply it, and when it changes a
+    premise the plan stands on, carry that premise through every dependent
+    statement in the same revision
+    (`sdlc/policy/preparation-artifact-quality`, Plan-specific
+    quality).
   - **Reject** — the finding does not establish that its cited clause applies
     here, including when a more specific contract on the same subject decides
     the case otherwise (`sdlc/procedure/lifecycle/review`), or
-    its closure enlarges the horizon: new functionality, instrumentation,
-    verification tooling, subsystems, or scope beyond the frozen denominator. A valid
+    its closure enlarges the horizon: new functionality, instrumentation beyond
+    the observation-map spec's additive bound, verification tooling, subsystems,
+    or scope beyond the frozen denominator. A finding that asks an entry to catch
+    a failure other than the one it names, or to restate its scenario's
+    branches, is rejected under `sdlc/spec/observation-map`. A valid
     omission finding — a missing reflection, verification, or gate the policies
     require on the authorized work — adds material within scope and is not
     rejected on that ground (`sdlc/procedure/lifecycle/review`
@@ -331,7 +338,12 @@ For behavioral work, author the plan's observation map per
 `sdlc/spec/observation-map`: one entry per in-scope use case,
 wiring it to the runtime evidence that proves it — the qualifying opportunity,
 the expected outcome records as predicates, the correlation fields, and the
-completion bound. The in-scope inventory is both halves: the use cases the spec
+completion bound. Each entry names the one failure it exists to catch and binds
+its scenario by reference, never restating the scenario's branches. Where no
+existing record lets the acceptance authority see that failure, add observation
+at the decision the change introduces or alters, within the spec's additive
+bound, rather than reconstructing hidden state from records that never carried
+it. The in-scope inventory is both halves: the use cases the spec
 delta delivers, and the unchanged use cases the blast radius derived in step 2c
 places at risk (`regression_guard` entries). Facing and acceptance authority
 derive from each scenario's facing-typed actors — never restated in the map.

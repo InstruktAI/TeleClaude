@@ -439,9 +439,10 @@ in-scope use case to the runtime evidence that will prove it, per
 `sdlc/spec/observation-map`. The planner authors it; the plan
 reviewer recomputes its denominator independently — the use cases the spec
 delta delivers plus the unchanged use cases the change's blast radius places at
-risk — and judges whether each entry's predicate would actually distinguish
-compliant from broken behavior. A map checked only against the plan's own
-inventory is self-consistency dressed as coverage.
+risk — and judges whether each entry would let its acceptance authority see
+the failure the entry names, the bounded burden `sdlc/spec/observation-map`
+defines. A map checked only against the plan's own inventory is
+self-consistency dressed as coverage.
 
 Plan approval freezes the map under the approved artifact digest. A builder who
 discovers the map is wrong kicks preparation back; it never revises the map it
@@ -544,6 +545,11 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   contract block listing every file the work creates or modifies. This block is
   the authoritative code drift surface. Per-task prose may still name files for
   builder grounding, but prose path mentions are not part of the drift contract.
+- **A remediation carries its premise through the whole plan.** When a fix
+  changes something the plan stands on — a mechanism, an evidence source, a
+  scope boundary — every statement that depends on it is brought into line in
+  the same revision: tasks, observation map, blast radius, lane coverage. The
+  disposition names the changed premise and the sections carried through.
 
 ## Rationale
 
@@ -580,6 +586,20 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   keeps the useful lead instead of discarding it. See
   `project/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` for why a
   creation-time gate was rejected.
+- An observation-map entry is written before any code exists and is read after
+  delivery by intelligence (`general/principle/intelligence-boundaries`). Asked
+  to exclude every conceivable wrong implementation, it has no terminal state:
+  each tightened predicate exposes the next hypothetical it admits, and the map
+  grows while the delivered outcome stays fixed. Naming the one failure the
+  entry exists to catch gives plan review a question it can finish, and leaves
+  unforeseen failures to the runtime evidence and judgment that can actually
+  see them. Letting the planner add observation at the decision it changes
+  keeps that failure visible without reconstructing hidden state from records
+  that never carried it.
+- A fix applied only where a finding points leaves every other statement that
+  relied on the old premise asserting it. Each leftover surfaces as the next
+  pass's finding, so a plan remediated spot by spot converges one leftover per
+  review round.
 
 ## Scope
 

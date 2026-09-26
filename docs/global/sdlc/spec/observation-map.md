@@ -25,8 +25,9 @@ Three facts about a use case are distinct and never conflated:
    (`general/principle/intelligence-boundaries`).
 
 The planner authors the map during prepare. Plan review recomputes the use-case
-inventory independently and judges whether each entry's predicate would actually
-distinguish compliant from broken behavior. Plan approval freezes the map under
+inventory independently and judges whether each entry would let its acceptance
+authority see the failure the entry names (**What an entry must discriminate**
+below). Plan approval freezes the map under
 the approved artifact digest. A builder who discovers the map is wrong kicks
 preparation back; it never silently revises the map it implements. Build review
 verifies the promised records are emitted at their boundaries with the promised
@@ -62,12 +63,38 @@ this contract or in the delivery record, never per entry.
 
 Not every field applies to every surface. Before treating any of them as owed,
 read **The map binds the surface's existing evidence** below: native output is
-itself evidence where that is what a surface produces, no delivery ever authors
-instrumentation to make an entry armable, and `correlate` and `within` presume a
+itself evidence where that is what a surface produces, no delivery is required
+to author instrumentation to make an entry armable, and `correlate` and `within` presume a
 gap between two records that an atomic synchronous act does not have. An entry
 that cannot state a structured predicate states its native observation and the
 authority that reads it, and is armable as stated. A field invented to satisfy
 the table is worse than the field's absence.
+
+### What an entry must discriminate
+
+Each entry names the failure it exists to catch, and that failure is the whole
+of its discrimination burden:
+
+- a `delivers` entry catches its scenario's outcome failing to occur, or
+  occurring in a way the scenario forbids;
+- the entry for a bug's reported behavior catches the diagnosed defect
+  recurring;
+- a `regression_guard` entry catches the guarded scenario's outcome being lost.
+
+An entry is judged by whether its acceptance authority, reading the bound
+evidence, would see that failure. It is not judged against every implementation
+that could conceivably be wrong: a failure outside the named one belongs to
+post-delivery judgment and anomaly detection, not to a predicate written before
+the code exists. The structural rules below — an opportunity anchored upstream
+of the change, affirmative records for negative behavior, outcomes emitted after
+the fact they claim, proof of terminality — bind every entry; they govern its
+shape, not a search for counterexamples.
+
+An entry binds its scenario by reference. The scenario owns its branches,
+bounds, and message content; the entry never re-encodes them as predicates, and
+an entry that grows by restating its scenario is defective however faithful the
+restatement. `sdlc/policy/preparation-artifact-quality` carries why
+the burden is bounded this way.
 
 ### The denominator is recomputed, never trusted
 
@@ -133,20 +160,24 @@ itself the product — an installer's console output, a CLI's terminal text, a
 rendered page — the native output is the evidence, and the scenario's facing
 names the authority that reads it: human observation for human-facing behavior.
 
-A delivery is never required to author new instrumentation — emitters, record
-schemas, run-correlation identifiers, or any logging subsystem — to make its
-map armable. Where the project's verification contract names its live
+A delivery is never required to author new instrumentation to make its map
+armable. The planner may choose to add observation at a decision the change
+itself introduces or alters — fields on a record the changed code emits, or one
+record at that decision — and that addition is part of the delivered behavior,
+inside the approved horizon. New emitter infrastructure, record families beyond
+that decision, run-correlation schemes, and logging subsystems stay outside it.
+Where the project's verification contract names its live
 obligations as sufficient and forbids verification steps authored on top of
 them, an entry names what the acceptance authority reads under those
-obligations and adds no step of its own; the entry must still distinguish
-compliant from broken behavior by what that authority reads. Where native
+obligations and adds no step of its own; the entry must still let that
+authority see the failure it names. Where native
 evidence cannot express a structured predicate, the entry states the native
 observation it binds and the acceptance authority that reads it, and that entry
-is armable as stated. A review demand to build new instrumentation so a map can
-be armed prescribes work the approved intent does not contain and is invalid
-under
+is armable as stated. A review demand to build instrumentation so a map can be
+armed prescribes work the approved intent does not contain and is invalid under
 `sdlc/policy/preparation-artifact-quality` (a finding carries
-no authority to enlarge the horizon).
+no authority to enlarge the horizon). A finding names the failure an entry
+cannot show; the remedy, additive observation included, is the planner's.
 
 ### Observation records
 
