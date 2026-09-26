@@ -814,7 +814,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "standing in. Platform behavior misbehaving inside a side project is a platform bug: "
                     "pass --project so the orchestrator that picks it up can actually deliver the fix. A bug "
                     "filed where the code does not live cannot be fixed there and gets re-filed later, "
-                    "carrying stale conclusions with it. When you cannot tell which project owns it, ask.",
+                    "carrying stale conclusions with it. A symptom that stops once the side project's own "
+                    "configuration matches a TeleClaude default (a .gitignore entry, a blessed template line) "
+                    "is the side project's to fix: fix it there and file nothing. When you cannot tell which "
+                    "project owns it, ask.",
                     "The filing surface interrogates for duplication up front (todo list, in-flight bug lanes, "
                     "suppressions); diagnose remains the deeper same-defect dedup that can still retire a twin "
                     "the up-front check missed.",
