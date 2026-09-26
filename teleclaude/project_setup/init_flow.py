@@ -20,7 +20,7 @@ from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.machine_config_mutation import add_trusted_directory, inspect_machine_config, set_deployment
 from teleclaude.config.schema import ConfigKind
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
-from teleclaude.docs_index import ensure_project_config
+from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
 from teleclaude.project_manifest import register_root
@@ -46,8 +46,6 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
-_PROJECT_SLUG_KEY = "project_slug"
-_UTF8 = "utf-8"
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:
@@ -271,13 +269,7 @@ def _ensure_trusted_directory(project_root: Path) -> None:
     for trusted_dir in config.computer.get_all_trusted_dirs():
         if Path(trusted_dir.path).expanduser().resolve() == resolved_root:
             return
-    add_trusted_directory(_project_slug(project_root), str(resolved_root))
-
-
-def _project_slug(project_root: Path) -> str:
-    """Return the project's declared slug, which ``_ensure_project_slug`` guarantees."""
-    document = yaml.safe_load(resolve_project_config_path(project_root).read_text(encoding=_UTF8)) or {}
-    return str(document[_PROJECT_SLUG_KEY])
+    add_trusted_directory(get_project_slug(project_root), str(resolved_root))
 
 
 def init_project(project_root: Path) -> None:
