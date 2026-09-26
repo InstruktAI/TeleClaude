@@ -174,6 +174,17 @@ so its default read set is global and what the invocation offers. Its depth is
 full on every tier it reaches, as a platform administrator's is, so a tier it
 names is read in full.
 
+<!-- planned:authorize-person-roles-at-scope -->
+**Depth follows the effective role.** A person's depth on a tier is decided by
+their effective role for it (`project/design/architecture/scoped-roles`). An
+`admin` effective role reads the tier in full; a company administrator therefore
+reads their company, every project it owns, and the platform's shared
+documentation in full, as a platform administrator reads every tier. Any other
+role reads its own company tier, the projects it reaches, and its own person tier
+in full, and the platform's shared documentation at public-only depth. A tier no
+role reaches is read at public-only depth.
+<!-- /planned:authorize-person-roles-at-scope -->
+
 **Layer placement.** Identity owns resolving who is calling and publishes the
 answer as one typed caller: a person carrying their slug and platform role, a
 system principal, or no identity. The command edge obtains that caller once per
@@ -190,9 +201,16 @@ relationship to choose what to load has taken the reach decision.
 
 **Naming a tier.** One rule covers every selector that names a tier — a person,
 a company, or a project — and every snippet identity that names one: the named
+<!-- planned-change:authorize-person-roles-at-scope -->
 tier is assembled at the depth the caller's relationship to it grants — in full
 where a relationship exists, at what its snippets declare public where none does
 — and a platform administrator reads any named tier in full. Naming adds the
+<!-- change:authorize-person-roles-at-scope -->
+tier is assembled at the depth the caller's effective role for it grants — in
+full where that role grants it, at what its snippets declare public where it does
+not — and a caller whose effective role for the named tier is `admin` reads it in
+full. Naming adds the
+<!-- /planned-change:authorize-person-roles-at-scope -->
 tier to what is assembled; it grants nothing about how deeply it is read. A
 selector naming a tier that yields nothing at the caller's depth returns the
 same empty answer as one naming a tier that does not exist, so a selector

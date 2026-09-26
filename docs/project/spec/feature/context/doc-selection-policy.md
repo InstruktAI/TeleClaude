@@ -15,10 +15,19 @@ The Selection policy is the single pure-function composition point for every
 filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
 baseline-manifest anchoring, target-slug filtering, and the tier selectors all
+<!-- planned-change:authorize-person-roles-at-scope -->
 flow through one place. Visibility is resolved against the caller's declared
 relationships rather than their platform role alone: where a relationship
 exists the tier is read in full, and where none exists the snippet's own
 public-or-internal declaration is the only gate. Given the same Index and the
+<!-- change:authorize-person-roles-at-scope -->
+flow through one place. Visibility is resolved against the caller's effective
+role for each tier (`project/design/architecture/scoped-roles`): an `admin`
+effective role reads the tier in full; any other role reads its own company, its
+reached projects, and its own person tier in full and the platform's shared
+documentation at public-only depth; and where no role reaches a tier, the
+snippet's own public-or-internal declaration is the only gate. Given the same Index and the
+<!-- /planned-change:authorize-person-roles-at-scope -->
 same inputs, the policy produces a byte-identical set of snippet IDs every
 time. This determinism is what lets the retrieval flow be cached, replayed, and
 reasoned about.
@@ -39,11 +48,19 @@ And snippets declaring themselves internal are excluded
 
 #### UC-DSP20: A platform administrator reads every visibility
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 ```
 Given a caller with the admin role
 When the Selection policy resolves visibility
 Then snippets of every visibility (public and internal) are included
 ```
+<!-- change:authorize-person-roles-at-scope -->
+```
+Given a caller holding the admin platform role
+When the Selection policy resolves visibility
+Then snippets of every visibility (public and internal) are included
+```
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 
 #### UC-DSP31: A caller acting as a system principal reads every visibility
@@ -300,6 +317,26 @@ When the Selection policy applies the scope filter
 Then only snippets in the company tier are returned
 And snippets of every other tier are excluded
 ```
+
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-DSP32: A company administrator reads their company's lineage in full
+
+```
+Given an agent session running under the identity of a person holding no platform role and the admin role in one company
+When the Selection policy resolves visibility
+Then internal snippets of that company's tier, of every project that company owns, and of the platform's shared documentation are included
+And a project owned by another company is read only at public-only depth
+```
+
+#### UC-DSP33: A company role below admin reads shared documentation at public-only depth
+
+```
+Given an agent session running under the identity of a person holding no platform role and the member role in one company
+When the Selection policy resolves visibility
+Then internal snippets of that company's tier and of the projects the person is assigned to are included
+And only public snippets of the platform's shared documentation are included
+```
+<!-- /planned:authorize-person-roles-at-scope -->
 
 ### Cross-context references
 

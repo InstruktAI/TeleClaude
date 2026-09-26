@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 A `PersonEntry` declares the identity of a human principal in the platform's
 global configuration. v1 keeps the schema deliberately narrow: a required
 `name`, a required and stripped-non-empty `email`, an optional Telegram-style
@@ -20,6 +21,18 @@ global configuration. v1 keeps the schema deliberately narrow: a required
 single-level `proficiency` field is preserved on the model for backward
 compatibility but is deprecated in favor of `expertise`. Entries are collected
 into the global overlay's people list, the only list inside the global config that names
+<!-- change:authorize-person-roles-at-scope -->
+A `PersonEntry` declares the identity of a human principal in the platform's
+global configuration. v1 keeps the schema deliberately narrow: a required
+`name`, a required and stripped-non-empty `email`, an optional Telegram-style
+`username`, an optional platform `role` chosen from a closed enum
+(`admin | member | contributor | newcomer`, absent when the person holds no
+platform role), and a nested
+`expertise` map that captures domain proficiency at one or two levels. The
+single-level `proficiency` field is preserved on the model for backward
+compatibility but is deprecated in favor of `expertise`. Entries are collected
+into the global overlay's people list, the only list inside the global config that names
+<!-- /planned-change:authorize-person-roles-at-scope -->
 principals; per-person `creds`, `notifications`, and `timezone` live in
 separate per-person config files (see the global-level disallowed-keys rule).
 Validation strips whitespace from `email` and persists the stripped value, so
@@ -46,6 +59,7 @@ kebab-case. Once set, the slug never changes.
 
 #### UC-CFG-PERSON-1: Minimal person entry accepted
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 ```
 Given a the global overlay's people list entry { name: "Alice", email: "alice@example.com" }
 When PersonEntry validation runs
@@ -56,6 +70,18 @@ And role defaults to "member"
 And expertise defaults to None
 And proficiency defaults to None
 ```
+<!-- change:authorize-person-roles-at-scope -->
+```
+Given a the global overlay's people list entry { name: "Alice", email: "alice@example.com" }
+When PersonEntry validation runs
+Then validate_email strips and finds the value non-empty
+And the stripped value "alice@example.com" is stored on the model
+And username defaults to None
+And role defaults to None
+And expertise defaults to None
+And proficiency defaults to None
+```
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 #### UC-CFG-PERSON-2: Empty email rejected before storage
 
@@ -243,7 +269,11 @@ And re-running the migration leaves the already-slugged entry and its folder unc
 - `name` — non-empty string. Required.
 - `email` — string, stripped, non-empty after strip. Required. `Field(min_length=1)` rejects an empty literal before the validator runs.
 - `username` — optional string. Default: `None`.
+<!-- planned-change:authorize-person-roles-at-scope -->
 - `role` — `"admin" | "member" | "contributor" | "newcomer"`. Default: `"member"`.
+<!-- change:authorize-person-roles-at-scope -->
+- `role` — `"admin" | "member" | "contributor" | "newcomer"`, or `None` when the person holds no platform role. Default: `None`.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 - `expertise` — optional `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]`. Default: `None`.
 - `proficiency` — optional `ProficiencyLevel`. **Deprecated** — use `expertise` instead. Default: `None`.
 <!-- planned-change:config-migration-chain -->

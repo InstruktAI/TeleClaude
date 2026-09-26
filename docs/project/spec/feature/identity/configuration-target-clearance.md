@@ -20,6 +20,7 @@ resolves the caller through the shared principal-resolution capability
 applies this target decision. An unidentified caller holds no role and is
 refused before any configuration is read.
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 A person may read and change settings in their own person overlay, directly or
 through an agent. Person-registry identity fields, including platform role,
 remain administrator-maintained. A company, its roster included, is read and
@@ -27,6 +28,18 @@ changed through that company's configuration resource by a platform
 administrator. Machine and global configuration writes remain administrator
 operations. Project writes also respect their repository's ownership and commit
 boundary; naming a project in the CLI never grants authority over it.
+<!-- change:authorize-person-roles-at-scope -->
+A person may read and change settings in their own person overlay, directly or
+through an agent. Person-registry identity fields, including platform role,
+remain platform-administrator-maintained. A company, its roster included, is
+read and changed through that company's configuration resource by a caller whose
+effective role for that company is `admin`
+(`project/design/architecture/scoped-roles`); a platform administrator holds
+that role for every company. Machine and global configuration writes remain
+platform-administrator operations. Project writes require the `admin` effective
+role for that project and also respect their repository's ownership and commit
+boundary; naming a project in the CLI never grants authority over it.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 A caller whose principal is a system principal carries no person
 (`project/spec/identity-and-auth` §8). It holds no standing that belongs to a
@@ -47,6 +60,7 @@ a refused read returns no configuration.
 
 ### Standing
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 | Target               | Operation                                                                               | Standing required                               |
 | -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | computer, global     | list, get                                                                               | none beyond the verb band                       |
@@ -59,6 +73,21 @@ a refused read returns no configuration.
 | company              | init                                                                                    | none beyond the verb band                       |
 | project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
 | project              | patch                                                                                   | platform administrator                          |
+<!-- change:authorize-person-roles-at-scope -->
+| Target               | Operation                                                                               | Standing required                               |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| computer, global     | list, get                                                                               | none beyond the verb band                       |
+| computer, global     | init, patch                                                                             | platform administrator                          |
+| person, own instance | get; patch of settings                                                                  | the person                                      |
+| person, any instance | get; patch of settings                                                                  | platform administrator                          |
+| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
+| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
+| company              | list                                                                                    | platform administrator                          |
+| company              | get, patch                                                                              | `admin` effective role for that company         |
+| company              | init                                                                                    | none beyond the verb band                       |
+| project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
+| project              | patch                                                                                   | `admin` effective role for that project         |
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ### Use cases
 
@@ -92,12 +121,21 @@ And the other person's stored state is unchanged
 
 #### UC-CTC4: A company roster requires the standing of its target
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 ```gherkin
 Given an agent acts for a person without platform-administrator standing
 When the agent patches a company's membership or project assignments
 Then the change is refused before persistence
 And neither a permissive system role nor a named company widens the principal's authority
 ```
+<!-- change:authorize-person-roles-at-scope -->
+```gherkin
+Given an agent acts for a person whose effective role for a company is not admin
+When the agent patches that company's membership or project assignments
+Then the change is refused before persistence
+And neither a permissive system role nor a named company widens the principal's authority
+```
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 #### UC-CTC5: An administrator can maintain a company roster
 
@@ -150,6 +188,18 @@ Then the operation is refused and the machine configuration is unchanged
   declaration validity, not caller clearance.
 - `project/spec/identity-and-auth` owns caller verification and the verb's role
   band this decision follows.
+
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-CTC9: A company administrator maintains their own company
+
+```gherkin
+Given an agent acts for a person holding no platform role and the admin role in one company
+When it reads or patches that company's roster with valid relationships
+Then clearance accepts the targeted operation
+And the same person's read or patch of a different company is refused
+And their attempt to list every company is refused
+```
+<!-- /planned:authorize-person-roles-at-scope -->
 
 ## Known caveats
 

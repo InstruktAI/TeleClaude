@@ -30,11 +30,19 @@ TeleClaude uses one identity model across API, TUI, and adapters:
 
 ### 1) Person source of truth
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 | Field   | Type   | Description                                           |
 | ------- | ------ | ----------------------------------------------------- |
 | `name`  | string | Display name used in UI and logs.                     |
 | `email` | string | Canonical email address used for OTP authentication.  |
 | `role`  | enum   | One of: `admin`, `member`, `contributor`, `newcomer`. |
+<!-- change:authorize-person-roles-at-scope -->
+| Field   | Type   | Description                                           |
+| ------- | ------ | ----------------------------------------------------- |
+| `name`  | string | Display name used in UI and logs.                     |
+| `email` | string | Canonical email address used for OTP authentication.  |
+| `role`  | enum   | Optional platform role — one of `admin`, `member`, `contributor`, `newcomer`; absent when the person holds no role at platform scope. A person's authority for an object is their effective role for it (`project/design/architecture/scoped-roles`). |
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
