@@ -225,7 +225,9 @@ to own; the state machine never performs it. Divergence has two instruction shap
      or conversational message as its timer.
   2. When it fires, re-enter `telec todo integrate`, which re-runs repo-root
      synchronization. No longer blocked → cancel the reminder and continue the drain.
-     Still blocked → the returned decision identifies the dirty paths that block
+     Still blocked → load this procedure's current contract with
+     `telec docs get sdlc/procedure/lifecycle/integrate` before acting on the
+     decision. The returned decision identifies the dirty paths that block
      synchronization: the listed dirty overlap when repo-root `main` is only behind,
      and every path `git -C <root> status --short` reports when its history is split.
      Resolve each blocking path under **Resolving a dirty path** below, keep the
@@ -298,7 +300,7 @@ one unit.
    owns that path. Keep waiting for its commit.
 5. **Quiet and unclaimed on a later beat.** A path still dirty, not recently written,
    and claimed by no one after its message was sent is committed as-is with a
-   pathspec-scoped `telec code commit --approved --include <path>` under a message
+   pathspec-scoped `telec code commit --approved --only <path>` under a message
    that names it as stranded work. The one exception is a path whose pending-doc
    markers name a todo that is removed or delivered while its prepare orchestrator's
    transcript shows the work was abandoned: revert that path instead.
