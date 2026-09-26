@@ -57,9 +57,8 @@ delivered_by: [config-migration-chain]
 - **A read never grants registry standing from a declaration.** The read runs
   the ordered migrations that apply to its subject in memory. A document with
   neither a registry subject nor a valid declaration still fails at its tier
-  boundary. A writer refuses to stamp an older document whose only subject is
-  its declaration at the current version; registration supplies the subject
-  before that write can proceed.
+  boundary. Persistence takes only a registry subject; registration supplies
+  that subject before a project document is migrated or changed.
 - **A shape change ships with its migration.** A change to what a configuration
   document may carry changes the owning model, the platform's generation of new
   documents, and the migration list together. A new document is written at the
@@ -82,9 +81,9 @@ even when its project is not registered. It gives no evidence that the project
 held a subscription before the capability default changed, or which person an
 unclaimed person document represents. A registry-dependent step therefore
 waits for that evidence only when the missing outcome is still valid under the
-current model. Stamping an older document from a declaration-only
-read would skip the waiting step permanently; refusing that write preserves
-the migration for registration to perform.
+current model. Persisting from a declaration-only read would skip the waiting
+step permanently; keeping persistence on registry subjects preserves that
+migration for registration to perform.
 
 Idempotency is what makes stamping and replay safe together. Newly created
 documents skip history while stored documents replay it, and hand edits or a

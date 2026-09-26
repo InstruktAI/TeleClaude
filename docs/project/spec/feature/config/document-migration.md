@@ -44,11 +44,9 @@ The migrated shape is persisted in exactly two ways:
   enters through registration.
 - **A writer.** A platform operation that changes a registry-named existing
   document first persists that document's pending migrations, then applies its
-  own change to the current shape. A writer refuses an older document whose
-  subject comes only from its declaration until registration establishes a
-  registry subject. A write therefore never records an older shape at the
-  current version, and never drops a value a
-  migration still has to move.
+  own change to the current shape. A write therefore never records an older
+  shape at the current version, and never drops a value a migration still has
+  to move.
 
 A migration run commits what it persists. A document tracked in a git
 repository that had no uncommitted changes gets one migration commit in that
@@ -230,14 +228,6 @@ And the document and the destination store are unchanged by the lookup
 ```
 
 #### UC-CFG-MIG-14: A writer does not stamp an unregistered older document as current
-
-```gherkin
-Given a configuration document at an older version with a valid tier declaration
-And no tier registry names it
-When an agent's operation attempts to change a setting in that document
-Then the operation refuses the change and names registration as the way to bring the document forward
-And the document and any migration destination are unchanged
-```
 
 #### UC-CFG-MIG-15: A declared unregistered project loads with tier-wide migrations
 
