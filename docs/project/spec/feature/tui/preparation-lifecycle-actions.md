@@ -53,7 +53,6 @@ Then the operator is notified at error severity
 And the notification carries the outcome the operation reported
 ```
 
-<!-- planned:fix-tui-closed-session-reflection -->
 #### UC-PLA-3: Opening a trashed todo's artifact shows that removed todo's own content, read-only
 
 ```gherkin
@@ -64,7 +63,6 @@ When the operator opens one of the removed todo's artifacts from the Trashed sec
 Then the viewer shows the content stored for that removed todo's artifact
 And the viewer is read-only, so nothing done in it changes either todo's artifacts
 ```
-<!-- /planned:fix-tui-closed-session-reflection -->
 
 ## See Also
 
