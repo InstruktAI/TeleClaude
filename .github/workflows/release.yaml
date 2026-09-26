@@ -31,7 +31,7 @@ jobs:
         run: uv run python -m tools.ci.build_release_prompt
 
       - name: Run Release Lanes and Consolidate
-        run: uv run scripts/release_lanes.py --prompt-file release-prompt.txt --schema-file docs/project/spec/release-report-schema.md
+        run: uv run python -m tools.release.lanes --prompt-file release-prompt.txt --schema-file docs/project/spec/release-report-schema.md
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
@@ -89,7 +89,7 @@ jobs:
         env:
           LAST_TAG: ${{ steps.version.outputs.last_tag }}
           NEXT_TAG: ${{ steps.version.outputs.next_tag }}
-        run: uv run scripts/release_changelog.py from-reports --tag "$NEXT_TAG" --since "$LAST_TAG" --claude-report claude-report.json --codex-report codex-report.json --gemini-report gemini-report.json --output release-notes.md --prepend CHANGELOG.md
+        run: uv run python -m tools.release.changelog from-reports --tag "$NEXT_TAG" --since "$LAST_TAG" --claude-report claude-report.json --codex-report codex-report.json --gemini-report gemini-report.json --output release-notes.md --prepend CHANGELOG.md
 
       - name: Commit version bump, manifests, and changelog
         env:

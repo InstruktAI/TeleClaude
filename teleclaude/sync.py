@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from scripts.distribute import distribute_committed, distribute_committed_tiers
 from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.docs_index import build_all_indexes, build_tier_indexes, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
+from teleclaude.install.distribution import distribute_committed, distribute_committed_tiers
 from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.resource_validation import (
     _error,

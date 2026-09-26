@@ -27,7 +27,7 @@ from collections.abc import Coroutine, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 
@@ -38,6 +38,32 @@ _IMPORT_FAILURE_EVENT = "youtube_helper_import_failed"
 
 configure_logging(_LOG_APP, source=_LOG_SOURCE)
 log = get_logger(_LOGGER_NAME)
+
+
+class _CookieRefreshProvider(Protocol):
+    def __call__(
+        self,
+        profile_dir: Path,
+        output_path: Path,
+        headless: bool = True,
+        timeout: int = 30000,
+    ) -> bool: ...
+
+
+_cookie_refresh_provider: _CookieRefreshProvider | None = None
+_cookie_refresh_import_error: ModuleNotFoundError | None = None
+_COOKIE_REFRESH_IMPORT_FAILURE = "refresh_cookies import failed - cannot auto-refresh cookies: %s"
+
+try:
+    from teleclaude.helpers.youtube.refresh_cookies import refresh_cookies as _refresh_cookies
+except ModuleNotFoundError as exc:
+    if exc.name != "teleclaude":
+        raise
+    # The PEP 723 public helper must keep search usable without TeleClaude; only
+    # the optional cookie-refresh capability depends on the installed package.
+    _cookie_refresh_import_error = exc
+else:
+    _cookie_refresh_provider = _refresh_cookies
 
 try:
     import dateparser
@@ -345,17 +371,15 @@ def _refresh_cookies_if_needed() -> bool:
             log.warning("Cookie refresh cooldown active (%.0fs remaining)", _COOKIE_REFRESH_COOLDOWN_SECONDS - age)
             return False
 
-    try:
-        from teleclaude.helpers.youtube.refresh_cookies import refresh_cookies
-    except Exception as exc:
-        log.warning("refresh_cookies import failed - cannot auto-refresh cookies: %s", exc)
+    if _cookie_refresh_provider is None:
+        log.warning(_COOKIE_REFRESH_IMPORT_FAILURE, _cookie_refresh_import_error)
         return False
 
     log.info("Auto-refreshing YouTube cookies...")
     try:
         _COOKIE_REFRESH_LOCK.parent.mkdir(parents=True, exist_ok=True)
         _COOKIE_REFRESH_LOCK.touch()
-        return refresh_cookies(
+        return _cookie_refresh_provider(
             profile_dir=Path.home() / ".config" / "youtube" / "playwright-profile",
             output_path=Path.home() / ".config" / "youtube" / "cookies.txt",
             headless=True,
@@ -1144,7 +1168,7 @@ def _process_video_results(results: list[list[Video]], query: str | None, char_c
             videos.sort(key=_sort_by_publish_time)
             videos = videos[::-1]
         res.extend(videos)
-    if char_cap:
+    if char_cap is not None:
         res = _filter_by_char_cap(res, char_cap)
     return res
 
@@ -1189,7 +1213,7 @@ async def youtube_search(
             get_descriptions=get_descriptions,
             get_transcripts=get_transcripts,
         )
-        if char_cap:
+        if char_cap is not None:
             videos = _filter_by_char_cap(videos, char_cap)
         return videos
 
@@ -1226,13 +1250,13 @@ async def youtube_search(
 
 
 def _filter_by_char_cap(videos: list[Video], char_cap: int | None) -> list[Video]:
-    """Filter videos to fit within character cap by removing longest transcripts."""
+    """Keep the largest serialized results that fit within the character cap."""
     if char_cap is None:
         return videos
-    while len(json.dumps([vid.model_dump_json() for vid in videos])) > char_cap:
-        transcript_lengths = [len(video.transcript) for video in videos]
-        max_index = transcript_lengths.index(max(transcript_lengths))
-        videos.pop(max_index)
+    while videos and len(json.dumps([video.model_dump_json() for video in videos])) > char_cap:
+        serialized_results = [json.dumps(video.model_dump_json()) for video in videos]
+        largest_index = max(range(len(serialized_results)), key=lambda index: len(serialized_results[index]))
+        videos.pop(largest_index)
     return videos
 
 

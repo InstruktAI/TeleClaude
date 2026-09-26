@@ -31,7 +31,7 @@ Integration:
   and ``run_job_cli`` entry.
 - Uses teleclaude/cron/discovery.py to find subscribers.
 - Reads channel rows from teleclaude/tagging/youtube.py.
-- Fetches video metadata via teleclaude/helpers/youtube_helper.py.
+- Fetches video metadata via scripts/helpers/youtube_helper.py.
 """
 
 from __future__ import annotations
@@ -48,9 +48,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from jobs.base import Job, JobResult, JobRunContext, run_job_cli
+from scripts.helpers.youtube_helper import Video, youtube_search
 from teleclaude.config.loader import load_project_config
 from teleclaude.cron.discovery import Subscriber, discover_youtube_subscribers
-from teleclaude.helpers.youtube_helper import Video, youtube_search
 from teleclaude.tagging.youtube import ChannelRow, read_csv
 
 logger = get_logger(__name__)

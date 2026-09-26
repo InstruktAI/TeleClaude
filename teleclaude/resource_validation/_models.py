@@ -11,7 +11,7 @@ from typing import TypedDict, cast
 import yaml
 
 # ---------------------------------------------------------------------------
-# Repo root (package form: three levels up from this file)
+# Package and repository roots for validation resources.
 # ---------------------------------------------------------------------------
 
 _PACKAGE_DIR = Path(__file__).resolve().parent  # teleclaude/resource_validation/
@@ -49,7 +49,7 @@ _HTML_COMMENT_LINE = re.compile(r"^\s*<!--")
 _INLINE_CODE_SPAN = re.compile(r"`[^`]*`")
 _SEE_ALSO_LIST_LINE = re.compile(r"^\s*-\s+(.+)$")
 
-_SCHEMA_PATH = REPO_ROOT / "scripts" / "snippet_schema.yaml"
+_SCHEMA_PATH = _PACKAGE_DIR / "snippet_schema.yaml"
 
 _ARTIFACT_REF_ORDER = TAXONOMY_TYPES.copy()
 

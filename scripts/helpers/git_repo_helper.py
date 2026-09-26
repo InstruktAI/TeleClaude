@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "pyyaml",
+#     "GitPython",
 # ]
 # ///
 """Clone or update a Git repo checkout.
@@ -18,114 +18,165 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import subprocess
-import sys
 from pathlib import Path
-from typing import cast
 from urllib.parse import urlparse
 
-import yaml
+from git import Repo
+from git import refresh as refresh_git
+from git.exc import GitCommandError
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+_GIT_EXECUTABLE_NAME = "git"
+_REAL_GIT_ERROR = "real git binary not found in PATH"
+_TELEC_COMMAND = "telec"
+_CONFIG_COMMAND = "config"
+_GLOBAL_COMMAND = "global"
+_GET_COMMAND = "get"
+_JSON_FORMAT_FLAG = "--format"
+_JSON_FORMAT = "json"
+_GLOBAL_SECTION_KEY = "global"
+_CHECKOUT_ROOT_KEY = "checkout_root"
+_EMPTY_TEXT = ""
+_CONFIG_QUERY_COMMAND = (
+    _TELEC_COMMAND,
+    _CONFIG_COMMAND,
+    _GLOBAL_COMMAND,
+    _GET_COMMAND,
+    _JSON_FORMAT_FLAG,
+    _JSON_FORMAT,
+)
+_CONFIG_READ_FAILURE = "ERROR: unable to read the global checkout-root setting through Config: {detail}"
+_CONFIG_EXECUTION_FAILURE = "ERROR: unable to run the Config CLI for the global checkout-root setting: {error}"
+_CONFIG_RESPONSE_INVALID = (
+    "ERROR: Config returned an invalid global checkout-root response; expected a JSON global object"
+)
+_CONFIG_OUTPUT_EMPTY = "Config returned no global checkout-root setting"
+_NEUTRAL_CWD = Path(Path(__file__).resolve().anchor)
+_REMOTE_MAIN_REF = "refs/remotes/origin/main"
+_REMOTE_MASTER_REF = "refs/remotes/origin/master"
+_GIT_VERIFY = "--verify"
+_GIT_PORCELAIN = "--porcelain"
+_GIT_HEAD = "HEAD"
+_GIT_ALL = "--all"
+_GIT_PRUNE = "--prune"
+_GIT_FF_ONLY = "--ff-only"
+_GIT_ONELINE = "--oneline"
+_GIT_REMOTE_SHOW = "show"
+_GIT_ORIGIN = "origin"
+_HEAD_BRANCH_LABEL = "HEAD branch"
+_GIT_BRANCH_SEPARATOR = ":"
+_MAIN_BRANCH = "main"
 
-from teleclaude.paths import GLOBAL_CONFIG_PATH
+
+def _real_git_executable() -> Path:
+    """Resolve Git outside TeleClaude's command wrapper for this standalone process."""
+    executable = shutil.which(_GIT_EXECUTABLE_NAME, path=os.defpath)
+    if executable is None:
+        raise FileNotFoundError(_REAL_GIT_ERROR)
+    return Path(executable)
 
 
-def _run(cmd: list[str], cwd: Path | None = None) -> None:
-    subprocess.run(cmd, cwd=cwd, check=True)
+# The standalone command runs outside the repo package import path, so it resolves
+# the same real Git executable that the in-repo Git owner selects.
+refresh_git(str(_real_git_executable()))
 
 
-def _git_output(cmd: list[str], cwd: Path) -> str:
-    return subprocess.check_output(cmd, cwd=cwd, text=True).strip()
-
-
-def _current_head(repo_path: Path) -> str | None:
+def _current_head(repo: Repo) -> str | None:
     try:
-        return _git_output(["git", "rev-parse", "HEAD"], cwd=repo_path)
-    except subprocess.CalledProcessError:
+        return str(repo.head.commit.hexsha)
+    except (ValueError, TypeError, GitCommandError):
         return None
 
 
 DEFAULT_CHECKOUT_ROOT = Path.home() / "Workspace" / "public-repos"
 
 
-def _dirty_worktree(repo_path: Path) -> list[str]:
-    status = _git_output(["git", "status", "--porcelain"], cwd=repo_path)
+def _dirty_worktree(repo: Repo) -> list[str]:
+    status = repo.git.status(_GIT_PORCELAIN)
     return [line for line in status.splitlines() if line]
 
 
-def _default_branch(repo_path: Path) -> str:
+def _default_branch(repo: Repo) -> str:
     """Return the default branch name (main, master, etc.)."""
-    for ref in ("refs/remotes/origin/main", "refs/remotes/origin/master"):
+    for ref in (_REMOTE_MAIN_REF, _REMOTE_MASTER_REF):
         try:
-            _git_output(["git", "rev-parse", "--verify", ref], cwd=repo_path)
+            repo.git.rev_parse(_GIT_VERIFY, ref)
             return ref.rsplit("/", 1)[1]
-        except subprocess.CalledProcessError:
+        except GitCommandError:
             continue
     # Fallback: ask remote HEAD
     try:
-        out = _git_output(["git", "remote", "show", "origin"], cwd=repo_path)
+        out = str(repo.git.remote(_GIT_REMOTE_SHOW, _GIT_ORIGIN))
         for line in out.splitlines():
-            if "HEAD branch" in line:
-                return line.split(":")[-1].strip()
-    except subprocess.CalledProcessError:
+            if _HEAD_BRANCH_LABEL in line:
+                return line.split(_GIT_BRANCH_SEPARATOR)[-1].strip()
+    except GitCommandError:
         pass
-    return "main"
+    return _MAIN_BRANCH
 
 
-def _ensure_on_branch(repo_path: Path) -> None:
+def _ensure_on_branch(repo: Repo) -> None:
     """If HEAD is detached or missing, checkout the default branch."""
     try:
-        _git_output(["git", "symbolic-ref", "HEAD"], cwd=repo_path)
-    except subprocess.CalledProcessError:
-        branch = _default_branch(repo_path)
-        _run(["git", "checkout", branch], cwd=repo_path)
+        repo.git.symbolic_ref(_GIT_HEAD)
+    except GitCommandError:
+        branch = _default_branch(repo)
+        repo.git.checkout(branch)
 
 
 def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
     """Ensure repo exists; return (changes, dirty_changes)."""
     if repo_path.exists() and (repo_path / ".git").exists():
-        _ensure_on_branch(repo_path)
-        dirty = _dirty_worktree(repo_path)
+        repo = Repo(repo_path)
+        _ensure_on_branch(repo)
+        dirty = _dirty_worktree(repo)
         if dirty:
             return [], dirty
-        before = _current_head(repo_path)
-        _run(["git", "fetch", "--all", "--prune"], cwd=repo_path)
-        _run(["git", "pull", "--ff-only"], cwd=repo_path)
-        after = _current_head(repo_path)
+        before = _current_head(repo)
+        repo.git.fetch(_GIT_ALL, _GIT_PRUNE)
+        repo.git.pull(_GIT_FF_ONLY)
+        after = _current_head(repo)
         if before and after and before != after:
-            commits = _git_output(["git", "log", "--oneline", f"{before}..{after}"], cwd=repo_path)
+            commits = repo.git.log(_GIT_ONELINE, f"{before}..{after}")
             return [line for line in commits.splitlines() if line], []
         return [], []
 
     repo_path.parent.mkdir(parents=True, exist_ok=True)
-    _run(["git", "clone", repo_url, str(repo_path)])
+    Repo.clone_from(repo_url, str(repo_path))
     return [], []
 
 
 def _load_checkout_root() -> Path:
-    config_path = GLOBAL_CONFIG_PATH
-    if not config_path.exists():
-        return DEFAULT_CHECKOUT_ROOT
+    # No first-party Config API is importable in this isolated PEP 723 runtime, so use Config's published CLI.
     try:
-        loaded_config: object = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        result = subprocess.run(
+            _CONFIG_QUERY_COMMAND,
+            capture_output=True,
+            check=False,
+            cwd=_NEUTRAL_CWD,
+            text=True,
+        )
     except OSError as exc:
-        raise SystemExit(f"ERROR: unable to read TeleClaude config at {config_path}: {exc}") from exc
-    except yaml.YAMLError as exc:
-        raise SystemExit(f"ERROR: invalid YAML in TeleClaude config at {config_path}: {exc}") from exc
-    raw_obj = loaded_config if loaded_config is not None else {}
-    if not isinstance(raw_obj, dict):
+        raise SystemExit(_CONFIG_EXECUTION_FAILURE.format(error=exc)) from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or _CONFIG_OUTPUT_EMPTY
+        raise SystemExit(_CONFIG_READ_FAILURE.format(detail=detail))
+    try:
+        response: object = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(_CONFIG_RESPONSE_INVALID) from exc
+    if not isinstance(response, dict):
+        raise SystemExit(_CONFIG_RESPONSE_INVALID)
+    global_config = response.get(_GLOBAL_SECTION_KEY)
+    if not isinstance(global_config, dict):
+        raise SystemExit(_CONFIG_RESPONSE_INVALID)
+    root = global_config.get(_CHECKOUT_ROOT_KEY)
+    if root is None or root == _EMPTY_TEXT:
         return DEFAULT_CHECKOUT_ROOT
-    raw = cast(dict[str, object], raw_obj)  # guard: loose-dict - YAML parsed data — git repo config
-    gh_obj = raw.get("git", {})
-    gh = (  # guard: loose-dict - YAML parsed data — GitHub config section
-        cast(dict[str, object], gh_obj) if isinstance(gh_obj, dict) else cast(dict[str, object], {})
-    )
-    root = gh.get("checkout_root")
-    if not isinstance(root, str) or not root:
-        return DEFAULT_CHECKOUT_ROOT
+    if not isinstance(root, str):
+        raise SystemExit(_CONFIG_RESPONSE_INVALID)
     return Path(root).expanduser()
 
 

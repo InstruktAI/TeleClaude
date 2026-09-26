@@ -1,0 +1,95 @@
+version: 1
+
+global:
+  required_reads_title: 'Required reads'
+  see_also_title: 'See also'
+  sources_title: 'Sources'
+  sources_header_level: 2
+  require_h1: true
+  require_h1_first: true
+  require_required_reads: false
+  required_reads_header_level: 2
+  see_also_header_level: 2
+  allow_h3: false
+
+sections:
+  design:
+    allowed:
+      - Purpose
+      - Inputs/Outputs
+      - Invariants
+      - Primary flows
+      - Failure modes
+    required:
+      - Purpose
+      - Inputs/Outputs
+      - Invariants
+      - Primary flows
+      - Failure modes
+  concept:
+    allowed:
+      - What
+      - Why
+    required:
+      - What
+      - Why
+  policy:
+    allowed:
+      - Rules
+      - Rationale
+      - Scope
+      - Enforcement
+      - Exceptions
+    required:
+      - Rules
+      - Rationale
+      - Scope
+      - Enforcement
+      - Exceptions
+  principle:
+    allowed:
+      - Principle
+      - Rationale
+      - Implications
+      - Tensions
+    required:
+      - Principle
+      - Rationale
+      - Implications
+      - Tensions
+  procedure:
+    allowed:
+      - Goal
+      - Preconditions
+      - Steps
+      - Outputs
+      - Recovery
+      - Pre-completion checklist
+      - Report format
+      - Discipline
+    required:
+      - Goal
+      - Preconditions
+      - Steps
+      - Outputs
+      - Recovery
+  spec:
+    allowed:
+      - What it is
+      - Canonical fields
+      - Allowed values
+      - Known caveats
+    required:
+      - What it is
+      - Canonical fields
+  adr:
+    allowed:
+      - Context
+      - Decision
+      - Consequences
+      - Alternatives Considered
+      - Status
+    required:
+      - Context
+      - Decision
+      - Consequences
