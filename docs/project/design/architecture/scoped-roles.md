@@ -72,6 +72,12 @@ session's role and its help-desk confinement in
    is judged by that person's effective role for the object it acts on. An
    agent's system role still narrows what it may do and never widens the
    person's role.
+<!-- planned-change:relay-scoped-role-decisions -->
+9. **Another computer's objects are platform scope.** An act on an object
+   another computer holds — a session running there — and the session records a
+   computer replicates from its peers are judged at platform scope, so only a
+   platform role reaches them.
+<!-- change:relay-scoped-role-decisions -->
 9. **The computer holding the object decides.** An act on an object another
    computer holds — a session running there — is authorized entirely on that
    computer, band and object rules together as one decision; the caller's
@@ -83,6 +89,7 @@ session's role and its help-desk confinement in
    company rosters, and project registry; a role or scope carried with the
    request is never an input. A cross-computer listing is answered the same way:
    each computer returns only what the caller's effective role reaches there.
+<!-- /planned-change:relay-scoped-role-decisions -->
 
 ## Primary flows
 
@@ -120,6 +127,15 @@ company scope.
 
 ## Failure modes
 
+<!-- planned-change:relay-scoped-role-decisions -->
+| Scenario                                                                   | Behavior                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Organizational resolution fails                                            | The company scopes contribute no role; decisions proceed on what remains, failing closed.                                                                                                                                                                                                                                                                    |
+| An assignment names a project its company no longer owns                   | It contributes no role; identity reports it as stale.                                                                                                                                                                                                                                                                                                        |
+| A caller supplies a scope or role                                          | The scope is read from the object and the role from the registry and roster. A supplied role only lowers where a new session is placed — a door that offers a narrower experience, such as a help-desk forum, confines a person below their effective role — and never raises it; later decisions about that session still read the person's effective role. |
+| A person holds roles at several scopes containing one object               | The highest-ranked one applies.                                                                                                                                                                                                                                                                                                                              |
+| A role is withdrawn or a membership removed                                | The change applies from that person's next decision.                                                                                                                                                                                                                                                                                                         |
+<!-- change:relay-scoped-role-decisions -->
 | Scenario                                                                   | Behavior                                                                                                                                                                                                                                                                                                                                                     |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Organizational resolution fails                                            | The company scopes contribute no role; decisions proceed on what remains, failing closed.                                                                                                                                                                                                                                                                    |
@@ -130,6 +146,7 @@ company scope.
 | A relayed act reaches another computer carrying no principal               | The target refuses it.                                                                                                                                                                                                                                                                                                                                       |
 | The target holds no role for the relayed principal that reaches the object | The effective role there is `customer`; the act proceeds only if the command admits `customer`.                                                                                                                                                                                                                                                              |
 | The target computer is unreachable or cannot resolve its facts             | The act fails and is reported for that computer; the caller's computer decides nothing in its place.                                                                                                                                                                                                                                                         |
+<!-- /planned-change:relay-scoped-role-decisions -->
 
 ## See Also
 
