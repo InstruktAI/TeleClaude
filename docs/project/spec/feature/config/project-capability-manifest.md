@@ -90,15 +90,14 @@ Derivation rules:
 <!-- change:config-migration-chain -->
 - The declaration is the only home of capability state. The installed plumbing —
   the git hooks and the git wrapper — resolves the toggles through the runtime's
-  own reading of the declaration: the same document the runtime's gates read,
-  which for a slug worktree is the owning checkout's; brought to its current
+  own reading of the repository root's own declaration: brought to its current
   shape by the configuration migration list
   (`project/spec/feature/config/document-migration`); and its tier and each
   capability block read the way the runtime's loader reads them — environment
   references resolved from the declaration's sibling `.env` — and validated with
   the runtime's own models. The two readers therefore
-  answer alike for every tier and every capability block, and a declaration that
-  loads in the runtime never blocks git. The plumbing reads only what it decides
+  answer alike for every tier and every capability block of the same
+  declaration, and a declaration that loads in the runtime never blocks git. The plumbing reads only what it decides
   on: the declaration's tier and, for a project declaration, the capability
   blocks. A block the runtime cannot read as a capability block is refused: the
   git invocation aborts with a message naming `teleclaude.yml` and the block, and
@@ -138,19 +137,9 @@ Derivation rules:
   `project/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
   ever rewrites a project-tracked file.
 
-<!-- planned-change:config-migration-chain -->
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole
-<!-- change:config-migration-chain -->
-- A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
-  non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
-  or reads any plumbing for it, and it is left byte-for-byte untouched. The git
-  wrapper's one act for it is asking the runtime whether its root answers to a
-  declaration; the runtime answers that it does not, and the plumbing keeps that
-  answer in the machine home like any other. Which declaration a slug worktree
-  answers to is UC-CFG-CAP-32. The sole
-<!-- /planned-change:config-migration-chain -->
   exception is explicit adoption: `telec config project init` creates
   the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
   that turns a plain repository into a target. Carrying no manifest and carrying
@@ -476,19 +465,16 @@ When canonical main advances with a change to the installation's code, or instal
 Then the next git invocation in that project resolves the declaration through the runtime
 ```
 
-#### UC-CFG-CAP-32: A slug worktree answers from its owning checkout's declaration
+#### UC-CFG-CAP-32: A slug worktree's plumbing answers from the worktree's own declaration
 
 ```
-Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's, or that carries no copy at all
+Given a slug worktree whose copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's
 When an agent session invokes git inside that worktree
-Then the installed plumbing decides from the owning checkout's declaration
-And it decides as the runtime's gates decide for an invocation from that worktree
+Then the installed plumbing decides from the worktree's own copy
 
-Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions
-And whose owning checkout carries no declaration
+Given a slug worktree that carries no teleclaude.yml
 When an agent session invokes git inside that worktree
-Then the installed plumbing treats the worktree as carrying no declaration
-And the git wrapper execs the real git binary without intercepting the invocation
+Then the git wrapper execs the real git binary without intercepting the invocation
 ```
 
 #### UC-CFG-CAP-33: A capability resolved from the project's environment file resolves alike on both readers
