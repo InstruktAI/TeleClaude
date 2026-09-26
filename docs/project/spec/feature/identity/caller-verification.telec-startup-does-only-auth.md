@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-Caller verification is the identity context's single intake capability at the daemon's request surface: it turns the identity an inbound call carries into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`) before any business logic runs. The client that sent the call has already resolved and cleared its caller in its own process (`project/spec/identity-and-auth` §6) and carries the result — the caller's session, principal, system role, person role, person email, and entry point (`project/spec/identity-and-auth` §2). Caller verification takes those values as given. It loads no session to confirm them, resolves no terminal signal, compares no tmux session, validates no session token, and applies no role band; a call that carries no identity yields a `CallerIdentity` with none, and the operation it reaches decides what a caller without identity may do. The one credential it checks is the daemon's own process-local credential, which resolves the daemon's calls to its system principal.
+Caller verification is the identity context's single intake capability at the daemon's request surface: it turns the identity an inbound call carries into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`) before any business logic runs. The client that sent the call has already resolved and cleared its caller in its own process (`project/spec/identity-and-auth` §6) and carries the result — the caller's session, principal, system role, person role, person email, entry point, and session company when present (`project/spec/identity-and-auth` §2). Caller verification takes those values as given. It loads no session to confirm them, resolves no terminal signal, compares no tmux session, validates no session token, and applies no role band; a call that carries no identity yields a `CallerIdentity` with none, and the operation it reaches decides what a caller without identity may do. The one credential it checks is the daemon's own process-local credential, which resolves the daemon's calls to its system principal.
 
 ## Canonical fields
 
@@ -24,6 +24,7 @@ Caller verification is the identity context's single intake capability at the da
 Given a client resolved its caller to a session and carries that session, its principal, and its system role on a call
 When caller verification runs
 Then the returned CallerIdentity carries that session, principal, and system role
+And when the session has a company, it carries that company as business context
 And no session record is loaded to confirm them
 And no terminal, tmux, or token signal is consulted
 ```
@@ -62,6 +63,7 @@ And the returned CallerIdentity is exactly the carried identity, or none
 Given the daemon accepted a request from a session and runs work for it after the request returns
 When that work makes a request to the daemon's request surface
 Then the request carries the identity of the session that asked
+And it carries that session's company when one is recorded
 And the work is attributed to that session, never to the daemon's own principal or a terminal login
 ```
 

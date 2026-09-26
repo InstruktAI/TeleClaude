@@ -93,6 +93,9 @@ resolved for its caller (§6):
 - `x-caller-email`: the person's email, when the caller is a person.
 - `x-caller-entry-point`: the door the request came through — an agent session,
   the CLI at a terminal, or the TUI.
+- `x-caller-company`: the company recorded on the caller's session, when it has
+  one. It carries business context to a daemon action without giving the caller
+  a role or credential; the session record remains its source of truth.
 - `x-teleclaude-daemon-token`: the daemon's own credential for the calls it makes
   into its request surface. Its value is generated once per daemon process, held
   only in that process's memory, and never persisted or exported, so no other
