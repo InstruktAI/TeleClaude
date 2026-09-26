@@ -31,6 +31,11 @@ delivered_by: [config-migration-chain]
   Where the value's final owner is another bounded context, the destination is a
   config-owned hand-off that owner imports from; a migration never writes
   another context's store.
+- **A value in transit stays readable at its destination.** Until a document is
+  stored past the migration that moves a value out of it, the destination's
+  published reader also answers with the value that document still holds. The
+  reader obtains it from the migration's own definition of what it moves, reads
+  only documents below that migration, and never writes.
 - **A step may retire config-owned records the list declares obsolete.** A retirement
   effect removes config-owned records that no current code reads. It is idempotent, never touches a configuration document, and runs on every
   migration run whatever any document's version, so an installation whose documents are
@@ -65,7 +70,11 @@ that took the other path, and only when they are next migrated.
 Moving a value before dropping it keeps a migration from being a deletion. The
 in-memory read cannot write the destination, so the value survives in the
 stored document until a run delivers it; a conflict keeps both copies because
-neither can be chosen without judgment.
+neither can be chosen without judgment. A read drops the moved value from its
+view of the document, and a run can fail, be delayed, or not yet have reached
+the document, so a destination reader that consulted only the destination would
+lose a value that is still on disk. Taking the value from the migration's own
+definition keeps one statement of what moves.
 
 A retirement effect is keyed to the run rather than to a document's version because the
 records it removes belong to no document: an installation can be current in every document

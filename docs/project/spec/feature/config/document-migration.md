@@ -51,7 +51,9 @@ A migration that moves a value out of a document delivers it to its
 config-owned destination before the document drops it. Where the value's final
 owner is another bounded context, the destination is a config-owned hand-off
 that the owner imports from; the importing owner's contract governs everything
-after the hand-off.
+after the hand-off. Until a document is stored past the migration that moves a
+value out of it, that destination's readers also find the value the document
+still holds, reading it without writing.
 
 Every migration run also removes the config-owned records the list declares obsolete,
 whatever the documents' versions, so the first run
@@ -193,6 +195,16 @@ And every configuration document on it is already at the current version
 When a migration run completes
 Then those records no longer exist
 And no configuration document was written
+```
+
+#### UC-CFG-MIG-13: A value in transit stays reachable until its migration is stored
+
+```gherkin
+Given a configuration document at an older version holding a value a migration moves to another config-owned store
+And no migration run or writer has yet stored that document past that migration
+When a consumer looks the value up in its destination store
+Then it finds the value the document holds
+And the document and the destination store are unchanged by the lookup
 ```
 
 ### Cross-context references
