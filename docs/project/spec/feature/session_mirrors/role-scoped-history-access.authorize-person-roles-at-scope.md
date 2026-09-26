@@ -30,11 +30,16 @@ The scopes are:
 - **A person whose effective role for a mirror's project is admin**: that mirror,
   whoever it is recorded against. A platform administrator holds that role for
   every project and so sees every mirror; a company administrator sees the
-  mirrors of every project their company owns. A mirror recorded against no
-  person — a system-rooted session's — is visible to such a person, and to a
+  mirrors of every project their company owns. A mirror recorded under no person
+  principal — a system-rooted session's — is visible to such a person, and to a
   system principal, only.
-- **Any other person**: only the mirrors recorded against their own email,
-  whatever their role, including a role that does not resolve.
+- **Any other person**: only the mirrors recorded under their own principal —
+  the person the session ran under, spawned sessions of their own chains
+  included (`general/concept/lineage-vs-authorship`) — whatever their role,
+  including a role that does not resolve.
+- **A mirror with no registered project** has no company scope. It is visible to
+  a platform administrator, a system principal, and the person it is recorded
+  under.
 - **A caller that cannot be identified**: refused. Nothing is read and nothing is
   returned; an unidentified caller never receives a wider view than an
   identified one.
@@ -56,7 +61,7 @@ by, so a scoped caller cannot obtain through the file what the store withheld.
 
 ### Use cases
 
-#### UC-RSHA-1: Admin sees all
+#### UC-RSHA-1: A platform administrator sees all
 
 ```
 Given the caller holds the admin platform role
@@ -79,7 +84,7 @@ And no conversation is returned and no on-disk transcript is consulted
 ```
 Given the caller is a person whose role is member
 When the caller searches history or requests a session's conversation
-Then only conversations recorded against the caller's email are returned
+Then only conversations recorded under the caller's principal are returned
 And no conversation recorded against another person is returned, whatever else its record carries
 ```
 
@@ -88,7 +93,7 @@ And no conversation recorded against another person is returned, whatever else i
 ```
 Given the caller is a person whose role is neither admin nor member, or does not resolve
 When the caller searches history or requests a session's conversation
-Then only conversations recorded against the caller's email are returned
+Then only conversations recorded under the caller's principal are returned
 ```
 
 #### UC-RSHA-5: The service capabilities scope their caller
@@ -136,7 +141,26 @@ And its result reaches no caller
 Given the caller holds no platform role and the admin role in one company
 When the caller searches history or requests a session's conversation
 Then mirrors recorded in any project that company owns are returned, whoever they are recorded against
-And mirrors recorded in a project owned by another company are returned only when recorded against the caller's own email
+And mirrors recorded in a project owned by another company are returned only when recorded under the caller's own principal
+```
+
+#### UC-RSHA-10: A member sees the sessions their own chain spawned
+
+```
+Given the caller is a person whose role is member
+And an orchestrator or worker session was spawned in a chain that person started
+When the caller searches history
+Then that spawned session's conversation is returned
+And a session spawned in another person's chain is not returned
+```
+
+#### UC-RSHA-11: A mirror with no registered project stays at platform scope
+
+```
+Given a mirror recorded in a directory that is not a registered project
+When a company administrator who is not the person it is recorded under searches history
+Then that mirror is not returned
+And a platform administrator's search returns it
 ```
 
 ## Known caveats
@@ -145,9 +169,9 @@ And mirrors recorded in a project owned by another company are returned only whe
   session never presents a terminal login, so a login made on a session's pane
   cannot widen or narrow what that session's processes read (see
   `feature/identity/terminal-email-login`).
-- A mirror recorded against no person — a system-rooted session's, or one created
-  before identity enrichment populated `human_email` — is visible only to a person
-  whose effective role for its project is admin, and to system principals.
+- A mirror recorded under no person principal — a system-rooted session's — is
+  visible only to a person whose effective role for its project is admin, and to
+  system principals.
 - The mirror record's `visibility` value is stored but grants nothing: no scope
   reads it.
 - A peer applies this same scope to the identity relayed with a remote search (see
