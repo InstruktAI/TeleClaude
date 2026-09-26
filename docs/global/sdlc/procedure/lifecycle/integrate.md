@@ -223,10 +223,12 @@ to own; the state machine never performs it. Divergence has two instruction shap
   session — **keep `integrator-main-clearance` live**:
   1. Set the prescribed recurring reminder. Do not use a local sleep, cron, `/loop`,
      or conversational message as its timer.
-  2. When it fires, re-read the repo-root dirty paths (`git -C <root> status --short`).
-     Clean → cancel it, resume `telec todo integrate`, and continue the drain. Still
-     dirty → resolve each dirty path under **Resolving a dirty path** below, keep
-     the reminder live, and wait again.
+  2. When it fires, re-enter `telec todo integrate`, which re-runs repo-root
+     synchronization. No longer blocked → cancel the reminder and continue the drain.
+     Still blocked → the returned decision lists the dirty paths that block
+     synchronization; resolve each listed path under **Resolving a dirty path** below,
+     keep the reminder live, and wait again. A dirty path the decision does not list
+     does not block integration and is left alone.
 
   **Trivial repo-hygiene files are committed on sight.** A dirty repo-hygiene or
   config file — `.gitignore`, `.gitattributes`, editor/tooling config, and the like —
@@ -319,8 +321,8 @@ one unit.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
 - **Intent:** `Recheck whether repo-root main is clear. If clear, resume integration. Otherwise resolve each dirty path under the integration procedure and keep this reminder; when every remaining dirty path is escalated to a human, cancel it and hold as a beacon — the next move is theirs.`
-- **Firing behavior:** re-read the repo-root dirty paths and follow
-  **Resolving a dirty path** for each one.
+- **Firing behavior:** re-enter `telec todo integrate` and follow
+  **Resolving a dirty path** for each blocking path its decision lists.
 - **Cancellation:** cancel when main clears, the integration session reaches a
   terminal outcome, the human explicitly supersedes the wait, or every remaining
   dirty path has been escalated.
