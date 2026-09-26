@@ -14,11 +14,7 @@ repo shape at **onboard** — deterministic structural checks (a Makefile or a
 language tree → `code`; snippet frontmatter under `docs/` → `docs`; authored
 artifacts under `agents/` → `agents`, never `.agents/`, which is a delivery
 location), written into `teleclaude.yml` before any capability-gated plumbing
-<!-- planned-change:align-config-cli-ownership -->
-installs — and later refined by `telec projects analyze` / `assess`. No **runtime** code path infers a capability
-<!-- change:align-config-cli-ownership -->
 installs — and later refined by the project-analysis and quality-configuration assessment procedures. No **runtime** code path infers a capability
-<!-- /planned-change:align-config-cli-ownership -->
 from repo shape; the runtime reads only the written declaration. The checkpoint
 engine's activation is derived from the subscribed capabilities — there is no
 independent on/off flag for the engine itself.
@@ -155,15 +151,9 @@ Derivation rules:
   answer in the machine home like any other. Which declaration a slug worktree
   answers to is UC-CFG-CAP-32. The sole
 <!-- /planned-change:config-migration-chain -->
-<!-- planned-change:align-config-cli-ownership -->
-  exception is explicit adoption: `telec projects onboard` (and `init`) creates
-  the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
-  that turns a plain repository into a target. Carrying no manifest and carrying
-<!-- change:align-config-cli-ownership -->
   exception is explicit adoption: `telec config project init` creates
   the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
   that turns a plain repository into a target. Carrying no manifest and carrying
-<!-- /planned-change:align-config-cli-ownership -->
   a broken one are different states: the first is simply not a target, while the
   second is an adopted project whose declaration cannot be read, and that surfaces
   as a failure rather than resolving to any capability state.
@@ -519,11 +509,7 @@ And after that value changes in the .env, the next git invocation decides from t
   become load-bearing later.
 - Capability toggles gate _mechanisms_, not content: disabling `docs` in a
   repo that still contains snippet frontmatter leaves those files unsynced and
-<!-- planned-change:align-config-cli-ownership -->
-  is surfaced as drift by `telec projects assess`.
-<!-- change:align-config-cli-ownership -->
   is surfaced as drift by the quality-configuration assessment procedure.
-<!-- /planned-change:align-config-cli-ownership -->
 
 <!-- planned-change:config-migration-chain -->
 - The runtime and the installed plumbing agree on every declaration whose

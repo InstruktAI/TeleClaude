@@ -7,13 +7,8 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:align-config-cli-ownership -->
-The schema contract between the `/projects-analyze` analysis session (invoked by
-`telec projects analyze` or `telec projects onboard`) and the enrichment writer
-<!-- change:align-config-cli-ownership -->
 The schema contract between the `/projects-analyze` analysis session (started with
 `telec sessions run --command /projects-analyze`) and the enrichment writer
-<!-- /planned-change:align-config-cli-ownership -->
 module. Defines how analysis findings become durable project doc snippets, how
 snippet IDs are structured, where files land, and how re-analysis merges without
 destroying human edits.

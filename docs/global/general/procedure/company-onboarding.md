@@ -1,5 +1,5 @@
 ---
-description: 'Complete telec companies onboard flow — inbox processing, organizational analysis, company doc snippet generation, and project linking.'
+description: 'Complete company onboarding — telec config company init, an explicitly started analysis session, inbox processing, company doc snippet generation, and project linking.'
 visibility: 'public'
 ---
 
@@ -28,7 +28,8 @@ linked projects from the first session.
 
 ### 1. Bootstrap company directory
 
-On first onboard (`telec companies onboard <name>`):
+On first onboard, run `telec config company init <name> [--slug <slug>]`. It converges
+the company tree and starts no session:
 
 - Derive slug from name (lowercase kebab-case).
 - Create `~/.teleclaude/companies/{slug}/` with subdirectories:
@@ -38,7 +39,8 @@ On first onboard (`telec companies onboard <name>`):
 
 On re-onboard:
 
-- Verify the company directory exists.
+- Verify the company directory exists; `telec config company init` converges missing
+  structure without changing existing files.
 - Read `meta.yaml` for processing history.
 
 ### 2. Detect input material
@@ -56,9 +58,12 @@ Scan the inbox directory for files to process:
 After scanning, stage and commit any new or changed files in the inbox git
 repository. This creates the baseline for the next re-onboard diff.
 
-### 4. Dispatch analysis session
+### 4. Start the analysis session
 
-Launch a `/telec-company-analyze` session with:
+Check `telec sessions list` for an open `/companies-analyze` session on this company
+root first; the sessions surface does not deduplicate on the caller's behalf. Then start
+`telec sessions run --command /companies-analyze --path ~/.teleclaude/companies/{slug}`
+with:
 
 - The company slug and inbox path as context.
 - The list of new/changed files to process.
@@ -70,7 +75,7 @@ project analysis procedure adapted for organizational material.
 
 ### 5. Analysis session: orientation
 
-The dispatched analysis session begins by:
+The analysis session begins by:
 
 - Reading the company's `meta.yaml` to understand prior onboard state.
 - Listing all input files and their formats.
@@ -120,7 +125,7 @@ After snippet generation:
 
 After onboarding, the user links projects to the company by adding
 `company: {slug}` to each project's `teleclaude.yml`. This is a manual
-configuration step — the onboard command does not modify project configs.
+configuration step — company initialization does not modify project configs.
 
 ## Outputs
 
@@ -132,8 +137,8 @@ configuration step — the onboard command does not modify project configs.
 
 ## Recovery
 
-- `telec companies onboard` is idempotent. Re-running processes only changed
-  material.
+- `telec config company init` is idempotent, and a new analysis session processes
+  only changed material.
 - If the analysis session fails mid-run, already-written snippets are valid.
   The session reports what was completed and what remains.
 - If inbox git init fails, processing falls back to full analysis of all files

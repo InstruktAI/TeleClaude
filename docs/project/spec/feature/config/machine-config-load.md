@@ -26,13 +26,11 @@ valid. This is the machine-level inventory layer; it is distinct from the
 `teleclaude.yml` layered-overlay system that resolves per-workspace
 global/project/person settings.
 
-<!-- planned:align-config-cli-ownership -->
 A machine configuration may declare `kind: computer`. The declaration is an
 address, not a setting: the loader accepts it, removes it before typed
 construction, and refuses a machine configuration declaring any other kind.
 It does not make the machine file an overlay tier or a context root, and a
 machine configuration without the declaration loads unchanged.
-<!-- /planned:align-config-cli-ownership -->
 
 <!-- planned:config-migration-chain -->
 Every stored machine configuration comes to declare `kind: computer`.
@@ -46,7 +44,6 @@ declaration in memory and writes nothing.
 
 ### Use cases
 
-<!-- planned:align-config-cli-ownership -->
 #### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
 
 ```gherkin
@@ -60,7 +57,6 @@ Given a machine configuration declaring any kind other than computer
 When the machine configuration loads
 Then the load fails naming the file and the declared kind
 ```
-<!-- /planned:align-config-cli-ownership -->
 
 <!-- planned:config-migration-chain -->
 #### UC-CFG-LOAD-15: A stored machine configuration gains its declared kind

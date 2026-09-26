@@ -1,5 +1,5 @@
 ---
-description: 'Complete telec projects init pipeline — project git plumbing, artifact sync, event domain seeding, project registration, release channel.'
+description: 'Complete telec config project init pipeline — project git plumbing, artifact sync, event domain seeding, project registration, release channel.'
 visibility: 'public'
 ---
 
@@ -11,8 +11,9 @@ Bootstrap a project for TeleClaude by configuring project git plumbing, syncing
 artifacts, seeding event domains, and registering the project root. Machine-global
 agent infrastructure is installed by the TeleClaude checkout's `make install`.
 
-AI-driven project analysis and quality-config assessment are a separate, user-invoked
-step — see the project-onboarding procedure (`general/procedure/project-onboarding`).
+Initialization starts no agent session. AI-driven project analysis and quality-config
+assessment are separate sessions the operator starts explicitly — see the
+project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ## Preconditions
 
@@ -90,7 +91,7 @@ snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute art
 agent runtimes.
 
 This step happens before slug persistence because `sync_project_artifacts()`
-materializes a bare `teleclaude.yml` for fresh projects. `telec projects init` then
+materializes a bare `teleclaude.yml` for fresh projects. `telec config project init` then
 rewrites that file in place to guarantee `project_slug` exists before the
 project is registered.
 
@@ -116,7 +117,7 @@ idempotently. The registered path is always that canonical checkout: invoked
 from a linked worktree, initialization resolves back to the owning checkout, so
 an ephemeral worktree path never enters the registry.
 
-`telec projects init` is the **sole** writer of the project registry. Publication
+`telec config project init` is the **sole** writer of the project registry. Publication
 must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
 is visible to `ProjectCatalogService` and every consumer that iterates
 projects (docs cross-project namespace, job orchestration, etc.).
@@ -137,7 +138,7 @@ Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
 ### 9. Watcher ownership
 
-`telec projects init` does **not** install watchers. It registers the project root in
+`telec config project init` does **not** install watchers. It registers the project root in
 `~/.teleclaude/projects.yaml`. Machine-global setup is installed by `make install`,
 and service startup/install is owned by `make start`; the global watcher reads this
 manifest to decide which projects to watch and sync surgically.
@@ -167,7 +168,7 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 
 ## Recovery
 
-- `telec projects init` is idempotent. Re-running it is safe and will skip already-configured steps.
+- `telec config project init` is idempotent. Re-running it is safe and will skip already-configured steps.
 - The bootstrap sync reports validation findings without blocking, so init always completes even when a project already carries findings; the commit gate validates once real work begins.
 
 ## See Also

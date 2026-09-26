@@ -246,11 +246,7 @@ And re-running the migration leaves the already-slugged entry and its folder unc
 - `role` — `"admin" | "member" | "contributor" | "newcomer"`. Default: `"member"`.
 - `expertise` — optional `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]`. Default: `None`.
 - `proficiency` — optional `ProficiencyLevel`. **Deprecated** — use `expertise` instead. Default: `None`.
-<!-- planned-change:align-config-cli-ownership -->
-- `slug` — `None`, or a non-empty kebab-case string matching the shared slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$` after stripping. Empty, whitespace-only, or absent normalize to `None`. The canonical, stable reference key for the person; populated by slug migration or by `telec config people add`, and immutable thereafter.
-<!-- change:align-config-cli-ownership -->
 - `slug` — `None`, or a non-empty kebab-case string matching the shared slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$` after stripping. Empty, whitespace-only, or absent normalize to `None`. The canonical, stable reference key for the person; populated by slug migration or by `telec config person init`, and immutable thereafter.
-<!-- /planned-change:align-config-cli-ownership -->
 
 ## Known caveats
 

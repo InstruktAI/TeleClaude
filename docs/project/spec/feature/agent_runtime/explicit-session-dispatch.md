@@ -1,7 +1,6 @@
 ---
-description: Agent sessions start only through the explicit sessions command surface; setup and analysis commands do not dispatch implicitly.
-delivered_by:
-  - align-config-cli-ownership
+description: Agent sessions start only through the explicit sessions command surface;
+  setup and analysis commands do not dispatch implicitly.
 ---
 
 # Explicit Session Dispatch — Spec

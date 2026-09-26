@@ -1,5 +1,5 @@
 ---
-description: 'AI-driven project analysis procedure invoked by /projects-analyze (telec projects analyze / onboard). Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
+description: 'AI-driven project analysis procedure run by a /projects-analyze session started with telec sessions run. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
 visibility: 'public'
 ---
 
@@ -27,7 +27,7 @@ reflect concrete findings from the analyzed repository, not generic templates.
 ## Preconditions
 
 - The project has source files (not an empty repository).
-- `telec projects init` plumbing (hooks, sync, project registration) has already completed; the operator invoked `telec projects analyze` or `telec projects onboard`.
+- `telec config project init` plumbing (hooks, sync, project registration) has already completed; the operator started this session with `telec sessions run --command /projects-analyze --path <project-root>`.
 - The required reads above provide the output contract (`init-scaffolding`),
   the snippet-authoring discipline (`doc-snippet-authoring`, which transitively
   pulls in the value contract, schema, and referencing rules), and the

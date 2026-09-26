@@ -755,11 +755,7 @@ projects:
 
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
-<!-- planned-change:align-config-cli-ownership -->
-through `ProjectCatalogService`. `telec projects init` is the sole writer of the
-<!-- change:align-config-cli-ownership -->
 through `ProjectCatalogService`. `telec config project init` is the sole writer of the
-<!-- /planned-change:align-config-cli-ownership -->
 registry; publication never registers projects. `project_slug` is the
 canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and

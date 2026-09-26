@@ -1,5 +1,5 @@
 ---
-description: 'AI-driven project onboarding via telec projects onboard / analyze / assess — runs init plumbing then dispatches doc-snippet analysis and quality-config assessment agent sessions.'
+description: 'AI-driven project onboarding — initialize the project with telec config project init, then explicitly start the quality-config assessment and doc-snippet analysis sessions.'
 visibility: 'public'
 ---
 
@@ -17,8 +17,9 @@ Onboard a project end-to-end to TeleClaude: install plumbing, generate project-s
 documentation snippets that make the codebase legible to AI, and assess the project's
 quality-tool configuration against blessed templates.
 
-This is the AI-driven counterpart to `telec projects init`. `init` handles plumbing; onboarding
-adds the intelligence layer.
+Initialization handles plumbing and starts no agent. The intelligence layer is added by
+agent sessions the operator starts explicitly through `telec sessions`, the only command
+surface that starts agents.
 
 ## Preconditions
 
@@ -28,34 +29,26 @@ adds the intelligence layer.
 
 ## Steps
 
-### Option A — `telec projects onboard` (full bootstrap)
-
-Runs in three stages:
-
-1. **Init plumbing** (synchronous, blocking): executes `init_project` — project
-   artifact sync, slug derivation, project registration, release-channel prompt,
-   and event-domain seeding. See the project-initialization procedure for the
-   per-step contract.
-2. **Config assessment dispatch** (fire-and-forget): spawns a `/projects-assess-config`
-   agent session that compares the project's quality tooling against
+1. **Initialize.** From the project root, run `telec config project init`. It executes
+   project artifact sync, slug derivation, project registration, the release-channel
+   prompt, and event-domain seeding; see the project-initialization procedure for the
+   per-step contract. It returns when plumbing is complete and starts no session.
+2. **Check for sessions already in flight.** Run `telec sessions list` and look for an
+   open session whose project path is this root and whose command is the one about to
+   be started. Starting a second one duplicates work; the sessions surface does not
+   deduplicate on the caller's behalf.
+3. **Assess the quality configuration.** Start
+   `telec sessions run --command /projects-assess-config --path <project-root>`. The
+   session compares the project's quality tooling against
    `templates/quality/{language}/`.
-3. **Doc-snippet analysis dispatch** (fire-and-forget): spawns a `/projects-analyze`
-   agent session that follows the project-analysis procedure and emits schema-valid
-   snippets under `docs/project/`.
+4. **Analyze the codebase.** Start
+   `telec sessions run --command /projects-analyze --path <project-root>`. The session
+   follows the project-analysis procedure and emits schema-valid snippets under
+   `docs/project/`.
 
-The two agent sessions run concurrently in tmux after dispatch. Monitor progress
-via `telec sessions list` or the TUI.
-
-### Option B — `telec projects analyze` (analysis only)
-
-Targeted re-run of the doc-snippet analysis. Skips `init` and the config assessment.
-Useful when codebase structure has shifted and the project snippets need refreshing.
-
-### Option C — `telec projects assess` (assessment only)
-
-Targeted re-run of the quality-tool config assessment. Skips `init` and the doc-snippet
-analysis. Useful after the team adopts a new quality rule or upgrades blessed
-templates.
+Steps 3 and 4 run concurrently once started, and either can be started again on its own
+later: re-run the analysis when codebase structure has shifted, and the assessment after
+the team adopts a new quality rule or upgrades blessed templates.
 
 ## Outputs
 
@@ -68,10 +61,7 @@ templates.
 
 ## Recovery
 
-- All dispatches are idempotent and dedup against running sessions: re-invoking
-  `telec projects onboard` while a previous run is in flight skips the live session
-  rather than spawning a duplicate.
-- If dispatch fails (non-zero return code, timeout, OS error), the failure is logged
-  and a manual retry command is printed.
-- The `init` stage of `onboard` is itself idempotent — re-running it is safe and
-  will skip already-configured steps.
+- `telec config project init` is idempotent — re-running it is safe and will skip
+  already-configured steps.
+- If `telec sessions run` fails to start a session, it reports the failure; start it
+  again once the cause is resolved.

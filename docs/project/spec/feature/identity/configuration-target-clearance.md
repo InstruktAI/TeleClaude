@@ -1,7 +1,6 @@
 ---
-description: Configuration operations are cleared against the verified principal, target instance, affected fields, and agent role.
-delivered_by:
-  - align-config-cli-ownership
+description: Configuration operations are cleared against the verified principal,
+  target instance, affected fields, and agent role.
 ---
 
 # Configuration Target Clearance — Spec

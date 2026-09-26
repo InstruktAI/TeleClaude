@@ -61,13 +61,8 @@ resolved channel, a channel that cannot carry the request, or a provider send
 failure each return a distinct, actionable error to the caller; no partial or
 silent delivery occurs. A failed send never cascades to another channel.
 
-<!-- planned-change:align-config-cli-ownership -->
-**Discovery.** `telec config people list` exposes each person's `slug`, so a
-caller can discover the addressable identifier.
-<!-- change:align-config-cli-ownership -->
 **Discovery.** `telec config person list` exposes each person's `slug`, so a
 caller can discover the addressable identifier.
-<!-- /planned-change:align-config-cli-ownership -->
 
 **Origin backlink (Discord).** When the request carries an originating
 TeleClaude session and the resolved channel is discord, the delivered message

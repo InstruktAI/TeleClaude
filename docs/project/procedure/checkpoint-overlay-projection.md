@@ -19,30 +19,18 @@ project.
 ## Preconditions
 
 - The project is onboarded and carries a `teleclaude.yml` (`ProjectConfig`).
-<!-- planned-change:align-config-cli-ownership -->
-- `telec projects assess` (`/projects-assess-config`) is available.
-<!-- change:align-config-cli-ownership -->
 - The quality-configuration assessment procedure (`/projects-assess-config`) is available and is started explicitly with `telec sessions run --command /projects-assess-config --path <project-root>`.
-<!-- /planned-change:align-config-cli-ownership -->
 - The platform-universal base and the `ProjectConfig.checkpoint` overlay surface
   exist (`project/design/architecture/checkpoint-system`,
   `project/spec/domain/config`).
 
 ## Steps
 
-<!-- planned-change:align-config-cli-ownership -->
-1. `telec projects assess` reads the codebase and infers the project's
-   checkpoint maintenance: the source roots that constitute the `code` scope
-   (onto which the base `test` / `log-check` actions attach), and the
-   project's own runtime actions (build, restart, reload) named by make-contract
-   convention (`make install` / `make test` / `make lint` work by convention).
-<!-- change:align-config-cli-ownership -->
 1. The assessment session reads the codebase and infers the project's
    checkpoint maintenance: the source roots that constitute the `code` scope
    (onto which the base `test` / `log-check` actions attach), and the
    project's own runtime actions (build, restart, reload) named by make-contract
    convention (`make install` / `make test` / `make lint` work by convention).
-<!-- /planned-change:align-config-cli-ownership -->
 2. For each inferred action the assessor decides which registry declares it, by one test:
    can the mechanism that performs the action establish its own outcome? A deterministic
    command — installing, restarting, reconciling dependencies, reloading — can, and is
@@ -59,21 +47,12 @@ project.
 3. The assessor writes the result into `ProjectConfig.checkpoint` in the
    project's `teleclaude.yml`. The merged base ⊕ overlay then drives the runtime
    structurally; the language flavoring lives only in this authoring step.
-<!-- planned-change:align-config-cli-ownership -->
-4. **Projection.** When the platform publishes a new project-declarable
-   checkpoint paradigm — a new base action id, a new conventional kind, or a new
-   declarable field — a re-run of `telec projects assess` re-maps the paradigm
-   onto each project's overlay. Re-assessment is idempotent: it converges the
-   overlay to current truth and surfaces any conflict with a hand-authored
-   deviation for human resolution rather than silently overwriting it.
-<!-- change:align-config-cli-ownership -->
 4. **Projection.** When the platform publishes a new project-declarable
    checkpoint paradigm — a new base action id, a new conventional kind, or a new
    declarable field — a new assessment session re-maps the paradigm
    onto each project's overlay. Re-assessment is idempotent: it converges the
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
-<!-- /planned-change:align-config-cli-ownership -->
 
 
 ### Step 5 — Capability projection
@@ -81,15 +60,9 @@ project.
 Assessment also writes the project's three capability toggles
 (`project/spec/feature/config/project-capability-manifest`) inferred from repo
 shape: a make contract or language trees → `code`; snippet frontmatter under
-<!-- planned-change:align-config-cli-ownership -->
-`docs/` → `docs`; authored artifacts under `agents/` → `agents`, never `.agents/`. The initial
-toggles are written at onboard by `telec projects init` before any
-capability-gated plumbing runs; this step refines them. Task tracking carries no
-<!-- change:align-config-cli-ownership -->
 `docs/` → `docs`; authored artifacts under `agents/` → `agents`, never `.agents/`. The initial
 toggles are written by `telec config project init` before any
 capability-gated plumbing runs; this step refines them. Task tracking carries no
-<!-- /planned-change:align-config-cli-ownership -->
 toggle — the manifest's existence is that subscription.
 
 

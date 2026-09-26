@@ -20,11 +20,7 @@ Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` 
 - **Smudge command**: `sed "s|@~/.teleclaude|@$HOME/.teleclaude|g"`
 - **Clean command**: `sed "s|@$HOME/.teleclaude|@~/.teleclaude|g"`
 - **Required**: `true` (git will refuse to checkout if filter is missing)
-<!-- planned-change:align-config-cli-ownership -->
-- **Setup**: `make install` configures the filter for the mother project (TeleClaude core); `telec projects init` configures it for downstream AI-managed projects. Both write the filter into local git config.
-<!-- change:align-config-cli-ownership -->
 - **Setup**: `make install` configures the filter for the mother project (TeleClaude core); `telec config project init` configures it for downstream AI-managed projects. Both write the filter into local git config.
-<!-- /planned-change:align-config-cli-ownership -->
 
 ## Allowed values
 
@@ -34,11 +30,6 @@ Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` 
 
 ## Known caveats
 
-<!-- planned-change:align-config-cli-ownership -->
-- If the filter is not configured locally (missing `telec projects init`), commits may capture absolute paths and a pre-commit hook will reject them.
-- If the local home path changes, re-run `telec projects init` to reconfigure the filter.
-<!-- change:align-config-cli-ownership -->
 - If the filter is not configured locally (missing `telec config project init`), commits may capture absolute paths and a pre-commit hook will reject them.
 - If the local home path changes, re-run `telec config project init` to reconfigure the filter.
-<!-- /planned-change:align-config-cli-ownership -->
 - The filter lives in local git config, not in `.gitconfig` — each clone needs initialization.

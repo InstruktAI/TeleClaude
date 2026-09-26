@@ -11,11 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:align-config-cli-ownership -->
-The schema contract between the `telec companies onboard` analysis session and
-<!-- change:align-config-cli-ownership -->
 The schema contract between the `/companies-analyze` analysis session and
-<!-- /planned-change:align-config-cli-ownership -->
 the company enrichment writer. Defines how organizational material is processed
 into durable company doc snippets, how snippet IDs are structured, where files
 land, and how re-onboarding merges without destroying human edits.

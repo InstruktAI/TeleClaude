@@ -7,25 +7,14 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned-change:align-config-cli-ownership -->
-Document the TeleClaude-specific setup split: `telec projects init` owns project-local
-plumbing and help desk bootstrap, while `make install` owns machine-global steps — the
-logging runtime the host reads logs with, plus macOS launcher installation and
-permission probing.
-<!-- change:align-config-cli-ownership -->
 Document the TeleClaude-specific setup split: `telec config project init` owns project-local
 plumbing and help desk bootstrap, while `make install` owns machine-global steps — the
 logging runtime the host reads logs with, plus macOS launcher installation and
 permission probing.
-<!-- /planned-change:align-config-cli-ownership -->
 
 ## Preconditions
 
-<!-- planned-change:align-config-cli-ownership -->
-- Running `telec projects init` from the TeleClaude project root for help desk bootstrap.
-<!-- change:align-config-cli-ownership -->
 - Running `telec config project init` from the TeleClaude project root for help desk bootstrap.
-<!-- /planned-change:align-config-cli-ownership -->
 - Running `make install` from the TeleClaude project root for machine-global steps.
 - For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
 
@@ -38,29 +27,17 @@ help desk workspace. The help desk directory is resolved from
 `config.computer.help_desk_dir` or defaults to a sibling directory
 (`../help-desk` relative to the TeleClaude project root).
 
-<!-- planned-change:align-config-cli-ownership -->
-Idempotent — skips if the directory already exists. Copies templates and
-re-runs `telec projects init` within the help desk project to bootstrap its own
-plumbing.
-<!-- change:align-config-cli-ownership -->
 Idempotent — skips if the directory already exists. Copies templates and
 re-runs `telec config project init` within the help desk project to bootstrap its own
 plumbing.
-<!-- /planned-change:align-config-cli-ownership -->
 
 Source: `teleclaude/project_setup/help_desk_bootstrap.py:bootstrap_help_desk()`
 
 ### 1a. Project remote provisioning — an agent procedure, not an init step
 
-<!-- planned-change:align-config-cli-ownership -->
-`telec projects init` does **not** provision a git remote. It establishes the
-local repository and the canonical `project_slug` only; there is no
-`ensure_remote` code step branching on `gh`-availability, authentication, or TTY.
-<!-- change:align-config-cli-ownership -->
 `telec config project init` does **not** provision a git remote. It establishes the
 local repository and the canonical `project_slug` only; there is no
 `ensure_remote` code step branching on `gh`-availability, authentication, or TTY.
-<!-- /planned-change:align-config-cli-ownership -->
 
 Remote provisioning is an **agent procedure** run during project onboarding. The
 agent resolves the project's company (the active project's `company:` field → the
@@ -74,21 +51,12 @@ remote setup never gates project setup.
 
 ### 1b. Project initialization installs plumbing but does not publish
 
-<!-- planned-change:align-config-cli-ownership -->
-`telec projects init` materializes the declaration and converges the project's
-filters and hooks. It does not publish documentation or agent artifacts from
-the setup working tree. The first validated canonical commit activates those
-sources through commit maintenance; an initial activation before that boundary
-must identify and validate a clean recorded `HEAD` rather than deploying the
-current working tree.
-<!-- change:align-config-cli-ownership -->
 `telec config project init` materializes the declaration and converges the project's
 filters and hooks. It does not publish documentation or agent artifacts from
 the setup working tree. The first validated canonical commit activates those
 sources through commit maintenance; an initial activation before that boundary
 must identify and validate a clean recorded `HEAD` rather than deploying the
 current working tree.
-<!-- /planned-change:align-config-cli-ownership -->
 
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
@@ -218,11 +186,7 @@ Source: `teleclaude/core/reconciliation/config_schemas.py`
 
 ## Recovery
 
-<!-- planned-change:align-config-cli-ownership -->
-- All steps are idempotent. Re-running `telec projects init` repeats help desk bootstrap safely; re-running `make install` repeats macOS launcher/probe setup safely.
-<!-- change:align-config-cli-ownership -->
 - All steps are idempotent. Re-running `telec config project init` repeats help desk bootstrap safely; re-running `make install` repeats macOS launcher/probe setup safely.
-<!-- /planned-change:align-config-cli-ownership -->
 - If the help desk bootstrap fails, the main init continues unaffected.
 - Permission denials require manual System Settings changes; re-running `make install`
   after granting access will show a passing probe.

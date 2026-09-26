@@ -1,7 +1,6 @@
 ---
-description: One kind-addressed CLI contract for initializing, listing, reading, and patching configuration subjects.
-delivered_by:
-  - align-config-cli-ownership
+description: One kind-addressed CLI contract for initializing, listing, reading, and
+  patching configuration subjects.
 ---
 
 # Kind Addressed Configuration — Spec
