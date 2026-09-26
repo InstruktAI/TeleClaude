@@ -39,6 +39,14 @@ restart, then check the logs` is directive. One string reaching a human and an
 - **Todo routing belongs to** `sdlc/policy/todo-creation-discipline`;
   this policy governs the documentation once routing is decided and grants no
   authoring authority.
+- **Doc changes to what the human governs are written where the human is.** When
+  the human, with the agent they address, decides something that changes a
+  process whose outcome is theirs (the closed list in
+  `general/policy/human-contract`), that agent writes the doc change itself,
+  before any todo or delegated work that depends on it, and does not hand it to
+  another agent. Any other doc change can be written up front, where the
+  authoring session holds context a handoff would lose, or delegated, where
+  nothing would be lost in translation.
 - **Functionality is doc-driven — snippets first.** A todo that delivers
   functionality authors or updates the affected snippets up front, pending, as
   part of creating the todo. The planner shapes that doc work into the plan; the
@@ -77,6 +85,11 @@ is that disposition's rule layer.
 Reader identity cannot classify a surface that one string serves to both humans
 and agents; what the words do can be read from the string itself, so every
 reviewer resolves the same case the same way.
+
+A decision the human makes with one agent reaches every other agent through the
+document that agent writes. Handed on as a message instead, it arrives without
+the conversation that made it correct, and the human is pulled back to restate
+it.
 
 An author reviewing their own snippet believes it correct, which is no review.
 

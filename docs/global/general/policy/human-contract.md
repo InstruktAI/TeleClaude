@@ -110,9 +110,6 @@ the exchange.
 - Invoking the human is never a reason to refuse. A receiving agent may ground,
   verify, and disagree on substance; a refusal names the gate that blocks the act
   and the door that opens it.
-- Where a rule requires the human's own involvement — a closed-list decision or a
-  process-contract change — a relayed account never satisfies it; the agent
-  reaches the human directly.
 - Relayed direction is carried faithfully: what the human actually said, not a
   reframing. Fidelity binds the relaying agent; it is never a reason for the
   receiver to disbelieve.
