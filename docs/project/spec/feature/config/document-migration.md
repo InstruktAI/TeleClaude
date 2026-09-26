@@ -18,13 +18,16 @@ no other record of migration progress exists anywhere.
 A document created by the platform is written at the current version. It is
 stamped, never replayed.
 
-Reading never writes. Every configuration loader brings an older document the
-tier registries name to the current shape in memory by applying the migrations
-it has not yet passed, then validates it. A declared document the registries do
-not name is read as stored, without migration; its normal validation may refuse
-that older shape. Registration is the door for bringing it forward. An
-unsupported key in the resulting view fails the load. A document stating a
-version newer than the installation knows fails the load naming both versions.
+Reading never writes. Every configuration loader brings an older document to
+the current shape in memory by applying the migrations it has not yet passed,
+then validates it. The tier registries supply a subject when they name the
+document. Otherwise a valid tier declaration supplies a read-only subject:
+tier-wide migrations still apply, while a step requiring registration or a
+person or company instance waits until the registries supply that fact. A
+document with neither a registry subject nor a valid tier declaration fails
+loading. An unsupported key in the resulting view fails the load. A document
+stating a version newer than the installation knows fails the load naming both
+versions.
 
 The migrated shape is persisted in exactly two ways:
 
@@ -38,9 +41,10 @@ The migrated shape is persisted in exactly two ways:
   enters through registration.
 - **A writer.** A platform operation that changes a registry-named existing
   document first persists that document's pending migrations, then applies its
-  own change to the current shape. A writer refuses an older document without
-  a subject until registration establishes one. A write therefore never
-  records an older shape at the current version, and never drops a value a
+  own change to the current shape. A writer refuses an older document whose
+  subject comes only from its declaration until registration establishes a
+  registry subject. A write therefore never records an older shape at the
+  current version, and never drops a value a
   migration still has to move.
 
 A migration run commits what it persists. A document tracked in a git
@@ -72,12 +76,13 @@ The authoring rules every migration obeys are
 - **Version.** A non-negative integer each document carries at its top level.
   A document with no version is at version zero. The current version is the
   number of the last migration in the list.
-- **Subject.** What the registries say a document is: its kind (computer,
-  global, person, company, or project) and, for a person or company, its
-  instance. The document at the root of a linked worktree of a registered
-  project root has that project's subject. A document the registries do not
-  name has no subject even if it declares a tier. A migration that needs to
-  know what a document is reads the subject, never the document's location.
+- **Subject.** The document's kind (computer, global, person, company, or
+  project), its instance where the registries know one, and whether the
+  registries name it. The document at the root of a linked worktree of a
+  registered project root has that project's registry subject. A valid tier
+  declaration supplies a read-only subject when no registry names the
+  document; it supplies no instance or registration standing. A migration
+  reads the subject, never the document's location.
 - **Migration run outcome.** One structured record per document naming the
   document, its subject, the version found, the version reached, and one
   outcome: current, migrated and committed, migrated and left uncommitted,
@@ -91,7 +96,6 @@ The authoring rules every migration obeys are
 
 ```gherkin
 Given a configuration document at an older version carrying a shape a later migration retires
-And the tier registries name that document
 When an agent's operation loads that document
 Then the operation receives the document in its current shape
 And the stored document is byte-identical before and after the load
@@ -221,6 +225,16 @@ Then it is answered with neither value
 And the document and the destination store are unchanged by the lookup
 ```
 
+#### UC-CFG-MIG-14: A writer does not stamp an unregistered older document as current
+
+```gherkin
+Given a configuration document at an older version with a valid tier declaration
+And no tier registry names it
+When an agent's operation attempts to change a setting in that document
+Then the operation refuses the change and names registration as the way to bring the document forward
+And the document and any migration destination are unchanged
+```
+
 ### Cross-context references
 
 - Commit-boundary maintenance selects and runs the migration run as one of its
@@ -235,6 +249,10 @@ And the document and the destination store are unchanged by the lookup
 
 ## Known caveats
 
+- A declared person file outside the designated person home that lacks its
+  identity cannot obtain one from a read: the registries supply no person
+  instance there, so normal person validation refuses it. This is an invalid
+  file, rather than a recognized older shape at a registered person home.
 - A tracked project document shared by several machines receives a migration
   commit from each machine that runs the migration. The commits carry identical
   content, so they merge without conflict.

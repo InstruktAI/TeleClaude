@@ -15,10 +15,10 @@ delivered_by: [config-migration-chain]
 - **A delivered migration is immutable.** Once a numbered step has shipped, its
   number and its effect never change. A correction is a new step.
 - **A migration is a pure transform of one document and its subject.** It reads
-  only the document and what the registries say the document is, performs no
-  I/O, and returns the next document. The same transform runs in memory when a
-  registry-named document is read and when a migration run persists it, so the
-  two can never disagree.
+  only the document and its read-side subject, performs no I/O, and returns the
+  next document. The same transform runs in memory when a document is read and
+  when a migration run persists it, so the two can never disagree for a
+  registry-named document.
 - **A migration is idempotent and assumes nothing about the shape it finds.** A
   document may reach a step already carrying some or all of its result — created
   at a newer version and edited by hand, or written by a newer installation. The
@@ -46,13 +46,18 @@ delivered_by: [config-migration-chain]
   migration run whatever any document's version, so an installation whose documents are
   already current still loses those records on its first run.
 - **A migration that needs to know what a document is reads its subject.** The
-  subject comes from the tier registries. A migration never derives a document's
-  kind or instance from its path, and a document the registries do not name has
-  no subject to supply.
-- **A read without a subject does not migrate.** It leaves the document's
-  stored shape for that reader's normal validation. A writer refuses to stamp
-  an older subjectless document at the current version; registration supplies its
-  subject before that write can proceed.
+  tier registries supply the authoritative subject for persistence and for any
+  step whose result depends on registration or an instance. On a read, a valid
+  tier declaration can supply the kind when no registry names the document;
+  that subject has no registry standing or inferred instance. A step that
+  requires either skips that read, and a migration never derives a document's
+  kind or instance from its path.
+- **A read never grants registry standing from a declaration.** The read runs
+  the ordered migrations that apply to its subject in memory. A document with
+  neither a registry subject nor a valid declaration still fails at its tier
+  boundary. A writer refuses to stamp an older document whose only subject is
+  its declaration at the current version; registration supplies the subject
+  before that write can proceed.
 - **A shape change ships with its migration.** A change to what a configuration
   document may carry changes the owning model, the platform's generation of new
   documents, and the migration list together. A new document is written at the
@@ -65,17 +70,18 @@ delivered_by: [config-migration-chain]
 
 A registry-named document reaches the current shape along two paths — in memory
 on every read, and on disk when a migration run or a writer persists it — and
-only a pure, idempotent transform gives both paths the same answer. A transform with I/O
-would make reading write, and a read path that writes lets every process that
-reads configuration — including one running undelivered code — change the live
+only a pure, idempotent transform gives both paths the same answer. A transform
+with I/O would make reading write, and a read path that writes lets every
+process that reads configuration — including one running undelivered code — change the live
 documents every other process depends on.
 
-Registration bounds which older documents receive migrations. Inferring a
-subject from a document's own tier would give an unregistered project the
-capability subscriptions reserved for registered projects; stamping a
-subjectless older document as current would instead skip the migration it
-still needs. Reading its stored shape and refusing that write preserve both
-boundaries until registration establishes the subject.
+The declaration gives a read enough information for tier-wide shape changes,
+even when its project is not registered. It gives no evidence that the project
+held a subscription before the capability default changed, or which person an
+unclaimed person document represents. A registry-dependent step therefore
+waits for that evidence. Stamping an older document from a declaration-only
+read would skip the waiting step permanently; refusing that write preserves
+the migration for registration to perform.
 
 Idempotency is what makes stamping and replay safe together. Newly created
 documents skip history while stored documents replay it, and hand edits or a
