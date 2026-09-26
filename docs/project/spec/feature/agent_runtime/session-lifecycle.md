@@ -38,6 +38,7 @@ And the `agent_runtime.session.started` event is published when the session is l
 
 #### UC-SL2: Principal binding from identity
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 ```
 Given the request supplies terminal origin metadata (email payload)
 When the agent_runtime service resolves identity via the identity resolver
@@ -45,6 +46,28 @@ Then human_email and human_role are populated from the identity context when not
 And when an initiator session id references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
 And a session creation without any resolved human_role AND no system role is rejected — the request is refused
 ```
+<!-- change:authorize-person-roles-at-scope -->
+```
+Given the request supplies terminal origin metadata (email payload)
+When the agent_runtime service resolves identity via the identity resolver
+Then human_email is populated from the identity context when not explicitly provided
+And when an initiator session id references a parent session, missing human_email and principal are inherited from the parent
+And the session's human_role is the effective role of the person it runs for, for the project it runs in (`project/design/architecture/scoped-roles`), never the parent's role and never a role above that effective role
+And a session creation without any resolved human_role AND no system role is rejected — the request is refused
+```
+<!-- /planned-change:authorize-person-roles-at-scope -->
+
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-SL22: A session holds its person's role for the project it runs in
+
+```
+Given a person holding no platform role and the admin role in one company
+When a session is created for that person in a project the company owns
+Then the session record's human_role is admin
+And a session created for the same person in a project owned by another company records human_role customer
+And a session created for that person through a door that supplies a lower role records the lower role
+```
+<!-- /planned:authorize-person-roles-at-scope -->
 
 #### UC-SL20: Single-user terminal caller resolves to admin
 
@@ -61,11 +84,20 @@ Then the session record's human_role is admin, taken from the caller identity th
 
 #### UC-SL21: Restricted role is jailed to the help-desk
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 ```
-Given the request carries a non-admin human_role and no system_role
+Given the request carries a human_role that is neither admin nor member, and no system_role
 When the session is created
 Then the session's project_path is confined to the computer's help-desk directory
 ```
+<!-- change:authorize-person-roles-at-scope -->
+```
+Given the session's human_role for the requested project is neither admin nor member
+And the request carries no system_role
+When the session is created
+Then the session's project_path is confined to the computer's help-desk directory
+```
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 #### Computer routing
 
@@ -353,7 +385,11 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
 - **Listing reveals everything reachable.** TUI and tool clients are unfiltered. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
-- **Non-admin non-system-role sessions are jailed to the help-desk directory.** When the request has no system role and the human role is anything other than admin, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
+<!-- planned-change:authorize-person-roles-at-scope -->
+- **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the human role is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
+<!-- change:authorize-person-roles-at-scope -->
+- **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 
 ## See Also

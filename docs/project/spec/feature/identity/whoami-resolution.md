@@ -156,6 +156,17 @@ When the operator runs `telec auth who am i`
 Then the output and exit status are those `telec auth whoami` produces in that context
 ```
 
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-WHO-SCOPED-ROLE: A person's Role is the one that authorizes them where the command runs
+
+```
+Given a terminal whose login names a person holding no platform role and the admin role in one company
+When the operator runs `telec auth whoami` in a checkout of a project that company owns
+Then it prints `Role: admin`
+And run in a checkout of a project owned by another company, or outside any registered project, it prints `Role: customer`
+```
+<!-- /planned:authorize-person-roles-at-scope -->
+
 ### Cross-context references
 
 - Inside a session the CLI reads the session record in `agent_runtime.sessions` that the identity document's session id names; the record, never the document's copied fields, supplies the principal (`feature/identity/session-identity-file`).

@@ -12,11 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:authorize-person-roles-at-scope -->
 The per-session authorization rule for web-frontend callers. Once the trust boundary admits a call carrying the web-user email / role signals, every operation that targets a specific session calls the session-access check before doing any work. The check decides three things in one pass: does this session exist, may this web user see it, and — for owner-only operations — may this web user end it. Owner-only operations (currently session deletion) require either the session's owner email or the admin role. Standard operations (read messages, send a message, send keys/voice, restart the agent, revive, tail the transcript, stream) allow the owner, an admin, OR any member-role caller when the owner has flipped the session's `visibility` to `shared`. CLI / tool / agent callers that arrive without identity signals bypass the check entirely — they are already gated by caller verification's session-token and terminal-email paths. The `shared` visibility flag is the cooperation primitive: it is the owner's explicit "this session is okay for my teammates to read and act on" — without that flag, every session is private to its owner.
-<!-- change:authorize-person-roles-at-scope -->
-The per-session authorization rule for web-frontend callers. Once the trust boundary admits a call carrying the web-user email / role signals, every operation that targets a specific session calls the session-access check before doing any work. The check decides three things in one pass: does this session exist, may this web user see it, and — for owner-only operations — may this web user end it. Owner-only operations (currently session deletion) require either the session's owner email or the `admin` effective role for the session's project (`project/design/architecture/scoped-roles`). Standard operations (read messages, send a message, send keys/voice, restart the agent, revive, tail the transcript, stream) allow the owner, a caller whose effective role for the session's project is `admin`, OR a caller whose effective role for that project is `member` when the owner has flipped the session's `visibility` to `shared`. CLI / tool / agent callers that arrive without identity signals bypass the check entirely — they are already gated by caller verification's session-token and terminal-email paths. The `shared` visibility flag is the cooperation primitive: it is the owner's explicit "this session is okay for my teammates to read and act on" — without that flag, every session is private to its owner.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Canonical fields
 
@@ -83,16 +79,6 @@ When the session-access check runs
 Then the check raises a session-not-found error
 ```
 
-<!-- planned:authorize-person-roles-at-scope -->
-```
-Given a web user holding no platform role and the admin role in one company
-And a session owned by another person, running in a project that company owns
-When the web user issues any session-scoped operation, including deletion
-Then the session-access check accepts the call
-And the same operation on a private session in a project owned by another company is rejected as "Forbidden: not session owner"
-```
-
-<!-- /planned:authorize-person-roles-at-scope -->
 ### Cross-context references
 
 - The `human_email` and `visibility` columns are owned by `agent_runtime` (the session store). The `visibility` value is set by the session owner via a web action; the identity context reads it without writing. The `human_email` is stamped at session creation time by the session-creation pipeline.

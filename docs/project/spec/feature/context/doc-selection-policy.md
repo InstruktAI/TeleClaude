@@ -340,11 +340,20 @@ And only public snippets of the platform's shared documentation are included
 
 ### Cross-context references
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 - **identity** — the resolved caller: a person with their platform role and
   the company relationships and project reach that resolution reports, a system
   principal, or no identity, received from the command edge. Read depth is
   derived from these resolved facts; this policy owns neither the resolution nor
   the declarations beneath it.
+<!-- change:authorize-person-roles-at-scope -->
+- **identity** — the resolved caller: a person with their platform role and
+  the company relationships and project reach that resolution reports, a system
+  principal, or no identity, received from the command edge, and the person's
+  effective role for each tier, which identity answers. Read depth is derived
+  from these resolved answers; this policy owns neither the resolution nor the
+  declarations beneath it.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 - **config** — supplies the registered publishers' `business.publishes`
   declarations (their union is the valid-domain set used for cross-project ID
   classification), the project catalog of known project slugs, the

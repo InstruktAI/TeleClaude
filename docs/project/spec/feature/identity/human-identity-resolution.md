@@ -145,6 +145,17 @@ When an agent resolves that human's identity from a supported signal
 Then the resolved identity includes the stored Discord avatar URL for downstream presentation
 ```
 
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-HIR-NO-PLATFORM-ROLE: A registered person without a platform role resolves as customer at platform scope
+
+```gherkin
+Given the global config lists a person who declares no platform role
+When the resolver is queried by that person's email
+Then the returned identity names that person and carries person_role "customer"
+And the person's company roles are not folded into person_role; they are answered as the person's effective role for an object (`project/design/architecture/scoped-roles`)
+```
+<!-- /planned:authorize-person-roles-at-scope -->
+
 ### Cross-context references
 
 - Reads from the `config` bounded context: the `people` list in global config and per-person config files together form the operator's source of truth for who exists in the system.

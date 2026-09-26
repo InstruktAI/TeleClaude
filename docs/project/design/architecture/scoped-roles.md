@@ -17,11 +17,14 @@ A person holds a role, and a role is held at a scope. The role says what its
 holder may do; the scope says where. This design owns the scopes, what each
 scope contains, and how a person's effective role for one object is resolved.
 What each role may do stays with the surfaces that decide it: command bands in
-`project/design/cli-authorization-matrix`, configuration standing in
+`project/design/cli-authorization-matrix` and the scope a command is judged at
+in `project/spec/feature/identity/command-clearance`, configuration standing in
 `project/spec/feature/identity/configuration-target-clearance`, documentation
 depth in `project/design/architecture/context-selection`, history reach in
-`project/spec/feature/session_mirrors/role-scoped-history-access`, and web
-session access in `project/spec/feature/identity/session-access-visibility`.
+`project/spec/feature/session_mirrors/role-scoped-history-access`, a new
+session's role and its help-desk confinement in
+`project/spec/feature/agent_runtime/session-lifecycle`, and operation status in
+`project/design/architecture/operation-receipts`.
 
 ## Inputs/Outputs
 
@@ -106,13 +109,13 @@ company scope.
 
 ## Failure modes
 
-| Scenario                                                     | Behavior                                                                                  |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Organizational resolution fails                              | The company scopes contribute no role; decisions proceed on what remains, failing closed. |
-| An assignment names a project its company no longer owns     | It contributes no role; identity reports it as stale.                                     |
-| A caller supplies a scope or role                            | Ignored; the scope is read from the object and the role from the registry and roster.     |
-| A person holds roles at several scopes containing one object | The highest-ranked one applies.                                                           |
-| A role is withdrawn or a membership removed                  | The change applies from that person's next decision.                                      |
+| Scenario                                                     | Behavior                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Organizational resolution fails                              | The company scopes contribute no role; decisions proceed on what remains, failing closed.                                                                                                                                                                                    |
+| An assignment names a project its company no longer owns     | It contributes no role; identity reports it as stale.                                                                                                                                                                                                                        |
+| A caller supplies a scope or role                            | The scope is read from the object and the role from the registry and roster. A supplied role only lowers what a new session holds — a door that offers a narrower experience, such as a help-desk forum, confines a person below their effective role — and never raises it. |
+| A person holds roles at several scopes containing one object | The highest-ranked one applies.                                                                                                                                                                                                                                              |
+| A role is withdrawn or a membership removed                  | The change applies from that person's next decision.                                                                                                                                                                                                                         |
 
 ## See Also
 

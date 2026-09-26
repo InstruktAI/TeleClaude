@@ -451,6 +451,95 @@ And the session is not revived
 ```
 <!-- /planned:telec-startup-does-only-auth -->
 
+<!-- planned:authorize-person-roles-at-scope -->
+### Person role at the command's scope
+
+A person is cleared by their effective role at the command's scope
+(`project/design/architecture/scoped-roles`): the object the command acts on, read
+from the invocation and the object itself, never from a scope or role the caller
+supplies.
+
+- A command that addresses a configuration subject is judged at that subject: a
+  company at that company, a project at that project, a person at that person.
+  Machine and global configuration, and the listing, creation and management of
+  people and companies, are judged at platform scope.
+- A command that names a target session is judged at the project that session runs
+  in.
+- A command that names a directory to act in is judged at the project containing
+  that directory.
+- A command that names another computer is judged at platform scope.
+- Every other command is judged at the project the invocation runs in — the project
+  of its working directory's checkout — and at platform scope where it runs in no
+  registered project.
+- The TUI judges each action at the scope of the object that action targets, and
+  at platform scope when the action targets no project or session.
+
+A person caller is admitted when the command's person band admits their effective
+role at that scope. A session acting for a person is admitted only when the
+command's agent band admits the session's system role and its person band admits
+that person's effective role at the command's scope; a system role narrows what a
+person's session may run and never widens it. A session acting for a system
+principal carries no person and is judged by the agent band alone. A command that
+reads across many objects, such as a history search, is cleared at its scope, and
+the objects' owners then narrow what it returns.
+
+#### UC-CCS1: A company administrator works as an administrator in their company's project
+
+```
+Given a person holding no platform role and the admin role in one company
+And a terminal whose working directory is a checkout of a project that company owns
+When the person runs a command whose person band admits admin but not member
+Then the command is admitted
+```
+
+#### UC-CCS2: The same person is an outsider in another company's project
+
+```
+Given a person holding no platform role and the admin role in one company
+And a terminal whose working directory is a checkout of a project owned by another company
+When the person runs `telec todo list`
+Then the command is refused with the not-permitted failure naming `customer` and `telec todo list`
+And no todo is listed
+```
+
+#### UC-CCS3: A person's agent is bounded by that person's role at the command's scope
+
+```
+Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
+When it runs `telec sessions start` naming a directory in a project owned by another company
+Then the command is refused with the not-permitted failure naming `customer` and `telec sessions start`
+And no session is created
+But the same command naming a directory in a project the person's company owns is admitted
+```
+
+#### UC-CCS4: A session acting for a system principal is judged by its agent band alone
+
+```
+Given a session whose lineage roots at the platform's principal, with an agent role the command's agent band admits
+When it runs that command in any project
+Then the command is admitted
+And no person role is consulted
+```
+
+#### UC-CCS5: A command naming a session is judged at that session's project
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person runs `telec sessions tail` naming a session that runs in a project owned by another company
+Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
+And no transcript content is returned
+```
+
+#### UC-CCS6: Platform-scope commands need a platform role
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person runs `telec config computer patch` or lists every registered person
+Then the command is refused with the not-permitted failure naming `customer` and the command
+And the machine configuration and the person registry are unchanged and unread
+```
+<!-- /planned:authorize-person-roles-at-scope -->
+
 ## Known caveats
 
 <!-- planned-change:telec-startup-does-only-auth -->
@@ -459,7 +548,11 @@ And the session is not revived
 - The refusal names the caller's role: `"role '<role>' is not permitted to call <tool>"`.
 <!-- /planned-change:telec-startup-does-only-auth -->
 - Admin is NOT implicit. The "all human roles" band lists `admin` explicitly alongside the other human roles. A future band that forgets to include `admin` will lock admins out of that verb — there is no automatic override.
+<!-- planned-change:authorize-person-roles-at-scope -->
 - Agent callers check only the system band. A `CallerIdentity` with `system_role=worker` and a permissive `human_role` cannot fall through to the human band — the allowlist evaluator returns immediately on the system branch.
+<!-- change:authorize-person-roles-at-scope -->
+- An agent caller never falls through to the person band as an alternative: an agent band that refuses the session's system role refuses the command, whatever role the person holds. The person band applies to an agent caller only as the further bound on a session acting for a person.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 <!-- planned-change:telec-startup-does-only-auth -->
 - The `principal_role` fallback fires only when `human_role is None and identity.principal is not None`. A token-auth caller carrying both a `human_role` and a `principal_role` uses the human one; the two should agree (both are stamped from the same session at issuance) but the code does not enforce equality.
 <!-- change:telec-startup-does-only-auth -->
