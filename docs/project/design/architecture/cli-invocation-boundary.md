@@ -45,8 +45,9 @@ design owns only the path that connects them.
 2. **Worktree code never runs against the live home.** A slug worktree's `bin/telec`
    runs the worktree's code against a home other than the live one. When the caller
    names no home, or names the live home, the wrapper creates a temporary home, runs
-   against it, and removes it when the command ends, all within that one process; the
-   caller never creates, names, or removes a home (`project/policy/test-moratorium`).
+   against it, and removes it when the command ends, all within that one process, so a
+   caller needs no home of its own for isolation. A caller-named home other than the
+   live one is honored; agents never name one (`project/policy/test-moratorium`).
    An unset or empty home is the live home. Any other named home is compared with the
    live home by filesystem identity, so no spelling, symlink, `..` or letter case
    reaches it, and the interpreter receives exactly the location that was checked. A

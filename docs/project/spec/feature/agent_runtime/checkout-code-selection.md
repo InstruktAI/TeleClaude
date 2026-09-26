@@ -46,12 +46,12 @@ Then the command runs the installed canonical checkout's code
 And the command acts on the directory the agent invoked it from
 ```
 
-#### UC-CCS2: A worktree's own wrapper runs the worktree's code against a scratch home
+#### UC-CCS2: A worktree's own wrapper runs the worktree's code against a named home
 
 ```gherkin
 Given a slug worktree whose code differs from the installed canonical checkout
 And a home location that resolves somewhere other than the live home
-When an agent invokes the worktree's own telec wrapper with that home, from any directory
+When an operator or platform process invokes the worktree's own telec wrapper with that home, from any directory
 Then the command runs the worktree's code against that home
 And the worktree's code writes nothing into the live home
 ```
@@ -67,12 +67,12 @@ And the call's exit status is the command's own
 And nothing in the live home changes
 ```
 
-#### UC-CCS4: A scratch home without a machine configuration starts from the live one
+#### UC-CCS4: A worktree home without a machine configuration starts from the live one
 
 ```gherkin
-Given a scratch home that holds no machine configuration
-When an agent invokes a slug worktree's own telec wrapper against it
-Then the scratch home holds a copy of the live machine configuration before the worktree's code starts
+Given a home a slug worktree's own telec wrapper runs against, its own temporary home or a named one, that holds no machine configuration
+When the wrapper is invoked
+Then that home holds a copy of the live machine configuration before the worktree's code starts
 And nothing else is copied from the live home
 And the live machine configuration is unchanged
 ```
