@@ -32,10 +32,13 @@ delivered_by: [config-migration-chain]
   config-owned hand-off that owner imports from; a migration never writes
   another context's store.
 - **A value in transit stays readable at its destination.** Until a document is
-  stored past the migration that moves a value out of it, the destination's
-  published reader also answers with the value that document still holds. The
-  reader obtains it from the migration's own definition of what it moves, reads
-  only documents below that migration, and never writes.
+  stored past the migration that moves a value out of it, the config-owned
+  destination's published reader also answers with the value that document still
+  holds. The reader asks the migration list's published in-transit query, which
+  answers from each migration's own definition of what it moves and only for
+  documents below that migration; neither the query nor the reader writes.
+  Consumers outside the configuration context use the destination's published
+  reader alone.
 - **A step may retire config-owned records the list declares obsolete.** A retirement
   effect removes config-owned records that no current code reads. It is idempotent, never touches a configuration document, and runs on every
   migration run whatever any document's version, so an installation whose documents are

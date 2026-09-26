@@ -52,8 +52,9 @@ config-owned destination before the document drops it. Where the value's final
 owner is another bounded context, the destination is a config-owned hand-off
 that the owner imports from; the importing owner's contract governs everything
 after the hand-off. Until a document is stored past the migration that moves a
-value out of it, that destination's readers also find the value the document
-still holds, reading it without writing.
+value out of it, the config-owned destination's published reader also finds the
+value the document still holds, through the migration list's in-transit query,
+reading without writing.
 
 Every migration run also removes the config-owned records the list declares obsolete,
 whatever the documents' versions, so the first run
