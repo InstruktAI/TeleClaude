@@ -135,13 +135,13 @@ And the operator is notified at error severity with a refusal that names the rem
 ```
 
 <!-- planned:worktree-or-project-scope -->
-#### UC-PLA-8: A todo created with no row under the cursor belongs to the project the TUI was started from
+#### UC-PLA-8: A todo created where nothing names a project belongs to the project the TUI was started from
 
 ```gherkin
 Given a human operator started the TUI from inside a project, or from a subdirectory or slug worktree of it
-And no todo row is under the cursor in the Preparation view
+And nothing under the cursor in the Preparation view names a project, as when the view lists no rows
 When the operator creates a new todo or bug
-Then the new item is created in that project
+Then the new item is created in the project the TUI was started from
 And no item is created in any other project
 ```
 <!-- /planned:worktree-or-project-scope -->
