@@ -511,6 +511,7 @@ And after that value changes in the .env, the next git invocation decides from t
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by the quality-configuration assessment procedure.
 
+<!-- planned-change:fix-subject-checkout-grading-canonical-config -->
 - The runtime and the installed plumbing agree on every declaration whose
   capability blocks carry unquoted boolean values. They part on two inputs, in
   opposite directions. A block whose `enabled` value the runtime coerces from a
@@ -519,6 +520,15 @@ And after that value changes in the .env, the next git invocation decides from t
   which fails validation elsewhere in the overlay is refused by the runtime and
   honoured by the plumbing, which reads only the tier and the capability blocks
   and claims nothing about the rest of the file.
+<!-- change:fix-subject-checkout-grading-canonical-config -->
+- The runtime and the installed plumbing agree on every declaration whose
+  capability blocks carry unquoted boolean values. They part on one input: a
+  block whose `enabled` value the runtime coerces from a quoted string or a
+  number is refused by the plumbing, which reads only unquoted booleans. Both
+  readers read only the tier and the capability blocks, so a declaration that
+  fails validation elsewhere in the overlay keeps its capability answer on
+  both; loading the full overlay still refuses it.
+<!-- /planned-change:fix-subject-checkout-grading-canonical-config -->
 
 
 ## See Also
