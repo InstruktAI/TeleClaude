@@ -7,12 +7,14 @@ from teleclaude.hooks.checkpoint._models import CheckpointResult
 
 __all__ = ["_commit_instruction", "_compose_checkpoint_message", "_declare_reminder_instruction"]
 
+# The bare call surfaces the commit gate on every branch; the approval flag is
+# the committing agent's own act and never part of a checkpoint instruction.
+_COMMIT_INSTRUCTION = "Execute `telec code commit` (no flags) to surface the commit flow."
 
-def _commit_instruction(on_main: bool) -> str:
-    """Branch-aware commit instruction for the checkpoint message."""
-    if on_main:
-        return "Execute `telec code commit` (no flags) to surface the menu."
-    return "Commit your changes with `telec code commit --approved '<message>'`"
+
+def _commit_instruction() -> str:
+    """Commit instruction for the checkpoint message."""
+    return _COMMIT_INSTRUCTION
 
 
 def _declare_reminder_instruction() -> str:
@@ -22,7 +24,7 @@ def _declare_reminder_instruction() -> str:
 
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str | None:
     """Compose checkpoint text, or silence when there is nothing to enforce."""
-    commit_line = _commit_instruction(result.on_main)
+    commit_line = _commit_instruction()
     commit_lines = [commit_line, _declare_reminder_instruction()] if result.commit_action_required else []
 
     # Special case: docs only (bare *.md/txt/rst with no category and no pending actions)
