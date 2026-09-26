@@ -163,6 +163,17 @@ Then the request is refused
 And no conversation, header, or transcript is printed
 ```
 
+<!-- planned:mirror-session-attribution -->
+#### UC-MDR-7: A TeleClaude id reaches its session's conversation through the recorded attribution
+
+```
+Given an operator runs `telec history show <session-id>` with the TeleClaude id of a session that has attributed mirrors
+When the history detail capability resolves the lookup within the caller's history scope
+Then it renders the mirror of the session's latest transcript in its chain
+And it does so whether or not the session record still exists
+And the header names both the TeleClaude id and that transcript's agent-native id
+```
+<!-- /planned:mirror-session-attribution -->
 
 ## Known caveats
 

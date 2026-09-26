@@ -11,12 +11,22 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:mirror-session-attribution -->
 The session_mirrors service owns its own store with four logical
 objects: the mirrors record table, the tombstones table for
 empty-transcript memory, retained-after-shrink observations keyed by
 source identity, and a full-text index over the mirrors' conversation
 text. Sync triggers keep the full-text index aligned with the row table
 on insert, delete, and update.
+<!-- change:mirror-session-attribution -->
+The session_mirrors service owns its own store with five logical
+objects: the mirrors record table, the session attributions table that
+mirrors link to (`mirror-identity-enrichment`), the tombstones table for
+empty-transcript memory, retained-after-shrink observations keyed by
+source identity, and a full-text index over the mirrors' conversation
+text. Sync triggers keep the full-text index aligned with the row table
+on insert, delete, and update.
+<!-- /planned-change:mirror-session-attribution -->
 
 Schema bootstrap is lazy on first use and guarded so a given store path
 runs through the create-if-missing flow only once per process. Older
@@ -46,6 +56,18 @@ is locked — another process is mid-write, typically the daemon reconciling —
 convergence is abandoned for that open and the revision is left unset, so the
 work retries later and a reader never fails for convergence it did not need.
 
+<!-- planned:mirror-session-attribution -->
+Convergence is an ordered chain of steps, each owning the revision it brings the
+store to. A store behind by several steps runs each missing step once, in order,
+and records the revision after each; a step already applied is never repeated,
+so adding a step never re-runs the deletions an earlier step performed. The
+session-attribution step renames the mirror's identity fields to the names the
+rest of the platform uses — the agent-native session id, the project path, and the
+todo — and attributes every existing mirror its session record claims, restoring
+from that record any identity fact an earlier write left empty. It deletes no
+mirror.
+<!-- /planned:mirror-session-attribution -->
+
 Two engine caches sit alongside the schema state: one for the writable
 engine (used for upserts and tombstone writes) and one for read-only
 engines (one for the mirror store, one for the upstream session record
@@ -58,6 +80,7 @@ engine has confirmed the schema exists.
 
 #### Initial bootstrap
 
+<!-- planned-change:mirror-session-attribution -->
 ```
 Given the mirror store path points to a database that does not yet exist
 When any store function is invoked
@@ -68,6 +91,18 @@ And the full schema (mirrors, indexes, tombstones, retained-after-shrink observa
 And the per-process compatibility migration runs (idempotent field-adds)
 And the path is recorded so subsequent calls skip bootstrap
 ```
+<!-- change:mirror-session-attribution -->
+```
+Given the mirror store path points to a database that does not yet exist
+When any store function is invoked
+Then the store path is resolved (home-expanded) and the parent directory is created if missing
+And the writable engine is constructed
+And on the first connection, the schema bootstrap runs
+And the full schema (mirrors, session attributions, indexes, tombstones, retained-after-shrink observations, full-text index, three triggers) is created
+And the per-process compatibility migration runs (idempotent field-adds)
+And the path is recorded so subsequent calls skip bootstrap
+```
+<!-- /planned-change:mirror-session-attribution -->
 
 #### UC-MSB-2: Idempotent compatibility migration
 
@@ -123,6 +158,30 @@ And a later open retries the work
 Given a derivation rule changes without the revision being bumped
 Then converged stores keep the old shape, because the revision is the only trigger
 ```
+
+<!-- planned:mirror-session-attribution -->
+#### UC-MSB-5: An existing store gains session attribution without losing a mirror
+
+```
+Given a store whose mirrors were written before session attribution existed
+When the session-attribution convergence step runs
+Then every mirror present before the step is present after it, with its conversation unchanged
+And every mirror whose transcript a session record claims is attributed to that session, with its position in the session's chain
+And an identity fact the mirror holds empty is filled from that session record when the record carries it
+And an identity fact the mirror already holds is kept
+And a mirror no session record claims is left unattributed
+```
+
+#### UC-MSB-6: Convergence steps apply once each, in order
+
+```
+Given a store whose recorded revision is behind the newest convergence step
+When the store is opened
+Then each step newer than the recorded revision runs once, in order
+And the revision is recorded after each step completes
+And a step at or below the recorded revision does not run again
+```
+<!-- /planned:mirror-session-attribution -->
 
 #### Read-only engine gating
 
