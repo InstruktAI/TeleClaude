@@ -363,6 +363,19 @@ When the session next drains its control payloads
 Then it receives only the newest occurrence of that slug
 ```
 
+<!-- planned:fix-halt-to-respond-reminder-regressed -->
+#### UC-RMS28: An interrupted agent returns to its work after answering non-human input
+
+```gherkin
+Given an agent session holds unfinished work when non-human input that requires an answer reaches it
+When it arms the halt-to-respond profile as the last action of its answer turn
+And that turn ends, including with exactly `NOOP`
+Then the reminder re-enters the same session exactly once at that turn's agent stop without a caller-supplied delay
+And the firing carries the intent to resume the interrupted work unless intervening input made it stale
+And no later agent stop produces another occurrence
+```
+<!-- /planned:fix-halt-to-respond-reminder-regressed -->
+
 ## Known caveats
 
 - A reminder records intent; it is never evidence of current human authorization.

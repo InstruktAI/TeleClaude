@@ -79,6 +79,31 @@ the goal. If aligned, continue; otherwise correct course or stop.`; `--intent`
   cancels the slug, then ends with exactly `NOOP`.
 - **Invocation:** `telec reminders set goal-drive [--intent <intent>]`.
 
+<!-- planned:fix-halt-to-respond-reminder-regressed -->
+#### Reminder: halt-to-respond
+
+- **Owner:** this policy.
+- **Parameters:** none.
+- **Activation anchor:** the owning session's next agent stop after arming —
+  the stop that ends the answer turn.
+- **Duration:** none; that stop makes the reminder due directly.
+- **Recurrence:** one-shot.
+- **Arm condition:** non-human input that requires an answer reaches the session
+  while it holds unfinished work of its own, and the answer neither completes
+  nor supersedes that work. Arming is the last action of the answer turn; the
+  turn then ends with the answer, or with exactly `NOOP` when the input asks for
+  none. A session holding no interrupted work does not arm it.
+- **Intent:** `Resume the work interrupted to answer the non-human input, unless
+intervening input made that work stale.`
+- **Firing behavior:** check for later input first; resume the interrupted work
+  while it is still this session's and still current, otherwise end with
+  exactly `NOOP`.
+- **Cancellation:** cancel before the answer turn ends when that turn itself
+  resumed or finished the interrupted work, or when later input made it stale
+  or handed it off. A firing consumes it.
+- **Invocation:** `telec reminders set halt-to-respond`.
+<!-- /planned:fix-halt-to-respond-reminder-regressed -->
+
 ## Rationale
 
 Agent runtimes do not reliably keep local timers across turn closure; a
@@ -93,6 +118,15 @@ out of it would retire reminders the agent still wanted.
 
 Yielding keeps the session receptive to the human. A terminal is an execution
 surface, not a scheduler.
+
+<!-- planned:fix-halt-to-respond-reminder-regressed -->
+Answering non-human input mid-work leaves the interrupted work with no owner of
+its next move once the answer turn ends. The stop that ends that turn is the one
+event certain to follow the answer, so a reminder anchored on it returns the
+work without firing inside the answer or after a guessed delay, as a timed
+reminder would.
+<!-- /planned:fix-halt-to-respond-reminder-regressed -->
+
 
 ## Scope
 
