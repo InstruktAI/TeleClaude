@@ -717,6 +717,11 @@ def build_config_from_raw(
     """Build the typed config from raw YAML and adjacent machine-config files."""
     source = config_source or sibling_dir / ConfigFileName.MACHINE
     validate_machine_input(raw_user_config, MACHINE_CONFIG_INPUT, source)
+    if isinstance(raw_user_config, dict):
+        declared_kind = raw_user_config.get("kind")
+        if declared_kind is not None and declared_kind != "computer":
+            raise ValueError(f"Machine configuration at {source} declares kind '{declared_kind}', expected 'computer'")
+        raw_user_config = {key: value for key, value in raw_user_config.items() if key != "kind"}
     load_id = str(uuid4())
     field_sources = credential_field_sources(raw_user_config)
     logger.debug(

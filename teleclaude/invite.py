@@ -10,14 +10,17 @@ Provides:
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.config_handlers import get_person_config, save_person_config
+from teleclaude.cli.config_handlers import get_global_config, get_person_config, save_person_config
 from teleclaude.config import config
 from teleclaude.config.declaration import write_declared_config
+from teleclaude.config.invitations import issue_invite_token
 from teleclaude.config.schema import ConfigKind, DiscordCreds
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
@@ -250,3 +253,63 @@ async def send_invite_email(
     subject = f"Welcome to {org_name} — Your Personal AI Assistant"
     await send_email(email, subject, html_body, text_body)
     logger.info("Invite email sent")
+
+
+# --- Invitation (explicit person action) ---
+
+
+@dataclass(frozen=True)
+class InviteOutcome:
+    """The result of issuing one person's invitation."""
+
+    name: str
+    email: str
+    links: dict[str, str | None]
+    email_sent: bool
+
+
+def invite_person(slug: str) -> InviteOutcome:
+    """Issue (or rotate) an invitation for a registered person, and attempt delivery.
+
+    Refuses an unregistered slug and a person with no email. Bot-username
+    resolution failures and email-delivery failures are both tolerated —
+    neither blocks returning the deep links the invite issued.
+    """
+    person = next((p for p in get_global_config().people if p.slug == slug), None)
+    if person is None:
+        raise ValueError(f"Person with slug '{slug}' not found")
+    if not person.email:
+        raise ValueError(f"Person '{slug}' has no email address configured")
+
+    name = person.name
+    email = person.email
+
+    async def _run_invite() -> InviteOutcome:
+        token = issue_invite_token(slug)
+
+        telegram_username: str | None = None
+        discord_bot_id: str | None = None
+
+        try:
+            telegram_username = await resolve_telegram_bot_username()
+        except ValueError as e:
+            logger.warning("Failed to resolve Telegram bot username: %s", e)
+
+        try:
+            discord_bot_id = await resolve_discord_bot_user_id()
+        except ValueError as e:
+            logger.warning("Failed to resolve Discord bot user ID: %s", e)
+
+        whatsapp_number = config.whatsapp.business_number
+        links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
+
+        try:
+            await send_invite_email(name, email, links)
+            email_sent = True
+        except Exception as e:
+            logger.warning("Failed to send invite email: %s", e)
+            email_sent = False
+
+        return InviteOutcome(name=name, email=email, links=links, email_sent=email_sent)
+
+    return asyncio.run(_run_invite())

@@ -15,7 +15,8 @@ from telegram.ext import ContextTypes
 
 import teleclaude.core.identity as identity_module
 import teleclaude.invite as invite_module
-from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config, save_person_config
+from teleclaude.cli.config_handlers import get_global_config, save_person_config
+from teleclaude.config.invitations import find_person_by_invite_token
 from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
 from teleclaude.core.db import db

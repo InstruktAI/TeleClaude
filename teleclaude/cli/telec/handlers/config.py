@@ -24,8 +24,8 @@ def _run_tui_config_mode(*, guided: bool) -> None:
     run_tui_config_mode(guided=guided)
 
 
-def _handle_config_command(args: list[str]) -> None:
-    importlib.import_module("teleclaude.cli.config_cmd").handle_config_command(args)
+def _handle_config_kind_command(kind: str, args: list[str]) -> None:
+    importlib.import_module("teleclaude.cli.config_cmd").handle_config_kind_command(kind, args)
 
 
 def _handle_legacy_config_cli(args: list[str]) -> None:
@@ -88,11 +88,11 @@ def _handle_config(args: list[str]) -> None:
             print("Error: Interactive config requires a terminal.")
             raise SystemExit(1)
         _run_tui_config_mode(guided=True)
-    elif subcommand in ("get", "patch"):
-        _handle_config_command(args)
+    elif subcommand in ("computer", "global", "person", "company", "project"):
+        _handle_config_kind_command(subcommand, args[1:])
     elif subcommand == "tts":
         _handle_config_tts(args[1:])
-    elif subcommand in ("people", "env", "notify", "validate"):
+    elif subcommand in ("env", "notify", "validate"):
         _handle_legacy_config_cli(args)
     else:
         print(f"Unknown config subcommand: {subcommand}")

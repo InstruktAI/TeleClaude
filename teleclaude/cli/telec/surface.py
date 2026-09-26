@@ -327,7 +327,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "projects": CommandDef(
-        desc="Manage project inventory and onboarding",
+        desc="Manage project inventory and plumbing",
         subcommands={
             "list": CommandDef(
                 desc="List projects on local and remote computers",
@@ -335,54 +335,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
-            "init": CommandDef(
-                desc="Initialize project plumbing and sync artifacts",
-                flags=[F.FLAG_HELP],
-                notes=[
-                    "Sets up git hooks, syncs artifacts, and registers the project root.",
-                    "AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.",
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
             "converge": CommandDef(
                 desc="Converge plumbing for every registered root on this machine",
                 flags=[F.FLAG_HELP],
                 notes=["Writes no tracked files."],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "onboard": CommandDef(
-                desc="Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis",
-                flags=[F.FLAG_HELP],
-                notes=[
-                    "Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.",
-                    "AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.",
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "analyze": CommandDef(
-                desc="Generate project doc snippets via AI analysis",
-                flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "assess": CommandDef(
-                desc="Assess project quality tool configuration against blessed templates",
-                flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-        },
-    ),
-    "companies": CommandDef(
-        desc="Manage company onboarding",
-        subcommands={
-            "onboard": CommandDef(
-                desc="Scaffold a company under ~/.teleclaude/companies, or dispatch doc-snippet analysis",
-                args="<name> [--slug <value>]",
-                flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
-                notes=[
-                    "Scaffolds companies/<slug>/{inbox (git), docs/<taxonomy>, teleclaude.yml, meta.yaml, .env} synchronously.",
-                    "Re-running reprocesses only changed inbox material (SHA-tracked in meta.yaml).",
-                    "The analysis session runs concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.",
-                ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
         },
@@ -466,7 +422,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "Recipient-owned routing: defaults to the person's configured preferred_channel (email when unset).",
             "The message text is the file's caption on Telegram/Discord; on email it is the body and the file is an attachment.",
             "A file directed at a WhatsApp delivery is an actionable error — WhatsApp has no media-send capability here.",
-            "Discover a person's slug via 'telec config people list'.",
+            "Discover a person's slug via 'telec config person list'.",
         ],
         examples=[
             'telec message alex "Heads up: the deploy finished"',
@@ -1049,113 +1005,205 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=frozenset(), human=_HR_ADMIN),
                 hidden=True,
             ),
-            "get": CommandDef(
-                desc="Get config values",
-                args="[paths...] [--format <fmt>]",
-                flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
-            "patch": CommandDef(
-                desc="Patch config values",
-                args="[--yaml '...'] [--from-file <path>] [--format <fmt>]",
-                flags=[F.FLAG_HELP, F.FLAG_CONFIG_YAML, F.FLAG_CONFIG_FROM_FILE, F.FLAG_CONFIG_FORMAT],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
-            ),
-            "validate": CommandDef(
-                desc="Full validation",
-                flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
-            "people": CommandDef(
-                desc="Manage people",
+            "computer": CommandDef(
+                desc="Machine configuration",
                 subcommands={
                     "list": CommandDef(
-                        desc="List people",
-                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                        desc="List computer subjects (singleton)",
+                        flags=[F.FLAG_HELP],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "get": CommandDef(
+                        desc="Get the machine configuration",
+                        args="[paths...] [--format <fmt>]",
+                        flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "init": CommandDef(
+                        desc="Converge the machine configuration without overwriting existing values",
+                        flags=[F.FLAG_HELP],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
-                    "show": CommandDef(
-                        desc="Show a person's organizational memberships",
-                        args="<name> [--json]",
-                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
-                    ),
-                    "add": CommandDef(
-                        desc="Add a person",
-                        args=(
-                            "<name> --email <email> --role <role>"
-                            " [--expertise '<json>']"
-                            " [--telegram-user <user>] [--telegram-id <id>]"
-                            " [--no-invite] [--json]"
-                        ),
+                    "patch": CommandDef(
+                        desc="Patch the machine configuration",
+                        args="--revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]",
                         flags=[
                             F.FLAG_HELP,
-                            F.FLAG_PEOPLE_EMAIL,
-                            F.FLAG_PEOPLE_ROLE,
-                            F.FLAG_PEOPLE_USERNAME,
-                            F.FLAG_PEOPLE_EXPERTISE,
-                            F.FLAG_PEOPLE_TELEGRAM_USER,
-                            F.FLAG_PEOPLE_TELEGRAM_ID,
-                            F.FLAG_PEOPLE_NO_INVITE,
-                            F.FLAG_PEOPLE_NAME_ALIAS,
-                            F.FLAG_JSON_MACHINE_READABLE,
+                            F.FLAG_CONFIG_REVISION,
+                            F.FLAG_CONFIG_YAML,
+                            F.FLAG_CONFIG_FROM_FILE,
+                            F.FLAG_CONFIG_FORMAT,
                         ],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
-                    "edit": CommandDef(
-                        desc="Edit a person",
-                        args=(
-                            "<name> [--email <email>] [--role <role>]"
-                            " [--company <slug>] [--company-role <admin|member>]"
-                            " [--remove-company <slug>] [--assign <project-slug>]... [--unassign <project-slug>]..."
-                            " [--expertise '<json>']"
-                            " [--telegram-user <user>] [--telegram-id <id>]"
-                            " [--discord-voice-bot] [--json]"
-                        ),
+                },
+            ),
+            "global": CommandDef(
+                desc="Global configuration (cross-project overlay)",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List global subjects (singleton)",
+                        flags=[F.FLAG_HELP],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "get": CommandDef(
+                        desc="Get the global configuration",
+                        args="[paths...] [--format <fmt>]",
+                        flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "init": CommandDef(
+                        desc="Converge the global configuration without overwriting existing values",
+                        flags=[F.FLAG_HELP],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "patch": CommandDef(
+                        desc="Patch the global configuration",
+                        args="--revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]",
                         flags=[
                             F.FLAG_HELP,
-                            F.FLAG_PEOPLE_EMAIL,
-                            F.FLAG_PEOPLE_ROLE,
-                            F.FLAG_PEOPLE_COMPANY,
-                            F.FLAG_PEOPLE_COMPANY_ROLE,
-                            F.FLAG_PEOPLE_REMOVE_COMPANY,
-                            F.FLAG_PEOPLE_ASSIGN,
-                            F.FLAG_PEOPLE_UNASSIGN,
-                            F.FLAG_PEOPLE_USERNAME,
-                            F.FLAG_PEOPLE_EXPERTISE,
-                            F.FLAG_PEOPLE_TELEGRAM_USER,
-                            F.FLAG_PEOPLE_TELEGRAM_ID,
-                            F.FLAG_PEOPLE_DISCORD_VOICE_BOT,
-                            F.FLAG_JSON_MACHINE_READABLE,
+                            F.FLAG_CONFIG_REVISION,
+                            F.FLAG_CONFIG_YAML,
+                            F.FLAG_CONFIG_FROM_FILE,
+                            F.FLAG_CONFIG_FORMAT,
                         ],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
-                    "remove": CommandDef(
-                        desc="Remove a person",
-                        args="<name> [--delete-dir] [--json]",
-                        flags=[F.FLAG_HELP, F.FLAG_PEOPLE_DELETE_DIR, F.FLAG_JSON_MACHINE_READABLE],
+                },
+            ),
+            "person": CommandDef(
+                desc="Person configuration (identity + settings)",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List registered person slugs",
+                        flags=[F.FLAG_HELP],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "get": CommandDef(
+                        desc="Get one person's configuration",
+                        args="<slug> [paths...] [--format <fmt>]",
+                        flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "init": CommandDef(
+                        desc="Create or converge a person without overwriting existing values",
+                        args="<name> --email <email> [--slug <slug>] [--role <role>] [--username <username>]",
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_PEOPLE_EMAIL,
+                            F.FLAG_PEOPLE_SLUG,
+                            F.FLAG_PEOPLE_ROLE,
+                            F.FLAG_PEOPLE_USERNAME,
+                        ],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "patch": CommandDef(
+                        desc="Patch one person's configuration, or remove the person",
+                        args="<slug> --revision <rev> [--yaml '...' | --from-file <path>] [--remove] [--delete-dir] [--format <fmt>]",
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_CONFIG_REVISION,
+                            F.FLAG_CONFIG_YAML,
+                            F.FLAG_CONFIG_FROM_FILE,
+                            F.FLAG_CONFIG_REMOVE,
+                            F.FLAG_PEOPLE_DELETE_DIR,
+                            F.FLAG_CONFIG_FORMAT,
+                        ],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "invite": CommandDef(
-                        desc="Generate invite links for a person",
-                        args="<name> [--json]",
+                        desc="Generate (or rotate) invite links for a person",
+                        args="<slug> [--json]",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "discord-voice-bot": CommandDef(
+                        desc="Bind the active Discord bot credential to a person's voice configuration",
+                        args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                 },
                 notes=[
-                    (
-                        "To edit people's subscriptions, modify the person config: "
-                        "~/.teleclaude/people/{name}/teleclaude.yml"
-                    ),
-                    (
-                        '--expertise JSON shape: {"<domain>": "<level>", "<domain>": '
-                        '{"<sub-area>": "<level>"}}. '
-                        "Levels: novice, intermediate, advanced, expert. "
-                        'Example: \'{"python": "expert", "typescript": '
-                        '{"backend": "advanced", "frontend": "intermediate"}}\''
-                    ),
+                    "Patch naming `organization` is always refused — it is a read-only projection.",
                 ],
+            ),
+            "company": CommandDef(
+                desc="Company configuration (roster, projects)",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List registered company slugs",
+                        flags=[F.FLAG_HELP],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "get": CommandDef(
+                        desc="Get one company's configuration",
+                        args="<slug> [paths...] [--format <fmt>]",
+                        flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "init": CommandDef(
+                        desc="Scaffold a company without overwriting existing values",
+                        args="<name> [--slug <slug>]",
+                        flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                    ),
+                    "patch": CommandDef(
+                        desc="Patch one company's roster or fields",
+                        args="<slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]",
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_CONFIG_REVISION,
+                            F.FLAG_CONFIG_YAML,
+                            F.FLAG_CONFIG_FROM_FILE,
+                            F.FLAG_CONFIG_FORMAT,
+                        ],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                },
+            ),
+            "project": CommandDef(
+                desc="Project configuration",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List registered project slugs",
+                        flags=[F.FLAG_HELP],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "get": CommandDef(
+                        desc="Get one project's configuration",
+                        args="<slug> [paths...] [--format <fmt>]",
+                        flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "init": CommandDef(
+                        desc="Initialize project plumbing for the caller's checkout",
+                        flags=[F.FLAG_HELP],
+                        notes=[
+                            "Sets up git hooks, converges plumbing, and registers the project root.",
+                            "Syncs no artifacts — documentation publication is commit-bound.",
+                        ],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                    ),
+                    "patch": CommandDef(
+                        desc="Patch one project's configuration",
+                        args="<slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]",
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_CONFIG_REVISION,
+                            F.FLAG_CONFIG_YAML,
+                            F.FLAG_CONFIG_FROM_FILE,
+                            F.FLAG_CONFIG_FORMAT,
+                        ],
+                        notes=["Writes the project's teleclaude.yml only — never commits."],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                },
+            ),
+            "validate": CommandDef(
+                desc="Full validation",
+                flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "env": CommandDef(
                 desc="Manage environment variables",
@@ -1554,8 +1602,6 @@ MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
 MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]
 MCP_CALL = CLI_SURFACE["mcp"].subcommands["call"]
 
-COMPANIES_ONBOARD = CLI_SURFACE["companies"].subcommands["onboard"]
-
 CODE_BLUEPRINT_AFFECTED = CLI_SURFACE["code"].subcommands["blueprint"].subcommands["affected"]
 CODE_LINT = CLI_SURFACE["code"].subcommands["lint"]
 CODE_TEST = CLI_SURFACE["code"].subcommands["test"]
@@ -1570,15 +1616,30 @@ CODE_MAINTENANCE_DRAIN = CLI_SURFACE["code"].subcommands["maintenance"].subcomma
 CODE_MAINTENANCE_RETRY = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["retry"]
 
 CONFIG_TTS_DEPROVISION = CLI_SURFACE["config"].subcommands["tts"].subcommands["deprovision"]
-CONFIG_GET = CLI_SURFACE["config"].subcommands["get"]
-CONFIG_PATCH = CLI_SURFACE["config"].subcommands["patch"]
 CONFIG_VALIDATE = CLI_SURFACE["config"].subcommands["validate"]
 CONFIG_NOTIFY = CLI_SURFACE["config"].subcommands["notify"]
-CONFIG_PEOPLE_LIST = CLI_SURFACE["config"].subcommands["people"].subcommands["list"]
-CONFIG_PEOPLE_SHOW = CLI_SURFACE["config"].subcommands["people"].subcommands["show"]
-CONFIG_PEOPLE_ADD = CLI_SURFACE["config"].subcommands["people"].subcommands["add"]
-CONFIG_PEOPLE_EDIT = CLI_SURFACE["config"].subcommands["people"].subcommands["edit"]
-CONFIG_PEOPLE_REMOVE = CLI_SURFACE["config"].subcommands["people"].subcommands["remove"]
-CONFIG_PEOPLE_INVITE = CLI_SURFACE["config"].subcommands["people"].subcommands["invite"]
 CONFIG_ENV_LIST = CLI_SURFACE["config"].subcommands["env"].subcommands["list"]
 CONFIG_ENV_SET = CLI_SURFACE["config"].subcommands["env"].subcommands["set"]
+
+CONFIG_COMPUTER_LIST = CLI_SURFACE["config"].subcommands["computer"].subcommands["list"]
+CONFIG_COMPUTER_GET = CLI_SURFACE["config"].subcommands["computer"].subcommands["get"]
+CONFIG_COMPUTER_INIT = CLI_SURFACE["config"].subcommands["computer"].subcommands["init"]
+CONFIG_COMPUTER_PATCH = CLI_SURFACE["config"].subcommands["computer"].subcommands["patch"]
+CONFIG_GLOBAL_LIST = CLI_SURFACE["config"].subcommands["global"].subcommands["list"]
+CONFIG_GLOBAL_GET = CLI_SURFACE["config"].subcommands["global"].subcommands["get"]
+CONFIG_GLOBAL_INIT = CLI_SURFACE["config"].subcommands["global"].subcommands["init"]
+CONFIG_GLOBAL_PATCH = CLI_SURFACE["config"].subcommands["global"].subcommands["patch"]
+CONFIG_PERSON_LIST = CLI_SURFACE["config"].subcommands["person"].subcommands["list"]
+CONFIG_PERSON_GET = CLI_SURFACE["config"].subcommands["person"].subcommands["get"]
+CONFIG_PERSON_INIT = CLI_SURFACE["config"].subcommands["person"].subcommands["init"]
+CONFIG_PERSON_PATCH = CLI_SURFACE["config"].subcommands["person"].subcommands["patch"]
+CONFIG_PERSON_INVITE = CLI_SURFACE["config"].subcommands["person"].subcommands["invite"]
+CONFIG_PERSON_DISCORD_VOICE_BOT = CLI_SURFACE["config"].subcommands["person"].subcommands["discord-voice-bot"]
+CONFIG_COMPANY_LIST = CLI_SURFACE["config"].subcommands["company"].subcommands["list"]
+CONFIG_COMPANY_GET = CLI_SURFACE["config"].subcommands["company"].subcommands["get"]
+CONFIG_COMPANY_INIT = CLI_SURFACE["config"].subcommands["company"].subcommands["init"]
+CONFIG_COMPANY_PATCH = CLI_SURFACE["config"].subcommands["company"].subcommands["patch"]
+CONFIG_PROJECT_LIST = CLI_SURFACE["config"].subcommands["project"].subcommands["list"]
+CONFIG_PROJECT_GET = CLI_SURFACE["config"].subcommands["project"].subcommands["get"]
+CONFIG_PROJECT_INIT = CLI_SURFACE["config"].subcommands["project"].subcommands["init"]
+CONFIG_PROJECT_PATCH = CLI_SURFACE["config"].subcommands["project"].subcommands["patch"]

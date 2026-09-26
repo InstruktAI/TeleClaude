@@ -1,9 +1,9 @@
-"""Deterministic company-onboarding primitives plus the analysis dispatch.
+"""Deterministic company-onboarding primitives.
 
 ``scaffold_company`` bootstraps the ``companies/<slug>/`` tree; ``compute_inbox_changes``
 diffs the inbox against the SHA digest recorded in ``meta.yaml`` so re-onboarding
-reprocesses only changed material; ``run_company_onboard`` scaffolds and then
-dispatches the agent analysis session that generates the path-derived snippets.
+reprocesses only changed material. Analysis dispatch is an explicit, separate
+act (`telec sessions run`), never a side effect of scaffolding.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.schema import CompanyConfig, ConfigKind
 from teleclaude.git import Repo
 from teleclaude.paths import COMPANIES_ROOT, ConfigFileName
-from teleclaude.project_setup.onboard_flow import OnboardingCommand, _dispatch_session
 from teleclaude.slug import normalize_slug, validate_slug
 
 # The company doc taxonomies scaffolded under docs/ (the company-scaffolding spec
@@ -151,14 +150,3 @@ def record_processed_files(company_dir: Path, files: list[Path]) -> None:
 
     meta["processed_files"] = [by_path[key] for key in sorted(by_path)]
     _write_meta(company_dir, meta)
-
-
-def run_company_onboard(name: str, slug: str | None = None) -> None:
-    """Scaffold the company tree, then dispatch the AI analysis session.
-
-    Scaffolding runs synchronously; the analysis dispatch is fire-and-forget —
-    the agent reads the inbox, generates path-derived snippets, builds the index,
-    and validates. Operator monitors progress via ``telec sessions list``.
-    """
-    company_dir = scaffold_company(name, slug)
-    _dispatch_session(company_dir, OnboardingCommand.COMPANY_ANALYZE, "Company doc-snippet analysis")

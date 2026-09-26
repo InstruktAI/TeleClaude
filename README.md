@@ -120,9 +120,9 @@ instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 
 `make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up. The installer publishes the CLIs (`telec`, `graphify`) to `~/.local/bin`, ensures the InstruktAI logging CLI (`instrukt-ai-logs`) is present and current and wires its rotation and scheduling, and, if `~/.local/bin` isn't on your `PATH`, detects your shell and offers to add it — no manual PATH editing.
 
-`telec projects init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, hooks, registry state, and project-local config. It is project setup, not repo installation.
+`telec config project init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up git hooks, registry state, and project-local config; documentation publication happens through the project's own commit and review boundary, not as a side effect of init. It is project setup, not repo installation.
 
-For AI-driven project analysis and quality-config assessment, run `telec projects onboard` (or `telec projects analyze` / `telec projects assess` individually) after `telec projects init`.
+For AI-driven project analysis and quality-config assessment, start the sessions explicitly after `telec config project init`: `telec sessions run --command /projects-analyze` and `telec sessions run --command /projects-assess-config`.
 
 ### Antigravity permissions
 

@@ -20,8 +20,6 @@ from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import (
     resolve_invocation_cwd,
 )
-from teleclaude.project_setup import init_project
-from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
 from teleclaude.project_setup.plumbing import PlumbingConvergenceRunOutcome, converge_registered_roots
 
 _NO_TUI_RUNNING = "No running telec TUI to reload."
@@ -214,9 +212,6 @@ def _handle_projects(args: list[str]) -> None:
     if subcommand == "list":
         _handle_tool_command("handle_projects", args[1:])
         return
-    if subcommand == "init":
-        init_project(resolve_invocation_cwd())
-        return
     if subcommand == "converge":
         result = converge_registered_roots()
         for root_result in result.results:
@@ -231,15 +226,6 @@ def _handle_projects(args: list[str]) -> None:
         print(_PLUMBING_RUN_RESULT.format(outcome=result.outcome, root_count=result.root_count))
         if result.outcome is PlumbingConvergenceRunOutcome.FAILED:
             raise SystemExit(1)
-        return
-    if subcommand == "onboard":
-        run_onboard(resolve_invocation_cwd())
-        return
-    if subcommand == "analyze":
-        run_analyze(resolve_invocation_cwd())
-        return
-    if subcommand == "assess":
-        run_assess(resolve_invocation_cwd())
         return
     print(f"Unknown projects subcommand: {subcommand}")
     print(_usage("projects"))

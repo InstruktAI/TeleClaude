@@ -17,6 +17,6 @@ def ensure_git_repo(project_root: Path) -> None:
 
     try:
         Repo.init(project_root)
-        print("telec projects init: initialized git repository.")
+        print("telec config project init: initialized git repository.")
     except GitCommandError:
-        print("telec projects init: failed to initialize git repository; skipping git setup.")
+        print("telec config project init: failed to initialize git repository; skipping git setup.")
