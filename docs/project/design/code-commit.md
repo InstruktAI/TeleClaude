@@ -159,11 +159,7 @@ op wins.
 | `git checkout -- <path>` (no ref) | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Working-tree revert to HEAD; same gating as `git restore <path>`. |
 | `git checkout <ref> -- <path>` | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Foreign-ref content into working tree. |
 | `git checkout <branch>` / `git switch` | ❌ blocked | ❌ blocked | ❌ blocked | Branch switching loses workspace; not how agents change branches. |
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-| `git stash*` | ❌ blocked (absolute, no role override) | ❌ blocked | ❌ blocked | In a multi-agent repo, a stash lifts working-tree changes out of the checkout that other agents may own; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator's recovery when repo-root sync finds dirty files is to halt and surface to the human (per the integration procedure), never to stash. |
-<!-- change:integrator-stranded-dirt-by-asking -->
 | `git stash*` | ❌ blocked (absolute, no role override) | ❌ blocked | ❌ blocked | In a multi-agent repo, a stash lifts working-tree changes out of the checkout that other agents may own; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator resolves dirty files that block repo-root sync path by path under the integration procedure — it asks the sessions that can have written each path and commits a quiet, unclaimed path as-is — and never stashes. |
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 | `git clean` | ❌ blocked | ❌ blocked | ❌ blocked | Deletes untracked files; rarely the right answer for agents. |
 | `git revert <commit>` | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Multi-agent commits often span scopes; inspection precedes revert. |
 | `git merge`/`rebase`/`cherry-pick` on main | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed | (n/a) | Replays produce commits via paths that bypass `telec code commit`'s sealed commit gate. |
@@ -422,20 +418,12 @@ commit-first gate.
 
 ### Integrator's project-root sync
 
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-The integrator does not run `telec code commit` against the project-root main.
-Repo-root sync after a delivery uses `git -C <project-root> ...` directly
-(pull / merge / push). If the merge is blocked by a dirty working tree,
-the integrator's main-clearance reminder reopens the check until the dirty file's owner commits via
-their own session.
-<!-- change:integrator-stranded-dirt-by-asking -->
 Repo-root sync after a delivery uses `git -C <project-root> ...` directly
 (pull / merge / push). If the merge is blocked by a dirty working tree, the
 integrator's main-clearance reminder reopens the check on each beat and resolves
 each dirty path under `sdlc/procedure/lifecycle/integrate`: it asks the sessions
 that can have written the path, and commits a quiet, unclaimed path as-is with a
 pathspec-scoped `telec code commit`.
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ### Agent commit during active merge (worktree)
 

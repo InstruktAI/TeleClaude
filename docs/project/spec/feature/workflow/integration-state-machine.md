@@ -383,43 +383,6 @@ And a dirty state or conflict that prevents safe synchronization blocks delivery
 And no marker fold or final push runs until repository-root synchronization is complete
 ```
 
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-#### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
-
-```gherkin
-Given a caller supplies one or more dirty project-relative paths
-And zero or more open local-project sessions have touched those paths
-When the caller asks for the paths' owners in one batch
-Then the result is a JSON object keyed by every requested project-relative path
-And the earliest live session whose claim remains uncommitted owns each claimed path
-And a later session touching the same path does not transfer that ownership
-And an owned path reports the TeleClaude session UUID, job role, and session title
-And a path with no live claimant reports a null owner
-And the query reports the count of captured sessions whose attribution signal is UNDETERMINED without exposing their identity
-And the query reads one live-session snapshot without scanning closed sessions or rechecking liveness
-```
-
-#### UC-WISM30: The integrator resolves aged dirty blockers by owner group and custodianship
-
-```gherkin
-Given repo-root synchronization remains blocked after the dirty-main quiet window
-And the integration instruction carries the complete set of blocking dirty paths
-When the integrator resolves ownership for that complete set
-Then it coordinates each live owner once with every blocking path attributed to that session
-And an unchanged blocking set is queried again on later reminder beats against a fresh open-session snapshot
-And an owner already coordinated for that blocking set is never contacted again
-And a newly observed live owner is coordinated once with its complete attributed subset
-And every null-owned path transfers to the integrator for inspection
-And the integrator commits discernible intentional work or reverts abandoned residue
-And a positive UNDETERMINED-session count prohibits treating null-owned residue as abandoned for that result
-And revert authority returns only after a later result reports zero undetermined sessions and no live owner for the path
-And an unsettled live-owned path or positive undetermined count initially keeps the integrator waiting without mutation or repeat contact
-And an unchanged live owner-path group or positive undetermined count that survives three consecutive later reminder beats after first observation causes one escalation carrying the complete current owner groups, paths, and privacy-safe count
-And the integrator then remains the single non-mutating blocker beacon without repeating the owner message or escalation for that blocking set
-And the reminder is cancelled at that escalation
-And apart from the bounded protection-condition stall, only a path whose intent cannot be determined safely is escalated to the human
-```
-<!-- change:integrator-stranded-dirt-by-asking -->
 #### UC-WISM36: The integrator asks once about a quiet dirty path, then commits it when nobody claims it
 
 ```gherkin
@@ -457,7 +420,6 @@ And it leaves the path untouched and holds as its blocker beacon
 And other dirty paths continue through their own resolution
 And the clearance reminder is cancelled only when every remaining dirty path has been escalated
 ```
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 #### UC-WISM29: A drained singleton parks on its queue watcher
 

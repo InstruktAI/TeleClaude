@@ -116,25 +116,6 @@ A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same
 path; each is an owner, and no arbitration selects between them.
 
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-### Batch dirty-path ownership
-
-The read-only `telec code owners <path>...` query reports which live sessions
-have declared a caller-supplied batch of project-relative dirty paths. Its inputs
-are the validated paths, one porcelain-derived dirty set, and one snapshot of open
-sessions whose project root and computer match the caller. Closed sessions are
-outside the snapshot, so a dead session's declarations hold no claim.
-
-The output is one JSON object keyed by every requested path. An owned entry
-carries every live declaring session's UUID, job role, and title; a path no live
-session declared carries `null`. Declarations are read, never inferred: the query
-inspects no transcript for file-edit evidence, consults no commit authorship, and
-introduces no durable claim state beyond the declarations themselves.
-
-No lifecycle role depends on this query. It exists as a diagnostic for a human or
-agent asking who is working on a path.
-<!-- change:integrator-stranded-dirt-by-asking -->
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ## Invariants
 
@@ -247,19 +228,6 @@ telec code lint <files...>
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-### Batch ownership flow
-
-```
-telec code owners <path>...
-  → validate and normalize every requested project-relative dirty path
-  → capture one open local-project session snapshot and one dirty-path set
-  → read each snapshot session's live declarations
-  → group declaring sessions by path
-  → emit one complete JSON object in caller path order, including null owners
-```
-<!-- change:integrator-stranded-dirt-by-asking -->
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ### Thin hook flow
 
@@ -308,16 +276,6 @@ outcomes that must never look like success. The condition reads only the acting
 session's own declarations. It inspects no other path's provenance, so dirt this
 session did not declare — a human's direct edits among it — never triggers it.
 
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-### Batch ownership cannot be completed
-
-An input path is outside the project or not dirty in the captured porcelain
-set, or the session snapshot or dirty-path set cannot be resolved.
-
-**Response:** Exit non-zero with a path- or snapshot-specific diagnostic and no
-ownership JSON.
-<!-- change:integrator-stranded-dirt-by-asking -->
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ### No recognised language artifacts / missing make target
 

@@ -71,7 +71,6 @@ All Committizen types are allowed.
   conversation into a finished change. Where the human has not released the
   tracked change for commit, report what remains uncommitted and offer to
   commit; do not commit it, revert it, or suppress the automation.
-<!-- planned:integrator-stranded-dirt-by-asking -->
 - **Stranded paths on main are committed by the integrator.** A dirty path that
   blocks repo-root synchronization is put to every live session that can have
   written it, and a session whose change is not released for commit claims the
@@ -79,7 +78,6 @@ All Committizen types are allowed.
   past the next clearance beat, has no owner left to release it; the integrator
   commits it as-is under `sdlc/procedure/lifecycle/integrate`. This is the only
   commit made of another session's uncommitted work.
-<!-- /planned:integrator-stranded-dirt-by-asking -->
 - Before committing on shared `main`, run bare `telec code commit` to surface
   the gate card, then commit with `telec code commit --approved "<message>"`,
   which commits the set the session declared. Pass `--only <path>...` to split

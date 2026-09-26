@@ -45,24 +45,12 @@ each decision point until the queue is drained.
   without ceremony. The `--confirmed` friction is the integrator's deliberate
   ratification that the working-tree mutation has been inspected and will not
   silently overwrite intentional state before the next bookkeeping commit.
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-- **When repo-root sync is blocked by dirty files**, the integrator does NOT stash
-  and does NOT rebase across foreign WIP — dirty files in the project root belong to
-  concurrent agents, and only their author may resolve them. But this block is almost
-  always **transient**: those agents commit their snippets within minutes and main
-  goes green on its own. So do not idle and do not escalate on first contact — wait
-  on `integrator-main-clearance` (see **REPO ROOT SYNC REQUIRED** below). The one exception:
-  a trivial repo-hygiene/config file (`.gitignore` and the like) may be committed
-  as-is to unblock — a non-destructive move detailed under **REPO ROOT SYNC
-  REQUIRED**. The state machine emits this guidance when it observes the divergence.
-<!-- change:integrator-stranded-dirt-by-asking -->
 - **When repo-root sync is blocked by dirty files**, the integrator never stashes,
   overwrites, rebases across, or discards them. It waits on `integrator-main-clearance`
   and resolves each dirty path on its own: it asks the sessions that can have written
   the path, and commits the path as-is once it is quiet and unclaimed (see **REPO ROOT
   SYNC REQUIRED** below). The state machine emits this guidance when it observes the
   divergence.
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ## Steps
 
@@ -180,41 +168,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
   divergence yours — the commits that produced it are concurrent sessions' committed
   work, referenced elsewhere by SHA. If the merge cannot be resolved, STOP and ask the
   human.
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-- **Blocked on dirty main:** concurrent agents have uncommitted work in the project
-  root. The integrator must never stash, overwrite, or rebase across it — only the
-  authoring agent may resolve it. This block is **transient**: those agents commit
-  within minutes and main clears. So do not idle, do not end the session, and do not
-  escalate on first contact — **keep `integrator-main-clearance` live**:
-  1. Set the prescribed recurring reminder at the existing ~2–3 minute caller
-     interval. Do not use a local sleep, cron, `/loop`, or conversational message
-     as its timer.
-  2. When it fires, re-check repo-root cleanliness (`git -C <root> status --short`).
-     Still dirty → leave the recurring reminder live and wait again. Clean →
-     cancel it, resume `telec todo integrate`, and continue the drain.
-  3. After the block persists ~15–20 min (≈5 beats) with the same complete path
-     set, continue into **After the dirty-main quiet window** below. Human
-     escalation is reserved for intent that remains genuinely ambiguous after
-     ownership resolution and integrator inspection, or for a protection
-     condition that survives the bound below.
-
-  **Trivial repo-hygiene files are a sanctioned exception to the wait.** When the
-  only dirty paths are repo-hygiene or config files — `.gitignore`, `.gitattributes`,
-  editor/tooling config, and the like — whose diff is small and self-evidently benign
-  on inspection, commit them as-is to unblock the sync rather than waiting out the
-  window. Committing-as-is is **non-destructive**: it preserves the change exactly,
-  which is what makes it safe — unlike stash, overwrite, discard, or rebase-across,
-  which relocate or destroy a worker's change and stay forbidden for every dirty path.
-  Inspect the diff first, then land it with a pathspec-scoped
-  `telec code commit --approved --include <path>` under an honest message, and rebase.
-  The exception is narrow on purpose: source, tests, docs-with-content, lockfiles, and
-  delivery-tied generated artifacts are a worker's substantive deliverable — never
-  commit those, and when you cannot tell which kind a dirty file is, treat it as a
-  worker's and stay in the `integrator-main-clearance` flow above.
-
-  While waiting you are not idle: you hold the lease and the in-flight candidate is
-  already committed, ready to push the instant main clears.
-<!-- change:integrator-stranded-dirt-by-asking -->
 - **Blocked on dirty main:** paths other sessions have not committed block the sync.
   The integrator never stashes, overwrites, rebases across, or discards them.
   Committing a path as-is is the only change it makes to another session's work,
@@ -236,7 +189,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
 
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 - **Git operation failure:** Fetch, repository-state inspection, fast-forward, and
   bookkeeping-push failures render a distinct **INTEGRATION ERROR** outcome rather than
@@ -244,37 +196,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
   steps within its governance, and re-enters `telec todo integrate`; the failure never
   parks the integrator merely because the failed operation was implied by its task.
 
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-#### After the dirty-main quiet window
-
-Keep waiting. Dirty paths on repo-root main belong to the sessions that declared them
-and those sessions commit them; the integrator queries no ownership, contacts no
-session, and mutates no path it did not deliver. `integrator-main-clearance` stays live
-and re-checks cleanliness on each beat.
-
-When the same complete blocking path set survives three consecutive reminder beats after
-it is first observed, escalate once for that set, cancel the reminder, and hold as the
-single human-blocker beacon without mutating the protected paths or emitting another
-escalation for that set. The next move belongs to the human.
-
-#### Reminder: integrator-main-clearance
-
-- **Owner:** Integration procedure.
-- **Parameters:** none; project root and integrator session derive from the
-  authenticated caller and current integration checkpoint.
-- **Activation anchor:** immediately when repo-root main blocks synchronization.
-- **Duration:** the existing ~2–3 minute interval owned by this procedure.
-- **Recurrence:** recurring while repo-root main remains blocked.
-- **Arm condition:** set on first dirty-main block before yielding.
-- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. Otherwise keep waiting and keep this reminder; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
-- **Firing behavior:** inspect current repo-root cleanliness and follow
-  **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
-  dirty paths, and without querying or contacting any other session.
-- **Cancellation:** cancel when main clears, the integration session reaches a
-  terminal outcome, or the human explicitly supersedes the wait. Cancel it at
-  the single bounded escalation that transfers the next move to the human.
-- **Invocation:** `telec reminders set integrator-main-clearance`.
-<!-- change:integrator-stranded-dirt-by-asking -->
 #### Resolving a dirty path
 
 On each `integrator-main-clearance` beat, take each dirty path on its own. Each path
@@ -327,7 +248,6 @@ one unit.
   terminal outcome, the human explicitly supersedes the wait, or every remaining
   dirty path has been escalated.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 #### Reminder: integrator-queue-watch
 
@@ -412,16 +332,9 @@ The integrator's terminal behavior has three shapes — do not collapse them:
 - **Queue drained (INTEGRATION COMPLETE):** park on the prescribed recurring
   `integrator-queue-watch` and await the next candidates. The integrator is a
   singleton and is not re-dispatched; end only when directed.
-<!-- planned-change:integrator-stranded-dirt-by-asking -->
-- **Transient block (dirty main):** do not end and do not idle — keep
-  `integrator-main-clearance` live
-  until main clears, then continue the drain (see **REPO ROOT SYNC REQUIRED**). The
-  block self-heals as concurrent agents commit.
-<!-- change:integrator-stranded-dirt-by-asking -->
 - **Transient block (dirty main):** do not end and do not idle — keep
   `integrator-main-clearance` live and resolve each dirty path until main clears,
   then continue the drain (see **REPO ROOT SYNC REQUIRED**).
-<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 - **Unrecoverable block (genuine human decision):** stay alive as a beacon, but only
   after recovery and the retry window are exhausted, so the human sees and intervenes.
 
