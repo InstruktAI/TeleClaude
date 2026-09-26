@@ -118,18 +118,6 @@ and destructive-operation rows follow `code`, which no non-project tier
 carries. A company declaration anchors no context and seals nothing: the
 wrapper execs the real git binary unmodified.
 
-<!-- planned-change:fix-subject-checkout-grading-canonical-config -->
-A declaration the wrapper cannot resolve — no readable tier, or a capability
-block whose value is not a boolean — refuses the git invocation with a message
-naming `teleclaude.yml` and the field, and substitutes no capability state. The
-wrapper and the runtime answer alike for every declared tier and for every
-capability block carrying an unquoted boolean. They part on two inputs: a block
-whose value the runtime coerces from a quoted string or a number is refused by
-the wrapper, and a declaration whose capability blocks are well-formed but which
-fails validation elsewhere in the overlay is refused by the runtime and honoured
-by the wrapper, which reads only the tier and the capability blocks
-(`project/spec/feature/config/project-capability-manifest`).
-<!-- change:fix-subject-checkout-grading-canonical-config -->
 A declaration the wrapper cannot resolve — no readable tier, or a capability
 block whose value is not a boolean — refuses the git invocation with a message
 naming `teleclaude.yml` and the field, and substitutes no capability state. The
@@ -140,7 +128,6 @@ the wrapper. Both read only the tier and the capability blocks, so a declaration
 that fails validation elsewhere in the overlay keeps its capability answer on
 both; loading the full overlay still refuses it
 (`project/spec/feature/config/project-capability-manifest`).
-<!-- /planned-change:fix-subject-checkout-grading-canonical-config -->
 
 <!-- planned:telec-startup-does-only-auth -->
 The role the matrix reads is resolved from the caller's session record through the
