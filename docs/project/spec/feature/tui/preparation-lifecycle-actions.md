@@ -94,7 +94,7 @@ And the viewer is read-only, so nothing done in it changes either todo's artifac
 
 ```gherkin
 Scenario Outline: A retained todo's rows offer only what its state allows
-  Given the operator has revealed a project's <section> section
+  Given a human operator at the TUI has revealed a project's <section> section
   And a <state> todo is shown there, expanded to its files
   When the operator puts the cursor on that todo's <row>
   Then the actions the view offers on that todo are exactly <offered>
@@ -112,7 +112,7 @@ Scenario Outline: A retained todo's rows offer only what its state allows
 
 ```gherkin
 Given a project holds a live todo, a delivered todo, and a removed todo that share one slug
-And the operator has revealed the project's Delivered and Trashed sections
+And a human operator at the TUI has revealed the project's Delivered and Trashed sections
 When the operator expands one of those todos
 Then that todo's row alone shows its files
 And the other todos that share the slug stay collapsed
@@ -124,7 +124,7 @@ And after the view rebuilds or the TUI restarts, that todo alone is still expand
 ```gherkin
 Given a delivered todo and a live todo in one project share a slug
 And each holds an artifact of the same name with different content
-And the operator has revealed the project's Delivered section and expanded both todos
+And a human operator at the TUI has revealed the project's Delivered section and expanded both todos
 When the operator opens the artifact from the delivered todo's row
 Then the viewer shows the content stored for the delivered todo's artifact
 And the viewer is read-only, so nothing done in it changes either todo's artifacts
@@ -136,7 +136,7 @@ And saving an edit there changes only the live todo's artifact
 #### UC-PLA-7: An action from a row whose todo has since been removed is refused, never retargeted
 
 ```gherkin
-Given the view shows a live todo's row
+Given a human operator at the TUI sees a live todo's row in the Preparation view
 And after the view drew it, that todo was removed and a new live todo took its slug
 When the operator starts an action on the todo from that row before the view refreshes
 Then the action is refused and the new todo is left unchanged

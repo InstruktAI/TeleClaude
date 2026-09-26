@@ -377,13 +377,13 @@ Then the todo becomes held with the submitted reason
 
 ```gherkin
 Given a project holds a removed todo, a delivered todo, and a live todo that share one slug
-When an API client addresses a lifecycle or artifact-changing action to the removed todo's durable identity
-Then the client receives a refusal naming the removed state and reactivation as the way forward
+When an agent calling the workflow API addresses a lifecycle or artifact-changing action to the removed todo's durable identity
+Then the agent receives a refusal naming the removed state and reactivation as the way forward
 And none of the three todos changes
-When the API client addresses such an action to the delivered todo's durable identity
-Then the client receives a refusal naming the delivered state as read-only
+When the agent addresses such an action to the delivered todo's durable identity
+Then the agent receives a refusal naming the delivered state as read-only
 And none of the three todos changes
-When the API client addresses the same action to the live todo's durable identity
+When the agent addresses the same action to the live todo's durable identity
 Then the live todo changes exactly as it does when the action is addressed to its slug
 And the removed and delivered todos do not change
 ```
