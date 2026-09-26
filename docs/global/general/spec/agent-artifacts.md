@@ -90,9 +90,12 @@ when a single procedure clearly governs the command's work, that is the counterp
   because of the recency effect: procedures loaded via required reads land at the
   top of context and fade as the window fills with codebase reads, artifact content,
   and analysis. By the time the agent acts, the constraints are far away. The
-  Discipline section is the behavioral anchor — 3-5 sentences that name this
-  command's specific failure mode and the one or two rules most likely to be
-  violated. It does not duplicate the procedure. It activates awareness of the
+  Discipline section is the behavioral anchor: it names this command's own
+  failure mode — the mistake an agent is most likely to make at the moment of
+  acting — and the rule that prevents it. A caution that would fit any command
+  is not a Discipline. It stays short enough to be the last thing read before
+  acting; its measure is specificity, never length. It does not duplicate the
+  procedure. It activates awareness of the
   procedure at the moment it matters most. Every command must have one. A command
   without a Discipline section ships without its safety net. When a command
   delegates to its counterpart procedure's discipline, that procedure must
