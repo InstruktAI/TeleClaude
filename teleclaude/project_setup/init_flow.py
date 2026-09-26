@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import os
 import shutil
-import sys
 from pathlib import Path
 
 import yaml
@@ -17,7 +16,7 @@ from teleclaude.config import config
 from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.config.declaration import write_declared_config
-from teleclaude.config.machine_config_mutation import add_trusted_directory, inspect_machine_config, set_deployment
+from teleclaude.config.machine_config_mutation import add_trusted_directory, set_deployment
 from teleclaude.config.schema import ConfigKind
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config, get_project_slug
@@ -35,8 +34,6 @@ from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
 
-# Valid release channels.
-_RELEASE_CHANNELS = ("alpha", "beta", "stable")
 _DOCS_DIRECTORY = "docs"
 # `.agents/` is deliberately excluded: it is the local phase's delivery
 # location, never an authored source, so its presence must never turn the
@@ -155,57 +152,6 @@ def migrate_legacy_deployment_sources(project_root: Path) -> bool:
     return migrated
 
 
-def _prompt_release_channel(project_root: Path) -> None:
-    """Migrate any legacy block, then prompt for release-channel enrollment on the machine config."""
-    migrate_legacy_deployment_channel(resolve_project_config_path(project_root))
-
-    current_channel = "alpha"
-    current_pinned = ""
-    try:
-        raw = inspect_machine_config().raw
-    except (OSError, ValueError) as exc:
-        logger.warning("Could not inspect machine config for release channel prompt: %s", exc)
-        return
-    deployment = raw.get("deployment", {})
-    if isinstance(deployment, dict):
-        current_channel = deployment.get("channel", "alpha")
-        current_pinned = deployment.get("pinned_minor", "")
-
-    if not sys.stdin.isatty():
-        # Non-interactive: keep current settings.
-        return
-
-    print(f"\nRelease channel: currently '{current_channel}'")
-    if current_channel == "stable" and current_pinned:
-        print(f"  Pinned minor: {current_pinned}")
-
-    try:
-        choice = input(f"Release channel ({'/'.join(_RELEASE_CHANNELS)}) [{current_channel}]: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return
-
-    if not choice:
-        choice = current_channel
-    if choice not in _RELEASE_CHANNELS:
-        print(f"  Invalid channel '{choice}', keeping '{current_channel}'.")
-        return
-
-    pinned_minor = ""
-    if choice == "stable":
-        try:
-            pinned_minor = input("  Pinned minor version (required for stable): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
-        if not pinned_minor:
-            print("  Stable channel requires a pinned minor. Keeping current settings.")
-            return
-
-    set_deployment(ReleaseChannel(choice), pinned_minor)
-    print(f"  Release channel set to '{choice}'.")
-
-
 def _ensure_project_slug(project_root: Path) -> None:
     """Ensure ``teleclaude.yml`` carries a valid ``project_slug`` entry.
 
@@ -276,12 +222,12 @@ def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude — configuration and plumbing only.
 
     Configures git filters and project-owned hooks, converges plumbing,
-    registers the project root, and prompts for release-channel enrollment.
+    and registers the project root. Asks nothing: machine-wide settings such as
+    the release channel belong to the machine configuration, not to a project.
     Idempotent and CI-safe; spawns no agent sessions and syncs no artifacts.
 
-    Mother-aware: when invoked inside the TeleClaude repo itself, site-project
-    bootstrap steps (skeleton deployment, release-channel prompt) are skipped
-    — they only make sense for downstream projects.
+    Mother-aware: when invoked inside the TeleClaude repo itself, skeleton
+    deployment is skipped — it only makes sense for downstream projects.
 
     AI-driven project analysis and quality-config assessment are explicit,
     separate acts started with ``telec sessions run --command
@@ -308,13 +254,6 @@ def init_project(project_root: Path) -> None:
     advance_reachable_roots()
     seed_event_domains(project_root)
 
-    # Bootstrap help desk workspace if running from the TeleClaude project
-    if is_mother:
-        _bootstrap_help_desk(project_root)
-    else:
-        # Release channel enrollment is a downstream-project concern.
-        _prompt_release_channel(project_root)
-
     print("telec config project init complete.")
 
 
@@ -332,7 +271,7 @@ def _resolve_help_desk_dir() -> Path:
     return teleclaude_root.parent / "help-desk"
 
 
-def _bootstrap_help_desk(project_root: Path) -> None:
+def bootstrap_help_desk(project_root: Path) -> None:
     """Scaffold the help desk workspace if it does not exist.
 
     Idempotent: skips if the directory already exists. Calls ``init_project``

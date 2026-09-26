@@ -1,5 +1,5 @@
 ---
-description: 'Complete telec config project init pipeline — project git plumbing, artifact sync, event domain seeding, project registration, release channel.'
+description: 'Complete telec config project init pipeline — project git plumbing, artifact sync, event domain seeding, project registration.'
 visibility: 'public'
 ---
 
@@ -145,14 +145,6 @@ manifest to decide which projects to watch and sync surgically.
 
 Source: `teleclaude/project_manifest.py:register_root()`
 
-### 10. Release channel enrollment (interactive)
-
-Prompts for the deployment release channel (`alpha`/`beta`/`stable`) and persists the
-choice to `teleclaude.yml` under `deployment.channel`. Stable channel requires a
-`pinned_minor` version. Skipped in non-interactive (non-TTY) mode.
-
-Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
-
 ## Outputs
 
 - Capability subscriptions declared in `teleclaude.yml` and projected as markers under
@@ -164,7 +156,6 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 - `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
 - Artifacts synced and indexes built.
 - Event domains seeded in global config (if not already populated).
-- Release channel persisted (interactive only).
 
 ## Recovery
 

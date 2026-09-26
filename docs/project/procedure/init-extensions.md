@@ -1,5 +1,5 @@
 ---
-description: 'TeleClaude-specific init extensions — help desk bootstrap and machine-global macOS install steps.'
+description: 'TeleClaude-specific init extensions — project-local init boundaries and machine-global macOS install steps.'
 visibility: 'public'
 ---
 
@@ -8,30 +8,16 @@ visibility: 'public'
 ## Goal
 
 Document the TeleClaude-specific setup split: `telec config project init` owns project-local
-plumbing and help desk bootstrap, while `make install` owns machine-global steps — the
+plumbing, while `make install` owns machine-global steps — the
 logging runtime the host reads logs with, plus macOS launcher installation and
 permission probing.
 
 ## Preconditions
 
-- Running `telec config project init` from the TeleClaude project root for help desk bootstrap.
 - Running `make install` from the TeleClaude project root for machine-global steps.
 - For macOS machine-global steps: running on macOS (`sys.platform == "darwin"`).
 
 ## Steps
-
-### 1. Help desk workspace bootstrap
-
-When init detects it is running inside the TeleClaude project, it scaffolds the
-help desk workspace. The help desk directory is resolved from
-`config.computer.help_desk_dir` or defaults to a sibling directory
-(`../help-desk` relative to the TeleClaude project root).
-
-Idempotent — skips if the directory already exists. Copies templates and
-re-runs `telec config project init` within the help desk project to bootstrap its own
-plumbing.
-
-Source: `teleclaude/project_setup/help_desk_bootstrap.py:bootstrap_help_desk()`
 
 ### 1a. Project remote provisioning — an agent procedure, not an init step
 
@@ -173,10 +159,8 @@ skipped in CI mode and in the deps-only install a git worktree resolves to.
 
 Source: `teleclaude/core/reconciliation/config_schemas.py`
 
-
 ## Outputs
 
-- Help desk workspace scaffolded (TeleClaude project only).
 - Launcher apps installed to `~/Applications/` by `make install` (macOS only).
 - Permission probe results reported to the user by `make install` (macOS only).
 
@@ -186,8 +170,7 @@ Source: `teleclaude/core/reconciliation/config_schemas.py`
 
 ## Recovery
 
-- All steps are idempotent. Re-running `telec config project init` repeats help desk bootstrap safely; re-running `make install` repeats macOS launcher/probe setup safely.
-- If the help desk bootstrap fails, the main init continues unaffected.
+- All steps are idempotent. Re-running `make install` repeats macOS launcher/probe setup safely.
 - Permission denials require manual System Settings changes; re-running `make install`
   after granting access will show a passing probe.
 

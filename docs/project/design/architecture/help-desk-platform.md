@@ -107,7 +107,7 @@ Doc snippets in this domain follow the standard taxonomy (spec, policy, procedur
 
 ### Help Desk Bootstrap Routine
 
-An idempotent routine scaffolds the help desk workspace when it does not exist. It runs as part of `telec config project init` in the TeleClaude project.
+An idempotent routine scaffolds the help desk workspace when it does not exist. No setup flow invokes it: `telec config project init` does not bootstrap a help desk, in the TeleClaude project or anywhere else.
 
 **Default location:** Sibling of the TeleClaude project. If TeleClaude lives at `/path/to/TeleClaude`, the default help desk path is `/path/to/help-desk`. Configurable via `help_desk_dir` in computer config.
 
@@ -925,7 +925,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User
-    participant Init as telec config project init
+    participant Init as Help desk bootstrap
     participant FS as Filesystem
     participant Git as git
 
@@ -949,7 +949,7 @@ sequenceDiagram
 | Memory extraction dies mid-processing                        | Partial extraction; marker not updated               | Next idle trigger or cron sweep reprocesses from last marker                         |
 | Compaction injected before extraction                        | Cannot happen — extraction must complete first       | Daemon enforces sequencing; if extraction fails, compaction is skipped               |
 | Memory injection exceeds context window                      | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                     |
-| help_desk_dir missing at session start                       | Bootstrap routine creates it if part of init flow    | If not bootstrapped, jailing logic creates minimal directory                         |
+| help_desk_dir missing at session start                       | No setup flow bootstraps it                          | If not bootstrapped, jailing logic creates minimal directory                         |
 | Channel publish fails (Redis down)                           | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                    |
 | Channel consumer dies mid-processing                         | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                          |
 | Intelligence job finds no new data                           | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
