@@ -97,16 +97,17 @@ flowchart LR
 
 ### Commands that act on the project root
 
-| Command                                          | Shared state it acts on                                                                 |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `telec todo …`, including artifacts and stamps   | The one todo store; a worktree is a todo's sandbox and holds no copy                    |
-| `telec docs …` in a project context              | The doc layer and its generated index, authored and built only on the project root      |
-| `telec bugs …`, including the suppression ledger | The project's bug lane and the ledger the log bug hunter reads                          |
-| `telec jobs report`                              | The project's job records                                                               |
-| `telec content dump`                             | The project's publications inbox                                                        |
-| `telec mcp …`                                    | The project's registry overlay, on top of the machine-wide registry                     |
-| `telec config project init`                      | The checkout it adopts: registration and plumbing are done once, at the owning checkout |
-| `telec code maintenance …`                       | The project's maintenance records; a worktree invocation drains nothing                 |
+| Command                                                               | Shared state it acts on                                                                 |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `telec todo …`, including artifacts and stamps                        | The one todo store; a worktree is a todo's sandbox and holds no copy                    |
+| `telec docs …` in a project context                                   | The doc layer and its generated index, authored and built only on the project root      |
+| `telec bugs …`, including the suppression ledger                      | The project's bug lane and the ledger the log bug hunter reads                          |
+| `telec jobs report`                                                   | The project's job records                                                               |
+| `telec content dump`                                                  | The project's publications inbox                                                        |
+| `telec mcp …`                                                         | The project's registry overlay, on top of the machine-wide registry                     |
+| `telec config project init`                                           | The checkout it adopts: registration and plumbing are done once, at the owning checkout |
+| `telec code maintenance …`                                            | The project's maintenance records; a worktree invocation drains nothing                 |
+| `telec` (the TUI) creating a todo or bug with no row under the cursor | The project it was started from, forwarded to the daemon                                |
 
 ### Commands that act on daemon and live-home state
 

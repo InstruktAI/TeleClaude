@@ -134,6 +134,18 @@ Then the action is refused and the new todo is left unchanged
 And the operator is notified at error severity with a refusal that names the removed state and reactivation as the way forward
 ```
 
+<!-- planned:worktree-or-project-scope -->
+#### UC-PLA-8: A todo created with no row under the cursor belongs to the project the TUI was started from
+
+```gherkin
+Given a human operator started the TUI from inside a project, or from a subdirectory or slug worktree of it
+And no todo row is under the cursor in the Preparation view
+When the operator creates a new todo or bug
+Then the new item is created in that project
+And no item is created in any other project
+```
+<!-- /planned:worktree-or-project-scope -->
+
 ## See Also
 
 - docs/project/design/architecture/tui-state-layout.md — the Preparation view's
