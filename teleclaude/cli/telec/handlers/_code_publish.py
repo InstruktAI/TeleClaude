@@ -15,7 +15,7 @@ from teleclaude.core.integration.post_commit_maintenance import (
     activation_range_owes_action,
 )
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
-from teleclaude.sync import publish_recorded_commit
+from teleclaude.sync import PublicationOutcome, publish_recorded_commit
 
 logger = get_logger(__name__)
 
@@ -52,13 +52,18 @@ def handle_code_publish(args: list[str]) -> None:
     if not activation_range_owes_action(project_root, activation_range, _SYNC_ACTION_ID):
         print(_PUBLISH_RANGE_NOT_OWED, file=sys.stderr)
         raise SystemExit(1)
-    succeeded = publish_recorded_commit(project_root, activation_range.after_sha)
+    result = publish_recorded_commit(project_root, activation_range.after_sha)
+    published = result.outcome in (PublicationOutcome.PUBLISHED, PublicationOutcome.SUPERSEDED)
     logger.info(
         _PUBLISH_ACTION_FINISHED_EVENT,
         before_sha=activation_range.before_sha,
         after_sha=activation_range.after_sha,
         action_id=_SYNC_ACTION_ID,
-        exit_code=_PUBLISH_SUCCEEDED if succeeded else _PUBLISH_FAILED,
+        exit_code=_PUBLISH_SUCCEEDED if published else _PUBLISH_FAILED,
+        outcome=result.outcome,
+        reason=result.reason,
+        published_generation=result.published_generation,
+        unfinished_publication=result.unfinished_publication,
     )
-    if not succeeded:
+    if not published:
         raise SystemExit(_PUBLISH_FAILED)
