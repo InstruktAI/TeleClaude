@@ -10,7 +10,14 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR, safe_path_component
+from teleclaude.paths import (
+    BIN_DIR,
+    DEFAULT_TELECLAUDE_HOME,
+    SHELL_DIR,
+    TELECLAUDE_HOME,
+    TMP_SESSIONS_DIR,
+    safe_path_component,
+)
 from teleclaude.runtime.environment import (
     filter_platform_session_environment,
     host_xdg_env,
@@ -198,14 +205,17 @@ async def _create_tmux_session(
         # tree. PATH is resolved live from the user's configured shell, then
         # composed with ~/.teleclaude/bin first so the git wrapper wins.
         #
-        # TELECLAUDE_HOME is propagated explicitly so the wrapper and rc
-        # files (which all read it with a `${HOME}/.teleclaude` fallback)
-        # resolve to the same root the daemon is configured for. Without
-        # this, an override-rooted daemon would launch the correctly-pathed
-        # wrapper only to have the wrapper reset PATH/ZDOTDIR/etc. back to
-        # the default root via the fallback.
+        # TELECLAUDE_HOME is propagated only for an override-rooted daemon, so
+        # the wrapper and rc files (which all read it with a
+        # `${HOME}/.teleclaude` fallback) resolve to the same root the daemon
+        # is configured for instead of resetting PATH/ZDOTDIR/etc. back to the
+        # default root. The default root reaches every consumer through that
+        # fallback, so it is never placed in an agent's environment: an ambient
+        # value naming the live home lets any command an agent builds from the
+        # variable resolve to the live home.
         shell_dir = str(SHELL_DIR)
-        controlled_env_vars["TELECLAUDE_HOME"] = str(TELECLAUDE_HOME)
+        if TELECLAUDE_HOME != DEFAULT_TELECLAUDE_HOME:
+            controlled_env_vars["TELECLAUDE_HOME"] = str(TELECLAUDE_HOME)
         controlled_env_vars["SHELL"] = str(BIN_DIR / "teleclaude-shell")
         controlled_env_vars["ZDOTDIR"] = shell_dir
         controlled_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"

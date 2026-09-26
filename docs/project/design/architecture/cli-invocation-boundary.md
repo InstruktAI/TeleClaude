@@ -4,7 +4,7 @@ description: The path from a shell to a telec command handler — which checkout
   its own change without reaching live state.
 visibility: internal
 delivered_by:
-- telec-startup-does-only-auth
+  - telec-startup-does-only-auth
 ---
 
 # CLI Invocation Boundary — Design
@@ -33,8 +33,8 @@ design owns only the path that connects them.
 **Outputs**
 
 - The command's handler runs with a resolved, authorized caller, or
-- a refusal before the handler runs: a worktree wrapper aimed at the live home, an
-  unidentified caller, or a role the command does not admit.
+- a refusal before the handler runs: an unidentified caller, or a role the command
+  does not admit.
 
 ## Invariants
 
@@ -43,14 +43,16 @@ design owns only the path that connects them.
    that checkout. The caller's working directory never selects code; handlers still
    receive it as the directory the command acts on.
 2. **Worktree code never runs against the live home.** A slug worktree's `bin/telec`
-   runs only when its home resolves to a location other than the live home. Aimed at
-   the live home, it is refused before any worktree code runs, and the refusal names
-   the scratch-home form of the call. An unset or empty home is the live home. Any
-   other home is compared with the live home by filesystem identity, so no spelling,
-   symlink, `..` or letter case reaches it, and the interpreter receives exactly the
-   location that was checked. A scratch home that holds no machine configuration
-   receives a copy of the live one before the worktree's code starts; nothing else is
-   copied. The integration worktree is not a slug worktree.
+   runs the worktree's code against a home other than the live one. When the caller
+   names no home, or names the live home, the wrapper creates a temporary home, runs
+   against it, and removes it when the command ends, all within that one process; the
+   caller never creates, names, or removes a home (`project/policy/test-moratorium`).
+   An unset or empty home is the live home. Any other named home is compared with the
+   live home by filesystem identity, so no spelling, symlink, `..` or letter case
+   reaches it, and the interpreter receives exactly the location that was checked. A
+   home that holds no machine configuration receives a copy of the live one before the
+   worktree's code starts; nothing else is copied. The integration worktree is not a
+   slug worktree.
 3. **`telec code` grades a change with the change's own code.** Lint lanes, guardrail
    allowlists, schemas and the rendered command surface that judge a worktree's change
    come from that worktree, while `telec code` itself runs installed code. The
@@ -93,7 +95,8 @@ flowchart TD
     Own --> Slug{slug worktree?}
     Slug -->|no| Interp
     Slug -->|yes| Home{home is the live home?}
-    Home -->|yes| Refuse[refused: names the scratch-home form]
+    Home -->|yes| Temp[temporary home the wrapper creates and removes]
+    Temp --> Interp
     Home -->|no| Interp
     Installed --> Interp[interpreter]
     Interp --> Surface[read command surface]
@@ -106,11 +109,11 @@ flowchart TD
 
 An agent in a slug worktree runs its bookkeeping with the global `telec` exactly as
 anywhere else. To drive its own change by hand — a help path, a probe of a command it
-changed — it calls the worktree's `bin/telec` with `TELECLAUDE_HOME` set to a scratch
-home. That process runs the worktree's code against the scratch home: configuration,
-database and state rooted in the home follow it. The scratch home starts with a copy
-of the live machine configuration and nothing else; anything more a probe needs, the
-prober provides. State rooted in the project — a checkout's todo store — and the
+changed — it calls the worktree's `bin/telec` and nothing more. That process runs the
+worktree's code against a temporary home the wrapper creates and removes:
+configuration, database and state rooted in the home follow it. The temporary home
+starts with a copy of the live machine configuration and nothing else; a probe that
+needs more state than that is verified after delivery. State rooted in the project — a checkout's todo store — and the
 daemon do not move with the home. A command that writes project state or acts through
 the daemon reaches the live one, whose code is delivered code; that behavior is
 verified after delivery (`project/policy/test-moratorium`).
@@ -131,20 +134,20 @@ or that is not a TeleClaude checkout, is graded by installed code as before.
 
 ## Failure modes
 
-| Condition                                              | Effect                                                                                                                               |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Machine configuration is invalid                       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
-| People roster cannot be read                           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
-| Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
-| Worktree `bin/telec` aimed at the live home            | Refused before worktree code runs; live home untouched.                                                                              |
-| Scratch home holds no machine configuration            | A copy of the live one is placed there before worktree code runs; the live home is only read.                                        |
-| Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                |
-| A change imports a new module on the pre-dispatch path | The guardrail rejects it before it lands.                                                                                            |
+| Condition                                                 | Effect                                                                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Machine configuration is invalid                          | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
+| People roster cannot be read                              | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
+| Session marker names no admissible row                    | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
+| Worktree `bin/telec` called with no home or the live home | Runs against a temporary home the wrapper creates and removes in that process; live home untouched.                                  |
+| Named home holds no machine configuration                 | A copy of the live one is placed there before worktree code runs; the live home is only read.                                        |
+| Daemon unreachable                                        | Only commands that act through the daemon fail; everything else runs.                                                                |
+| A change imports a new module on the pre-dispatch path    | The guardrail rejects it before it lands.                                                                                            |
 
 ## See Also
 
 - docs/project/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to.md — why the wrapper's location, not the caller's directory, selects the code.
-- docs/project/spec/feature/agent_runtime/checkout-code-selection.md — the agent-facing use cases for code selection, the scratch-home refusal, and self-grading.
+- docs/project/spec/feature/agent_runtime/checkout-code-selection.md — the agent-facing use cases for code selection, the wrapper-owned temporary home, and self-grading.
 - docs/project/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why the caller is authorized in the CLI process.
 - ~/.teleclaude/docs/general/principle/trust-and-guardrails.md — why a write to shared state that others have read cannot be repaired by restoring it, and why a refusal names its door.
 - docs/project/policy/test-moratorium.md — how changes are verified without tests, and why daemon behavior is verified after delivery.

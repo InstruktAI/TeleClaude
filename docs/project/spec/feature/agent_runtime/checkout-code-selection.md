@@ -1,7 +1,7 @@
 ---
 description: Which checkout's code a telec invocation runs — the installed canonical
   checkout for the global command, a checkout's own code only through its own wrapper
-  and, from a slug worktree, only against a scratch home — and how a worktree's change
+  and, from a slug worktree, never against the live home — and how a worktree's change
   is still graded by its own rules.
 visibility: internal
 ---
@@ -20,10 +20,11 @@ standing in a slug worktree behaves exactly like the same call made from the can
 checkout, and undelivered code never reaches the live home through it.
 
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
-its own change by hand. From a slug worktree the wrapper runs only against a scratch
-home, one that resolves somewhere other than the live home; aimed at the live home it
-is refused before any of the worktree's code runs. A scratch home that holds no machine
-configuration starts from a copy of the live one.
+its own change by hand, calling the wrapper and nothing more. From a slug worktree the
+wrapper never runs against the live home: unless its caller names another home, it
+creates a temporary home, runs the worktree's code against it, and removes it when the
+command ends. A home that holds no machine configuration starts from a copy of the live
+one.
 
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
 worktree hand their lint gate to that worktree's own code, run against a fresh scratch
@@ -55,13 +56,14 @@ Then the command runs the worktree's code against that home
 And the worktree's code writes nothing into the live home
 ```
 
-#### UC-CCS3: A worktree's own wrapper aimed at the live home is refused
+#### UC-CCS3: A worktree's own wrapper supplies and removes its own temporary home
 
 ```gherkin
 Given a slug worktree
 When an agent invokes the worktree's own telec wrapper with no home set, or with a home that resolves to the live home however it is spelled
-Then the call is refused before any of the worktree's code runs
-And the refusal names the scratch-home form of the same call
+Then the worktree's code runs against a temporary home the wrapper created for that call
+And the temporary home no longer exists once the call ends, whether the command succeeded or failed
+And the call's exit status is the command's own
 And nothing in the live home changes
 ```
 
@@ -89,7 +91,7 @@ And the grading leaves the live home unchanged
 
 ## Known caveats
 
-- A scratch home moves only the state rooted in the home. A checkout's todo store and
+- A temporary or named home moves only the state rooted in the home. A checkout's todo store and
   the running daemon do not follow it: a probe of a command that writes project state
   or acts through the daemon reaches the live one, which is why such behavior is
   verified after delivery (`project/policy/test-moratorium`).
