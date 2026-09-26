@@ -67,10 +67,11 @@ with intent supplies no justification.
 A session whose artifact is in an open review loop does not change, in either
 direction, a contract that review applies to it: the observation-map spec, the
 review procedures, the artifact-quality policy, or any other contract a finding
-against it cites. A defect it finds in such a contract leaves the loop as a
-contract dispute routed to that contract's owner
-(`sdlc/procedure/lifecycle/assist`), and a session with no artifact under that
-review authors the change. The pending contract a todo delivers under its own
+against it cites. A defect it finds in such a contract is filed as a process
+change under this policy, authored by a session with no artifact under that
+review; where an assist is active on the loop, the dispute goes to it for
+routing (`sdlc/procedure/lifecycle/assist`). Until that change lands, the
+artifact is judged under the contract as it stands. The pending contract a todo delivers under its own
 slug is the work under review, not a judging contract, and stays its author's.
 
 ### Operation and recovery remain with intelligence

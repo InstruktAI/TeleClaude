@@ -152,8 +152,9 @@ header. Pick your behavior from the reason:
     its closure enlarges the horizon: new functionality, instrumentation beyond
     the observation-map spec's additive bound, verification tooling, subsystems,
     or scope beyond the frozen denominator. A finding that asks an entry to catch
-    a failure other than the one it names, or to restate its scenario's
-    branches, is rejected under `sdlc/spec/observation-map`. A valid
+    a failure other than the one it names, or to restate its scenario beyond the
+    selectors that failure needs, is rejected under
+    `sdlc/spec/observation-map`. A valid
     omission finding — a missing reflection, verification, or gate the policies
     require on the authorized work — adds material within scope and is not
     rejected on that ground (`sdlc/procedure/lifecycle/review`
@@ -339,7 +340,7 @@ For behavioral work, author the plan's observation map per
 wiring it to the runtime evidence that proves it — the qualifying opportunity,
 the expected outcome records as predicates, the correlation fields, and the
 completion bound. Each entry names the one failure it exists to catch and binds
-its scenario by reference, never restating the scenario's branches. Where no
+its scenario by reference, carrying only the selectors that failure needs. Where no
 existing record lets the acceptance authority see that failure, add observation
 at the decision the change introduces or alters, within the spec's additive
 bound, rather than reconstructing hidden state from records that never carried

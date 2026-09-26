@@ -91,9 +91,10 @@ the fact they claim, proof of terminality — bind every entry; they govern its
 shape, not a search for counterexamples.
 
 An entry binds its scenario by reference. The scenario owns its branches,
-bounds, and message content; the entry never re-encodes them as predicates, and
-an entry that grows by restating its scenario is defective however faithful the
-restatement. `sdlc/policy/preparation-artifact-quality` carries why
+bounds, and message content. An entry carries only the selectors its named
+failure needs — which opportunities qualify, and which outcome is correct for
+each — and re-encodes nothing of the scenario beyond them; an entry that grows
+by restating its scenario is defective however faithful the restatement. `sdlc/policy/preparation-artifact-quality` carries why
 the burden is bounded this way.
 
 ### The denominator is recomputed, never trusted

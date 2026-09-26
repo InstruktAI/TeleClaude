@@ -128,7 +128,8 @@ plan's own inventory:
    claims, a negative behavior mapped to silence instead of an affirmative
    decision record — is a **Critical** finding. A wrong implementation outside
    the named failure, constructed to show an entry could pass it, is not a
-   finding; neither is a demand that an entry restate its scenario's branches.
+   finding; neither is a demand that an entry restate its scenario beyond the
+   selectors its named failure needs.
 
 The check also confirms the map honors the contract's shape: lean core fields
 only, facing derived from the scenarios rather than restated, defaults not
