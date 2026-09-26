@@ -142,7 +142,7 @@ async def read_artifact(
     """Read a todo artifact by slug and name."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    content = await todos_db.read_artifact(slug, name)
+    content = await todos_db.read_artifact(slug, name, include_removed=True)
     return _ArtifactReadResponse(slug=slug, name=name, content=content)
 
 
@@ -261,7 +261,7 @@ async def list_artifacts(
     """List artifact names for a slug, with each artifact's distinct writers."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    rows = await todos_db.list_artifacts_with_writers(slug)
+    rows = await todos_db.list_artifacts_with_writers(slug, include_removed=True)
     entries = [_ArtifactListEntry(name=row["name"], writers=row["writers"]) for row in rows]
     return _ArtifactListResponse(slug=slug, artifacts=entries)
 
@@ -282,7 +282,7 @@ async def diff_artifact(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     try:
-        diff = await todos_db.artifacts_diff(slug, name, old, new)
+        diff = await todos_db.artifacts_diff(slug, name, old, new, include_removed=True)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _ArtifactDiffResponse(slug=slug, name=name, old_digest=old, new_digest=new, diff=diff)

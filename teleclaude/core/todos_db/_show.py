@@ -467,16 +467,17 @@ async def _resolve_holder_label(todos_db: TodosDb, group_id: str | None) -> str 
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
-async def _lookup_removed_state(todos_db: TodosDb, slug: str) -> dict[str, StateValue] | None:
-    """Resolve slug against removed rows and return state if uniquely matched."""
+async def _lookup_removed_state(todos_db: TodosDb, slug: str) -> tuple[dict[str, StateValue], str] | None:
+    """Resolve slug to its most recently removed row and return state plus durable id."""
     removed_entries = await todos_db.list_todo(include_removed=True, removed_only=True)
     matches = [r for r in removed_entries if r["slug"] == slug]
-    if len(matches) == 1:
+    if matches:
+        # Removed-only entries arrive newest-first by removed_at.
         todo_id = matches[0]["id"]
         async with todos_db._session() as session:
             state_model = await session.get(TodoStateModel, todo_id)
             if state_model is not None:
-                return upcycle_state_dict(json.loads(state_model.state))
+                return upcycle_state_dict(json.loads(state_model.state)), todo_id
     return None
 
 
@@ -486,21 +487,22 @@ async def _resolve_show_state(
     *,
     include_removed: bool,
     initial_state: dict[str, StateValue] | None,
-) -> tuple[dict[str, StateValue] | None, bool, bool]:
+) -> tuple[dict[str, StateValue] | None, bool, bool, str | None]:
     """Resolve the lifecycle state backing a non-holder show payload."""
     if initial_state is not None:
-        return initial_state, False, False
+        return initial_state, False, False, None
 
     if include_removed:
-        removed_state = await _lookup_removed_state(todos_db, slug)
-        if removed_state is not None:
-            return removed_state, False, True
+        removed = await _lookup_removed_state(todos_db, slug)
+        if removed is not None:
+            removed_state, removed_id = removed
+            return removed_state, False, True, removed_id
 
     delivered_state = await todos_db.read_state_delivered(slug)
     if delivered_state is not None:
-        return delivered_state, True, False
+        return delivered_state, True, False, None
 
-    return None, False, False
+    return None, False, False, None
 
 
 async def _assemble_holder_payload(
@@ -558,7 +560,7 @@ async def assemble_show_payload(
         )
 
     state = await todos_db.read_state(slug)
-    state, is_delivered, is_removed = await _resolve_show_state(
+    state, is_delivered, is_removed, removed_id = await _resolve_show_state(
         todos_db,
         slug,
         include_removed=include_removed,
@@ -636,14 +638,22 @@ async def assemble_show_payload(
     if next_phase:
         payload["next"] = next_phase
 
-    artifact_rows = await todos_db.artifact_metadata(slug)
+    artifact_rows = (
+        await todos_db.artifact_metadata_by_id(removed_id)
+        if is_removed and removed_id is not None
+        else await todos_db.artifact_metadata(slug)
+    )
     artifact_names = [row["name"] for row in artifact_rows]
     payload["artifacts"] = list(artifact_names)
     payload["artifact_state"] = _derive_artifact_state_block(state_model, artifact_rows)
     if include_artifact_content:
         artifact_content: dict[str, str] = {}
         for name in artifact_names:
-            artifact_content[name] = await todos_db.read_artifact(slug, name)
+            artifact_content[name] = (
+                await todos_db.read_artifact_by_id(removed_id, name)
+                if is_removed and removed_id is not None
+                else await todos_db.read_artifact(slug, name)
+            )
         payload["artifact_content"] = artifact_content
 
     return payload

@@ -34,7 +34,7 @@ from teleclaude.cli.tui.theme import (
     _TELECLAUDE_LIGHT_AGENT_THEME,
     _TELECLAUDE_LIGHT_THEME,
 )
-from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content
+from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content, read_artifact_content_by_id
 
 
 @dataclass
@@ -44,19 +44,28 @@ class MaterializedArtifact:
     project_root: Path
     slug: str
     artifact_name: str
+    todo_id: str | None
     file_path: Path
     _temp_dir_path: Path
 
     @classmethod
-    def from_db(cls, *, project_root: Path, slug: str, artifact_name: str) -> MaterializedArtifact:
+    def from_db(
+        cls, *, project_root: Path, slug: str, artifact_name: str, todo_id: str | None = None
+    ) -> MaterializedArtifact:
         """Materialize an artifact from todos.db into a temporary file."""
         temp_dir = Path(tempfile.mkdtemp(prefix="teleclaude-artifact-"))
         file_path = temp_dir / artifact_display_filename(artifact_name)
-        file_path.write_text(read_artifact_content(project_root, slug, artifact_name), encoding="utf-8")
+        content = (
+            read_artifact_content_by_id(project_root, todo_id, artifact_name)
+            if todo_id is not None
+            else read_artifact_content(project_root, slug, artifact_name)
+        )
+        file_path.write_text(content, encoding="utf-8")
         return cls(
             project_root=project_root,
             slug=slug,
             artifact_name=artifact_name,
+            todo_id=todo_id,
             file_path=file_path,
             _temp_dir_path=temp_dir,
         )
@@ -257,6 +266,7 @@ def main() -> None:
     parser.add_argument("--project-root", type=Path, help="Project root that owns the artifact database")
     parser.add_argument("--artifact-slug", help="Todo slug for DB-backed artifact editing")
     parser.add_argument("--artifact-name", help="Logical artifact name in todos.db")
+    parser.add_argument("--artifact-todo-id", help="Durable todo row id for an identity-addressed artifact view")
 
     args = parser.parse_args()
     materialized: MaterializedArtifact | None = None
@@ -272,6 +282,7 @@ def main() -> None:
             project_root=args.project_root.resolve(),
             slug=args.artifact_slug,
             artifact_name=args.artifact_name,
+            todo_id=args.artifact_todo_id,
         )
         file_path = materialized.file_path
         display_name = materialized.display_name
@@ -286,7 +297,9 @@ def main() -> None:
             display_name,
             view_mode=args.view,
             theme_name=args.theme,
-            save_callback=None if args.view or materialized is None else materialized.persist,
+            save_callback=None
+            if args.view or materialized is None or materialized.todo_id is not None
+            else materialized.persist,
         )
     finally:
         if materialized is not None:

@@ -26,6 +26,7 @@ from teleclaude.cli.tui.artifact_panes import (
     EDITOR_MODULE,
     FLAG_ARTIFACT_NAME,
     FLAG_ARTIFACT_SLUG,
+    FLAG_ARTIFACT_TODO_ID,
     FLAG_MODULE,
     FLAG_PROJECT_ROOT,
     FLAG_THEME,
@@ -532,6 +533,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         filename=artifact_display_filename(artifact_name),
                         slug=row.todo.slug,
                         project_path=project_path,
+                        todo_id=(row.todo.todo_id if row.todo.status == TodoStatus.REMOVED else None),
                         updated_at=item.artifact_updated_at.get(artifact_name),
                         is_last=(fi == len(sorted_files) - 1),
                         tree_lines=detail_tree_lines,
@@ -697,6 +699,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 filename=artifact_display_filename(artifact_name),
                 slug=todo_row.slug,
                 project_path=project_path,
+                todo_id=(todo_row.todo.todo_id if todo_row.todo.status == TodoStatus.REMOVED else None),
                 updated_at=todo_row.todo.artifact_updated_at.get(artifact_name),
                 is_last=is_last,
                 tree_lines=detail_tree_lines,
@@ -830,9 +833,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         return item if isinstance(item, ProjectHeader) else None
 
     @staticmethod
-    def _artifact_doc_id(project_path: str, slug: str, artifact_name: str) -> str:
+    def _artifact_doc_id(project_path: str, slug: str, artifact_name: str, *, todo_id: str | None = None) -> str:
         """Build a stable document id for a todo artifact."""
-        return artifact_doc_id(project_path, slug, artifact_name)
+        return artifact_doc_id(project_path, slug, artifact_name, todo_id=todo_id)
 
     def _editor_command(
         self,
@@ -840,6 +843,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         project_path: str,
         slug: str,
         artifact_name: str,
+        todo_id: str | None = None,
         view: bool = False,
     ) -> str:
         """Build an editor command that materializes a DB artifact into a temp file."""
@@ -854,7 +858,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             FLAG_ARTIFACT_NAME,
             artifact_name,
         ]
-        if view:
+        if todo_id is not None:
+            args.extend([FLAG_ARTIFACT_TODO_ID, todo_id])
+        if view or todo_id is not None:
             args.append(FLAG_VIEW)
 
         if self.app and self.app.theme:

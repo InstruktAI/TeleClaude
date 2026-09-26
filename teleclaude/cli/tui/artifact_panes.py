@@ -23,6 +23,7 @@ FLAG_MODULE = "-m"
 FLAG_PROJECT_ROOT = "--project-root"
 FLAG_ARTIFACT_SLUG = "--artifact-slug"
 FLAG_ARTIFACT_NAME = "--artifact-name"
+FLAG_ARTIFACT_TODO_ID = "--artifact-todo-id"
 FLAG_VIEW = "--view"
 FLAG_THEME = "--theme"
 
@@ -38,6 +39,7 @@ __all__ = [
     "EDITOR_MODULE",
     "FLAG_ARTIFACT_NAME",
     "FLAG_ARTIFACT_SLUG",
+    "FLAG_ARTIFACT_TODO_ID",
     "FLAG_MODULE",
     "FLAG_PROJECT_ROOT",
     "FLAG_THEME",
@@ -48,9 +50,12 @@ __all__ = [
 ]
 
 
-def artifact_doc_id(project_path: str, slug: str, artifact_name: str) -> str:
+def artifact_doc_id(project_path: str, slug: str, artifact_name: str, *, todo_id: str | None = None) -> str:
     """Build the stable document id for a todo artifact."""
-    return _DOC_ID_SEPARATOR.join((_DOC_ID_PREFIX, project_path, slug, artifact_name))
+    identity = (
+        (project_path, slug, todo_id, artifact_name) if todo_id is not None else (project_path, slug, artifact_name)
+    )
+    return _DOC_ID_SEPARATOR.join((_DOC_ID_PREFIX, *identity))
 
 
 def doc_pane_key(doc_id: str) -> str:
@@ -79,11 +84,12 @@ def parse_doc_pane_command(command: str) -> DocPreviewState | None:
     project_path = _flag_value(tokens, FLAG_PROJECT_ROOT)
     slug = _flag_value(tokens, FLAG_ARTIFACT_SLUG)
     artifact_name = _flag_value(tokens, FLAG_ARTIFACT_NAME)
+    todo_id = _flag_value(tokens, FLAG_ARTIFACT_TODO_ID)
     if not project_path or not slug or not artifact_name:
         return None
     filename = artifact_display_filename(artifact_name)
     return DocPreviewState(
-        doc_id=artifact_doc_id(project_path, slug, artifact_name),
+        doc_id=artifact_doc_id(project_path, slug, artifact_name, todo_id=todo_id),
         command=unwrapped,
         title=filename if FLAG_VIEW in tokens else _EDIT_TITLE % filename,
     )
