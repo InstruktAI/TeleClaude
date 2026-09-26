@@ -10,13 +10,13 @@ and CHANGELOG.md maintenance.
 
 Usage:
   # From lane reports (CI — primary path)
-  uv run scripts/release_changelog.py from-reports \\
+  uv run python -m tools.release.changelog from-reports \\
     --tag v0.6.0 --since v0.5.0 \\
     --claude-report claude-report.json \\
     --output release-notes.md --prepend CHANGELOG.md
 
   # From git log only (backfill / fallback)
-  uv run scripts/release_changelog.py from-git \\
+  uv run python -m tools.release.changelog from-git \\
     --tag v0.5.0 --since v0.4.0 \\
     --output release-notes.md
 
@@ -28,19 +28,25 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict
+
+from pydantic import ValidationError
 
 # Anchor git operations to this script's own repository, so commit history is
 # read from the repo the tool ships in regardless of the caller's cwd (the
 # script-location resolution the standalone-execution policy mandates).
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from tools.release.report_models import load_report  # noqa: E402 -- resolve sibling release modules from any cwd
+
+_INVALID_REPORT_EXCEPTIONS = (OSError, ValidationError)
 
 # ---------------------------------------------------------------------------
 # Commit parsing
@@ -119,8 +125,6 @@ def git_tag_date(tag: str) -> str:
     )
     date = result.stdout.strip()
     if not date:
-        from datetime import datetime
-
         date = datetime.now(UTC).strftime("%Y-%m-%d")
     return date
 
@@ -169,42 +173,6 @@ CHANGE_TYPE_CATEGORY: dict[str, str] = {
 }
 
 
-class ContractChange(TypedDict):
-    """A single public surface change — all fields required per release-report-schema."""
-
-    surface: str
-    item: str
-    change_type: str
-    details: str
-
-
-class LaneReport(TypedDict):
-    """Parsed lane report matching release-report-schema."""
-
-    classification: str
-    rationale: str
-    contract_changes: list[ContractChange]
-    release_notes: str
-
-
-def load_lane_report(path: Path) -> LaneReport | None:
-    """Load a lane report JSON. Returns None on failure."""
-    if not path.exists():
-        return None
-    try:
-        data: object = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and "classification" in data:
-            return LaneReport(
-                classification=str(data.get("classification", "")),
-                rationale=str(data.get("rationale", "")),
-                contract_changes=data.get("contract_changes", []),
-                release_notes=str(data.get("release_notes", "")),
-            )
-    except (json.JSONDecodeError, OSError):
-        pass
-    return None
-
-
 def merge_lane_reports(
     report_paths: dict[str, Path],
 ) -> tuple[str, dict[str, list[str]]]:
@@ -217,26 +185,27 @@ def merge_lane_reports(
         path = report_paths.get(lane)
         if path is None:
             continue
-        report = load_lane_report(path)
-        if report is None:
+        try:
+            report = load_report(path)
+        except _INVALID_REPORT_EXCEPTIONS:
             continue
 
         # First valid release_notes becomes the highlights
-        notes = report["release_notes"]
+        notes = report.release_notes
         if not highlights and notes:
             highlights = notes
 
         # Merge contract changes (deduplicate across lanes)
-        for change in report["contract_changes"]:
-            key = (change["surface"], change["item"], change["change_type"])
+        for change in report.contract_changes:
+            key = (change.surface, change.item, change.change_type)
             if key in seen:
                 continue
             seen.add(key)
 
-            cat = CHANGE_TYPE_CATEGORY.get(change["change_type"], "Changed")
-            surface = change["surface"]
-            item = change["item"]
-            details = change["details"]
+            cat = CHANGE_TYPE_CATEGORY.get(change.change_type, "Changed")
+            surface = change.surface
+            item = change.item
+            details = change.details
             if surface:
                 entry = f"**{surface.upper()}:** `{item}` — {details}"
             else:

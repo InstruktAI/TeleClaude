@@ -1,17 +1,3 @@
-#!/usr/bin/env -S uv run --quiet
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "python-frontmatter",
-#     "pyyaml",
-#     "pydantic",
-#     "aiohttp",
-#     "dateparser",
-#     "munch",
-#     "instruktai-python-logger",
-#     "python-dotenv",
-# ]
-# ///
 """Transpile and deploy agent artifacts and generated documentation."""
 
 from __future__ import annotations
@@ -21,7 +7,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -36,11 +21,6 @@ from frontmatter import Post
 from frontmatter.default_handlers import YAMLHandler
 from instrukt_ai_logging import get_logger
 from typing_extensions import TypedDict
-
-# Allow running from any working directory by anchoring imports at repo root.
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude import agent_artifacts
 from teleclaude.artifact_ownership import reconcile_deployed_files, retract_retired_native_artifacts
@@ -74,6 +54,8 @@ from teleclaude.snippet_validation import (
     generated_domain_bundle_domain,
     load_domains,
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 Transform = Callable[[Post], str]
 
@@ -713,7 +695,7 @@ def _progressive_sibling_sections(
 
 
 def _exec_directive_env(project_root: Path) -> dict[str, str]:
-    env = os.environ.copy()
+    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     path_entries = [
         str(project_root / ".venv" / "bin"),
         str(_REPO_ROOT / ".venv" / "bin"),
@@ -733,7 +715,7 @@ def _exec_directive_env(project_root: Path) -> dict[str, str]:
 
 
 # Process-lifetime cache: ``@exec`` commands are pure CLI help-text invocations
-# that re-running within one ``distribute.py`` run cannot change. The same set
+# that re-running within one distribution run cannot change. The same set
 # of directives is expanded once per agent (claude/codex/gemini/deepseek) and
 # once per phase (global + local), so without caching the same ``telec -h``-style
 # subprocess fires 20-30+ times and dominates wall time.
@@ -1657,8 +1639,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
     deploy = request is not None and request.deploy
 
     # Get the project root and main TeleClaude repo root.
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    teleclaude_root = os.path.dirname(script_dir)
+    teleclaude_root = str(_REPO_ROOT)
     project_root = os.path.abspath(os.path.expanduser(args.project_root))
     deploy_root = os.path.abspath(os.path.expanduser(args.deploy_root)) if request is not None else project_root
     is_mother_project = git_common_root(Path(project_root)).resolve() == Path(teleclaude_root).resolve()

@@ -52,6 +52,8 @@ BASE_URL = "http://localhost"
 WS_URI = "ws://localhost/ws"
 _TUI_SESSION_NAME = "tc_tui"
 _TMUX_ENV = "TMUX"
+_ALL_SESSIONS_PARAM = "all"
+_QUERY_TRUE = "true"
 
 # Reconnection settings
 WS_INITIAL_BACKOFF = 0.5  # Initial reconnect delay in seconds
@@ -555,13 +557,21 @@ class _TelecSessionAPI:
 
     _request: Callable[..., Awaitable[httpx.Response]]
 
-    async def list_sessions(self, computer: str | None = None, *, include_closed: bool = False) -> list[SessionDTO]:
+    async def list_sessions(
+        self,
+        computer: str | None = None,
+        *,
+        include_closed: bool = False,
+        all_sessions: bool = False,
+    ) -> list[SessionDTO]:
         """List sessions from all computers or a specific computer."""
         params: dict[str, str] = {}
         if computer:
             params["computer"] = computer
         if include_closed:
             params["closed"] = "true"
+        if all_sessions:
+            params[_ALL_SESSIONS_PARAM] = _QUERY_TRUE
         resp = await self._request("GET", "/sessions", request_options=RequestOptions(params=params))
         return TypeAdapter(list[SessionDTO]).validate_json(resp.text)
 

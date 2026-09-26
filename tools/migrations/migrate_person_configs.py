@@ -1,10 +1,3 @@
-#!/usr/bin/env -S uv run
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "pyyaml",
-# ]
-# ///
 """Durable operator migration command for person subscription config upgrades.
 
 Migrations performed:
@@ -14,8 +7,7 @@ Migrations performed:
 - notifications block removed after migration
 
 Idempotent: skips configs already in the new format.
-This lives in scripts because operators may need the same maintenance command
-across machines during upgrade or recovery.
+This internal migration command uses the repository's project environment.
 """
 
 import argparse
@@ -30,7 +22,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.paths import PEOPLE_DIR, ConfigFileName
+from teleclaude.paths import PEOPLE_DIR, ConfigFileName  # noqa: E402 -- resolve owner paths from this checkout
 
 type YamlPrimitive = str | int | float | bool | None
 type YamlValue = YamlPrimitive | list[YamlValue] | dict[str, YamlValue]

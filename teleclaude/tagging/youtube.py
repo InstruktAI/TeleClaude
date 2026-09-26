@@ -14,15 +14,15 @@ from pathlib import Path
 from aiohttp import ClientSession
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict
-from teleclaude.cron.discovery import Subscriber
-from teleclaude.helpers.agent_cli import run_once
-from teleclaude.helpers.youtube_helper import (
+from scripts.helpers.youtube_helper import (
     SubscriptionChannel,
     _fetch_channel_about_description,
     _safe_get_list,
     _safe_get_str,
 )
+from teleclaude.core.models import JsonDict
+from teleclaude.cron.discovery import Subscriber
+from teleclaude.helpers.agent_cli import run_once
 from teleclaude.tagging.youtube_shared import KNOWLEDGE_TAGGING_RULES as NORMAL_TAGGING_RULES
 from teleclaude.tagging.youtube_shared import (
     WEB_RESEARCH_RULES,

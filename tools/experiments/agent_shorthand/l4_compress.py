@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-# ruff: noqa: RUF001
 """Compress L1 prose artifacts to L4 semantic tokens.
 
 Usage:
-    python scripts/l4_compress.py <input_file> [output_file]
+    python tools/experiments/agent_shorthand/l4_compress.py <input_file> [output_file]
 
 L4 = maximum compression. Context-inferred, minimal semantic tokens.
 Only safe for same-model consumption (Claude reading Claude artifacts).
@@ -16,7 +15,12 @@ from pathlib import Path
 
 import anthropic
 
-SYSTEM_PROMPT = """You are an L4 semantic token compressor. Transform prose documentation
+_HELP_FLAGS = frozenset(("-h", "--help"))
+_HELP_TEXT = "Usage: l4_compress.py <input_file> [output_file]\nCompress L1 prose artifacts to L4 semantic tokens.\n"
+_OR_OPERATOR = "∨"  # noqa: RUF001 -- shorthand uses the logical-or operator
+_AND_OPERATOR = "×"  # noqa: RUF001 -- shorthand uses the tension-list conjunction
+
+SYSTEM_PROMPT = f"""You are an L4 semantic token compressor. Transform prose documentation
 into the most compressed representation possible while preserving all behavioral directives.
 
 ## L4 — Semantic Tokens
@@ -44,7 +48,7 @@ L3 (symbolic, 170 chars):
 @1c178904 430→73 17%
 ✓coherent ∵agents.summarize(tool_findings)→text
 ∴mirror:=recall ¬degraded
-⊗file∨sqlite ×writer ×trigger"  # noqa: RUF001
+⊗file{_OR_OPERATOR}sqlite {_AND_OPERATOR}writer {_AND_OPERATOR}trigger"
 
 L4 (semantic tokens, 52 chars):
 "⊢premise✗ @evidence:73/430 ∴recall¬degraded ⊗3tensions"
@@ -113,6 +117,10 @@ async def compress_section(
 
 
 async def main():  # type: ignore[no-untyped-def]
+    if len(sys.argv) == 2 and sys.argv[1] in _HELP_FLAGS:
+        print(_HELP_TEXT)
+        return
+
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <input_file> [output_file]")
         sys.exit(1)

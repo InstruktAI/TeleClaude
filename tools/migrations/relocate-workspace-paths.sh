@@ -65,6 +65,10 @@ RG_EXCLUDES=(
   -g '!**/.npm/**'
   -g '!**/.yarn/cache/**'
 )
+DOTDIRS=()
+DOTFILES=()
+FILES=()
+RENAMES=()
 
 PATTERN='(/Workspace|~/Workspace|Workspace-)'
 
@@ -74,14 +78,14 @@ SCAN_EXCLUDES=("${RG_EXCLUDES[@]}")
 RG_FOLLOW=()
 
 if $HOME_DOTALL; then
-  mapfile -t DOTDIRS < <(find "$HOME" -maxdepth 1 -mindepth 1 -name '.*' -type d -perm -u+rx -not -name '.Trash' -print)
-  mapfile -t DOTFILES < <(find "$HOME" -maxdepth 1 -mindepth 1 -name '.*' -type f -perm -u+r -print)
+  while IFS= read -r path; do DOTDIRS+=("$path"); done < <(find "$HOME" -maxdepth 1 -mindepth 1 -name '.*' -type d -perm -u+rx -not -name '.Trash' -print)
+  while IFS= read -r path; do DOTFILES+=("$path"); done < <(find "$HOME" -maxdepth 1 -mindepth 1 -name '.*' -type f -perm -u+r -print)
   SCAN_PATHS=("${DOTFILES[@]}" "${DOTDIRS[@]}")
   SCAN_EXCLUDES=()
   SCAN_LABEL="$HOME (dotfiles + dotfolders recursive)"
   RG_FOLLOW=(--follow)
 elif $HOME_DOTDIRS; then
-  mapfile -t DOTDIRS < <(find "$HOME" -maxdepth 1 -mindepth 1 -name '.*' -type d -perm -u+rx -not -name '.Trash' -print)
+  while IFS= read -r path; do DOTDIRS+=("$path"); done < <(find "$HOME" -maxdepth 1 -mindepth 1 -name '.*' -type d -perm -u+rx -not -name '.Trash' -print)
   SCAN_PATHS=("${DOTDIRS[@]}")
   SCAN_EXCLUDES=()
   SCAN_LABEL="$HOME (dotfolders only)"
@@ -95,7 +99,7 @@ else
 fi
 
 # Find matching text files, including dotfiles/hidden paths.
-mapfile -t FILES < <(rg -l --hidden --no-ignore "${RG_FOLLOW[@]}" "${PATTERN}" "${SCAN_EXCLUDES[@]}" "${SCAN_PATHS[@]}" || true)
+while IFS= read -r path; do FILES+=("$path"); done < <(rg -l --hidden --no-ignore "${RG_FOLLOW[@]}" "${PATTERN}" "${SCAN_EXCLUDES[@]}" "${SCAN_PATHS[@]}" || true)
 
 if [[ ${#FILES[@]} -eq 0 ]]; then
   echo "No matching text files found."
@@ -119,7 +123,7 @@ if $RENAME; then
   echo ""
   echo "Rename pass for names containing: Workspace-"
   # Find files/dirs whose names include the token; use -depth to avoid path issues.
-  mapfile -t RENAMES < <(find "$ROOT" -depth -name '*Workspace-*')
+  while IFS= read -r path; do RENAMES+=("$path"); done < <(find "$ROOT" -depth -name '*Workspace-*')
 
   if [[ ${#RENAMES[@]} -eq 0 ]]; then
     echo "No names to rename."

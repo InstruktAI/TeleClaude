@@ -1,4 +1,3 @@
-#!/usr/bin/env -S uv run --quiet
 """Run release inspection lanes in parallel and consolidate results.
 
 Reads enabled agents from config.yml, runs each as a parallel lane,
@@ -8,34 +7,31 @@ Exit codes:
   0 — decision written (release authorized or not)
   1 — quorum failure or fatal error
 """
-# Repo-bound exception to project/policy/scripts-standalone-execution: this entry
-# drives agent invocation through teleclaude.*, so it runs only in the project
-# environment (invoked as `uv run scripts/release_lanes.py` from the repo root).
-# The heavy imports are deferred into the functions that use them, so the module
-# loads — and `--help` works — from any cwd; actual execution fails with an
-# actionable error if the project environment is absent, never an opaque import
-# crash. The sibling `release_consolidator` resolves from sys.path[0].
 
 from __future__ import annotations
 
+import argparse
 import asyncio
-import importlib.util
 import json
 import sys
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-def _require_project_runtime() -> None:
-    """Fail loudly when the project environment is unavailable for execution."""
-    missing = [name for name in ("release_consolidator", "teleclaude") if importlib.util.find_spec(name) is None]
-    if missing:
-        print(
-            "FATAL: release_lanes requires the project environment — run it as "
-            "`uv run scripts/release_lanes.py` from the repository root "
-            f"(missing: {', '.join(missing)})",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+from teleclaude.core.agents import get_enabled_agents  # noqa: E402 -- resolve project runtime from any cwd
+from teleclaude.helpers.agent_cli import (  # noqa: E402 -- resolve project runtime from any cwd
+    _extract_json_object,
+    _load_schema,
+    _run_agent,
+)
+from teleclaude.helpers.agent_types import AgentName, ThinkingMode  # noqa: E402 -- resolve project runtime from any cwd
+from tools.release.consolidator import (  # noqa: E402 -- resolve sibling release modules from any cwd
+    ARBITER_PREFERENCE,
+    load_report,
+    resolve_consensus,
+)
 
 
 async def _run_lane(
@@ -44,9 +40,6 @@ async def _run_lane(
     schema: dict[str, object],  # guard: loose-dict - JSON schema is an arbitrary nested structure
 ) -> Path:
     """Run a single inspector lane and write the report file. Returns the report path."""
-    from teleclaude.helpers.agent_cli import _extract_json_object, _run_agent
-    from teleclaude.helpers.agent_types import AgentName, ThinkingMode
-
     report_path = Path(f"{agent_name}-report.json")
     try:
         agent = AgentName.from_str(agent_name)
@@ -87,16 +80,6 @@ async def _run_lane(
 
 async def run_lanes(prompt_file: Path, schema_file: Path) -> int:
     """Run all enabled lanes in parallel, consolidate, and write decision."""
-    _require_project_runtime()
-    from release_consolidator import (  # type: ignore[import-not-found]
-        ARBITER_PREFERENCE,
-        load_report,
-        resolve_consensus,
-    )
-
-    from teleclaude.core.agents import get_enabled_agents
-    from teleclaude.helpers.agent_cli import _load_schema
-
     enabled = list(get_enabled_agents())
     if not enabled:
         print("FATAL: no enabled agents in config", file=sys.stderr)
@@ -137,8 +120,6 @@ async def run_lanes(prompt_file: Path, schema_file: Path) -> int:
 
 def main() -> int:
     """CLI entrypoint."""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Run release lanes and consolidate")
     parser.add_argument("--prompt-file", type=Path, required=True, help="Path to assembled prompt")
     parser.add_argument("--schema-file", type=Path, required=True, help="Path to report schema")

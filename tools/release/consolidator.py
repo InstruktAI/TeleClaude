@@ -1,8 +1,3 @@
-#!/usr/bin/env -S uv run --quiet
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pyyaml"]
-# ///
 """Consensus arbiter for multi-lane release reports.
 
 Consumes AI lane reports, resolves classification conflicts via majority
@@ -26,27 +21,24 @@ import sys
 from collections import Counter
 from operator import itemgetter
 from pathlib import Path
-from typing import Literal, TypedDict, cast
+from typing import TypedDict
 
 import yaml
+from pydantic import ValidationError
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-class ContractChange(TypedDict, total=False):
-    """A single API or contract change entry."""
+from tools.release.report_models import (  # noqa: E402 -- resolve sibling release modules from any cwd
+    LaneReport,
+)
+from tools.release.report_models import (  # noqa: E402 -- resolve sibling release modules from any cwd
+    load_report as load_release_report,
+)
 
-    surface: str
-    item: str
-    change_type: str
-    details: str
-
-
-class LaneReport(TypedDict):
-    """Parsed output from a single release-review lane."""
-
-    classification: str
-    rationale: str
-    contract_changes: list[ContractChange]
-    release_notes: str
+_MISSING_REPORT_WARNING = "WARNING: {path} not found"
+_INVALID_REPORT_WARNING = "WARNING: {path} invalid report: {error}"
 
 
 class ArbiterDecision(TypedDict):
@@ -59,10 +51,6 @@ class ArbiterDecision(TypedDict):
     lane_summary: dict[str, str | None]
     evidence: list[str]
 
-
-Classification = Literal["patch", "minor", "none"]
-
-VALID_CLASSIFICATIONS: set[str] = {"patch", "minor", "none"}
 
 # All known lane names in arbiter preference order (most trusted first).
 ARBITER_PREFERENCE = ("claude", "codex", "gemini")
@@ -137,39 +125,13 @@ def _required_quorum(n_enabled: int) -> int:
 def load_report(path: Path) -> LaneReport | None:
     """Load and validate a single lane report. Returns None on failure."""
     if not path.exists():
-        print(f"WARNING: {path} not found", file=sys.stderr)
+        print(_MISSING_REPORT_WARNING.format(path=path), file=sys.stderr)
         return None
     try:
-        loaded_data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        print(f"WARNING: {path} parse error: {exc}", file=sys.stderr)
+        return load_release_report(path)
+    except (OSError, ValidationError) as error:
+        print(_INVALID_REPORT_WARNING.format(path=path, error=error), file=sys.stderr)
         return None
-    data_obj = loaded_data
-
-    if not isinstance(data_obj, dict):
-        print(f"WARNING: {path} payload is not an object", file=sys.stderr)
-        return None
-
-    data = cast(dict[str, object], data_obj)  # guard: loose-dict - JSON parsed data — release report
-
-    classification = data.get("classification")
-    if not isinstance(classification, str) or classification not in VALID_CLASSIFICATIONS:
-        print(f"WARNING: {path} invalid classification: {classification!r}", file=sys.stderr)
-        return None
-
-    rationale = data.get("rationale", "")
-    contract_changes = data.get("contract_changes", [])
-    release_notes = data.get("release_notes", "")
-    if not isinstance(rationale, str) or not isinstance(contract_changes, list) or not isinstance(release_notes, str):
-        print(f"WARNING: {path} has invalid field types", file=sys.stderr)
-        return None
-
-    return LaneReport(
-        classification=classification,
-        rationale=rationale,
-        contract_changes=[cast(ContractChange, item) for item in contract_changes if isinstance(item, dict)],
-        release_notes=release_notes,
-    )
 
 
 def resolve_consensus(
@@ -184,7 +146,7 @@ def resolve_consensus(
     for lane in enabled_agents:
         report = reports.get(lane)
         if report is not None:
-            lane_summary[lane] = report["classification"]
+            lane_summary[lane] = report.classification
             valid_reports[lane] = report
             evidence.append(f"{lane}-report.json")
         else:
@@ -205,7 +167,7 @@ def resolve_consensus(
         )
 
     # Count classifications
-    classifications = [r["classification"] for r in valid_reports.values()]
+    classifications = [report.classification for report in valid_reports.values()]
     counts = Counter(classifications)
     most_common, most_count = counts.most_common(1)[0]
 
@@ -215,8 +177,8 @@ def resolve_consensus(
         # Trust the minority — they detected real changes the majority missed.
         if most_common == "none":
             for lane, report in valid_reports.items():
-                if report["classification"] != "none" and report["contract_changes"]:
-                    minority_version = report["classification"]
+                if report.classification != "none" and report.contract_changes:
+                    minority_version = report.classification
                     return _decision(
                         authorized=True,
                         quorum_met=True,
@@ -242,7 +204,7 @@ def resolve_consensus(
     # Disagreement — pick by arbiter preference order (Claude > Codex > Gemini)
     arbiter_lane = _pick_arbiter(valid_reports, enabled_agents)
     if arbiter_lane:
-        chosen = valid_reports[arbiter_lane]["classification"]
+        chosen = valid_reports[arbiter_lane].classification
         authorized = chosen in ("patch", "minor")
         return _decision(
             authorized=authorized,
@@ -270,13 +232,13 @@ def _pick_arbiter(reports: dict[str, LaneReport], enabled_agents: list[str]) -> 
 
     # First: prefer by arbiter order if the report has contract_changes
     for lane in ARBITER_PREFERENCE:
-        if lane in enabled_set and lane in reports and reports[lane]["contract_changes"]:
+        if lane in enabled_set and lane in reports and reports[lane].contract_changes:
             return lane
 
     # Fallback: most detailed report by contract_changes count
     scored: list[tuple[str, int]] = []
     for lane, report in reports.items():
-        scored.append((lane, len(report["contract_changes"])))
+        scored.append((lane, len(report.contract_changes)))
 
     scored.sort(key=itemgetter(1), reverse=True)
     if len(scored) >= 2 and scored[0][1] > scored[1][1] and scored[0][1] > 0:

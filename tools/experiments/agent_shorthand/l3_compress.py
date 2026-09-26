@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-# ruff: noqa: RUF001
 """Compress L1 prose artifacts to L3 symbolic shorthand.
 
 Usage:
-    python scripts/l3_compress.py <input_file> [output_file]
+    python tools/experiments/agent_shorthand/l3_compress.py <input_file> [output_file]
 
 If output_file is omitted, writes to <input_file>.l3.md
 
@@ -21,8 +20,13 @@ from pathlib import Path
 
 import anthropic
 
+_HELP_FLAGS = frozenset(("-h", "--help"))
+_HELP_TEXT = "Usage: l3_compress.py <input_file> [output_file]\nCompress L1 prose artifacts to L3 symbolic shorthand.\n"
+_OR_OPERATOR = "∨"  # noqa: RUF001 -- shorthand uses the logical-or operator
+_AND_OPERATOR = "×"  # noqa: RUF001 -- shorthand uses the tension-list conjunction
+
 # Symbol vocabulary reference embedded in the compression prompt
-L3_SPEC = """
+L3_SPEC = f"""
 ## L3 — Symbolic Compressed (target output format)
 
 Core operators:
@@ -34,10 +38,10 @@ Core operators:
 | ¬      | not, negation                    | ¬degraded                |
 | ∴      | therefore, conclusion            | ∴mirror:=recall          |
 | ∵      | because, evidence                | ∵agents.summarize()      |
-| ⊗      | tension, unresolved              | ⊗file∨sqlite             |  # noqa: RUF001
+| ⊗      | tension, unresolved              | ⊗file{_OR_OPERATOR}sqlite             |
 | ⊢      | assertion, claim                 | ⊢premise✗                |
-| ∨      | or, alternative                  | file∨sqlite              |  # noqa: RUF001
-| ×      | and (in tension lists)           | ×writer ×trigger         |  # noqa: RUF001
+| {_OR_OPERATOR}      | or, alternative                  | file{_OR_OPERATOR}sqlite              |
+| {_AND_OPERATOR}      | and (in tension lists)           | {_AND_OPERATOR}writer {_AND_OPERATOR}trigger         |
 | @      | reference, evidence pointer      | @1c178904                |
 | ?      | question, premise under test     | ?sessions=conv           |
 | :=     | defined as, equals by definition | mirror:=recall           |
@@ -64,7 +68,7 @@ L3 (symbolic compressed):
 @1c178904 430→73 17%
 ✓coherent ∵agents.summarize(tool_findings)→text
 ∴mirror:=recall ¬degraded
-⊗file∨sqlite ×writer ×trigger"  # noqa: RUF001
+⊗file{_OR_OPERATOR}sqlite {_AND_OPERATOR}writer {_AND_OPERATOR}trigger"
 """
 
 SYSTEM_PROMPT = f"""You are an L3 shorthand compressor. Your job is to transform L1 prose
@@ -134,6 +138,10 @@ async def compress_section(
 
 
 async def main():  # type: ignore[no-untyped-def]
+    if len(sys.argv) == 2 and sys.argv[1] in _HELP_FLAGS:
+        print(_HELP_TEXT)
+        return
+
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <input_file> [output_file]")
         sys.exit(1)

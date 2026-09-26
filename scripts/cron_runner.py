@@ -25,31 +25,94 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import sys
 from pathlib import Path
 
-# Allow running from any working directory by anchoring imports at repo root.
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-# Configure logging FIRST, before any heavy import. Two reasons:
-# (1) so this process writes its own per-source file (cron.log) rather than
-#     mixing into the daemon's teleclaude.log; (2) so any ImportError below
-#     surfaces through the central logger instead of escaping to stderr —
-#     which used to land in a launchd StandardErrorPath sidechannel that
-#     `instrukt-ai-logs teleclaude` did not read.
 from instrukt_ai_logging import configure_logging, get_logger
 
+_SCRIPT_PATH = Path(__file__).resolve()
+_REPO_ROOT = _SCRIPT_PATH.parents[1]
+_PROJECT_ENV = _REPO_ROOT / ".venv"
+_PROJECT_PYTHON = _PROJECT_ENV / "bin" / "python"
+_REQUIRED_MODULES = ("teleclaude", "jobs.base")
+_RUNTIME_ERROR = (
+    "cron_runner requires the installed project runtime at {interpreter}. "
+    "Create it with `uv sync --project {project_root}`."
+)
+_PACKAGE_ERROR = (
+    "cron_runner cannot import required project packages: {modules}. "
+    "Refresh the project environment with `uv sync --project {project_root}`."
+)
+_PACKAGE_IMPORT_ERROR = (
+    "cron_runner cannot import the project runtime: {error}. "
+    "Refresh the project environment with `uv sync --project {project_root}`."
+)
+
+
+def _prepare_project_runtime() -> None:
+    if not _PROJECT_PYTHON.is_file() or not os.access(_PROJECT_PYTHON, os.X_OK):
+        print(
+            _RUNTIME_ERROR.format(interpreter=_PROJECT_PYTHON, project_root=_REPO_ROOT),
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    if Path(sys.prefix).resolve() == _PROJECT_ENV.resolve():
+        return
+
+    # PEP 723 uv execution is isolated from the installed first-party packages.
+    # Replacing this process is required to enter their project-owned runtime;
+    # no in-process import or shell command can supply that environment.
+    os.execv(str(_PROJECT_PYTHON), [str(_PROJECT_PYTHON), *sys.argv])
+
+
+def _preflight_project_packages() -> None:
+    missing: list[str] = []
+    for module_name in _REQUIRED_MODULES:
+        try:
+            module_spec = importlib.util.find_spec(module_name)
+        except (ImportError, ModuleNotFoundError, ValueError):
+            module_spec = None
+        if module_spec is None:
+            missing.append(module_name)
+
+    if missing:
+        print(
+            _PACKAGE_ERROR.format(modules=", ".join(missing), project_root=_REPO_ROOT),
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+
+_prepare_project_runtime()
+_preflight_project_packages()
+
+# Configure logging before imported modules run startup code so this process
+# writes its own per-source file (cron.log) rather than mixing into the daemon's
+# teleclaude.log. Runtime import failures are logged here and reported with an
+# actionable startup diagnostic below.
 configure_logging("teleclaude", source="cron")
 logger = get_logger(__name__)
 
 try:
-    from teleclaude.config.jobs import load_effective_jobs
-    from teleclaude.cron.runner import load_job_state, run_due_jobs
-    from teleclaude.services.project_catalog import get_project_catalog_service
-except Exception:
-    logger.exception("cron_runner failed during import")
+    from teleclaude.config.jobs import (
+        load_effective_jobs,
+    )
+    from teleclaude.cron.runner import (
+        load_job_state,
+        run_due_jobs,
+    )
+    from teleclaude.services.project_catalog import (
+        get_project_catalog_service,
+    )
+except ImportError as exc:
+    logger.exception("cron_runner_project_import_failed")
+    print(
+        _PACKAGE_IMPORT_ERROR.format(error=exc, project_root=_REPO_ROOT),
+        file=sys.stderr,
+    )
     raise SystemExit(1) from None
 
 
