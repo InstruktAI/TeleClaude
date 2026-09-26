@@ -57,18 +57,6 @@ And a session creation without any resolved human_role AND no system role is rej
 ```
 <!-- /planned-change:authorize-person-roles-at-scope -->
 
-<!-- planned:authorize-person-roles-at-scope -->
-#### UC-SL22: A session holds its person's role for the project it runs in
-
-```
-Given a person holding no platform role and the admin role in one company
-When a session is created for that person in a project the company owns
-Then the session record's human_role is admin
-And a session created for the same person in a project owned by another company records human_role customer
-And a session created for that person through a door that supplies a lower role records the lower role
-```
-<!-- /planned:authorize-person-roles-at-scope -->
-
 #### UC-SL20: Single-user terminal caller resolves to admin
 
 ```
@@ -366,6 +354,19 @@ And the launch intent's message is wrapped with the direct-conversation protocol
 And the conversation link operates orthogonally to stop-listener subscriptions
 ```
 
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-SL39: A session holds its person's role for the project it runs in
+
+```
+Given a person holding no platform role and the admin role in one company
+When a session is created for that person in a project the company owns
+Then the session record's human_role is admin
+And a session created for the same person in a project owned by another company records human_role customer
+And a session created for that person through a door that supplies a lower role records the lower role
+And a session for someone who is no registered person and carries no system principal records human_role customer, whatever role is supplied
+```
+<!-- /planned:authorize-person-roles-at-scope -->
+
 ### Cross-context references
 
 - **identity** — origin resolution plus the identity resolver resolve principal binding (human_email, human_role, person identity) for the Session aggregate.
@@ -379,6 +380,9 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 
 ## Known caveats
 
+<!-- planned:authorize-person-roles-at-scope -->
+- **The recorded human_role is the answer at creation.** It decides help-desk confinement when the session is created. Every later decision about the session — its launch profile, customer-facing channel routing, projection defaults — reads the person's effective role for the session's project when that decision is made, so a role granted or withdrawn applies from the next decision (`project/design/architecture/scoped-roles`). A session run for no registered person keeps its recorded role.
+<!-- /planned:authorize-person-roles-at-scope -->
 - **Host-pane reference uses the full session id.** The format is `<teleclaude-prefix><session-id>` with the full id; the v2-target domain spec phrases it as a short id for readability, but no shortening occurs here.
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
