@@ -39,19 +39,6 @@ does not police cross-project ownership.
 ### Use cases
 
 
-<!-- planned-change:stale-sync-retry-regresses-global-publication -->
-#### UC-DIB6: A project's catalog is written from its sources
-
-```
-Given a project with valid snippet sources under docs/
-And the recorded commit is the latest canonical commit for that project
-When commit-boundary publication runs for that recorded commit
-Then the index-build phase runs
-And the project's canonical checkout receives docs/project/index.yaml with one entry per valid committed Source and paths rooted at that checkout
-And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
-And local telec docs retrieval reads those canonical-checkout indexes
-```
-<!-- change:stale-sync-retry-regresses-global-publication -->
 #### UC-DIB6: A project's catalog is written from its sources
 
 ```
@@ -63,7 +50,6 @@ And the project's canonical checkout receives docs/project/index.yaml with one e
 And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
 And an agent's local telec docs retrieval reads those canonical-checkout indexes
 ```
-<!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
 #### UC-DIB7: Classification is derived from the source's path
