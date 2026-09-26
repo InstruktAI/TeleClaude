@@ -374,8 +374,7 @@ Given a person holding no platform role and the admin role in one company
 When the person lists this computer's sessions, including with --all
 Then every listed session runs in a project that company owns
 And no session running in a project owned by another company, or in no registered project, is listed
-And when the person lists another computer's sessions by naming it, that computer answers with the sessions the person's role reaches there, from its own registries
-And sessions other computers share with this one are listed only for a person holding a platform role here
+And sessions other computers share with this one, or a listing that names another computer, are available only to a person holding a platform role here
 And a platform administrator's listing is unchanged
 ```
 <!-- /planned:authorize-person-roles-at-scope -->
@@ -404,7 +403,7 @@ And a platform administrator's listing is unchanged
 <!-- planned-change:authorize-person-roles-at-scope -->
 - **Listing reveals everything reachable.** TUI and tool clients are unfiltered. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
 <!-- change:authorize-person-roles-at-scope -->
-- **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project is listed only for a platform role. Another computer's sessions are answered by that computer when the caller names it, from its own registries and the relayed principal; the sessions computers share with one another are fleet data, listed only for a platform role held here. The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
+- **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project is listed only for a platform role. Another computer's sessions, whether named or shared between computers, are judged at platform scope (`project/design/architecture/scoped-roles`), so they are listed only for a platform role held here. The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
 <!-- /planned-change:authorize-person-roles-at-scope -->
 <!-- planned-change:authorize-person-roles-at-scope -->
 - **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the human role is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
