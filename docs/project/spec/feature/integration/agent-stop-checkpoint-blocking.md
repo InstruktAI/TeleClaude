@@ -64,19 +64,18 @@ wholesale-cleared at user-prompt-submit.
 <!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
-or done; declarations answer that. In a todo worktree there is nothing to
-arbitrate — the checkout is one todo's task scope with a single writer — so the
-dirty tree is itself the scope and declarations are not consulted.
+or done; declarations answer that. In a todo worktree the dirty tree is the
+checkpoint scope for whichever session stops there, regardless of which session
+changed those paths.
 <!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
-or done; declarations answer that. A worktree is written by the sessions whose
-lifecycle job changes and commits its source: that todo's builder and finalizer
-in a todo worktree, the integrator in the integration worktree. For such a writer
-session the dirty tree is itself the scope and declarations are not consulted.
-Every other session working from a worktree, a reviewer among them, is scoped to
-its own declarations intersected with the dirty tree, as on a shared branch
-(`sdlc/procedure/lifecycle/work/review-build`, `sdlc/policy/commits`).
+or done; declarations answer that. In a todo worktree, the checkpoint reads
+the stopping session's lifecycle job and working slug from its session record.
+The todo's builder and finalizer owe its dirty paths regardless of declarations;
+other sessions in that todo worktree owe no commit action for those paths. The
+checkpoint retains worktree-wide scope outside todo worktrees. The sealed
+commit command's worktree scope remains task-wide.
 <!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ## Canonical fields
@@ -504,7 +503,7 @@ Then a checkpoint decision is produced naming those paths
 And its required actions are the ones their categories carry
 ```
 <!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-#### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
+#### UC-CP34: A todo worktree writer owes its dirty tree
 
 ```gherkin
 Given the todo's builder or finalizer session is working from that todo's worktree
@@ -520,7 +519,7 @@ And its required actions are the ones their categories carry
 
 ```gherkin
 Given a builder session has left uncommitted changes in a non-main todo worktree
-And a reviewer session working from the same worktree has declared none of those paths
+And a review-only session in the same worktree has made no source edits
 When checkpoint evaluation completes at the reviewer's agent-stop boundary
 Then no checkpoint decision directs the reviewer to commit those paths
 And a later reviewer agent-stop over the same uncommitted changes directs none either

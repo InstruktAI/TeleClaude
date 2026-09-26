@@ -106,23 +106,17 @@ and a revival of the same session.
 <!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
-with the current dirty set. Worktrees remain task-scoped and do not consult
-session declarations: there the same consumers read the dirty set directly,
-because a todo checkout has one writer and nothing to attribute.
+with the current dirty set. In worktrees the same consumers read the dirty set
+directly, regardless of which session changed the paths.
 <!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
-with the current dirty set. A worktree is task-scoped, and its writers are the
-sessions whose lifecycle job changes and commits its source: that todo's builder
-and finalizer in a todo worktree, the integrator in the integration worktree. A
-session holding a writer job for another worktree is not this worktree's writer.
-Scoped lint reads a worktree's dirty set directly for every
-session. What a session commits and owes at its agent-stop checkpoint depends on
-whether it is a writer: a writer's commit scope is the dirty set, with no
-declaration consulted; any other session's commit scope is its own declarations
-intersected with the dirty set, as on a shared branch
-(`sdlc/procedure/lifecycle/work/review-build`, `sdlc/policy/commits`). The
-writer jobs are read from the acting session's record, never from a copy.
+with the current dirty set. Scoped lint and commit continue to use the dirty
+set of a worktree. At agent stop in a todo worktree, the checkpoint instead
+attributes those paths only to that todo's builder or finalizer; other sessions
+there owe no commit instruction for them. Worktrees outside the todo lifecycle
+retain their worktree-wide checkpoint scope. The checkpoint reads the acting
+session's job from its session record.
 <!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 A path is **owned** when it is both declared and dirty. A declared path that is
@@ -152,17 +146,9 @@ agent asking who is working on a path.
 ## Invariants
 
 1. **No stashing.** The scoping mechanism keeps files outside the agent's scope untouched, so there is never a need to stash anything aside.
-<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 2. **Worktrees are task-scoped.** A worktree is isolated — all dirty files
    belong to the task. Existing dirty files drive both legs and the
    commit-staging set; commit staging may also include deleted dirty paths.
-<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-2. **Worktrees are task-scoped; their commits belong to their writers.** A
-   worktree is isolated — all dirty files belong to the task, and existing
-   dirty files drive both lint legs for every session. For a writer session
-   the dirty files are also the commit-staging set, which may include deleted
-   dirty paths. Any other session stages only its own declared dirty paths.
-<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 3. **Shared branches are declaration-scoped.** On a shared branch, only files the
    current session declared and that are dirty are scoped. This prevents agents
    from linting or committing other agents' in-progress work.
@@ -221,7 +207,6 @@ telec code test (no args)
   → make test (unscoped — no 1:1 source→test map)
 ```
 
-<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 ```
 telec code commit (worktree detected)
   → resolve dirty paths once
@@ -231,20 +216,6 @@ telec code commit (worktree detected)
   → handle_lint(quality_paths)                            (in-process, no stash)
   → git commit --no-verify
 ```
-<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-```
-telec code commit (worktree detected)
-  → resolve dirty paths once
-  → read the acting session's job from its record
-  → writer job:  staging set = dirty paths, including deletions
-    other job:   staging set = live declarations ∩ dirty paths
-  → git add the staging set
-  → quality_paths = staged set filtered to existing files
-  → handle_format(quality_paths)                          (in-process, no stash)
-  → handle_lint(quality_paths)                            (in-process, no stash)
-  → git commit --no-verify
-```
-<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 
 ### Shared branch flow (session available)

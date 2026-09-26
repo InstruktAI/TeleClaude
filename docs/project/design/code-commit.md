@@ -374,7 +374,6 @@ Every walkthrough below traces an acting context whose declared tier carries pro
 
 ### Agent commit (worktree)
 
-<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 ```
 telec code commit --approved "feat(scope): subject"
   → commit gate satisfied (--approved present)
@@ -393,29 +392,6 @@ telec code commit --approved "feat(scope): subject"
   → real git commit --no-verify -F <msg> -- <pathspec>
   → lock released
 ```
-<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-```
-telec code commit --approved "feat(scope): subject"
-  → commit gate satisfied (--approved present)
-  → lock acquired
-  → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
-  → workspace scope = WORKTREE → the acting session's commit-owned dirty paths
-  → pathspec = scope (no includes)
-  → drop untracked-new files from pathspec (require explicit declaration)
-  → stage ONLY untracked-or-unmerged files that are in pathspec
-    (modified-tracked files are NOT staged — they ride the pathspec)
-  → partial-staging guard: block if any pathspec file has both staged
-    and unstaged changes
-  → quality_paths = pathspec filtered to existing files
-  → handle_format(quality_paths)                     (in-process, no stash)
-  → handle_lint(quality_paths)                       (in-process, no stash)
-  → real git commit --no-verify -F <msg> -- <pathspec>
-  → lock released
-```
-
-The commit-owned set in a worktree follows the writer rule in
-`sdlc/design/workspace-scoping`.
-<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ### Agent commit on main
 
