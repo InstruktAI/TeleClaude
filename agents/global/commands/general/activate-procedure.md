@@ -23,4 +23,4 @@ Take up one procedure's responsibility for one company, with that procedure as y
 
 ## Discipline
 
-The procedure defines the work; this command adds none of its own. Act on what the procedure and the input you receive call for, without investigations or bonus work beyond them. When the procedure cannot be loaded, report that plainly instead of improvising a substitute.
+The procedure is the whole of your instructions, and this command contributes none of its own. The failure mode is filling the procedure's silences from habit, behaving the way another role would where the procedure asks nothing. Where the procedure is silent on a matter, leave that matter alone. Act for `$company` alone, on what the procedure and the input you receive call for. When the procedure cannot be loaded, report that plainly instead of improvising a substitute.
