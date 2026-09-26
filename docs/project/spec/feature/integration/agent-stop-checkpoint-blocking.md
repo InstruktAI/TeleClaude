@@ -71,8 +71,8 @@ dirty tree is itself the scope and declarations are not consulted.
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
 or done; declarations answer that. A worktree is written by the sessions whose
-lifecycle job changes and commits its source: the builder and the finalizer in a
-todo worktree, the integrator in the integration worktree. For such a writer
+lifecycle job changes and commits its source: that todo's builder and finalizer
+in a todo worktree, the integrator in the integration worktree. For such a writer
 session the dirty tree is itself the scope and declarations are not consulted.
 Every other session working from a worktree, a reviewer among them, is scoped to
 its own declarations intersected with the dirty tree, as on a shared branch
@@ -507,7 +507,7 @@ And its required actions are the ones their categories carry
 #### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
 
 ```gherkin
-Given a builder or finalizer session is working from a non-main todo worktree
+Given the todo's builder or finalizer session is working from that todo's worktree
 And that worktree holds dirty paths the session has declared none of
 When checkpoint evaluation completes
 Then a checkpoint decision is produced naming those paths
