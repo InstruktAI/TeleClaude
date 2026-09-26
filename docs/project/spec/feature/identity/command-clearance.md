@@ -170,14 +170,15 @@ Then the command is refused with the not-permitted failure naming `customer` and
 And the machine configuration and the person registry are unchanged and unread
 ```
 
-#### UC-CCS7: A session on another computer is reached by the role for its project
+#### UC-CCS7: The computer holding a session decides every act on it
 
 ```
-Given a person holding no platform role and the admin role in one company
-When the person tails a session on another computer that runs in a project that company owns
-Then the transcript is returned
-But tailing a session on that computer that runs in a project owned by another company is refused as not permitted
-And no transcript content of that session is returned
+Given a person holding no platform role, the admin role in one company, and the newcomer role in a second company with an assignment to one of its projects
+When the person, from any working directory, tails or restarts a session on another computer that runs in a project the first company owns
+Then that computer admits both acts from its own registries
+But restarting a session on that computer that runs in the second company's assigned project is refused by that computer as not permitted
+And tailing a session on that computer that runs in a project owned by a company the person holds no role in is refused, with no transcript content returned
+And when that computer cannot be reached, the act fails and names that computer
 ```
 <!-- /planned:authorize-person-roles-at-scope -->
 
@@ -534,9 +535,10 @@ supplies.
   in.
 - A command that names a directory to act in is judged at the project containing
   that directory.
-- A command that names another computer is judged at the scope its invocation runs in, and the
-  computer holding the object refuses a person whose effective role for that object's project is
-  customer — a session is judged by the project and owning company its computer reports for it.
+- A command that names another computer is cleared here only for having an identity; the whole
+  decision — its bands and its object rules together — is made by that computer, for the object it
+  holds, from its own registries and the principal the relay carries
+  (`project/design/architecture/scoped-roles`).
 - Every other command is judged at the project the invocation runs in — the project
   of its working directory's checkout — and at platform scope where it runs in no
   registered project.
