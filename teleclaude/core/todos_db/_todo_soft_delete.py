@@ -6,12 +6,13 @@ import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, NamedTuple, TypedDict, cast
 
 from sqlalchemy import delete, update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.marker_reconciliation import (
     MarkerMoment,
@@ -20,6 +21,7 @@ from teleclaude.core.next_machine.marker_reconciliation import (
 )
 from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._exceptions import RemoveRefused
+from teleclaude.core.todos_db._identity_pin import apply_todo_identity_pin
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
     TODO_TABLE,
@@ -37,6 +39,14 @@ from teleclaude.docs_reconcile import (
 )
 
 _SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
+_LIVE_SLUG_STATUSES: frozenset[TodoStatus] = frozenset({TodoStatus.ACTIVE, TodoStatus.ICEBOX, TodoStatus.HOLDER})
+_REMOVED_IDENTITY_ACTION_REFUSAL = (
+    "Todo {todo_id} ({slug}) is removed; reactivate it by identity first with "
+    "`telec todo reactivate --id {todo_id}` or press U in Trashed."
+)
+_DELIVERED_IDENTITY_ACTION_REFUSAL = "Todo {todo_id} ({slug}) is delivered and read-only."
+_IDENTITY_ACTION_REFUSAL = "Todo {todo_id} ({slug}) with status {status} does not allow changes."
+_IDENTITY_NOT_FOUND = "Todo identity {todo_id} was not found."
 
 
 class RemovalContext(TypedDict):
@@ -151,6 +161,37 @@ class ReactivateRefused(Exception):
         super().__init__(f"reactivate refused for {todo_id} ({slug}): {reason}")
 
 
+class TodoIdentityActionRefused(Exception):
+    """An identity-addressed action targeted a todo outside its live status band."""
+
+    def __init__(self, *, todo_id: str, slug: str, status: TodoStatus) -> None:
+        self.todo_id = todo_id
+        self.slug = slug
+        self.status = status
+        if status == TodoStatus.REMOVED:
+            detail = _REMOVED_IDENTITY_ACTION_REFUSAL.format(todo_id=todo_id, slug=slug)
+        elif status == TodoStatus.DELIVERED:
+            detail = _DELIVERED_IDENTITY_ACTION_REFUSAL.format(todo_id=todo_id, slug=slug)
+        else:
+            detail = _IDENTITY_ACTION_REFUSAL.format(todo_id=todo_id, slug=slug, status=status.value)
+        super().__init__(detail)
+
+
+class TodoIdentityNotFound(Exception):
+    """The supplied durable todo identity does not exist in this project."""
+
+    def __init__(self, *, todo_id: str) -> None:
+        self.todo_id = todo_id
+        super().__init__(_IDENTITY_NOT_FOUND.format(todo_id=todo_id))
+
+
+class TodoIdentityResolution(NamedTuple):
+    """The live todo address resolved from one durable identity."""
+
+    slug: str
+    status: TodoStatus
+
+
 class ExpiredRemovedRow(TypedDict):
     """Removed todo row eligible for purge planning."""
 
@@ -170,6 +211,19 @@ class PurgedRemovedRow(TypedDict):
 
 class TodosDbTodoSoftDeleteMixin:
     """Persistence logic for soft-removed todo entries and their retention lifecycle."""
+
+    db_path: str
+
+    async def resolve_live_slug_by_id(self, todo_id: str) -> TodoIdentityResolution:
+        """Resolve a durable todo id only while its row is in the live slug band."""
+        async with cast(Any, self)._session() as session:
+            entry = cast(Todo | None, await session.get(Todo, todo_id))
+        if entry is None:
+            raise TodoIdentityNotFound(todo_id=todo_id)
+        status = TodoStatus(entry.status)
+        if status not in _LIVE_SLUG_STATUSES:
+            raise TodoIdentityActionRefused(todo_id=todo_id, slug=entry.slug, status=status)
+        return TodoIdentityResolution(slug=entry.slug, status=status)
 
     async def soft_remove_from_todo(
         self,
@@ -419,7 +473,13 @@ class TodosDbTodoSoftDeleteMixin:
         """Return whether retained removed history exists for ``slug``."""
         async with cast(Any, self)._session() as session:
             result = await session.exec(
-                select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "removed").limit(1)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
+                .where(TODO_TABLE.c.status == "removed")
+                .limit(1)
             )
             return result.first() is not None
 
@@ -427,7 +487,11 @@ class TodosDbTodoSoftDeleteMixin:
         """Return whether a retained removal claim names this former lifecycle driver."""
         async with cast(Any, self)._session() as session:
             result = await session.exec(
-                select(Todo.removed_claim).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "removed")
+                apply_todo_identity_pin(
+                    select(Todo.removed_claim).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                ).where(TODO_TABLE.c.status == "removed")
             )
             for removed_claim in result.all():
                 try:
@@ -451,9 +515,12 @@ class TodosDbTodoSoftDeleteMixin:
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             result = await db_session.exec(
-                select(Todo.status)
-                .where(TODO_TABLE.c.slug == slug)
-                .where(TODO_TABLE.c.status.in_(("active", "icebox", "holder")))
+                apply_todo_identity_pin(
+                    select(Todo.status).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
+                .where(TODO_TABLE.c.status.in_({status.value for status in _LIVE_SLUG_STATUSES}))
                 .limit(1)
             )
             status = result.first()
@@ -468,7 +535,13 @@ class TodosDbTodoSoftDeleteMixin:
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             result = await db_session.exec(
-                select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status != "removed").limit(1)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
+                .where(TODO_TABLE.c.status != "removed")
+                .limit(1)
             )
             return result.first() is not None
         finally:

@@ -11,6 +11,7 @@ from textual.widget import Widget
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR
 from teleclaude.cli.tui.utils.formatters import format_time
+from teleclaude.constants import TodoStatus
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _TIMESTAMP = Style(dim=True)
@@ -44,7 +45,8 @@ class TodoFileRow(TelecMixin, Widget):
         filename: str,
         slug: str,
         project_path: str,
-        todo_id: str | None = None,
+        todo_id: str,
+        status: TodoStatus | str,
         updated_at: str | None = None,
         is_last: bool = False,
         tree_lines: list[bool] | None = None,
@@ -56,6 +58,7 @@ class TodoFileRow(TelecMixin, Widget):
         self.slug = slug
         self.project_path = project_path
         self.todo_id = todo_id
+        self.status = status
         self.updated_at = updated_at
         self.is_last = is_last
         self._tree_lines = tree_lines or []

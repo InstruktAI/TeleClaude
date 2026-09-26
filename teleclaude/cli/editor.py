@@ -36,6 +36,11 @@ from teleclaude.cli.tui.theme import (
 )
 from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content, read_artifact_content_by_id
 
+_ARTIFACT_WRITE_BY_ID_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
+_ARTIFACT_WRITE_BY_SLUG_PATH_TEMPLATE = "/todos/artifacts/{slug}/{name}"
+_URL_QUOTE_SAFE = ""
+_HTTP_METHOD_POST = "POST"
+
 
 @dataclass
 class MaterializedArtifact:
@@ -77,9 +82,19 @@ class MaterializedArtifact:
 
     def persist(self, content: str) -> None:
         """Write updated temp-file content through the daemon artifact API."""
+        if self.todo_id is None:
+            path = _ARTIFACT_WRITE_BY_SLUG_PATH_TEMPLATE.format(
+                slug=quote(self.slug, safe=_URL_QUOTE_SAFE),
+                name=quote(self.artifact_name, safe=_URL_QUOTE_SAFE),
+            )
+        else:
+            path = _ARTIFACT_WRITE_BY_ID_PATH_TEMPLATE.format(
+                todo_id=quote(self.todo_id, safe=_URL_QUOTE_SAFE),
+                name=quote(self.artifact_name, safe=_URL_QUOTE_SAFE),
+            )
         tool_api_request(
-            "POST",
-            f"/todos/artifacts/{quote(self.slug, safe='')}/{quote(self.artifact_name, safe='')}",
+            _HTTP_METHOD_POST,
+            path,
             json_body={
                 "content": content,
                 "cwd": str(self.project_root),
@@ -297,9 +312,7 @@ def main() -> None:
             display_name,
             view_mode=args.view,
             theme_name=args.theme,
-            save_callback=None
-            if args.view or materialized is None or materialized.todo_id is not None
-            else materialized.persist,
+            save_callback=None if args.view or materialized is None else materialized.persist,
         )
     finally:
         if materialized is not None:

@@ -1,0 +1,409 @@
+"""Identity-addressed todo lifecycle and artifact mutation routes."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from enum import StrEnum
+from typing import Annotated
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+from instrukt_ai_logging import get_logger
+
+from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
+from teleclaude.api.auth import (
+    CallerIdentity,
+    clearance_todos_artifacts_remove,
+    clearance_todos_artifacts_write,
+    clearance_todos_freeze,
+    clearance_todos_prepare,
+    clearance_todos_remove,
+    clearance_todos_stamp,
+    clearance_todos_unfreeze,
+    clearance_todos_update,
+    clearance_todos_work,
+)
+from teleclaude.api_models_operations import OperationStatusDTO
+from teleclaude.core.operations import get_operations_service
+from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.todos_db import (
+    TodoIdentityActionRefused,
+    TodoIdentityNotFound,
+    TodoIdentityResolution,
+    TodosDb,
+)
+from teleclaude.core.todos_db._identity_pin import todo_identity_pin
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/todos", tags=["todos"])
+
+_IDENTITY_ACTION_EVENT = "workflow.todo.identity_action"
+_CWD_REQUIRED_DETAIL = "cwd required: working directory not provided"
+
+
+class _IdentityAction(StrEnum):
+    """Closed set of mutations addressable by a todo row identity."""
+
+    PREPARE = "prepare"
+    WORK = "work"
+    REMOVE = "remove"
+    FREEZE = "freeze"
+    UNFREEZE = "unfreeze"
+    HOLD = "hold"
+    RELEASE = "release"
+    STAMP = "stamp"
+    ARTIFACT_WRITE = "artifact_write"
+    ARTIFACT_REMOVE = "artifact_remove"
+
+
+class _IdentityOutcome(StrEnum):
+    """Closed set of outcomes recorded for one identity-addressed request."""
+
+    PERFORMED = "performed"
+    REFUSED = "refused"
+    NOT_FOUND = "not_found"
+
+
+def _log_identity_decision(
+    *,
+    action: _IdentityAction,
+    todo_id: str,
+    outcome: _IdentityOutcome,
+    resolution: TodoIdentityResolution | None,
+) -> None:
+    logger.info(
+        _IDENTITY_ACTION_EVENT,
+        action=action.value,
+        todo_id=todo_id,
+        outcome=outcome.value,
+        status=resolution.status.value if resolution is not None else None,
+        slug=resolution.slug if resolution is not None else None,
+    )
+
+
+async def _resolve_identity(
+    *,
+    action: _IdentityAction,
+    todo_id: str,
+    cwd: str,
+) -> tuple[TodosDb, TodoIdentityResolution]:
+    try:
+        todos_db = await todo_routes._get_todos_db_from_cwd(cwd)
+        resolution = await todos_db.resolve_live_slug_by_id(todo_id)
+    except TodoIdentityActionRefused as exc:
+        resolution = TodoIdentityResolution(slug=exc.slug, status=exc.status)
+        _log_identity_decision(
+            action=action,
+            todo_id=todo_id,
+            outcome=_IdentityOutcome.REFUSED,
+            resolution=resolution,
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except TodoIdentityNotFound as exc:
+        _log_identity_decision(
+            action=action,
+            todo_id=todo_id,
+            outcome=_IdentityOutcome.NOT_FOUND,
+            resolution=None,
+        )
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        _log_identity_decision(
+            action=action,
+            todo_id=todo_id,
+            outcome=_IdentityOutcome.REFUSED,
+            resolution=None,
+        )
+        raise
+    return todos_db, resolution
+
+
+async def _perform_identity_action[ResultT](
+    *,
+    action: _IdentityAction,
+    todo_id: str,
+    cwd: str | None,
+    perform: Callable[[TodoIdentityResolution, str], Awaitable[ResultT]],
+    require_cwd: bool = False,
+) -> ResultT:
+    if require_cwd and not cwd:
+        _log_identity_decision(
+            action=action,
+            todo_id=todo_id,
+            outcome=_IdentityOutcome.REFUSED,
+            resolution=None,
+        )
+        raise HTTPException(status_code=400, detail=_CWD_REQUIRED_DETAIL)
+
+    effective_cwd = cwd or todo_routes._default_cwd()
+    todos_db, resolution = await _resolve_identity(action=action, todo_id=todo_id, cwd=effective_cwd)
+    try:
+        with todo_identity_pin(db_path=todos_db.db_path, slug=resolution.slug, todo_id=todo_id):
+            result = await perform(resolution, effective_cwd)
+    except HTTPException:
+        try:
+            current_resolution = await todos_db.resolve_live_slug_by_id(todo_id)
+        except TodoIdentityActionRefused as refusal:
+            current_resolution = TodoIdentityResolution(slug=refusal.slug, status=refusal.status)
+            _log_identity_decision(
+                action=action,
+                todo_id=todo_id,
+                outcome=_IdentityOutcome.REFUSED,
+                resolution=current_resolution,
+            )
+            raise HTTPException(status_code=409, detail=str(refusal)) from refusal
+        except TodoIdentityNotFound as missing:
+            _log_identity_decision(
+                action=action,
+                todo_id=todo_id,
+                outcome=_IdentityOutcome.NOT_FOUND,
+                resolution=None,
+            )
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
+        _log_identity_decision(
+            action=action,
+            todo_id=todo_id,
+            outcome=_IdentityOutcome.REFUSED,
+            resolution=current_resolution,
+        )
+        raise
+    except Exception:
+        _log_identity_decision(
+            action=action,
+            todo_id=todo_id,
+            outcome=_IdentityOutcome.REFUSED,
+            resolution=resolution,
+        )
+        raise
+
+    _log_identity_decision(
+        action=action,
+        todo_id=todo_id,
+        outcome=_IdentityOutcome.PERFORMED,
+        resolution=resolution,
+    )
+    return result
+
+
+@router.post(
+    "/by-id/{todo_id}/prepare",
+    status_code=202,
+    response_model=OperationStatusDTO,
+    response_model_exclude_none=True,
+)
+async def todo_prepare_by_id(
+    todo_id: str,
+    cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_prepare),
+) -> SerializedOperation:
+    """Submit prepare for exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.PREPARE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: get_operations_service().submit_todo_prepare(
+            slug=resolution.slug,
+            cwd=effective_cwd,
+            caller_session_id=identity.session_id,
+            client_request_id=client_request_id,
+            addressed_todo_id=todo_id,
+        ),
+    )
+
+
+@router.post(
+    "/by-id/{todo_id}/work",
+    status_code=202,
+    response_model=OperationStatusDTO,
+    response_model_exclude_none=True,
+)
+async def todo_work_by_id(
+    todo_id: str,
+    cwd: Annotated[str, Body()],
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_work),
+) -> SerializedOperation:
+    """Submit work for exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.WORK,
+        todo_id=todo_id,
+        cwd=cwd,
+        require_cwd=True,
+        perform=lambda resolution, effective_cwd: get_operations_service().submit_todo_work(
+            slug=resolution.slug,
+            cwd=effective_cwd,
+            caller_session_id=identity.session_id,
+            client_request_id=client_request_id,
+            addressed_todo_id=todo_id,
+        ),
+    )
+
+
+@router.post(
+    "/by-id/{todo_id}/remove",
+    status_code=202,
+    response_model=OperationStatusDTO,
+    response_model_exclude_none=True,
+)
+async def todo_remove_by_id(
+    todo_id: str,
+    cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_remove),
+) -> SerializedOperation:
+    """Submit removal for exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.REMOVE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: get_operations_service().submit_todo_remove(
+            slug=resolution.slug,
+            cwd=effective_cwd,
+            caller_session_id=identity.session_id,
+            client_request_id=client_request_id,
+            force=False,
+            addressed_todo_id=todo_id,
+        ),
+    )
+
+
+@router.post("/by-id/{todo_id}/freeze")
+async def todo_freeze_by_id(
+    todo_id: str,
+    cwd: Annotated[str | None, Body()] = None,
+    _identity: CallerIdentity = Depends(clearance_todos_freeze),
+) -> todo_routes._SlugStatusResponse:
+    """Freeze exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.FREEZE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_routes.todo_freeze(resolution.slug, effective_cwd),
+    )
+
+
+@router.post("/by-id/{todo_id}/unfreeze")
+async def todo_unfreeze_by_id(
+    todo_id: str,
+    cwd: Annotated[str | None, Body()] = None,
+    _identity: CallerIdentity = Depends(clearance_todos_unfreeze),
+) -> todo_routes._SlugStatusResponse:
+    """Unfreeze exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.UNFREEZE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_routes.todo_unfreeze(resolution.slug, effective_cwd),
+    )
+
+
+@router.post("/by-id/{todo_id}/hold")
+async def todo_hold_by_id(
+    todo_id: str,
+    cwd: Annotated[str | None, Body()] = None,
+    reason: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_update),
+) -> todo_routes._TodoUpdateResponse | SerializedOperation:
+    """Set a manual hold on exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.HOLD,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_routes.todo_update(
+            slug=resolution.slug,
+            hold=True,
+            reason=reason,
+            cwd=effective_cwd,
+            identity=identity,
+        ),
+    )
+
+
+@router.post("/by-id/{todo_id}/release")
+async def todo_release_by_id(
+    todo_id: str,
+    cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_update),
+) -> todo_routes._TodoUpdateResponse | SerializedOperation:
+    """Release a hold on exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.RELEASE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_routes.todo_update(
+            slug=resolution.slug,
+            release=True,
+            cwd=effective_cwd,
+            identity=identity,
+        ),
+    )
+
+
+@router.post("/by-id/{todo_id}/stamp")
+async def todo_stamp_by_id(
+    todo_id: str,
+    stamp_type: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    value: Annotated[str, Body()] = "",
+    phase: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_stamp),
+) -> todo_routes._SlugStatusResponse:
+    """Apply a stamp to exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.STAMP,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_stamp_routes.todo_stamp(
+            slug=resolution.slug,
+            stamp_type=stamp_type,
+            cwd=effective_cwd,
+            value=value,
+            phase=phase,
+            identity=identity,
+        ),
+    )
+
+
+@router.post("/by-id/{todo_id}/artifacts/{name}")
+async def write_artifact_by_id(
+    todo_id: str,
+    name: str,
+    content: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_artifacts_write),
+) -> todo_artifact_routes._ArtifactWriteResponse:
+    """Write an artifact to exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.ARTIFACT_WRITE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_artifact_routes.write_artifact(
+            slug=resolution.slug,
+            name=name,
+            content=content,
+            cwd=effective_cwd,
+            identity=identity,
+        ),
+    )
+
+
+@router.delete("/by-id/{todo_id}/artifacts/{name}")
+async def remove_artifact_by_id(
+    todo_id: str,
+    name: str,
+    cwd: str | None = None,
+    identity: CallerIdentity = Depends(clearance_todos_artifacts_remove),
+) -> todo_artifact_routes._ArtifactRemoveResponse:
+    """Remove an artifact from exactly the identified todo row."""
+    return await _perform_identity_action(
+        action=_IdentityAction.ARTIFACT_REMOVE,
+        todo_id=todo_id,
+        cwd=cwd,
+        perform=lambda resolution, effective_cwd: todo_artifact_routes.remove_artifact(
+            slug=resolution.slug,
+            name=name,
+            cwd=effective_cwd,
+            _identity=identity,
+        ),
+    )

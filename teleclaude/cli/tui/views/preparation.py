@@ -5,7 +5,7 @@ from __future__ import annotations
 import shlex
 import sys
 import time as _t
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
@@ -50,7 +50,11 @@ from teleclaude.cli.tui.tree import (
     parse_collapsed_projects,
     project_collapse_key,
 )
-from teleclaude.cli.tui.views.preparation_actions import PreparationAction, PreparationViewActionsMixin
+from teleclaude.cli.tui.views.preparation_actions import (
+    RETAINED_TODO_STATUSES,
+    PreparationAction,
+    PreparationViewActionsMixin,
+)
 from teleclaude.cli.tui.widgets.chip import ownership_surface_enabled, principal_to_email
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
@@ -81,6 +85,14 @@ _CREATOR_SESSION_LABEL = "created in"
 _PREPARED_SESSION_LABEL = "prepped in"
 _ARTIFACT_TIMESTAMP_SEPARATOR = ":"
 _EMPTY_SESSION_ROW_FINGERPRINT = ("", "")
+_RETAINED_TODO_STATUS_VALUES = frozenset(status.value for status in RETAINED_TODO_STATUSES)
+
+
+class _PreparationCursorContext(NamedTuple):
+    computer: str
+    project_path: str
+    slug: str | None
+    todo_id: str | None
 
 
 def _session_row_fingerprint(session_id: str | None, lookup: SessionLookup) -> tuple[str, str]:
@@ -105,9 +117,11 @@ def _row_key(widget: Widget) -> str | None:
     cursor falls back to its clamped index.
     """
     if isinstance(widget, TodoFileRow):
-        return _ROW_KEY_SEPARATOR.join((_ROW_KEY_FILE, widget.slug, widget.artifact_name))
+        return _ROW_KEY_SEPARATOR.join((_ROW_KEY_FILE, widget.todo_id, widget.artifact_name))
     if isinstance(widget, TodoRow):
-        return _ROW_KEY_SEPARATOR.join((_ROW_KEY_TODO, widget.slug))
+        todo_id = widget.todo.todo_id
+        if todo_id is not None:
+            return _ROW_KEY_SEPARATOR.join((_ROW_KEY_TODO, todo_id))
     return None
 
 
@@ -305,9 +319,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         new_fp = self._todo_fingerprint(projects_with_todos)
         new_proj_fp = self._project_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
-        live_slugs = {todo.slug for project in projects_with_todos for todo in (project.todos or [])}
-        if not self._todo_state_pruned and live_slugs:
-            self._prune_stale_todo_state(live_slugs)
+        todos = [todo for project in projects_with_todos for todo in (project.todos or [])]
+        if not self._todo_state_pruned and todos:
+            self._prune_stale_todo_state(todos)
             self._todo_state_pruned = True
         if old_fp != new_fp or old_proj_fp != new_proj_fp or not self._nav_items:
             self._rebuild()
@@ -354,20 +368,50 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         if lookup != self._session_lookup:
             self.update_data(self._projects_with_todos, session_lookup=lookup)
 
-    def _prune_stale_todo_state(self, live_slugs: set[str]) -> None:
-        """Drop reloaded state keyed by todos absent from the first payload.
+    def _prune_stale_todo_state(self, todos: list[TodoDTO]) -> None:
+        """Migrate slug-keyed view state to durable ids from the first payload."""
+        present_ids = {todo.todo_id for todo in todos if todo.todo_id is not None}
+        live_ids_by_slug: dict[str, list[str]] = {}
+        for todo in todos:
+            if todo.todo_id is None or todo.status in _RETAINED_TODO_STATUS_VALUES:
+                continue
+            live_ids_by_slug.setdefault(todo.slug, []).append(todo.todo_id)
 
-        Runs once after start: stale slugs enter only through the persisted
-        snapshot, and within a lifetime an absent slug is inert — no row
-        exists to apply it to. A per-refresh prune would let one degraded
-        payload destroy live expand state. A slug-keyed container added to
-        this view is reconciled here or it leaks into the snapshot.
-        """
-        self._expanded_todos &= live_slugs
-        if self._highlighted_row_key is not None:
-            slug = self._highlighted_row_key.split(_ROW_KEY_SEPARATOR, 2)[1:2]
-            if slug and slug[0] not in live_slugs:
-                self._highlighted_row_key = None
+        def unique_live_id(slug: str) -> str | None:
+            """Resolve only when a legacy slug has one current live row."""
+            matches = live_ids_by_slug.get(slug, [])
+            return matches[0] if len(matches) == 1 else None
+
+        migrated_expanded: set[str] = set()
+        for value in self._expanded_todos:
+            if value in present_ids:
+                migrated_expanded.add(value)
+                continue
+            todo_id = unique_live_id(value)
+            if todo_id is not None:
+                migrated_expanded.add(todo_id)
+        self._expanded_todos = migrated_expanded
+
+        if self._highlighted_row_key is None:
+            return
+        parts = self._highlighted_row_key.split(_ROW_KEY_SEPARATOR, 2)
+        if len(parts) == 2 and parts[0] == _ROW_KEY_TODO:
+            if parts[1] in present_ids:
+                return
+            todo_id = unique_live_id(parts[1])
+            self._highlighted_row_key = (
+                _ROW_KEY_SEPARATOR.join((_ROW_KEY_TODO, todo_id)) if todo_id is not None else None
+            )
+            return
+        if len(parts) == 3 and parts[0] == _ROW_KEY_FILE:
+            if parts[1] in present_ids:
+                return
+            todo_id = unique_live_id(parts[1])
+            self._highlighted_row_key = (
+                _ROW_KEY_SEPARATOR.join((_ROW_KEY_FILE, todo_id, parts[2])) if todo_id is not None else None
+            )
+            return
+        self._highlighted_row_key = None
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted expanded and icebox state."""
@@ -505,7 +549,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             )
             widgets_to_mount.append(todo_row)
             self._nav_items.append(todo_row)
-            if row.todo.slug in self._expanded_todos:
+            todo_id = row.todo.todo_id
+            if todo_id is not None and todo_id in self._expanded_todos:
                 detail_tree_lines = [*row.tree_lines, not is_last]
                 sorted_files = sorted(item.files)
                 creator_state = resolve_creator_row_state(item.lineage, self._session_lookup)
@@ -533,7 +578,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         filename=artifact_display_filename(artifact_name),
                         slug=row.todo.slug,
                         project_path=project_path,
-                        todo_id=(row.todo.todo_id if row.todo.status == TodoStatus.REMOVED else None),
+                        todo_id=todo_id,
+                        status=row.todo.status,
                         updated_at=item.artifact_updated_at.get(artifact_name),
                         is_last=(fi == len(sorted_files) - 1),
                         tree_lines=detail_tree_lines,
@@ -541,7 +587,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     for fi, artifact_name in enumerate(sorted_files)
                 )
                 widgets_to_mount.extend(detail_widgets)
-                self._detail_rows[row.todo.slug] = detail_widgets
+                self._detail_rows[todo_id] = detail_widgets
                 expanded_file_rows.append(
                     (todo_row, [widget for widget in detail_widgets if isinstance(widget, TodoFileRow)])
                 )
@@ -663,6 +709,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
     def _mount_file_rows(self, container: VerticalScroll, todo_row: TodoRow) -> None:
         """Mount provenance metadata and navigable artifact rows for an expanded todo."""
+        todo_id = self._require_row_todo_id(todo_row)
+        if todo_id is None:
+            return
         sorted_files = sorted(todo_row.todo.files)
         row_idx = self._nav_items.index(todo_row)
         # Detail tree_lines = parent's lines + parent's own branch continuation
@@ -699,7 +748,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 filename=artifact_display_filename(artifact_name),
                 slug=todo_row.slug,
                 project_path=project_path,
-                todo_id=(todo_row.todo.todo_id if todo_row.todo.status == TodoStatus.REMOVED else None),
+                todo_id=todo_id,
+                status=todo_row.todo.status,
                 updated_at=todo_row.todo.artifact_updated_at.get(artifact_name),
                 is_last=is_last,
                 tree_lines=detail_tree_lines,
@@ -708,34 +758,37 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             self._nav_items.insert(insert_at + i, file_row)
             previous_widget = file_row
             detail_rows.append(file_row)
-        self._detail_rows[todo_row.slug] = detail_rows
+        self._detail_rows[todo_id] = detail_rows
 
     def _remove_file_rows(self, todo_row: TodoRow) -> None:
         """Remove provenance metadata and file rows belonging to a todo."""
-        for widget in self._detail_rows.pop(todo_row.slug, []):
+        todo_id = todo_row.todo.todo_id
+        if todo_id is None:
+            return
+        for widget in self._detail_rows.pop(todo_id, []):
             if isinstance(widget, TodoFileRow):
                 self._nav_items.remove(widget)
             widget.remove()
 
-    def _is_expanded(self, slug: str) -> bool:
-        return slug in self._expanded_todos
+    def _is_expanded(self, todo_id: str | None) -> bool:
+        return todo_id is not None and todo_id in self._expanded_todos
 
     def _expand_todo(self, todo_row: TodoRow) -> None:
         """Expand a todo row - mount the creation-record detail row and file rows."""
-        slug = todo_row.slug
-        if slug in self._expanded_todos:
+        todo_id = self._require_row_todo_id(todo_row)
+        if todo_id is None or todo_id in self._expanded_todos:
             return
-        self._expanded_todos.add(slug)
+        self._expanded_todos.add(todo_id)
         self.post_message(StateChanged())
         container = self.query_one("#preparation-scroll", VerticalScroll)
         self._mount_file_rows(container, todo_row)
 
     def _collapse_todo(self, todo_row: TodoRow) -> None:
         """Collapse a todo row - remove file rows."""
-        slug = todo_row.slug
-        if slug not in self._expanded_todos:
+        todo_id = todo_row.todo.todo_id
+        if todo_id is None or todo_id not in self._expanded_todos:
             return
-        self._expanded_todos.discard(slug)
+        self._expanded_todos.discard(todo_id)
         self.post_message(StateChanged())
         self._remove_file_rows(todo_row)
         # Clamp cursor if it was on a removed file row
@@ -844,6 +897,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         slug: str,
         artifact_name: str,
         todo_id: str | None = None,
+        status: TodoStatus | str | None = None,
         view: bool = False,
     ) -> str:
         """Build an editor command that materializes a DB artifact into a temp file."""
@@ -860,7 +914,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         ]
         if todo_id is not None:
             args.extend([FLAG_ARTIFACT_TODO_ID, todo_id])
-        if view or todo_id is not None:
+        if view or status in RETAINED_TODO_STATUSES:
             args.append(FLAG_VIEW)
 
         if self.app and self.app.theme:
@@ -870,10 +924,11 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
     def _find_parent_todo(self, file_row: TodoFileRow) -> TodoRow | None:
         """Find the TodoRow that owns a file row."""
+        todo_id = file_row.todo_id
         idx = self._nav_items.index(file_row)
         for i in range(idx - 1, -1, -1):
             item = self._nav_items[i]
-            if isinstance(item, TodoRow) and item.slug == file_row.slug:
+            if isinstance(item, TodoRow) and item.todo.todo_id == todo_id:
                 return item
         return None
 
@@ -903,14 +958,14 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 return item
         return None
 
-    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
-        """Resolve computer, project path, and optional slug from cursor."""
+    def _resolve_cursor_context(self) -> _PreparationCursorContext | None:
+        """Resolve the selected project's and todo's address from the cursor."""
         item = self._current_item()
         if item is None:
             return None
 
         if isinstance(item, ProjectHeader):
-            return (item.project.computer or "local", item.project.path, None)
+            return _PreparationCursorContext(item.project.computer or "local", item.project.path, None, None)
 
         if isinstance(item, TodoRow):
             slug = item.slug
@@ -920,10 +975,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 return None
             header = self._resolve_project_header_for_index(idx)
             if header:
-                return (header.project.computer or "local", header.project.path, slug)
+                return _PreparationCursorContext(
+                    header.project.computer or "local", header.project.path, slug, item.todo.todo_id
+                )
             project_path = item.todo.project_path
             if project_path:
-                return ("local", project_path, slug)
+                return _PreparationCursorContext("local", project_path, slug, item.todo.todo_id)
             return None
 
         if isinstance(item, TodoFileRow) and item.slug:
@@ -934,10 +991,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 return None
             header = self._resolve_project_header_for_index(idx)
             if header:
-                return (header.project.computer or "local", header.project.path, slug)
+                return _PreparationCursorContext(
+                    header.project.computer or "local", header.project.path, slug, item.todo_id
+                )
             project_path = item.project_path
             if project_path:
-                return ("local", project_path, slug)
+                return _PreparationCursorContext("local", project_path, slug, item.todo_id)
         return None
 
     def _resolve_todo_for_cursor(self) -> TodoRow | None:

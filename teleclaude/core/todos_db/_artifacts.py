@@ -16,6 +16,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todos_db._errors import HolderWriteRefused
+from teleclaude.core.todos_db._identity_pin import apply_todo_identity_pin
 from teleclaude.core.todos_db._models import (
     TODO_ARTIFACT_TABLE,
     TODO_ARTIFACT_VERSION_TABLE,
@@ -58,6 +59,7 @@ class TodosDbArtifactsMixin:
     """Read, write, and version todo artifacts."""
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
+    db_path: str
 
     async def _resolve_artifact_id(
         self,
@@ -75,8 +77,11 @@ class TodosDbArtifactsMixin:
         callers go through :meth:`_ensure_artifact_id` which raises instead.
         """
         result = await session.exec(
-            select(Todo.id)
-            .where(TODO_TABLE.c.slug == slug)
+            apply_todo_identity_pin(
+                select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                self,
+                slug,
+            )
             .where(TODO_TABLE.c.status != "removed")
             .order_by(
                 # active/icebox first, delivered last
@@ -87,8 +92,11 @@ class TodosDbArtifactsMixin:
         todo_id = result.first()
         if todo_id is None and include_removed:
             removed_result = await session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.slug == slug)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
                 .where(TODO_TABLE.c.status == TodoStatus.REMOVED.value)
                 .order_by(TODO_TABLE.c.removed_at.desc())
                 .limit(1)
@@ -99,8 +107,11 @@ class TodosDbArtifactsMixin:
     async def _is_artifact_holder_slug(self, session: SqlAsyncSession, slug: str) -> bool:
         """Return whether ``slug``'s live row has status ``holder``."""
         result = await session.exec(
-            select(Todo.id)
-            .where(TODO_TABLE.c.slug == slug)
+            apply_todo_identity_pin(
+                select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                self,
+                slug,
+            )
             .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
             .limit(1)
         )
@@ -113,7 +124,13 @@ class TodosDbArtifactsMixin:
         whether the slug is unrecognized or merely frozen as ``delivered``.
         """
         result = await session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
+            apply_todo_identity_pin(
+                select(Todo).where(TODO_TABLE.c.slug == slug),
+                self,
+                slug,
+            )
+            .where(TODO_TABLE.c.status.in_(("active", "icebox")))
+            .limit(1)
         )
         entry = result.first()
         if entry is not None:
@@ -123,7 +140,13 @@ class TodosDbArtifactsMixin:
             raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
 
         delivered = await session.exec(
-            select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "delivered").limit(1)
+            apply_todo_identity_pin(
+                select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                self,
+                slug,
+            )
+            .where(TODO_TABLE.c.status == "delivered")
+            .limit(1)
         )
         if delivered.first() is not None:
             raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
@@ -150,8 +173,11 @@ class TodosDbArtifactsMixin:
         """Sync counterpart of :meth:`_resolve_artifact_id`. Returns None for unknown slugs."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
             todo_id = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.slug == slug)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
                 .where(TODO_TABLE.c.status != "removed")
                 .order_by((TODO_TABLE.c.status == "delivered").asc())
                 .limit(1)
@@ -252,23 +278,35 @@ class TodosDbArtifactsMixin:
         updated_by = as_session_id(updated_by)
         with self._sync_session() as session:  # type: ignore[attr-defined]
             result = session.exec(
-                select(Todo)
-                .where(TODO_TABLE.c.slug == slug)
+                apply_todo_identity_pin(
+                    select(Todo).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
                 .where(TODO_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             )
             entry = result.first()
             if entry is None:
                 holder = session.exec(
-                    select(Todo.id)
-                    .where(TODO_TABLE.c.slug == slug)
+                    apply_todo_identity_pin(
+                        select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                        self,
+                        slug,
+                    )
                     .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
                     .limit(1)
                 ).first()
                 if holder is not None:
                     raise HolderWriteRefused(f"Cannot write artifact: holder todo {slug!r} has frozen artifacts")
                 delivered = session.exec(
-                    select(Todo.id).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "delivered").limit(1)
+                    apply_todo_identity_pin(
+                        select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                        self,
+                        slug,
+                    )
+                    .where(TODO_TABLE.c.status == "delivered")
+                    .limit(1)
                 ).first()
                 if delivered is not None:
                     raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
@@ -457,8 +495,11 @@ class TodosDbArtifactsMixin:
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
             result = await db_session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.slug == old_slug)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == old_slug),
+                    self,
+                    old_slug,
+                )
                 .where(TODO_TABLE.c.status.notin_(("delivered", "removed")))
                 .limit(1)
             )

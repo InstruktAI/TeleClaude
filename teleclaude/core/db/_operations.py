@@ -1,5 +1,6 @@
 """Mixin: DbOperationsMixin."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -95,8 +96,9 @@ class DbOperationsMixin:
         caller_session_id: str | None,
         cwd: str,
         slug: str | None,
+        existing_match_ok: Callable[[db_models.Operation], bool] | None = None,
     ) -> db_models.Operation | None:
-        """Find the most recent matching queued/running operation for reattachment."""
+        """Find the newest matching operation accepted by the submitter's predicate."""
         stmt = (
             select(db_models.Operation)
             .where(db_models.Operation.kind == kind)
@@ -111,7 +113,10 @@ class DbOperationsMixin:
             stmt = stmt.where(db_models.Operation.slug == slug)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
-            return result.first()
+            for operation in result.all():
+                if existing_match_ok is None or existing_match_ok(operation):
+                    return operation
+            return None
 
     async def find_nonterminal_operations_bound_to_todo(
         self,

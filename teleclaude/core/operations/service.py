@@ -42,7 +42,6 @@ from teleclaude.core.next_machine.lifecycle_runner import (
 )
 from teleclaude.core.next_machine.manual_start import adopt_manual_lifecycle_session, resolve_manual_dispatch_intent
 from teleclaude.core.next_machine.prepare import next_prepare
-from teleclaude.core.next_machine.remove import execute_todo_remove
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
@@ -50,6 +49,11 @@ from teleclaude.core.operation_progress import reset_progress_callback, set_prog
 from teleclaude.core.operations._command_outcome import command_result_outcome
 from teleclaude.core.operations._delivery import DeliveryOutcome, DeliveryReason, deliver_recovered_operations
 from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
+from teleclaude.core.operations.todo_identity import (
+    pin_operation_todo_identity,
+    todo_operation_submission,
+)
+from teleclaude.core.operations.todo_removal import run_todo_remove_operation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
@@ -78,12 +82,6 @@ class SerializedOperation(TypedDict, total=False):
     error: str
     error_payload: OperationErrorPayload
     client_request_id: str
-
-
-class TodoRemovePayload(TypedDict):
-    """Persisted request fields for a todo-remove operation."""
-
-    force: bool
 
 
 OPERATION_KIND_TODO_WORK = "todo_work"
@@ -209,6 +207,7 @@ class OperationsService:
         cwd: str,
         caller_session_id: str,
         client_request_id: str | None,
+        addressed_todo_id: str | None = None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed manual-start operation.
 
@@ -218,13 +217,12 @@ class OperationsService:
         records ``todo_work``. No caller flag selects the lane.
         """
         operation_kind = await self._resolve_work_operation_kind(slug=slug, cwd=cwd)
-        payload_json = json.dumps(
-            {
-                "kind": operation_kind,
-                "slug": slug,
-                "cwd": cwd,
-            },
-            sort_keys=True,
+        payload_json, existing_match_ok, on_existing = todo_operation_submission(
+            kind=operation_kind,
+            slug=slug,
+            cwd=cwd,
+            addressed_todo_id=addressed_todo_id,
+            client_request_id=client_request_id,
         )
         return await self._submit_operation(
             kind=operation_kind,
@@ -233,6 +231,8 @@ class OperationsService:
             slug=slug,
             client_request_id=client_request_id,
             payload_json=payload_json,
+            existing_match_ok=existing_match_ok,
+            on_existing=on_existing,
         )
 
     @staticmethod
@@ -333,12 +333,16 @@ class OperationsService:
         cwd: str,
         caller_session_id: str,
         client_request_id: str | None,
+        addressed_todo_id: str | None = None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-prepare operation."""
         self._require_resolved_checkout(cwd)
-        payload_json = json.dumps(
-            {"kind": OPERATION_KIND_TODO_PREPARE, "slug": slug, "cwd": cwd},
-            sort_keys=True,
+        payload_json, existing_match_ok, on_existing = todo_operation_submission(
+            kind=OPERATION_KIND_TODO_PREPARE,
+            slug=slug,
+            cwd=cwd,
+            addressed_todo_id=addressed_todo_id,
+            client_request_id=client_request_id,
         )
         return await self._submit_operation(
             kind=OPERATION_KIND_TODO_PREPARE,
@@ -347,6 +351,8 @@ class OperationsService:
             slug=slug,
             client_request_id=client_request_id,
             payload_json=payload_json,
+            existing_match_ok=existing_match_ok,
+            on_existing=on_existing,
         )
 
     async def submit_todo_remove(
@@ -357,11 +363,16 @@ class OperationsService:
         caller_session_id: str,
         client_request_id: str | None,
         force: bool = False,
+        addressed_todo_id: str | None = None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-remove operation."""
-        payload_json = json.dumps(
-            {"kind": OPERATION_KIND_TODO_REMOVE, "slug": slug, "cwd": cwd, "force": force},
-            sort_keys=True,
+        payload_json, existing_match_ok, on_existing = todo_operation_submission(
+            kind=OPERATION_KIND_TODO_REMOVE,
+            slug=slug,
+            cwd=cwd,
+            addressed_todo_id=addressed_todo_id,
+            client_request_id=client_request_id,
+            force=force,
         )
         return await self._submit_operation(
             kind=OPERATION_KIND_TODO_REMOVE,
@@ -370,6 +381,8 @@ class OperationsService:
             slug=slug,
             client_request_id=client_request_id,
             payload_json=payload_json,
+            existing_match_ok=existing_match_ok,
+            on_existing=on_existing,
         )
 
     async def submit_todo_rename(
@@ -482,11 +495,12 @@ class OperationsService:
                     caller_session_id=caller_session_id,
                     cwd=cwd,
                     slug=slug,
+                    existing_match_ok=existing_match_ok,
                 )
                 if cwd is not None
                 else None
             )
-            if existing is not None and (existing_match_ok is None or existing_match_ok(existing)):
+            if existing is not None:
                 if on_existing is not None:
                     on_existing(existing)
                 if existing.state == "queued":
@@ -566,7 +580,7 @@ class OperationsService:
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
             OPERATION_KIND_TODO_RENAME: self._run_todo_rename,
-            OPERATION_KIND_TODO_REMOVE: self._run_todo_remove,
+            OPERATION_KIND_TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
             OPERATION_KIND_SESSION_CLOSE: self._run_command_backed_operation,
             OPERATION_KIND_AGENT_RESTART: self._run_command_backed_operation,
             OPERATION_KIND_AGENT_HANDOFF: self._run_command_backed_operation,
@@ -626,7 +640,8 @@ class OperationsService:
 
             token = set_progress_callback(_capture_progress)
             caller_token = set_caller_session_id(operation.caller_session_id)
-            result = await coro_factory(operation)
+            async with pin_operation_todo_identity(operation):
+                result = await coro_factory(operation)
             await self._flush_latest_progress(operation_id, latest_progress)
             await self._db.complete_operation(
                 operation_id,
@@ -702,17 +717,6 @@ class OperationsService:
                 current_operation_id=operation.operation_id,
             )
         return await rename_func(self._db, payload["old_slug"], payload["new_slug"], payload["cwd"])
-
-    async def _run_todo_remove(self, operation: Operation) -> str:
-        """Run a persisted remove request with its explicit override bit."""
-        payload = self._todo_remove_payload(operation)
-        return await execute_todo_remove(
-            self._db,
-            operation.slug,
-            operation.cwd,
-            force=payload["force"],
-            current_operation_id=operation.operation_id,
-        )
 
     async def _run_command_backed_operation(self, operation: Operation) -> str:
         """Reconstruct the operation's carried command and run it through its handler.
@@ -853,16 +857,6 @@ class OperationsService:
         if not isinstance(old_slug, str) or not isinstance(new_slug, str) or not isinstance(cwd, str):
             raise ValueError("todo rename operation payload must include old_slug, new_slug, and cwd")
         return {"old_slug": old_slug, "new_slug": new_slug, "cwd": cwd}
-
-    @staticmethod
-    def _todo_remove_payload(operation: Operation) -> TodoRemovePayload:
-        try:
-            payload = json.loads(operation.payload_json)
-        except json.JSONDecodeError as exc:
-            raise ValueError("todo remove operation payload is invalid JSON") from exc
-        if not isinstance(payload, dict) or not isinstance(payload.get("force"), bool):
-            raise ValueError("todo remove operation payload must include force")
-        return {"force": payload["force"]}
 
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():

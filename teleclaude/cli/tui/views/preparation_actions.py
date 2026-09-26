@@ -6,14 +6,15 @@ import os
 import time
 from collections.abc import Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict, cast
 from urllib.parse import quote
 
+from instrukt_ai_logging import get_logger
 from textual import work
 
 from teleclaude.api_models import TodoDumpRequest
-from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
-from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
+from teleclaude.cli.tool_client import ToolAPIError, ToolQueryParams, tool_api_request
+from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest, StateChanged
 from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
@@ -43,16 +44,44 @@ from teleclaude.types.todo_kind import (
     TodoDumpKind,
 )
 
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
-
-from teleclaude.cli.tui.messages import StateChanged
 
 # Lifecycle-operation follow-through: how long to poll before surfacing an
 # unknown outcome, and the fallback delay between polls when the response
 # carries no positive poll_after_ms.
 _LIFECYCLE_POLL_BUDGET_S = 60.0
 _LIFECYCLE_POLL_DEFAULT_DELAY_S = 0.25
+_MISSING_TODO_ID_WARNING = "row missing durable id; refresh the todo pane"
+RETAINED_TODO_STATUSES: frozenset[TodoStatus] = frozenset({TodoStatus.REMOVED, TodoStatus.DELIVERED})
+_ROW_ACTION_FAILURE_EVENT = "tui.preparation_row_action_failed"
+_ROW_ACTION_POST = "POST"
+_ROW_ACTION_DELETE = "DELETE"
+_TODO_BY_ID_ACTION_PATH_TEMPLATE = "/todos/by-id/{todo_id}/{action}"
+_TODO_BY_ID_ARTIFACT_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
+_TODO_PREPARE_PATH = "/todos/prepare"
+_TODO_WORK_PATH = "/todos/work"
+_REMOVE_ARTIFACT_SUCCESS_TEMPLATE = "Removed artifact '{artifact_name}' from {slug}"
+_INPUT_ARTIFACT_REMOVAL_WARNING = "The 'input' artifact cannot be removed."
+_REMOVE_ARTIFACT_MODAL_TITLE = "Remove Artifact"
+_REMOVE_ARTIFACT_CONFIRM_TEMPLATE = (
+    "Remove artifact '{artifact_name}' from '{slug}'?\n\nThis deletes its version history and cannot be undone."
+)
+_REMOVE_TODO_MODAL_TITLE = "Remove Todo"
+_REMOVE_TODO_CONFIRM_TEMPLATE = "Remove todo '{slug}'?\n\nThis action cannot be undone."
+_FREEZE_SUCCESS_TEMPLATE = "Frozen '{slug}' to icebox"
+_UNFREEZE_SUCCESS_TEMPLATE = "Unfrozen '{slug}' to todo list"
+_APPROVE_SUCCESS_TEMPLATE = "Approved '{slug}'"
+_VIEWING_FILE_TITLE_TEMPLATE = "Viewing: {filename}"
+_EDITING_FILE_TITLE_TEMPLATE = "Editing: {filename}"
+_PREPARING_LABEL_TEMPLATE = "Preparing {slug}"
+_STARTING_WORK_LABEL_TEMPLATE = "Starting work {slug}"
+_REMOVING_TODO_LABEL_TEMPLATE = "Removing {slug}"
+_CWD_BODY_KEY = "cwd"
+_REASON_BODY_KEY = "reason"
+_STAMP_TYPE_BODY_KEY = "stamp_type"
 
 # Wire contract for GET /operations/{operation_id}, per _serialize_operation
 # (teleclaude/core/operations/service.py) — the serialized field names, not
@@ -72,15 +101,9 @@ _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE = "Operation {operation_id} outcome unknown: {
 _OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE = "Operation ended in state '{state}'"
 _RUNNER_NOT_DISPATCHED_PREFIX = f"{RUNNER_NOT_DISPATCHED}:"
 _WARNING_RESPONSE_KEY = "warnings"
-_TODO_UPDATE_PATH = "/todos/update"
 _RESPONSE_KEY_STATUS = "status"
 _RESPONSE_STATUS_OK = "ok"
 _RESPONSE_KEY_DETAIL = "detail"
-_TODO_UPDATE_SLUG_KEY = "slug"
-_TODO_UPDATE_CWD_KEY = "cwd"
-_TODO_UPDATE_RELEASE_KEY = "release"
-_TODO_UPDATE_HOLD_KEY = "hold"
-_TODO_UPDATE_REASON_KEY = "reason"
 _HOLD_MODAL_TITLE = "Hold todo"
 _HOLD_MODAL_PROMPT = "Why hold this todo?"
 _HOLD_MODAL_PLACEHOLDER = "Enter a reason..."
@@ -95,6 +118,60 @@ class PreparationAction(StrEnum):
     """Closed vocabulary for Preparation view actions added after the legacy bindings."""
 
     FLASH_DEPENDENCIES = "flash_dependencies"
+    PREPARE = "prepare"
+    START_WORK = "start_work"
+    FREEZE = "freeze"
+    UNFREEZE = "unfreeze"
+    HOLD = "hold"
+    APPROVE_GATE = "approve_gate"
+    REMOVE_ARTIFACT = "remove_artifact"
+    REACTIVATE_SELECTED = "reactivate_selected"
+    ACTIVATE = "activate"
+    PREVIEW_FILE = "preview_file"
+
+
+class _IdentityTodoRoute(StrEnum):
+    """Closed identity-route path vocabulary consumed by the Preparation view."""
+
+    PREPARE = "prepare"
+    WORK = "work"
+    REMOVE = "remove"
+    FREEZE = "freeze"
+    UNFREEZE = "unfreeze"
+    HOLD = "hold"
+    RELEASE = "release"
+    STAMP = "stamp"
+
+
+class _RetainedRowActions(NamedTuple):
+    todo_row: frozenset[PreparationAction]
+    file_row: frozenset[PreparationAction]
+
+
+_RETAINED_TODO_ACTIONS: dict[TodoStatus, _RetainedRowActions] = {
+    TodoStatus.REMOVED: _RetainedRowActions(
+        todo_row=frozenset({PreparationAction.ACTIVATE, PreparationAction.REACTIVATE_SELECTED}),
+        file_row=frozenset({PreparationAction.ACTIVATE, PreparationAction.PREVIEW_FILE}),
+    ),
+    TodoStatus.DELIVERED: _RetainedRowActions(
+        todo_row=frozenset({PreparationAction.ACTIVATE}),
+        file_row=frozenset({PreparationAction.ACTIVATE, PreparationAction.PREVIEW_FILE}),
+    ),
+}
+_ROW_ADDRESSED_ACTIONS: frozenset[PreparationAction] = frozenset(
+    {
+        PreparationAction.PREPARE,
+        PreparationAction.START_WORK,
+        PreparationAction.FREEZE,
+        PreparationAction.UNFREEZE,
+        PreparationAction.HOLD,
+        PreparationAction.APPROVE_GATE,
+        PreparationAction.REMOVE_ARTIFACT,
+        PreparationAction.REACTIVATE_SELECTED,
+        PreparationAction.ACTIVATE,
+        PreparationAction.PREVIEW_FILE,
+    }
+)
 
 
 class _ApprovalGateState(TypedDict, total=False):
@@ -146,6 +223,14 @@ def _hold_control_available(row: TodoRow) -> bool:
 class PreparationViewActionsMixin:
     """Keyboard actions, check_action, watch_cursor_index, on_focus for PreparationView."""
 
+    def _require_row_todo_id(self, row: TodoRow) -> str | None:
+        """Return a row's durable id or explain why its action cannot proceed."""
+        todo_id = row.todo.todo_id
+        if todo_id is None:
+            self.app.notify(_MISSING_TODO_ID_WARNING, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
+            return None
+        return todo_id
+
     if TYPE_CHECKING:
         app: Any
         _projects_with_todos: list[ProjectWithTodosDTO]
@@ -153,6 +238,48 @@ class PreparationViewActionsMixin:
         def _clear_dependency_flash(self) -> None: ...
 
         def _flash_dependencies(self) -> None: ...
+
+    def _perform_identity_row_action(
+        self,
+        *,
+        action: PreparationAction,
+        method: str,
+        path: str,
+        todo_id: str,
+        success_message: str,
+        body: object | None = None,
+        params: ToolQueryParams | None = None,
+        relay_warnings: bool = False,
+    ) -> None:
+        """Run one row-addressed API action and contain transport failures at the UI edge."""
+        try:
+            result = tool_api_request(method, path, json_body=body, params=params, timeout=10.0)
+        except ToolAPIError as exc:
+            self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+            return
+        # Row actions cross the API boundary; contain unexpected failures before they unwind Textual.
+        except Exception as exc:
+            logger.error(_ROW_ACTION_FAILURE_EVENT, action=action.value, todo_id=todo_id, exc_info=True)
+            self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+            return
+
+        if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
+            self.app.notify_text(success_message)  # type: ignore[attr-defined]
+            if relay_warnings:
+                warnings = result.get(_WARNING_RESPONSE_KEY)
+                if isinstance(warnings, list):
+                    for warning in warnings:
+                        if isinstance(warning, str):
+                            self.app.notify_text(warning, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
+            self.app._refresh_data()  # type: ignore[attr-defined]
+            return
+        if isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
+            self.app.notify_text(str(result[_RESPONSE_KEY_DETAIL]), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+            return
+        self.app.notify_text(
+            _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result),
+            severity=_NOTIFY_SEVERITY_ERROR,
+        )  # type: ignore[attr-defined]
 
     @staticmethod
     def _next_command(base: str, slug: str | None) -> str:
@@ -233,9 +360,13 @@ class PreparationViewActionsMixin:
             return action not in project_disallowed
 
         if isinstance(item, TodoRow):
+            if item.todo.status in RETAINED_TODO_STATUSES and action in _ROW_ADDRESSED_ACTIONS:
+                return action in _RETAINED_TODO_ACTIONS[item.todo.status].todo_row
             return self._check_todo_row_action(item, action)
 
         if isinstance(item, TodoFileRow):
+            if item.status in RETAINED_TODO_STATUSES and action in _ROW_ADDRESSED_ACTIONS:
+                return action in _RETAINED_TODO_ACTIONS[item.status].file_row
             return action not in file_disallowed
 
         return True
@@ -344,7 +475,7 @@ class PreparationViewActionsMixin:
         """Enter: toggle expand/collapse on todo, open editor on file."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if row:
-            if self._is_expanded(row.slug):  # type: ignore[attr-defined]
+            if self._is_expanded(row.todo.todo_id):  # type: ignore[attr-defined]
                 self._collapse_todo(row)  # type: ignore[attr-defined]
             else:
                 self._expand_todo(row)  # type: ignore[attr-defined]
@@ -364,21 +495,26 @@ class PreparationViewActionsMixin:
                         slug=file_row.slug,
                         artifact_name=file_row.artifact_name,
                         todo_id=file_row.todo_id,
+                        status=file_row.status,
                     ),
-                    title=(f"Viewing: {file_row.filename}" if file_row.todo_id else f"Editing: {file_row.filename}"),
+                    title=(
+                        _VIEWING_FILE_TITLE_TEMPLATE.format(filename=file_row.filename)
+                        if file_row.status in RETAINED_TODO_STATUSES
+                        else _EDITING_FILE_TITLE_TEMPLATE.format(filename=file_row.filename)
+                    ),
                 )
             )
 
     def action_expand_all(self) -> None:
         """Expand every todo row in the current list."""
         for widget in list(self._nav_items):  # type: ignore[attr-defined]
-            if isinstance(widget, TodoRow) and not self._is_expanded(widget.slug):  # type: ignore[attr-defined]
+            if isinstance(widget, TodoRow) and not self._is_expanded(widget.todo.todo_id):  # type: ignore[attr-defined]
                 self._expand_todo(widget)  # type: ignore[attr-defined]
 
     def action_collapse_all(self) -> None:
         """Collapse every expanded todo row in the current list."""
         for widget in list(self._nav_items):  # type: ignore[attr-defined]
-            if isinstance(widget, TodoRow) and self._is_expanded(widget.slug):  # type: ignore[attr-defined]
+            if isinstance(widget, TodoRow) and self._is_expanded(widget.todo.todo_id):  # type: ignore[attr-defined]
                 self._collapse_todo(widget)  # type: ignore[attr-defined]
 
     def action_expand_structure(self) -> None:
@@ -393,7 +529,7 @@ class PreparationViewActionsMixin:
     def action_collapse_structure(self) -> None:
         """_ : collapse every computer and project (structural level)."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        target_computer = context[0] if context else None
+        target_computer = context.computer if context else None
         self._collapsed_computers = {p.computer or "local" for p in self._projects_with_todos}  # type: ignore[attr-defined]
         self._collapsed_projects = {  # type: ignore[attr-defined]
             project_collapse_key(p.computer, p.path)
@@ -436,7 +572,7 @@ class PreparationViewActionsMixin:
         """Return the active project path from cursor context or cwd."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if context:
-            return context[1]
+            return context.project_path
         return os.getcwd()
 
     def _create_item(self, slug: str, *, kind: str | None) -> None:
@@ -528,38 +664,32 @@ class PreparationViewActionsMixin:
             artifact_name = file_row.artifact_name
             slug = file_row.slug
             if artifact_name == ARTIFACT_INPUT:
-                self.app.notify("The 'input' artifact cannot be removed.", severity="warning")  # type: ignore[attr-defined]
+                self.app.notify(_INPUT_ARTIFACT_REMOVAL_WARNING, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
                 return
             context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-            project_path = (context[1] if context else "") or (file_row.project_path or "")
+            project_path = (context.project_path if context else "") or (file_row.project_path or "")
             if not project_path:
                 return
 
             def _on_confirm_artifact(confirmed: bool | None) -> None:
                 if not confirmed:
                     return
-                try:
-                    result = tool_api_request(
-                        "DELETE",
-                        f"/todos/artifacts/{quote(slug)}/{quote(artifact_name)}",
-                        params={"cwd": project_path},
-                        timeout=10.0,
-                    )
-                except ToolAPIError as exc:
-                    self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
-                    return
-                if isinstance(result, dict) and result.get("status") == "ok":
-                    self.app.notify_text(f"Removed artifact '{artifact_name}' from {slug}")  # type: ignore[attr-defined]
-                    self.app._refresh_data()  # type: ignore[attr-defined]
-                elif isinstance(result, dict) and result.get("detail"):
-                    self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-                else:
-                    self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
+                path = _TODO_BY_ID_ARTIFACT_PATH_TEMPLATE.format(
+                    todo_id=quote(file_row.todo_id), name=quote(artifact_name)
+                )
+                self._perform_identity_row_action(
+                    action=PreparationAction.REMOVE_ARTIFACT,
+                    method=_ROW_ACTION_DELETE,
+                    path=path,
+                    todo_id=file_row.todo_id,
+                    success_message=_REMOVE_ARTIFACT_SUCCESS_TEMPLATE.format(artifact_name=artifact_name, slug=slug),
+                    params={_CWD_BODY_KEY: project_path},
+                )
 
             self.app.push_screen(  # type: ignore[attr-defined]
                 ConfirmModal(
-                    title="Remove Artifact",
-                    message=f"Remove artifact '{artifact_name}' from '{slug}'?\n\nThis deletes its version history and cannot be undone.",
+                    title=_REMOVE_ARTIFACT_MODAL_TITLE,
+                    message=_REMOVE_ARTIFACT_CONFIRM_TEMPLATE.format(artifact_name=artifact_name, slug=slug),
                 ),
                 _on_confirm_artifact,
             )
@@ -567,60 +697,44 @@ class PreparationViewActionsMixin:
 
         # Todo row → remove the whole todo (original behavior).
         row = self._current_todo_row()  # type: ignore[attr-defined]
-        slug = row.slug if row else None
-        if not slug:
+        if row is None:
+            return
+        slug = row.slug
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
             return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        project_path = context[1] if context else ""
+        project_path = context.project_path if context else ""
         if not project_path:
             return
+        path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.REMOVE.value)
 
         def _on_confirm_todo(confirmed: bool | None) -> None:
             if not confirmed:
                 return
-            try:
-                result = tool_api_request(
-                    "POST",
-                    "/todos/remove",
-                    json_body={"slug": slug, "cwd": project_path},
-                    timeout=10.0,
-                )
-            except ToolAPIError as exc:
-                self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
-                return
-            if isinstance(result, dict) and result.get("operation_id"):
-                self.app.notify_text(f"Removing {slug}...")  # type: ignore[attr-defined]
-                self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
-            elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-            else:
-                self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
+            self._submit_lifecycle_operation(path, project_path, _REMOVING_TODO_LABEL_TEMPLATE.format(slug=slug))
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
-                title="Remove Todo",
-                message=f"Remove todo '{slug}'?\n\nThis action cannot be undone.",
+                title=_REMOVE_TODO_MODAL_TITLE,
+                message=_REMOVE_TODO_CONFIRM_TEMPLATE.format(slug=slug),
             ),
             _on_confirm_todo,
         )
 
-    def _submit_lifecycle_operation(self, path: str, project_path: str, slug: str | None, label: str) -> None:
-        body: dict[str, object] = {"cwd": project_path}  # guard: loose-dict - JSON request body
-        if slug:
-            body["slug"] = slug
+    def _submit_lifecycle_operation(self, path: str, project_path: str, display_label: str) -> None:
         try:
             result = tool_api_request(
-                "POST",
+                _ROW_ACTION_POST,
                 path,
-                json_body=body,
+                json_body={_CWD_BODY_KEY: project_path},
                 timeout=10.0,
             )
         except ToolAPIError as exc:
             self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get("operation_id"):
-            target = f" {slug}" if slug else ""
-            self.app.notify_text(f"{label}{target}...")  # type: ignore[attr-defined]
+            self.app.notify_text(f"{display_label}...")  # type: ignore[attr-defined]
             self.app._refresh_data()  # type: ignore[attr-defined]
             self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
             return
@@ -713,8 +827,19 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
-        _, project_path, slug = context
-        self._submit_lifecycle_operation("/todos/prepare", project_path, slug, "Preparing")
+        project_path = context.project_path
+        slug = context.slug
+        if slug is None:
+            self._submit_lifecycle_operation(_TODO_PREPARE_PATH, project_path, "Preparing")
+            return
+        row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
+        if row is None:
+            return
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
+            return
+        path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.PREPARE.value)
+        self._submit_lifecycle_operation(path, project_path, _PREPARING_LABEL_TEMPLATE.format(slug=slug))
 
     def action_start_work(self) -> None:
         """s: submit a work operation for the selected scope.
@@ -727,11 +852,16 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
-        _, project_path, slug = context
+        project_path = context.project_path
+        slug = context.slug
+        todo_id = context.todo_id
 
-        if slug:
+        if slug is not None:
             todo_row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
             if not todo_row:
+                return
+            todo_id = self._require_row_todo_id(todo_row)
+            if todo_id is None:
                 return
             kind = todo_row.todo.kind or TODO_KIND_FEATURE
             if kind != TODO_KIND_TASK:
@@ -743,42 +873,42 @@ class PreparationViewActionsMixin:
                     )  # type: ignore[attr-defined]
                     return
 
-        self._submit_lifecycle_operation("/todos/work", project_path, slug, "Starting work")
+        if slug is None:
+            self._submit_lifecycle_operation(_TODO_WORK_PATH, project_path, "Starting work")
+            return
+        if todo_id is None:
+            return
+        path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.WORK.value)
+        self._submit_lifecycle_operation(path, project_path, _STARTING_WORK_LABEL_TEMPLATE.format(slug=slug))
 
     def action_freeze(self) -> None:
         """f: freeze a todo to the icebox."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
-        slug = row.slug if row else None
-        if not slug:
+        if row is None:
+            return
+        slug = row.slug
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
             return
 
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        project_path = context[1] if context else ""
+        project_path = context.project_path if context else ""
         if not project_path:
             return
+        path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.FREEZE.value)
 
         def _on_confirm(confirmed: bool | None) -> None:
             if not confirmed:
                 return
-            try:
-                result = tool_api_request(
-                    "POST",
-                    f"/todos/freeze/{slug}",
-                    json_body={"cwd": project_path},
-                    timeout=10.0,
-                )
-                if isinstance(result, dict) and result.get("status") == "ok":
-                    self.app.notify_text(f"Frozen '{slug}' to icebox")  # type: ignore[attr-defined]
-                    warnings = result.get(_WARNING_RESPONSE_KEY)
-                    if isinstance(warnings, list):
-                        for warning in warnings:
-                            if isinstance(warning, str):
-                                self.app.notify_text(warning, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
-                    self.app._refresh_data()  # type: ignore[attr-defined]
-                elif isinstance(result, dict) and result.get("detail"):
-                    self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-            except Exception as exc:
-                self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
+            self._perform_identity_row_action(
+                action=PreparationAction.FREEZE,
+                method=_ROW_ACTION_POST,
+                path=path,
+                todo_id=todo_id,
+                success_message=_FREEZE_SUCCESS_TEMPLATE.format(slug=slug),
+                body={_CWD_BODY_KEY: project_path},
+                relay_warnings=True,
+            )
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
@@ -810,7 +940,7 @@ class PreparationViewActionsMixin:
             context = self._resolve_cursor_context()  # type: ignore[attr-defined]
             if not context:
                 return
-            _, project_path, _ = context
+            project_path = context.project_path
             if project_path in self._icebox_projects:  # type: ignore[attr-defined]
                 self._icebox_projects.discard(project_path)  # type: ignore[attr-defined]
             else:
@@ -840,7 +970,7 @@ class PreparationViewActionsMixin:
             context = self._resolve_cursor_context()  # type: ignore[attr-defined]
             if not context:
                 return
-            _, project_path, _ = context
+            project_path = context.project_path
             if project_path in self._delivered_projects:  # type: ignore[attr-defined]
                 self._delivered_projects.discard(project_path)  # type: ignore[attr-defined]
             else:
@@ -852,34 +982,28 @@ class PreparationViewActionsMixin:
     def action_unfreeze(self) -> None:
         """u: unfreeze an icebox todo back to the active todo list."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
-        if not row or row.todo.status != TodoStatus.ICEBOX:
+        if row is None or row.todo.status != TodoStatus.ICEBOX:
             return
 
         slug = row.slug
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
+            return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        project_path = context[1] if context else ""
+        project_path = context.project_path if context else ""
         if not project_path:
             return
 
-        try:
-            result = tool_api_request(
-                "POST",
-                f"/todos/unfreeze/{slug}",
-                json_body={"cwd": project_path},
-                timeout=10.0,
-            )
-            if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify_text(f"Unfrozen '{slug}' to todo list")  # type: ignore[attr-defined]
-                warnings = result.get(_WARNING_RESPONSE_KEY)
-                if isinstance(warnings, list):
-                    for warning in warnings:
-                        if isinstance(warning, str):
-                            self.app.notify_text(warning, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
-                self.app._refresh_data()  # type: ignore[attr-defined]
-            elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-        except Exception as exc:
-            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
+        path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.UNFREEZE.value)
+        self._perform_identity_row_action(
+            action=PreparationAction.UNFREEZE,
+            method=_ROW_ACTION_POST,
+            path=path,
+            todo_id=todo_id,
+            success_message=_UNFREEZE_SUCCESS_TEMPLATE.format(slug=slug),
+            body={_CWD_BODY_KEY: project_path},
+            relay_warnings=True,
+        )
 
     def action_hold(self) -> None:
         """h: hold an active todo with a reason, or release its existing hold."""
@@ -892,42 +1016,30 @@ class PreparationViewActionsMixin:
             return
 
         slug = row.slug
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
+            return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        project_path = context[1] if context else ""
+        project_path = context.project_path if context else ""
         if not project_path:
             return
+        hold_path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(
+            todo_id=quote(todo_id), action=_IdentityTodoRoute.HOLD.value
+        )
 
         if not row.todo.held:
 
             def _on_hold_reason(reason: str | None) -> None:
                 if not reason:
                     return
-                try:
-                    result = tool_api_request(
-                        "POST",
-                        _TODO_UPDATE_PATH,
-                        json_body={
-                            _TODO_UPDATE_SLUG_KEY: slug,
-                            _TODO_UPDATE_CWD_KEY: project_path,
-                            _TODO_UPDATE_HOLD_KEY: True,
-                            _TODO_UPDATE_REASON_KEY: reason.strip(),
-                        },
-                        timeout=10.0,
-                    )
-                    if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
-                        self.app.notify_text(_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
-                        self.app._refresh_data()  # type: ignore[attr-defined]
-                    elif isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
-                        self.app.notify_text(  # type: ignore[attr-defined]
-                            str(result[_RESPONSE_KEY_DETAIL]), severity=_NOTIFY_SEVERITY_ERROR
-                        )
-                    else:
-                        self.app.notify_text(  # type: ignore[attr-defined]
-                            _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result),
-                            severity=_NOTIFY_SEVERITY_ERROR,
-                        )
-                except Exception as exc:
-                    self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+                self._perform_identity_row_action(
+                    action=PreparationAction.HOLD,
+                    method=_ROW_ACTION_POST,
+                    path=hold_path,
+                    todo_id=todo_id,
+                    success_message=_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug),
+                    body={_CWD_BODY_KEY: project_path, _REASON_BODY_KEY: reason.strip()},
+                )
 
             self.app.push_screen(  # type: ignore[attr-defined]
                 ContentInputModal(
@@ -940,36 +1052,22 @@ class PreparationViewActionsMixin:
             )
             return
 
-        try:
-            result = tool_api_request(
-                "POST",
-                _TODO_UPDATE_PATH,
-                json_body={
-                    _TODO_UPDATE_SLUG_KEY: slug,
-                    _TODO_UPDATE_CWD_KEY: project_path,
-                    _TODO_UPDATE_RELEASE_KEY: True,
-                },
-                timeout=10.0,
-            )
-            if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
-                self.app.notify_text(_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
-                self.app._refresh_data()  # type: ignore[attr-defined]
-            elif isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
-                self.app.notify_text(  # type: ignore[attr-defined]
-                    str(result[_RESPONSE_KEY_DETAIL]), severity=_NOTIFY_SEVERITY_ERROR
-                )
-            else:
-                self.app.notify_text(  # type: ignore[attr-defined]
-                    _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result),
-                    severity=_NOTIFY_SEVERITY_ERROR,
-                )
-        except Exception as exc:
-            self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+        release_path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(
+            todo_id=quote(todo_id), action=_IdentityTodoRoute.RELEASE.value
+        )
+        self._perform_identity_row_action(
+            action=PreparationAction.HOLD,
+            method=_ROW_ACTION_POST,
+            path=release_path,
+            todo_id=todo_id,
+            success_message=_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug),
+            body={_CWD_BODY_KEY: project_path},
+        )
 
     def action_approve_gate(self) -> None:
         """A: approve the selected todo's current human gate."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
-        if not row:
+        if row is None:
             return
         stamp_type = _pending_gate_stamp_type(row)
         if stamp_type is None:
@@ -977,31 +1075,23 @@ class PreparationViewActionsMixin:
             return
 
         slug = row.slug
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
+            return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        project_path = context[1] if context else ""
+        project_path = context.project_path if context else ""
         if not project_path:
             return
 
-        try:
-            result = tool_api_request(
-                "POST",
-                "/todos/stamp",
-                json_body={
-                    "slug": slug,
-                    "cwd": project_path,
-                    "stamp_type": stamp_type,
-                },
-                timeout=10.0,
-            )
-            if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify_text(f"Approved '{slug}'")  # type: ignore[attr-defined]
-                self.app._refresh_data()  # type: ignore[attr-defined]
-            elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-            else:
-                self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
-        except Exception as exc:
-            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
+        path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.STAMP.value)
+        self._perform_identity_row_action(
+            action=PreparationAction.APPROVE_GATE,
+            method=_ROW_ACTION_POST,
+            path=path,
+            todo_id=todo_id,
+            success_message=_APPROVE_SUCCESS_TEMPLATE.format(slug=slug),
+            body={_CWD_BODY_KEY: project_path, _STAMP_TYPE_BODY_KEY: stamp_type},
+        )
 
     def action_toggle_trashed(self) -> None:
         """x: toggle the trashed section visibility, scoped to computer or project."""
@@ -1024,7 +1114,7 @@ class PreparationViewActionsMixin:
             context = self._resolve_cursor_context()  # type: ignore[attr-defined]
             if not context:
                 return
-            _, project_path, _ = context
+            project_path = context.project_path
             if project_path in self._trashed_projects:  # type: ignore[attr-defined]
                 self._trashed_projects.discard(project_path)  # type: ignore[attr-defined]
             else:
@@ -1043,14 +1133,13 @@ class PreparationViewActionsMixin:
             self.app.notify("Reactivate only applies to trashed entries")  # type: ignore[attr-defined]
             return
 
-        todo_id = row.todo.todo_id
-        if not todo_id:
-            self.app.notify("row missing durable id; refresh the todo pane", severity="warning")  # type: ignore[attr-defined]
+        todo_id = self._require_row_todo_id(row)
+        if todo_id is None:
             return
 
         slug = row.slug
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
-        project_path = context[1] if context else ""
+        project_path = context.project_path if context else ""
         if not project_path:
             return
 

@@ -53,6 +53,7 @@ from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
+from teleclaude.api.todo_by_id_routes import router as todo_by_id_router
 from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
@@ -184,6 +185,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(operations_router)
 
         self.app.include_router(todo_router)
+        self.app.include_router(todo_by_id_router)
         self.app.include_router(todo_artifact_router)
         self.app.include_router(todo_stamp_router)
 

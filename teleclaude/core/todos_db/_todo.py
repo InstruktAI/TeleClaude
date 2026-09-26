@@ -32,6 +32,7 @@ from teleclaude.core.todos_db._errors import (
     HolderReconciliationRefused,
     HolderTransitionRefused,
 )
+from teleclaude.core.todos_db._identity_pin import apply_todo_identity_pin
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
     TODO_TABLE,
@@ -47,6 +48,7 @@ from teleclaude.types.todo_kind import TODO_KIND_TASK
 from teleclaude.types.todos import DependencyEntry, TodoState
 
 _ACTIVE_TODO_STATUS = "active"
+_ACTIVE_OR_ICEBOX = (TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value)
 
 
 def _require_delivery_receipt(receipt: MarkerReceipt | None) -> None:
@@ -169,6 +171,7 @@ class TodosDbTodoMixin:
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
     _on_delivered: Callable[[str, str | None, str], None]
+    db_path: str
 
     async def _active_entry(self, session: SqlAsyncSession, slug: str) -> Todo | None:
         """Return the live (active or icebox) todo entry for a slug.
@@ -176,19 +179,21 @@ class TodosDbTodoMixin:
         Excludes both ``delivered`` and ``removed``: a soft-removed row is
         invisible to every default resolver, mirroring the closed-session model.
         """
-        result = await session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
-        )
+        statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+        result = await session.exec(apply_todo_identity_pin(statement, self, slug))
         return result.first()
 
     async def _resolve_group_parent(self, session: SqlAsyncSession, group_slug: str) -> Todo | None:
         """Resolve a ``--group`` target: active, icebox, or an already-existing holder."""
-        result = await session.exec(
+        statement = (
             select(Todo)
-            .where(TODO_TABLE.c.slug == group_slug)
-            .where(TODO_TABLE.c.status.in_(("active", "icebox", TodoStatus.HOLDER.value)))
+            .where(
+                TODO_TABLE.c.slug == group_slug,
+                TODO_TABLE.c.status.in_(("active", "icebox", TodoStatus.HOLDER.value)),
+            )
             .limit(1)
         )
+        result = await session.exec(apply_todo_identity_pin(statement, self, group_slug))
         return result.first()
 
     async def _upgrade_to_holder(
@@ -382,11 +387,10 @@ class TodosDbTodoMixin:
                 values = _collect_entry_updates(existing, group_id=group_id, description=description)
                 if values:
                     values["updated_at"] = datetime.now(UTC).isoformat()
-                    await db_session.exec(
-                        update(Todo)
-                        .where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(("active", "icebox")))
-                        .values(**values)
+                    statement = update(Todo).where(
+                        TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)
                     )
+                    await db_session.exec(apply_todo_identity_pin(statement.values(**values), self, slug))
                 if owns_session:
                     await db_session.commit()
                     self._on_mutation("todo_updated", None)
@@ -453,12 +457,10 @@ class TodosDbTodoMixin:
     def resolve_id_sync(self, slug: str) -> str | None:
         """Sync version of resolve_id. Excludes delivered and removed rows."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
-            entry_id = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.slug == slug)
-                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
-                .limit(1)
-            ).first()
+            statement = (
+                select(Todo.id).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+            )
+            entry_id = session.exec(apply_todo_identity_pin(statement, self, slug)).first()
             return str(entry_id) if entry_id is not None else None
 
     async def deliver(
@@ -575,9 +577,8 @@ class TodosDbTodoMixin:
         *,
         delivered_slugs: set[str],
     ) -> None:
-        entry = session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
-        ).first()
+        statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+        entry = session.exec(apply_todo_identity_pin(statement, self, slug)).first()
         if entry is None:
             return
         state_model = session.get(TodoStateModel, entry.id)
@@ -609,9 +610,8 @@ class TodosDbTodoMixin:
                 self._on_mutation("todo_updated", None)
             return changed
 
-        result = await session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
-        )
+        statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+        result = await session.exec(apply_todo_identity_pin(statement, self, slug))
         entry = result.first()
         if entry is None or entry.ready_since is not None:
             return False
@@ -636,9 +636,8 @@ class TodosDbTodoMixin:
                 self._on_mutation("todo_updated", None)
             return changed
 
-        result = session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
-        )
+        statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+        result = session.exec(apply_todo_identity_pin(statement, self, slug))
         entry = result.first()
         if entry is None or entry.ready_since is not None:
             return False
@@ -660,9 +659,8 @@ class TodosDbTodoMixin:
             self._on_mutation("todo_updated", None)
             return
 
-        result = await session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
-        )
+        statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+        result = await session.exec(apply_todo_identity_pin(statement, self, slug))
         entry = result.first()
         if entry is None:
             return
@@ -683,9 +681,8 @@ class TodosDbTodoMixin:
             self._on_mutation("todo_updated", None)
             return
 
-        entry = session.exec(
-            select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status.in_(("active", "icebox"))).limit(1)
-        ).first()
+        statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+        entry = session.exec(apply_todo_identity_pin(statement, self, slug)).first()
         if entry is None:
             return
         entry.ready_since = None
@@ -708,9 +705,8 @@ class TodosDbTodoMixin:
     async def unfreeze(self, slug: str) -> bool:
         """Restore a slug from icebox to active. Returns False if not found."""
         async with self._session() as session:  # type: ignore[attr-defined]
-            result = await session.exec(
-                select(Todo).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "icebox").limit(1)
-            )
+            statement = select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status == "icebox").limit(1)
+            result = await session.exec(apply_todo_identity_pin(statement, self, slug))
             entry = result.first()
             if entry is None:
                 return False
@@ -837,7 +833,7 @@ class TodosDbTodoMixin:
             result = await session.exec(
                 select(TodoDep)
                 .join(Todo, TODO_TABLE.c.slug == TODO_DEPS_TABLE.c.slug)
-                .where(TODO_TABLE.c.status.in_(("active", "icebox")))
+                .where(TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX))
                 .order_by(TodoDep.slug, TodoDep.depends_on)
             )
             deps: dict[str, list[str]] = {}
@@ -939,12 +935,10 @@ class TodosDbTodoMixin:
         db_commit_landed = False
         try:
             with self._sync_session() as session:  # type: ignore[attr-defined]
-                entry = session.exec(
-                    select(Todo)
-                    .where(TODO_TABLE.c.slug == slug)
-                    .where(TODO_TABLE.c.status.in_(("active", "icebox")))
-                    .limit(1)
-                ).first()
+                statement = (
+                    select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
+                )
+                entry = session.exec(apply_todo_identity_pin(statement, self, slug)).first()
                 if entry is None:
                     if reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
                         restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)

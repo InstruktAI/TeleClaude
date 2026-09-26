@@ -13,7 +13,12 @@ from ._errors import HolderReconciliationRefused, HolderTransitionRefused, Holde
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, ArtifactWritersRow, TodoRow
 from ._state import TodosDbStateMixin
 from ._todo import TodosDbTodoMixin
-from ._todo_soft_delete import TodosDbTodoSoftDeleteMixin
+from ._todo_soft_delete import (
+    TodoIdentityActionRefused,
+    TodoIdentityNotFound,
+    TodoIdentityResolution,
+    TodosDbTodoSoftDeleteMixin,
+)
 
 
 class TodosDb(
@@ -88,6 +93,9 @@ __all__ = [
     "HolderReconciliationRefused",
     "HolderTransitionRefused",
     "HolderWriteRefused",
+    "TodoIdentityActionRefused",
+    "TodoIdentityNotFound",
+    "TodoIdentityResolution",
     "TodoRow",
     "TodosDb",
     "close_todos_db_instances",

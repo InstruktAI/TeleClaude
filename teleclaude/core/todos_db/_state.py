@@ -20,6 +20,7 @@ from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lif
 from teleclaude.types.state_value import StateValue
 
 from ._errors import HolderWriteRefused
+from ._identity_pin import apply_todo_identity_pin
 from ._migration_logs import record_v2_to_v3_migration
 from ._models import TODO_DEPS_TABLE, TODO_STATE_TABLE, TODO_TABLE, Todo, TodoDep, TodoStateModel
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
@@ -78,6 +79,7 @@ class TodosDbStateMixin:
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
     _on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None]
+    db_path: str
 
     def _stored_lifecycle_phase(self, state_model: TodoStateModel | None) -> str:
         if state_model is None:
@@ -137,8 +139,11 @@ class TodosDbStateMixin:
         a soft-removed todo.
         """
         result = await session.exec(
-            select(Todo.id)
-            .where(TODO_TABLE.c.slug == slug)
+            apply_todo_identity_pin(
+                select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                self,
+                slug,
+            )
             .where(TODO_TABLE.c.status.in_(("active", "icebox")))
             .limit(1)
         )
@@ -148,8 +153,11 @@ class TodosDbStateMixin:
     async def _is_holder_status(self, session: SqlAsyncSession, slug: str) -> bool:
         """Return whether ``slug``'s live row has status ``holder``."""
         result = await session.exec(
-            select(Todo.id)
-            .where(TODO_TABLE.c.slug == slug)
+            apply_todo_identity_pin(
+                select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                self,
+                slug,
+            )
             .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
             .limit(1)
         )
@@ -448,9 +456,13 @@ class TodosDbStateMixin:
         """Read state for a delivered slug via todo ID join."""
         async with self._session() as session:  # type: ignore[attr-defined]
             result = await session.exec(
-                select(TODO_STATE_TABLE.c.state)
-                .join(TODO_TABLE, TODO_STATE_TABLE.c.id == TODO_TABLE.c.id)
-                .where(TODO_TABLE.c.slug == slug)
+                apply_todo_identity_pin(
+                    select(TODO_STATE_TABLE.c.state)
+                    .join(TODO_TABLE, TODO_STATE_TABLE.c.id == TODO_TABLE.c.id)
+                    .where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
                 .where(TODO_TABLE.c.status == "delivered")
                 .order_by(TODO_TABLE.c.delivered_at.desc())
                 .limit(1)
@@ -552,8 +564,11 @@ class TodosDbStateMixin:
         """
         with self._sync_session() as session:  # type: ignore[attr-defined]
             row_id = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.slug == slug)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
                 .where(TODO_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             ).one_or_none()
@@ -577,15 +592,21 @@ class TodosDbStateMixin:
         payload = canonicalize_state_for_storage(state)
         with self._sync_session() as session:  # type: ignore[attr-defined]
             row_id = session.exec(
-                select(Todo.id)
-                .where(TODO_TABLE.c.slug == slug)
+                apply_todo_identity_pin(
+                    select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                    self,
+                    slug,
+                )
                 .where(TODO_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             ).one_or_none()
             if row_id is None:
                 holder = session.exec(
-                    select(Todo.id)
-                    .where(TODO_TABLE.c.slug == slug)
+                    apply_todo_identity_pin(
+                        select(Todo.id).where(TODO_TABLE.c.slug == slug),
+                        self,
+                        slug,
+                    )
                     .where(TODO_TABLE.c.status == TodoStatus.HOLDER.value)
                     .limit(1)
                 ).first()
