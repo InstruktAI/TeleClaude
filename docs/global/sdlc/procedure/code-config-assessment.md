@@ -209,7 +209,9 @@ fill with its own material. Leave nothing in those slots that silently never
 runs or silently goes stale:
 
 - **A project hook in a slot TeleClaude's hook set occupies.** Plumbing never
-  overwrites a hook it did not write, so TeleClaude's hook for that slot, and
+  overwrites a hook it did not write
+  (`project/spec/feature/reconciliation/project-plumbing-convergence`), so
+  TeleClaude's hook for that slot, and
   every maintenance action it would run, never runs there. When the project hook
   expresses "run a command when these paths change on the canonical checkout",
   that is a checkpoint maintenance action: declare it in the overlay (Step 5),
