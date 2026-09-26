@@ -114,6 +114,63 @@ And the caller is refused — the human band is never consulted for agent caller
 
 <!-- /planned-change:telec-startup-does-only-auth -->
 
+<!-- planned:authorize-person-roles-at-scope -->
+#### UC-CCS1: A company administrator works as an administrator in their company's projects
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person revives a session that ran in a project that company owns
+Then the session is revived, as it is for a platform administrator
+And a person holding the member role in that company is refused the same revive
+```
+
+#### UC-CCS2: The same person is an outsider in another company's project
+
+```
+Given a person holding no platform role and the admin role in one company
+And a terminal whose working directory is a checkout of a project owned by another company
+When the person runs `telec todo list`
+Then the command is refused with the not-permitted failure naming `customer` and `telec todo list`
+And no todo is listed
+```
+
+#### UC-CCS3: A person's agent reaches no further than that person
+
+```
+Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
+When it runs `telec sessions start` naming a directory in a project owned by another company
+Then the command is refused with the not-permitted failure naming `customer` and `telec sessions start`
+And no session is created
+But the same command naming a directory in a project the person's company owns is admitted
+```
+
+#### UC-CCS4: A session acting for the platform is not bounded by any person
+
+```
+Given a session whose lineage roots at the platform's principal, with an agent role the command admits
+When it runs that command in a project owned by any company, or by none
+Then the command is admitted
+```
+
+#### UC-CCS5: A command naming a session is judged at that session's project
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person runs `telec sessions tail` naming a session that runs in a project owned by another company
+Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
+And no transcript content is returned
+```
+
+#### UC-CCS6: Platform-scope commands need a platform role
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person runs `telec config computer patch` or lists every registered person
+Then the command is refused with the not-permitted failure naming `customer` and the command
+And the machine configuration and the person registry are unchanged and unread
+```
+<!-- /planned:authorize-person-roles-at-scope -->
+
 ### Cross-context references
 
 - The verb→Role allowlist data lives in the CLI surface schema, owned by the `config`/CLI-shape concern. The identity context owns only the gate logic.
@@ -482,62 +539,6 @@ person's session may run and never widens it. A session acting for a system
 principal carries no person and is judged by the agent band alone. A command that
 reads across many objects, such as a history search, is cleared at its scope, and
 the objects' owners then narrow what it returns.
-
-#### UC-CCS1: A company administrator works as an administrator in their company's project
-
-```
-Given a person holding no platform role and the admin role in one company
-And a terminal whose working directory is a checkout of a project that company owns
-When the person runs a command whose person band admits admin but not member
-Then the command is admitted
-```
-
-#### UC-CCS2: The same person is an outsider in another company's project
-
-```
-Given a person holding no platform role and the admin role in one company
-And a terminal whose working directory is a checkout of a project owned by another company
-When the person runs `telec todo list`
-Then the command is refused with the not-permitted failure naming `customer` and `telec todo list`
-And no todo is listed
-```
-
-#### UC-CCS3: A person's agent is bounded by that person's role at the command's scope
-
-```
-Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
-When it runs `telec sessions start` naming a directory in a project owned by another company
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions start`
-And no session is created
-But the same command naming a directory in a project the person's company owns is admitted
-```
-
-#### UC-CCS4: A session acting for a system principal is judged by its agent band alone
-
-```
-Given a session whose lineage roots at the platform's principal, with an agent role the command's agent band admits
-When it runs that command in any project
-Then the command is admitted
-And no person role is consulted
-```
-
-#### UC-CCS5: A command naming a session is judged at that session's project
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec sessions tail` naming a session that runs in a project owned by another company
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
-And no transcript content is returned
-```
-
-#### UC-CCS6: Platform-scope commands need a platform role
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec config computer patch` or lists every registered person
-Then the command is refused with the not-permitted failure naming `customer` and the command
-And the machine configuration and the person registry are unchanged and unread
-```
 <!-- /planned:authorize-person-roles-at-scope -->
 
 ## Known caveats
