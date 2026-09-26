@@ -535,10 +535,11 @@ supplies.
   in.
 - A command that names a directory to act in is judged at the project containing
   that directory.
-- A command that names another computer is cleared here only for having an identity; the whole
-  decision — its bands and its object rules together — is made by that computer, for the object it
-  holds, from its own registries and the principal the relay carries
-  (`project/design/architecture/scoped-roles`).
+- A command that acts on a session another computer holds, lists that computer's sessions, or starts
+  a session there is cleared here only for having an identity; the whole decision — its bands and its
+  object rules together — is made by that computer, for the object it holds, from its own registries
+  and the principal the relay carries (`project/design/architecture/scoped-roles`). Any other command
+  naming another computer is judged here, at its own scope.
 - Every other command is judged at the project the invocation runs in — the project
   of its working directory's checkout — and at platform scope where it runs in no
   registered project.
