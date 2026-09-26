@@ -11,21 +11,16 @@ from __future__ import annotations
 
 import dataclasses
 import os
-import secrets
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ValidationError
-from ruamel.yaml.error import YAMLError
 
 import teleclaude.config as _tc_config_module
 from teleclaude.config._environment import write_environment_value
-from teleclaude.config._file_migrations import move_person_invite_token
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
-from teleclaude.config.invitations import load_invitations, save_invitations
 from teleclaude.config.loader import (
     find_person_config_path,
     list_company_config_paths,
@@ -43,7 +38,6 @@ from teleclaude.config.person_secrets import (
     list_person_mcp_secret_statuses,
     replace_person_mcp_secret,
 )
-from teleclaude.config.roster import RosterOutcome, remove_person_from_rosters
 from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
@@ -126,13 +120,6 @@ def list_people(config: GlobalConfig | None = None) -> list[PersonEntry]:
     return list(config.people)
 
 
-def list_person_dirs() -> list[str]:
-    """Scan ~/.teleclaude/people/ for person directories."""
-    if not _PEOPLE_DIR.exists():
-        return []
-    return sorted(d.name for d in _PEOPLE_DIR.iterdir() if d.is_dir() and (d / ConfigFileName.OVERLAY).exists())
-
-
 # --- Writing (atomic) ---
 #
 # The global/person config writers and their YAML helpers live in
@@ -164,118 +151,6 @@ def save_raw_machine_config(
     target = path or _tc_config_module.config_path
     _atomic_yaml_write(target, raw_config)
     logger.info("Saved machine config to %s", target)
-
-
-def add_person(entry: PersonEntry) -> None:
-    """Add person to global people list and create their slug-keyed directory."""
-    config = get_global_config()
-
-    if not entry.slug:
-        raise ValueError(f"Person '{entry.name}' must have a slug before being added")
-    if any(p.slug == entry.slug for p in config.people):
-        raise ValueError(f"Person with slug '{entry.slug}' already exists")
-
-    config.people.append(entry)
-    save_global_config(config)
-
-    person_config = PersonConfig(kind=ConfigKind.PERSON, slug=entry.slug)
-    save_person_config(entry.slug, person_config)
-    logger.info("Added person '%s' (slug '%s') with role '%s'", entry.name, entry.slug, entry.role)
-
-
-def rename_person(old_name: str, new_name: str) -> None:
-    """Update a person's display name. The slug and workspace folder are immutable."""
-    config = get_global_config()
-    for person in config.people:
-        if person.name == old_name:
-            person.name = new_name
-            save_global_config(config)
-            logger.info("Renamed person display name from '%s' to '%s'", old_name, new_name)
-            return
-
-
-def remove_person(slug: str, delete_directory: bool = False) -> RosterOutcome:
-    """Remove person from global list by slug. Optionally remove their config directory."""
-    config = get_global_config()
-    original_config = config.model_copy(deep=True)
-    original_count = len(config.people)
-    config.people = [p for p in config.people if p.slug != slug]
-
-    if len(config.people) == original_count:
-        raise ValueError(f"Person with slug '{slug}' not found")
-
-    try:
-        roster_outcome = remove_person_from_rosters(slug, config, original_config)
-    except (OSError, ValueError):
-        config.people = original_config.people
-        raise
-
-    if delete_directory:
-        person_dir = _PEOPLE_DIR / slug
-        if person_dir.exists():
-            shutil.rmtree(person_dir)
-            logger.info("Removed person directory for slug '%s'", slug)
-
-    logger.info("Removed person with slug '%s' from global config", slug)
-    return roster_outcome
-
-
-_migration_done = False
-
-
-def _migrate_invitations_if_needed() -> None:
-    """Perform one-shot migration of invite tokens from per-person configs to the invitations store."""
-    global _migration_done
-    if _migration_done:
-        return
-
-    for name in list_person_dirs():
-        person_path = _PEOPLE_DIR / name / ConfigFileName.OVERLAY
-        if not person_path.exists():
-            continue
-        try:
-            move_person_invite_token(person_path, name)
-        except (OSError, ValueError, YAMLError) as e:
-            logger.warning("Failed to migrate invite_token for person '%s': %s", name, e)
-    _migration_done = True
-
-
-def generate_invite_token() -> str:
-    """Generate a new invite token with format inv_{16_hex_chars}."""
-    return f"inv_{secrets.token_hex(8)}"
-
-
-def set_invite_token(slug: str) -> str:
-    """Generate and persist a new invite token for the person slug. Returns the token."""
-    _migrate_invitations_if_needed()
-    token = generate_invite_token()
-
-    invitations = load_invitations()
-    # Remove any existing tokens mapped to this person
-    for t, holder in list(invitations.items()):
-        if holder == slug:
-            del invitations[t]
-
-    invitations[token] = slug
-    save_invitations(invitations)
-
-    logger.info("Set invite token for slug '%s'", slug)
-    return token
-
-
-def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
-    """Find a person by their invite token using the O(1) invitations store. Returns (person_slug, config) or None."""
-    _migrate_invitations_if_needed()
-    invitations = load_invitations()
-    if token in invitations:
-        person_slug = invitations[token]
-        try:
-            person_config = get_person_config(person_slug)
-            return (person_slug, person_config)
-        except (OSError, ValueError, KeyError) as e:
-            logger.warning("Failed to load config for slug '%s': %s", person_slug, e)
-            return None
-    return None
 
 
 # --- Validation ---
@@ -399,7 +274,7 @@ def validate_all() -> list[ValidationResult]:
                     area=project_area,
                     passed=False,
                     errors=[f"No project configuration declared at {root.path}"],
-                    suggestions=[f"Run from {root.path}: telec projects init"],
+                    suggestions=[f"Run from {root.path}: telec config project init"],
                 )
             )
         else:

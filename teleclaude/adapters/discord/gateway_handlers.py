@@ -52,7 +52,8 @@ if TYPE_CHECKING:
 import asyncio
 from datetime import datetime
 
-from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config
+from teleclaude.cli.config_handlers import get_global_config
+from teleclaude.config.invitations import find_person_by_invite_token
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc

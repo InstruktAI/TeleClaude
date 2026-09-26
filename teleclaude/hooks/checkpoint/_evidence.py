@@ -252,8 +252,8 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return matches_command_prefix(segment, ("telec", "code", "commit"))
     if evidence == "uv sync":
         return head == "uv" and "sync" in rest
-    if evidence == "telec projects init":
-        return matches_command_prefix(segment, ("telec", "projects", "init"))
+    if evidence == "telec config project init":
+        return matches_command_prefix(segment, ("telec", "config", "project", "init"))
     if evidence == "pytest":
         return (
             head == "pytest"

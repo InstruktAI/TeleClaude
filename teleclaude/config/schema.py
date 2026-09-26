@@ -479,8 +479,9 @@ class CheckpointExtraActionsConfig(ClosedModel):
 class CheckpointConfig(ClosedModel):
     """Project checkpoint maintenance overlay merged atop the platform-universal base.
 
-    Authored at analyze-time by intelligence (``telec projects analyze``) per
-    ``project/procedure/checkpoint-overlay-projection``; consumed structurally by
+    Authored at analyze-time by intelligence (``telec sessions run --command
+    /projects-analyze``) per ``project/procedure/checkpoint-overlay-projection``;
+    consumed structurally by
     the checkpoint engine. An unreadable overlay degrades to base-only (fail-open).
     """
 
@@ -603,7 +604,7 @@ class ProjectConfig(ClosedModel):
         """Enforce slug format when the field is set.
 
         Empty/missing values are accepted here so legacy configs still load;
-        ``telec projects init`` fills the value during registration.
+        ``telec config project init`` fills the value during registration.
         """
         if value is None:
             return None

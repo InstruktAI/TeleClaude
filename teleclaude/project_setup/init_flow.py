@@ -259,19 +259,20 @@ def _ensure_project_slug(project_root: Path) -> None:
 
 
 def init_project(project_root: Path) -> None:
-    """Initialize a project for TeleClaude — plumbing only.
+    """Initialize a project for TeleClaude — configuration and plumbing only.
 
-    Configures git filters and project-owned hooks, syncs artifacts, registers
-    the project root, and prompts for release-channel enrollment. Idempotent
-    and CI-safe; spawns no agent sessions.
+    Configures git filters and project-owned hooks, converges plumbing,
+    registers the project root, and prompts for release-channel enrollment.
+    Idempotent and CI-safe; spawns no agent sessions and syncs no artifacts.
 
     Mother-aware: when invoked inside the TeleClaude repo itself, site-project
     bootstrap steps (skeleton deployment, release-channel prompt) are skipped
     — they only make sense for downstream projects.
 
-    AI-driven project analysis and quality-config assessment live in
-    ``teleclaude.project_setup.onboard_flow`` and are invoked via the
-    ``telec projects {onboard,analyze,assess}`` commands.
+    AI-driven project analysis and quality-config assessment are explicit,
+    separate acts started with ``telec sessions run --command
+    /projects-analyze`` and ``telec sessions run --command
+    /projects-assess-config`` — never a side effect of this function.
     """
     is_mother = _is_teleclaude_project(project_root)
 
@@ -298,7 +299,7 @@ def init_project(project_root: Path) -> None:
         # Release channel enrollment is a downstream-project concern.
         _prompt_release_channel(project_root)
 
-    print("telec projects init complete.")
+    print("telec config project init complete.")
 
 
 # ---------------------------------------------------------------------------

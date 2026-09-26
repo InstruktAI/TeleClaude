@@ -466,29 +466,13 @@ FLAG_MCP_CALL_JSON = Flag("--json", desc="JSON object arguments for the selected
 FLAG_CONFIG_FORMAT = Flag("--format", "-f", desc="Output format: yaml or json", arity=VALUE)
 FLAG_CONFIG_FROM_FILE = Flag("--from-file", desc="Read patch YAML from this file path", arity=VALUE)
 FLAG_CONFIG_YAML = Flag("--yaml", "-y", "Inline YAML patch", arity=VALUE)
+FLAG_CONFIG_REVISION = Flag("--revision", desc="The subject's revision read before this patch", arity=VALUE)
+FLAG_CONFIG_REMOVE = Flag("--remove", desc="Remove the addressed instance instead of patching it", arity=SWITCH)
 
 FLAG_PEOPLE_EMAIL = Flag("--email", desc="Person's email address", arity=VALUE)
 FLAG_PEOPLE_ROLE = Flag("--role", desc="Person's role", arity=VALUE)
-FLAG_PEOPLE_COMPANY = Flag("--company", desc="Company membership to set", arity=VALUE)
-FLAG_PEOPLE_COMPANY_ROLE = Flag("--company-role", desc="Role held in the named company", arity=VALUE)
-FLAG_PEOPLE_REMOVE_COMPANY = Flag("--remove-company", desc="Company membership to withdraw", arity=VALUE)
-FLAG_PEOPLE_ASSIGN = Flag("--assign", desc="Project assignment to add", arity=REPEATED)
-FLAG_PEOPLE_UNASSIGN = Flag("--unassign", desc="Project assignment to remove", arity=REPEATED)
 FLAG_PEOPLE_USERNAME = Flag("--username", desc="Person's username", arity=VALUE)
-FLAG_PEOPLE_EXPERTISE = Flag(
-    "--expertise",
-    desc='JSON expertise map: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}',
-    arity=VALUE,
-)
-FLAG_PEOPLE_TELEGRAM_USER = Flag("--telegram-user", desc="Telegram username", arity=VALUE)
-FLAG_PEOPLE_TELEGRAM_ID = Flag("--telegram-id", desc="Telegram numeric user id", arity=VALUE)
-FLAG_PEOPLE_DISCORD_VOICE_BOT = Flag(
-    "--discord-voice-bot",
-    desc="Bind the active Discord bot credential to this person's voice configuration",
-    arity=SWITCH,
-)
-FLAG_PEOPLE_NO_INVITE = Flag("--no-invite", desc="Skip automatic invite generation", arity=SWITCH)
-FLAG_PEOPLE_NAME_ALIAS = Flag("--name", desc="Legacy alias for the positional <name>", hidden=True, arity=VALUE)
+FLAG_PEOPLE_SLUG = Flag("--slug", desc="Person slug (optional; derived from the name when omitted)", arity=VALUE)
 FLAG_PEOPLE_DELETE_DIR = Flag(
     "--delete-dir", desc="Also delete the person's directory under ~/.teleclaude/people", arity=SWITCH
 )

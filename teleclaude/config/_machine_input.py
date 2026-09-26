@@ -73,6 +73,7 @@ _EXPERIMENT_INPUT = ClosedMapping({"name": SCALAR, "agents": InputList(SCALAR), 
 
 MACHINE_CONFIG_INPUT = ClosedMapping(
     {
+        "kind": SCALAR,
         "computer": ClosedMapping(
             {
                 "name": SCALAR,

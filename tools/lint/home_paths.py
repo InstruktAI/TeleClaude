@@ -134,7 +134,10 @@ def main(argv: list[str] | None = None) -> int:
 
     for path in offenders:
         print(path.relative_to(project_root))
-    print("ERROR: Hardcoded HOME paths found in docs. Run 'telec projects init' to set up filters.", file=sys.stderr)
+    print(
+        "ERROR: Hardcoded HOME paths found in docs. Run 'telec config project init' to set up filters.",
+        file=sys.stderr,
+    )
     return 1
 
 

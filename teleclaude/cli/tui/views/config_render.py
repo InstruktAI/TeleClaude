@@ -89,7 +89,7 @@ class ConfigContentRenderMixin:
         result.append("  People\n", style=Style(bold=True))
         if not self._people_data:  # type: ignore[attr-defined]
             result.append("  No people configured\n", style=_FAIL)
-            result.append("  Next: telec config people add --name <name> --email <email>\n", style=_DIM)
+            result.append("  Next: telec config person init <name> --email <email>\n", style=_DIM)
             return
 
         cursor = self._current_cursor()  # type: ignore[attr-defined]

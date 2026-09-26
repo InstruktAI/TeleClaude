@@ -18,6 +18,7 @@ from teleclaude.config._file_migrations import (
 )
 from teleclaude.config._models import ReleaseChannel
 from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.revision import StaleRevision, view_revision
 
 _DOCUMENT_MAPPING_ERROR = "Machine configuration must be a YAML mapping."
 _MISSING_CONFIG_ERROR = "Machine configuration does not exist."
@@ -34,7 +35,13 @@ _PINNED_MINOR = "pinned_minor"
 _AGENTS = "agents"
 _DEFAULT = "default"
 _ENABLED = "enabled"
+_KIND = "kind"
 _RETIRED_PROVIDER_FIELD_ERROR = "Retired Discord provider identifiers are not valid machine-config input."
+_READ_ONLY_DECLARATION_ERROR = "Machine configuration `kind` is read-only; persisting it is outside this mutation path."
+
+
+class ReadOnlyDeclaration(ValueError):
+    """A mutation candidate changed, added or removed the machine file's `kind` declaration."""
 
 
 class MachineConfigOperation(StrEnum):
@@ -55,6 +62,7 @@ class MachineConfigInspection:
 
     raw: Mapping[object, object]
     legacy_discord_provider_ids: LegacyDiscordProviderIds
+    revision: str
 
 
 @dataclass(frozen=True)
@@ -64,6 +72,12 @@ class MachineConfigMutationResult:
     operation: MachineConfigOperation
     raw: Mapping[object, object]
     resolved: TeleclaudeConfig
+    revision: str
+
+
+def _computed_revision(raw: Mapping[object, object]) -> str:
+    """Compute the machine subject's revision over its raw document, excluding `kind`."""
+    return view_revision({_COMPUTER: {key: value for key, value in raw.items() if key != "kind"}})
 
 
 def inspect_machine_config() -> MachineConfigInspection:
@@ -71,13 +85,26 @@ def inspect_machine_config() -> MachineConfigInspection:
     with file_transaction(config_path) as transaction:
         raw = _read_mapping(transaction)
     projected, legacy = partition_legacy_discord_provider_ids(raw)
-    return MachineConfigInspection(raw=projected, legacy_discord_provider_ids=legacy)
+    return MachineConfigInspection(raw=projected, legacy_discord_provider_ids=legacy, revision=_computed_revision(raw))
 
 
 def patch_machine_config(patch: Mapping[object, object]) -> MachineConfigMutationResult:
     """Merge a semantic patch into the latest committed machine configuration."""
     _reject_retired_provider_fields(patch)
     return _mutate(MachineConfigOperation.PATCH, lambda raw: _deep_merge(raw, patch))
+
+
+def patch_machine_config_at(
+    patch: Mapping[object, object],
+    expected_revision: str,
+) -> MachineConfigMutationResult:
+    """Merge a semantic patch only when the committed document matches `expected_revision`."""
+    _reject_retired_provider_fields(patch)
+    return _mutate(
+        MachineConfigOperation.PATCH,
+        lambda raw: _deep_merge(raw, patch),
+        expected_revision=expected_revision,
+    )
 
 
 def remove_machine_config_fields(field_paths: tuple[tuple[str, ...], ...]) -> MachineConfigMutationResult:
@@ -128,15 +155,25 @@ def clear_legacy_discord_provider_ids() -> MachineConfigMutationResult:
 def _mutate(
     operation: MachineConfigOperation,
     mutation: Callable[[dict[object, object]], dict[object, object]],
+    *,
+    expected_revision: str | None = None,
 ) -> MachineConfigMutationResult:
     """Apply one mutation under the stable file lock and validate before replacement."""
     with file_transaction(config_path) as transaction:
         committed = _read_mapping(transaction)
+        if expected_revision is not None:
+            actual_revision = _computed_revision(committed)
+            if actual_revision != expected_revision:
+                raise StaleRevision(expected=expected_revision, actual=actual_revision)
         candidate = mutation(deepcopy(committed))
+        if candidate.get(_KIND) != committed.get(_KIND):
+            raise ReadOnlyDeclaration(_READ_ONLY_DECLARATION_ERROR)
         projected, _ = partition_legacy_discord_provider_ids(candidate)
         resolved = build_config_from_raw(projected, config_path.parent, config_source=config_path)
         _write_mapping(transaction, candidate)
-    return MachineConfigMutationResult(operation=operation, raw=candidate, resolved=resolved)
+    return MachineConfigMutationResult(
+        operation=operation, raw=candidate, resolved=resolved, revision=_computed_revision(candidate)
+    )
 
 
 def _reject_retired_provider_fields(patch: Mapping[object, object]) -> None:
@@ -171,9 +208,12 @@ def _write_mapping(transaction: FileTransaction, document: Mapping[object, objec
 
 
 def _deep_merge(base: Mapping[object, object], patch: Mapping[object, object]) -> dict[object, object]:
-    """Merge a semantic patch without replacing unrelated nested configuration."""
+    """Merge-patch (RFC 7386): mapping keys merge, a `None` leaf value removes the key."""
     result = deepcopy(dict(base))
     for key, value in patch.items():
+        if value is None:
+            result.pop(key, None)
+            continue
         current = result.get(key)
         if isinstance(current, dict) and isinstance(value, Mapping):
             result[key] = _deep_merge(current, value)
