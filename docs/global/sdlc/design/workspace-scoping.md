@@ -103,12 +103,6 @@ released when that session closes. It outlives the agent process, the host pane,
 and the machine, so a declaration stays live across an agent restart, a handoff,
 and a revival of the same session.
 
-<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-Every implicit-scope consumer on a shared branch reads this same evidence.
-Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
-with the current dirty set. In worktrees the same consumers read the dirty set
-directly, regardless of which session changed the paths.
-<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
 with the current dirty set. Scoped lint and commit continue to use the dirty
@@ -117,7 +111,6 @@ attributes those paths only to that todo's builder or finalizer; other sessions
 there owe no commit instruction for them. Worktrees outside the todo lifecycle
 retain their worktree-wide checkpoint scope. The checkpoint reads the acting
 session's job from its session record.
-<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same

@@ -61,13 +61,6 @@ The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and is
 wholesale-cleared at user-prompt-submit.
 
-<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-On a shared branch, version control is consulted only as the category oracle
-(which file maps to which category), never as the arbiter of what is in-scope
-or done; declarations answer that. In a todo worktree the dirty tree is the
-checkpoint scope for whichever session stops there, regardless of which session
-changed those paths.
-<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
 or done; declarations answer that. In a todo worktree, the checkpoint reads
@@ -76,7 +69,6 @@ The todo's builder and finalizer owe its dirty paths regardless of declarations;
 other sessions in that todo worktree owe no commit action for those paths. The
 checkpoint retains worktree-wide scope outside todo worktrees. The sealed
 commit command's worktree scope remains task-wide.
-<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ## Canonical fields
 
@@ -492,17 +484,6 @@ Then no obligation is raised for those paths
 And any decision produced for another reason names none of them
 ```
 
-<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
-#### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
-
-```gherkin
-Given an agent session is working from a non-main todo worktree
-And that worktree holds dirty paths the session has declared none of
-When checkpoint evaluation completes
-Then a checkpoint decision is produced naming those paths
-And its required actions are the ones their categories carry
-```
-<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 #### UC-CP34: A todo worktree writer owes its dirty tree
 
 ```gherkin
@@ -512,9 +493,7 @@ When checkpoint evaluation completes
 Then a checkpoint decision is produced naming those paths
 And its required actions are the ones their categories carry
 ```
-<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
-<!-- planned:fix-stop-checkpoint-repeats-a-commit-instruc -->
 #### UC-CP35: A reviewer in a todo worktree owes no commit for the builder's changes
 
 ```gherkin
@@ -524,7 +503,6 @@ When checkpoint evaluation completes at the reviewer's agent-stop boundary
 Then no checkpoint decision directs the reviewer to commit those paths
 And a later reviewer agent-stop over the same uncommitted changes directs none either
 ```
-<!-- /planned:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ### Cross-context references
 
