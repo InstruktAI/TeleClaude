@@ -1,8 +1,6 @@
 ---
 description: YouTube research results remain within an agent-requested context budget
   without requiring transcripts.
-delivered_by:
-- align-scripts-runtime-boundary-delivery
 ---
 
 # YouTube Research Output Budget — Spec
@@ -23,7 +21,6 @@ triggering hidden network work.
 
 ### Use cases
 
-<!-- planned:align-scripts-runtime-boundary-delivery -->
 #### UC-YT1:
 
 ```gherkin
@@ -33,4 +30,3 @@ When the serialized results exceed that cap
 Then results are omitted from largest serialized payload to smallest until the returned results fit the requested budget
 And transcript retrieval is not performed solely to enforce the budget
 ```
-<!-- /planned:align-scripts-runtime-boundary-delivery -->

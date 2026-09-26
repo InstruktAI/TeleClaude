@@ -55,11 +55,7 @@ scope is a property of the caller, never of the invocation's directory.
   mother-only skill catalog, project delivery, and retraction of what a run no
   longer produces. Implementation roots for this ownership are
   `teleclaude/agent_artifacts.py`, `teleclaude/artifact_ownership.py`,
-<!-- planned-change:align-scripts-runtime-boundary-delivery -->
-  `teleclaude/global_skills.py`, and `scripts/distribute.py`.
-<!-- change:align-scripts-runtime-boundary-delivery -->
   `teleclaude/global_skills.py`, and distribution code under `teleclaude/install/`.
-<!-- /planned-change:align-scripts-runtime-boundary-delivery -->
 - **Also does not own:** the publishing declaration that bounds reach (a
   `config` fact), any command's canonical name or emission (facts owned by the
   context that owns that command), or resolution of a name to a document at
