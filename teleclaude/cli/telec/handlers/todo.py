@@ -592,7 +592,7 @@ def _handle_artifacts_list(args: list[str]) -> None:
     slug = args[0]
 
     async def read_artifacts(todos_db: TodosDb) -> list[ArtifactWritersRow]:
-        return await todos_db.list_artifacts_with_writers(slug)
+        return await todos_db.list_artifacts_with_writers(slug, include_removed=True)
 
     artifacts = run_todo_read("telec todo artifacts list", read_artifacts)
     if not artifacts:
@@ -615,7 +615,7 @@ def _handle_artifacts_read(args: list[str]) -> None:
     _validate_artifact_name(name)
 
     async def read_artifact(todos_db: TodosDb) -> str:
-        return await todos_db.read_artifact(slug, name)
+        return await todos_db.read_artifact(slug, name, include_removed=True)
 
     print(run_todo_read("telec todo artifacts read", read_artifact))
 
@@ -634,7 +634,7 @@ def _handle_artifacts_diff(args: list[str]) -> None:
         raise SystemExit(1)
 
     async def read_diff(todos_db: TodosDb) -> str:
-        return await todos_db.artifacts_diff(slug, name, old_digest, new_digest)
+        return await todos_db.artifacts_diff(slug, name, old_digest, new_digest, include_removed=True)
 
     try:
         print(run_todo_read("telec todo artifacts diff", read_diff))

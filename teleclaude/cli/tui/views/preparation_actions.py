@@ -357,13 +357,15 @@ class PreparationViewActionsMixin:
                         file_row.project_path,
                         file_row.slug,
                         file_row.artifact_name,
+                        todo_id=file_row.todo_id,
                     ),
                     command=self._editor_command(  # type: ignore[attr-defined]
                         project_path=file_row.project_path,
                         slug=file_row.slug,
                         artifact_name=file_row.artifact_name,
+                        todo_id=file_row.todo_id,
                     ),
-                    title=f"Editing: {file_row.filename}",
+                    title=(f"Viewing: {file_row.filename}" if file_row.todo_id else f"Editing: {file_row.filename}"),
                 )
             )
 
@@ -417,11 +419,13 @@ class PreparationViewActionsMixin:
                         file_row.project_path,
                         file_row.slug,
                         file_row.artifact_name,
+                        todo_id=file_row.todo_id,
                     ),
                     command=self._editor_command(  # type: ignore[attr-defined]
                         project_path=file_row.project_path,
                         slug=file_row.slug,
                         artifact_name=file_row.artifact_name,
+                        todo_id=file_row.todo_id,
                         view=True,
                     ),
                     title=file_row.filename,
