@@ -9,15 +9,9 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:tui-row-actions-target-exact-todo -->
-The TUI Preparation view turns a keypress on a todo row into a lifecycle
-operation against the daemon — prepare, start work, freeze, and the artifact
-actions. Two properties make that operation trustworthy.
-<!-- change:tui-row-actions-target-exact-todo -->
 The TUI Preparation view turns a keypress on a todo row into a lifecycle
 operation against the daemon — prepare, start work, freeze, and the artifact
 actions. The properties below make that operation trustworthy.
-<!-- /planned-change:tui-row-actions-target-exact-todo -->
 
 **The cursor's row names its own project.** A slug is unique only within a
 project, so slug alone never identifies a todo across the fleet. The project a
@@ -27,7 +21,6 @@ No resolution consults a fleet-wide index keyed by slug, because such an index
 cannot distinguish two projects that hold the same slug and would silently
 substitute one for the other.
 
-<!-- planned:tui-row-actions-target-exact-todo -->
 **The cursor's row names its own todo.** One slug can name several todos in a
 project at once: a removed or delivered todo keeps its slug while it is
 retained, and a live todo may hold the same slug. A row stands for its todo's
@@ -44,7 +37,6 @@ refuses an action the todo's state does not allow and names the way forward
 (`project/spec/feature/workflow/todo-management`). A row whose todo changed
 state after the view drew it therefore reports that refusal and acts on no
 other todo.
-<!-- /planned:tui-row-actions-target-exact-todo -->
 
 **Submission is not an outcome.** A lifecycle operation is durable and
 asynchronous: the response to the submission is an acceptance receipt, and the
@@ -89,7 +81,6 @@ Then the viewer shows the content stored for that removed todo's artifact
 And the viewer is read-only, so nothing done in it changes either todo's artifacts
 ```
 
-<!-- planned:tui-row-actions-target-exact-todo -->
 #### UC-PLA-4: A removed or delivered todo's rows offer only what the todo's state allows
 
 ```gherkin
@@ -142,7 +133,6 @@ When the operator starts an action on the todo from that row before the view ref
 Then the action is refused and the new todo is left unchanged
 And the operator is notified at error severity with a refusal that names the removed state and reactivation as the way forward
 ```
-<!-- /planned:tui-row-actions-target-exact-todo -->
 
 ## See Also
 

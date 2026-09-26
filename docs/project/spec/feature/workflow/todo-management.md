@@ -21,9 +21,7 @@ Visual hierarchy within a section resolves each node to its **nearest enclosing 
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
-<!-- planned:tui-row-actions-target-exact-todo -->
 Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.
-<!-- /planned:tui-row-actions-target-exact-todo -->
 
 ## Canonical fields
 
@@ -372,7 +370,6 @@ When the operator activates Hold and submits a nonblank reason
 Then the todo becomes held with the submitted reason
 ```
 
-<!-- planned:tui-row-actions-target-exact-todo -->
 #### UC-WM34: An identity-addressed action acts on exactly the identified todo or is refused
 
 ```gherkin
@@ -387,7 +384,6 @@ When the agent addresses the same action to the live todo's durable identity
 Then the live todo changes exactly as it does when the action is addressed to its slug
 And the removed and delivered todos do not change
 ```
-<!-- /planned:tui-row-actions-target-exact-todo -->
 
 ### Cross-context references
 
