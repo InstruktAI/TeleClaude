@@ -18,11 +18,13 @@ no other record of migration progress exists anywhere.
 A document created by the platform is written at the current version. It is
 stamped, never replayed.
 
-Reading never writes. Every configuration loader brings an older document to
-the current shape in memory by applying the migrations it has not yet passed,
-then validates it, so a document at any older version loads. Only a key that no
-migration recognizes still fails the load. A document stating a version newer
-than the installation knows fails the load naming both versions.
+Reading never writes. Every configuration loader brings an older document the
+tier registries name to the current shape in memory by applying the migrations
+it has not yet passed, then validates it. A declared document the registries do
+not name is read as stored, without migration; its normal validation may refuse
+that older shape. Registration is the door for bringing it forward. An
+unsupported key in the resulting view fails the load. A document stating a
+version newer than the installation knows fails the load naming both versions.
 
 The migrated shape is persisted in exactly two ways:
 
@@ -34,10 +36,12 @@ The migrated shape is persisted in exactly two ways:
   for the root it adds, and installation runs one over the configuration it has
   seeded. A document outside the registries is never migrated by a run; it
   enters through registration.
-- **A writer.** Any platform operation that changes an existing document first
-  persists that document's pending migrations, then applies its own change to
-  the current shape. A write therefore never records an older shape at the
-  current version, and never drops a value a migration still has to move.
+- **A writer.** A platform operation that changes a registry-named existing
+  document first persists that document's pending migrations, then applies its
+  own change to the current shape. A writer refuses an older document without
+  a subject until registration establishes one. A write therefore never
+  records an older shape at the current version, and never drops a value a
+  migration still has to move.
 
 A migration run commits what it persists. A document tracked in a git
 repository that had no uncommitted changes gets one migration commit in that
@@ -71,8 +75,9 @@ The authoring rules every migration obeys are
 - **Subject.** What the registries say a document is: its kind (computer,
   global, person, company, or project) and, for a person or company, its
   instance. The document at the root of a linked worktree of a registered
-  project root has that project's subject. A migration that needs to know what a
-  document is reads the subject, never the document's location.
+  project root has that project's subject. A document the registries do not
+  name has no subject even if it declares a tier. A migration that needs to
+  know what a document is reads the subject, never the document's location.
 - **Migration run outcome.** One structured record per document naming the
   document, its subject, the version found, the version reached, and one
   outcome: current, migrated and committed, migrated and left uncommitted,
@@ -86,6 +91,7 @@ The authoring rules every migration obeys are
 
 ```gherkin
 Given a configuration document at an older version carrying a shape a later migration retires
+And the tier registries name that document
 When an agent's operation loads that document
 Then the operation receives the document in its current shape
 And the stored document is byte-identical before and after the load
@@ -154,6 +160,7 @@ And later loads of it perform no migration
 
 ```gherkin
 Given a configuration document at an older version holding a value a migration moves to another config-owned store
+And the tier registries name that document
 When an agent's operation changes an unrelated setting in that document
 Then the moved value is present in its destination store
 And the document is stored at the current version with the agent's change applied
