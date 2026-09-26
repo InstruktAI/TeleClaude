@@ -12,11 +12,11 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 ## Inputs/Outputs
 
 - **Input:** Caller session identity (system role derivation) and person identity (human role lookup from `people` config).
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 - **Output:** Allow/deny decision for each `telec` command invocation.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 - **Output:** Allow/deny decision for each `telec` command invocation, made in the process that runs it before any request reaches the daemon (`project/spec/identity-and-auth` §6). The TUI applies the row of the command each of its actions performs.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 ## Invariants
 
@@ -59,17 +59,17 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec sessions tail`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers may read peer transcripts for collaboration context. Customers should not see internal transcripts.                                                                                   |
 | `telec sessions run`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Running slash commands on new sessions is orchestration. Same restrictions as `sessions start`.                                                                                               |
 | `telec sessions revive`      | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Reviving a dead session is admin infrastructure. Admin only.                                                                                                                                  |
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 | `telec sessions end`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Members can end their own sessions (self-scoped enforcement at API layer). Workers, contributors, newcomers, and customers cannot.                                                            |
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 | `telec sessions end`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Members can end sessions; a parentless session may end itself outside the band, decided in the command's clearance. Workers, contributors, newcomers, and customers cannot.                                                            |
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec sessions unsubscribe` | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers manage their own notification subscriptions. Matches send restrictions for non-admin human roles.                                                                                     |
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 | `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure enforced at the API layer.                                            |
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 | `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure, enforced in the command's clearance.                                            |
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec sessions result`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results.                                            |
 | `telec sessions file`        | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send files back to their user. Same as result.                                                                                                                                        |
 | `telec sessions escalate`    | W    | ✅     | ✅   | ❌    | ✅     | ✅          | ✅       | ✅       | Escalation is how non-admins ask for help. Admins ARE the escalation target, so they don't escalate. Workers CAN escalate (a stuck worker needs to ask for help). Everyone else can escalate. |
@@ -104,11 +104,11 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 | Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                                    |
 | ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 | `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                                                                                                             |
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 | `telec todo create`           | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Every agent role, job runners included, may file one; its creation record names who filed it. Contributors can scaffold work items. |
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                                                                                                          |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                                                                                                            |
 | `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). delivered_by roadmap-trash-reveal-ui. |
@@ -220,20 +220,20 @@ Workers now use a **whitelist** (`WORKER_ALLOWED_TOOLS`): only explicitly listed
 
 ### 3. Missing commands — no enforcement at all
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API endpoint) and therefore bypass the tool-access layer entirely. These need enforcement:
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 Many commands are cleared by no gate at all. These need enforcement:
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 | Command                       | Should be restricted for                    |
 | ----------------------------- | ------------------------------------------- |
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 | `telec todo create`           | Newcomers, customers                        |
-<!-- change:cli-actions-authorize-in-process -->
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
@@ -241,10 +241,10 @@ Many commands are cleared by no gate at all. These need enforcement:
 | `telec todo freeze`           | Contributors, newcomers, customers          |
 | `telec todo unfreeze`         | Contributors, newcomers, customers          |
 | `telec todo deliver`          | Contributors, newcomers, customers          |
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 | `telec bugs report`           | Customers                                   |
-<!-- change:cli-actions-authorize-in-process -->
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec content dump`          | Newcomers, customers                        |
 | `telec events list`           | Customers                                   |
 | `telec config wizard`         | Members, contributors, newcomers, customers |

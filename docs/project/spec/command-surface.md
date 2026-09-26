@@ -43,10 +43,10 @@ visibility: 'public'
 
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).
 - Availability depends on adapter registration and permissions.
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 - `telec sessions run` accepts either a verified caller session identity or a verified terminal identity.
 - When `x-caller-session-id` is absent, the request still runs if `verify_caller` resolves terminal identity from `x-telec-email` (or the single-user fallback); only child-session lineage is omitted.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 - `telec sessions run` runs for a caller the CLI resolved to a session or to a person at a terminal (`project/spec/identity-and-auth` §6).
 - When the caller is not a session, the request still runs for the person the terminal's login names (or the sole registered person); only child-session lineage is omitted.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->

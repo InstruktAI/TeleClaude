@@ -17,14 +17,14 @@ TeleClaude uses one identity model across API, TUI, and adapters:
 
 - person identity comes from global `people` config,
 - session identity comes from daemon-owned session records,
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 - authorization is enforced server-side on every protected route.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 - authorization is decided in the client process that serves the caller — the CLI
   for a `telec` command, the TUI for its own actions — before any request reaches
   the daemon; the daemon performs what it is asked and records who asked from the
   identity the request carries.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 ## Canonical fields
 
@@ -40,7 +40,7 @@ People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
 ### 2) Runtime identity headers
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 Protected local API routes use these headers:
 
 - `x-caller-session-id`: TeleClaude session identity (daemon-owned, for lineage and role derivation).
@@ -69,7 +69,7 @@ terminal-email signal — the daemon and every process it spawns included. Resol
 identity from ambient state deep inside the platform attributes work to whoever
 last authenticated on the host rather than to whoever it belongs to, and in a
 multi-person installation that is one identity standing in for all of them.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 A client that asks the daemon to act carries, on every request, the identity it
 resolved for its caller (§6):
 
@@ -112,10 +112,10 @@ login — the daemon and every process it spawns included. Resolving identity fr
 ambient state deep inside the platform attributes work to whoever last
 authenticated on the host rather than to whoever it belongs to, and in a
 multi-person installation that is one identity standing in for all of them.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 ### 3) Agent session token auth
 
 Token-based auth exists exclusively for daemon-spawned agent sessions — sessions
@@ -168,7 +168,7 @@ boundary.
 
 - `x-session-token`: daemon-issued credential for system sessions only
   (takes priority over `x-caller-session-id` when present).
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 ### 3) Agent session tokens
 
 The daemon issues a session token at bootstrap to every session whose principal is
@@ -205,7 +205,7 @@ is no TTL and no timeout. Session close is the single lifecycle boundary.
    `db.issue_session_token(session_id, principal, role)` → UUID.
 3. Token is injected into the tmux environment as `TELEC_SESSION_TOKEN`.
 4. On session close, `db.revoke_session_tokens(session_id)` removes the session's tokens.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 **`telec auth whoami`:**
 Inside a session and at a terminal alike, `whoami` resolves its caller in the CLI process
@@ -247,12 +247,12 @@ session close.
     signal, so a person opening a fresh terminal authenticates on it before any
     identity-bearing command succeeds,
   - TUI launch requires prior `telec auth login`,
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
   - daemon rejects tmux callers that have no `x-caller-session-id` and no resolvable `x-telec-email`.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
   - a client refuses a caller that has neither a session identity nor a terminal
     login naming a registered person, before it sends any request.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 - If `people` has zero/one person, the legacy fallback role is still allowed for
   tmux callers without session identity, and with exactly one person that person
   answers a terminal that has no document of its own.
@@ -262,7 +262,7 @@ session close.
 
 ### 6) Authorization
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 Role clearance resolves the caller from the identity it carries, never from a
 claim the caller supplies:
 
@@ -276,7 +276,7 @@ claim the caller supplies:
   principal does not resolve to,
 - on a protected route, unknown/missing identity returns 401 and insufficient
   role returns 403; a local gate treats an unidentified caller as holding no role.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 Authorization happens once, in the client process that serves the caller, before
 the client sends any request:
 
@@ -303,17 +303,17 @@ the client sends any request:
   file, and escalation act for that session, a claimed todo is written only by its
   claiming group, a person-bound service acts only for its person — against the
   identity the request carries.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 ### 7) Session lineage invariant (child sessions)
 
 Child worker sessions should be linked to parent orchestrator session identity when a caller session exists.
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 - `/sessions/run` accepts terminal/TUI callers whose identity is resolved by `verify_caller` even when `x-caller-session-id` is empty.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 - `/sessions/run` accepts a terminal or TUI caller, whose carried identity names no session.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 - When a caller session identity is present, `initiator_session_id` is written for child-session linkage.
 - Requests without caller session identity remain valid, but they create unlinked sessions because terminal/TUI callers do not have a parent TeleClaude session.
 - A lifecycle session the runner auto-dispatches for a todo whose `created_by_principal` is a `human:<email>` establishes that human as its root identity: the session row carries the owning human's `principal`/`human_email`, so its resolved principal is `human:<email>` rather than `system:daemon`, and the rest of the chain inherits it through `initiator_session_id`. The session's `system_role` is left untouched, so the attribution does not change what the session is authorized to do.
@@ -321,11 +321,11 @@ Child worker sessions should be linked to parent orchestrator session identity w
 
 ### 8) Person-bound service identity
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 Person-bound service access is authorized from the same verified caller identity used by protected API routes:
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 Person-bound service access selects its person from the identity the request carries (§2), which the client resolved for its caller (§6):
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 - A managed human-rooted session resolves from its daemon-owned session record and inherited `human:<email>` principal.
 - A terminal or trusted TUI caller resolves from authenticated terminal email and the global person registry.
@@ -339,7 +339,7 @@ The protected edge translates `CallerIdentity` into a typed service invocation c
 
 - Headless/native hook identity follows `session-identity-truth`; it is distinct from terminal login.
 - TUI login bridge is read-only runtime context, not a replacement for `telec auth login`.
-<!-- planned:cli-actions-authorize-in-process -->
+<!-- planned:telec-startup-does-only-auth -->
 - The daemon's request surface is not an isolation boundary between local
   processes. Every agent runs as the same operating-system user as the daemon, and
   a process that writes to the local socket directly is performed as whatever
@@ -348,4 +348,4 @@ The protected edge translates `CallerIdentity` into a typed service invocation c
 ## See Also
 
 - docs/project/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why clients authorize and the daemon trusts the identity a request carries.
-<!-- /planned:cli-actions-authorize-in-process -->
+<!-- /planned:telec-startup-does-only-auth -->

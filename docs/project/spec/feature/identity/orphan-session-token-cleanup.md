@@ -63,11 +63,11 @@ And the loop continues to the next maintenance task
 
 ## Known caveats
 
-<!-- planned-change:cli-actions-authorize-in-process -->
+<!-- planned-change:telec-startup-does-only-auth -->
 - The sweep runs once per hour. A session whose synchronous revocation failed can therefore leave tokens in the ledger for up to one hour before the orphan sweep catches them — but the defense-in-depth lifecycle check in the token-validation path rejects any presented token in that window because the owning session is `closed` / `closing`. The ledger residue is harmless; the auth path is the actual barrier.
-<!-- change:cli-actions-authorize-in-process -->
+<!-- change:telec-startup-does-only-auth -->
 - The sweep runs once per hour. A session whose synchronous revocation failed can therefore leave tokens in the ledger for up to one hour before the orphan sweep catches them. The residue is harmless: no request surface validates a token.
-<!-- /planned-change:cli-actions-authorize-in-process -->
+<!-- /planned-change:telec-startup-does-only-auth -->
 - The "live" filter treats `lifecycle_status` unset as live. A session record created without a lifecycle_status (legacy or partially-initialized) and with `closed_at` unset keeps its tokens. This is intentional: don't delete tokens for sessions whose state cannot be positively identified as closed.
 - Deletion is a single bulk operation; there is no per-entry event emission or per-entry logging. Only the aggregate deletion count is observable.
 - The sweep is best-effort relative to concurrent revocations: a session that closes between the live-set evaluation and the deletion could have its tokens deleted by both paths. The deletion is idempotent so this is safe.
