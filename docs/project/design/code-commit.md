@@ -382,7 +382,7 @@ telec code commit --approved "feat(scope): subject"
   → commit gate satisfied (--approved present)
   → lock acquired
   → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
-  → workspace scope = WORKTREE → writer job (builder, finalizer): all dirty paths;
+  → workspace scope = WORKTREE → writer job (builder, finalizer, integrator): all dirty paths;
     other job: live declarations ∩ dirty paths (job read from the session record)
   → pathspec = scope (no includes)
   → drop untracked-new files from pathspec (require explicit declaration)

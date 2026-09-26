@@ -70,12 +70,12 @@ dirty tree is itself the scope and declarations are not consulted.
 <!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
-or done; declarations answer that. A todo worktree is one todo's task scope,
-written by the sessions whose lifecycle job changes and commits its source: the
-builder and the finalizer. For such a writer session the dirty tree is itself
-the scope and declarations are not consulted. Every other session working from
-the worktree, a reviewer among them, is scoped to its own declarations
-intersected with the dirty tree, as on a shared branch
+or done; declarations answer that. A worktree is written by the sessions whose
+lifecycle job changes and commits its source: the builder and the finalizer in a
+todo worktree, the integrator in the integration worktree. For such a writer
+session the dirty tree is itself the scope and declarations are not consulted.
+Every other session working from a worktree, a reviewer among them, is scoped to
+its own declarations intersected with the dirty tree, as on a shared branch
 (`sdlc/procedure/lifecycle/work/review-build`, `sdlc/policy/commits`).
 <!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 

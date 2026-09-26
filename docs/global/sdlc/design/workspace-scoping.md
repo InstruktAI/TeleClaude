@@ -113,8 +113,9 @@ because a todo checkout has one writer and nothing to attribute.
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
 with the current dirty set. A worktree is task-scoped, and its writers are the
-sessions whose lifecycle job changes and commits the todo's source: the builder
-and the finalizer. Scoped lint reads a worktree's dirty set directly for every
+sessions whose lifecycle job changes and commits its source: the builder and the
+finalizer in a todo worktree, the integrator in the integration worktree. Scoped
+lint reads a worktree's dirty set directly for every
 session. What a session commits and owes at its agent-stop checkpoint depends on
 whether it is a writer: a writer's commit scope is the dirty set, with no
 declaration consulted; any other session's commit scope is its own declarations
