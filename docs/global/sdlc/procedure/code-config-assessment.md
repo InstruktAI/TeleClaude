@@ -1,5 +1,5 @@
 ---
-description: 'Onboard a project onto the Makefile contract, align the tools behind it toward blessed defaults, and author its checkpoint maintenance overlay from that contract — apply where missing or weaker, ask only on genuine conflict, never overwrite deliberate project-owned config.'
+description: Bring a project's toolchain, quality configuration, and TeleClaude declarations into a working, self-contained contract.
 visibility: 'public'
 ---
 
@@ -7,269 +7,82 @@ visibility: 'public'
 
 ## Required reads
 
+@~/.teleclaude/docs/sdlc/design/project-toolchain.md
 @~/.teleclaude/docs/sdlc/policy/language-policy-ownership.md
+@~/.teleclaude/docs/general/policy/human-contract.md
+@~/.teleclaude/docs/general/policy/agent-artifact-governance.md
+@~/.teleclaude/docs/sdlc/policy/commits.md
 
 ## Goal
 
-Get a project onto the platform's only mandate — a language-agnostic `Makefile`
-exposing `install` / `lint` / `test` / `format` — and then align the tools behind
-those targets toward TeleClaude's blessed defaults. From that same Makefile
-contract it authors the project's checkpoint maintenance overlay — the
-`ProjectConfig.checkpoint` config the checkpoint engine consumes. The routine is a
-steward: it applies a default where the project is missing or weaker, asks the
-human only on a genuine conflict, and never silently overwrites deliberate,
-project-owned config.
-It is idempotent: a re-run re-checks the gate and proposes only what is still
-missing or weaker.
+Make the project stand on its own toolchain while TeleClaude's declarations and
+installed plumbing tell the truth about it. Reassessment converges the project
+again without undoing a defensible project choice.
 
 ## Preconditions
 
-- The current working directory is the project root.
-
-- The Makefile lifecycle template is language-neutral at `templates/quality/Makefile.template`
-  and is scaffolded for every adopting project regardless of detected language. Per-language
-  blessed config defaults live under `templates/quality/{flavor}/` in the TeleClaude repo.
-
-- Blessed defaults also include a language-neutral `.gitignore` base plus per-language
-  additions (`templates/quality/gitignore`, `templates/quality/{flavor}/gitignore`), merged
-  **additively** into the project's `.gitignore` on adoption — never copied over a file the
-  project already owns. Language-specific dependencies and behavior come from the applicable
-  language policy and its blessed template; this coordinator does not restate them.
-
-- The Makefile-mandate contract is `sdlc/design/project-toolchain`:
-  the `Makefile` is the only mandate; the tools behind it are detected and offered,
-  never prescribed.
-
-- The checkpoint overlay contract is `project/procedure/checkpoint-overlay-projection`,
-  `project/design/architecture/checkpoint-system` (the code-agnostic base overlay
-  mechanism), and `project/spec/domain/config` (`ProjectConfig.checkpoint`): the overlay
-  this procedure authors is config, and it lands in `teleclaude.yml`.
+- Work from the project root and establish the current project state before
+  changing it.
+- Read the applicable language policies, the project's existing toolchain, and
+  the blessed quality templates in the registered TeleClaude project. The
+  templates offer defaults; the Makefile interface is the platform mandate.
+- Read the TeleClaude project contracts before authoring those surfaces:
+  teleclaude/spec/feature/config/project-capability-manifest,
+  teleclaude/procedure/checkpoint-overlay-projection,
+  teleclaude/design/architecture/checkpoint-system, and
+  teleclaude/spec/feature/reconciliation/project-plumbing-convergence.
 
 ## Steps
 
-### 1. Detect the project's languages and surfaces
-
-Detect languages from repo artifacts (`pyproject.toml` / `setup.py` / root Python
-→ python; `tsconfig.json` or `package.json` with a typescript dep → typescript;
-`Cargo.toml` → rust). Read `frontend_root` from `teleclaude.yml` if present,
-defaulting to `frontend`.
-
-### 1b. Author the project's capability toggles
-
-Write the project's three capability toggles into `teleclaude.yml` from what the
-repo actually holds (`project/spec/feature/config/project-capability-manifest`):
-
-- **`code`** — the repo carries a make contract or a language tree detected in
-  step 1. A repository with neither holds no code under the TeleClaude lifecycle,
-  and the whole code pipeline stays off: no sealed-commit surface, no quality
-  lanes, no git hooks, no toolchain or test maintenance.
-- **`docs`** — snippet frontmatter exists under `docs/`.
-- **`agents`** — authored agent artifacts exist under `agents/`; `.agents/` is delivery output and never counts.
-
-Task tracking carries no toggle: a project holding a `teleclaude.yml` subscribes
-it by that fact alone.
-
-The **initial** toggles are already written by `telec config project init`,
-which performs the same deterministic structural inference before any
-capability-gated plumbing installs. This step **re-checks and refines** them —
-adjusting a toggle only on a grounded signal, and recording a genuinely ambiguous
-capability for human confirmation rather than guessing. Either way the inference
-is structural (file existence), never a runtime code path and never a semantic
-judgment; the runtime reads only the written declaration.
-
-After writing the toggles, run `telec config project init`: its reconciliation path sets the docs
-filter driver present iff `docs` is subscribed and refreshes the
-TeleClaude-owned git hooks whenever the declaration resolves an executable
-binding. Publication is not part of this convergence. The toggle write is the whole of the capability change: the
-installed plumbing reads the declaration on its next invocation, and no
-capability state is written anywhere else. Never edit a project-tracked file to
-reflect a toggle beyond the declaration that carries it: the `.gitattributes`
-docs line is written once at onboard and left alone thereafter.
-
-### 2. Makefile contract gate (ordered prerequisite)
-
-Bring the project onto the Makefile contract **before** any config alignment. The
-steps are ordered; each depends on the one before it.
-
-1. **`Makefile` exists?** Greenfield: scaffold the language-neutral lifecycle template from
-   `templates/quality/Makefile.template`. Brownfield: create it by wiring the project's
-   **existing** lint/test entrypoints under `make lint` / `make test` (and
-   `install` / `format`) — wrap what the project already runs, do not replace it.
-
-2. **`make lint` and `make test` exist?** If a target is absent, add and wire it to
-   the project's native tooling.
-3. **Targets honor the adoption contract.** `make lint` and `make format` read an
-   optional `FILES_FROM` scope and run the whole suite when it is absent;
-   `make install` / `make test` run with no args. `FILES_FROM` holds the **path to a
-   temp file** whose contents are the scoped paths, **NUL-terminated** — the paths
-   never arrive as make goals or on the command line. This `FILES_FROM`/no-args
-   contract is what lets `telec code` scope through `make` (see
-   `sdlc/design/project-toolchain`).
-
-   Wiring a lint or format target that ignores `FILES_FROM` is a **defect, not a
-   simplification**: the scope `telec code` resolved is silently discarded and the
-   recipe checks the whole tree, so a commit fails on files it never touched and any
-   concurrent session's in-flight work blocks this one. Read the scope in the recipe's
-   delegated script:
-
-   ```bash
-   paths=()
-   if [ -n "${FILES_FROM:-}" ]; then
-       while IFS= read -r -d "" path; do paths+=("$path"); done < "$FILES_FROM"
-   fi
-   ```
-
-   Then bucket `paths` by extension and pass each bucket to the tool that owns it,
-   **skipping a tool entirely when its bucket is empty**. A whole-project typechecker
-   that cannot take a file subset (`tsc -b`, `mypy` in daemon mode) is skipped when the
-   scope contains none of its language — never widened back to the whole tree. With no
-   `FILES_FROM`, run everything.
-
-4. **Only then** proceed to config alignment (Step 3).
-
-### 3. Align tool configs toward blessed defaults
-
-For each detected language, read the project's tool configs and compare them
-semantically — coverage, not file diff — against the blessed defaults under
-`templates/quality/{flavor}/`:
-
-- **Python**: `pyproject.toml` sections for ruff, pyright, mypy.
-- **TypeScript**: `tsconfig.json`, the chosen linter/formatter config (ESLint +
-  Prettier or Biome — the project's call), `vitest.config.ts` (relative to
-  `frontend_root`).
-- **Rust**: `Cargo.toml` lints, `rustfmt.toml`, `clippy.toml`, from the Cargo
-  workspace root.
-
-Classify each setting and target, then steward toward the best outcome:
-
-- **Missing or weaker → apply it.** Adoption, not overwrite; propose and merge
-  additively, no question needed.
-- **Conflict** (a deliberate, defensible divergence the default would override)
-  **→ surface and ask** the human, framed as a recommendation ("I'd adopt X
-  because Y — keep your local choice?"), never a menu. Warn when a default would
-  carry an impact the project does not want.
-- **Matching → no-op.**
-
-### 4. Guardrails need no project config
-
-Do not add a `teleclaude.yml` guardrails section, and do not seed guardrails
-defaults into the project. Guardrails are TeleClaude-owned and run automatically
-as the always-run lane of `telec code lint`; they reach a project simply by the
-project being run under `telec code`, with no per-project quality-config surface.
-
-### 5. Author the checkpoint maintenance overlay
-
-With the Makefile contract established (Step 2), author the project's checkpoint
-maintenance overlay into its `teleclaude.yml` (`ProjectConfig.checkpoint`)
-following `project/procedure/checkpoint-overlay-projection`.
-
-**The `code` scope is the project's entire source surface — every language and
-file type — authored as broad source-root _directory_ globs.** TeleClaude is
-code-agnostic: `code` is never "the detected language" and never an extension
-filter. A project's Python, shell, templates, Dockerfiles, and config-as-code are
-all `code`; scoping it by extension (e.g. `**/*.py`) is a bug that silences every
-other source file. Enumerate the real source directories; exclude only what is
-genuinely not source — generated artifacts, vendored trees, and the separate
-`tests` category.
-
-Know what the `code` scope drives and what it does not
-(`project/design/architecture/checkpoint-system`, Inv 24–25):
-
-- It feeds the `agent_stop` hook (`test` + `log-check`) and, through the same bindings, the
-  commit-boundary maintenance the project's `checkpoint.maintenance` actions declare and the
-  integrator post-merge marker. Under-scoping it under-covers all of them.
-- It does **not** gate review. The post-commit review gate fires for any committed
-  file that is not documentation (`docs/**`, `*.md`, `*.txt`, `*.rst`) —
-  code-agnostic and independent of this overlay — so reviewers already see
-  everything. Never scope `code` narrowly to "control review"; you cannot.
-
-Then declare the project's own runtime maintenance actions and bind them to the paths that
-owe them. Which registry each one lands in follows a single test: can the mechanism that
-performs the action establish its own outcome? A deterministic command — validate, build,
-restart, reload — can, and is declared under `checkpoint.maintenance` carrying `command`,
-`main_only` and `precedence`, so the commit boundary performs it and no one is asked. An
-action whose substance is a judgment an agent makes and acts on cannot, and is declared under
-`checkpoint.actions` carrying `run`, the `evidence` substrings that prove it ran (defaulting
-to `run`), `main_only`, `precedence`, and `evidence_must_follow_last_mutation` where ordering
-matters. An action id belongs to exactly one of the two registries, base and overlay
-together. The overlay is config — it lands in `teleclaude.yml`,
-the surface this procedure owns. Record any source-root or runtime-command
-uncertainty for human confirmation rather than guessing; this is authoring-time
-intelligence, never a runtime detection path (`general/principle/intelligence-boundaries`).
-
-A maintenance action that restarts the service hosting the maintenance sequence is
-terminal: assign it precedence strictly greater than every other deterministic
-maintenance action. The restart may end its own executor, so an action ordered after
-it is not reliably reachable.
-
-### 6. Reconcile what TeleClaude's plumbing displaces
-
-TeleClaude's git hooks and published schemas take slots a project may already
-fill with its own material. Leave nothing in those slots that silently never
-runs or silently goes stale:
-
-- **A project hook in a slot TeleClaude's hook set occupies.** Plumbing never
-  overwrites a hook it did not write
-  (`project/spec/feature/reconciliation/project-plumbing-convergence`), so
-  TeleClaude's hook for that slot, and
-  every maintenance action it would run, never runs there. When the project hook
-  expresses "run a command when these paths change on the canonical checkout",
-  that is a checkpoint maintenance action: declare it in the overlay (Step 5),
-  with the Makefile contract target as its command where one covers it, bound
-  to the paths it watches, then remove the project hook so plumbing installs
-  TeleClaude's in its slot. Keep a project hook only when its logic cannot be
-  expressed as a maintenance action, and record it in the output.
-- **A `.pre-commit-config.yaml` the pre-commit framework never runs.** When
-  TeleClaude's hook holds the pre-commit slot, the framework's configuration is
-  inert, and its entries read as protection the project does not have. Move any
-  check that still guards the project into `make lint`, which the commit gate
-  runs, and remove the file.
-- **A tracked copy of a TeleClaude configuration schema.** Plumbing only reports
-  a tracked copy, because removing it is a commit in the project
-  (`project/spec/feature/reconciliation/project-plumbing-convergence`), so it
-  goes stale. Point the project's schema reference at the schema link plumbing
-  maintains, as the configuration writer's project-tier reference does, and
-  remove the copy.
-
-### 7. Re-run safely
-
-The routine is idempotent. A re-run re-checks the Makefile contract gate, the
-config comparison, the checkpoint overlay, and the displaced-slot reconciliation,
-and proposes only what is still missing or weaker; matching settings and
-already-wired targets are left untouched.
+1. Bring the project's Makefile onto the install, lint, test, and format
+   interface. The targets delegate to tools the project declares and provisions;
+   lint and format honor the platform's workspace scope. A configured suite is
+   run by test. Do not create an empty check or invent a suite to satisfy an
+   interface.
+2. Apply blessed quality defaults where the project is silent or weaker by
+   omission. Preserve a deliberate, evidenced project choice. Resolve existing
+   quality debt by fixing the code and configuration, not by disabling checks or
+   adding suppressions to obtain a green result. A proposed relaxation of
+   quality-defining configuration follows its independent review gate.
+3. Leave no inert protection or configuration: each retained setting and check
+   works, each displaced hook or file has its intended effect through the
+   active toolchain, and secrets and generated output cannot be accidentally
+   picked up by git.
+4. Align the capability declaration and checkpoint bindings with the project's
+   actual source, configured tests, and runtime obligations. Reconcile the
+   installed plumbing and preserve project-owned behavior that the platform
+   cannot express.
+5. Prove the resulting contract from a clean project environment: make install
+   succeeds; unscoped telec code lint, including guardrails, succeeds; and
+   telec code test succeeds when a suite is configured and the effective
+   checkpoint owes test. Establish that the expected project-declared tools
+   actually ran from the project's environment. Reinstall when changed
+   declarations require it; the dependency order determines when install runs.
+6. Commit a complete, coherent assessment only after its applicable proof is
+   green, then route the required independent review. If a human-owned
+   consequence blocks completion, finish independent work and report the
+   assessment as incomplete with the blocked consequence named.
 
 ## Outputs
 
-- The project on the Makefile contract (`install` / `lint` / `test` / `format`
-  present, `make lint` and `make format` honoring the `FILES_FROM`/no-args adoption
-  contract).
-- Tool configs raised toward the blessed defaults where they were missing or
-  weaker, with deliberate project-owned config preserved.
-- The project's checkpoint maintenance overlay authored into `teleclaude.yml`
-  (`ProjectConfig.checkpoint`), so the checkpoint engine gates on the project's
-  actual actions rather than the base-only fallback.
-- No project hook left in a slot TeleClaude's hook set occupies unless its logic
-  cannot be expressed as a maintenance action, no inert `.pre-commit-config.yaml`,
-  and no tracked copy of a TeleClaude configuration schema.
-- A short record of what was applied and what was surfaced for the human's
-  decision.
+- A self-contained project toolchain, live quality configuration, accurate
+  TeleClaude declarations, and converged plumbing.
+- A final report with the install, unscoped lint, and applicable test outputs;
+  evidence of which project tools ran and where they resolved; material
+  technical decisions; and any unresolved blocker. A passing exit status
+  without evidence that the intended checks ran is not completion.
 
 ## Recovery
 
-- The invariant: **never silently overwrite an intentional divergence.** Applying
-  a default where the project is missing or weaker is correct and expected; on a
-  genuine conflict, surface a recommendation and let the human decide. If you
-  catch yourself about to overwrite a deliberate project choice, stop and ask.
-- If the Makefile contract gate cannot be satisfied (no detectable native lint/test
-  entrypoint to wrap), report the gap rather than fabricating targets that run
-  nothing.
+- If an expected tool cannot be provisioned or a check is inert, repair its
+  declaration or invocation and repeat the applicable proof. Do not substitute
+  an ambient tool or weaken the quality gate.
+- If a genuine human-owned decision is required, leave dependent work
+  incomplete and identify the decision and consequence without treating it as
+  approval of a technical mechanism.
 
 ## Discipline
 
-The failure mode this procedure guards against is aligning configs before the
-project is on the Makefile contract — tuning tools behind a plug that does not
-exist — and overwriting deliberate project-owned config in the name of "blessed
-defaults." The gate is ordered for that reason: Makefile first, adoption contract
-second, alignment last. The steward applies defaults only where the project is
-missing or weaker, and treats a deliberate divergence as the human's call, not a
-gap to close.
+The failure mode is a green assessment that runs the wrong tools, omits checks,
+or leaves displaced protection inert. Ground the assessment in the project's
+effective behavior and prove that behavior before declaring it done.
