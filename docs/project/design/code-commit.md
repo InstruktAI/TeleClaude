@@ -123,7 +123,6 @@ passthrough it applies outside tmux. The wrapper itself interprets no repository
 layout; whether a root answers to a declaration is the runtime's answer.
 <!-- /planned-change:config-migration-chain -->
 
-<!-- planned-change:config-migration-chain -->
 The wrapper reads capability state from the repository root's `teleclaude.yml`
 — the same declaration the runtime resolves — deriving `code ∨ docs` for commit
 interception and `code` for worktree and branch discipline. It reads the file
@@ -150,36 +149,6 @@ the wrapper, and a declaration whose capability blocks are well-formed but which
 fails validation elsewhere in the overlay is refused by the runtime and honoured
 by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
-<!-- change:config-migration-chain -->
-The wrapper takes capability state from the runtime's answer for the repository
-root, the answer the runtime's own gates use — for a slug worktree, the owning
-checkout's declaration, whether or not the worktree carries a copy — deriving `code ∨ docs` for commit interception and
-`code` for worktree and branch discipline. The wrapper reads no declaration
-itself. The runtime answers: the document is brought to its current shape by the configuration migration list,
-environment references in its capability blocks are resolved from the
-declaration's sibling `.env`, and its tier and capability blocks are read with
-the runtime's own models. The wrapper keeps that answer until a file it was
-read from changes or the installation's code advances, so a read after either
-starts an interpreter and later reads reuse the kept answer; the whole-second
-limit on keeping an answer is stated with the contract (`project/spec/feature/config/project-capability-manifest`). A
-project declaration carries the capability blocks: a block that is absent, or
-present without an `enabled` value, leaves that capability unsubscribed. A
-global or person declaration carries no subscriptions: the repository is sealed
-on the declaration alone, so the commit-interception rows and the main-branch
-replay and push rows apply there, while the worktree and destructive-operation
-rows follow `code`, which no non-project tier carries. A company declaration
-anchors no context and seals nothing: the wrapper execs the real git binary
-unmodified.
-
-A declaration the wrapper cannot resolve — no readable tier, a capability block
-the runtime cannot read, or a runtime that cannot answer — refuses the git
-invocation with a message naming `teleclaude.yml` and the cause, and
-substitutes no capability state. The wrapper and the runtime's capability
-answer both read only the tier and the capability blocks, so they answer alike
-for every declaration; a declaration that fails validation elsewhere in the
-overlay is refused only where the full overlay is loaded
-(`project/spec/feature/config/project-capability-manifest`).
-<!-- /planned-change:config-migration-chain -->
 
 <!-- planned:foreign-session-carried-identity -->
 The role the matrix reads is resolved from the caller's session record through the

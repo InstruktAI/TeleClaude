@@ -511,7 +511,6 @@ And after that value changes in the .env, the next git invocation decides from t
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by the quality-configuration assessment procedure.
 
-<!-- planned-change:config-migration-chain -->
 - The runtime and the installed plumbing agree on every declaration whose
   capability blocks carry unquoted boolean values. They part on two inputs, in
   opposite directions. A block whose `enabled` value the runtime coerces from a
@@ -520,19 +519,6 @@ And after that value changes in the .env, the next git invocation decides from t
   which fails validation elsewhere in the overlay is refused by the runtime and
   honoured by the plumbing, which reads only the tier and the capability blocks
   and claims nothing about the rest of the file.
-<!-- change:config-migration-chain -->
-- The runtime's capability answer and the installed plumbing both read only a
-  declaration's tier and capability blocks, so they answer alike for every
-  declaration. A declaration whose tier and capability blocks are readable but
-  which fails validation elsewhere in the overlay keeps its capability answer
-  and keeps git working; loading the full overlay still refuses it.
-- The first read after a file a kept answer was read from changes, or after the
-  installation's code advances, pays one start of the installation's interpreter;
-  every later read is served without one. An answer resolved in the same whole
-  second as a change to one of its files is returned but not kept, because
-  whole-second modification times cannot tell a later change within that second
-  apart; the next read resolves again.
-<!-- /planned-change:config-migration-chain -->
 
 
 ## See Also
