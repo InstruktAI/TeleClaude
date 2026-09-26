@@ -31,7 +31,7 @@ visibility: 'public'
 - Standalone execution never creates a second implementation owner. Each public capability names one canonical module; every in-process consumer imports that owner instead of maintaining a package-side copy.
 - A portable public script owns its complete capability under `scripts/` and carries its PEP 723 dependencies there. Shared first-party types, constants, parsing, and decisions stay in that script and are imported by consumers; they are never copied into `teleclaude/`.
 - A repo-bound process entrypoint may import its canonical `teleclaude` module directly when the package owns the capability. The entrypoint contains only argument, startup, and presentation adaptation; domain and workflow behavior stay in the package owner.
-- Scripts never manipulate `sys.path` to locate first-party code. Repo-bound entrypoints validate package availability and fail with an actionable diagnostic when invoked outside their declared runtime.
+- Scripts never manipulate `sys.path` to locate first-party code. A repo-bound entrypoint invoked through its `uv` shebang may transfer to its source checkout's installed project interpreter before importing first-party code, preserving its arguments and the public script path. It fails with an actionable diagnostic when that runtime is absent or cannot supply the owner package.
 - Importing between canonical modules under `scripts/` is permitted. A cross-boundary import never grants permission to duplicate the imported owner's knowledge.
 <!-- /planned-change:align-scripts-runtime-boundary-delivery -->
 - Runnable scripts must have the executable bit set in the repository.
@@ -40,7 +40,11 @@ visibility: 'public'
 
 - `scripts/` is deployed via a `~/.teleclaude/scripts` symlink created by `make install`; the source file IS the deployed file (no copy step), so edits take effect immediately and callers often execute outside this repository.
 - Portable scripts reduce operational drift across local, remote, and agent-driven usage.
+<!-- planned-change:align-scripts-runtime-boundary-delivery -->
 - PEP 723 metadata makes dependency resolution deterministic and self-contained.
+<!-- change:align-scripts-runtime-boundary-delivery -->
+- PEP 723 metadata makes portable scripts' third-party dependencies deterministic. A repo-bound entrypoint uses its installed project interpreter for first-party packages because an inline-metadata `uv` run is isolated from the project.
+<!-- /planned-change:align-scripts-runtime-boundary-delivery -->
 - Preflight validation prevents brittle failures and lowers troubleshooting cost.
 <!-- planned:align-scripts-runtime-boundary-delivery -->
 - Standalone is an invocation property, not an ownership model. Copying a package implementation into a public script creates two authorities that drift; one canonical owner preserves both portability and internal reuse.
