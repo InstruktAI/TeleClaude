@@ -468,7 +468,6 @@ When agent invokes telec code commit --approved "<msg>"
 Then SystemExit(1) before repo.git.commit invoked
 ```
 
-<!-- planned:fix-code-commit-refuses-first-commit -->
 #### UC-CGIP-48 — A repository's first commit passes through the same gates
 
 ```gherkin
@@ -480,7 +479,6 @@ Then the gates the tier carries grade the declared files that exist, as for any 
 And when every gate passes, the first commit lands carrying exactly the declared files
 And when a gate fails, no commit is created and the repository still has no commits
 ```
-<!-- /planned:fix-code-commit-refuses-first-commit -->
 
 #### UC-CGIP-7 — Lock releases cleanly on gate failure
 
