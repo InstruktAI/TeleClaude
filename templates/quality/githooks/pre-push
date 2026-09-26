@@ -79,8 +79,9 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
         continue
     fi
 
-    # Allow push from the persistent integration worktree — but only after lint passes
-    if [ "$REPO_ROOT" = "$CANONICAL_ROOT/trees/_integration" ]; then
+    # Allow candidate pushes from the persistent integration worktree after lint passes; exclude deletions.
+    if [ "$REPO_ROOT" = "$CANONICAL_ROOT/trees/_integration" ] \
+        && [ "$local_ref" != "(delete)" ]; then
         if ! telec code lint --all; then
             echo "ERROR: Integration push blocked — telec code lint --all failed." >&2
             echo "Fix all lint violations before pushing to origin/main." >&2
@@ -93,11 +94,10 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
     echo "GUARDRAIL_MARKER: ${MARKER}" >&2
     cat >&2 <<'MSG'
 ERROR: MAIN_GUARDRAIL_BLOCKED
-Main-targeting operations are allowed only from the canonical repository root on branch main.
+Main-targeting operations are allowed from the canonical repository root on branch main, or from the integration worktree when publishing a candidate commit.
 Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
 MSG
     exit 1
 done
 
 exit 0
-
