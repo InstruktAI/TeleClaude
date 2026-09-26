@@ -89,6 +89,25 @@ And the grading leaves the live home unchanged
 
 #### UC-CCS6
 
+<!-- planned:worktree-or-project-scope -->
+#### UC-CCS7: A worktree's telec code commands answer to the worktree's own declaration
+
+```gherkin
+Given a slug worktree whose own declaration sets its code, docs, or agents subscriptions differently from its owning checkout
+When an agent runs a telec code command from the worktree
+Then whether the command runs, and which checks its quality gate runs, follow the worktree's own declaration
+And the owning checkout's declaration is not consulted for that decision
+```
+
+#### UC-CCS8: The version report describes one checkout
+
+```gherkin
+Given an agent standing in a slug worktree whose HEAD differs from the installed canonical checkout
+When the agent runs telec version
+Then the reported version and commit both describe the checkout whose code runs
+```
+<!-- /planned:worktree-or-project-scope -->
+
 ## Known caveats
 
 - A temporary or named home moves only the state rooted in the home. A checkout's todo store and

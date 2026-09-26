@@ -703,6 +703,18 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
   And later lifecycle runner passes do not dispatch it to the prepare lane again until one of the dependency's intent or prepared artifacts moves again
 ```
 
+<!-- planned:worktree-or-project-scope -->
+#### UC-WDD18: Provenance recorded from a slug worktree reads the owning project's snippets
+
+```gherkin
+Scenario: an artifact written or a stamp applied from a slug worktree records the owning project's snippet digests
+  Given a Todo whose artifact references a project snippet whose body differs between a slug worktree and the project's owning checkout
+  When an agent standing in that worktree writes the artifact through "telec todo artifacts write" or applies a stamp through "telec todo stamp"
+  Then the recorded snippet digests are those of the owning checkout's snippets
+  And drift derived later from the owning checkout reports no drift for that unchanged snippet
+```
+<!-- /planned:worktree-or-project-scope -->
+
 ### Cross-context references
 
 - `agent_runtime` — the `/sdlc/drift-analyze` worker session is dispatched

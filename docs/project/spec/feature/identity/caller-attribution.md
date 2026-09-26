@@ -78,6 +78,17 @@ Then its author is alice
 And no identity lookup decides the author
 ```
 
+<!-- planned:worktree-or-project-scope -->
+#### UC-CA-4: A content dump lands in its project's inbox from anywhere inside it
+
+```
+Given an operator or agent standing in a subdirectory, or in a slug worktree, of a project
+When they run telec content dump
+Then the inbox entry is created in the project's publications inbox at its owning checkout
+And no inbox entry is created in the subdirectory or the worktree
+```
+<!-- /planned:worktree-or-project-scope -->
+
 ### Cross-context references
 
 - **workflow** — suppression provenance (`project/spec/feature/workflow/known-issue-suppression`).

@@ -12,9 +12,17 @@ for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
 `kind`. `computer` identifies the machine configuration by its fixed location
 in the machine home and does not become an overlay tier or a context root.
+<!-- planned-change:worktree-or-project-scope -->
 `computer` and `global` are singletons. A person, company, or project is
 addressed by its stable slug, except that project initialization
 may establish the project rooted at the caller's current directory.
+<!-- change:worktree-or-project-scope -->
+`computer` and `global` are singletons. A person, company, or project is
+addressed by its stable slug, except that project initialization addresses the
+checkout the caller stands in: the owning checkout of the repository that holds
+the caller's current directory, or that directory itself when no repository
+holds it.
+<!-- /planned-change:worktree-or-project-scope -->
 
 The operation names describe the result, regardless of the subject's storage
 shape. `init` creates missing declarations and scaffolding and converges an
@@ -160,6 +168,17 @@ Then the machine configuration the runtime loads is selected
 And the working directory selects no alternate machine file
 And overlay-tier resolution still recognizes only the overlay kinds
 ```
+
+<!-- planned:worktree-or-project-scope -->
+#### UC-KAC11: Project initialization adopts the checkout the caller stands in
+
+```gherkin
+Given an agent standing in a subdirectory, or in a slug worktree, of a project's repository
+When it initializes the project configuration
+Then the declaration, plumbing, and registration are those of the repository's owning checkout
+And no declaration or plumbing is written into the subdirectory or the worktree
+```
+<!-- /planned:worktree-or-project-scope -->
 
 ### Cross-context references
 

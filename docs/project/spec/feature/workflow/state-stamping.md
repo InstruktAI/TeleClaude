@@ -271,6 +271,17 @@ And the held todo is not auto-re-dispatched to another diagnosis peer
 And an unresolved stamp with an empty or missing reason is refused before any write
 ```
 
+<!-- planned:worktree-or-project-scope -->
+#### UC-WSS23: Task success delivers within the todo's own project
+
+```gherkin
+Given a Todo of kind="task" with a one-shot schedule in a project other than the one the workflow daemon runs from
+When its run session runs "telec todo stamp my-slug --task-outcome success" from within that project
+Then the delivery reconciles the lifecycle markers in that project's documentation
+And no other project's documentation is read or changed by the delivery
+```
+<!-- /planned:worktree-or-project-scope -->
+
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
