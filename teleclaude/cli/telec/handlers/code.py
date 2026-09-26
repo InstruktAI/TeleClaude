@@ -53,7 +53,7 @@ from teleclaude.project_root import (
     forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
 )
-from teleclaude.quality.gate import QualityGateLeg, read_head_sha, run_lint_gate
+from teleclaude.quality.gate import QualityGateLeg, run_lint_gate
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -747,14 +747,10 @@ def _run_commit_quality_gate(
     """Run the acting tier's selected checks against the commit pathspec."""
     if QualityGateLeg.NATIVE in quality_gate_legs:
         handle_format(quality_paths)
-    subject_sha = read_head_sha(project_root)
-    if subject_sha is None:
-        print("ERROR: unable to resolve the quality-gate subject from the invocation checkout", file=sys.stderr)
-        raise SystemExit(1)
     result = run_lint_gate(
         project_root,
         project_root,
-        subject_sha,
+        None,
         quality_paths,
         False,
         None,

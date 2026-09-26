@@ -10,7 +10,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_INSTALL, CODE_LINT, CODE_TEST
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
-from teleclaude.quality.gate import read_head_sha, run_lint_gate, run_make_target
+from teleclaude.quality.gate import run_lint_gate, run_make_target
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     resolve_workspace_scope_resolution,
@@ -36,14 +36,10 @@ def handle_lint(args: list[str]) -> None:
     if scoped_files == []:
         return
 
-    subject_sha = read_head_sha(project_root)
-    if subject_sha is None:
-        print("ERROR: unable to resolve the lint subject from the invocation checkout", file=sys.stderr)
-        raise SystemExit(1)
     result = run_lint_gate(
         project_root,
         project_root,
-        subject_sha,
+        None,
         scoped_files,
         scoped_files is not None,
         None,

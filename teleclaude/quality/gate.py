@@ -62,10 +62,10 @@ class QualityGateLeg(StrEnum):
 
 @dataclass(frozen=True)
 class LintGateResult:
-    """The subject and independent exit statuses observed by one lint gate."""
+    """The optional subject and independent exit statuses observed by one lint gate."""
 
     outcome: LintGateOutcome
-    subject_sha: str
+    subject_sha: str | None
     execution_head: str | None
     native_exit_code: int | None
     guardrails_exit_code: int | None
@@ -96,7 +96,7 @@ def read_head_sha(execution_root: Path) -> str | None:
 def run_lint_gate(
     project_root: Path,
     execution_root: Path,
-    subject_sha: str,
+    subject_sha: str | None,
     files: list[str] | None,
     format_scoped: bool,
     child_env: Mapping[str, str] | None,
@@ -104,26 +104,35 @@ def run_lint_gate(
     *,
     request_subject_checkout_grading: bool = False,
 ) -> LintGateResult:
-    """Run native lint and guardrails against the exact committed subject.
+    """Run selected lint checks, optionally bound to a committed subject.
+
+    When ``subject_sha`` is set, the execution checkout's HEAD must match it
+    before grading. Callers without a selected commit pass ``None`` and grade
+    the execution checkout without reading HEAD. Integration's final-content
+    validation binds a subject; pre-commit callers do not have one yet.
 
     ``request_subject_checkout_grading`` is off by default: the legs run in this
-    process against ``execution_root``, exactly as before. On, grading is handed to
+    process against ``execution_root``. When enabled, grading is handed to
     ``execution_root``'s own code when it is a TeleClaude checkout other than the
     running installation: its own ``telec code lint`` for a full leg selection, or
     an installed entry that starts its own guardrail lane alone
     (``tools/lint/checkout_guardrails.py``) for a guardrails-only selection. A
     ``quality_gate_checkout_grading`` record is emitted naming which code graded it.
     """
-    execution_head = read_head_sha(execution_root)
-    if execution_head != subject_sha:
-        return LintGateResult(
-            outcome=LintGateOutcome.FAILED,
-            subject_sha=subject_sha,
-            execution_head=execution_head,
-            native_exit_code=None,
-            guardrails_exit_code=None,
-            failure_reason=_SUBJECT_MISMATCH_TEMPLATE.format(subject_sha=subject_sha, execution_head=execution_head),
-        )
+    execution_head = None
+    if subject_sha is not None:
+        execution_head = read_head_sha(execution_root)
+        if execution_head != subject_sha:
+            return LintGateResult(
+                outcome=LintGateOutcome.FAILED,
+                subject_sha=subject_sha,
+                execution_head=execution_head,
+                native_exit_code=None,
+                guardrails_exit_code=None,
+                failure_reason=_SUBJECT_MISMATCH_TEMPLATE.format(
+                    subject_sha=subject_sha, execution_head=execution_head
+                ),
+            )
 
     if not request_subject_checkout_grading:
         native_exit_code, guardrails_exit_code = _run_in_process_legs(
@@ -186,7 +195,7 @@ def _run_in_process_legs(
 
 
 def _build_in_process_result(
-    subject_sha: str,
+    subject_sha: str | None,
     execution_head: str | None,
     native_exit_code: int | None,
     guardrails_exit_code: int | None,
