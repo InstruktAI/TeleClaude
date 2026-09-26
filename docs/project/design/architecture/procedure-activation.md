@@ -1,8 +1,9 @@
 ---
-description: How a published procedure's event subscriptions become routing contracts, and how each computer that hosts an event's company starts or wakes that procedure's standing agent through one generic command — composed from existing routing, dispatch, session, operation, and identity contracts.
+description: How a published procedure's event subscriptions become routing contracts,
+  and how each computer that hosts an event's company starts or wakes that procedure's
+  standing agent through one generic command — composed from existing routing, dispatch,
+  session, operation, and identity contracts.
 visibility: internal
-delivered_by:
-  - procedure-event-activation
 ---
 
 # Procedure Activation — Design

@@ -113,7 +113,6 @@ TeleClaudeNext.
   `project/spec/feature/config/unknown-key-warning`.
 
 
-<!-- planned:procedure-event-activation -->
 - **Also owns:** an inbound event source's company declaration — the registered
   company its events belong to — validated against registered companies; a
   source naming an unregistered company is rejected. It also answers, on each
@@ -122,7 +121,6 @@ TeleClaudeNext.
   is not owning what a company context means, which belongs to
   `project/spec/domain/identity`, or what a session does with it, which belongs
   to `project/spec/domain/agent_runtime`.
-<!-- /planned:procedure-event-activation -->
 
 #### Use cases (index of feature specs)
 

@@ -1,8 +1,8 @@
 ---
-description: One standing agent per procedure per company — identified by the procedure's own canonical ID and the company, started by the first activation and woken by every later one.
+description: One standing agent per procedure per company — identified by the procedure's
+  own canonical ID and the company, started by the first activation and woken by every
+  later one.
 visibility: internal
-delivered_by:
-  - procedure-event-activation
 ---
 
 # Procedure Standing Agent — Spec

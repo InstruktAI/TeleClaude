@@ -67,7 +67,6 @@ scope is a property of the caller, never of the invocation's directory.
   It also publishes the composed corpus laid out as `<domain>/<name>` and reach,
   collision, or unclassifiable-source findings that name the offending files.
 
-<!-- planned:procedure-event-activation -->
 - **Also owns:** a procedure's activation declaration — whether agents start it
   by selecting it through an activation trigger, the platform starts it when
   events it subscribes to arrive, or it is supporting knowledge started by
@@ -83,7 +82,6 @@ scope is a property of the caller, never of the invocation's directory.
   configured sources emit a matching event; one published in a company's tier
   subscribes for that company only. `integration` consumes this answer and never
   reads procedure metadata itself.
-<!-- /planned:procedure-event-activation -->
 
 ## See Also
 

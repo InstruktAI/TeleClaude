@@ -75,14 +75,12 @@ properties, payload)` before entering the dispatch pipeline.
 - **Dual delivery semantics.** Internal handlers are called synchronously
   (in-process, fire-and-forget per handler). External URLs use durable outbox
   delivery with retry. A contract targets exactly one: `handler` XOR `url`.
-<!-- planned:procedure-event-activation -->
 - **Handlers see their contract.** An internal handler receives the matched
   contract alongside the event, so a handler shared by several contracts knows
   which one matched.
 - **Derived contracts are not persisted.** A contract its owner derives from its
   own source of truth is held in the registry's memory only. It is never
   restored from storage at startup; its owner rebuilds it.
-<!-- /planned:procedure-event-activation -->
 - **At-least-once external delivery.** External webhooks are enqueued in
   `webhook_outbox` and delivered with exponential backoff. Dead-lettering after
   max attempts prevents infinite retry.
@@ -199,19 +197,6 @@ After 10 attempts: dead-lettered (status=`dead_letter`).
 
 ### 4. Contract lifecycle
 
-<!-- planned-change:procedure-event-activation -->
-Contracts enter the system through three paths:
-
-| Source           | How                                                   | Persistence                                    |
-| ---------------- | ----------------------------------------------------- | ---------------------------------------------- |
-| **Config**       | `teleclaude.yml` `hooks.subscriptions` list           | Loaded at startup via `load_hooks_config` → DB |
-| **API**          | `POST /hooks/contracts`                               | DB + in-memory cache                           |
-| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache                           |
-
-All contracts are persisted in the `webhook_contracts` table and cached
-in-memory by `ContractRegistry`. The cache is the authoritative source for
-matching; DB is the durable store that survives restarts.
-<!-- change:procedure-event-activation -->
 Contracts enter the system through four paths:
 
 | Source | How | Persistence |
@@ -228,26 +213,9 @@ survives restarts. Derived contracts are never persisted: their owner rebuilds
 them from its source of truth after registering the handler they target, so a
 restart never restores one ahead of its handler. Procedure-subscription
 contracts are derived, rebuilt from the documentation publication index.
-<!-- /planned-change:procedure-event-activation -->
 
 **Contract structure:**
 
-<!-- planned-change:procedure-event-activation -->
-```
-Contract
-  ├─ id: str                    # unique identifier
-  ├─ target: Target
-  │   ├─ handler: str | None    # internal handler key (XOR with url)
-  │   └─ url: str | None        # external webhook URL
-  │   └─ secret: str | None     # HMAC signing key
-  ├─ source_criterion: PropertyCriterion | None
-  ├─ type_criterion: PropertyCriterion | None
-  ├─ properties: dict[str, PropertyCriterion]
-  ├─ active: bool
-  ├─ expires_at: str | None     # TTL support
-  └─ source: "config" | "api" | "programmatic"
-```
-<!-- change:procedure-event-activation -->
 ```
 Contract
   ├─ id: str                    # unique identifier
@@ -262,7 +230,6 @@ Contract
   ├─ expires_at: str | None     # TTL support
   └─ source: "config" | "api" | "programmatic" | "derived"
 ```
-<!-- /planned-change:procedure-event-activation -->
 
 **Matching:** The matcher evaluates an event against a contract's criteria using
 AND logic — all criteria must pass. Each `PropertyCriterion` supports:
@@ -276,33 +243,6 @@ AND logic — all criteria must pass. Each `PropertyCriterion` supports:
 
 `daemon.py:_init_webhook_service()` boots the entire subsystem:
 
-<!-- planned-change:procedure-event-activation -->
-```python
-# 1. Create registries
-contract_registry = ContractRegistry()       # DB-backed, in-memory cache
-handler_registry  = HandlerRegistry()        # key → async callable
-
-# 2. Create dispatcher (routes events to targets)
-dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)
-
-# 3. Create bridge (event bus → dispatcher)
-bridge = EventBusBridge(dispatcher)
-
-# 4. Create delivery worker (webhook_outbox → HTTP)
-delivery_worker = WebhookDeliveryWorker()
-
-# 5. Load state
-await contract_registry.load_from_db()       # restore contracts from DB
-await load_hooks_config(hooks_cfg, contract_registry)  # add config contracts
-
-# 6. Wire into daemon
-set_contract_registry(contract_registry)     # inject into API routes
-bridge.register(event_bus)                   # subscribe to event bus
-# Start background tasks
-asyncio.create_task(delivery_worker.run(shutdown_event))
-asyncio.create_task(contract_sweep_loop())   # TTL sweep every 60s
-```
-<!-- change:procedure-event-activation -->
 ```python
 # 1. Create registries
 contract_registry = ContractRegistry()       # DB-backed, in-memory cache
@@ -329,7 +269,6 @@ bridge.register(event_bus)                   # subscribe to event bus
 asyncio.create_task(delivery_worker.run(shutdown_event))
 asyncio.create_task(contract_sweep_loop())   # TTL sweep every 60s
 ```
-<!-- /planned-change:procedure-event-activation -->
 
 ### Configuration
 
@@ -372,13 +311,9 @@ hooks:
 **Config schema classes:**
 
 - `HooksConfig`: top-level container with `inbound` and `subscriptions`
-<!-- planned-change:procedure-event-activation -->
-- `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`
-<!-- change:procedure-event-activation -->
 - `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`, and
   `company` — the registered company the source's events belong to, validated
   against registered companies and stamped onto each normalized event
-<!-- /planned-change:procedure-event-activation -->
 - `SubscriptionConfig`: `id`, `contract` (dict), `target` (dict)
 
 ### REST API

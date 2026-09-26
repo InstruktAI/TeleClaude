@@ -181,7 +181,6 @@ When the same invocation runs
 Then the normalizer is called with both arguments
 ```
 
-<!-- planned:procedure-event-activation -->
 #### UC-IF15: A normalized event carries its source's configured company
 
 ```gherkin
@@ -198,7 +197,6 @@ Scenario Outline: The company on an inbound event is the one its source declares
     | declares a registered company      | names a different company       | the declared company            |
     | declares no company                | names a company                 | no company                      |
 ```
-<!-- /planned:procedure-event-activation -->
 
 ### Cross-context references
 

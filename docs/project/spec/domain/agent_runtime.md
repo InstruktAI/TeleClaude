@@ -73,7 +73,6 @@ TeleClaudeNext repository.
   It reads the corpus `context` publishes and the canonical value the command's
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
 
-<!-- planned:procedure-event-activation -->
 - **Owns (procedure activation runner):** on each computer, one standing agent
   per procedure per company, as the runner's own behavior. The runner resolves
   the agent through the inbound resolve-or-create seam, serialized per
@@ -105,7 +104,6 @@ TeleClaudeNext repository.
 - **Consumes (company):** `identity`'s organizational membership resolution to
   validate a selection and to list memberships; this context never re-derives
   membership.
-<!-- /planned:procedure-event-activation -->
 
 ## See Also
 

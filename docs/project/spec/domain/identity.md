@@ -44,7 +44,6 @@ TeleClaudeNext.
 - **Published contracts:** resolved-principal and authentication-evidence types
   consumed at CLI, API, integration, and runtime boundaries.
 
-<!-- planned:procedure-event-activation -->
 - **Also owns:** the session company context that tools running inside a
   session read — the company, the origin (human-directed work with its human
   principal, or system-principal company work), and whether the company is
@@ -59,7 +58,6 @@ TeleClaudeNext.
   identity document, so no copy can disagree with the record, and the answer
   survives a restart because the record does. Readers consume the published
   answer and never re-validate it.
-<!-- /planned:procedure-event-activation -->
 
 ## See Also
 

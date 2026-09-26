@@ -49,7 +49,6 @@ implementation remain the current appliance contract.
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
 
-<!-- planned:procedure-event-activation -->
 - **Owns (procedure subscription routing):** stamping a verified event, at the
   ingress and before it is relayed, with the company `config` declares for its
   source; turning each published procedure subscription into a contract in the
@@ -81,7 +80,6 @@ implementation remain the current appliance contract.
   addressed to its own computer with a durable operation receipt, so the
   operation exists before any fallible step; a submission that itself fails is
   emitted as a platform error event. It takes no further decision.
-<!-- /planned:procedure-event-activation -->
 
 ## See Also
 

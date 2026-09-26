@@ -1,8 +1,8 @@
 ---
-description: Verified events are matched against the procedure subscriptions published for their company, and each match produces one activation naming the procedure and that company; publication is what makes a subscription live.
+description: Verified events are matched against the procedure subscriptions published
+  for their company, and each match produces one activation naming the procedure and
+  that company; publication is what makes a subscription live.
 visibility: internal
-delivered_by:
-  - procedure-event-activation
 ---
 
 # Procedure Subscription Routing — Spec

@@ -189,7 +189,6 @@ Scenario: Per-type required sections missing
   Then a missing-section error is reported listing the required H2
 ```
 
-<!-- planned:procedure-event-activation -->
 #### UC-SFV3: A procedure declares one activation mode, never two
 
 ```
@@ -219,7 +218,6 @@ When snippet validation runs
 Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status
 ```
-<!-- /planned:procedure-event-activation -->
 
 ### Cross-context references
 

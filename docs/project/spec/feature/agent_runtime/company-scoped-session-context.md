@@ -1,8 +1,9 @@
 ---
-description: A session's company context — set only by --company or by being started from a session that has one, carried to every worker, profiled only when set, never derived from location, validated once at resolution, and published for tool subprocesses to read.
+description: A session's company context — set only by --company or by being started
+  from a session that has one, carried to every worker, profiled only when set, never
+  derived from location, validated once at resolution, and published for tool subprocesses
+  to read.
 visibility: internal
-delivered_by:
-  - procedure-event-activation
 ---
 
 # Company-Scoped Session Context — Spec

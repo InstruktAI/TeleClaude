@@ -54,21 +54,12 @@ And an agent's local telec docs retrieval reads those canonical-checkout indexes
 
 #### UC-DIB7: Classification is derived from the source's path
 
-<!-- planned-change:procedure-event-activation -->
-```
-Given a valid Source under docs/
-When the index-build phase writes its entry
-Then the entry carries id, type, scope, and domain derived from the Source's path
-And a procedure Source's entry additionally carries its activation_trigger
-```
-<!-- change:procedure-event-activation -->
 ```
 Given a valid Source under docs/
 When the index-build phase writes its entry
 Then the entry carries id, type, scope, and domain derived from the Source's path
 And a procedure Source's entry additionally carries its activation_trigger or its subscriptions, whichever it declares
 ```
-<!-- /planned-change:procedure-event-activation -->
 
 #### UC-DIB8: A non-derivable path fails the build loudly
 
