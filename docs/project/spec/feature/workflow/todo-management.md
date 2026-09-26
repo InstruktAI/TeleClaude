@@ -21,6 +21,10 @@ Visual hierarchy within a section resolves each node to its **nearest enclosing 
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
+<!-- planned:tui-row-actions-target-exact-todo -->
+Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.
+<!-- /planned:tui-row-actions-target-exact-todo -->
+
 ## Canonical fields
 
 ### Use cases
@@ -367,6 +371,23 @@ Given a human operator has selected an active todo that is not held in the prepa
 When the operator activates Hold and submits a nonblank reason
 Then the todo becomes held with the submitted reason
 ```
+
+<!-- planned:tui-row-actions-target-exact-todo -->
+#### UC-WM34: An identity-addressed action acts on exactly the identified todo or is refused
+
+```gherkin
+Given a project holds a removed todo, a delivered todo, and a live todo that share one slug
+When an API client addresses a lifecycle or artifact-changing action to the removed todo's durable identity
+Then the client receives a refusal naming the removed state and reactivation as the way forward
+And none of the three todos changes
+When the API client addresses such an action to the delivered todo's durable identity
+Then the client receives a refusal naming the delivered state as read-only
+And none of the three todos changes
+When the API client addresses the same action to the live todo's durable identity
+Then the live todo changes exactly as it does when the action is addressed to its slug
+And the removed and delivered todos do not change
+```
+<!-- /planned:tui-row-actions-target-exact-todo -->
 
 ### Cross-context references
 
