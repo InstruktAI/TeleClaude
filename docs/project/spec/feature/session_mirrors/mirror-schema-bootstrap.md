@@ -28,6 +28,7 @@ text. Sync triggers keep the full-text index aligned with the row table
 on insert, delete, and update.
 <!-- /planned-change:mirror-session-attribution -->
 
+<!-- planned-change:mirror-session-attribution -->
 Schema bootstrap is lazy on first use and guarded so a given store path
 runs through the create-if-missing flow only once per process. Older
 stores created before the `summary`, `human_email`, `visibility`,
@@ -35,6 +36,19 @@ stores created before the `summary`, `human_email`, `visibility`,
 existed get those fields added via best-effort compatibility migrations
 that swallow "field already exists" errors. The `human_email` and
 `is_worker` indexes are also created idempotently.
+<!-- change:mirror-session-attribution -->
+Schema bootstrap is lazy on first use and guarded so a given store path
+runs through the create-if-missing flow only once per process. A store that
+does not exist yet is created at the current shape and records the newest
+convergence revision, because nothing written under an earlier shape exists to
+converge. Older stores created before the `summary`, `human_email`,
+`visibility`, `command`, `is_worker`, and `derivation_version` fields existed
+get those fields added via best-effort compatibility migrations that swallow
+"field already exists" errors. The `human_email` and `is_worker` indexes are
+also created idempotently. Nothing that runs on every open names a field a
+convergence step renames or adds: such a field belongs to its step, which runs
+once, so a later open cannot restore a field a step renamed away.
+<!-- /planned-change:mirror-session-attribution -->
 
 Bootstrap also converges an existing store's derived columns, because those
 carry values the current rules compute rather than values anyone authored.
@@ -68,11 +82,21 @@ from that record any identity fact an earlier write left empty. It deletes no
 mirror.
 <!-- /planned:mirror-session-attribution -->
 
+<!-- planned-change:mirror-session-attribution -->
 Two engine caches sit alongside the schema state: one for the writable
 engine (used for upserts and tombstone writes) and one for read-only
 engines (one for the mirror store, one for the upstream session record
 store). The read-only engines are only constructed after the writable
 engine has confirmed the schema exists.
+<!-- change:mirror-session-attribution -->
+Two engine caches sit alongside the schema state: one for the writable
+engine (used for upserts and tombstone writes) and one for read-only
+engines over the mirror store. The read-only engines are only constructed
+after the writable engine has confirmed the schema exists. Session-record
+facts are not read through an engine of the mirror store's own: they come
+from the session record's published queries (`mirror-identity-enrichment`),
+because the session record belongs to agent runtime (`project/spec/domain/context-map`).
+<!-- /planned-change:mirror-session-attribution -->
 
 ## Canonical fields
 
@@ -99,13 +123,14 @@ Then the store path is resolved (home-expanded) and the parent directory is crea
 And the writable engine is constructed
 And on the first connection, the schema bootstrap runs
 And the full schema (mirrors, session attributions, indexes, tombstones, retained-after-shrink observations, full-text index, three triggers) is created
-And the per-process compatibility migration runs (idempotent field-adds)
+And the store records the newest convergence revision, so no convergence step runs against it
 And the path is recorded so subsequent calls skip bootstrap
 ```
 <!-- /planned-change:mirror-session-attribution -->
 
 #### UC-MSB-2: Idempotent compatibility migration
 
+<!-- planned-change:mirror-session-attribution -->
 ```
 Given a store created by an older version that lacks the derived-classification fields
 When the compatibility migration runs
@@ -120,6 +145,26 @@ And each add that fails because the field already exists is swallowed
 And any other migration failure is re-raised
 And a human-email index and an is_worker index are created idempotently
 ```
+<!-- change:mirror-session-attribution -->
+```
+Given a store created by an older version that lacks the derived-classification fields
+When the compatibility migration runs
+Then a `summary` field is added to the mirrors table
+And a `human_email` field is added to the mirrors table
+And a `visibility` field (defaulting to "private") is added to the mirrors table
+And a `command` field is added to the mirrors table
+And an `is_worker` field (defaulting to 0) is added to the mirrors table
+And a `derivation_version` field (defaulting to 0) is added to the mirrors table
+And each add that fails because the field already exists is swallowed
+And any other migration failure is re-raised
+And a human-email index and an is_worker index are created idempotently
+And the todo field is not added here: the session-attribution step renames it into place, and adds it to a store that never had it (UC-MSB-5)
+
+Given a store the session-attribution step has already converged
+When any later process opens it
+Then no field that step renamed away is added back
+```
+<!-- /planned-change:mirror-session-attribution -->
 
 #### UC-MSB-3: Existing rows converge on the session record and shed subagents
 
@@ -193,6 +238,7 @@ And then the read-only engine is created
 And the read-only engine is cached for subsequent reuse
 ```
 
+<!-- planned-change:mirror-session-attribution -->
 #### Upstream session-record read-only engine
 
 ```
@@ -202,6 +248,8 @@ Then a read-only engine is constructed against the upstream session-record store
 And the engine is cached
 And subsequent calls reuse the cached engine
 ```
+<!-- change:mirror-session-attribution -->
+<!-- /planned-change:mirror-session-attribution -->
 
 #### Full-text index sync triggers
 

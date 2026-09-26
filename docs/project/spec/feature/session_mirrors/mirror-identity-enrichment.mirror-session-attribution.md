@@ -15,7 +15,9 @@ visibility: 'public'
 A mirror's identity comes from the upstream session record owned by the
 agent_runtime bounded context, never from the transcript file. When the
 session_mirrors service writes a mirror, it resolves the session record that
-claims the transcript and records what that record establishes, in two places.
+claims the transcript through the queries agent_runtime publishes for its session
+records, and never reads those records' storage itself. It records what that
+record establishes, in two places.
 
 - **The session attribution.** Each TeleClaude session with a mirrored
   transcript holds one session attribution in the mirror store: its TeleClaude
@@ -68,8 +70,8 @@ And ties prefer the record whose session_id matches S, then the most recently cr
 And the returned context exposes
   session_id, computer, agent, project path, subfolder, transcript_path, the transcript's position in the chain,
   human_email, visibility, last_input_origin, adapter_metadata, system_role, the resolved principal,
-  the initiating session and its computer, whether an agent initiated it, job, command, working_slug,
-  title, and the record's creation and close times
+  the initiating session and its computer, whether an agent initiated it, job, command, the todo it worked,
+  title, the record's creation and close times, and the platform identifiers of its origin channel
 And missing fields map to None or the empty string
 ```
 
@@ -155,6 +157,11 @@ And metadata.transcript_path = the transcript path
 And metadata.agent = the agent name
 And metadata is merged with any channel identifiers extracted above
 And the final metadata is serialized deterministically (stable field ordering)
+
+Given a mirror whose metadata records an origin channel and platform identifiers
+When a later write supplies no origin channel or no identifiers
+Then the recorded origin channel and identifiers stay in the metadata
+And the transcript path and agent are replaced by the write's values
 ```
 
 #### UC-MIE-1: Every transcript in a session's chain belongs to that session
