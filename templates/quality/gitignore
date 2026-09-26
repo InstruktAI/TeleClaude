@@ -2,14 +2,14 @@
 
 .DS_Store
 Thumbs.db
-*.swp
-*~
+_.swp
+_~
 .idea/
 .history/
 
 # Backupp stuff
 
-*.bak*
+_.bak_
 
 # Environment / secrets — never commit real values
 
@@ -18,20 +18,20 @@ Thumbs.db
 
 # Logs
 
-*.log
+\*.log
 logs/
 
 # Virtual Environment
 
-uv.*
+uv.\*
 !uv.lock
 .venv
 
 # Runtime
 
-*.pid
-*.db
-*.db-journal
+_.pid
+_.db
+\*.db-journal
 
 # AI agents
 
@@ -55,22 +55,20 @@ trees/
 teleclaude-mcp.local.jsonc
 
 # Per-file locks held by the atomic config writer. Recreated on every write,
-# never meaningful to track. Enumerated rather than a bare *.lock so a
+
+# never meaningful to track. Enumerated rather than a bare \*.lock so a
+
 # project's tracked uv.lock or Cargo.lock stays tracked.
 
-*.yml.lock
+\*.yml.lock
 .env.lock
 invitations.json.lock
-
-todos.db
-todos.db-wal
-todos.db-shm
 
 AGENTS.md
 CLAUDE.md
 
-**/index.yaml
-docs/global/*/domain-baseline-bundle.md
+\*_/index.yaml
+docs/global/_/domain-baseline-bundle.md
 
-publications/inbox/*
+publications/inbox/\*
 !publications/inbox/.gitkeep
