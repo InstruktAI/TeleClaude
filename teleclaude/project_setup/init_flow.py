@@ -17,7 +17,7 @@ from teleclaude.config import config
 from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.config.declaration import write_declared_config
-from teleclaude.config.machine_config_mutation import inspect_machine_config, set_deployment
+from teleclaude.config.machine_config_mutation import add_trusted_directory, inspect_machine_config, set_deployment
 from teleclaude.config.schema import ConfigKind
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config
@@ -46,6 +46,8 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
+_PROJECT_SLUG_KEY = "project_slug"
+_UTF8 = "utf-8"
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:
@@ -258,6 +260,26 @@ def _ensure_project_slug(project_root: Path) -> None:
     config_path.write_text(buffer.getvalue(), encoding="utf-8")
 
 
+def _ensure_trusted_directory(project_root: Path) -> None:
+    """List a registered project among the machine's trusted directories.
+
+    The trusted directories are the projects the operator's TUI shows. An entry
+    that already names this root is left as it is, so a name or description the
+    operator chose survives re-initialization.
+    """
+    resolved_root = project_root.resolve()
+    for trusted_dir in config.computer.get_all_trusted_dirs():
+        if Path(trusted_dir.path).expanduser().resolve() == resolved_root:
+            return
+    add_trusted_directory(_project_slug(project_root), str(resolved_root))
+
+
+def _project_slug(project_root: Path) -> str:
+    """Return the project's declared slug, which ``_ensure_project_slug`` guarantees."""
+    document = yaml.safe_load(resolve_project_config_path(project_root).read_text(encoding=_UTF8)) or {}
+    return str(document[_PROJECT_SLUG_KEY])
+
+
 def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude — configuration and plumbing only.
 
@@ -288,7 +310,9 @@ def init_project(project_root: Path) -> None:
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
     _ensure_project_slug(project_root)
-    register_root(project_root=resolve_project_root(project_root))
+    registered_root = resolve_project_root(project_root)
+    register_root(project_root=registered_root)
+    _ensure_trusted_directory(registered_root)
     advance_reachable_roots()
     seed_event_domains(project_root)
 
