@@ -79,7 +79,6 @@ the goal. If aligned, continue; otherwise correct course or stop.`; `--intent`
   cancels the slug, then ends with exactly `NOOP`.
 - **Invocation:** `telec reminders set goal-drive [--intent <intent>]`.
 
-<!-- planned:fix-halt-to-respond-reminder-regressed -->
 #### Reminder: halt-to-respond
 
 - **Owner:** this policy.
@@ -102,7 +101,6 @@ intervening input made that work stale.`
   resumed or finished the interrupted work, or when later input made it stale
   or handed it off. A firing consumes it.
 - **Invocation:** `telec reminders set halt-to-respond`.
-<!-- /planned:fix-halt-to-respond-reminder-regressed -->
 
 ## Rationale
 
@@ -119,13 +117,11 @@ out of it would retire reminders the agent still wanted.
 Yielding keeps the session receptive to the human. A terminal is an execution
 surface, not a scheduler.
 
-<!-- planned:fix-halt-to-respond-reminder-regressed -->
 Answering non-human input mid-work leaves the interrupted work with no owner of
 its next move once the answer turn ends. The stop that ends that turn is the one
 event certain to follow the answer, so a reminder anchored on it returns the
 work without firing inside the answer or after a guessed delay, as a timed
 reminder would.
-<!-- /planned:fix-halt-to-respond-reminder-regressed -->
 
 
 ## Scope

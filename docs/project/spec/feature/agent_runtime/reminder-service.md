@@ -364,7 +364,6 @@ When the session next drains its control payloads
 Then it receives only the newest occurrence of that slug
 ```
 
-<!-- planned:fix-halt-to-respond-reminder-regressed -->
 #### UC-RMS28: An interrupted agent returns to its work after answering non-human input
 
 ```gherkin
@@ -375,7 +374,6 @@ Then the reminder re-enters the same session exactly once at that turn's agent s
 And the firing carries the intent to resume the interrupted work unless intervening input made it stale
 And no later agent stop produces another occurrence
 ```
-<!-- /planned:fix-halt-to-respond-reminder-regressed -->
 
 ## Known caveats
 
