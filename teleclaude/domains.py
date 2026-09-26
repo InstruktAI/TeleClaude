@@ -15,8 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
-
+from teleclaude.config.context_root import load_raw_declaration
 from teleclaude.config.schema import BusinessConfig
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import load_roots
@@ -60,12 +59,7 @@ def _business_for_root(root: Path) -> BusinessConfig | None:
     config_path = declaration_root(root) / ConfigFileName.OVERLAY
     if not config_path.is_file():
         return None
-    try:
-        payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        raise ValueError(f"Failed to read publisher declaration {config_path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"Publisher declaration must be a mapping: {config_path}")
+    payload = load_raw_declaration(config_path, subject="publisher")
     return BusinessConfig.model_validate(payload.get("business", {}))
 
 

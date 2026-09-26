@@ -5,12 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from instrukt_ai_logging import get_logger
+from pydantic import ValidationError
 
-from teleclaude.config.context_root import load_declared_config_kind
+from teleclaude.config._environment import (
+    expand_environment_references,
+    find_environment_references,
+    read_environment_file,
+)
+from teleclaude.config.context_root import load_declared_config_kind, load_raw_declaration
 from teleclaude.config.loader import load_declared_project_config
-from teleclaude.config.schema import ConfigKind, ProjectConfig
+from teleclaude.config.schema import CapabilityConfig, ConfigKind, ProjectConfig
 from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
@@ -98,36 +105,70 @@ _NON_PROJECT_TIER_PERMISSIONS = {
 
 def capabilities_from_project_config(config: ProjectConfig) -> Capabilities:
     """Project capability subscriptions from an already-parsed overlay."""
+    return _capabilities_from_sections(config.code, config.docs, config.agents)
+
+
+def _capabilities_from_sections(
+    code: CapabilityConfig,
+    docs: CapabilityConfig,
+    agents: CapabilityConfig,
+) -> Capabilities:
+    """Build the public capability result from validated subscription sections."""
     return Capabilities(
         is_target=True,
-        code=config.code.enabled,
-        docs=config.docs.enabled,
-        agents=config.agents.enabled,
+        code=code.enabled,
+        docs=docs.enabled,
+        agents=agents.enabled,
     )
 
 
 def resolve_capabilities(project_root: Path) -> Capabilities:
-    """Read a project's declaration without treating an unadopted repo as subscribed."""
-    return resolve_project_capability_state(project_root).capabilities
+    """Resolve capability sections without validating unrelated project-overlay sections."""
+    marker = project_root / ConfigFileName.OVERLAY
+    if not marker.is_file() or load_declared_config_kind(marker) is not ConfigKind.PROJECT:
+        return NOT_A_TARGET
+    return _resolve_project_capabilities(marker)
 
 
 def resolve_tier_permissions(root: Path) -> TierPermissions:
-    """Resolve the three permission axes from a root's declared tier."""
+    """Resolve tier permissions from the declaration's tier and capability sections only."""
     manifest_path = root / ConfigFileName.OVERLAY
     kind = load_declared_config_kind(manifest_path)
     if kind is not ConfigKind.PROJECT:
         return _NON_PROJECT_TIER_PERMISSIONS[kind]
-    capability_state = resolve_project_capability_state(root)
-    surfaces = _DOCUMENTATION_SURFACE if capability_state.capabilities.docs else frozenset()
+    capabilities = _resolve_project_capabilities(manifest_path)
+    surfaces = _DOCUMENTATION_SURFACE if capabilities.docs else frozenset()
     return TierPermissions(
         invocation_context=True,
         surfaces=surfaces,
-        project_subscriptions=capability_state.capabilities,
+        project_subscriptions=capabilities,
+    )
+
+
+def _resolve_project_capabilities(manifest_path: Path) -> Capabilities:
+    """Validate only the tier's capability sections, independent of other overlay fields."""
+    payload = load_raw_declaration(manifest_path, subject="capability")
+    section_names = (CapabilityName.CODE, CapabilityName.DOCS, CapabilityName.AGENTS)
+    sections = {name: payload.get(name, {}) for name in section_names}
+    references = find_environment_references(sections)
+    environment = read_environment_file(manifest_path.with_name(ConfigFileName.ENV)) if references else {}
+    expanded = cast(
+        dict[CapabilityName, object],
+        expand_environment_references(sections, environment, config_path=manifest_path),
+    )
+    try:
+        validated = {name: CapabilityConfig.model_validate(expanded[name]) for name in section_names}
+    except ValidationError as exc:
+        raise ValueError(f"Failed to validate config file {manifest_path}: {exc}") from exc
+    return _capabilities_from_sections(
+        validated[CapabilityName.CODE],
+        validated[CapabilityName.DOCS],
+        validated[CapabilityName.AGENTS],
     )
 
 
 def resolve_project_capability_state(project_root: Path) -> ProjectCapabilityState:
-    """Resolve capabilities and retain the parsed overlay for downstream consumers."""
+    """Resolve capabilities and retain the fully parsed overlay for downstream consumers."""
     config = load_declared_project_config(project_root)
     if config is None:
         return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
