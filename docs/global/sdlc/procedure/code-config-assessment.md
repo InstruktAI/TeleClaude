@@ -77,8 +77,6 @@ capability for human confirmation rather than guessing. Either way the inference
 is structural (file existence), never a runtime code path and never a semantic
 judgment; the runtime reads only the written declaration.
 
-
-
 After writing the toggles, run `telec config project init`: its reconciliation path sets the docs
 filter driver present iff `docs` is subscribed and refreshes the
 TeleClaude-owned git hooks whenever the declaration resolves an executable
@@ -87,7 +85,6 @@ installed plumbing reads the declaration on its next invocation, and no
 capability state is written anywhere else. Never edit a project-tracked file to
 reflect a toggle beyond the declaration that carries it: the `.gitattributes`
 docs line is written once at onboard and left alone thereafter.
-
 
 ### 2. Makefile contract gate (ordered prerequisite)
 
@@ -205,12 +202,39 @@ terminal: assign it precedence strictly greater than every other deterministic
 maintenance action. The restart may end its own executor, so an action ordered after
 it is not reliably reachable.
 
-### 6. Re-run safely
+### 6. Reconcile what TeleClaude's plumbing displaces
+
+TeleClaude's git hooks and published schemas take slots a project may already
+fill with its own material. Leave nothing in those slots that silently never
+runs or silently goes stale:
+
+- **A project hook in a slot TeleClaude's hook set occupies.** Plumbing never
+  overwrites a hook it did not write, so TeleClaude's hook for that slot, and
+  every maintenance action it would run, never runs there. When the project hook
+  expresses "run a command when these paths change on the canonical checkout",
+  that is a checkpoint maintenance action: declare it in the overlay (Step 5),
+  with the Makefile contract target as its command where one covers it, bound
+  to the paths it watches, then remove the project hook so plumbing installs
+  TeleClaude's in its slot. Keep a project hook only when its logic cannot be
+  expressed as a maintenance action, and record it in the output.
+- **A `.pre-commit-config.yaml` the pre-commit framework never runs.** When
+  TeleClaude's hook holds the pre-commit slot, the framework's configuration is
+  inert, and its entries read as protection the project does not have. Move any
+  check that still guards the project into `make lint`, which the commit gate
+  runs, and remove the file.
+- **A tracked copy of a TeleClaude configuration schema.** Plumbing only reports
+  a tracked copy, because removing it is a commit in the project
+  (`project/spec/feature/reconciliation/project-plumbing-convergence`), so it
+  goes stale. Point the project's schema reference at the schema link plumbing
+  maintains, as the configuration writer's project-tier reference does, and
+  remove the copy.
+
+### 7. Re-run safely
 
 The routine is idempotent. A re-run re-checks the Makefile contract gate, the
-config comparison, and the checkpoint overlay, and proposes only what is still
-missing or weaker; matching settings and already-wired targets are left
-untouched.
+config comparison, the checkpoint overlay, and the displaced-slot reconciliation,
+and proposes only what is still missing or weaker; matching settings and
+already-wired targets are left untouched.
 
 ## Outputs
 
@@ -222,6 +246,9 @@ untouched.
 - The project's checkpoint maintenance overlay authored into `teleclaude.yml`
   (`ProjectConfig.checkpoint`), so the checkpoint engine gates on the project's
   actual actions rather than the base-only fallback.
+- No project hook left in a slot TeleClaude's hook set occupies unless its logic
+  cannot be expressed as a maintenance action, no inert `.pre-commit-config.yaml`,
+  and no tracked copy of a TeleClaude configuration schema.
 - A short record of what was applied and what was surfaced for the human's
   decision.
 
