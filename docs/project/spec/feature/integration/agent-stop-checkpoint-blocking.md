@@ -61,11 +61,23 @@ The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and is
 wholesale-cleared at user-prompt-submit.
 
+<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
 or done; declarations answer that. In a todo worktree there is nothing to
 arbitrate — the checkout is one todo's task scope with a single writer — so the
 dirty tree is itself the scope and declarations are not consulted.
+<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
+On a shared branch, version control is consulted only as the category oracle
+(which file maps to which category), never as the arbiter of what is in-scope
+or done; declarations answer that. A todo worktree is one todo's task scope,
+written by the sessions whose lifecycle job changes and commits its source: the
+builder and the finalizer. For such a writer session the dirty tree is itself
+the scope and declarations are not consulted. Every other session working from
+the worktree, a reviewer among them, is scoped to its own declarations
+intersected with the dirty tree, as on a shared branch
+(`sdlc/procedure/lifecycle/work/review-build`, `sdlc/policy/commits`).
+<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ## Canonical fields
 
@@ -481,6 +493,7 @@ Then no obligation is raised for those paths
 And any decision produced for another reason names none of them
 ```
 
+<!-- planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
 #### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
 
 ```gherkin
@@ -490,6 +503,29 @@ When checkpoint evaluation completes
 Then a checkpoint decision is produced naming those paths
 And its required actions are the ones their categories carry
 ```
+<!-- change:fix-stop-checkpoint-repeats-a-commit-instruc -->
+#### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
+
+```gherkin
+Given a builder or finalizer session is working from a non-main todo worktree
+And that worktree holds dirty paths the session has declared none of
+When checkpoint evaluation completes
+Then a checkpoint decision is produced naming those paths
+And its required actions are the ones their categories carry
+```
+<!-- /planned-change:fix-stop-checkpoint-repeats-a-commit-instruc -->
+
+<!-- planned:fix-stop-checkpoint-repeats-a-commit-instruc -->
+#### UC-CP35: A reviewer in a todo worktree owes no commit for the builder's changes
+
+```gherkin
+Given a builder session has left uncommitted changes in a non-main todo worktree
+And a reviewer session working from the same worktree has declared none of those paths
+When checkpoint evaluation completes at the reviewer's agent-stop boundary
+Then no checkpoint decision directs the reviewer to commit those paths
+And a later reviewer agent-stop over the same uncommitted changes directs none either
+```
+<!-- /planned:fix-stop-checkpoint-repeats-a-commit-instruc -->
 
 ### Cross-context references
 
