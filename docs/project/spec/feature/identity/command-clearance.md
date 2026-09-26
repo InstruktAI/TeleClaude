@@ -75,8 +75,8 @@ And the gate rejects the caller — the human band is never consulted for agent 
 <!-- change:telec-startup-does-only-auth -->
 ```
 Given an agent inside a session whose resolved system role is `worker`
-And the verb it performs is `telec sessions tail`
-And the CLI surface allowlist for `sessions tail` system band contains `worker`
+And the verb it performs is `telec todo show`
+And the CLI surface allowlist for `todo show` system band contains `worker`
 When command clearance runs
 Then the system band is evaluated and the caller is admitted
 ```
@@ -242,10 +242,16 @@ And the requested mutation is applied to the todo state
 ```
 
 
+<!-- planned-change:telec-startup-does-only-auth -->
 ### Session-family and todo-list clearance
 
 
 `sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class; `sessions end` additionally carries the integrator. `telec todo list` carries the full agent system band — `worker`, `system`, `orchestrator`, `integrator`, and `tasker`. The todo state-machine-driving verbs (`todo prepare`, `todo work`) and the other todo-mutation verbs do not carry `tasker`; `todo update` is governed by the claim-scoped rule instead.
+<!-- change:telec-startup-does-only-auth -->
+### Role reach
+
+Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`project/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions, reads no other session's transcript or history, and starts, revives, restarts or ends no session but its own through the self-acts above. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential admits no command a session can run. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 
 #### UC-CCB1: Tasker starts a session
@@ -290,6 +296,52 @@ And the gated operation is `telec todo prepare`
 When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
 ```
+
+<!-- planned:telec-startup-does-only-auth -->
+#### UC-CCR1: A command that does not depend on its caller runs without an identity
+
+```
+Given a process whose session identity document names no open session record
+When it runs `telec version`
+Then the version is printed
+And the command is not refused for lacking an identity
+```
+
+#### UC-CCR2: A worker reads nothing across the fleet
+
+```
+Given an agent inside a session whose resolved system role is `worker`
+When it runs `telec sessions list` or `telec history search`
+Then the command is refused with the not-permitted failure naming `worker` and the verb
+And nothing is listed
+```
+
+#### UC-CCR3: A job runner reaches an ordinary agent command
+
+```
+Given an agent inside a session whose resolved system role is `job_runner`
+When it runs `telec docs get` for a snippet
+Then the snippet is printed
+```
+
+#### UC-CCR4: Only an orchestrator drives a todo state machine
+
+```
+Given an agent inside a session whose resolved system role is `integrator`
+When it runs `telec todo prepare` for a todo
+Then the command is refused with the not-permitted failure naming `integrator` and `telec todo prepare`
+And the todo's lifecycle state is unchanged
+```
+
+#### UC-CCR5: A coordinator reads and talks to the fleet but drives no work
+
+```
+Given the agent session that holds the coordinator role
+When it runs `telec sessions list`, `telec sessions send` or `telec sessions start`
+Then each command is admitted
+But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
+```
+<!-- /planned:telec-startup-does-only-auth -->
 
 ### Local read clearance
 
@@ -348,7 +400,7 @@ Every `telec` command is cleared once, in the CLI process, by the gate that prec
 
 The TUI clears each action it performs before sending it, against the verb of the command that action performs, with the identity it was launched with. An action that performs no `telec` command, or one whose command no gate clears, is not cleared.
 
-`telec sessions end` and `telec sessions restart` each admit one act outside their band, decided in the same clearance from the caller's own session record and the command's target: a session may end itself when its record names no orchestrating parent (`feature/identity/self-end-authorization-bypass`), and a session may restart itself (`feature/identity/self-restart-authorization-bypass`). A worker or tasker is refused a restart of any session other than its own, whatever the band says.
+`telec sessions end` and `telec sessions restart` each admit one act outside their band, decided in the same clearance from the caller's own session record and the command's target: a session may end itself when its record names no orchestrating parent (`feature/identity/self-end-authorization-bypass`), and a session may restart itself (`feature/identity/self-restart-authorization-bypass`). A worker is refused a restart of any session other than its own, whatever the band says.
 
 #### UC-CCA1: An out-of-band agent is refused before the daemon is asked
 

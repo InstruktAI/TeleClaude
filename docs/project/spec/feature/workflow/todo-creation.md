@@ -26,7 +26,11 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - `--human-involved <reason>` — valid only for agent-session callers (the `agent` door); a human door derives involvement and ignores the flag. The reason must be non-empty; a missing or blank reason is refused as argument validation. The recorded value is resolved from the acting session's latest authenticated human input: inside the code-owned recency window it records `true`, outside it records `false` and the creation proceeds unchanged. The reason remains only in the invoking session's transcript and is never written to the todo, its artifacts, events, logs, output, or UI. Omitting the flag records `human_involved=false`; the record applies only to this creation act and never propagates through its lifecycle.
 
+<!-- planned-change:telec-startup-does-only-auth -->
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
+<!-- change:telec-startup-does-only-auth -->
+- **`telec todo design [<slug>]`** — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 The Todo aggregate's invariants — unique kebab-case slug, kind fixed once assigned, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for `workflow.todo.created`.
 
@@ -489,7 +493,11 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 
 - **Dependency gate at create-time:** routing by `kind`/`lifecycle_phase`/`pickup_requested` selects the _lane_, but before auto-dispatching the router consults the dependency graph for the slug. A child with unsatisfied `after` dependencies for its lane (prepare lane → parents must be `PREPARED`; work lane → parents must be `delivered`, per `@spec/feature/workflow/dependency-graph`) is treated as silent: the event is still consumed but no orchestrator is dispatched. Only deps-satisfied todos auto-dispatch. This closes the create-time over-dispatch where `create parent; create child --after parent` spawned both orchestrators in parallel.
 
+<!-- planned-change:telec-startup-does-only-auth -->
 - `telec todo design` (and the deprecated `co-create` alias) is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
+<!-- change:telec-startup-does-only-auth -->
+- `telec todo design` is the creative state machine entrypoint. It is NOT a Todo-creation entrypoint on its own — it orchestrates creative phases (design-spec, art, visuals) against an existing slug or auto-selects from the todo list.
+<!-- /planned-change:telec-startup-does-only-auth -->
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` for `--kind change` and `# <slug> — Task Plan\n\n` for `--kind task`; the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
 

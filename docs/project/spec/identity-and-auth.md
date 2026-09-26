@@ -169,42 +169,13 @@ boundary.
 - `x-session-token`: daemon-issued credential for system sessions only
   (takes priority over `x-caller-session-id` when present).
 <!-- change:telec-startup-does-only-auth -->
-### 3) Agent session tokens
+### 3) System-principal sessions
 
-The daemon issues a session token at bootstrap to every session whose principal is
-a system principal, writes it into the session's identity document, and exports it
-into the session's tmux environment. Human-rooted sessions receive none. No request
-surface presents or validates a token: a caller inside a session is identified by
-its session record, resolved in the client (§6), and the daemon consumes the
-identity the request carries (§2).
-
-**Who gets a token:**
-
-| Principal type                | Token issued?                  |
-| ----------------------------- | ------------------------------ |
-| `human:<email>`               | **No**                         |
-| `system:daemon`               | **Yes**                        |
-| Inherited `session.principal` | **Yes** (if system-originated) |
-
-**Token lifecycle:**
-
-Each token is bound to exactly one `session_id`. Tokens have no time-based expiry.
-A token lives exactly as long as its session. The only event that invalidates a
-token is session close, which calls `db.revoke_session_tokens(session_id)`. There
-is no TTL and no timeout. Session close is the single lifecycle boundary.
-
-**Issuance (system-principal sessions only):**
-
-1. Daemon calls `resolve_session_principal(session)` at bootstrap to derive a principal:
-   - `human:<email>` when `session.human_email` is set → **no token issued**.
-   - `system:daemon` for every session with no human origin — the platform's own principal,
-     shared by those sessions and told apart by session id → **token issued**.
-   - Inherited `session.principal` is reused directly for child sessions so the full
-     agent chain shares one stable identity.
-2. For system principals only: daemon issues a token via
-   `db.issue_session_token(session_id, principal, role)` → UUID.
-3. Token is injected into the tmux environment as `TELEC_SESSION_TOKEN`.
-4. On session close, `db.revoke_session_tokens(session_id)` removes the session's tokens.
+A session with no human origin carries the system principal `system:daemon`, told
+apart from other such sessions by its session id. It is identified exactly like a
+human-rooted session: by the session record its identity document names, resolved
+in the client (§6), and the daemon consumes the identity the request carries (§2).
+No token is issued, stored or presented for any session.
 <!-- /planned-change:telec-startup-does-only-auth -->
 
 **`telec auth whoami`:**
@@ -221,11 +192,15 @@ The daemon's `GET /auth/whoami` endpoint answers the same question for clients o
 | Format          | When set                                                                     | Credential                                                    |
 | --------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `human:<email>` | Session created with a human identity (human_email set)                      | None                                                          |
+<!-- planned-change:telec-startup-does-only-auth -->
 | `system:daemon` | The daemon process itself, and every session with no human origin            | Process-local daemon credential; a session token per session |
 
 **Token ledger table:** `session_tokens` — stores token, session_id, principal, role,
 issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on
 session close.
+<!-- change:telec-startup-does-only-auth -->
+| `system:daemon` | The daemon process itself, and every session with no human origin            | Process-local daemon credential for the daemon; none for a session |
+<!-- /planned-change:telec-startup-does-only-auth -->
 
 ### 4) Terminal + TUI authentication
 

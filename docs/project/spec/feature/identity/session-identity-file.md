@@ -24,7 +24,7 @@ The file-based contract that lets any CLI subprocess running inside a TeleClaude
 ### Document contents
 
 The document carries exactly one field: `session_id`. Every other fact about the session — its
-principal, its roles, its token, its company — lives on the session record or in its owner's
+principal, its roles, its company — lives on the session record or in its owner's
 store and is resolved from `session_id` when a reader needs it. The document never carries a copy
 of any of them, so there is nothing in it that can disagree with the record and nothing that has
 to be kept in sync with it.
@@ -84,7 +84,7 @@ Given a session being bootstrapped with session_id "8c2f6d10-4a3b-4d8f-9b21-7e0f
 And the session's TMPDIR is allocated by `agent_runtime`'s tmux bridge
 When the bootstrap writer is called with that session_id
 Then a session-identity document is atomically created inside that TMPDIR with private file mode
-And the document contains session_id and nothing else, whatever the session's principal, roles or token
+And the document contains session_id and nothing else, whatever the session's principal or roles
 And the document is written with stable key ordering and a trailing newline
 ```
 
@@ -197,7 +197,7 @@ And no "access: denied" notice is shown for it
 - `system_role` and `human_role` mirror the columns on the session record; they are written into the file as a convenience for CLI tools that want to surface the role locally without an extra round-trip — the identity context never trusts a client-supplied role.
 - `principal` mirrors the principal `feature/identity/principal-resolution` resolves for the session record — its lineage root: the owning person for work with human lineage, the system principal for work without. No caller resolution reads it: a process inside the session resolves the caller it acts as from the session record that `session_id` names, through the same principal resolution the identity context applies, so the document and the identity context cannot disagree about who the session is. A caller's role is read from the people registry when it is needed, never copied here.
 <!-- change:telec-startup-does-only-auth -->
-- A process inside the session — the git wrapper and the commit path included — resolves the caller it acts as from the session record that `session_id` names, through the principal resolution the identity context applies (`feature/identity/principal-resolution`), and reads a person's role from the people registry when it is needed. A session token (`feature/identity/session-token-issuance`) lives in the token ledger, not here.
+- A process inside the session — the git wrapper and the commit path included — resolves the caller it acts as from the session record that `session_id` names, through the principal resolution the identity context applies (`feature/identity/principal-resolution`), and reads a person's role from the people registry when it is needed.
 <!-- /planned-change:telec-startup-does-only-auth -->
 - The context-var override is the bridge that lets identity-context-hosted async operations carry the originating session's id past the boundary where a TMPDIR no longer exists. Without it, internally-spawned callers would have no `session_id` to present.
 - No v1 domain event is emitted by writing the identity file. In v2 the equivalent state change is the materialization of a `SessionPrincipal`, which is recorded inside the identity context but not emitted as its own event (the token-issuance event covers the observable side).

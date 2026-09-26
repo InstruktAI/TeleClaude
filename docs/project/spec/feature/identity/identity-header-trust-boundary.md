@@ -48,7 +48,11 @@ And the call proceeds
 Given a CLI tool call (no web-user-* signals present) from any client host
 When the boundary check evaluates the call
 Then the trust boundary does not engage
+<!-- planned-change:telec-startup-does-only-auth -->
 And the call proceeds to be authenticated by caller verification via session-token or terminal-email paths
+<!-- change:telec-startup-does-only-auth -->
+And the call proceeds to caller verification, which takes the identity it carries
+<!-- /planned-change:telec-startup-does-only-auth -->
 ```
 
 ```

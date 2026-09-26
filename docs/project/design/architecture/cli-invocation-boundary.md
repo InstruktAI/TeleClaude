@@ -72,7 +72,9 @@ design owns only the path that connects them.
    The gate loads neither the machine configuration nor the ORM, and never validates a
    configuration document beyond the roster it reads, so an invalid document unrelated
    to identity does not lock callers out. Every command the CLI authorizes in process is
-   authorized here.
+   authorized here. A command declared independent of its caller
+   (`project/design/cli-authorization-matrix`) passes the gate without any caller
+   resolution.
 6. **A command pays only for its own dependencies.** Configuration, the ORM, the daemon
    API client, history, mirrors, summarizers and the LLM SDKs load inside the handler
    of a command that needs them. A module shared by several commands imports nothing

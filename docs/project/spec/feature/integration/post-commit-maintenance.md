@@ -86,6 +86,15 @@ contract governs only what happens when maintenance runs.
   admits a single active drain; contenders wait for that lock, process pending
   activations in Git ancestry order and actions by declared precedence, then
   exit when no pending work remains. Lock-file presence never means ownership.
+<!-- planned:telec-startup-does-only-auth -->
+- **Execution.** No maintenance action and no drain contender goes through the
+  `telec` command surface. An action that runs TeleClaude's own code runs a
+  module entrypoint of the installed checkout under the interpreter of the
+  draining process, and the hook starts the drain contender the same way, so
+  maintenance depends on no caller identity and on no command existing. A
+  failed action is replayed with `telec code maintenance retry`, which re-runs
+  the recorded action through this executor.
+<!-- /planned:telec-startup-does-only-auth -->
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code

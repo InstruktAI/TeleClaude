@@ -12,11 +12,7 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 ## Inputs/Outputs
 
 - **Input:** Caller session identity (system role derivation) and person identity (human role lookup from `people` config).
-<!-- planned-change:telec-startup-does-only-auth -->
 - **Output:** Allow/deny decision for each `telec` command invocation.
-<!-- change:telec-startup-does-only-auth -->
-- **Output:** Allow/deny decision for each `telec` command invocation, made in the process that runs it before any request reaches the daemon (`project/spec/identity-and-auth` §6). The TUI applies the row of the command each of its actions performs.
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 ## Invariants
 
@@ -51,28 +47,20 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 ### Sessions
 
-| Command                      | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                     |
-| ---------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `telec sessions list`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers need to discover peer sessions for collaboration (e.g., reviewer finding fixer). Customers should not see internal session inventory.                                                 |
-| `telec sessions start`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Starting sessions is orchestration. Workers cannot spawn. Contributors, newcomers, and customers cannot create sessions -- only admins and members can.                                       |
+| Command                      | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                                                                                    |
+| ---------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `telec sessions list`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers need to discover peer sessions for collaboration (e.g., reviewer finding fixer). Customers should not see internal session inventory.                                                                                                                |
+| `telec sessions start`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Starting sessions is orchestration. Workers cannot spawn. Contributors, newcomers, and customers cannot create sessions -- only admins and members can.                                                                                                      |
 | `telec sessions send`        | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers need to message each other (reviewer ↔ fixer collaboration); a worker reports upward by completing its turn, and messaging a session above it is refused at the API layer. Contributors, newcomers, and customers cannot message arbitrary sessions. |
-| `telec sessions tail`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers may read peer transcripts for collaboration context. Customers should not see internal transcripts.                                                                                   |
-| `telec sessions run`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Running slash commands on new sessions is orchestration. Same restrictions as `sessions start`.                                                                                               |
-| `telec sessions revive`      | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Reviving a dead session is admin infrastructure. Admin only.                                                                                                                                  |
-<!-- planned-change:telec-startup-does-only-auth -->
-| `telec sessions end`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Members can end their own sessions (self-scoped enforcement at API layer). Workers, contributors, newcomers, and customers cannot.                                                            |
-<!-- change:telec-startup-does-only-auth -->
-| `telec sessions end`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Members can end sessions; a parentless session may end itself outside the band, decided in the command's clearance. Workers, contributors, newcomers, and customers cannot.                                                            |
-<!-- /planned-change:telec-startup-does-only-auth -->
-| `telec sessions unsubscribe` | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers manage their own notification subscriptions. Matches send restrictions for non-admin human roles.                                                                                     |
-<!-- planned-change:telec-startup-does-only-auth -->
-| `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure enforced at the API layer.                                            |
-<!-- change:telec-startup-does-only-auth -->
-| `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure, enforced in the command's clearance.                                            |
-<!-- /planned-change:telec-startup-does-only-auth -->
-| `telec sessions result`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results.                                            |
-| `telec sessions file`        | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send files back to their user. Same as result.                                                                                                                                        |
-| `telec sessions escalate`    | W    | ✅     | ✅   | ❌    | ✅     | ✅          | ✅       | ✅       | Escalation is how non-admins ask for help. Admins ARE the escalation target, so they don't escalate. Workers CAN escalate (a stuck worker needs to ask for help). Everyone else can escalate. |
+| `telec sessions tail`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers may read peer transcripts for collaboration context. Customers should not see internal transcripts.                                                                                                                                                  |
+| `telec sessions run`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Running slash commands on new sessions is orchestration. Same restrictions as `sessions start`.                                                                                                                                                              |
+| `telec sessions revive`      | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Reviving a dead session is admin infrastructure. Admin only.                                                                                                                                                                                                 |
+| `telec sessions end`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Members can end their own sessions (self-scoped enforcement at API layer). Workers, contributors, newcomers, and customers cannot.                                                                                                                           |
+| `telec sessions unsubscribe` | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers manage their own notification subscriptions. Matches send restrictions for non-admin human roles.                                                                                                                                                    |
+| `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure enforced at the API layer.                                                                                                           |
+| `telec sessions result`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results.                                                                                                           |
+| `telec sessions file`        | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send files back to their user. Same as result.                                                                                                                                                                                                       |
+| `telec sessions escalate`    | W    | ✅     | ✅   | ❌    | ✅     | ✅          | ✅       | ✅       | Escalation is how non-admins ask for help. Admins ARE the escalation target, so they don't escalate. Workers CAN escalate (a stuck worker needs to ask for help). Everyone else can escalate.                                                                |
 
 This table's system-role columns predate Integrator and System (see the code's `_SYS_ORCH`/`_SYS_ALL`, which already include both) and now also predate Tasker — none of the three have a column here. For the one row where Tasker diverges from Worker, `telec sessions run`, Tasker is ✅ (dispatch worker-lane sessions only — see Role Definitions above); every other row in this table treats Tasker the same as Worker.
 
@@ -89,9 +77,9 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 ### System
 
-| Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                           |
-| --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `telec version`       | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                                     |
+| Command         | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                       |
+| --------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ----------------------------------------------- |
+| `telec version` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it. |
 
 ### Documentation
 
@@ -104,11 +92,7 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 | Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                                                    |
 | ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-<!-- planned-change:telec-startup-does-only-auth -->
 | `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                                                                                                             |
-<!-- change:telec-startup-does-only-auth -->
-| `telec todo create`           | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Every agent role, job runners included, may file one; its creation record names who filed it. Contributors can scaffold work items. |
-<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                                                                                                          |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                                                                                                            |
 | `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). delivered_by roadmap-trash-reveal-ui. |
@@ -120,12 +104,12 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 ### Todo List Management
 
-| Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                          |
-| --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                                                                               |
+| --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `telec todo list`     | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the todo list is useful for orientation. Workers read it too: reviewers and diagnosers check it for overlapping and duplicate work. Customers should not see internal planning. |
-| `telec todo freeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                                 |
-| `telec todo unfreeze` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                       |
-| `telec todo deliver`  | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                        |
+| `telec todo freeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                                                                                      |
+| `telec todo unfreeze` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                                                                            |
+| `telec todo deliver`  | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                                                                             |
 
 ### Bug Management
 
@@ -139,7 +123,6 @@ Job-runner sessions, which have no column here, are admitted to `telec todo list
 job that files bugs reads the todo and bug landscape, and the known-issue ledger it
 subtracts, before filing, so it does not file a defect that is already reported, being
 fixed, or triaged as known.
-
 
 ### Content Pipeline
 
@@ -163,36 +146,35 @@ fixed, or triaged as known.
 
 ### Configuration
 
-| Command                      | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                           |
-| ---------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| `telec config wizard`        | W    | ❌     | ❌   | ✅    | ❌     | ❌          | ❌       | ❌       | Human-only interactive config wizard; hidden from command discovery and reserved for direct invocation by an admin. |
-| `telec config computer list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Reading machine configuration is a read operation. Workers may need config context. Customers should not see system config. |
-| `telec config computer get` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Same as `config computer list`. |
-| `telec config computer init` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Machine configuration is system modification. Target clearance requires platform-administrator standing. |
-| `telec config computer patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Same as `config computer init`. |
-| `telec config global list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | The global view excludes the people registry, which belongs to person subjects. |
-| `telec config global get` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Same as `config global list`. |
-| `telec config global init` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Global configuration is fleet-wide modification. Target clearance requires platform-administrator standing. |
-| `telec config global patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Same as `config global init`. |
-| `telec config person list` | R | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Listing people exposes identity info. Target clearance requires platform-administrator standing. |
-| `telec config person get` | R | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Registered people read their own configuration; target clearance limits a non-administrator to their own instance. |
-| `telec config person patch` | W | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Registered people change their own settings; identity fields, other instances, and removal require platform-administrator standing. |
-| `telec config person init` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Registering people is admin infrastructure. |
-| `telec config person invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
-| `telec config person discord-voice-bot` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Binding the machine Discord credential into a person's environment is admin infrastructure. |
-| `telec config company list` | R | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | A company's configuration carries its roster, which names people. Target clearance requires platform-administrator standing. |
-| `telec config company get` | R | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Same as `config company list`. |
-| `telec config company patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Company configuration and its roster are changed by a platform administrator. |
-| `telec config company init` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Company initialization scaffolds the company tree without touching a roster. |
-| `telec config project list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Project configuration is read-only context committed in its repository. |
-| `telec config project get` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Same as `config project list`. |
-| `telec config project init` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Project initialization modifies the caller's workspace. Workers don't initialize. Only admins and members should initialize projects. |
-| `telec config project patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Naming a project by slug reaches any registered checkout. Target clearance requires platform-administrator standing. |
-| `telec config validate`      | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Same as config get.                                                           |
-| `telec config env list`      | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Environment variables may contain secrets. Admin only.                                                              |
-| `telec config env set`       | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Setting env vars is system modification. Admin only.                                                                |
-| `telec config notify`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Toggling notifications is personal config. Members can manage their own notifications.                              |
-
+| Command                                 | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                             |
+| --------------------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `telec config wizard`                   | W    | ❌     | ❌   | ✅    | ❌     | ❌          | ❌       | ❌       | Human-only interactive config wizard; hidden from command discovery and reserved for direct invocation by an admin.                   |
+| `telec config computer list`            | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading machine configuration is a read operation. Workers may need config context. Customers should not see system config.           |
+| `telec config computer get`             | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Same as `config computer list`.                                                                                                       |
+| `telec config computer init`            | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Machine configuration is system modification. Target clearance requires platform-administrator standing.                              |
+| `telec config computer patch`           | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Same as `config computer init`.                                                                                                       |
+| `telec config global list`              | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | The global view excludes the people registry, which belongs to person subjects.                                                       |
+| `telec config global get`               | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Same as `config global list`.                                                                                                         |
+| `telec config global init`              | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Global configuration is fleet-wide modification. Target clearance requires platform-administrator standing.                           |
+| `telec config global patch`             | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Same as `config global init`.                                                                                                         |
+| `telec config person list`              | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Listing people exposes identity info. Target clearance requires platform-administrator standing.                                      |
+| `telec config person get`               | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Registered people read their own configuration; target clearance limits a non-administrator to their own instance.                    |
+| `telec config person patch`             | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Registered people change their own settings; identity fields, other instances, and removal require platform-administrator standing.   |
+| `telec config person init`              | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Registering people is admin infrastructure.                                                                                           |
+| `telec config person invite`            | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Generating invite links is admin infrastructure.                                                                                      |
+| `telec config person discord-voice-bot` | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Binding the machine Discord credential into a person's environment is admin infrastructure.                                           |
+| `telec config company list`             | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | A company's configuration carries its roster, which names people. Target clearance requires platform-administrator standing.          |
+| `telec config company get`              | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Same as `config company list`.                                                                                                        |
+| `telec config company patch`            | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Company configuration and its roster are changed by a platform administrator.                                                         |
+| `telec config company init`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Company initialization scaffolds the company tree without touching a roster.                                                          |
+| `telec config project list`             | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Project configuration is read-only context committed in its repository.                                                               |
+| `telec config project get`              | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Same as `config project list`.                                                                                                        |
+| `telec config project init`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the caller's workspace. Workers don't initialize. Only admins and members should initialize projects. |
+| `telec config project patch`            | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Naming a project by slug reaches any registered checkout. Target clearance requires platform-administrator standing.                  |
+| `telec config validate`                 | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Same as config get.                                                                             |
+| `telec config env list`                 | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Environment variables may contain secrets. Admin only.                                                                                |
+| `telec config env set`                  | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Setting env vars is system modification. Admin only.                                                                                  |
+| `telec config notify`                   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Toggling notifications is personal config. Members can manage their own notifications.                                                |
 
 ### Disagreements with Current `tool_access.py`
 
@@ -220,20 +202,13 @@ Workers now use a **whitelist** (`WORKER_ALLOWED_TOOLS`): only explicitly listed
 
 ### 3. Missing commands — no enforcement at all
 
-<!-- planned-change:telec-startup-does-only-auth -->
 Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API endpoint) and therefore bypass the tool-access layer entirely. These need enforcement:
-<!-- change:telec-startup-does-only-auth -->
-Many commands are cleared by no gate at all. These need enforcement:
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 | Command                       | Should be restricted for                    |
 | ----------------------------- | ------------------------------------------- |
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
-<!-- planned-change:telec-startup-does-only-auth -->
 | `telec todo create`           | Newcomers, customers                        |
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
@@ -241,10 +216,7 @@ Many commands are cleared by no gate at all. These need enforcement:
 | `telec todo freeze`           | Contributors, newcomers, customers          |
 | `telec todo unfreeze`         | Contributors, newcomers, customers          |
 | `telec todo deliver`          | Contributors, newcomers, customers          |
-<!-- planned-change:telec-startup-does-only-auth -->
 | `telec bugs report`           | Customers                                   |
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 | `telec content dump`          | Newcomers, customers                        |
 | `telec events list`           | Customers                                   |
 | `telec config wizard`         | Members, contributors, newcomers, customers |

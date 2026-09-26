@@ -113,7 +113,11 @@ Then it sweeps:
   - Orphan workspace directories — removes workspace dirs whose session is not active in storage
   - Orphan per-session tmpdirs — removes per-session tmpdirs not referenced by live sessions
   - In-process hook-receiver caller→session entries
+<!-- planned-change:telec-startup-does-only-auth -->
   - Orphan inbound rows, session tokens, session listeners
+<!-- change:telec-startup-does-only-auth -->
+  - Orphan inbound rows, session listeners
+<!-- /planned-change:telec-startup-does-only-auth -->
   - Voice-transcription rows in terminal states past the runtime retention window
   - Orphan voice temp audio — removes old voice files with no recoverable durable row
   - Retention sweeps for inbound, terminal operations, webhook outbox, hook outbox (7-day cutoff)
