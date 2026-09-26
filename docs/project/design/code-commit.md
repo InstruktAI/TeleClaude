@@ -174,11 +174,10 @@ unmodified.
 A declaration the wrapper cannot resolve — no readable tier, a capability block
 the runtime cannot read, or a runtime that cannot answer — refuses the git
 invocation with a message naming `teleclaude.yml` and the cause, and
-substitutes no capability state. The wrapper and the runtime answer alike for
-every tier and every capability block. They part on one input: a declaration
-whose capability blocks are readable but which fails validation elsewhere in the
-overlay is refused by the runtime and honoured by the wrapper, which reads only
-the tier and the capability blocks
+substitutes no capability state. The wrapper and the runtime's capability
+answer both read only the tier and the capability blocks, so they answer alike
+for every declaration; a declaration that fails validation elsewhere in the
+overlay is refused only where the full overlay is loaded
 (`project/spec/feature/config/project-capability-manifest`).
 <!-- /planned-change:config-migration-chain -->
 

@@ -44,6 +44,7 @@ declaration in memory and writes nothing.
 
 ### Use cases
 
+<!-- planned-change:config-migration-chain -->
 #### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
 
 ```gherkin
@@ -57,6 +58,21 @@ Given a machine configuration declaring any kind other than computer
 When the machine configuration loads
 Then the load fails naming the file and the declared kind
 ```
+<!-- change:config-migration-chain -->
+#### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
+
+```gherkin
+Given a machine configuration declaring the computer kind
+When the machine configuration is validated and read through the computer configuration
+Then it validates as it does without the declaration
+And the computer configuration view carries no kind and reports the same revision as without the declaration
+And loading never adds, removes, or rewrites the declaration, and a configuration change never removes or rewrites it
+
+Given a machine configuration declaring any kind other than computer
+When the machine configuration loads
+Then the load fails naming the file and the declared kind
+```
+<!-- /planned-change:config-migration-chain -->
 
 <!-- planned:config-migration-chain -->
 #### UC-CFG-LOAD-15: A stored machine configuration gains its declared kind

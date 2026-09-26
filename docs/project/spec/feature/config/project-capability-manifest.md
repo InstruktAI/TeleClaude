@@ -521,13 +521,11 @@ And after that value changes in the .env, the next git invocation decides from t
   honoured by the plumbing, which reads only the tier and the capability blocks
   and claims nothing about the rest of the file.
 <!-- change:config-migration-chain -->
-- The runtime and the installed plumbing answer alike for every declaration's
-  tier and capability blocks. They part on one input: a declaration whose tier
-  and capability blocks are readable but which fails validation elsewhere in the
-  overlay is refused by the runtime and honoured by the plumbing, which reads
-  only the tier and the capability blocks and claims nothing about the rest of
-  the file. Git keeps working in a repository whose declaration fails
-  validation elsewhere.
+- The runtime's capability answer and the installed plumbing both read only a
+  declaration's tier and capability blocks, so they answer alike for every
+  declaration. A declaration whose tier and capability blocks are readable but
+  which fails validation elsewhere in the overlay keeps its capability answer
+  and keeps git working; loading the full overlay still refuses it.
 - The first read after a file a kept answer was read from changes, or after the
   installation's code advances, pays one start of the installation's interpreter;
   every later read is served without one. An answer resolved in the same whole
