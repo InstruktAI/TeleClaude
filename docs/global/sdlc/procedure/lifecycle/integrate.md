@@ -324,7 +324,10 @@ one unit.
 - **Arm condition:** set on first dirty-main block before yielding.
 - **Intent:** `Recheck whether repo-root main is clear. If clear, resume integration. Otherwise resolve each dirty path under the integration procedure and keep this reminder; when every remaining dirty path is escalated to a human, cancel it and hold as a beacon — the next move is theirs.`
 - **Firing behavior:** re-enter `telec todo integrate` and follow
-  **Resolving a dirty path** for each blocking path its decision identifies.
+  **Resolving a dirty path** for each blocking path, identified per divergence
+  shape as in **Blocked on dirty main** step 2: the listed dirty overlap when
+  repo-root `main` is only behind, every path `git -C <root> status --short`
+  reports when its history is split.
 - **Cancellation:** cancel when main clears, the integration session reaches a
   terminal outcome, the human explicitly supersedes the wait, or every remaining
   dirty path has been escalated.
