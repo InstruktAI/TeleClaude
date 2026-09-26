@@ -276,7 +276,7 @@ def bootstrap_help_desk(project_root: Path) -> None:
 
     Idempotent: skips if the directory already exists. Calls ``init_project``
     on the new directory, which is why this lives in init_flow rather than a
-    separate module — the bootstrap is a sub-step of init.
+    separate module. Project initialization does not invoke it.
     """
     help_desk_dir = _resolve_help_desk_dir()
     if help_desk_dir.exists():
