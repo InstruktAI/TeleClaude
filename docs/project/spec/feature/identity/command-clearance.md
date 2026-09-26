@@ -177,7 +177,7 @@ Given a person holding no platform role and the admin role in one company
 When the person, from a checkout of a project that company owns, runs `telec sessions tail` naming a session on another computer
 Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
 And no request reaches that computer
-And a platform administrator running the same command reaches that computer as before
+And a platform administrator running the same command is admitted and reaches that computer
 ```
 <!-- /planned:authorize-person-roles-at-scope -->
 
