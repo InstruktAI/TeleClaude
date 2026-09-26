@@ -232,13 +232,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
      reminder live, and wait again. A dirty path the decision does not identify as
      blocking is left alone.
 
-  **Trivial repo-hygiene files are committed on sight.** A dirty repo-hygiene or
-  config file — `.gitignore`, `.gitattributes`, editor/tooling config, and the like —
-  whose diff is small and self-evidently benign on inspection is committed as-is on
-  first sight instead of going through per-path resolution. Inspect the diff first,
-  then land it with a pathspec-scoped `telec code commit --approved --include <path>`
-  under an honest message.
-
   While waiting you are not idle: you hold the lease and the in-flight candidate is
   already committed, ready to push the instant main clears.
 <!-- /planned-change:integrator-stranded-dirt-by-asking -->
