@@ -373,7 +373,8 @@ And a request that identifies no person, supplies no role, inherits none from a 
 Given a person holding no platform role and the admin role in one company
 When the person lists sessions, including with --all
 Then every listed session runs in a project that company owns
-And no session running in a project owned by another company, in no registered project, or on another computer is listed
+And a session running on another computer in a project that company owns is listed
+And no session running in a project owned by another company, or in no registered project, is listed
 And a platform administrator's listing is unchanged
 ```
 <!-- /planned:authorize-person-roles-at-scope -->
@@ -392,7 +393,7 @@ And a platform administrator's listing is unchanged
 ## Known caveats
 
 <!-- planned:authorize-person-roles-at-scope -->
-- **The recorded human_role decides placement at creation.** It decides help-desk confinement when the session is created, and a confined session keeps its placement for its life. Every later decision about a session run for a registered person — its launch profile, customer-facing channel routing, projection defaults — reads that person's effective role for the session's project when the decision is made, whether or not the session is confined: a granted or withdrawn role applies from the next decision (`project/design/architecture/scoped-roles`). A session run for no registered person keeps its recorded role.
+- **The recorded human_role decides placement at creation.** It decides help-desk confinement when the session is created, and a confined session keeps its placement for its life. Every later decision about a session run for a person — its launch profile, customer-facing channel routing, projection defaults — reads that person's effective role for the session's project when the decision is made, whether or not the session is confined: a granted or withdrawn role applies from the next decision, and a person no longer registered holds none above customer (`project/design/architecture/scoped-roles`). A session run for an unregistered platform user keeps its recorded role, customer.
 <!-- /planned:authorize-person-roles-at-scope -->
 - **Host-pane reference uses the full session id.** The format is `<teleclaude-prefix><session-id>` with the full id; the v2-target domain spec phrases it as a short id for readability, but no shortening occurs here.
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
@@ -402,7 +403,7 @@ And a platform administrator's listing is unchanged
 <!-- planned-change:authorize-person-roles-at-scope -->
 - **Listing reveals everything reachable.** TUI and tool clients are unfiltered. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
 <!-- change:authorize-person-roles-at-scope -->
-- **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project or on another computer is listed only for a platform role. The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
+- **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project is listed only for a platform role. A session on another computer is judged by the registered project and owning company that computer reports for it. The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
 <!-- /planned-change:authorize-person-roles-at-scope -->
 <!-- planned-change:authorize-person-roles-at-scope -->
 - **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the human role is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.

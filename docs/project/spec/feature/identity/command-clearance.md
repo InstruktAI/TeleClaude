@@ -169,6 +169,16 @@ When the person runs `telec config computer patch` or lists every registered per
 Then the command is refused with the not-permitted failure naming `customer` and the command
 And the machine configuration and the person registry are unchanged and unread
 ```
+
+#### UC-CCS7: A session on another computer is reached by the role for its project
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person tails a session on another computer that runs in a project that company owns
+Then the transcript is returned
+But tailing a session on that computer that runs in a project owned by another company is refused as not permitted
+And no transcript content of that session is returned
+```
 <!-- /planned:authorize-person-roles-at-scope -->
 
 ### Cross-context references
@@ -524,7 +534,9 @@ supplies.
   in.
 - A command that names a directory to act in is judged at the project containing
   that directory.
-- A command that names another computer is judged at platform scope.
+- A command that names another computer is judged at the scope its invocation runs in, and the
+  computer holding the object refuses a person whose effective role for that object's project is
+  customer — a session is judged by the project and owning company its computer reports for it.
 - Every other command is judged at the project the invocation runs in — the project
   of its working directory's checkout — and at platform scope where it runs in no
   registered project.
