@@ -64,30 +64,18 @@ for tmux callers.
 
 **Caller paths:**
 
-<!-- planned-change:config-first-version-migrations -->
 A commit reaches git through one of four contexts in this repository: the human
 shell outside tmux, an autonomous agent inside tmux within a telec-registered
 project, an agent inside tmux within a repository whose own root is a declared
 invocation context that is not a project, and an agent inside tmux operating in a
 repository whose own root carries no declaration.
-<!-- change:config-first-version-migrations -->
-A commit reaches git through one of four contexts in this repository: the human
-shell outside tmux, an autonomous agent inside tmux within a telec-registered
-project, an agent inside tmux within a repository whose own root is a declared
-invocation context that is not a project, and an agent inside tmux operating in a
-repository for which the runtime finds no declaration.
-<!-- /planned-change:config-first-version-migrations -->
 
 | Caller context                                  | Command                            | Why telec is or isn't involved                                                                                                                     |
 | ----------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Outside tmux (human shell)                      | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                                    |
 | Inside tmux, autonomous agent (registered)      | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                                                 |
 | Inside tmux, repository root a declared context | `telec code commit --approved ...` | Sealed on the repository's own declaration rather than on project subscriptions; an invocation beneath it resolving to no context root is refused. |
-<!-- planned-change:config-first-version-migrations -->
 | Inside tmux, repository root undeclared         | `git commit ...`                   | The repository's own root carries no declaration → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux.            |
-<!-- change:config-first-version-migrations -->
-| Inside tmux, repository root undeclared         | `git commit ...`                   | The runtime finds no declaration for the repository's root → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux. |
-<!-- /planned-change:config-first-version-migrations -->
 
 Inside tmux there is **no env-var bypass on `git commit`**. The wrapper
 redirects every `git commit` invocation to `telec code commit` with no
@@ -109,21 +97,11 @@ whose own root is a declared non-project invocation context is also one, and
 there the seal covers the whole repository: an invocation beneath it resolving to
 no context root is refused rather than passed through. A project root's seal
 follows its subscriptions alone — a project subscribing neither capability keeps
-<!-- planned-change:config-first-version-migrations -->
 ordinary git exactly as stated below, whatever else its tier answers. When the project subscribes neither, or the
 repository's own root carries no declaration at all, the wrapper decides nothing
 from this matrix: it execs the real git binary unmodified, the same transparent
 passthrough it applies outside tmux.
-<!-- change:config-first-version-migrations -->
-ordinary git exactly as stated below, whatever else its tier answers. When the project subscribes neither, or the
-runtime finds no declaration for the repository's root — neither the root's own
-nor, for a slug worktree, its owning checkout's — the wrapper decides nothing
-from this matrix: it execs the real git binary unmodified, the same transparent
-passthrough it applies outside tmux. The wrapper itself interprets no repository
-layout; whether a root answers to a declaration is the runtime's answer.
-<!-- /planned-change:config-first-version-migrations -->
 
-<!-- planned-change:config-first-version-migrations -->
 The wrapper reads capability state from the repository root's `teleclaude.yml`
 — the same declaration the runtime resolves — deriving `code ∨ docs` for commit
 interception and `code` for worktree and branch discipline. It reads the file
@@ -150,37 +128,6 @@ the wrapper, and a declaration whose capability blocks are well-formed but which
 fails validation elsewhere in the overlay is refused by the runtime and honoured
 by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
-<!-- change:config-first-version-migrations -->
-The wrapper takes capability state from the runtime's answer for the repository
-root, the answer the runtime's own gates use — for a slug worktree, the owning
-checkout's declaration, whether or not the worktree carries a copy — deriving `code ∨ docs` for commit interception and
-`code` for worktree and branch discipline. The wrapper reads no declaration
-itself. The runtime answers: the document is brought to its current shape by the configuration migration list,
-environment references in its capability blocks are resolved from the
-declaration's sibling `.env`, and its tier and capability blocks are read with
-the runtime's own models. The wrapper keeps that answer until a file it was
-read from changes or the installation's code advances, so a read after either
-starts an interpreter and later reads reuse the kept answer; the whole-second
-limit on keeping an answer is stated with the contract (`project/spec/feature/config/project-capability-manifest`). A
-project declaration carries the capability blocks: a block that is absent, or
-present without an `enabled` value, leaves that capability unsubscribed. A
-global or person declaration carries no subscriptions: the repository is sealed
-on the declaration alone, so the commit-interception rows and the main-branch
-replay and push rows apply there, while the worktree and destructive-operation
-rows follow `code`, which no non-project tier carries. A company declaration
-anchors no context and seals nothing: the wrapper execs the real git binary
-unmodified.
-
-A declaration the wrapper cannot resolve — no readable tier, a capability block
-the runtime cannot read, or a runtime that cannot answer — refuses the git
-invocation with a message naming `teleclaude.yml` and the cause, and
-substitutes no capability state. The wrapper and the runtime answer alike for
-every tier and every capability block. They part on one input: a declaration
-whose capability blocks are readable but which fails validation elsewhere in the
-overlay is refused by the runtime and honoured by the wrapper, which reads only
-the tier and the capability blocks
-(`project/spec/feature/config/project-capability-manifest`).
-<!-- /planned-change:config-first-version-migrations -->
 
 <!-- planned:foreign-session-carried-identity -->
 The role the matrix reads is resolved from the caller's session record through the

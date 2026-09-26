@@ -68,7 +68,6 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 
-<!-- planned-change:config-first-version-migrations -->
 - The declaration is the only home of capability state. The installed plumbing —
   the git hooks and the git wrapper — reads the toggles directly from the
   project's `teleclaude.yml`, the same file the runtime resolves, so the shell
@@ -91,36 +90,6 @@ Derivation rules:
   repository root is the seal, per `project/design/code-commit`. Because the
   declaration is a file the project tracks, a clone carries the project's real
   capability state before any TeleClaude command has run against it.
-<!-- change:config-first-version-migrations -->
-- The declaration is the only home of capability state. The installed plumbing —
-  the git hooks and the git wrapper — resolves the toggles through the runtime's
-  own reading of the declaration: the same document the runtime's gates read,
-  which for a slug worktree is the owning checkout's; brought to its current
-  shape by the configuration migration list
-  (`project/spec/feature/config/document-migration`); and its tier and each
-  capability block read the way the runtime's loader reads them — environment
-  references resolved from the declaration's sibling `.env` — and validated with
-  the runtime's own models. The two readers therefore
-  answer alike for every tier and every capability block, and a declaration that
-  loads in the runtime never blocks git. The plumbing reads only what it decides
-  on: the declaration's tier and, for a project declaration, the capability
-  blocks. A block the runtime cannot read as a capability block is refused: the
-  git invocation aborts with a message naming `teleclaude.yml` and the block, and
-  no capability state is substituted for it — the direction the runtime takes for
-  a declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
-  never falls closed on such a block, and it claims nothing about the rest of the
-  file: overlay validation belongs to the runtime. The plumbing keeps the answer
-  for a declaration it has resolved, together with every file that answer was
-  read from, and serves repeated reads from it without starting an interpreter.
-  The kept answer is a cache of the runtime's answer, never a source: a change to
-  any of those files, or an advance of the installation's code, discards it, so
-  it never answers for an input state or an installation it was not resolved
-  from. A global or person declaration carries no capability
-  blocks; what the plumbing decides at such a repository root is the seal, per
-  `project/design/code-commit`. Because the declaration is a file the project
-  tracks, a clone carries the project's real capability state before any
-  TeleClaude command has run against it.
-<!-- /planned-change:config-first-version-migrations -->
 
 - A capability toggle never edits, removes from, or truncates a file the project
   tracks. The only capability plumbing in the project's tracked tree is the
@@ -142,19 +111,9 @@ Derivation rules:
   `project/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
   ever rewrites a project-tracked file.
 
-<!-- planned-change:config-first-version-migrations -->
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole
-<!-- change:config-first-version-migrations -->
-- A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
-  non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
-  or reads any plumbing for it, and it is left byte-for-byte untouched. The git
-  wrapper's one act for it is asking the runtime whether its root answers to a
-  declaration; the runtime answers that it does not, and the plumbing keeps that
-  answer in the machine home like any other. Which declaration a slug worktree
-  answers to is UC-CFG-CAP-32. The sole
-<!-- /planned-change:config-first-version-migrations -->
 <!-- planned-change:align-config-cli-ownership -->
   exception is explicit adoption: `telec projects onboard` (and `init`) creates
   the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
@@ -169,25 +128,12 @@ Derivation rules:
   as a failure rather than resolving to any capability state.
 - The project's `teleclaude.yml`, `.env`, and equivalent native files are
   project-owned and are never removed, superseded, or displaced.
-<!-- planned-change:config-first-version-migrations -->
 - Each `enabled` defaults to `true` for an already-onboarded project so
   existing repos keep today's behavior; analyze writes explicit values on the
   next assessment.
-<!-- change:config-first-version-migrations -->
-- A capability block that is absent, or present without an `enabled` value,
-  resolves to unsubscribed: only an explicit value claims a capability.
-  Registration declares every capability the document leaves undeclared, with
-  the value inferred from repo shape, and assessment refines the declarations. A
-  registered project whose declaration was written while an omitted block still
-  meant subscribed keeps those subscriptions: the configuration migration list
-  brings its declaration forward with each of them written explicitly, and the
-  same holds for its linked worktrees' copies. A declaration the registries do
-  not name gains no subscription from that migration.
-<!-- /planned-change:config-first-version-migrations -->
 
 ### Use cases
 
-<!-- planned-change:config-first-version-migrations -->
 #### UC-CFG-CAP-1: Omitted capability blocks default to subscribed
 
 ```
@@ -205,25 +151,6 @@ When the project configuration is loaded
 Then the code capability resolves to disabled
 And the docs and agents capabilities resolve to enabled
 ```
-<!-- change:config-first-version-migrations -->
-#### UC-CFG-CAP-1: Omitted capability blocks resolve to unsubscribed
-
-```
-Given a project overlay at the current configuration version that declares no capability blocks
-When the project configuration is loaded
-Then the code, docs, and agents capabilities each resolve to disabled
-And no capability-gated mechanism activates for the project
-```
-
-#### UC-CFG-CAP-2: An explicitly disabled capability is honored
-
-```
-Given a project overlay declaring the code capability disabled and the docs and agents capabilities enabled
-When the project configuration is loaded
-Then the code capability resolves to disabled
-And the docs and agents capabilities resolve to enabled
-```
-<!-- /planned-change:config-first-version-migrations -->
 
 
 #### UC-CFG-CAP-3: An unreadable declaration on an adopted project surfaces the failure
@@ -324,7 +251,6 @@ Then the installed plumbing resolves the new value on its next invocation
 And no separate pass is required to make the change take effect
 ```
 
-<!-- planned-change:config-first-version-migrations -->
 #### UC-CFG-CAP-16: The installed plumbing reads capability state from the declaration
 
 ```
@@ -333,17 +259,6 @@ When the git wrapper runs on a git invocation
 Then it decides by reading the capability toggles from the project's teleclaude.yml
 And it spawns no interpreter to read them
 ```
-<!-- change:config-first-version-migrations -->
-#### UC-CFG-CAP-16: The installed plumbing answers a repeated read without an interpreter
-
-```
-Given the installed plumbing has kept its answer for a project's declaration
-And since then no file that answer was read from has changed and the installation's code has not advanced
-When the git wrapper runs on a git invocation
-Then it decides from the capability subscriptions the runtime resolves for that declaration
-And it spawns no interpreter to read them
-```
-<!-- /planned-change:config-first-version-migrations -->
 
 
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
@@ -389,7 +304,6 @@ And it resolves identically to the same declaration written in block form
 
 #### UC-CFG-CAP-22:
 
-<!-- planned-change:config-first-version-migrations -->
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
 ```
@@ -407,109 +321,7 @@ Given a project whose teleclaude.yml carries a code capability block that declar
 When the capabilities are resolved by the runtime or by the installed plumbing
 Then the code capability resolves to subscribed on both readers
 ```
-<!-- change:config-first-version-migrations -->
-#### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
-```
-Given a project whose teleclaude.yml carries a code capability block whose enabled value the runtime cannot read as a boolean
-When an agent session invokes git inside that project and the installed plumbing resolves its capabilities
-Then the invocation aborts with a message naming teleclaude.yml and the code block
-And no capability state is substituted for the unreadable block
-```
-
-#### UC-CFG-CAP-25: A capability block without an enabled value resolves to unsubscribed
-
-```
-Given a project whose teleclaude.yml, at the current configuration version, carries a code capability block that declares no enabled value
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then the code capability resolves to unsubscribed on both readers
-```
-<!-- /planned-change:config-first-version-migrations -->
-
-<!-- planned:config-first-version-migrations -->
-#### UC-CFG-CAP-26: A registered project keeps its subscriptions across the unsubscribed default
-
-```
-Given a registered project whose configuration was written while an omitted block still meant subscribed
-And that configuration declares no capability blocks
-When the project configuration is loaded
-Then the code, docs, and agents capabilities each resolve to enabled
-And once a configuration migration run stores the document, it declares each of them enabled
-```
-
-#### UC-CFG-CAP-27: A linked worktree of a registered project resolves as its project
-
-```
-Given a registered project whose configuration was written while an omitted block still meant subscribed
-And that configuration declares no capability blocks
-And a linked worktree of that project whose copy of the configuration is equally old
-When the capabilities are resolved inside that worktree by the runtime or by the installed plumbing
-Then the code, docs, and agents capabilities each resolve to enabled
-```
-
-#### UC-CFG-CAP-28: A declaration the registries do not name claims nothing by omission
-
-```
-Given a repository whose teleclaude.yml declares the project tier and no capability blocks
-And that declaration was written while an omitted block still meant subscribed
-And the repository's root is not registered
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then the code, docs, and agents capabilities each resolve to unsubscribed
-And the git wrapper execs the real git binary without intercepting an agent session's invocation
-```
-
-#### UC-CFG-CAP-29: The plumbing resolves a registered declaration the migration list has not yet stored
-
-```
-Given a registered project whose stored teleclaude.yml carries no tier declaration
-And that document has not passed the declaring migration
-When an agent session invokes git inside that project
-Then the installed plumbing resolves the project tier and the subscriptions the runtime resolves
-And the invocation is not refused for a missing declaration
-```
-
-#### UC-CFG-CAP-30: Registration declares the subscriptions a document leaves undeclared
-
-```
-Given a project root that is not registered
-And its configuration declares the code capability and neither the docs nor the agents capability
-When an operator or agent registers that project
-Then the code capability keeps its declared value
-And the docs and agents capabilities are declared with values inferred from the repository's shape
-```
-
-#### UC-CFG-CAP-31: An installation advance makes the plumbing resolve again
-
-```
-Given the installed plumbing has kept its answer for a project's declaration
-When canonical main advances with a change to the installation's code, or installation runs
-Then the next git invocation in that project resolves the declaration through the runtime
-```
-
-#### UC-CFG-CAP-32: A slug worktree answers from its owning checkout's declaration
-
-```
-Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's, or that carries no copy at all
-When an agent session invokes git inside that worktree
-Then the installed plumbing decides from the owning checkout's declaration
-And it decides as the runtime's gates decide for an invocation from that worktree
-
-Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions
-And whose owning checkout carries no declaration
-When an agent session invokes git inside that worktree
-Then the installed plumbing treats the worktree as carrying no declaration
-And the git wrapper execs the real git binary without intercepting the invocation
-```
-
-#### UC-CFG-CAP-33: A capability resolved from the project's environment file resolves alike on both readers
-
-```
-Given a project whose code capability block takes its enabled value from a variable in the declaration's sibling .env
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then both readers resolve the code capability to the value the .env holds
-And after that value changes in the .env, the next git invocation decides from the new value
-```
-<!-- /planned:config-first-version-migrations -->
 
 
 ## Known caveats
@@ -525,7 +337,6 @@ And after that value changes in the .env, the next git invocation decides from t
   is surfaced as drift by the quality-configuration assessment procedure.
 <!-- /planned-change:align-config-cli-ownership -->
 
-<!-- planned-change:config-first-version-migrations -->
 - The runtime and the installed plumbing agree on every declaration whose
   capability blocks carry unquoted boolean values. They part on two inputs, in
   opposite directions. A block whose `enabled` value the runtime coerces from a
@@ -534,21 +345,6 @@ And after that value changes in the .env, the next git invocation decides from t
   which fails validation elsewhere in the overlay is refused by the runtime and
   honoured by the plumbing, which reads only the tier and the capability blocks
   and claims nothing about the rest of the file.
-<!-- change:config-first-version-migrations -->
-- The runtime and the installed plumbing answer alike for every declaration's
-  tier and capability blocks. They part on one input: a declaration whose tier
-  and capability blocks are readable but which fails validation elsewhere in the
-  overlay is refused by the runtime and honoured by the plumbing, which reads
-  only the tier and the capability blocks and claims nothing about the rest of
-  the file. Git keeps working in a repository whose declaration fails
-  validation elsewhere.
-- The first read after a file a kept answer was read from changes, or after the
-  installation's code advances, pays one start of the installation's interpreter;
-  every later read is served without one. An answer resolved in the same whole
-  second as a change to one of its files is returned but not kept, because
-  whole-second modification times cannot tell a later change within that second
-  apart; the next read resolves again.
-<!-- /planned-change:config-first-version-migrations -->
 
 
 ## See Also
