@@ -383,6 +383,7 @@ And a dirty state or conflict that prevents safe synchronization blocks delivery
 And no marker fold or final push runs until repository-root synchronization is complete
 ```
 
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
 
 ```gherkin
@@ -418,6 +419,45 @@ And the integrator then remains the single non-mutating blocker beacon without r
 And the reminder is cancelled at that escalation
 And apart from the bounded protection-condition stall, only a path whose intent cannot be determined safely is escalated to the human
 ```
+<!-- change:integrator-stranded-dirt-by-asking -->
+#### UC-WISM36: The integrator asks once about a quiet dirty path, then commits it when nobody claims it
+
+```gherkin
+Given repo-root synchronization is blocked by a dirty path on main
+And the path was not modified within the current clearance interval
+And its uncommitted diff names no todo slug in a pending-doc marker
+When the integrator's clearance beat resolves that path
+Then it sends one message listing the path to every live session of the project on the same computer that is an orchestrator in a prepare phase or carries no system role
+And the message tells each recipient to arm halt-to-respond first when it was in the middle of work, then to commit the path when it is its own or reply that it is still working on it, and otherwise to end its turn with NOOP
+And no worker, tasker, integrator, coordinator, work orchestrator, create orchestrator, job runner, or system session receives it
+And the path is never sent again to the same recipient
+And when the path is still dirty, still unmodified within the interval, and claimed by no recipient on a later beat, the integrator commits it as-is under a message naming it as stranded work
+And the integrator never stashes, overwrites, rebases across, or discards the path
+```
+
+#### UC-WISM37: A dirty path carrying a pending-doc marker is resolved through its todo's prepare orchestrator
+
+```gherkin
+Given a dirty path on main whose uncommitted diff adds a pending-doc marker naming a todo slug
+When the integrator's clearance beat resolves that path
+Then it identifies the todo's prepare orchestrator from the todo's state
+And when that session is live it receives the path under the same message as every asked session
+And when that session is gone the integrator reads its transcript and the todo's state and resolves the path from that evidence
+And it commits the path as-is unless the named todo is removed or delivered and the transcript shows the work was abandoned, in which case it reverts the path
+```
+
+#### UC-WISM38: Only a claimed path left uncommitted or an unintelligible diff reaches the human
+
+```gherkin
+Given a dirty path on main that blocks synchronization
+When a recipient has claimed the path and it stays uncommitted for three consecutive clearance beats after the claim
+Or the path's diff cannot be interpreted
+Then the integrator escalates that path to the human once
+And it leaves the path untouched and holds as its blocker beacon
+And other dirty paths continue through their own resolution
+And the clearance reminder is cancelled only when every remaining dirty path has been escalated
+```
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 #### UC-WISM29: A drained singleton parks on its queue watcher
 

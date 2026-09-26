@@ -129,6 +129,7 @@ A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same
 path; each is an owner, and no arbitration selects between them.
 
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 ### Batch dirty-path ownership
 
 The read-only `telec code owners <path>...` query reports which live sessions
@@ -145,6 +146,8 @@ introduces no durable claim state beyond the declarations themselves.
 
 No lifecycle role depends on this query. It exists as a diagnostic for a human or
 agent asking who is working on a path.
+<!-- change:integrator-stranded-dirt-by-asking -->
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ## Invariants
 
@@ -280,6 +283,7 @@ telec code lint <files...>
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 ### Batch ownership flow
 
 ```
@@ -290,6 +294,8 @@ telec code owners <path>...
   → group declaring sessions by path
   → emit one complete JSON object in caller path order, including null owners
 ```
+<!-- change:integrator-stranded-dirt-by-asking -->
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ### Thin hook flow
 
@@ -338,6 +344,7 @@ outcomes that must never look like success. The condition reads only the acting
 session's own declarations. It inspects no other path's provenance, so dirt this
 session did not declare — a human's direct edits among it — never triggers it.
 
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 ### Batch ownership cannot be completed
 
 An input path is outside the project or not dirty in the captured porcelain
@@ -345,6 +352,8 @@ set, or the session snapshot or dirty-path set cannot be resolved.
 
 **Response:** Exit non-zero with a path- or snapshot-specific diagnostic and no
 ownership JSON.
+<!-- change:integrator-stranded-dirt-by-asking -->
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ### No recognised language artifacts / missing make target
 

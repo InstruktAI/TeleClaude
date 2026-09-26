@@ -495,11 +495,20 @@ commit-first gate.
 
 ### Integrator's project-root sync
 
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 The integrator does not run `telec code commit` against the project-root main.
 Repo-root sync after a delivery uses `git -C <project-root> ...` directly
 (pull / merge / push). If the merge is blocked by a dirty working tree,
 the integrator's main-clearance reminder reopens the check until the dirty file's owner commits via
 their own session.
+<!-- change:integrator-stranded-dirt-by-asking -->
+Repo-root sync after a delivery uses `git -C <project-root> ...` directly
+(pull / merge / push). If the merge is blocked by a dirty working tree, the
+integrator's main-clearance reminder reopens the check on each beat and resolves
+each dirty path under `sdlc/procedure/lifecycle/integrate`: it asks the sessions
+that can have written the path, and commits a quiet, unclaimed path as-is with a
+pathspec-scoped `telec code commit`.
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 
 ### Agent commit during active merge (worktree)
 
