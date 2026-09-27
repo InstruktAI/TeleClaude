@@ -375,9 +375,11 @@ if [ "$_code_enabled" -eq 1 ]; then
     done
 fi
 
-# ── Block per-command autoStash overrides and alias redefinition ─────────────
+# ── Block per-command stash config carriers and alias redefinition ────────────
 # Command-line config can override the false autoStash values injected by
-# _real_git. A valueless -c key is true, so refuse it as well as key=value.
+# _real_git. A valueless -c key is true, and include.path/includeIf.*.path can
+# insert autoStash=true from another file at command scope. Refuse both direct
+# autoStash keys and per-command includes before Git reads either one.
 # `git -c alias.X=stash X` would bypass every subcmd-name-based block (the
 # wrapper sees `X` as `_subcmd`, not `stash`).
 _prev_arg=""
@@ -392,9 +394,9 @@ for _arg in "$@"; do
     esac
     if [ "$_code_enabled" -eq 1 ]; then
         case "$_config_override" in
-            *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]|*.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]=*)
+            *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]|*.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]=*|*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]*)
                 _log_block autostash_config_override
-                echo "ERROR: Per-command autoStash configuration is prohibited in agent sessions." >&2
+                echo "ERROR: Per-command autoStash or config includes are prohibited in agent sessions." >&2
                 echo "       Resolve or commit worktree changes before replaying history." >&2
                 exit 1
                 ;;
@@ -422,9 +424,9 @@ for _arg in "$@"; do
 done
 if [ "$_code_enabled" -eq 1 ]; then
     case "${GIT_CONFIG_PARAMETERS:-}" in
-        *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]*)
+        *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]*|*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]*)
             _log_block autostash_config_override
-            echo "ERROR: Inherited autoStash configuration is prohibited in agent sessions." >&2
+            echo "ERROR: Inherited autoStash or config includes are prohibited in agent sessions." >&2
             echo "       Resolve or commit worktree changes before replaying history." >&2
             exit 1
             ;;
