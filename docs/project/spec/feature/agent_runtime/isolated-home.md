@@ -1,5 +1,5 @@
 ---
-description: A slug worktree owns a temporary clone of the TeleClaude home repository, provisioned and retired with the worktree; code loaded from the worktree resolves that clone as its home and never the live home, while installed code keeps operating the live platform.
+description: A slug worktree owns a temporary clone of the TeleClaude home repository, provisioned, refreshed, and retired with the worktree, and kept outside it so nothing reaches live runtime state through it.
 visibility: internal
 delivered_by: [agent-home-clone-provisioning]
 ---
