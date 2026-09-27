@@ -91,7 +91,6 @@ def read_head_sha(execution_root: Path) -> str | None:
 
 
 def run_lint_gate(
-    project_root: Path,
     execution_root: Path,
     subject_sha: str | None,
     files: list[str] | None,

@@ -720,7 +720,6 @@ def _run_commit_quality_gate(
         handle_format(quality_paths)
     result = run_lint_gate(
         project_root,
-        project_root,
         None,
         quality_paths,
         False,
