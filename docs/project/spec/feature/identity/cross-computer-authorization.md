@@ -106,8 +106,10 @@ And the caller's computer does not decide the command in its place
 
 ```
 Given a person holding the platform admin role on every computer
-When the person runs any command naming another computer
+And both the person's computer and the named computer decide relayed commands
+When the person runs any command naming the other computer
 Then the command is admitted and that computer serves it
+But a read sent by a computer that does not decide relayed commands carries no principal and is refused as UC-XCA4 states
 ```
 
 #### UC-XCA7: Another computer answers a listing or search of its own objects
