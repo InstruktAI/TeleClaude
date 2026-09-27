@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
+from fastapi import Depends, FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
@@ -32,7 +32,6 @@ from teleclaude.api import (
     history_routes,
     jobs_routes,
     mcp_routes,
-    notifications_routes,
     people_routes,
     projects_routes,
     readiness_routes,
@@ -48,7 +47,6 @@ from teleclaude.api.auth import (
     principal_for_verified_caller,
     verify_caller,
 )
-from teleclaude.api.data_routes import router as data_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
@@ -61,7 +59,6 @@ from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api_models import (
     AgentStopActivityEventDTO,
     SessionLifecycleStatusEventDTO,
-    TodoDTO,
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
@@ -71,7 +68,6 @@ from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
 from teleclaude.constants import API_SOCKET_PATH
-from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -135,7 +131,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._cache: DaemonCache | None = None  # Initialize private variable
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
-        self.__event_db_inner: EventDB | None = None  # backing store for _event_db property
+        self._event_db: EventDB | None = None
         self.mcp_runtimes = McpRuntimePool(
             repo_root=resolve_project_root(Path.cwd()),
             person_secret_resolver=resolve_person_mcp_secret_values,
@@ -169,8 +165,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(chiptunes_routes.router)
         self.app.include_router(jobs_routes.router)
         self.app.include_router(mcp_routes.router)
-        self.app.include_router(notifications_routes.router)
-
         self.app.include_router(memory_router)
 
         self.app.include_router(mirrors_router)
@@ -179,8 +173,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(hooks_router)
 
         self.app.include_router(channels_router)
-
-        self.app.include_router(data_router)
 
         self.app.include_router(operations_router)
 
@@ -228,17 +220,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         # Set cache through property to trigger subscription
         self.cache = cache
-
-    @property
-    def _event_db(self) -> EventDB | None:
-        """Get event DB reference."""
-        return self.__event_db_inner
-
-    @_event_db.setter
-    def _event_db(self, value: EventDB | None) -> None:
-        """Set event DB and propagate to notifications route module."""
-        self.__event_db_inner = value
-        notifications_routes.configure(event_db=value)
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
         """Build API boundary metadata."""
@@ -497,40 +478,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 email=email,
                 session_id=identity.session_id or None,
             )
-
-        @self.app.get("/todos")
-        async def list_todos(  # pyright: ignore
-            project: str | None = Query(None, min_length=1),
-            computer: str | None = None,
-        ) -> list[TodoDTO]:
-            """List todos from cache, optionally filtered by computer and project.
-
-            Read-only cache endpoint. Returns cached data immediately.
-            """
-            try:
-                if not self.cache:
-                    if project and (computer in (None, "local")):
-                        raw_todos = await command_handlers.list_todos(project)
-                        return [
-                            t.model_copy(update={"computer": config.computer.name, "project_path": project})
-                            for t in raw_todos
-                        ]
-                    return []
-
-                entries = self.cache.get_todo_entries(
-                    computer=computer,
-                    project_path=project,
-                )
-                result: list[TodoDTO] = []
-                for entry in entries:
-                    for todo in entry.todos:
-                        result.append(
-                            todo.model_copy(update={"computer": entry.computer, "project_path": entry.project_path})
-                        )
-                return result
-            except Exception as e:
-                logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Failed to list todos: {e}") from e
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(  # pyright: ignore

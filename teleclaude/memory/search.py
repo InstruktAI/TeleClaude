@@ -196,29 +196,6 @@ class MemorySearch:
             all_rows = before_rows + list(anchor_rows) + list(after_rows)
             return [_row_to_search_result(row) for row in all_rows]
 
-    async def batch_fetch(
-        self,
-        ids: list[int],
-        project: str | None = None,
-    ) -> list[SearchResult]:
-        """Bulk fetch observations by IDs."""
-        if not ids:
-            return []
-        placeholders = ", ".join([":id_" + str(i) for i in range(len(ids))])
-        params: dict[str, str | int] = {f"id_{i}": id_val for i, id_val in enumerate(ids)}
-        sql = f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id IN ({placeholders})"  # guard: raw-sql
-        if project:
-            sql += " AND project = :project"
-            params["project"] = project
-        sql += " ORDER BY created_at_epoch DESC"
-
-        async with db._session() as session:
-            result = await session.exec(  # type: ignore[call-overload]
-                text(sql).bindparams(**params)  # guard: raw-sql
-            )
-            rows = result.fetchall()
-            return [_row_to_search_result(row) for row in rows]
-
     def search_sync(
         self,
         query: str,

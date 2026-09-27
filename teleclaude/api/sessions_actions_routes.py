@@ -1,4 +1,4 @@
-"""Session action endpoints (keys, voice, file, revive, run, result, escalate)."""
+"""Session action endpoints (keys, file, revive, run, result, escalate)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,6 @@ from teleclaude.api.auth import (
     clearance_sessions_run,
     clearance_sessions_tail,
     clearance_sessions_unsubscribe,
-    clearance_sessions_voice,
     resolve_caller_provenance,
 )
 from teleclaude.api.run_session_job import normalize_job_run_request
@@ -55,7 +54,6 @@ from teleclaude.api_models import (
     KeysRequest,
     RunSessionRequest,
     SessionMessagesDTO,
-    VoiceInputRequest,
 )
 from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO
 from teleclaude.config import config
@@ -516,35 +514,6 @@ async def send_keys_endpoint(
     except Exception as e:
         logger.error("send_keys failed (session=%s): %s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to send keys: {e}") from e
-
-
-@router.post("/sessions/{session_id}/voice")
-async def send_voice_endpoint(
-    session_id: str,
-    request: VoiceInputRequest,
-    computer: str | None = Query(None),
-    _identity: CallerIdentity = Depends(clearance_sessions_voice),
-) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Send voice input to session."""
-    try:
-        metadata = _build_metadata()
-        cmd = CommandMapper.map_api_input(
-            "handle_voice",
-            {
-                "session_id": session_id,
-                "file_path": request.file_path,
-                "duration": request.duration,
-                "message_id": request.message_id,
-                "message_thread_id": request.message_thread_id,
-            },
-            metadata,
-            computer=computer,
-        )
-        await dispatch_command(_STATE.client, cmd)
-        return {"status": "success"}
-    except Exception as e:
-        logger.error("send_voice failed (session=%s): %s", session_id, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to send voice: {e}") from e
 
 
 @router.post("/sessions/self/file")

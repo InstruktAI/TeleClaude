@@ -1,4 +1,4 @@
-"""Runtime settings read/patch endpoints."""
+"""Runtime settings patch endpoints."""
 
 from __future__ import annotations
 
@@ -34,7 +34,6 @@ def configure(runtime_settings: RuntimeSettings | None) -> None:
     _RUNTIME_SETTINGS["value"] = runtime_settings
 
 
-@router.get("")
 async def get_settings() -> SettingsDTO:
     """Return current mutable runtime settings."""
     runtime_settings = _RUNTIME_SETTINGS["value"]

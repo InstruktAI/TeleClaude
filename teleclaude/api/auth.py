@@ -536,7 +536,6 @@ clearance_sessions_list = require_clearance("telec sessions list")
 clearance_sessions_run = require_clearance("telec sessions run")
 clearance_sessions_send = require_clearance("telec sessions send")
 clearance_sessions_keys = require_clearance("telec sessions send")
-clearance_sessions_voice = require_clearance("telec sessions send")
 clearance_sessions_revive = require_clearance("telec sessions revive")
 clearance_sessions_tail = require_clearance("telec sessions tail")
 clearance_sessions_unsubscribe = require_clearance("telec sessions unsubscribe")
@@ -555,15 +554,8 @@ clearance_todos_freeze = require_clearance("telec todo freeze")
 clearance_todos_unfreeze = require_clearance("telec todo unfreeze")
 clearance_todos_update = require_clearance("telec todo update")
 clearance_todos_stamp = require_clearance("telec todo stamp")
-clearance_todos_show = require_clearance("telec todo show", require_identified_caller=True)
-clearance_todos_list = require_clearance("telec todo list", require_identified_caller=True)
-clearance_bugs_list = require_clearance("telec bugs list", require_identified_caller=True)
 clearance_todos_artifacts_read = require_clearance("telec todo artifacts read", require_identified_caller=True)
 clearance_todos_artifacts_list = require_clearance("telec todo artifacts list", require_identified_caller=True)
-clearance_todos_artifacts_diff = require_clearance(
-    "telec todo artifacts diff",
-    require_identified_caller=True,
-)
 clearance_todos_artifacts_remove = require_clearance("telec todo artifacts remove")
 clearance_todos_artifacts_write = require_clearance("telec todo artifacts write")
 clearance_operations_get = require_clearance("telec operations get")
@@ -579,7 +571,6 @@ __all__ = [
     "CallerIdentity",
     "clearance_agents_availability",
     "clearance_agents_status",
-    "clearance_bugs_list",
     "clearance_channels_list",
     "clearance_channels_publish",
     "clearance_computers_list",
@@ -602,8 +593,6 @@ __all__ = [
     "clearance_sessions_start",
     "clearance_sessions_tail",
     "clearance_sessions_unsubscribe",
-    "clearance_sessions_voice",
-    "clearance_todos_artifacts_diff",
     "clearance_todos_artifacts_list",
     "clearance_todos_artifacts_read",
     "clearance_todos_artifacts_remove",
@@ -611,11 +600,9 @@ __all__ = [
     "clearance_todos_create",
     "clearance_todos_freeze",
     "clearance_todos_integrate",
-    "clearance_todos_list",
     "clearance_todos_prepare",
     "clearance_todos_reactivate",
     "clearance_todos_remove",
-    "clearance_todos_show",
     "clearance_todos_stamp",
     "clearance_todos_unfreeze",
     "clearance_todos_update",

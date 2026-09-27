@@ -161,17 +161,6 @@ class KeysRequest(BaseModel):
     count: int | None = Field(default=None, ge=1)
 
 
-class VoiceInputRequest(BaseModel):
-    """Request to send a voice input to a session."""
-
-    model_config = ConfigDict(frozen=True)
-
-    file_path: str = Field(..., min_length=1)
-    duration: float | None = None
-    message_id: str | None = None
-    message_thread_id: int | None = None
-
-
 class FileUploadRequest(BaseModel):
     """Request to send a file input to a session."""
 

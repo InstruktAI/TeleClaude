@@ -7,7 +7,6 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-from teleclaude.memory.context import generate_context
 from teleclaude.memory.search import MemorySearch
 from teleclaude.memory.store import MemoryStore
 from teleclaude.memory.types import ObservationInput, ObservationType
@@ -37,15 +36,6 @@ class SaveObservationResponse(BaseModel):
     id: int
     title: str
     project: str
-
-
-class BatchRequest(BaseModel):
-    """Request body for batch memory operations."""
-
-    model_config = ConfigDict(frozen=True)
-
-    ids: list[int]
-    project: str | None = None
 
 
 @router.post("/save")
@@ -94,14 +84,6 @@ async def timeline(
     return [asdict(r) for r in results]
 
 
-@router.post("/batch")
-async def batch_fetch(body: BatchRequest) -> list[dict]:  # type: ignore[type-arg]
-    """Bulk fetch observations by IDs."""
-    search = MemorySearch()
-    results = await search.batch_fetch(body.ids, body.project)
-    return [asdict(r) for r in results]
-
-
 @router.delete("/{observation_id}")
 async def delete_observation(observation_id: int) -> dict:  # type: ignore[type-arg]
     """Delete a memory observation by ID."""
@@ -110,12 +92,3 @@ async def delete_observation(observation_id: int) -> dict:  # type: ignore[type-
     if not deleted:
         raise HTTPException(status_code=404, detail="Observation not found")
     return {"deleted": observation_id}
-
-
-@router.get("/inject")
-async def inject_context(projects: str, identity_key: str | None = None) -> str:
-    """Generate context for injection."""
-    project = projects.split(",")[0].strip()
-    if not project:
-        return ""
-    return await generate_context(project, identity_key=identity_key)

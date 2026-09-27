@@ -636,21 +636,6 @@ class JobFailedPayload:
 
 
 @dataclass(frozen=True)
-class NotificationClaimedPayload:
-    """Emitted when a notification is claimed by an agent."""
-
-    notification_id: int
-    agent_id: str
-
-
-@dataclass(frozen=True)
-class NotificationResolvedPayload:
-    """Emitted when a notification is resolved."""
-
-    notification_id: int
-
-
-@dataclass(frozen=True)
 class OperationSucceededContext:
     """Emitted when a long-running operation completes successfully."""
 
@@ -675,8 +660,6 @@ EventContext = (
     | JobFailedPayload
     | JobStartedPayload
     | MessageEventContext
-    | NotificationClaimedPayload
-    | NotificationResolvedPayload
     | OperationFailedContext
     | OperationSucceededContext
     | SessionEscalatedPayload

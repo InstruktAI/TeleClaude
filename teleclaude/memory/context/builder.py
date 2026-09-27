@@ -6,33 +6,12 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
-from teleclaude.core import db_models
-from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.context.compiler import compile_timeline
 from teleclaude.memory.context.renderer import render_context
 
 logger = get_logger(__name__)
-
-
-async def generate_context(project: str, identity_key: str | None = None) -> str:
-    """Generate memory context markdown (async, for daemon/API)."""
-    try:
-        observations = await _get_recent_observations(project, identity_key=identity_key)
-        summaries = await _get_recent_summaries(project)
-
-        if not observations and not summaries:
-            return ""
-
-        timeline = compile_timeline(observations, summaries)
-        return render_context(timeline)
-    except Exception:
-        # Best-effort context injection: any failure (DB, render, schema drift)
-        # must return "" rather than propagate, or the SessionStart hook crashes
-        # and the entire session bootstrap fails. Log and degrade.
-        logger.warning("Failed to generate memory context", project=project, exc_info=True)
-        return ""
 
 
 def generate_context_sync(project: str, db_path: str, identity_key: str | None = None) -> str:
@@ -73,34 +52,6 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
         return ""
     finally:
         engine.dispose()
-
-
-async def _get_recent_observations(
-    project: str, limit: int = 100, identity_key: str | None = None
-) -> list[db_models.MemoryObservation]:
-    """Fetch recent observations for a project, optionally scoped by identity."""
-    async with db._session() as session:
-        sql = "SELECT * FROM memory_observations WHERE project = :project"
-        params: dict[str, str | int] = {"project": project, "limit": limit}
-        if identity_key:
-            sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
-            params["identity_key"] = identity_key
-        sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-        result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]  # guard: raw-sql
-        rows = result.fetchall()
-        return [_row_to_observation(row) for row in rows]
-
-
-async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.MemorySummary]:
-    """Fetch recent summaries for a project."""
-    async with db._session() as session:
-        result = await session.exec(  # type: ignore[call-overload]
-            text(  # guard: raw-sql
-                "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT :limit"
-            ).bindparams(project=project, limit=limit)
-        )
-        rows = result.fetchall()
-        return [_row_to_summary(row) for row in rows]
 
 
 _row_to_observation = row_to_memory_observation

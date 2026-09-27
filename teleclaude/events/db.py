@@ -347,33 +347,6 @@ class EventDB:
         rows = await cursor.fetchall()
         return [_row_to_dict(r) for r in rows]
 
-    async def update_human_status(self, notification_id: int, status: str) -> bool:
-        """Update the human workflow status for a notification."""
-        now = _now_iso()
-        seen_at = now if status == "seen" else None
-        cursor = await self._db().execute(
-            "UPDATE notifications SET human_status = ?, seen_at = ?, updated_at = ? WHERE id = ?",
-            (status, seen_at, now, notification_id),
-        )
-        await self._db().commit()
-        return cursor.rowcount > 0
-
-    async def update_agent_status(self, notification_id: int, status: str, agent_id: str) -> bool:
-        """Update the agent workflow status for a notification."""
-        now = _now_iso()
-        if status == "claimed":
-            cursor = await self._db().execute(
-                "UPDATE notifications SET agent_status = ?, agent_id = ?, claimed_at = ?, updated_at = ? WHERE id = ?",
-                (status, agent_id, now, now, notification_id),
-            )
-        else:
-            cursor = await self._db().execute(
-                "UPDATE notifications SET agent_status = ?, agent_id = ?, updated_at = ? WHERE id = ?",
-                (status, agent_id, now, notification_id),
-            )
-        await self._db().commit()
-        return cursor.rowcount > 0
-
     async def resolve_notification(self, notification_id: int, resolution: JsonDict) -> bool:
         """Mark a notification as resolved and store its resolution payload."""
         now = _now_iso()

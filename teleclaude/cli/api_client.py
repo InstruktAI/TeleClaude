@@ -20,19 +20,16 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
 from teleclaude.api_models import (
-    AgentAvailabilityDTO,
     ChiptunesCommandReceiptDTO,
     ChiptunesStatusDTO,
     ComputerDTO,
     CreateSessionResponseDTO,
     JobDTO,
     ProjectDTO,
-    ProjectWithTodosDTO,
     RunSessionRequest,
     SessionDTO,
     SettingsDTO,
     SettingsPatchDTO,
-    TodoDTO,
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
@@ -720,48 +717,6 @@ class _TelecSessionAPI:
         )
         return resp.status_code in {200, 202}
 
-    async def get_auth_whoami(self) -> dict[str, str | None]:
-        """Resolve the calling session's principal via the daemon."""
-        resp = await self._request("GET", "/auth/whoami")
-        return resp.json()
-
-    async def get_agent_availability(self) -> dict[str, AgentAvailabilityDTO]:
-        """Get agent availability status."""
-        resp = await self._request("GET", "/agents/availability")
-        return TypeAdapter(dict[str, AgentAvailabilityDTO]).validate_json(resp.text)
-
-    async def list_projects_with_todos(self) -> list[ProjectWithTodosDTO]:
-        """List all projects with their todos included."""
-        projects, todos = await asyncio.gather(
-            self.list_projects(),
-            self.list_todos(),
-        )
-        if not projects:
-            return []
-
-        todo_map: dict[tuple[str, str], list[TodoDTO]] = {}
-        for todo in todos:
-            if not todo.computer or not todo.project_path:
-                continue
-            key = (todo.computer, todo.project_path)
-            todo_map.setdefault(key, []).append(todo)
-
-        result: list[ProjectWithTodosDTO] = []
-        for project in projects:
-            computer = project.computer or ""
-            project_path = project.path
-            todos_for_project = todo_map.get((computer, project_path), [])
-            result.append(
-                ProjectWithTodosDTO(
-                    computer=project.computer,
-                    name=project.name,
-                    path=project.path,
-                    description=project.description,
-                    todos=todos_for_project,
-                )
-            )
-        return result
-
     async def get_tui_bootstrap(
         self,
         pillars: list[TuiBootstrapPillar] | None = None,
@@ -780,20 +735,6 @@ class _TelecSessionAPI:
             request_options=RequestOptions(params=params if params else None),
         )
         return TypeAdapter(TuiBootstrapDTO).validate_json(resp.text)
-
-    async def list_todos(
-        self,
-        project_path: str | None = None,
-        computer: str | None = None,
-    ) -> list[TodoDTO]:
-        """List todos."""
-        params: dict[str, str] = {}
-        if project_path:
-            params["project"] = project_path
-        if computer:
-            params["computer"] = computer
-        resp = await self._request("GET", "/todos", request_options=RequestOptions(params=params))
-        return TypeAdapter(list[TodoDTO]).validate_json(resp.text)
 
     async def list_jobs(self) -> list[JobDTO]:
         """List scheduled jobs."""
@@ -834,11 +775,6 @@ class _TelecRuntimeAPI:
     """Settings, chiptunes, revive, and memory operations."""
 
     _request: Callable[..., Awaitable[httpx.Response]]
-
-    async def get_settings(self) -> SettingsDTO:
-        """Get current runtime settings."""
-        resp = await self._request("GET", "/settings")
-        return TypeAdapter(SettingsDTO).validate_json(resp.text)
 
     async def patch_settings(self, updates: SettingsPatchDTO) -> SettingsDTO:
         """Apply partial updates to runtime settings."""

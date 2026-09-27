@@ -1,6 +1,6 @@
 """Todo artifact REST endpoints (todos.db backed).
 
-Read, write, remove, list, and diff todo artifacts. Split from
+Read, write, remove, and list todo artifacts. Split from
 ``todo_routes`` so each module stays focused; both routers mount under the
 same ``/todos`` prefix.
 """
@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import (
     CallerIdentity,
-    clearance_todos_artifacts_diff,
     clearance_todos_artifacts_list,
     clearance_todos_artifacts_read,
     clearance_todos_artifacts_remove,
@@ -43,7 +42,7 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
+from teleclaude.core.todos_db import HolderWriteRefused
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -98,17 +97,6 @@ class _ArtifactListResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
     slug: str
     artifacts: list[_ArtifactListEntry]
-
-
-class _ArtifactDiffResponse(BaseModel):
-    """Response from artifact diff."""
-
-    model_config = ConfigDict(frozen=True)
-    slug: str
-    name: str
-    old_digest: str
-    new_digest: str
-    diff: str
 
 
 async def _clear_artifact_provenance_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
@@ -264,25 +252,3 @@ async def list_artifacts(
     rows = await todos_db.list_artifacts_with_writers(slug, include_removed=True)
     entries = [_ArtifactListEntry(name=row["name"], writers=row["writers"]) for row in rows]
     return _ArtifactListResponse(slug=slug, artifacts=entries)
-
-
-@router.get("/artifacts/{slug}/{name}/diff")
-async def diff_artifact(
-    slug: str,
-    name: str,
-    old: str,
-    new: str,
-    cwd: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_todos_artifacts_diff),
-) -> _ArtifactDiffResponse:
-    """Return a unified diff between two artifact versions identified by digest."""
-    malformed_detail = malformed_digest_detail(old, new)
-    if malformed_detail is not None:
-        raise HTTPException(status_code=422, detail=malformed_detail)
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    try:
-        diff = await todos_db.artifacts_diff(slug, name, old, new, include_removed=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _ArtifactDiffResponse(slug=slug, name=name, old_digest=old, new_digest=new, diff=diff)
