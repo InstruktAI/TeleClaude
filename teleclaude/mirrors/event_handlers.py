@@ -6,7 +6,7 @@ import asyncio
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.events import AgentEventContext, SessionLifecycleContext
+from teleclaude.core.events import AgentEventContext
 
 from .processors import MirrorEvent, get_processors
 
@@ -29,8 +29,3 @@ async def handle_agent_stop(context: AgentEventContext) -> None:
     await _dispatch(
         MirrorEvent(session_id=context.session_id, transcript_path=getattr(payload, "transcript_path", None))
     )
-
-
-async def handle_session_closed(context: SessionLifecycleContext) -> None:
-    """Dispatch SESSION_CLOSED mirror processors."""
-    await _dispatch(MirrorEvent(session_id=context.session_id, transcript_path=None))

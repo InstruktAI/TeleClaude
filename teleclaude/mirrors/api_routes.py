@@ -83,10 +83,10 @@ async def search_mirror_routes(
     page = await asyncio.to_thread(search_mirrors, q, agents, access=access, limit=limit)
     return [
         {
-            "session_id": result.session_id,
+            "session_id": result.native_session_id,
             "computer": result.computer,
             "agent": result.agent,
-            "project": result.project,
+            "project": result.project_path or "",
             "title": result.title,
             "sort_timestamp": result.sort_timestamp,
             "timestamp": result.timestamp,
@@ -105,15 +105,15 @@ async def get_mirror_route(
     access = history_access_for_caller(caller_from_verified_identity(caller))
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
-    mirror = await asyncio.to_thread(get_mirror, session_id, access=access)
-    if mirror is None or mirror.session_id is None:
+    mirror = await asyncio.to_thread(get_mirror, native_session_id=session_id, access=access)
+    if mirror is None or mirror.native_session_id is None:
         raise HTTPException(status_code=404, detail="Mirror not found")
     return {
-        "session_id": mirror.session_id,
-        "computer": mirror.computer,
+        "session_id": mirror.native_session_id,
+        "computer": mirror.computer or "",
         "agent": mirror.agent,
-        "project": mirror.project,
-        "title": mirror.title,
+        "project": mirror.project_path or "",
+        "title": mirror.title or "",
         "conversation_text": mirror.conversation_text,
         "message_count": mirror.message_count,
         "timestamp_start": mirror.timestamp_start,
@@ -132,7 +132,7 @@ async def get_mirror_transcript_route(
     access = history_access_for_caller(caller_from_verified_identity(caller))
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
-    mirror = await asyncio.to_thread(get_mirror, session_id, access=access)
+    mirror = await asyncio.to_thread(get_mirror, native_session_id=session_id, access=access)
     if mirror is None:
         raise HTTPException(status_code=404, detail="Mirror not found")
     transcript_path = mirror.metadata.get("transcript_path")

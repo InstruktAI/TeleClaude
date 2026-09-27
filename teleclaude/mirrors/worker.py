@@ -13,9 +13,9 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
 from teleclaude.core.agents import AgentName
-from teleclaude.paths import MIRRORS_DB_PATH  # stable constant — not monkeypatched
+from teleclaude.core.db._sync import get_session_closed_at_sync
+from teleclaude.paths import MAIN_DB_PATH, MIRRORS_DB_PATH  # stable constants — not monkeypatched
 
 from ..utils.transcript_discovery import (
     TranscriptCandidate,
@@ -25,16 +25,17 @@ from ..utils.transcript_discovery import (
     in_session_root,
 )
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
+from ._reconciliation_state import get_mirror_state_by_transcript, get_stale_mirrors
 from .derivation import DERIVATION_VERSION
-from .generator import MirrorGenerationOutcome, generate_mirror_sync
+from .generator import MirrorGenerationOutcome, MirrorWriteTrigger, generate_mirror_sync
 from .session_context import get_session_context
 from .store import (
     MirrorTombstoneRecord,
     delete_mirror_tombstone,
-    get_mirror_state_by_transcript,
     get_mirror_tombstone,
-    get_stale_mirrors,
     mark_mirror_unreprojectable,
+    open_attributed_session_ids,
+    record_session_close,
     upsert_mirror_tombstone,
 )
 
@@ -44,6 +45,7 @@ RECONCILE_INTERVAL_S = 300
 RECONCILE_PASS_TIMEOUT_S = 240
 MIRROR_RECONCILIATION_ACCEPTED = "mirror.reconciliation.accepted"
 MIRROR_RECONCILIATION_COMPLETE = "mirror.reconciliation.complete"
+MIRROR_SESSION_ATTRIBUTION_CLOSED_EVENT = "mirror.session_attribution.closed_recorded"
 
 __all__ = ["MirrorWorker", "ReconcileResult", "TranscriptCandidate"]
 
@@ -177,28 +179,20 @@ class MirrorWorker:
                     result.skipped_unchanged += 1
                     continue
 
-                session_id = extract_session_id(candidate.path, candidate.agent)
-                computer = config.computer.name
+                native_session_id = extract_session_id(candidate.path, candidate.agent)
                 context = get_session_context(transcript_path=transcript_path)
-                project = (
-                    context.project
-                    if context is not None and context.project
-                    else extract_project(candidate.path, candidate.agent)
-                )
+                fallback_project_path = extract_project(candidate.path, candidate.agent) if context is None else None
 
                 outcome = generate_mirror_sync(
-                    session_id=session_id,
+                    native_session_id=native_session_id,
                     source_identity=source_identity,
                     transcript_path=transcript_path,
                     agent_name=candidate.agent,
-                    computer=computer,
-                    project=project,
                     db=self.db_path,
-                    system_role=context.system_role if context is not None else None,
-                    command=context.command if context is not None else None,
-                    slug=context.working_slug if context is not None else None,
-                    title=context.title if context is not None else None,
-                    has_record=context is not None,
+                    context=context,
+                    trigger=MirrorWriteTrigger.RECONCILE,
+                    reconcile_id=reconcile_id,
+                    fallback_project_path=fallback_project_path,
                 )
                 if outcome in {MirrorGenerationOutcome.GENERATED, MirrorGenerationOutcome.SHRINK_ACCEPTED}:
                     delete_mirror_tombstone(source_identity, db=self.db_path)
@@ -222,6 +216,7 @@ class MirrorWorker:
                     exc_info=True,
                 )
 
+        self._record_session_closes(reconcile_id)
         self._rederive_orphans(result)
 
         result.duration_s = perf_counter() - started_at
@@ -233,6 +228,19 @@ class MirrorWorker:
             wal_after_kb=wal_after_kb,
         )
         return result
+
+    def _record_session_closes(self, reconcile_id: str) -> None:
+        """Record newly closed mirror sessions from the owning session store."""
+        session_ids = open_attributed_session_ids(db=self.db_path)
+        close_times = get_session_closed_at_sync(str(MAIN_DB_PATH), session_ids)
+        for session_id, closed_at in close_times.items():
+            if record_session_close(session_id, closed_at, db=self.db_path):
+                logger.info(
+                    MIRROR_SESSION_ATTRIBUTION_CLOSED_EVENT,
+                    session_id=session_id,
+                    closed_at=closed_at,
+                    reconcile_id=reconcile_id,
+                )
 
     def _rederive_orphans(self, result: ReconcileResult) -> None:
         """Mark stale mirrors that have no source transcript for truthful exclusion."""

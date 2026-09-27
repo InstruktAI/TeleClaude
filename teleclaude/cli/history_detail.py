@@ -175,10 +175,12 @@ def _show_remote_detail(
         raise SystemExit(1)
     try:
         mirror = MirrorRecord(
-            session_id=str(payload.get("session_id", session_id)),
+            native_session_id=str(payload.get("session_id", session_id)),
+            session_id=None,
+            position=None,
             computer=str(payload.get("computer", computer)),
             agent=str(payload.get("agent", "")),
-            project=str(payload.get("project", "")),
+            project_path=str(payload.get("project", "")),
             title=str(payload.get("title", "")),
             timestamp_start=payload.get("timestamp_start"),
             timestamp_end=payload.get("timestamp_end"),
@@ -197,8 +199,8 @@ def _show_remote_detail(
         mirror=mirror,
         requested_id=session_id,
         requested_namespace=IdNamespace.NATIVE,
-        tc_id=None,
-        native_id=mirror.session_id,
+        tc_id=mirror.session_id,
+        native_id=mirror.native_session_id,
         source=DetailSource.MIRROR,
     )
     detail = _detail_json_payload(resolution, body=mirror.conversation_text.rstrip(), raw=False)

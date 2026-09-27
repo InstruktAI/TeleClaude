@@ -8,9 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
 from teleclaude.core.agents import AgentName
-from teleclaude.core.models._adapter import SessionAdapterMetadata
 from teleclaude.utils.transcript_discovery import (
     build_source_identity,
     extract_session_id,
@@ -18,40 +16,10 @@ from teleclaude.utils.transcript_discovery import (
     is_subagent_transcript,
 )
 
-from .generator import generate_mirror
+from .generator import MirrorWriteTrigger, generate_mirror
 from .session_context import get_session_context
 
 logger = get_logger(__name__)
-
-_ADAPTER_ORIGINS = frozenset({"telegram", "discord", "whatsapp"})
-
-
-def _extract_channel_identifiers(origin: str | None, raw_json: str | None) -> dict[str, str]:
-    """Extract platform-specific identifiers from adapter metadata JSON."""
-    if not origin or origin not in _ADAPTER_ORIGINS or not raw_json:
-        return {}
-    try:
-        adapter = SessionAdapterMetadata.from_json(raw_json)
-    except (ValueError, KeyError, TypeError):
-        return {}
-    identifiers: dict[str, str] = {}
-    ui = adapter.get_ui()
-    if origin == "telegram":
-        tg = ui.telegram
-        if tg and tg.user_id is not None:
-            identifiers["user_id"] = str(tg.user_id)
-    elif origin == "discord":
-        dc = ui.discord
-        if dc:
-            if dc.user_id is not None:
-                identifiers["user_id"] = dc.user_id
-            if dc.channel_id is not None:
-                identifiers["channel_id"] = str(dc.channel_id)
-    elif origin == "whatsapp":
-        wa = ui.whatsapp
-        if wa and wa.phone_number is not None:
-            identifiers["phone_number"] = wa.phone_number
-    return identifiers
 
 
 @dataclass(frozen=True)
@@ -111,25 +79,14 @@ async def process_mirror_event(event: MirrorEvent) -> None:
 
     transcript_session_id = extract_session_id(Path(transcript_path), agent_name)
 
-    channel_identifiers = _extract_channel_identifiers(context.last_input_origin, context.adapter_metadata_json)
-
     await generate_mirror(
-        session_id=transcript_session_id,
+        native_session_id=transcript_session_id,
         source_identity=build_source_identity(transcript_path, agent_name),
         transcript_path=transcript_path,
         agent_name=agent_name,
-        computer=context.computer or config.computer.name,
-        project=context.project or "",
         db=None,
-        human_email=context.human_email,
-        visibility=context.visibility or "private",
-        last_input_origin=context.last_input_origin,
-        channel_identifiers=channel_identifiers,
-        system_role=context.system_role,
-        command=context.command,
-        slug=context.working_slug,
-        title=context.title,
-        has_record=True,
+        context=context,
+        trigger=MirrorWriteTrigger.FANOUT,
     )
 
 

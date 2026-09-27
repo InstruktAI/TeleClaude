@@ -3,12 +3,16 @@
 These are standalone functions, not class methods.
 """
 
+import json
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
+from sqlalchemy import Engine, text  # guard: raw-sql
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
@@ -30,6 +34,189 @@ if TYPE_CHECKING:
 
 _NO_SUCH_TABLE_ERROR = "no such table"
 _EMPTY_SESSION_TEXT = ""
+_SESSION_MIRROR_FACTS_SQL = """\
+SELECT session_id, computer_name, active_agent, project_path, subdir, native_log_file,
+       transcript_files, visibility, last_input_origin, adapter_metadata, system_role,
+       command, working_slug, title, initiator_session_id, initiator_computer,
+       initiated_by_ai, job, created_at, closed_at, principal, human_email, human_role
+FROM sessions
+WHERE (:session_id IS NOT NULL AND session_id = :session_id)
+   OR (:transcript_path IS NOT NULL AND native_log_file = :transcript_path)
+   OR (:transcript_path IS NOT NULL AND EXISTS (
+       SELECT 1 FROM json_each(sessions.transcript_files) WHERE value = :transcript_path
+   ))
+ORDER BY CASE WHEN session_id = :session_id THEN 0 ELSE 1 END, created_at DESC
+LIMIT 1
+"""
+_SESSION_MIRROR_FACTS_LIST_SQL = """\
+SELECT session_id, computer_name, active_agent, project_path, subdir, native_log_file,
+       transcript_files, visibility, last_input_origin, adapter_metadata, system_role,
+       command, working_slug, title, initiator_session_id, initiator_computer,
+       initiated_by_ai, job, created_at, closed_at, principal, human_email, human_role
+FROM sessions
+WHERE (native_log_file IS NOT NULL AND native_log_file <> '')
+   OR (transcript_files IS NOT NULL AND json_array_length(transcript_files) > 0)
+ORDER BY created_at DESC
+"""
+_SESSION_CLOSES_SQL_PREFIX = "SELECT session_id, closed_at FROM sessions WHERE session_id IN ("
+_SESSION_CLOSES_SQL_SUFFIX = ") AND closed_at IS NOT NULL"
+_READ_ONLY_URI_SUFFIX = "?mode=ro&uri=true"
+
+
+@dataclass(frozen=True)
+class SessionMirrorFacts:
+    """Session-record facts published for durable mirror attribution."""
+
+    session_id: str
+    computer_name: str
+    active_agent: str | None
+    project_path: str | None
+    subdir: str | None
+    native_log_file: str | None
+    transcript_files: tuple[str, ...]
+    visibility: str | None
+    last_input_origin: str | None
+    adapter_metadata: str | None
+    system_role: str | None
+    command: str | None
+    working_slug: str | None
+    title: str | None
+    initiator_session_id: str | None
+    initiator_computer: str | None
+    initiated_by_ai: bool | None
+    job: str | None
+    created_at: str | None
+    closed_at: str | None
+    identity: SessionRecord
+
+
+def _session_mirror_facts_engine(db_path: str) -> Engine:
+    """Create a read-only engine for session-record publication queries."""
+    uri = f"file:{quote(str(Path(db_path).expanduser().resolve()), safe='/')}{_READ_ONLY_URI_SUFFIX}"
+    return create_sync_db_engine(uri)
+
+
+def _optional_session_fact(value: object) -> str | None:
+    """Normalize an optional scalar fact from SQLite."""
+    return str(value) if value is not None else None
+
+
+def _session_datetime(value: object) -> datetime | None:
+    """Normalize a timestamp into the in-memory session model's type."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
+    """Convert one SQL row into the published session-mirror record."""
+    mapping = row
+    raw_transcripts = mapping["transcript_files"]
+    parsed_transcripts = json.loads(raw_transcripts) if isinstance(raw_transcripts, str) else []
+    transcript_files = tuple(value for value in parsed_transcripts if isinstance(value, str))
+    session_id = str(mapping["session_id"])
+    identity = SessionRecord(
+        session_id=session_id,
+        computer_name=str(mapping["computer_name"] or _EMPTY_SESSION_TEXT),
+        tmux_session_name=_EMPTY_SESSION_TEXT,
+        title=str(mapping["title"] or _EMPTY_SESSION_TEXT),
+        principal=_optional_session_fact(mapping["principal"]),
+        human_email=_optional_session_fact(mapping["human_email"]),
+        human_role=_optional_session_fact(mapping["human_role"]),
+        system_role=_optional_session_fact(mapping["system_role"]),
+        working_slug=_optional_session_fact(mapping["working_slug"]),
+        closed_at=_session_datetime(mapping["closed_at"]),
+    )
+    return SessionMirrorFacts(
+        session_id=session_id,
+        computer_name=str(mapping["computer_name"] or _EMPTY_SESSION_TEXT),
+        active_agent=_optional_session_fact(mapping["active_agent"]),
+        project_path=_optional_session_fact(mapping["project_path"]),
+        subdir=_optional_session_fact(mapping["subdir"]),
+        native_log_file=_optional_session_fact(mapping["native_log_file"]),
+        transcript_files=transcript_files,
+        visibility=_optional_session_fact(mapping["visibility"]),
+        last_input_origin=_optional_session_fact(mapping["last_input_origin"]),
+        adapter_metadata=_optional_session_fact(mapping["adapter_metadata"]),
+        system_role=_optional_session_fact(mapping["system_role"]),
+        command=_optional_session_fact(mapping["command"]),
+        working_slug=_optional_session_fact(mapping["working_slug"]),
+        title=_optional_session_fact(mapping["title"]),
+        initiator_session_id=_optional_session_fact(mapping["initiator_session_id"]),
+        initiator_computer=_optional_session_fact(mapping["initiator_computer"]),
+        initiated_by_ai=(bool(mapping["initiated_by_ai"]) if mapping["initiated_by_ai"] is not None else None),
+        job=_optional_session_fact(mapping["job"]),
+        created_at=str(mapping["created_at"]) if mapping["created_at"] is not None else None,
+        closed_at=str(mapping["closed_at"]) if mapping["closed_at"] is not None else None,
+        identity=identity,
+    )
+
+
+def get_session_mirror_facts_sync(
+    db_path: str, *, session_id: str | None = None, transcript_path: str | None = None
+) -> SessionMirrorFacts | None:
+    """Resolve one session by its TeleClaude id or any transcript in its chain."""
+    if not session_id and not transcript_path:
+        return None
+    engine = _session_mirror_facts_engine(db_path)
+    try:
+        with engine.connect() as connection:
+            row = (
+                connection.execute(
+                    text(_SESSION_MIRROR_FACTS_SQL),  # guard: raw-sql
+                    {"session_id": session_id, "transcript_path": transcript_path},
+                )
+                .mappings()
+                .first()
+            )
+            return _session_mirror_facts(row) if row is not None else None
+    except OperationalError as exc:
+        if _NO_SUCH_TABLE_ERROR in str(exc).lower():
+            return None
+        raise
+    finally:
+        engine.dispose()
+
+
+def list_session_mirror_facts_sync(db_path: str) -> list[SessionMirrorFacts]:
+    """Read every session record with at least one current or predecessor transcript."""
+    engine = _session_mirror_facts_engine(db_path)
+    try:
+        with engine.connect() as connection:
+            rows = connection.execute(text(_SESSION_MIRROR_FACTS_LIST_SQL)).mappings().all()  # guard: raw-sql
+            return [_session_mirror_facts(row) for row in rows]
+    except OperationalError as exc:
+        if _NO_SUCH_TABLE_ERROR in str(exc).lower():
+            return []
+        raise
+    finally:
+        engine.dispose()
+
+
+def get_session_closed_at_sync(db_path: str, session_ids: Sequence[str]) -> dict[str, str]:
+    """Return close timestamps for the requested session records that have closed."""
+    if not session_ids:
+        return {}
+    placeholders = ",".join("?" for _ in session_ids)
+    engine = _session_mirror_facts_engine(db_path)
+    try:
+        with engine.connect() as connection:
+            rows = connection.exec_driver_sql(
+                f"{_SESSION_CLOSES_SQL_PREFIX}{placeholders}{_SESSION_CLOSES_SQL_SUFFIX}",
+                tuple(session_ids),
+            ).fetchall()
+            return {str(session_id): str(closed_at) for session_id, closed_at in rows}
+    except OperationalError as exc:
+        if _NO_SUCH_TABLE_ERROR in str(exc).lower():
+            return {}
+        raise
+    finally:
+        engine.dispose()
 
 
 def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | None:

@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
-from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.paths import MAIN_DB_PATH, MIRRORS_BACKUP_DIR
 from teleclaude.utils.transcript_discovery import (
     SessionId,
     classify_transcript,
@@ -30,7 +32,6 @@ _ADD_COLUMN_STATEMENTS: tuple[str, ...] = (
     "ALTER TABLE mirrors ADD COLUMN human_email TEXT",
     "ALTER TABLE mirrors ADD COLUMN visibility TEXT DEFAULT 'private'",
     "ALTER TABLE mirrors ADD COLUMN command TEXT",
-    "ALTER TABLE mirrors ADD COLUMN slug TEXT",
     "ALTER TABLE mirrors ADD COLUMN is_worker INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE mirrors ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 0",
 )
@@ -53,9 +54,10 @@ _MISSING_COLUMN_ERROR = "no such column"
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
 _DATA_REVISION = 6
+LATEST_DATA_REVISION = 7
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
-_WRITE_DATA_REVISION_SQL = f"PRAGMA user_version = {_DATA_REVISION}"
+_WRITE_DATA_REVISION_SQL = "PRAGMA user_version = {}"
 
 _DATABASE_LOCKED_ERROR = "database is locked"
 _SESSION_ID_REKEY_FAILED_EVENT = "mirror.session_id_rekey_failed"
@@ -211,7 +213,11 @@ END;
 """
 
 
-def migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
+def migrate_add_mirror_columns(
+    conn: sqlite3.Connection,
+    store_path: str,
+    backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
     """Idempotently bring mirrors schema and derived fields to the current contract."""
     _rename_agent_spawn_column(conn)
     for stmt in _ADD_COLUMN_STATEMENTS:
@@ -223,10 +229,14 @@ def migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
     for index_stmt in _INDEX_STATEMENTS:
         conn.execute(index_stmt)
     conn.execute(_CREATE_UNREPROJECTABLE_SOURCES_SQL)
-    _converge_derived_data(conn)
+    _converge_derived_data(conn, store_path, backfill_session_attributions)
 
 
-def _converge_derived_data(conn: sqlite3.Connection) -> None:
+def _converge_derived_data(
+    conn: sqlite3.Connection,
+    store_path: str,
+    backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
     """Realign derived columns once per store, not once per process.
 
     Skips entirely when the store already records this revision, so the common path is
@@ -235,17 +245,130 @@ def _converge_derived_data(conn: sqlite3.Connection) -> None:
     revision is left unset and the work is simply retried on a later open. A reader must
     never fail because convergence could not run.
     """
-    if int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0]) >= _DATA_REVISION:
-        return
+    migrations: tuple[
+        tuple[int, Callable[[sqlite3.Connection, str, Callable[[sqlite3.Connection, str, Path], None]], None]], ...
+    ] = (
+        (6, _migrate_revision_6),
+        (7, _migrate_revision_7),
+    )
+    current_revision = int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0])
+    for revision, migration in migrations:
+        if current_revision >= revision:
+            continue
+        try:
+            migration(conn, store_path, backfill_session_attributions)
+            conn.execute(_WRITE_DATA_REVISION_SQL.format(revision))
+            current_revision = revision
+        except sqlite3.OperationalError as exc:
+            if _DATABASE_LOCKED_ERROR not in str(exc).lower():
+                raise
+            return
+
+
+def _migrate_revision_6(
+    conn: sqlite3.Connection,
+    _store_path: str,
+    _backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
+    """Apply the original derived-data convergence as one ordered migration step."""
+    migrate_nullable_session_id(conn)
+    reconcile_mirror_records(conn)
+    reconcile_transcript_session_ids(conn)
+    reconcile_mirror_projects(conn)
+    conn.executescript(_CREATE_SESSION_ID_GUARDS_SQL)
+
+
+_SNAPSHOT_PREFIX = "mirrors-"
+_SNAPSHOT_SUFFIX = ".db"
+_SNAPSHOT_SQL_PREFIX = "VACUUM INTO '"
+_SNAPSHOT_SQL_SUFFIX = "'"
+_RENAME_SESSION_ID_SQL = "ALTER TABLE mirrors RENAME COLUMN session_id TO native_session_id"
+_RENAME_PROJECT_SQL = "ALTER TABLE mirrors RENAME COLUMN project TO project_path"
+_RENAME_SLUG_SQL = "ALTER TABLE mirrors RENAME COLUMN slug TO todo"
+_ADD_SESSION_COLUMN_SQL = "ALTER TABLE mirrors ADD COLUMN session INTEGER"
+_ADD_POSITION_COLUMN_SQL = "ALTER TABLE mirrors ADD COLUMN position INTEGER"
+_CREATE_MIRROR_SESSIONS_SQL = """\
+CREATE TABLE IF NOT EXISTS mirror_sessions (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT UNIQUE NOT NULL,
+    principal TEXT,
+    project TEXT,
+    subdir TEXT,
+    initiator_session_id TEXT,
+    initiator_computer TEXT,
+    initiated_by_ai INTEGER,
+    job TEXT,
+    started_at TEXT,
+    closed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+_CREATE_SESSION_ATTRIBUTION_INDEXES_SQL = """\
+CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project_path);
+CREATE INDEX IF NOT EXISTS idx_mirrors_session ON mirrors(session);
+CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email);
+CREATE INDEX IF NOT EXISTS idx_mirrors_is_worker ON mirrors(is_worker);
+CREATE INDEX IF NOT EXISTS idx_mirror_sessions_principal ON mirror_sessions(principal);
+CREATE INDEX IF NOT EXISTS idx_mirror_sessions_project ON mirror_sessions(project)
+"""
+_DROP_OLD_SESSION_ID_GUARDS_SQL = """\
+DROP TRIGGER IF EXISTS mirrors_session_id_guard_insert;
+DROP TRIGGER IF EXISTS mirrors_session_id_guard_update
+"""
+_CREATE_NATIVE_SESSION_ID_GUARDS_SQL = _CREATE_SESSION_ID_GUARDS_SQL.replace("session_id", "native_session_id")
+
+
+def _migrate_revision_7(
+    conn: sqlite3.Connection,
+    store_path: str,
+    backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
+    """Snapshot the durable store, then move mirrors to the attribution schema."""
+    snapshot_path = _snapshot_mirrors_store(conn, store_path)
+    _rename_column(conn, _RENAME_SESSION_ID_SQL)
+    _rename_column(conn, _RENAME_PROJECT_SQL)
+    _rename_column(conn, _RENAME_SLUG_SQL)
+    for statement in (_ADD_SESSION_COLUMN_SQL, _ADD_POSITION_COLUMN_SQL):
+        _add_column(conn, statement)
+    create_current_attribution_schema(conn)
+    backfill_session_attributions(conn, store_path, snapshot_path)
+
+
+def create_current_attribution_schema(conn: sqlite3.Connection) -> None:
+    """Create attribution objects for a fresh store at the current schema."""
+    conn.execute(_CREATE_MIRROR_SESSIONS_SQL)
+    conn.executescript(_CREATE_SESSION_ATTRIBUTION_INDEXES_SQL)
+    conn.executescript(_DROP_OLD_SESSION_ID_GUARDS_SQL)
+    conn.executescript(_CREATE_NATIVE_SESSION_ID_GUARDS_SQL)
+
+
+def _snapshot_mirrors_store(conn: sqlite3.Connection, store_path: str) -> Path:
+    """Write a timestamped snapshot before the migration mutates the store."""
+    MIRRORS_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    snapshot_path = MIRRORS_BACKUP_DIR / f"{_SNAPSHOT_PREFIX}{timestamp}{_SNAPSHOT_SUFFIX}"
+    escaped_path = str(snapshot_path).replace("'", "''")
+    conn.commit()
+    conn.execute(f"{_SNAPSHOT_SQL_PREFIX}{escaped_path}{_SNAPSHOT_SQL_SUFFIX}")
+    return snapshot_path
+
+
+def _rename_column(conn: sqlite3.Connection, statement: str) -> None:
+    """Rename one owned column, accepting only the already-renamed shape."""
     try:
-        migrate_nullable_session_id(conn)
-        reconcile_mirror_records(conn)
-        reconcile_transcript_session_ids(conn)
-        reconcile_mirror_projects(conn)
-        conn.executescript(_CREATE_SESSION_ID_GUARDS_SQL)
-        conn.execute(_WRITE_DATA_REVISION_SQL)
+        conn.execute(statement)
     except sqlite3.OperationalError as exc:
-        if _DATABASE_LOCKED_ERROR not in str(exc).lower():
+        if _MISSING_COLUMN_ERROR not in str(exc).lower():
+            raise
+
+
+def _add_column(conn: sqlite3.Connection, statement: str) -> None:
+    """Add one migration-owned column, accepting only an already-added column."""
+    try:
+        conn.execute(statement)
+    except sqlite3.OperationalError as exc:
+        if _DUPLICATE_COLUMN_ERROR not in str(exc).lower():
             raise
 
 

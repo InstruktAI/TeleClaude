@@ -1,107 +1,153 @@
-"""Session-record lookup for mirror classification.
-
-Resolves the main ``teleclaude.db`` ``sessions`` row a mirror's classification,
-command, slug, and title come from — the sole source ``generator.py``,
-``worker.py``, and ``processors.py`` consult before generating or realigning a
-mirror.
-"""
+"""Resolve session-record facts used to classify and attribute mirror writes."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from sqlalchemy import Engine, text
-from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
+from enum import StrEnum
+from pathlib import Path
 
 from teleclaude import paths as tc_paths
-from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.core.db._sync import (
+    SessionIdentityError,
+    SessionMirrorFacts,
+    get_session_mirror_facts_sync,
+    resolve_session_principal,
+)
+from teleclaude.core.models._adapter import SessionAdapterMetadata
+from teleclaude.services.project_catalog import get_project_catalog_service
 
-from .store import _is_missing_table_error, _optional_str, _read_only_sqlite_uri
+_ADAPTER_ORIGINS = frozenset({"telegram", "discord", "whatsapp"})
 
-_main_ro_engines: dict[str, Engine] = {}
+
+class MirrorAttributionReason(StrEnum):
+    """Why a transcript path resolved to its attributed session."""
+
+    CURRENT = "current_transcript"
+    CHAIN = "chain_transcript"
+    NO_RECORD = "no_record"
 
 
 @dataclass(frozen=True)
 class SessionMirrorContext:
-    """Lightweight session context looked up for mirror reconciliation."""
+    """Resolved session facts shared by reconciliation, fan-out, and backfill."""
 
     session_id: str
     computer: str
     agent: str | None
-    project: str
+    project_path: str
     transcript_path: str | None
-    human_email: str | None = None
-    visibility: str | None = None
-    last_input_origin: str | None = None
-    adapter_metadata_json: str | None = None
-    system_role: str | None = None
-    command: str | None = None
-    working_slug: str | None = None
-    title: str | None = None
+    human_email: str | None
+    visibility: str | None
+    last_input_origin: str | None
+    adapter_metadata_json: str | None
+    system_role: str | None
+    command: str | None
+    todo: str | None
+    title: str | None
+    subdir: str | None
+    initiator_session_id: str | None
+    initiator_computer: str | None
+    initiated_by_ai: bool | None
+    job: str | None
+    created_at: str | None
+    closed_at: str | None
+    position: int | None
+    reason: MirrorAttributionReason
+    principal: str | None
+    project: str | None
+    channel_identifiers: dict[str, str]
 
 
-def _get_main_ro_engine() -> Engine:
-    """Return the cached read-only main teleclaude.db engine for session lookups."""
-    target = _read_only_sqlite_uri(str(tc_paths.MAIN_DB_PATH.resolve()))
-    engine = _main_ro_engines.get(target)
-    if engine is None:
-        engine = create_sync_db_engine(target)
-        _main_ro_engines[target] = engine
-    return engine
+def _extract_channel_identifiers(origin: str | None, raw_json: str | None) -> dict[str, str]:
+    """Extract platform identifiers from the session's adapter metadata."""
+    if not origin or origin not in _ADAPTER_ORIGINS or not raw_json:
+        return {}
+    try:
+        adapter = SessionAdapterMetadata.from_json(raw_json)
+    except (ValueError, KeyError, TypeError):
+        return {}
+    identifiers: dict[str, str] = {}
+    ui = adapter.get_ui()
+    if origin == "telegram":
+        telegram = ui.telegram
+        if telegram and telegram.user_id is not None:
+            identifiers["user_id"] = str(telegram.user_id)
+    elif origin == "discord":
+        discord = ui.discord
+        if discord:
+            if discord.user_id is not None:
+                identifiers["user_id"] = discord.user_id
+            if discord.channel_id is not None:
+                identifiers["channel_id"] = str(discord.channel_id)
+    elif origin == "whatsapp":
+        whatsapp = ui.whatsapp
+        if whatsapp and whatsapp.phone_number is not None:
+            identifiers["phone_number"] = whatsapp.phone_number
+    return identifiers
+
+
+def _position_for_transcript(facts: SessionMirrorFacts, transcript_path: str | None) -> int | None:
+    """Return the transcript's chain position, placing the current transcript last."""
+    if transcript_path is None:
+        return None
+    if transcript_path == facts.native_log_file:
+        return len(facts.transcript_files)
+    try:
+        return facts.transcript_files.index(transcript_path)
+    except ValueError:
+        return None
+
+
+def session_context_from_facts(facts: SessionMirrorFacts, transcript_path: str | None) -> SessionMirrorContext:
+    """Build the one canonical mirror context from published session facts."""
+    try:
+        principal, _role = resolve_session_principal(facts.identity)
+    except SessionIdentityError:
+        principal = None
+    project = None
+    if facts.project_path:
+        project_record = get_project_catalog_service().get_by_root(Path(facts.project_path))
+        if project_record is not None:
+            project = project_record.slug
+    reason = (
+        MirrorAttributionReason.CURRENT if transcript_path == facts.native_log_file else MirrorAttributionReason.CHAIN
+    )
+    return SessionMirrorContext(
+        session_id=facts.session_id,
+        computer=facts.computer_name,
+        agent=facts.active_agent,
+        project_path=facts.project_path or "",
+        transcript_path=transcript_path or facts.native_log_file,
+        human_email=facts.identity.human_email,
+        visibility=facts.visibility,
+        last_input_origin=facts.last_input_origin,
+        adapter_metadata_json=facts.adapter_metadata,
+        system_role=facts.system_role,
+        command=facts.command,
+        todo=facts.working_slug,
+        title=facts.title,
+        subdir=facts.subdir,
+        initiator_session_id=facts.initiator_session_id,
+        initiator_computer=facts.initiator_computer,
+        initiated_by_ai=facts.initiated_by_ai,
+        job=facts.job,
+        created_at=facts.created_at,
+        closed_at=facts.closed_at,
+        position=_position_for_transcript(facts, transcript_path),
+        reason=reason,
+        principal=principal,
+        project=project,
+        channel_identifiers=_extract_channel_identifiers(facts.last_input_origin, facts.adapter_metadata),
+    )
 
 
 def get_session_context(
-    *,
-    session_id: str | None = None,
-    transcript_path: str | None = None,
+    *, session_id: str | None = None, transcript_path: str | None = None
 ) -> SessionMirrorContext | None:
-    """Look up a session row from the main DB by session id or transcript path."""
-    if not session_id and not transcript_path:
-        return None
-
-    clauses: list[str] = []
-    params: dict[str, object] = {  # guard: loose-dict - session lookup binds depend on provided selectors.
-        "order_session_id": session_id or ""
-    }
-    if session_id:
-        clauses.append("session_id = :session_id")
-        params["session_id"] = session_id
-    if transcript_path:
-        clauses.append("native_log_file = :transcript_path")
-        params["transcript_path"] = transcript_path
-    sql = f"""
-        SELECT session_id, computer_name, active_agent, project_path, native_log_file,
-               human_email, visibility, last_input_origin, adapter_metadata,
-               system_role, command, working_slug, title
-        FROM sessions
-        WHERE {" OR ".join(clauses)}
-        ORDER BY CASE WHEN session_id = :order_session_id THEN 0 ELSE 1 END, created_at DESC
-        LIMIT 1
-    """
-
-    try:
-        with _get_main_ro_engine().connect() as conn:
-            row = conn.execute(text(sql), params).mappings().first()
-    except SqlAlchemyOperationalError as exc:
-        if _is_missing_table_error(exc):
-            return None
-        raise
-
-    if row is None:
-        return None
-
-    return SessionMirrorContext(
-        session_id=str(row["session_id"]),
-        computer=str(row["computer_name"] or ""),
-        agent=_optional_str(row.get("active_agent")),
-        project=str(row["project_path"] or ""),
-        transcript_path=_optional_str(row.get("native_log_file")),
-        human_email=_optional_str(row.get("human_email")),
-        visibility=_optional_str(row.get("visibility")),
-        last_input_origin=_optional_str(row.get("last_input_origin")),
-        adapter_metadata_json=_optional_str(row.get("adapter_metadata")),
-        system_role=_optional_str(row.get("system_role")),
-        command=_optional_str(row.get("command")),
-        working_slug=_optional_str(row.get("working_slug")),
-        title=_optional_str(row.get("title")),
+    """Look up a session record by TeleClaude id or any transcript in its chain."""
+    facts = get_session_mirror_facts_sync(
+        str(tc_paths.MAIN_DB_PATH),
+        session_id=session_id,
+        transcript_path=transcript_path,
     )
+    return session_context_from_facts(facts, transcript_path) if facts is not None else None

@@ -45,7 +45,6 @@ from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
-from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
 
 if TYPE_CHECKING:
@@ -118,7 +117,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         """Observer-only handler for session_closed events.
 
         SESSION_CLOSED is a fact: the session record is now closed in DB.
-        This handler cleans up in-memory state and dispatches mirror cleanup. It MUST NOT call
+        This handler cleans up in-memory state. It MUST NOT call
         terminate_session — doing so causes duplicate channel deletion
         (Topic_id_invalid). The close-intent path is SESSION_CLOSE_REQUESTED.
 
@@ -143,10 +142,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             await clear_active_runner_for_session_end(db, ctx.session_id)
         except Exception as exc:
             logger.error("Workflow active_runner clear failed for session %s: %s", ctx.session_id, exc, exc_info=True)
-        try:
-            await handle_mirror_session_closed(ctx)
-        except Exception as exc:
-            logger.error("Mirror SESSION_CLOSED handler failed: %s", exc, exc_info=True)
 
     async def _handle_session_close_requested(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_close_requested events — performs termination exactly once.
