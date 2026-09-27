@@ -11,7 +11,7 @@ from typing import Any, Final
 from ruamel.yaml import YAML
 
 from teleclaude.config._file_io import file_transaction
-from teleclaude.config.schema import ConfigKind
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, ConfigKind
 
 HOME_SCHEMA_DIRECTORY: Final = "schemas"
 PROJECT_SCHEMA_LINK_DIRECTORY: Final = ".teleclaude/schemas"
@@ -19,6 +19,7 @@ _SCHEMA_MODELINE_PREFIX: Final = "# yaml-language-server: $schema="
 _UTF8: Final = "utf-8"
 _NEWLINE: Final = "\n"
 _KIND_FIELD: Final = "kind"
+_SCHEMA_VERSION_FIELD: Final = "schema_version"
 _EMPTY_TEXT: Final = ""
 _SCHEMA_FILENAMES: Final[dict[ConfigKind, str]] = {
     ConfigKind.GLOBAL: "teleclaude-global.schema.json",
@@ -65,6 +66,7 @@ def _render_document(kind: ConfigKind, document: Mapping[str, object], modeline:
     declared_document: Any = document.copy() if isinstance(document, dict) else dict(document)
     _strip_schema_modelines(declared_document)
     declared_document[_KIND_FIELD] = kind.value
+    declared_document[_SCHEMA_VERSION_FIELD] = CURRENT_SCHEMA_VERSION
     return _render_yaml(declared_document, modeline)
 
 

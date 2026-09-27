@@ -7,21 +7,23 @@ import os
 import shutil
 from pathlib import Path
 
-import yaml
 from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
 from teleclaude.config import config
-from teleclaude.config._models import ReleaseChannel
-from teleclaude.config.advancement import advance_reachable_roots
-from teleclaude.config.declaration import write_declared_config
-from teleclaude.config.machine_config_mutation import add_trusted_directory, set_deployment
-from teleclaude.config.schema import ConfigKind
+from teleclaude.config._file_io import file_transaction
+from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.machine_config_mutation import add_trusted_directory
+from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
+from teleclaude.config.migrations._registry import registered_subject
+from teleclaude.config.schema import ConfigKind, ProjectConfig
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.git import Repo
-from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
+from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
@@ -43,6 +45,10 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
+
+
+def _ignore_migration_delivery(_destination: Destination) -> None:
+    """Keep migration destinations outside project setup's return value."""
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:
@@ -82,74 +88,32 @@ def _inferred_capabilities(project_root: Path) -> dict[CapabilityName, bool]:
     }
 
 
-def _declare_inferred_capabilities(project_root: Path) -> Capabilities:
+def _declare_inferred_capabilities(
+    project_root: Path,
+    undeclared_capabilities: frozenset[CapabilityName],
+) -> Capabilities:
     """Materialize missing capability declarations while preserving explicit edits."""
     manifest_path = project_root / ConfigFileName.OVERLAY
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-    raw = yaml_rt.load(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raw = {}
-
-    changed = False
-    for capability, enabled in _inferred_capabilities(project_root).items():
-        if capability.value in raw:
-            continue
-        raw[capability.value] = {_ENABLED_KEY: enabled}
-        changed = True
-    if changed:
-        write_declared_config(manifest_path, ConfigKind.PROJECT, raw)
+    subject = registered_subject(manifest_path)
+    if subject is None or subject.kind is not ConfigSubjectKind.PROJECT:
+        raise ValueError(f"Project configuration is not registered: {manifest_path}")
+    with file_transaction(manifest_path) as transaction:
+        stored = round_trip_yaml().load(transaction.read_text(encoding="utf-8"))
+        if not isinstance(stored, dict):
+            raise ValueError(f"Project configuration must be a YAML mapping: {manifest_path}")
+        raw = dict(upcast(stored, subject))
+        changed = False
+        inferred = _inferred_capabilities(project_root)
+        for capability in undeclared_capabilities:
+            if capability.value in raw:
+                continue
+            raw[capability.value] = {_ENABLED_KEY: inferred[capability]}
+            changed = True
+        if changed:
+            ProjectConfig.model_validate({**raw, "kind": ConfigKind.PROJECT.value})
+            carry_pending(stored, subject, delivered=_ignore_migration_delivery)
+            transaction.replace_text(render_declared_config(ConfigKind.PROJECT, raw))
     return resolve_capabilities(project_root)
-
-
-def migrate_legacy_deployment_channel(source_path: Path) -> bool:
-    """Fold a legacy ``deployment:`` block from a ``teleclaude.yml`` into machine ``config.yml``.
-
-    The release channel moved from the per-project config to the machine config, so
-    a ``deployment:`` block in an existing project/global ``teleclaude.yml`` is now
-    inert. Fold it into the machine config (the user's explicit channel wins over
-    the seeded default) and strip the legacy key from the source so it never
-    silently shadows the machine surface again. Returns whether a migration ran.
-    """
-    if not source_path.exists():
-        return False
-    ryaml = YAML()
-    ryaml.preserve_quotes = True
-    try:
-        source_doc = ryaml.load(source_path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError) as exc:
-        logger.warning("Could not read %s for deployment migration: %s", source_path, exc)
-        return False
-    if not isinstance(source_doc, dict) or "deployment" not in source_doc:
-        return False
-
-    legacy = source_doc.get("deployment")
-    if isinstance(legacy, dict):
-        channel = str(legacy.get("channel", "alpha") or "alpha")
-        pinned_minor = str(legacy.get("pinned_minor", "") or "")
-        set_deployment(ReleaseChannel(channel), pinned_minor)
-
-    del source_doc["deployment"]
-    source_kind = ConfigKind.GLOBAL if source_path == GLOBAL_CONFIG_PATH else ConfigKind.PROJECT
-    write_declared_config(source_path, source_kind, source_doc)
-    logger.info("Migrated legacy deployment block from %s", source_path)
-    return True
-
-
-def migrate_legacy_deployment_sources(project_root: Path) -> bool:
-    """Fold any legacy ``deployment:`` block from the global and project ``teleclaude.yml``
-    into the machine ``config.yml``.
-
-    Called on the daemon load path before the deployment readers
-    (``config.deployment``) fire, so an existing install whose channel was set in a
-    per-project ``teleclaude.yml`` is migrated to the machine surface rather than
-    silently falling back to the seeded default. Returns whether any source migrated.
-    """
-    migrated = False
-    for source in (GLOBAL_CONFIG_PATH, resolve_project_config_path(project_root)):
-        if migrate_legacy_deployment_channel(source):
-            migrated = True
-    return migrated
 
 
 def _ensure_project_slug(project_root: Path) -> None:
@@ -239,7 +203,20 @@ def init_project(project_root: Path) -> None:
     ensure_git_repo(project_root)
     # Establish the project configuration before the remaining setup steps.
     ensure_project_config(project_root)
-    capabilities = _declare_inferred_capabilities(project_root)
+    invocation_document = round_trip_yaml().load((project_root / ConfigFileName.OVERLAY).read_text(encoding="utf-8"))
+    if not isinstance(invocation_document, dict):
+        raise ValueError(f"Project configuration must be a YAML mapping: {project_root / ConfigFileName.OVERLAY}")
+    undeclared_capabilities = frozenset(
+        capability for capability in CapabilityName if capability.value not in invocation_document
+    )
+    registered_root = resolve_project_root(project_root)
+    register_root(project_root=registered_root)
+    migrate_document(
+        registered_root / ConfigFileName.OVERLAY,
+        SubjectRef(ConfigSubjectKind.PROJECT),
+        MigrationTrigger.REGISTRATION,
+    )
+    capabilities = _declare_inferred_capabilities(project_root, undeclared_capabilities)
     if capabilities.docs:
         update_gitattributes(project_root)
     from teleclaude.project_setup.plumbing import converge_plumbing  # noqa: PLC0415 - avoids entrypoint preload.
@@ -248,10 +225,7 @@ def init_project(project_root: Path) -> None:
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
     _ensure_project_slug(project_root)
-    registered_root = resolve_project_root(project_root)
-    register_root(project_root=registered_root)
     _ensure_trusted_directory(registered_root)
-    advance_reachable_roots()
     seed_event_domains(project_root)
 
     print("telec config project init complete.")

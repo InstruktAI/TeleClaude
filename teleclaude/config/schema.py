@@ -17,6 +17,8 @@ from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTE
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
 
+CURRENT_SCHEMA_VERSION = 8
+
 
 class ConfigKind(StrEnum):
     """Identity declared by each same-named configuration file."""
@@ -579,9 +581,9 @@ class CheckpointConfig(ClosedModel):
 
 
 class CapabilityConfig(ClosedModel):
-    """Subscription state for one project capability."""
+    """Subscription state; an omitted block makes no capability claim."""
 
-    enabled: bool = True
+    enabled: bool = False
 
 
 class ProjectConfig(ClosedModel):
@@ -595,6 +597,7 @@ class ProjectConfig(ClosedModel):
     """
 
     kind: Literal[ConfigKind.PROJECT] = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    schema_version: int = Field(default=CURRENT_SCHEMA_VERSION, ge=0, json_schema_extra={"tier": Tier.INTERNAL})
     project_slug: str | None = None
     project_name: str | None = None
     description: str | None = None
@@ -681,6 +684,7 @@ class GlobalConfig(ClosedModel):
     """
 
     kind: Literal[ConfigKind.GLOBAL] = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    schema_version: int = Field(default=CURRENT_SCHEMA_VERSION, ge=0, json_schema_extra={"tier": Tier.INTERNAL})
     env_allow_list: list[str] = []
     people: list[PersonEntry] = []
     jobs: list[JobScheduleConfig] = []
@@ -720,6 +724,7 @@ class PersonConfig(ClosedModel):
     """Per-person configuration."""
 
     kind: Literal[ConfigKind.PERSON] = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    schema_version: int = Field(default=CURRENT_SCHEMA_VERSION, ge=0, json_schema_extra={"tier": Tier.INTERNAL})
     slug: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
@@ -791,6 +796,7 @@ class CompanyConfig(ClosedModel):
     """
 
     kind: Literal[ConfigKind.COMPANY] = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    schema_version: int = Field(default=CURRENT_SCHEMA_VERSION, ge=0, json_schema_extra={"tier": Tier.INTERNAL})
     name: str | None = None
     slug: str | None = None
     git: str | None = None

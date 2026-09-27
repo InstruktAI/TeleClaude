@@ -1,0 +1,27 @@
+"""The immutable, statically declared configuration migration order."""
+
+from __future__ import annotations
+
+from typing import Final
+
+from teleclaude.config.migrations import (
+    v001_declare_tier_kind,
+    v002_claim_person_slug,
+    v003_relocate_person_invite_token,
+    v004_relocate_legacy_discord_provider_ids,
+    v005_retire_migration_records,
+    v006_declare_machine_kind,
+    v007_drop_business_domains,
+    v008_declare_effective_capabilities,
+)
+
+STEPS: Final = (
+    v001_declare_tier_kind,
+    v002_claim_person_slug,
+    v003_relocate_person_invite_token,
+    v004_relocate_legacy_discord_provider_ids,
+    v005_retire_migration_records,
+    v006_declare_machine_kind,
+    v007_drop_business_domains,
+    v008_declare_effective_capabilities,
+)

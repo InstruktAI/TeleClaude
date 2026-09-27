@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Git wrapper for TeleClaude sessions.
 #
-# Pure bash — no Python, no external deps. Must be fast (<5ms overhead)
-# because shell prompts and hub call git dozens of times per second.
+# The declaration cache hit is pure bash and fork-free; a miss asks this
+# checkout's Python runtime to resolve and publish the declaration view.
+# The common wrapper path must stay fast because prompts and hubs call git often.
 #
 # Permission model for agent sessions (see docs/project/design/code-commit.md
 # for the full operations matrix):
@@ -47,9 +48,9 @@
 # the teleclaude-capabilities.sh declaration reader it sources.
 #
 # Capability ownership: code gates worktree and replay discipline; code or
-# docs gates sealed staging and commit interception. Capability state is read
-# directly from the repository's own teleclaude.yml (no projection); data-only
-# and agents-only repositories pass through to ordinary git.
+# docs gates sealed staging and commit interception. The runtime resolves the
+# repository's own teleclaude.yml; data-only and agents-only repositories pass
+# through to ordinary git.
 
 set -euo pipefail
 
@@ -130,7 +131,8 @@ _real_git() {
 
     # Per-invocation id correlates stderr and end/error lines in WRAPPER_LOG
     # across concurrent git invocations.
-    local _inv_id="$$.$(date +%s).$RANDOM"
+    local _inv_id
+    _inv_id="$$.$(date +%s).$RANDOM"
 
     # stdout passes through unchanged — logging every line of `git log` /
     # `git status` produced too much noise.
@@ -280,11 +282,11 @@ if [ -z "$_toplevel" ] || [ ! -f "$_toplevel/teleclaude.yml" ]; then
     exec "$_real_git_bin" "$@"
 fi
 
-# ── Resolve capabilities by reading the declaration directly ────────────────
-# teleclaude.yml is the only home of capability state — no projection, no
-# marker directory. A declaration the reader cannot resolve refuses the git
-# invocation rather than falling open or closed on it.
-# shellcheck source=teleclaude-capabilities.sh
+# ── Resolve capabilities from the runtime declaration view ─────────────────
+# teleclaude.yml is the source of the declaration; the runtime supplies its
+# current-schema answer and the dependency stamps checked by the cache hit.
+# A declaration the reader cannot resolve refuses the git invocation.
+# shellcheck source=teleclaude/install/wrappers/teleclaude-capabilities.sh
 source "$SCRIPT_DIR/teleclaude-capabilities.sh"
 if ! teleclaude_read_declaration "$_toplevel/teleclaude.yml"; then
     _log_block declaration_unreadable

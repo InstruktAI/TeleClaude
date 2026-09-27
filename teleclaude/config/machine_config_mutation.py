@@ -7,18 +7,17 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
 from io import StringIO
+from typing import cast
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.config import DEFAULT_CONFIG, TeleclaudeConfig, build_config_from_raw, config_path
 from teleclaude.config._file_io import FileTransaction, file_transaction
-from teleclaude.config._file_migrations import (
-    LegacyDiscordProviderIds,
-    contains_legacy_discord_provider_fields,
-    partition_legacy_discord_provider_ids,
-)
 from teleclaude.config._models import ReleaseChannel
 from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.migrations import CURRENT_VERSION, Destination, carry_pending, upcast
+from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.revision import StaleRevision, view_revision
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 
 _DOCUMENT_MAPPING_ERROR = "Machine configuration must be a YAML mapping."
 _MISSING_CONFIG_ERROR = "Machine configuration does not exist."
@@ -36,8 +35,10 @@ _AGENTS = "agents"
 _DEFAULT = "default"
 _ENABLED = "enabled"
 _KIND = "kind"
-_RETIRED_PROVIDER_FIELD_ERROR = "Retired Discord provider identifiers are not valid machine-config input."
+_SCHEMA_VERSION = "schema_version"
+_READ_ONLY_SCHEMA_VERSION_ERROR = "Machine configuration `schema_version` is read-only."
 _READ_ONLY_DECLARATION_ERROR = "Machine configuration `kind` is read-only; persisting it is outside this mutation path."
+_COMPUTER_SUBJECT = SubjectRef(ConfigSubjectKind.COMPUTER)
 
 
 class ReadOnlyDeclaration(ValueError):
@@ -53,7 +54,6 @@ class MachineConfigOperation(StrEnum):
     TRUSTED_DIRECTORY = "trusted_directory"
     DEPLOYMENT = "deployment"
     AGENTS = "agents"
-    LEGACY_DISCORD_CLEANUP = "legacy_discord_cleanup"
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,6 @@ class MachineConfigInspection:
     """Current-schema view of the committed machine-config document."""
 
     raw: Mapping[object, object]
-    legacy_discord_provider_ids: LegacyDiscordProviderIds
     revision: str
 
 
@@ -76,34 +75,40 @@ class MachineConfigMutationResult:
 
 
 def _computed_revision(raw: Mapping[object, object]) -> str:
-    """Compute the machine subject's revision over its raw document, excluding `kind`."""
-    return view_revision({_COMPUTER: {key: value for key, value in raw.items() if key != "kind"}})
+    """Compute the machine subject's revision over its read-only metadata-free view."""
+    return view_revision({_COMPUTER: {key: value for key, value in raw.items() if key not in {_KIND, _SCHEMA_VERSION}}})
 
 
 def inspect_machine_config() -> MachineConfigInspection:
     """Read the machine configuration without requiring effective-config construction."""
     with file_transaction(config_path) as transaction:
-        raw = _read_mapping(transaction)
-    projected, legacy = partition_legacy_discord_provider_ids(raw)
-    return MachineConfigInspection(raw=projected, legacy_discord_provider_ids=legacy, revision=_computed_revision(raw))
+        stored = _read_mapping(transaction)
+    raw = cast(
+        Mapping[object, object],
+        upcast_for_read(config_path, cast(Mapping[str, object], stored), subject=_COMPUTER_SUBJECT),
+    )
+    return MachineConfigInspection(raw=raw, revision=_computed_revision(raw))
 
 
 def patch_machine_config(patch: Mapping[object, object]) -> MachineConfigMutationResult:
     """Merge a semantic patch into the latest committed machine configuration."""
-    _reject_retired_provider_fields(patch)
+    _reject_schema_version_write(patch)
     return _mutate(MachineConfigOperation.PATCH, lambda raw: _deep_merge(raw, patch))
 
 
 def patch_machine_config_at(
     patch: Mapping[object, object],
     expected_revision: str,
+    *,
+    delivered: Callable[[Destination], None] | None = None,
 ) -> MachineConfigMutationResult:
     """Merge a semantic patch only when the committed document matches `expected_revision`."""
-    _reject_retired_provider_fields(patch)
+    _reject_schema_version_write(patch)
     return _mutate(
         MachineConfigOperation.PATCH,
         lambda raw: _deep_merge(raw, patch),
         expected_revision=expected_revision,
+        delivered=delivered,
     )
 
 
@@ -114,8 +119,8 @@ def remove_machine_config_fields(field_paths: tuple[tuple[str, ...], ...]) -> Ma
 
 def set_machine_field(field_path: tuple[str, ...], value: object) -> MachineConfigMutationResult:
     """Set one typed field through the config-owned transaction."""
-    if _is_retired_provider_field(field_path):
-        raise ValueError(_RETIRED_PROVIDER_FIELD_ERROR)
+    if field_path and field_path[0] == _SCHEMA_VERSION:
+        raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
     return _mutate(MachineConfigOperation.FIELD, lambda raw: _set_sparse_field(raw, field_path, value))
 
 
@@ -142,14 +147,8 @@ def configure_agents(
     return _mutate(MachineConfigOperation.AGENTS, lambda raw: _configure_agents(raw, enabled, default_agent))
 
 
-def legacy_discord_provider_ids() -> LegacyDiscordProviderIds:
-    """Expose retained legacy provider identifiers for the integration migration."""
-    return inspect_machine_config().legacy_discord_provider_ids
-
-
-def clear_legacy_discord_provider_ids() -> MachineConfigMutationResult:
-    """Remove retired provider identifiers after the integration owner reports durable import."""
-    return _mutate(MachineConfigOperation.LEGACY_DISCORD_CLEANUP, lambda raw: _clear_legacy_discord_provider_ids(raw))
+def _ignore_delivery(_destination: Destination) -> None:
+    """Keep migration destinations outside mutation outcomes for non-resource callers."""
 
 
 def _mutate(
@@ -157,36 +156,34 @@ def _mutate(
     mutation: Callable[[dict[object, object]], dict[object, object]],
     *,
     expected_revision: str | None = None,
+    delivered: Callable[[Destination], None] | None = None,
 ) -> MachineConfigMutationResult:
     """Apply one mutation under the stable file lock and validate before replacement."""
     with file_transaction(config_path) as transaction:
-        committed = _read_mapping(transaction)
+        stored = _read_mapping(transaction)
+        committed = cast(dict[object, object], upcast(cast(Mapping[str, object], stored), _COMPUTER_SUBJECT))
         if expected_revision is not None:
-            actual_revision = _computed_revision(committed)
+            actual_revision = _computed_revision(cast(Mapping[object, object], committed))
             if actual_revision != expected_revision:
                 raise StaleRevision(expected=expected_revision, actual=actual_revision)
-        candidate = mutation(deepcopy(committed))
+        candidate = mutation(deepcopy(dict(committed)))
         if candidate.get(_KIND) != committed.get(_KIND):
             raise ReadOnlyDeclaration(_READ_ONLY_DECLARATION_ERROR)
-        projected, _ = partition_legacy_discord_provider_ids(candidate)
-        resolved = build_config_from_raw(projected, config_path.parent, config_source=config_path)
+        if candidate.get(_SCHEMA_VERSION) != committed.get(_SCHEMA_VERSION):
+            raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
+        candidate[_SCHEMA_VERSION] = CURRENT_VERSION
+        resolved = build_config_from_raw(candidate, config_path.parent, config_source=config_path)
+        carry_pending(cast(Mapping[str, object], stored), _COMPUTER_SUBJECT, delivered=delivered or _ignore_delivery)
         _write_mapping(transaction, candidate)
     return MachineConfigMutationResult(
         operation=operation, raw=candidate, resolved=resolved, revision=_computed_revision(candidate)
     )
 
 
-def _reject_retired_provider_fields(patch: Mapping[object, object]) -> None:
-    """Keep current-schema mutation candidates distinct from retained stored legacy state."""
-    if contains_legacy_discord_provider_fields(patch):
-        raise ValueError(_RETIRED_PROVIDER_FIELD_ERROR)
-
-
-def _is_retired_provider_field(field_path: tuple[str, ...]) -> bool:
-    """Return whether a direct field operation targets a retired provider identifier."""
-    patch: dict[object, object] = {}
-    _set_field(patch, field_path, None)
-    return contains_legacy_discord_provider_fields(patch)
+def _reject_schema_version_write(patch: Mapping[object, object]) -> None:
+    """Keep schema version under the migration list's write authority."""
+    if _SCHEMA_VERSION in patch:
+        raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
 
 
 def _read_mapping(transaction: FileTransaction) -> dict[object, object]:
@@ -332,9 +329,3 @@ def _configure_agents(
             raise ValueError(_INVALID_FIELD_PATH_ERROR)
         entry[_ENABLED] = is_enabled
     return raw
-
-
-def _clear_legacy_discord_provider_ids(raw: dict[object, object]) -> dict[object, object]:
-    """Persist the projected current-schema document after durable reflection import."""
-    projected, _ = partition_legacy_discord_provider_ids(raw)
-    return projected

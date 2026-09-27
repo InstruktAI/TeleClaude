@@ -822,15 +822,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("Starting TeleClaude daemon...")
         logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
-            # Fold any legacy per-project/global `deployment:` block into the machine
-            # config before the deployment readers (`config.deployment`) fire, then
-            # reload so an existing install's channel reaches runtime rather than
-            # silently falling back to the seeded default.
-            from teleclaude.project_setup.init_flow import migrate_legacy_deployment_sources
-
-            if migrate_legacy_deployment_sources(Path(WORKING_DIR)):
-                reload_config()
-
             await self.lifecycle.startup()
 
             startup_elapsed = time.perf_counter() - daemon_start_started_at

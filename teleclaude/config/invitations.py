@@ -6,17 +6,21 @@ token-issuance/lookup rules that used to live in the CLI layer.
 
 from __future__ import annotations
 
-import json
 import secrets
+from collections.abc import Mapping
+from hashlib import sha256
 
 from instrukt_ai_logging import get_logger
 from ruamel.yaml.error import YAMLError
 
-from teleclaude.config._file_io import file_transaction
-from teleclaude.config._file_migrations import move_person_invite_token
+from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.invitation_store import delete_invitation as _delete_invitation
+from teleclaude.config.invitation_store import load_invitations, save_invitations
 from teleclaude.config.loader import load_person_config
+from teleclaude.config.migrations import Destination, MigrationOutcome, MigrationTrigger, in_transit, migrate_document
 from teleclaude.config.schema import PersonConfig
-from teleclaude.paths import INVITATIONS_PATH, PEOPLE_DIR, ConfigFileName
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.paths import PEOPLE_DIR, ConfigFileName
 
 logger = get_logger(__name__)
 
@@ -24,32 +28,9 @@ _TOKEN_PREFIX = "inv_"
 _TOKEN_BYTES = 8
 
 
-def load_invitations() -> dict[str, str]:
-    """Load the token-keyed invitations from invitations.json."""
-    if not INVITATIONS_PATH.exists():
-        return {}
-    try:
-        with open(INVITATIONS_PATH, encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return {str(k): str(v) for k, v in data.items()}
-    except (json.JSONDecodeError, OSError):
-        pass
-    return {}
-
-
-def save_invitations(invitations: dict[str, str]) -> None:
-    """Save the token-keyed invitations to invitations.json atomically."""
-    with file_transaction(INVITATIONS_PATH) as transaction:
-        transaction.replace_text(json.dumps(invitations, indent=2) + "\n")
-
-
 def delete_invitation(token: str) -> None:
     """Delete an invitation by its token."""
-    invitations = load_invitations()
-    if token in invitations:
-        del invitations[token]
-        save_invitations(invitations)
+    _delete_invitation(token)
 
 
 def list_person_dirs() -> list[str]:
@@ -64,29 +45,16 @@ def generate_invite_token() -> str:
     return f"{_TOKEN_PREFIX}{secrets.token_hex(_TOKEN_BYTES)}"
 
 
-_migration_done = False
-
-
-def migrate_invitations_if_needed() -> None:
-    """Perform one-shot migration of invite tokens from per-person configs to the invitations store."""
-    global _migration_done
-    if _migration_done:
-        return
-
-    for name in list_person_dirs():
-        person_path = PEOPLE_DIR / name / ConfigFileName.OVERLAY
-        if not person_path.exists():
-            continue
-        try:
-            move_person_invite_token(person_path, name)
-        except (OSError, ValueError, YAMLError) as e:
-            logger.warning("Failed to migrate invite_token for person '%s': %s", name, e)
-    _migration_done = True
-
-
 def issue_invite_token(slug: str) -> str:
     """Generate and persist a new invite token for the person slug. Returns the token."""
-    migrate_invitations_if_needed()
+    person_path = PEOPLE_DIR / slug / ConfigFileName.OVERLAY
+    record = migrate_document(
+        person_path,
+        SubjectRef(ConfigSubjectKind.PERSON, slug),
+        MigrationTrigger.WRITER,
+    )
+    if record["outcome"] is MigrationOutcome.FAILED:
+        raise ValueError(f"Could not migrate person configuration before issuing invite token: {record['reason']}")
     token = generate_invite_token()
 
     invitations = load_invitations()
@@ -103,16 +71,44 @@ def issue_invite_token(slug: str) -> str:
 
 
 def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
-    """Find a person by their invite token using the O(1) invitations store. Returns (person_slug, config) or None."""
-    migrate_invitations_if_needed()
+    """Resolve a token from its map or from a person's not-yet-delivered migration state."""
     invitations = load_invitations()
-    if token in invitations:
-        person_slug = invitations[token]
+    mapped_owner = invitations.get(token)
+    legacy_owners = _legacy_invitation_owners(token)
+    if legacy_owners is None:
+        return None
+    if len(legacy_owners) > 1 or (mapped_owner is not None and any(owner != mapped_owner for owner in legacy_owners)):
+        logger.warning(
+            "invitation_token_conflicted",
+            token_digest=sha256(token.encode("utf-8")).hexdigest(),
+            claimant_count=len(legacy_owners | ({mapped_owner} if mapped_owner is not None else set())),
+        )
+        return None
+    person_slug = mapped_owner or (next(iter(legacy_owners)) if legacy_owners else None)
+    if person_slug is None:
+        return None
+    try:
+        person_path = PEOPLE_DIR / person_slug / ConfigFileName.OVERLAY
+        person_config = load_person_config(person_path, registered_slug=person_slug)
+        return (person_slug, person_config)
+    except (OSError, ValueError, KeyError) as error:
+        logger.warning("Failed to load config for slug '%s': %s", person_slug, error)
+        return None
+
+
+def _legacy_invitation_owners(token: str) -> set[str] | None:
+    """Read old invitation claims from person documents without writing them."""
+    owners: set[str] = set()
+    for slug in list_person_dirs():
+        person_path = PEOPLE_DIR / slug / ConfigFileName.OVERLAY
         try:
-            person_path = PEOPLE_DIR / person_slug / ConfigFileName.OVERLAY
-            person_config = load_person_config(person_path, registered_slug=person_slug)
-            return (person_slug, person_config)
-        except (OSError, ValueError, KeyError) as e:
-            logger.warning("Failed to load config for slug '%s': %s", person_slug, e)
+            document: object = round_trip_yaml().load(person_path.read_text(encoding="utf-8"))
+            if not isinstance(document, Mapping):
+                continue
+            pending = in_transit(document, SubjectRef(ConfigSubjectKind.PERSON, slug), Destination.INVITATIONS)
+        except (OSError, ValueError, YAMLError) as error:
+            logger.warning("Could not inspect pending invitation claim: %s", error)
             return None
-    return None
+        if token in pending:
+            owners.add(slug)
+    return owners

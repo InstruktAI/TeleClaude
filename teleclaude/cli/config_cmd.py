@@ -50,12 +50,10 @@ from teleclaude.cli.telec.surface import (
 from teleclaude.config import config
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.resource_contract import (
-    ConfigSubjectKind,
     InvalidCandidate,
     PartialCommitFailure,
     ReadOnlyProjection,
     SubjectNotFound,
-    SubjectRef,
     SubjectView,
 )
 from teleclaude.config.resources import (
@@ -69,6 +67,7 @@ from teleclaude.config.resources import (
 )
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterOutcome, RosterRefused
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.core.configuration_clearance import (
     ConfigurationOperation,

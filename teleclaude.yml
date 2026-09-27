@@ -40,6 +40,14 @@ checkpoint:
       main_only: true
       precedence: 20
       command: [uv, sync]
+    config-migrate:
+      main_only: true
+      precedence: 25
+      command: [uv, run, --quiet, python, -m, teleclaude.config.migrations]
+    declaration-views-discard:
+      main_only: true
+      precedence: 35
+      command: [uv, run, --quiet, python, -m, teleclaude.entrypoints.declaration_view, discard, --trigger, maintenance]
     config-schemas:
       main_only: true
       precedence: 30
@@ -102,6 +110,12 @@ checkpoint:
     - scope:
         include: [teleclaude/cli/tui/**]
       actions: [tui-reload]
+    - scope:
+        include: [teleclaude/config/**]
+      actions: [config-migrate]
+    - scope:
+        include: [teleclaude/**, pyproject.toml, uv.lock]
+      actions: [declaration-views-discard]
     - scope:
         include: [teleclaude/**/*.py, teleclaude/mcp/teleclaude-mcp.schema.json]
       actions: [config-schemas]

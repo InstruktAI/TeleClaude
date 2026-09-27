@@ -7,18 +7,20 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
+import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
+from ruamel.yaml.error import YAMLError as RoundTripYAMLError
 
-from teleclaude.config._environment import (
-    expand_environment_references,
-    find_environment_references,
-    read_environment_file,
-)
+from teleclaude.config._environment import find_environment_references
+from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind, load_raw_declaration
-from teleclaude.config.loader import load_declared_project_config
+from teleclaude.config.loader import expanded_overlay_input, load_declared_project_config
+from teleclaude.config.migrations import CURRENT_VERSION
+from teleclaude.config.migrations._chain import document_version
 from teleclaude.config.schema import CapabilityConfig, ConfigKind, ProjectConfig
-from teleclaude.paths import ConfigFileName
+from teleclaude.core.project_state import resolve_project_state_root
+from teleclaude.paths import PROJECTS_MANIFEST_PATH, ConfigFileName
 
 logger = get_logger(__name__)
 
@@ -76,6 +78,36 @@ class TierPermissions:
     def participates_in(self, surface: PermissionSurface) -> bool:
         """Return whether this tier's material participates in one surface."""
         return surface in self.surfaces
+
+
+@dataclass(frozen=True)
+class DeclarationDependency:
+    """Pre-read file state used to validate a kept declaration answer."""
+
+    path: Path
+    exists: bool
+    mtime_ns: int = 0
+    size: int = 0
+    inode: int = 0
+
+
+@dataclass(frozen=True)
+class DeclarationView:
+    """A declaration answer and the files whose contents formed it."""
+
+    kind: ConfigKind | None
+    capabilities: Capabilities
+    dependencies: tuple[DeclarationDependency, ...]
+    environment_read: bool
+
+
+class DeclarationUnreadable(ValueError):
+    """A declaration could not produce a trustworthy runtime answer."""
+
+    def __init__(self, path: Path, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"Could not resolve declaration {path}: {reason}")
 
 
 NOT_A_TARGET = Capabilities(is_target=False, code=False, docs=False, agents=False)
@@ -147,24 +179,94 @@ def resolve_tier_permissions(root: Path) -> TierPermissions:
 
 def _resolve_project_capabilities(manifest_path: Path) -> Capabilities:
     """Validate only the tier's capability sections, independent of other overlay fields."""
+    return _resolve_project_capabilities_with_environment(manifest_path)[0]
+
+
+def _resolve_project_capabilities_with_environment(manifest_path: Path) -> tuple[Capabilities, Path | None]:
+    """Resolve capability sections and report the sibling environment file read."""
     payload = load_raw_declaration(manifest_path, subject="capability")
     section_names = (CapabilityName.CODE, CapabilityName.DOCS, CapabilityName.AGENTS)
     sections = {name: payload.get(name, {}) for name in section_names}
-    references = find_environment_references(sections)
-    environment = read_environment_file(manifest_path.with_name(ConfigFileName.ENV)) if references else {}
-    expanded = cast(
-        dict[CapabilityName, object],
-        expand_environment_references(sections, environment, config_path=manifest_path),
-    )
+    expanded_input = expanded_overlay_input(manifest_path, sections, ConfigKind.PROJECT)
+    expanded = cast(dict[CapabilityName, object], expanded_input.value)
     try:
         validated = {name: CapabilityConfig.model_validate(expanded[name]) for name in section_names}
     except ValidationError as exc:
         raise ValueError(f"Failed to validate config file {manifest_path}: {exc}") from exc
-    return _capabilities_from_sections(
-        validated[CapabilityName.CODE],
-        validated[CapabilityName.DOCS],
-        validated[CapabilityName.AGENTS],
+    return (
+        _capabilities_from_sections(
+            validated[CapabilityName.CODE],
+            validated[CapabilityName.DOCS],
+            validated[CapabilityName.AGENTS],
+        ),
+        expanded_input.environment_path,
     )
+
+
+def read_declaration_view(root: Path) -> DeclarationView:
+    """Resolve a root's declared tier and project capabilities with their dependencies."""
+    resolved_root = root.expanduser().resolve()
+    marker = resolved_root / ConfigFileName.OVERLAY
+    dependencies: list[DeclarationDependency] = [_dependency_stat(marker)]
+    try:
+        if not marker.is_file():
+            return DeclarationView(None, NOT_A_TARGET, tuple(dependencies), environment_read=False)
+        stored: object = round_trip_yaml().load(marker.read_text(encoding="utf-8")) or {}
+        if not isinstance(stored, dict):
+            raise DeclarationUnreadable(marker, "declaration must be a mapping")
+        version = document_version(stored)
+        if version < CURRENT_VERSION:
+            git_marker = resolved_root / ".git"
+            if git_marker.is_file():
+                dependencies.append(_dependency_stat(git_marker))
+                owner = resolve_project_state_root(resolved_root).resolve()
+                if owner != resolved_root:
+                    dependencies.append(_dependency_stat(owner / ConfigFileName.OVERLAY))
+            dependencies.append(_dependency_stat(PROJECTS_MANIFEST_PATH))
+        kind = load_declared_config_kind(marker)
+        if kind is not ConfigKind.PROJECT:
+            return DeclarationView(kind, NOT_A_TARGET, tuple(dependencies), environment_read=False)
+        raw = load_raw_declaration(marker, subject="capability")
+        sections = {name.value: raw.get(name.value, {}) for name in CapabilityName}
+        environment_path = marker.with_name(ConfigFileName.ENV) if find_environment_references(sections) else None
+        if environment_path is not None:
+            dependencies.append(_dependency_stat(environment_path))
+        capabilities, environment_read = _resolve_project_capabilities_with_environment(marker)
+        return DeclarationView(kind, capabilities, tuple(dependencies), environment_read is not None)
+    except DeclarationUnreadable:
+        raise
+    except (OSError, ValueError, yaml.YAMLError, RoundTripYAMLError) as exc:
+        raise DeclarationUnreadable(marker, _declaration_failure_reason(exc)) from exc
+
+
+def _dependency_stat(path: Path) -> DeclarationDependency:
+    """Capture a dependency's identity and content stat before resolving it."""
+    try:
+        stat_result = path.stat()
+    except FileNotFoundError:
+        return DeclarationDependency(path=path, exists=False)
+    except OSError as exc:
+        raise DeclarationUnreadable(path, _declaration_failure_reason(exc)) from exc
+    return DeclarationDependency(
+        path=path,
+        exists=True,
+        mtime_ns=stat_result.st_mtime_ns,
+        size=stat_result.st_size,
+        inode=stat_result.st_ino,
+    )
+
+
+def _declaration_failure_reason(error: BaseException) -> str:
+    """Return a short, value-free name for the failed declaration input."""
+    if isinstance(error, ValidationError):
+        locations = error.errors()
+        if locations and locations[0].get("loc"):
+            return str(locations[0]["loc"][0])
+    message = str(error)
+    for name in CapabilityName:
+        if name.value in message:
+            return name.value
+    return "declaration"
 
 
 def resolve_project_capability_state(project_root: Path) -> ProjectCapabilityState:

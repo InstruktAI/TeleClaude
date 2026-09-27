@@ -11,10 +11,13 @@ import yaml
 from teleclaude.agent_registry import AgentName
 from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._file_io import file_transaction
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import in_public_sample
 
 _AGENTS_KEY = "agents"
+_KIND_KEY = "kind"
+_SCHEMA_VERSION_KEY = "schema_version"
 _DEFAULT_AGENT_KEY = "default"
 _ENABLED_KEY = "enabled"
 _DEFAULT_AGENT_PATH = ("default_agent",)
@@ -26,7 +29,10 @@ def ensure_machine_config(path: Path) -> str:
     with file_transaction(path) as transaction:
         if path.exists():
             return "existing"
-        document: dict[str, object] = {}  # guard: loose-dict - YAML configuration tree
+        document: dict[str, object] = {  # guard: loose-dict - YAML configuration tree
+            _KIND_KEY: "computer",
+            _SCHEMA_VERSION_KEY: CURRENT_SCHEMA_VERSION,
+        }
         for descriptor in machine_config_surface():
             if descriptor.path == _DEFAULT_AGENT_PATH or descriptor.path[:1] == _AGENTS_PATH:
                 continue

@@ -24,11 +24,6 @@ from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptu
 from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._environment import expand_environment_references
-from teleclaude.config._file_migrations import (
-    partition_legacy_discord_provider_ids,
-    remove_matching_tmux_binary,
-    remove_retired_api_tcp_port,
-)
 from teleclaude.config._machine_input import EXPERIMENTS_FILE_INPUT, MACHINE_CONFIG_INPUT
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import BackupConfig as BackupConfig
@@ -73,7 +68,9 @@ from teleclaude.config._strictness import validate_machine_input
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
 from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
 from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
+from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.observation import credential_field_sources, credential_section_availability
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL,
     HELP_DESK_SUBDIR,
@@ -100,6 +97,8 @@ CONFIG_LOAD_ID = "load_id"
 CONFIG_LOAD_OUTCOME = "outcome"
 CONFIG_LOAD_FIELD_SOURCES = "field_sources"
 CONFIG_LOAD_SECTION_AVAILABILITY = "section_availability"
+_KIND_FIELD = "kind"
+_SCHEMA_VERSION_FIELD = "schema_version"
 
 
 # Project root (relative to this file)
@@ -718,10 +717,12 @@ def build_config_from_raw(
     source = config_source or sibling_dir / ConfigFileName.MACHINE
     validate_machine_input(raw_user_config, MACHINE_CONFIG_INPUT, source)
     if isinstance(raw_user_config, dict):
-        declared_kind = raw_user_config.get("kind")
+        declared_kind = raw_user_config.get(_KIND_FIELD)
         if declared_kind is not None and declared_kind != "computer":
             raise ValueError(f"Machine configuration at {source} declares kind '{declared_kind}', expected 'computer'")
-        raw_user_config = {key: value for key, value in raw_user_config.items() if key != "kind"}
+        raw_user_config = {
+            key: value for key, value in raw_user_config.items() if key not in {_KIND_FIELD, _SCHEMA_VERSION_FIELD}
+        }
     load_id = str(uuid4())
     field_sources = credential_field_sources(raw_user_config)
     logger.debug(
@@ -780,12 +781,11 @@ def build_config_from_raw(
 def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
     _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
-    remove_matching_tmux_binary(path, resolve_tmux_binary())
-    remove_retired_api_tcp_port(path)
     with open(path, encoding="utf-8") as f:
-        raw_user_config = yaml.safe_load(f)
-    current_schema_raw, _ = partition_legacy_discord_provider_ids(raw_user_config)
-    return build_config_from_raw(current_schema_raw, path.parent, config_source=path)
+        parsed: object = yaml.safe_load(f)
+    raw_user_config = parsed if isinstance(parsed, dict) else {}
+    migrated = upcast_for_read(path, raw_user_config, subject=SubjectRef(ConfigSubjectKind.COMPUTER))
+    return build_config_from_raw(migrated, path.parent, config_source=path)
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.

@@ -1,6 +1,6 @@
 """Configuration file loading and validation."""
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -9,7 +9,6 @@ from typing import Any
 import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
-from ruamel.yaml import YAML
 
 from teleclaude.config._environment import (
     company_environment_creation_mode,
@@ -19,19 +18,18 @@ from teleclaude.config._environment import (
     reconcile_environment_references,
     write_environment_values,
 )
-from teleclaude.config._file_io import file_transaction
-from teleclaude.config._file_migrations import (
-    migrate_global_file,
-    move_person_invite_token,
-    remove_person_notifications,
-    remove_person_voice_channel_id,
-    rename_person_output_visibility_web_value,
-)
-from teleclaude.config.advancement import advance_config
+from teleclaude.config._file_io import FileTransaction, file_transaction
+from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
-from teleclaude.config.declaration import render_declared_config, write_declared_config
-from teleclaude.config.jobs_migration import migrate_jobs_config
-from teleclaude.config.person_claim import migrate_person_claim_for_target
+from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.migrations import (
+    Destination,
+    RegistrySubjectRequired,
+    carry_pending,
+    registered_subject,
+    upcast,
+)
+from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.schema import (
     AppConfig,
     CompanyConfig,
@@ -43,6 +41,7 @@ from teleclaude.config.schema import (
     PersonEntry,
     ProjectConfig,
 )
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
 
@@ -52,6 +51,69 @@ _PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save targ
 _UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
 _UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
 _UTF8 = "utf-8"
+_KIND_FIELD = "kind"
+_SCHEMA_VERSION_FIELD = "schema_version"
+_PROJECT_SAVE_REGISTRY_ERROR = "Project configuration saves require a registered project root"
+
+
+@dataclass(frozen=True)
+class ExpandedOverlayInput:
+    """One overlay expanded from its sibling environment file when needed."""
+
+    value: object
+    environment_path: Path | None
+
+
+def expanded_overlay_input(path: Path, document: object, kind: ConfigKind) -> ExpandedOverlayInput:
+    """Expand environment references using only the overlay's sibling `.env`."""
+    references = find_environment_references(document)
+    if not references:
+        return ExpandedOverlayInput(value=document, environment_path=None)
+    environment_path = path.with_name(ConfigFileName.ENV)
+    environment = read_environment_file(environment_path, owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON))
+    return ExpandedOverlayInput(
+        value=expand_environment_references(document, environment, config_path=path),
+        environment_path=environment_path,
+    )
+
+
+def _read_locked_overlay(
+    transaction: FileTransaction, path: Path
+) -> dict[str, Any]:  # guard: loose-dict - raw YAML config
+    """Read one already-locked overlay document as a typed dynamic mapping."""
+    content = transaction.read_text(encoding=_UTF8)
+    parsed: object = round_trip_yaml().load(content) if content else {}
+    if parsed is None:
+        parsed = {}
+    if not isinstance(parsed, Mapping):
+        raise ValueError(f"Configuration document must be a mapping: {path}")
+    return {str(key): value for key, value in parsed.items()}
+
+
+def _ignore_migration_delivery(_destination: Destination) -> None:
+    """Keep migration destinations outside ordinary loader save results."""
+
+
+def _validate_overlay_candidate(
+    kind: ConfigKind,
+    document: Mapping[str, object],
+    subject: SubjectRef,
+) -> None:  # guard: loose-dict - pydantic input from arbitrary YAML
+    """Validate the complete current document before a writer delivers migrations."""
+    model: type[BaseModel]
+    if kind is ConfigKind.GLOBAL:
+        model = GlobalConfig
+    elif kind is ConfigKind.PERSON:
+        model = PersonConfig
+    elif kind is ConfigKind.COMPANY:
+        model = CompanyConfig
+    else:
+        model = ProjectConfig
+    candidate = dict(document)
+    candidate[_KIND_FIELD] = kind.value
+    if kind is ConfigKind.PERSON and subject.instance is not None:
+        candidate.setdefault(_PERSON_SLUG_FIELD, subject.instance)
+    model.model_validate(candidate)
 
 
 class DeclaredMailAccountRefusal(StrEnum):
@@ -88,7 +150,6 @@ def load_config[T: BaseModel](
     root: Path,
     *,
     default_fields: Mapping[str, object] | None = None,
-    pre_validation: Callable[[], None] | None = None,
 ) -> T:
     """Load YAML config from ``path`` and validate it with ``model_class``.
 
@@ -110,36 +171,10 @@ def load_config[T: BaseModel](
         logger.error("Failed to read config file %s: %s", path, e)
         raise ValueError(f"Failed to read config file {path}: {e}") from e
 
-    if not raw:
-        return model_class.model_validate(defaults)
-
-    advance_config(path, kind, root)
-    if pre_validation is not None:
-        pre_validation()
-    try:
-        with open(path, encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
-    except Exception as e:
-        logger.error("Failed to read config file %s: %s", path, e)
-        raise ValueError(f"Failed to read config file {path}: {e}") from e
-
-    if kind is ConfigKind.GLOBAL:
-        canonical_people_dir = (
-            PEOPLE_DIR if path.expanduser().resolve() == GLOBAL_CONFIG_PATH.expanduser().resolve() else None
-        )
-        migrate_global_file(path, canonical_people_dir)
-        raw = _read_config_mapping(path)
-    if kind in (ConfigKind.GLOBAL, ConfigKind.PROJECT):
-        migrate_jobs_config(path, kind)
-        raw = _read_config_mapping(path)
-    references = find_environment_references(raw)
-    environment_path = path.with_name(ConfigFileName.ENV)
-    local_environment = (
-        read_environment_file(environment_path, owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON))
-        if references
-        else {}
-    )
-    expanded = expand_environment_references(raw, local_environment, config_path=path)
+    if not isinstance(raw, Mapping):
+        return model_class.model_validate(raw)
+    raw = upcast_for_read(path, raw)
+    expanded = expanded_overlay_input(path, raw, kind).value
     try:
         model = model_class.model_validate(expanded)
     except Exception as exc:
@@ -178,8 +213,20 @@ def load_declared_project_config(root: Path) -> ProjectConfig | None:
 
 def save_project_config(path: Path, config: ProjectConfig) -> None:
     """Save project config to disk using atomic write (temp + rename)."""
+    data = project_config_document(config)
+    subject = registered_subject(path)
+    if subject is None or subject.kind is not ConfigSubjectKind.PROJECT:
+        raise RegistrySubjectRequired(_PROJECT_SAVE_REGISTRY_ERROR)
+    _write_overlay_config(path, ConfigKind.PROJECT, data, subject)
+
+
+def project_config_document(config: ProjectConfig) -> dict[str, Any]:  # guard: loose-dict - Pydantic document output
+    """Serialize a project config while retaining explicit capability decisions."""
     data = config.model_dump(mode="json", exclude_defaults=True)
-    _write_overlay_config(path, ConfigKind.PROJECT, data)
+    for capability in ("code", "docs", "agents"):
+        value = getattr(config, capability)
+        data[capability] = {"enabled": value.enabled}
+    return data
 
 
 def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
@@ -208,18 +255,20 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
     keys that are not part of the GlobalConfig schema (e.g. jobs, deployment).
     """
     target = path or GLOBAL_CONFIG_PATH
+    subject = SubjectRef(ConfigSubjectKind.GLOBAL)
     with file_transaction(target) as transaction:
-        existing: dict[str, Any] = {}  # guard: loose-dict - raw YAML config
-        content = transaction.read_text()
-        if content:
-            yaml_rt = YAML()
-            existing = yaml_rt.load(content) or {}
+        stored = _read_locked_overlay(transaction, target)
+        current = dict(upcast(stored, subject))
         overlay = _model_to_dict(config)
-        merged = _deep_merge(existing, overlay)
-        reconciled, environment_updates = _reconcile_overlay_document(target, ConfigKind.GLOBAL, merged)
+        merged = _deep_merge(current, overlay)
+        reconciled, environment_updates = _reconcile_overlay_document(
+            target, ConfigKind.GLOBAL, merged, existing_document=current
+        )
+        _validate_overlay_candidate(ConfigKind.GLOBAL, reconciled, subject)
+        carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, reconciled))
     _write_overlay_environment(target, ConfigKind.GLOBAL, environment_updates)
-    logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
+    logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(stored))
 
 
 def save_person_config(slug: str, config: PersonConfig) -> None:
@@ -230,8 +279,9 @@ def save_person_config(slug: str, config: PersonConfig) -> None:
     person_dir = PEOPLE_DIR / slug
     person_dir.mkdir(parents=True, exist_ok=True)
     target = person_dir / ConfigFileName.OVERLAY
+    subject = SubjectRef(ConfigSubjectKind.PERSON, slug)
     data = _model_to_dict(config)
-    _write_overlay_config(target, ConfigKind.PERSON, data)
+    _write_overlay_config(target, ConfigKind.PERSON, data, subject)
     logger.info("Saved person config for %s to %s", slug, target)
 
 
@@ -251,31 +301,7 @@ def load_person_config(path: Path, *, registered_slug: str | None = None) -> Per
         ConfigKind.PERSON,
         path.parent,
         default_fields=default_fields,
-        pre_validation=_person_claim_pre_validation(path, registered_slug),
     )
-
-
-def _person_claim_pre_validation(path: Path, registered_slug: str | None) -> Callable[[], None]:
-    """Build the person-only transition that runs after generic tier advancement."""
-
-    def migrate_person_claim() -> None:
-        people: Iterable[PersonEntry] = load_global_config().people
-        migrate_person_claim_for_target(path, people)
-        remove_person_notifications(path)
-        remove_person_voice_channel_id(path)
-        rename_person_output_visibility_web_value(path)
-        slug = registered_slug or next(
-            (
-                person.slug
-                for person in people
-                if person.slug and PEOPLE_DIR / person.slug / ConfigFileName.OVERLAY == path
-            ),
-            None,
-        )
-        if slug is not None:
-            move_person_invite_token(path, slug)
-
-    return migrate_person_claim
 
 
 def load_company_config(path: Path) -> CompanyConfig:
@@ -305,6 +331,7 @@ def save_company_config(slug: str, config: CompanyConfig, companies_root: Path |
         company_dir / ConfigFileName.OVERLAY,
         ConfigKind.COMPANY,
         _model_to_dict(config),
+        SubjectRef(ConfigSubjectKind.COMPANY, slug),
     )
     logger.info("Saved company config for %s", slug)
 
@@ -375,10 +402,16 @@ def _write_overlay_config(
     path: Path,
     kind: ConfigKind,
     document: dict[str, Any],  # guard: loose-dict - Pydantic model_dump output
+    subject: SubjectRef,
 ) -> None:
-    """Persist one overlay while retaining its raw environment references."""
-    reconciled, environment_updates = _reconcile_overlay_document(path, kind, document)
-    write_declared_config(path, kind, reconciled)
+    """Persist one overlay after carrying its registry subject's pending migrations."""
+    with file_transaction(path) as transaction:
+        stored = _read_locked_overlay(transaction, path)
+        current = dict(upcast(stored, subject))
+        reconciled, environment_updates = _reconcile_overlay_document(path, kind, document, existing_document=current)
+        _validate_overlay_candidate(kind, reconciled, subject)
+        carry_pending(stored, subject, delivered=_ignore_migration_delivery)
+        transaction.replace_text(render_declared_config(kind, reconciled))
     _write_overlay_environment(path, kind, environment_updates)
 
 
@@ -386,9 +419,11 @@ def _reconcile_overlay_document(
     path: Path,
     kind: ConfigKind,
     document: dict[str, Any],  # guard: loose-dict - Pydantic model_dump output
+    *,
+    existing_document: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:  # guard: loose-dict - raw YAML config
     """Reconcile a typed save payload with raw reference-bearing YAML."""
-    raw = _read_config_mapping(path) if path.exists() else {}
+    raw = existing_document if existing_document is not None else (_read_config_mapping(path) if path.exists() else {})
     references = find_environment_references(raw)
     environment = (
         read_environment_file(
@@ -427,20 +462,11 @@ def _person_config_keys(person: PersonEntry) -> set[str]:
 
 
 def find_person_config_path(person: PersonEntry, people_dir: Path = PEOPLE_DIR) -> Path | None:
-    """Find a per-person config file by slug, falling back to legacy name/username keys.
-
-    The slug-named folder is the canonical location; the legacy scan covers the
-    transition window before a person's folder has been renamed to its slug.
-    """
-    if person.slug:
-        slug_path = people_dir / person.slug / ConfigFileName.OVERLAY
-        if slug_path.exists():
-            return slug_path
-    person_keys = _person_config_keys(person)
-    for person_config_path in sorted(people_dir.glob(f"*/{ConfigFileName.OVERLAY}")):
-        if normalize_person_config_key(person_config_path.parent.name) in person_keys:
-            return person_config_path
-    return None
+    """Find a person's config only in the registered slug folder."""
+    if not person.slug:
+        return None
+    slug_path = people_dir / person.slug / ConfigFileName.OVERLAY
+    return slug_path if slug_path.exists() else None
 
 
 def resolve_declared_mail_account(

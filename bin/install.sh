@@ -1327,6 +1327,26 @@ validate_config() {
     fi
 }
 
+migrate_config_documents() {
+    print_header "Migrating configuration documents"
+    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.config.migrations --trigger install; then
+        print_success "Configuration documents are current"
+    else
+        print_error "Configuration document migration failed — fix the errors above and re-run install"
+        exit 1
+    fi
+}
+
+discard_declaration_views() {
+    print_header "Discarding cached declaration views"
+    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.declaration_view discard --trigger install; then
+        print_success "Cached declaration views discarded"
+    else
+        print_error "Declaration view discard failed — fix the errors above and re-run install"
+        exit 1
+    fi
+}
+
 configure_agent_cli() {
     print_header "Configuring Agent CLI"
     print_info "Running bin/init/configure_agent_cli.py..."
@@ -1389,10 +1409,12 @@ main() {
     if [ "$CI_MODE" = false ]; then
         setup_agents_interactive
     fi
+    ensure_teleclaude_yaml
+    migrate_config_documents
+    discard_declaration_views
     validate_config
     install_global_cli
     _ensure_local_bin_on_path
-    ensure_teleclaude_yaml
 
     if [ "$CI_MODE" = false ]; then
         build_macos_launchers

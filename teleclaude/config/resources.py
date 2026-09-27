@@ -5,7 +5,8 @@ Gives every configuration subject — computer, global, person, company, project
 concurrency contract. The addressing vocabulary, typed refusals, the
 `config_resource_change` observation helper and the merge-patch and
 multi-file commit primitives live in `teleclaude.config.resource_contract`;
-this module owns every subject kind's read/init/patch/list implementation
+subject enumeration lives in `teleclaude.config.resource_catalog`, and this
+module owns every subject kind's read/init/patch implementation
 (`sdlc/spec/feature/config/kind-addressed-configuration`).
 """
 
@@ -25,9 +26,7 @@ from teleclaude.config._environment import (
     read_environment_file,
 )
 from teleclaude.config._file_io import file_transaction
-from teleclaude.config._yaml import round_trip_yaml
-from teleclaude.config.advancement import advance_config
-from teleclaude.config.declaration import render_declared_config, write_declared_config
+from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
 from teleclaude.config.loader import list_company_config_paths
 from teleclaude.config.machine_config_mutation import (
@@ -37,11 +36,13 @@ from teleclaude.config.machine_config_mutation import (
     inspect_machine_config,
     patch_machine_config_at,
 )
-from teleclaude.config.migrations import migrate_person_slugs_if_needed
+from teleclaude.config.migrations import upcast
+from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.person_registry import with_person, without_person
+from teleclaude.config.resource_catalog import list_subjects as _list_subjects
+from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import (
     CommitEntry,
-    ConfigSubjectKind,
     InvalidCandidate,
     OwnEvidence,
     PartialCommitFailure,
@@ -49,11 +50,12 @@ from teleclaude.config.resource_contract import (
     ResourceChangeOutcome,
     ResourceOperation,
     SubjectNotFound,
-    SubjectRef,
     SubjectView,
     TargetDocument,
     apply_merge_patch,
+    carry_resource_migrations,
     commit_documents,
+    delivery_recorder,
     emit_resource_change,
     run_observed,
     target_id,
@@ -65,6 +67,7 @@ from teleclaude.config.roster import (
     validate_roster_candidate,
 )
 from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.project_setup.init_flow import init_project
@@ -72,6 +75,7 @@ from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 _KIND_KEY = "kind"
+_SCHEMA_VERSION_KEY = "schema_version"
 _SLUG_KEY = "slug"
 _NAME_KEY = "name"
 _PEOPLE_KEY = "people"
@@ -84,23 +88,26 @@ _COMPANY_SECTION = "company"
 _PROJECT_SECTION = "project"
 _PERSON_IDENTITY_FIELDS = frozenset({"name", "email", "username", "role", "preferences", "expertise"})
 _DOCUMENT_MAPPING_ERROR = "Configuration document must be a mapping: {path}"
+_READ_ONLY_SCHEMA_VERSION_ERROR = "`schema_version` is read-only; the migration list owns its value."
 
 _SINGLETON_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL})
 
 
-def _load_mapping(content: str, path: Path) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    """Parse a ruamel round-trip document, rejecting a non-mapping body."""
-    document = round_trip_yaml().load(content) if content else {}
-    if document is None:
-        document = {}
-    if not isinstance(document, dict):
-        raise ValueError(_DOCUMENT_MAPPING_ERROR.format(path=path))
-    return {str(key): value for key, value in document.items()}
+def _upcast_mapping(
+    document: Mapping[str, object], path: Path
+) -> dict[str, object]:  # guard: loose-dict - raw YAML config
+    """Build a current in-memory view from the path's registry or declaration subject."""
+    return dict(upcast_for_read(path, document))
 
 
 def _global_section(raw: Mapping[str, object]) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    """Project the global document's writable section, excluding `people`/`kind`."""
-    return {key: value for key, value in raw.items() if key not in (_PEOPLE_KEY, _KIND_KEY)}
+    """Project the global document's writable section, excluding people and read-only fields."""
+    return {key: value for key, value in raw.items() if key not in (_PEOPLE_KEY, _KIND_KEY, _SCHEMA_VERSION_KEY)}
+
+
+def list_subjects(kind: ConfigSubjectKind) -> list[SubjectRef]:
+    """List every addressable subject of one kind."""
+    return _list_subjects(kind)
 
 
 def _global_revision(raw: Mapping[str, object]) -> str:
@@ -140,7 +147,7 @@ def _computer_source() -> Path:
 
 def _computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectView:
     sections: dict[str, object] = {  # guard: loose-dict - raw YAML config
-        str(key): value for key, value in raw.items() if key != _KIND_KEY
+        str(key): value for key, value in raw.items() if key not in {_KIND_KEY, _SCHEMA_VERSION_KEY}
     }
     return SubjectView(
         ref=SubjectRef(ConfigSubjectKind.COMPUTER),
@@ -175,8 +182,8 @@ def _person_init_lookup_key(fields: Mapping[str, object] | None) -> str | None:
 def _person_is_registered(slug: str) -> bool:
     """Check the global registry without opening the person's overlay transaction."""
     with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
-        global_raw = _load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
-        return _find_person_raw(_raw_people(global_raw), slug) is not None
+        global_raw = load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
+        return _find_person_raw(raw_people(global_raw), slug) is not None
 
 
 def _find_person_raw(
@@ -189,25 +196,6 @@ def _find_person_raw(
     return None
 
 
-def _raw_people(global_raw: Mapping[str, object]) -> list[object]:
-    """Return the raw `people` list, distinguishing absent from malformed.
-
-    A missing key is a fresh or legacy document and defaults to empty. Any
-    *present* value that is not a list — including an explicit `null` — is
-    corrupt stored state and fails visibly before any read or write proceeds:
-    silently treating it as empty would let a person-registry write discard
-    whatever the malformed value held. Checking key membership rather than
-    `.get(...) is None` is what catches the explicit-`null` case — `.get`
-    alone cannot distinguish it from a genuinely absent key.
-    """
-    if _PEOPLE_KEY not in global_raw:
-        return []
-    people = global_raw[_PEOPLE_KEY]
-    if not isinstance(people, list):
-        raise ValueError(f"Global configuration `people` must be a list, found {type(people).__name__}")
-    return list(people)
-
-
 def _person_identity_section(
     entry_raw: Mapping[str, object],
 ) -> dict[str, object]:  # guard: loose-dict - raw YAML config
@@ -217,7 +205,7 @@ def _person_identity_section(
 def _person_settings_section(
     overlay_raw: Mapping[str, object],
 ) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    return {key: value for key, value in overlay_raw.items() if key not in (_KIND_KEY, _SLUG_KEY)}
+    return {key: value for key, value in overlay_raw.items() if key not in (_KIND_KEY, _SLUG_KEY, _SCHEMA_VERSION_KEY)}
 
 
 def _person_revision(identity: Mapping[str, object], settings: Mapping[str, object]) -> str:
@@ -225,7 +213,7 @@ def _person_revision(identity: Mapping[str, object], settings: Mapping[str, obje
 
 
 def _person_view(slug: str, global_raw: Mapping[str, object], overlay_raw: Mapping[str, object]) -> SubjectView:
-    entry_raw = _find_person_raw(_raw_people(global_raw), slug)
+    entry_raw = _find_person_raw(raw_people(global_raw), slug)
     if entry_raw is None:
         raise SubjectNotFound(f"person '{slug}' is not registered")
     identity = _person_identity_section(entry_raw)
@@ -266,7 +254,7 @@ def _company_path(slug: str) -> Path:
 
 
 def _company_section(raw: Mapping[str, object]) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    return {key: value for key, value in raw.items() if key not in (_KIND_KEY, _SLUG_KEY)}
+    return {key: value for key, value in raw.items() if key not in (_KIND_KEY, _SLUG_KEY, _SCHEMA_VERSION_KEY)}
 
 
 def _company_view(slug: str, raw: Mapping[str, object]) -> SubjectView:
@@ -295,7 +283,7 @@ def _project_path(slug: str) -> Path:
 
 
 def _project_section(raw: Mapping[str, object]) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    return {key: value for key, value in raw.items() if key != _KIND_KEY}
+    return {key: value for key, value in raw.items() if key not in (_KIND_KEY, _SCHEMA_VERSION_KEY)}
 
 
 def _project_view(slug: str, raw: Mapping[str, object]) -> SubjectView:
@@ -309,49 +297,6 @@ def _project_view(slug: str, raw: Mapping[str, object]) -> SubjectView:
     )
 
 
-# --- list_subjects ---
-
-
-def _list_computer() -> list[SubjectRef]:
-    return [SubjectRef(ConfigSubjectKind.COMPUTER)]
-
-
-def _list_global() -> list[SubjectRef]:
-    return [SubjectRef(ConfigSubjectKind.GLOBAL)]
-
-
-def _list_person() -> list[SubjectRef]:
-    with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
-        raw = _load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
-    return [
-        SubjectRef(ConfigSubjectKind.PERSON, str(entry[_SLUG_KEY]))
-        for entry in _raw_people(raw)
-        if isinstance(entry, dict) and entry.get(_SLUG_KEY)
-    ]
-
-
-def _list_company() -> list[SubjectRef]:
-    return [SubjectRef(ConfigSubjectKind.COMPANY, path.parent.name) for path in list_company_config_paths()]
-
-
-def _list_project() -> list[SubjectRef]:
-    return [SubjectRef(ConfigSubjectKind.PROJECT, node.slug) for node in get_project_catalog_service().list_projects()]
-
-
-_LIST_SUBJECTS: dict[ConfigSubjectKind, Callable[[], list[SubjectRef]]] = {
-    ConfigSubjectKind.COMPUTER: _list_computer,
-    ConfigSubjectKind.GLOBAL: _list_global,
-    ConfigSubjectKind.PERSON: _list_person,
-    ConfigSubjectKind.COMPANY: _list_company,
-    ConfigSubjectKind.PROJECT: _list_project,
-}
-
-
-def list_subjects(kind: ConfigSubjectKind) -> list[SubjectRef]:
-    """List every addressable subject of one kind."""
-    return _LIST_SUBJECTS[kind]()
-
-
 # --- read_subject ---
 
 
@@ -363,7 +308,7 @@ def _read_global(_ref: SubjectRef) -> SubjectView:
     with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
         if not GLOBAL_CONFIG_PATH.exists():
             raise SubjectNotFound("global configuration has not been initialized")
-        raw = _load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
+        raw = _upcast_mapping(load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH), GLOBAL_CONFIG_PATH)
     return _global_view(raw)
 
 
@@ -374,8 +319,9 @@ def _read_person(ref: SubjectRef) -> SubjectView:
         file_transaction(GLOBAL_CONFIG_PATH) as g_txn,
         file_transaction(_person_overlay_path(slug)) as o_txn,
     ):
-        global_raw = _load_mapping(g_txn.read_text(), GLOBAL_CONFIG_PATH)
-        overlay_raw = _load_mapping(o_txn.read_text(), _person_overlay_path(slug))
+        global_raw = _upcast_mapping(load_mapping(g_txn.read_text(), GLOBAL_CONFIG_PATH), GLOBAL_CONFIG_PATH)
+        overlay_path = _person_overlay_path(slug)
+        overlay_raw = _upcast_mapping(load_mapping(o_txn.read_text(), overlay_path), overlay_path)
     return _person_view(slug, global_raw, overlay_raw)
 
 
@@ -386,7 +332,7 @@ def _read_company(ref: SubjectRef) -> SubjectView:
     with file_transaction(path) as transaction:
         if not path.exists():
             raise SubjectNotFound(f"company '{slug}' is not registered")
-        raw = _load_mapping(transaction.read_text(), path)
+        raw = _upcast_mapping(load_mapping(transaction.read_text(), path), path)
     return _company_view(slug, raw)
 
 
@@ -397,7 +343,7 @@ def _read_project(ref: SubjectRef) -> SubjectView:
     with file_transaction(path) as transaction:
         if not path.exists():
             raise SubjectNotFound(f"project '{slug}' has no declared configuration")
-        raw = _load_mapping(transaction.read_text(), path)
+        raw = _upcast_mapping(load_mapping(transaction.read_text(), path), path)
     return _project_view(slug, raw)
 
 
@@ -424,11 +370,15 @@ def _init_computer(_ref: SubjectRef, _fields: Mapping[str, object] | None, evide
     return _read_computer(SubjectRef(ConfigSubjectKind.COMPUTER))
 
 
-def _init_global(_ref: SubjectRef, _fields: Mapping[str, object] | None, evidence: OwnEvidence) -> SubjectView:
-    advance_config(GLOBAL_CONFIG_PATH, ConfigKind.GLOBAL, GLOBAL_CONFIG_PATH.parent)
-    if not GLOBAL_CONFIG_PATH.exists():
-        write_declared_config(GLOBAL_CONFIG_PATH, ConfigKind.GLOBAL, {})
-    evidence.mark(target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY))
+def _init_global(ref: SubjectRef, _fields: Mapping[str, object] | None, evidence: OwnEvidence) -> SubjectView:
+    with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
+        stored = load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
+        current = dict(upcast(stored, ref))
+        if not GLOBAL_CONFIG_PATH.exists() or current != stored:
+            _validate_global_candidate(current)
+            carry_resource_migrations(stored, ref, evidence)
+            transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, current))
+            evidence.mark(target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY))
     return _read_global(SubjectRef(ConfigSubjectKind.GLOBAL))
 
 
@@ -440,14 +390,15 @@ def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence
     payload; a new entry is appended to the registry.
     """
     fields = fields or {}
-    migrate_person_slugs_if_needed()
     requested_slug = fields.get(_SLUG_KEY)
     lookup_key = _person_init_lookup_key(fields)
 
     with file_transaction(GLOBAL_CONFIG_PATH) as g_txn:
         committed_text = g_txn.read_text()
-        global_raw = _load_mapping(committed_text, GLOBAL_CONFIG_PATH)
-        people_raw = _raw_people(global_raw)
+        global_stored = load_mapping(committed_text, GLOBAL_CONFIG_PATH)
+        global_ref = SubjectRef(ConfigSubjectKind.GLOBAL)
+        global_raw = dict(upcast(global_stored, global_ref))
+        people_raw = raw_people(global_raw)
         existing = _find_person_raw(people_raw, lookup_key) if lookup_key else None
 
         if existing is not None:
@@ -477,6 +428,8 @@ def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence
             candidate_document = {
                 str(key): value for key, value in candidate_raw.items() if key != _KIND_KEY
             }  # guard: loose-dict - raw YAML config
+            _validate_global_candidate(candidate_document)
+            carry_resource_migrations(global_stored, global_ref, evidence)
             commit_documents(
                 [CommitEntry(g_txn, committed_text, render_declared_config(ConfigKind.GLOBAL, candidate_document))]
             )
@@ -614,13 +567,17 @@ def affected_sections(ref: SubjectRef, patch: Mapping[str, object]) -> frozenset
 
 
 def _patch_computer(
-    _ref: SubjectRef, patch: Mapping[str, object], expected_revision: str, _evidence: OwnEvidence
+    ref: SubjectRef, patch: Mapping[str, object], expected_revision: str, evidence: OwnEvidence
 ) -> SubjectView:
     # RFC 9110 ETag/If-Match-style comparison: `patch_machine_config_at` accepts the
     # historically wider `Mapping[object, object]` machine-input shape; a str-keyed
     # patch document is always a valid read of that wider shape.
     try:
-        result = patch_machine_config_at(cast(Mapping[object, object], patch), expected_revision)
+        result = patch_machine_config_at(
+            cast(Mapping[object, object], patch),
+            expected_revision,
+            delivered=delivery_recorder(ref, evidence),
+        )
     except ReadOnlyDeclaration as exc:
         # The computer view already excludes `kind` (`_computer_view_from`), so a patch
         # naming it is the same refusal every other kind gives a projected section.
@@ -629,12 +586,13 @@ def _patch_computer(
 
 
 def _patch_global(
-    _ref: SubjectRef, patch: Mapping[str, object], expected_revision: str, _evidence: OwnEvidence
+    ref: SubjectRef, patch: Mapping[str, object], expected_revision: str, evidence: OwnEvidence
 ) -> SubjectView:
     with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
         if not GLOBAL_CONFIG_PATH.exists():
             raise SubjectNotFound("global configuration has not been initialized")
-        raw = _load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
+        stored = load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
+        raw = dict(upcast(stored, ref))
         actual_revision = _global_revision(raw)
         if actual_revision != expected_revision:
             raise StaleRevision(expected=expected_revision, actual=actual_revision)
@@ -647,6 +605,7 @@ def _patch_global(
         }
         candidate_document.update(candidate_section)
         _validate_global_candidate(candidate_document)
+        carry_resource_migrations(stored, ref, evidence)
         transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, candidate_document))
     return _global_view(candidate_document)
 
@@ -662,8 +621,10 @@ def _patch_person(
         file_transaction(GLOBAL_CONFIG_PATH) as g_txn,
         file_transaction(overlay_path) as o_txn,
     ):
-        global_raw = _load_mapping(g_txn.read_text(), GLOBAL_CONFIG_PATH)
-        people_raw = _raw_people(global_raw)
+        global_stored = load_mapping(g_txn.read_text(), GLOBAL_CONFIG_PATH)
+        global_ref = SubjectRef(ConfigSubjectKind.GLOBAL)
+        global_raw = dict(upcast(global_stored, global_ref))
+        people_raw = raw_people(global_raw)
         index = next(
             (i for i, entry in enumerate(people_raw) if isinstance(entry, dict) and entry.get(_SLUG_KEY) == slug),
             None,
@@ -671,7 +632,8 @@ def _patch_person(
         if index is None:
             raise SubjectNotFound(f"person '{slug}' is not registered")
         entry_raw = cast(dict[str, object], people_raw[index])  # guard: loose-dict - raw YAML config
-        overlay_raw = _load_mapping(o_txn.read_text(), overlay_path)
+        overlay_stored = load_mapping(o_txn.read_text(), overlay_path)
+        overlay_raw = dict(upcast(overlay_stored, ref))
 
         identity = _person_identity_section(entry_raw)
         settings = _person_settings_section(overlay_raw)
@@ -695,12 +657,15 @@ def _patch_person(
         candidate_people_raw[index] = {**candidate_identity, _SLUG_KEY: slug}
         candidate_global_document = {key: value for key, value in global_raw.items() if key != _KIND_KEY}
         candidate_global_document[_PEOPLE_KEY] = candidate_people_raw
+        _validate_global_candidate(candidate_global_document)
 
         entry_targets = {
             g_txn.path: target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY),
             o_txn.path: target_id(ConfigSubjectKind.PERSON, slug, TargetDocument.OVERLAY),
         }
         try:
+            carry_resource_migrations(global_stored, global_ref, evidence)
+            carry_resource_migrations(overlay_stored, ref, evidence)
             commit_documents(
                 [
                     CommitEntry(
@@ -738,7 +703,8 @@ def _patch_company(
     with file_transaction(path) as transaction:
         if not path.exists():
             raise SubjectNotFound(f"company '{slug}' is not registered")
-        raw = _load_mapping(transaction.read_text(), path)
+        stored = load_mapping(transaction.read_text(), path)
+        raw = dict(upcast(stored, ref))
         current_section = _company_section(raw)
         actual_revision = view_revision({_COMPANY_SECTION: current_section})
         if actual_revision != expected_revision:
@@ -754,6 +720,7 @@ def _patch_company(
         except Exception as exc:
             raise InvalidCandidate(str(exc)) from exc
         validate_roster_candidate(slug, committed_model, candidate_model)
+        carry_resource_migrations(stored, ref, _evidence)
         transaction.replace_text(render_declared_config(ConfigKind.COMPANY, candidate_section))
     return _company_view(slug, {**candidate_section, _SLUG_KEY: slug})
 
@@ -767,7 +734,8 @@ def _patch_project(
     with file_transaction(path) as transaction:
         if not path.exists():
             raise SubjectNotFound(f"project '{slug}' has no declared configuration")
-        raw = _load_mapping(transaction.read_text(), path)
+        stored = load_mapping(transaction.read_text(), path)
+        raw = dict(upcast(stored, ref))
         current_section = _project_section(raw)
         actual_revision = view_revision({_PROJECT_SECTION: current_section})
         if actual_revision != expected_revision:
@@ -779,6 +747,7 @@ def _patch_project(
             raise InvalidCandidate(str(exc)) from exc
         # Written only — the project's own commit/review boundary governs afterward; this
         # engine never runs git.
+        carry_resource_migrations(stored, ref, _evidence)
         transaction.replace_text(render_declared_config(ConfigKind.PROJECT, candidate_section))
     return _project_view(slug, {**candidate_section, _KIND_KEY: ConfigKind.PROJECT.value})
 
@@ -792,6 +761,15 @@ _PATCH_SUBJECT: dict[ConfigSubjectKind, Callable[[SubjectRef, Mapping[str, objec
 }
 
 
+def _patch_subject(
+    ref: SubjectRef, patch: Mapping[str, object], expected_revision: str, evidence: OwnEvidence
+) -> SubjectView:
+    """Refuse migration-owned metadata before dispatching a kind-specific patch."""
+    if _SCHEMA_VERSION_KEY in patch:
+        raise ReadOnlyProjection(_READ_ONLY_SCHEMA_VERSION_ERROR)
+    return _PATCH_SUBJECT[ref.kind](ref, patch, expected_revision, evidence)
+
+
 def patch_subject(
     ref: SubjectRef,
     patch: Mapping[str, object],
@@ -802,7 +780,7 @@ def patch_subject(
     """Apply a merge-patch to one subject, refusing a stale or invalid candidate."""
     sections = affected_sections(ref, patch)
     view = run_observed(
-        lambda evidence: _PATCH_SUBJECT[ref.kind](ref, patch, expected_revision, evidence),
+        lambda evidence: _patch_subject(ref, patch, expected_revision, evidence),
         request_id=request_id,
         kind=ref.kind,
         instance=ref.instance,
@@ -874,31 +852,38 @@ def _remove_person_subject(slug: str, evidence: OwnEvidence, *, delete_dir: bool
         company_txns = [(path.parent.name, stack.enter_context(file_transaction(path))) for path in company_paths]
 
         committed_global_text = g_txn.read_text()
-        global_raw = _load_mapping(committed_global_text, GLOBAL_CONFIG_PATH)
-        if _find_person_raw(_raw_people(global_raw), slug) is None:
+        global_stored = load_mapping(committed_global_text, GLOBAL_CONFIG_PATH)
+        global_ref = SubjectRef(ConfigSubjectKind.GLOBAL)
+        global_raw = dict(upcast(global_stored, global_ref))
+        if _find_person_raw(raw_people(global_raw), slug) is None:
             raise SubjectNotFound(f"person '{slug}' is not registered")
 
         committed_companies: dict[str, CompanyConfig] = {}
         committed_texts: dict[str, str] = {}
+        stored_company_documents: dict[str, Mapping[str, object]] = {}
         for company_slug, txn in company_txns:
             text = txn.read_text()
             committed_texts[company_slug] = text
-            raw = _load_mapping(text, txn.path)
+            stored_company = load_mapping(text, txn.path)
+            stored_company_documents[company_slug] = stored_company
+            company_ref = SubjectRef(ConfigSubjectKind.COMPANY, company_slug)
+            raw = dict(upcast(stored_company, company_ref))
             committed_companies[company_slug] = CompanyConfig.model_validate(
                 {**raw, _KIND_KEY: ConfigKind.COMPANY.value, _SLUG_KEY: company_slug}
             )
 
         candidate_global_raw = without_person(cast(dict[object, object], global_raw), slug)
+        candidate_global_document = {
+            str(key): value for key, value in candidate_global_raw.items() if key != _KIND_KEY
+        }  # guard: loose-dict - raw YAML config
+        _validate_global_candidate(candidate_global_document)
         changed_companies, outcome = rosters_without_person(committed_companies, slug)
 
         entries = [
             CommitEntry(
                 g_txn,
                 committed_global_text,
-                render_declared_config(
-                    ConfigKind.GLOBAL,
-                    {str(key): value for key, value in candidate_global_raw.items() if key != _KIND_KEY},
-                ),
+                render_declared_config(ConfigKind.GLOBAL, candidate_global_document),
             )
         ]
         entry_targets = {g_txn.path: target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY)}
@@ -917,6 +902,10 @@ def _remove_person_subject(slug: str, evidence: OwnEvidence, *, delete_dir: bool
             )
             entry_targets[txn.path] = target_id(ConfigSubjectKind.COMPANY, company_slug, TargetDocument.ROSTER)
         try:
+            carry_resource_migrations(global_stored, global_ref, evidence)
+            for company_slug in changed_companies:
+                company_ref = SubjectRef(ConfigSubjectKind.COMPANY, company_slug)
+                carry_resource_migrations(stored_company_documents[company_slug], company_ref, evidence)
             commit_documents(entries)
         except PartialCommitFailure as exc:
             evidence.mark(*(entry_targets[path] for path in exc.failed_paths))

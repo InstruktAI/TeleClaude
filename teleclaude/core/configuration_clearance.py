@@ -13,7 +13,7 @@ from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.resource_contract import ConfigSubjectKind
+from teleclaude.config.subjects import ConfigSubjectKind
 from teleclaude.core.identity import CliCallerKind, caller_from_principal, get_identity_resolver
 
 logger = get_logger(__name__)

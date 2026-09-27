@@ -19,7 +19,7 @@ from teleclaude.adapters.discord.channel_ops import fetch_thread_starter_message
 from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 from teleclaude.adapters.discord.team_channels import TeamChannelsMixin
 from teleclaude.config import config
-from teleclaude.config.machine_config_mutation import (
+from teleclaude.config.legacy_discord import (
     clear_legacy_discord_provider_ids,
     legacy_discord_provider_ids,
 )

@@ -14,54 +14,22 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config._file_io import FileTransaction
+from teleclaude.config.migrations._chain import Destination
+from teleclaude.config.migrations._runner import carry_pending
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterRefused
-from teleclaude.slug import validate_slug
+from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 
 _CONFIG_RESOURCE_CHANGE_EVENT = "config_resource_change"
 _PERSON_KEY_DERIVED_FIELD = "person_key_derived"
 _DERIVED_KEY_MATCHES_FIELD = "derived_key_matches_instance"
 
 logger = get_logger(__name__)
-
-
-class ConfigSubjectKind(StrEnum):
-    """The addressable configuration subjects."""
-
-    COMPUTER = "computer"
-    GLOBAL = "global"
-    PERSON = "person"
-    COMPANY = "company"
-    PROJECT = "project"
-
-
-_SINGLETON_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL})
-
-
-@dataclass(frozen=True)
-class SubjectRef:
-    """One addressed configuration subject: its kind and, for instance kinds, its slug.
-
-    An instance kind's `instance` is `None` only for `init_subject` when no
-    slug is known yet (a brand-new person or company whose slug the create
-    path derives) — `read_subject`/`patch_subject`/`remove_person_subject`
-    always require a concrete instance and assert it themselves.
-    """
-
-    kind: ConfigSubjectKind
-    instance: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.kind in _SINGLETON_KINDS:
-            if self.instance is not None:
-                raise ValueError(f"{self.kind} is a singleton subject and takes no instance")
-            return
-        if self.instance is not None:
-            validate_slug(self.instance)
 
 
 @dataclass(frozen=True)
@@ -138,14 +106,40 @@ class TargetDocument(StrEnum):
     OVERLAY = "overlay"
     ROSTER = "roster"
     INVITATIONS = "invitations"
+    HANDOFF = "handoff"
     ENVIRONMENT = "environment"
     WORKSPACE = "workspace"
     PLUMBING = "plumbing"
 
 
+_DESTINATION_DOCUMENTS: Final[dict[Destination, TargetDocument]] = {
+    Destination.INVITATIONS: TargetDocument.INVITATIONS,
+    Destination.HANDOFF: TargetDocument.HANDOFF,
+}
+
+
+def target_document_for_destination(destination: Destination) -> TargetDocument:
+    """Resolve the resource evidence identifier for one migration destination."""
+    return _DESTINATION_DOCUMENTS[destination]
+
+
 def target_id(kind: ConfigSubjectKind, instance: str | None, document: TargetDocument) -> str:
     """Build one `unrestored_targets` semantic identifier."""
     return f"{kind.value}:{instance}:{document.value}" if instance else f"{kind.value}:{document.value}"
+
+
+def delivery_recorder(ref: SubjectRef, evidence: OwnEvidence) -> Callable[[Destination], None]:
+    """Mark each migration destination as an operation-owned write when it lands."""
+
+    def record(destination: Destination) -> None:
+        evidence.mark(target_id(ref.kind, ref.instance, target_document_for_destination(destination)))
+
+    return record
+
+
+def carry_resource_migrations(stored: Mapping[str, object], ref: SubjectRef, evidence: OwnEvidence) -> None:
+    """Deliver pending values and attach their successful writes to the resource outcome."""
+    carry_pending(stored, ref, delivered=delivery_recorder(ref, evidence))
 
 
 def emit_resource_change(
