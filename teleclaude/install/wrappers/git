@@ -237,13 +237,10 @@ _classify_global_opt() {
 
 # ── Parse git subcommand and -C args ─────────────────────────────────────────
 _subcmd=""
-_subcmd_index=0
-_arg_index=0
 _skip_next=0
 _capture_C=0
 _dir_args=()
 for _arg in "$@"; do
-    _arg_index=$((_arg_index + 1))
     if [ "$_capture_C" -eq 1 ]; then
         _dir_args+=("-C" "$_arg")
         _capture_C=0
@@ -272,7 +269,6 @@ for _arg in "$@"; do
             ;;
         *)
             _subcmd="$_arg"
-            _subcmd_index="$_arg_index"
             break
             ;;
     esac
@@ -351,22 +347,19 @@ fi
 _role="$_system_role"
 
 # Git's explicit flag overrides the autoStash config values disabled above.
-# Refuse it before Git can create a repository-wide stash during a replay.
+# Scan the full argument vector: an unrecognized global option may make the
+# subcommand detector mistake its value for the subcommand.
 if [ "$_code_enabled" -eq 1 ]; then
-    case "$_subcmd" in
-        merge|rebase|pull)
-            for _arg in "$@"; do
-                case "$_arg" in
-                    --autostash|--autostash=*)
-                        _log_block autostash_explicit
-                        echo "ERROR: 'git $_subcmd --autostash' is prohibited in agent sessions." >&2
-                        echo "       Resolve or commit worktree changes before replaying history." >&2
-                        exit 1
-                        ;;
-                esac
-            done
-            ;;
-    esac
+    for _arg in "$@"; do
+        case "$_arg" in
+            --autostash|--autostash=*)
+                _log_block autostash_explicit
+                echo "ERROR: Explicit '--autostash' is prohibited in agent sessions." >&2
+                echo "       Resolve or commit worktree changes before replaying history." >&2
+                exit 1
+                ;;
+        esac
+    done
 fi
 
 # ── Block per-command autoStash overrides and alias redefinition ─────────────
@@ -375,10 +368,7 @@ fi
 # `git -c alias.X=stash X` would bypass every subcmd-name-based block (the
 # wrapper sees `X` as `_subcmd`, not `stash`).
 _prev_arg=""
-_arg_index=0
 for _arg in "$@"; do
-    _arg_index=$((_arg_index + 1))
-    [ "$_arg_index" -ge "$_subcmd_index" ] && break
     _config_override=""
     case "$_prev_arg" in
         -c|--config-env) _config_override="$_arg" ;;
