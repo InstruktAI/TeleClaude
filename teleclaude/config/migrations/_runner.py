@@ -13,8 +13,6 @@ from io import StringIO
 from pathlib import Path
 from typing import TypedDict, cast
 
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 from ruamel.yaml.error import YAMLError
 
@@ -36,6 +34,7 @@ from teleclaude.config.migrations.v003_relocate_person_invite_token import Desti
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 
 _LOG_MIGRATION = "config_migration"
