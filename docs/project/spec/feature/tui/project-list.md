@@ -7,6 +7,10 @@ delivered_by:
 
 # Project List — Spec
 
+## Required reads
+
+- @docs/project/spec/feature/config/project-registry.md
+
 ## What it is
 
 The TUI's Sessions and Preparation views show, under each computer, the
