@@ -21,6 +21,12 @@ TELECLAUDE_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
 TC_CONFIG="${TELECLAUDE_HOME}/config.yml"
 
 PYTHON_MIN_VERSION="3.12"
+# Oldest corepack that can launch pnpm 11+.
+COREPACK_MIN_VERSION="0.34.5"
+
+# Installer output goes to the log file, so a corepack download confirmation
+# would block on input nobody can see.
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 NON_INTERACTIVE=false
 CI_MODE=false
@@ -480,17 +486,40 @@ check_node() {
     print_success "Found Node.js $NODE_VERSION and npm $NPM_VERSION"
 }
 
-# Ensure corepack is present and enabled. Corepack ships bundled-but-disabled
-# with most Node builds, is being unbundled in newer Node, and is split out by
-# some distros — so we install it if missing rather than assume it exists.
+corepack_version() {
+    if command -v corepack &> /dev/null; then
+        corepack --version 2>/dev/null || true
+    fi
+}
+
+corepack_meets_minimum() {
+    local version="$1"
+    [ -n "$version" ] && [ "$(printf '%s\n' "$COREPACK_MIN_VERSION" "$version" | sort -V | head -n1)" = "$COREPACK_MIN_VERSION" ]
+}
+
+# Ensure a corepack new enough for the pnpm it resolves is present and enabled.
+# Corepack ships bundled-but-disabled with most Node builds, is being unbundled
+# in newer Node, and is split out by some distros — and a bundled copy can be
+# too old — so we install it from npm rather than assume a usable one exists.
 setup_corepack() {
     print_info "Ensuring corepack..."
-    if ! command -v corepack &> /dev/null; then
-        print_info "corepack not found — installing via npm"
-        if ! npm install -g corepack >> "$LOG_FILE" 2>&1; then
+    local version
+    version=$(corepack_version)
+    if ! corepack_meets_minimum "$version"; then
+        print_info "corepack ${version:-not found} is older than $COREPACK_MIN_VERSION — installing corepack@latest via npm"
+        if ! npm install -g corepack@latest >> "$LOG_FILE" 2>&1; then
             print_error "Failed to install corepack"
             exit 1
         fi
+        hash -r
+        version=$(corepack_version)
+        if ! corepack_meets_minimum "$version"; then
+            print_error "corepack on PATH is ${version:-missing} after install; need $COREPACK_MIN_VERSION or newer"
+            exit 1
+        fi
+        # Cached package managers carry the launch entry the previous corepack
+        # recorded, which is wrong for pnpm 11+; clearing forces a fresh fetch.
+        corepack cache clean >> "$LOG_FILE" 2>&1 || print_warning "corepack cache clean failed (continuing)"
     fi
     corepack enable >> "$LOG_FILE" 2>&1 || print_warning "corepack enable failed (continuing)"
     print_success "corepack ready"
