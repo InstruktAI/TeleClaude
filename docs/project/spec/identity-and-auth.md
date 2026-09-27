@@ -48,10 +48,11 @@ People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
 <!-- planned:authorize-person-roles-at-scope -->
 The people listing (`GET /api/people`) returns, per registered person, `name`,
-`email`, `expertise`, and the roles the person holds at each scope: `role`, the
-platform role, or `null` where none is held, and `company_roles`, the role held
-in each company they belong to. A company administrator is listed as `admin` of
-that company. Neither field authorizes anything; authority for an object is the
+`email`, `expertise`, and `roles`: one entry for each scope the person holds a
+role at — the platform, or a company by name — with the role held there. An
+entry below `admin` in a company also lists the projects the person is assigned
+to there; an `admin` entry lists none, since it reaches every project that
+company owns. The listing authorizes nothing; authority for an object is the
 effective role for it (`project/design/architecture/scoped-roles`).
 <!-- /planned:authorize-person-roles-at-scope -->
 
