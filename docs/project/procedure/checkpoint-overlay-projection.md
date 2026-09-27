@@ -33,18 +33,15 @@ project.
    convention (`make install` / `make test` / `make lint` work by convention).
 2. Before declaring any inferred action, or an action id an existing binding
    already names, check it against the platform's base registries
-   (`project/design/architecture/checkpoint-system`'s enumerated base actions
-   and maintenance ids). An id that already resolves there is reused as-is; an
-   unfamiliar id in a project's own overlay is evidence to check the base
-   first, not evidence that it is undeclared — inventing a second id for an
-   outcome the base already covers is a duplicate, not an authoring decision.
-   For each action still needing a project-level declaration, the assessor
-   decides which registry declares it, by one test:
+   (`project/design/architecture/checkpoint-system`'s base checkpoint and
+   maintenance ids; `general/principle/grounding`). An id that already
+   resolves there is reused as-is. For each action still needing a
+   project-level declaration, the assessor decides which registry declares it,
+   by one test:
    can the mechanism that performs the action establish its own outcome? A deterministic
    command — installing, restarting, reconciling dependencies, reloading — can, and is
    written into the maintenance registry as `command`, `main_only` and `precedence`, with no
-   `run` and no `evidence`, because nothing asks an agent to do it and nothing reads a
-   transcript to find out whether it happened. An action whose substance is a judgment an
+   `run` and no `evidence`. An action whose substance is a judgment an
    agent makes and acts on cannot, and is written into the checkpoint registry as `run`, the
    `evidence` substrings that prove it ran (defaulting to `run`), `main_only`,
    `precedence`, and `evidence_must_follow_last_mutation` where ordering matters. An action
@@ -95,18 +92,14 @@ convergence installs the TeleClaude-owned set cleanly. A brownfield project's
 existing hooks are assessed one at a time, by one test: does this hook's logic
 already have a checkpoint or maintenance equivalent? If yes, translate it into
 a binding (Steps 1–3) and remove the project hook so plumbing installs
-TeleClaude's in its slot — because the drain runs every owed action from one
-hook, the base and the project's own action already run together with no
-further authoring; this is the common case and the default outcome, not a
-special "combined hook" to build. If the logic has no equivalent at all, leave
-the hook in place unmodified — plumbing never overwrites a hook it did not
-write (`project/spec/feature/reconciliation/project-plumbing-convergence`).
-Only when neither holds — logic with no equivalent that must still coexist
-with TeleClaude's own dispatch — hand-author the hook without the sentinel,
-having it itself call `telec code <hook-name>` alongside the project's own
-steps; because that file then never converges automatically, name it
-explicitly in the assessment's output rather than leaving it as an ordinary,
-silently preserved hook.
+TeleClaude's in its slot; this is the default outcome. If the logic has no
+equivalent at all, leave the hook in place unmodified — plumbing never
+overwrites a hook it did not write
+(`project/spec/feature/reconciliation/project-plumbing-convergence`). Only
+when neither holds — logic with no equivalent that must still coexist with
+TeleClaude's own dispatch — hand-author the hook without the sentinel, having
+it itself call `telec code <hook-name>` alongside the project's own steps, and
+name it explicitly in the assessment's output.
 
 Verify convergence's result rather than its log lines alone: a project's own
 pre-existing convention can redirect a platform-installed target that must
