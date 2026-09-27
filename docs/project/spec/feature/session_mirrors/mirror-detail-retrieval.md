@@ -1,5 +1,5 @@
 ---
-description: 'Fetch one session mirror by its full session identifier and render its semantic conversation. A TeleClaude id resolves through the session registry; a shortened identifier is refused. Used by `telec history show` and by the session_mirrors service detail capability.'
+description: 'Fetch one session mirror by its full session identifier and render its semantic conversation. A TeleClaude id resolves through the session registry; a shortened identifier is refused. Used by `telec history show`, locally and on the peer that answers a remote show.'
 visibility: 'public'
 ---
 
@@ -30,10 +30,6 @@ conversation body. The CLI reads mirrors only through that capability; it render
 the answer as a human-readable header — title, project, computer, start
 timestamp, both identifiers and which source answered — followed by the
 conversation body in full.
-
-The detail capability of the session_mirrors service returns one stored mirror
-by exact identifier as a structured payload with session_id, identity, title,
-timestamps, conversation_text, and message_count.
 
 ## Canonical fields
 
@@ -78,23 +74,6 @@ And the header names the session's TeleClaude id and agent-native id, which of t
 And a blank line separates header from body
 And the body is the mirror's conversation_text in full, bounded by the caller's own tooling rather than by a character-count flag
 And the body is right-stripped before printing
-```
-
-#### Detail capability wire format
-
-```
-Given a caller invokes the detail capability for a session_id
-When a mirror matches the lookup within the caller's history scope
-Then the response carries
-  session_id, computer, agent, project, title, conversation_text,
-  message_count, timestamp_start, timestamp_end, coverage_state,
-  shrink_refused_at
-
-Given no mirror matches the lookup, or the only match lies outside the caller's scope
-Then the capability reports "Mirror not found"
-
-Given a caller the capability cannot identify
-Then the capability refuses the request before any mirror is read
 ```
 
 #### Missing-store tolerance
@@ -175,9 +154,8 @@ And the header names both the TeleClaude id and that transcript's agent-native i
 
 ## Known caveats
 
-- The detail capability applies the same history scope as every other
-  mirror surface (see `feature/session_mirrors/role-scoped-history-access`),
-  so no caller reaches a wider view by addressing the service directly.
+- The history detail capability applies the same history scope as every
+  other mirror surface (see `feature/session_mirrors/role-scoped-history-access`).
 - A shortened identifier is refused rather than resolved, so a lookup never
   returns a session the caller did not name.
 - The CLI render drops `timestamp_end` and `message_count` from the

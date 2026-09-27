@@ -1,5 +1,5 @@
 ---
-description: 'Cross-computer history. Remote search travels the daemon relay carrying the caller verified identity, so each peer applies its own role band; remote detail and raw retrieval call the remote session_mirrors service directly.'
+description: 'Cross-computer history. Remote search travels the daemon relay carrying the caller verified identity, so each peer applies its own role band; remote detail and raw retrieval travel the same relay, so the peer answers them within its own history scope.'
 visibility: 'public'
 ---
 
@@ -21,14 +21,16 @@ reaches its local daemon, which dispatches a search command to each named
 peer carrying the caller's verified identity as its principal, and each
 peer resolves that principal against its own people registry and applies its
 own history scope before returning rows. A remote detail or raw request
-still resolves the computer name to a remote endpoint and calls that
-session_mirrors service directly.
+travels the same relay: the local daemon dispatches a history detail command
+to the named peer carrying the caller's verified identity, and the peer
+answers from its own history detail capability within its history scope for
+that identity.
 
 For search, all remote calls run in parallel, errors are surfaced per-host,
 and the merged result list is re-sorted by `sort_timestamp` descending
 before rendering. For show, exactly one computer is allowed and the
-request flow is one remote call to either the mirror-detail or the
-raw-transcript capability depending on `--raw`.
+request flow is one relayed detail command, which carries `--raw` to the
+peer.
 
 ## Canonical fields
 
@@ -56,26 +58,6 @@ And successful remote results are still rendered
 And the empty-result message lists all requested computers if nothing succeeded
 ```
 
-#### Computer name not in local computer registry
-
-```
-Given an operator passes --computer X on a detail or raw request
-And the local session_mirrors service's computer registry does not include X
-When the CLI resolves the remote endpoint
-Then an error "Computer 'X' not found in local registry" is queued
-And the failed host is reported with that error alongside the merged results
-```
-
-#### Local resolution failure on the direct path
-
-```
-Given a detail or raw request and the local session_mirrors service is unreachable when the CLI requests resolution
-When the CLI attempts to resolve remote endpoints
-Then every requested computer is reported with the same error
-  "Failed to resolve remote computers via local session_mirrors service: <reason>"
-And no remote search request is issued
-```
-
 #### Show enforces single computer
 
 ```
@@ -83,16 +65,6 @@ Given an operator runs `telec history show S --computer A --computer B`
 When the CLI begins remote dispatch
 Then it prints "history show accepts exactly one --computer value"
 And exits with status code 1 without issuing any remote call
-```
-
-#### Show passes through to remote service
-
-```
-Given `telec history show S --computer A` and A resolves to a remote endpoint
-When the CLI dispatches the show
-Then the CLI calls the remote mirror-detail capability (or the raw-transcript capability when --raw)
-And on success the returned payload is rendered locally as if the mirror were local
-And on transport failure "Failed to fetch session 'S' from A: <reason>" is printed and the CLI exits 1
 ```
 
 #### UC-CCHF-5: Cross-computer search travels the daemon relay
@@ -113,12 +85,23 @@ Then it answers the unsupported-command error
 And the caller is told which computer could not serve the request
 ```
 
-#### UC-CCHF-6: Remote detail and raw retrieval stay on their current path
+#### UC-CCHF-7: Remote show travels the daemon relay
 
 ```
-Given a caller requests a remote mirror's detail or raw transcript
-Then the existing remote service call serves it unchanged
-And no relay command is required for those paths
+Given a caller runs `telec history show <session-id> --computer <peer>`, with or without `--raw`
+When the show is dispatched
+Then the caller's request reaches the local daemon through the authenticated client
+And the local daemon dispatches a history detail command to the peer over the daemon relay
+And the caller's verified identity travels with that command as its principal
+And the peer answers from its own history detail capability, within its history scope for that identity
+And the CLI renders the peer's answer as it renders a local one
+And the CLI opens no direct connection to the peer
+
+Given the peer holds no conversation for that identifier within the caller's scope
+Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
+
+Given the relay cannot complete the request (timeout, unreachable peer, peer error, or a peer that does not carry the detail command)
+Then the CLI reports "Failed to fetch session '<session-id>' from <peer>: <reason>" and exits non-zero
 ```
 
 ## Known caveats
@@ -127,17 +110,15 @@ And no relay command is required for those paths
   intentionally NOT mixed into the result. There is no "include local"
   toggle; an operator wanting the local results too must run the command
   twice (once with `--computer`, once without).
-- Role-scoped access propagates for search: the caller's verified identity
-  travels with the relay command, and each peer applies its own history scope
-  before returning rows. A peer decides a person's role from its own people
-  registry; a role carried in the command is never an authorization input.
-  Remote detail and raw retrieval still call the
-  remote service directly and are evaluated under that service's own access
-  rules.
-- The remote request timeout is fixed at five seconds per call. Slow or
-  paused remotes produce a transport error without retry.
+- Role-scoped access propagates for search and show: the caller's verified
+  identity travels with the relay command, and each peer applies its own
+  history scope before answering. A peer decides a person's role from its own
+  people registry; a role carried in the command is never an authorization
+  input.
+- A remote request waits a bounded time for the peer's relay answer. A slow
+  or paused peer produces a timeout failure without retry.
 - The remote search payload omits some local-only columns
   (`conversation_text`, `human_email`, `visibility`); rows are
   reconstructed from the wire payload for sort/render only.
-- For show with `--raw`, the remote transcript file is returned in full and
-  `--tail` is applied client-side. There is no server-side trimming.
+- For show with `--raw`, the peer's transcript answer is printed whole. No
+  cut is applied on either side.
