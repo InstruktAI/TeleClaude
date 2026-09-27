@@ -23,6 +23,10 @@ TC_CONFIG="${TELECLAUDE_HOME}/config.yml"
 PYTHON_MIN_VERSION="3.12"
 # Oldest corepack that can launch pnpm 11+.
 COREPACK_MIN_VERSION="0.34.5"
+# Corepack installed when the one on PATH is too old: the newest release that
+# launches pnpm 11+ while its declared Node engine range still includes the
+# Node 22/24 patch releases that later corepack majors drop.
+COREPACK_INSTALL_VERSION="0.34.7"
 
 # Installer output goes to the log file, so a corepack download confirmation
 # would block on input nobody can see.
@@ -506,8 +510,8 @@ setup_corepack() {
     local version
     version=$(corepack_version)
     if ! corepack_meets_minimum "$version"; then
-        print_info "corepack ${version:-not found} is older than $COREPACK_MIN_VERSION — installing corepack@latest via npm"
-        if ! npm install -g corepack@latest >> "$LOG_FILE" 2>&1; then
+        print_info "corepack ${version:-not found} is older than $COREPACK_MIN_VERSION — installing corepack@$COREPACK_INSTALL_VERSION via npm"
+        if ! npm install -g "corepack@$COREPACK_INSTALL_VERSION" >> "$LOG_FILE" 2>&1; then
             print_error "Failed to install corepack"
             exit 1
         fi
@@ -519,7 +523,10 @@ setup_corepack() {
         fi
         # Cached package managers carry the launch entry the previous corepack
         # recorded, which is wrong for pnpm 11+; clearing forces a fresh fetch.
-        corepack cache clean >> "$LOG_FILE" 2>&1 || print_warning "corepack cache clean failed (continuing)"
+        if ! corepack cache clean >> "$LOG_FILE" 2>&1; then
+            print_error "Failed to clear the corepack cache; stale pnpm entries would still be launched"
+            exit 1
+        fi
     fi
     corepack enable >> "$LOG_FILE" 2>&1 || print_warning "corepack enable failed (continuing)"
     print_success "corepack ready"
