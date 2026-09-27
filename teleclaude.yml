@@ -161,3 +161,4 @@ docs:
   enabled: true
 agents:
   enabled: true
+schema_version: 8
