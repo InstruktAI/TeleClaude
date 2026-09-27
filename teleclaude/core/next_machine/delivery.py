@@ -5,14 +5,12 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
-import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import cast
-from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -23,6 +21,8 @@ from teleclaude.paths import STORAGE_DIR
 logger = get_logger(__name__)
 
 GitNameSetFailureHandler = Callable[[list[str], str], None]
+
+_WORKTREE_REMOVAL_FAILED = "worktree removal failed for %s: %s"
 
 
 def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tuple[int, str, str]:
@@ -230,29 +230,6 @@ def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
             logger.warning("Failed to archive %s/%s: %s", slug, dirname, exc)
 
 
-def reclaim_worktree_trash(cwd: str) -> list[str]:
-    """Best-effort reclaim of deferred worktree trash entries."""
-    trash_dir = Path(cwd) / WORKTREE_DIR / ".trash"
-    if not trash_dir.is_dir():
-        return []
-
-    failures: list[str] = []
-    for entry in sorted(trash_dir.iterdir()):
-        try:
-            if entry.is_symlink():
-                os.unlink(entry)
-            elif entry.is_dir():
-                shutil.rmtree(entry)
-            else:
-                os.unlink(entry)
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            logger.warning("worktree trash reclaim failed for %s: %s", entry, exc)
-            failures.append(str(entry))
-    return failures
-
-
 def cleanup_delivered_slug(
     cwd: str,
     slug: str,
@@ -270,19 +247,16 @@ def cleanup_delivered_slug(
     # 0. Archive binary artifacts (art/, html/) from workspace/ before cleanup
     _archive_binary_artifacts(project_root, slug)
 
-    # 1. Detach worktree from git bookkeeping, deferring bulk deletion
+    # 1. Remove the worktree, then drop its git bookkeeping
     worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
         _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=cwd, timeout=None)
-        trash_dir = project_root / WORKTREE_DIR / ".trash"
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        trash_path = trash_dir / f"{slug}-{uuid4().hex}"
         try:
-            os.rename(worktree_path, trash_path)
+            shutil.rmtree(worktree_path)
         except FileNotFoundError:
             pass
         except OSError as exc:
-            logger.warning("worktree trash rename failed for %s: %s", slug, exc)
+            logger.warning(_WORKTREE_REMOVAL_FAILED, slug, exc)
         _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=cwd, timeout=None)
 
     # 2. Delete local branch

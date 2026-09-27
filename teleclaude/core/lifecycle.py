@@ -18,7 +18,6 @@ from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.models import SessionSnapshot
-from teleclaude.core.next_machine.delivery import reclaim_worktree_trash
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.session_bootstrap import reconcile_live_session_identity_documents
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
@@ -39,7 +38,6 @@ logger = get_logger(__name__)
 _CUTOVER_GENERATIONS_SEEDED_EVENT = "lifecycle_cutover_generations_seeded"
 _DISCORD_SEND_INTENTS_RECONCILED_EVENT = "lifecycle_discord_send_intents_reconciled"
 
-_WORKTREE_TRASH_RECLAIM_TASK = "worktree-trash-reclaim"
 _FINAL_OUTPUT_RECONCILE_TASK = "final-output-reconcile"
 _REMINDER_SCHEDULER_TASK = "reminder-scheduler"
 
@@ -144,7 +142,6 @@ class DaemonLifecycle:
         await self.api_server.start()
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
         logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
-        self._schedule_worktree_trash_reclaim()
         self._schedule_final_output_reconciliation()
 
         event_consumers_started_at = time.perf_counter()
@@ -196,14 +193,6 @@ class DaemonLifecycle:
 
         await reconcile_live_session_identity_documents()
 
-    def _schedule_worktree_trash_reclaim(self) -> None:
-        """Schedule deferred worktree trash reclamation outside the startup path."""
-        self.task_registry.spawn(
-            self._reclaim_worktree_trash_for_local_projects(),
-            name=_WORKTREE_TRASH_RECLAIM_TASK,
-        )
-        logger.info("Scheduled worktree trash reclaim")
-
     def _schedule_final_output_reconciliation(self) -> None:
         """Recover undelivered final output off the startup path, never inline.
 
@@ -223,29 +212,6 @@ class DaemonLifecycle:
         repaired_output_count = await self.client.reconcile_outstanding_final_outputs(config.computer.name)
         if repaired_output_count:
             logger.info("Attempted final output repair for %d session(s)", repaired_output_count)
-
-    async def _reclaim_worktree_trash_for_local_projects(self) -> None:
-        try:
-            projects = await command_handlers.list_projects_with_todos()
-        except Exception as exc:
-            logger.warning("Failed to list projects for worktree trash reclaim: %s", exc, exc_info=True)
-            return
-
-        for project in projects:
-            if not project.path:
-                continue
-            try:
-                failures = await asyncio.to_thread(reclaim_worktree_trash, project.path)
-            except Exception as exc:
-                logger.warning("Worktree trash reclaim failed for project %s: %s", project.path, exc, exc_info=True)
-                continue
-            if failures:
-                logger.warning(
-                    "Worktree trash reclaim failed for %d entries in project %s: %s",
-                    len(failures),
-                    project.path,
-                    failures,
-                )
 
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""
