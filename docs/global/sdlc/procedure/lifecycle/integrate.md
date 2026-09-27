@@ -57,17 +57,20 @@ each decision point until the queue is drained.
 1. Call `telec todo integrate [slug]` to enter the state machine.
 2. Read the returned instruction block and execute it verbatim.
 3. After executing, call `telec todo integrate` again to advance.
-3a. After a canonical-main advancement, inspect the maintenance actions recorded
-    for that activation. Treat pending actions as pending, judge terminal
-    failures and recover within the integration lane, and keep outstanding
-    live-runtime judgment with the integrator. Continue observing those actions
-    on the parked queue watch when they outlive this drain.
-    `telec code maintenance status` reports the checkout's outstanding actions,
-    terminal failures, and integrator judgment, each with its recovery command.
-    After the cause of a terminal failure is addressed, `telec code maintenance
-    retry` replays that action for its original activation; `telec code
-    maintenance drain` resumes interrupted work and records maintenance
-    readiness when no owed action remains.
+   3a. After a canonical-main advancement, inspect the maintenance actions recorded
+   for that activation. Treat pending actions as pending, judge terminal
+   failures and recover within the integration lane, and keep outstanding
+   live-runtime judgment with the integrator. Continue observing those actions
+   on the parked queue watch when they outlive this drain.
+   After each activation, read that delivery's log window with knowledge of
+   the change. Investigate anomalies, handle bounded recovery, and route
+   remaining breakage for a forward fix through the normal bug process.
+   `telec code maintenance status` reports the checkout's outstanding actions,
+   terminal failures, and integrator judgment, each with its recovery command.
+   After the cause of a terminal failure is addressed, `telec code maintenance
+ retry` replays that action for its original activation; `telec code
+ maintenance drain` resumes interrupted work and records maintenance
+   readiness when no owed action remains.
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
 5. Before any push, run repo-wide verification:
    - `telec code lint --all`
@@ -267,11 +270,11 @@ one unit.
   canonical-main activations, including direct commits with no todo candidate,
   through `telec code maintenance status`.
   Keep the judgment pending while any owed action is unfinished or failed.
-  After terminal success, inspect the changed runtime and read logs from a
+  After terminal success, read logs from a
   window beginning no later than the earliest activation recorded on the
   marker; an earlier or narrower read does not discharge it. Retain unresolved
   judgment across reminder beats and route terminal failures through bounded
-  recovery. Then
+  recovery. Apply the standing post-activation log judgment in step 3a. Then
   invoke the integration state machine once. If it dequeues a candidate,
   cancel this watcher before continuing; if the queue remains empty, leave it
   live and execute the returned instruction verbatim.

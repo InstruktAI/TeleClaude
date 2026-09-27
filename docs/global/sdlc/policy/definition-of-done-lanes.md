@@ -39,12 +39,11 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 
 A project-scope testing ruling (for example a test moratorium) supersedes the
 tests lane and every per-criterion named-test demand in Scope verification for
-that project, per `general/policy/conflict-resolution`: reviewers there verify
-each criterion against the evidence the project ruling sanctions (runtime
-evidence such as restart and log-check records, code reading, review
-reasoning) and treat demanding or rewarding forbidden test authorship as a
-violation of the ruling, not diligence. All other lanes apply unchanged; in
-every project without such a ruling this catalog applies in full.
+that project, per `general/policy/conflict-resolution`: reviewers there judge
+each criterion against the changed code and approved intent. The integrator's
+later log judgment is not a per-criterion proof source. Demanding or rewarding
+forbidden test authorship violates the project ruling. All other lanes apply
+unchanged; in every project without such a ruling this catalog applies in full.
 
 | Lane                    | Reference                                                                              | Task                                                                                                                               |
 | ----------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -139,28 +138,24 @@ For each approved-intent success criterion (a `prd` criterion, a goal/outcome st
 
 1. Quote the criterion verbatim from the approved intent artifact.
 2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
-3. Name the test whose passing demonstrates the criterion is delivered.
-4. State, in one sentence, how the code change and the passing test together satisfy the criterion.
-5. Name the concrete production-code mutation the named test kills — a single plausible wrong implementation of this criterion (a flipped condition, a dropped branch, a stubbed-out value) that turns the test red. Naming a real mutation is mandatory: it is the falsifiable proof that the test observes the criterion's actual property rather than a projection that cannot see it. If no such mutation exists — the test stays green on the broken implementation — that is the Requirement-Violation below, not a passing entry.
+3. State, in one sentence, how the code change satisfies the criterion.
+4. Where the project opts into tests, name the scenario-bound test and the
+   concrete production-code mutation it catches under the testing policy.
 
 Findings:
 
 - Criterion not delivered by any code change in the diff → **Requirement-Violation** (see Severity schema in the review procedure).
 - Criterion partially delivered — some criteria sub-points addressed, others silently dropped → **Requirement-Violation**. A delivery that narrows a criterion's scope is as broken as one that omits it.
-- Criterion delivered but the named test would pass even on a broken implementation → **Requirement-Violation**. Weak verification is not verification.
+- In a project that opts into tests, the named test would pass on a broken
+  implementation → **Requirement-Violation**.
 - Unrequested feature (no criterion drives it) → **Critical**.
 - For a change/bug, a behavioral delta the intent does not call for — including one introduced alongside a necessary change, or one resolving a forced decision by new behavior where established behavior or human escalation was the path → **Critical**.
 - Directive text authored where the intent called only for its removal or correction → **Critical**. Replacing an instruction the intent condemned with a different instruction of the author's own devising is a behavioral delta wearing the shape of the requested edit; the one-line diff and the honest commit subject are what let it pass. `general/policy/documentation-discipline` owns which text is directive.
 - Gold-plating (scope creep beyond the PRD) → Important.
 
-A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, satisfaction analysis, or killing mutation.
-
-When the approved plan carries an observation map
-(`sdlc/spec/observation-map`), this lane additionally re-traces
-the delivery against the frozen map: every map entry's use case is confirmed
-delivered or guarded by the diff, and a diff surface that touches behavior no
-map entry covers is a scope finding. The lane consumes the map as frozen at
-plan approval — it does not re-run preparation's derivation.
+A reviewer cannot approve while any Scope verification entry is missing its
+code change or satisfaction analysis. In a project that opts into tests, the
+entry also needs its test and killing mutation.
 
 #### Code quality review
 
@@ -440,27 +435,10 @@ Check for:
 4. **Ad-hoc debug probes** — Direct standard-output calls or temporary logging added during development must be removed or converted according to the applicable language logging policy.
 5. **Identifier integrity** — Identifiers appear at full value, per the observability policy.
 6. **Boundary coverage** — Significant operations are observable at the points the observability policy's boundary rule names.
-7. **Observation-map instrumentation** — when the approved plan carries an
-   observation map (`sdlc/spec/observation-map`), verify each
-   promised observation record is emitted at its semantic boundary, on every
-   control-flow exit the entry's predicate covers, with the promised stable
-   token, outcome enum, and full correlation fields, at the production level
-   the observability policy assigns, with no sensitive payloads. Passing this check is what makes the entry **armed** —
-   the fact delivery requires. Every entry is checked; an entry neither probed
-   nor named in the findings is unchecked, and reporting the lane while entries
-   remain unchecked is itself the defect.
-8. **False satisfaction** — for each delivering entry, name one implementation
-   that would emit every promised record correctly while violating the use case
-   the entry claims to prove, then show the diff is not that implementation.
-   Emitting the records is the cheap half; the check is whether the behavior
-   behind them is the contracted one. An entry for which no such implementation
-   can be named is a signal the entry proves nothing, and belongs back at
-   plan review rather than approved here.
 
 Severity guidance:
 
 - Sensitive data in logs → **Critical**.
-- A promised observation record missing, misplaced, field-incomplete, or below the production level → **Critical** (the delivery cannot be proven; the map entry is not armed).
 - Ad-hoc debug probes left in production code → **Important**.
 - Wrong log levels that hide errors or pollute the production level → **Important**.
 - Missing boundary logging for significant operations → **Important** (per DoD §8 Observability: logging at key boundaries is required).

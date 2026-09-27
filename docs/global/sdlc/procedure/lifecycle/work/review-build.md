@@ -59,17 +59,15 @@ scope authority.
 State what every required outcome promises before running a lane. Reading only
 the diff is insufficient.
 
-Reconstruct the obligation denominator independently — from the intent, the
-contract delta, the applicable governing principles, and the verified blast
-radius — before comparing it with what the plan and the builder's evidence
-list. Checking only the listed lines recreates the escaped-regression failure.
-Then trace both directions: every obligation in the reconstructed set to its
-evidence, and every material element of the diff back to an authorized
-obligation or a principle applied to verified substrate. An element tracing to
-neither is invention and a finding. An obligation absent from the frozen
-inventory is a preparation defect and triggers kickback; an inventoried
-obligation lacking required builder evidence is a build finding. The classes and terminal states of obligations
-are defined in `sdlc/spec/obligation-inventory`.
+Reconstruct the required outcomes independently from the intent, contract
+delta, applicable governing principles, and verified blast radius. Compare
+that set with the plan and the diff; checking only the plan's listed tasks can
+miss an escaped regression. Trace both directions: each required outcome to
+the implementation that delivers it, and each material element of the diff to
+authorized intent or a principle applied to verified substrate. An element
+tracing to neither is invention and a finding. An outcome absent from the plan
+is a preparation defect and triggers kickback; an outcome the diff fails to
+deliver is a build finding.
 
 Use merge-base to focus the implementation diff:
 
@@ -100,8 +98,8 @@ For this invocation:
 - The applicable contract is the approved intent and its success criteria.
 - The scope lane runs.
 - All catalog lanes run according to their trigger conditions.
-- Builder evidence in `quality-checklist` directs attention but never
-  substitutes for independent proof.
+- Builder entries in `quality-checklist` direct attention but never
+  substitute for independent review of the diff.
 
 ### 4. Persist the build-review result
 

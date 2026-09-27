@@ -47,17 +47,15 @@ the boundary first.
    behavior, and the actor's kind is explicit from the scenario language: a
    human actor (an operator reading Discord, a user at the TUI) or an agent
    actor (a session consuming structured records, a peer receiving a message).
-   Facing selects the acceptance authority downstream — human observation for
-   human-facing behavior, structured runtime evidence for agent-facing
-   behavior — so a scenario that leaves its observer ambiguous is defective.
+   Facing identifies who experiences the behavior, so a scenario that leaves
+   its observer ambiguous is defective.
    Users comprise humans and agents; when a behavior is specifically human-
    facing, say so specifically.
 
 3. **Write at behavior level — the refactor-survival test.** Every scenario
    sentence must survive any behavior-preserving refactor unchanged. Function
    names, modules, schema fields, CLI internals, and event names do not appear
-   in scenario text — those live in the plan's observation map, which binds to
-   the scenario from below. This holds for agent-facing scenarios exactly as
+   in scenario text. This holds for agent-facing scenarios exactly as
    for human-facing ones: behavior language is what makes the fence, not who
    reads it.
 
@@ -99,9 +97,8 @@ the boundary first.
 
 - A feature spec whose use cases are individually addressable
   (`spec_id + UC-id`), facing-typed, and stated at behavior level.
-- A stable identity surface that observation maps
-  (`sdlc/spec/observation-map`) and any project-sanctioned test
-  bindings can reference without drift.
+- A stable identity surface that project-sanctioned test bindings can
+  reference without drift.
 
 ## Recovery
 
@@ -123,14 +120,13 @@ the boundary first.
 The failure mode this procedure guards is implementation language leaking into
 scenario text and unstable ids breaking every binding downstream. When editing
 a spec, never renumber to "clean up" — identity outlives tidiness. When a
-scenario names a function, an event, or a field, push that detail down into the
-observation map and restate the sentence in behavior terms. When unsure whether
-a change is semantic or merely wording, ask whether
+scenario names a function, an event, or a field, remove that implementation
+detail and restate the sentence in behavior terms. When unsure whether a
+change is semantic or merely wording, ask whether
 anything bound to the old sentence would now judge differently; if yes, it is
 semantic.
 
 ## See Also
 
-- ~/.teleclaude/docs/sdlc/spec/observation-map.md — how plans bind runtime evidence to the ids this procedure stabilizes.
 - ~/.teleclaude/docs/sdlc/principle/documentation-first-development.md — hub-and-spoke placement and concept naming.
 - ~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md — planned-marker mechanics for pending scenarios.

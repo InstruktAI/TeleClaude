@@ -87,8 +87,7 @@ The drift classes:
   - **dependency-artifact** — read each moved dependency artifact at its
     current digest (`telec todo artifacts read <dependency> <artifact>`),
     never the plan's own account of it, and find every place the plan relies
-    on that dependency: a task premise, an ordering or file-overlap claim, an
-    observation-map anchor on a record the dependency was to produce.
+    on that dependency: a task premise or an ordering or file-overlap claim.
     `substantive` when any of those no longer holds against the dependency's
     current contract; `cosmetic` when every such reliance still holds. A
     dependency artifact that is itself pending drift in its own Todo is not a

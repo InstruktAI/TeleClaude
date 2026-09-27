@@ -137,7 +137,7 @@ extent that their causal paths are established to coincide.
 
 ### 5. Stop at the cause — hardening is new scope
 
-The fix ends at the smallest change that removes the verified root cause, plus the test that proves it gone. Validation layers, guards, defensive defaults, fallbacks, or extra instrumentation beyond that are new scope, never part of the fix. Observation that `sdlc/spec/observation-map` admits at the decision the fix changes is part of the fix's delivered behavior, not hardening.
+The fix ends at the smallest change that removes the verified root cause, with scenario-bound tests where the project opts into them. Validation layers, guards, defensive defaults, fallbacks, or extra instrumentation beyond that are new scope, never part of the fix.
 
 When the investigation surfaces a structural weakness worth closing (a missing boundary validation, an unguarded dangerous operation), record it as a deferral or file a new todo (`telec todo create` / `telec bugs report`) citing the evidence, against the project that owns the code per `sdlc/policy/todo-creation-discipline`. The human decides whether that work happens; it never rides the fix.
 

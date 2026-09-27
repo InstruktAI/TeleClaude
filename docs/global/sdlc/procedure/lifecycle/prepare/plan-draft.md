@@ -149,13 +149,9 @@ header. Pick your behavior from the reason:
   - **Reject** — the finding does not establish that its cited clause applies
     here, including when a more specific contract on the same subject decides
     the case otherwise (`sdlc/procedure/lifecycle/review`), or
-    its closure enlarges the horizon: new functionality, instrumentation beyond
-    the observation-map spec's additive bound, verification tooling, subsystems,
-    or scope beyond the frozen denominator. A finding that asks an entry to catch
-    a failure other than the one it names, or to restate its scenario beyond the
-    selectors that failure needs, is rejected under
-    `sdlc/spec/observation-map`. A valid
-    omission finding — a missing reflection, verification, or gate the policies
+    its closure enlarges the horizon: new functionality, instrumentation,
+    verification tooling, subsystems, or scope beyond the authorized outcome.
+    A valid omission finding — a missing reflection or gate the policies
     require on the authorized work — adds material within scope and is not
     rejected on that ground (`sdlc/procedure/lifecycle/review`
     §6). Record the rejection with its evidence. It stands rejected until the
@@ -245,7 +241,7 @@ states:
   assumptions;
 - future concerns retained only when they constrain today's design or carry a
   meaningful deferral trigger;
-- the observable outcome the plan will later bind to concrete proof.
+- the observable outcome the plan's tasks must deliver.
 
 Apply the same four open shaping questions used for a PRD, but never use the
 plan to acquire product authority the input does not carry. A discovered
@@ -307,10 +303,11 @@ to consolidate the rule into its established owner and adapt existing
 consumers is causal completion, not adjacent refactoring. Moving an adjacent
 owner's rule into the bug's current context is still scope and ownership creep.
 
-### 2d. Reserve the scenario bindings on main
+### 2d. Reserve scenario test bindings on main when the project has tests
 
-Before drafting the tasks, reserve every feature-spec scenario the plan will bind
-so a concurrent prepare cannot bind the same scenario in its own worktree. Read the
+Before drafting the tasks in a project that opts into tests, reserve every
+feature-spec scenario the plan will bind so a concurrent prepare cannot bind
+the same scenario. Read the
 current scenario inventory on `main` for each feature spec the plan touches — the
 live scenarios via `telec docs get <id>`, and any pending claims via
 `telec docs index --target <slug>` and `telec docs get <id> --target <slug>`.
@@ -333,27 +330,6 @@ A scenario enclosed by no pending marker and bound by no test is unclaimed and f
 to reserve. The plan's declared bindings are what the plan-review reservation check
 validates against these on-`main` claims.
 
-### 2e. Author the observation map (behavioral work)
-
-For behavioral work, author the plan's observation map per
-`sdlc/spec/observation-map`: one entry per in-scope use case,
-wiring it to the runtime evidence that proves it — the qualifying opportunity,
-the expected outcome records as predicates, the correlation fields, and the
-completion bound. Each entry names the one failure it exists to catch and binds
-its scenario by reference, carrying only the selectors that failure needs. Where no
-existing record lets the acceptance authority see that failure, add observation
-at the decision the change introduces or alters, within the spec's additive
-bound, rather than reconstructing hidden state from records that never carried
-it. The in-scope inventory is both halves: the use cases the spec
-delta delivers, and the unchanged use cases the blast radius derived in step 2c
-places at risk (`regression_guard` entries). Facing and acceptance authority
-derive from each scenario's facing-typed actors — never restated in the map.
-
-The map is the builder's instrumentation contract: build review verifies the
-promised records are emitted at their semantic boundaries (the logging lane),
-and delivery requires exactly that — the **armed** state. Runtime observation
-happens after delivery, on the live system; the map is what makes it possible.
-
 ### 3. Draft the implementation plan
 
 Apply the plan-specific quality rules from the preparation artifact quality
@@ -367,15 +343,10 @@ policy. Structure the plan as an ordered task list. Each task must include:
 - **Why**: the rationale for the approach. This prevents the builder from taking shortcuts.
   If the plan says "use adapter pattern" but doesn't say why, the builder may inline the
   logic instead. The "why" is the guard against drift.
-- **Verification**: how the builder confirms the task is done (test to write, behavior to
-
-observe, or other proof sanctioned by the project's verification contract).
-Each task references the observable outcome or architectural constraint it
-proves and names the concrete boundary at which the evidence is gathered.
-Tests, live-system probes, browser walks, logs where the project contract
-sanctions them, and documentation checks are possible evidence sources—not a
-universal hierarchy. Do not prescribe logger/config/native-shape/private-
-helper/wiring assertions as substitutes for behavior.
+- **Test binding, where the project opts into tests**: the scenario-bound test
+  the task will add or update under the project's testing contract. Do not
+  prescribe logger/config/native-shape/private-helper/wiring assertions as
+  substitutes for behavior.
 
 - **Referenced files**: exact file paths that will be created or modified. These are
   used by the state machine for grounding and staleness detection.
@@ -427,10 +398,10 @@ the briefing instead.
 
 ### 3c. Bug-scope clamp (kind == bug)
 
-A bug plan delivers exactly two things: the smallest change that removes the
-diagnosed root cause (`diagnosis#root-cause`), and the verification that proves
-the reported symptom gone. Every task traces to one of those two. A task that
-traces to neither — hardening, extra validation layers, defensive defaults,
+A bug plan delivers the smallest change that removes the diagnosed root cause
+(`diagnosis#root-cause`), plus a scenario-bound regression test where the
+project opts into tests. Every task traces to one of those. A task that does
+not — hardening, extra validation layers, defensive defaults,
 fallbacks, adjacent refactors, new capability, or any scenario beyond the single
 regression scenario below — is a scope violation to strike before the plan is
 written, regardless of how prudent it looks. Tracing a task to a scenario or
@@ -438,19 +409,10 @@ snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
 (`sdlc/procedure/debugging`, step 5).
 
-The plan's observation map is held to the same trace. Every `delivers` entry
-traces to the reported symptom or the diagnosed cause, and every
-`regression_guard` entry to an unchanged use case the fix's blast radius places
-at risk (`sdlc/spec/observation-map`). A guarantee the fix neither delivers nor
-places at risk is outside the plan.
-
 State the operation's observable outcome and relevant effects after the fix
-under the diagnosed triggering conditions. Derive verification of the
-applicable operation and presentation contracts under those conditions, using
-the project's sanctioned evidence. Evidence of changed presentation alone does
-not establish the correctness of the underlying outcome. If the settled
-diagnosis cannot support this derivation, return the gap to diagnosis rather
-than substituting a narrower outcome. Record any unresolved part of the
+under the diagnosed triggering conditions. If the settled diagnosis cannot
+support this outcome, return the gap to diagnosis rather than substituting a
+narrower outcome. Record any unresolved part of the
 reported concern as undelivered; naming follow-up work does not discharge it.
 
 A structural-ratchet deepening on the bug's direct change path is authorized
@@ -459,7 +421,7 @@ structural work the investigation surfaced remains out of scope: record it as a
 deferral with its reason; it never rides the fix.
 
 **Regression scenario — the only scenario authoring a bug plan owns.** When the
-reproduction test has no bindable scenario in the owning feature spec, author
+reported symptom has no matching scenario in the owning feature spec, author
 exactly one pending scenario encoding the reported symptom as
 `Given / When / Then` — nothing adjacent, nothing speculative. When a bindable
 scenario already exists, the plan binds it and authors nothing. When the fix is
@@ -492,9 +454,8 @@ omitted — silence is not coverage.
 - Deliverable-producing lanes (tests, security, docs, config, browser/UI, ADR)
   are ticked by naming the task and the artifact it produces (the doc lane via
   step 4b).
-- The tests line names every `TQ-*` predicate triggered by the planned test
-  delta and the task/evidence that will satisfy it. Every other `TQ-*` ID is
-  marked `N/A` with a reason; a generic "tests" line is not coverage.
+- The tests line names the governing project testing contract and, where tests
+  are opted into, the tasks that bind scenario-derived tests.
 - Lanes that produce no artifact — `code` Duplication, `paradigm` Component
   reuse, and `simplify` — are ticked against the plan's own `referenced-paths`:
   confirm no task re-derives, mirrors, or re-implements logic an existing cited

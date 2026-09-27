@@ -106,54 +106,6 @@ Findings:
 The reviewer cannot approve the plan while any criterion lacks a Delivery
 analysis entry that names concrete deliverables.
 
-### 2b. Derivation fidelity and observation-map coverage (behavioral work)
-
-The plan is a derivative of the specs plus code reality; this check judges the
-derivation, not just the coverage table. Two passes, both independent of the
-plan's own inventory:
-
-1. **Recompute the denominator.** From the spec delta, independently derive the
-   use cases the work delivers; from the plan's `referenced-paths` and the
-   blast-radius baseline, independently derive the unchanged use cases the
-   change places at risk. Compare against the plan's observation map
-   (`sdlc/spec/observation-map`). A use case in the recomputed
-   inventory with no map entry is a **Requirement-Violation** — map coverage
-   checked only against the plan's own list is self-consistency dressed as
-   coverage.
-2. **Judge each entry against the failure it names.** For each map entry,
-   take the failure it exists to catch (`sdlc/spec/observation-map`,
-   What an entry must discriminate) and ask whether its acceptance authority,
-   reading the bound evidence, would see that failure. An entry that would not —
-   wrong correlation fields, an outcome record emitted before the fact it
-   claims, a negative behavior mapped to silence instead of an affirmative
-   decision record — is a **Critical** finding. A wrong implementation outside
-   the named failure, constructed to show an entry could pass it, is not a
-   finding; neither is a demand that an entry restate its scenario beyond the
-   selectors its named failure needs.
-
-The check also confirms the map honors the contract's shape: lean core fields
-only, facing derived from the scenarios rather than restated, defaults not
-redundantly overridden.
-
-Both judgments bind entries to the surface's **existing** evidence per the
-observation-map spec's applicability bound: for a surface whose observable
-output is itself the product, an entry binding that native output with its
-facing-derived authority is armable as stated. An "unarmable map" finding may
-not prescribe new instrumentation — emitters, record schemas, correlation
-identifiers — as the remedy; that prescription enlarges the horizon and is not
-a finding. Additive observation the planner chose within the spec's bound is
-part of the delivered behavior, not a scope finding.
-
-3. **Judge each opportunity's reachability.** For each entry, ask whether its
-   opportunity record would still fire if this change were wrong in the way it
-   is most likely to be wrong. An opportunity the change itself can suppress
-   makes its entry unfalsifiable, and every entry sharing that anchor falls
-   silent together — a **Requirement-Violation** per
-   `sdlc/spec/observation-map`. Reject equally a pass condition
-   that accepts an unresolved item being recorded as finished: a terminal
-   outcome requires proof the item is unusable, not proof that something needed
-   to process it was absent.
-
 ### 2c. Task composition (behavioral work)
 
 Delivery analysis traces each task to its scenario, which cannot see a collision
@@ -213,7 +165,7 @@ Verify that:
   rather than laundered through implementation planning;
 - future concerns either constrain today's choice, carry a meaningful deferral
   trigger, or are absent;
-- observable outcomes are established before the tasks select concrete proof.
+- observable outcomes are established before the tasks select implementation.
 
 For a bug, the diagnosed root cause and reported symptom clamp the horizon.
 Adjacent hardening, capability, or refactoring remains out of scope even when a
@@ -267,17 +219,11 @@ policy:
   each context's local change. Missing ownership is Important; shared,
   wrong-context, host-derived, or current-placement-derived ownership is
   Critical under `sdlc/policy/domain-ownership`.
-- Every task has a verification step. Task with no verification -> Important.
-  Verification that doesn't prove the task is done -> Important.
-- Every prescribed act and its verification is executable by the role and phase
-  receiving it, from the execution environment that role runs in — per the
-  executability rule in the preparation artifact quality policy, with the
-  project's verification contract supplying the location facts. A task that
-  schedules an act its assigned role cannot legally or physically perform
-  (for example, a live behavioral probe of daemon code assigned to a worktree
-  builder) -> Critical. A downstream phase's obligation cited as evidence is
-  correct; the same obligation authored as a task for this plan's role is the
-  defect.
+- Where the project opts into tests, each task that binds a scenario names its
+  scenario-bound test. A missing binding is Important.
+- Every prescribed act is executable by the role and phase receiving it, from
+  the environment that role runs in. A task that schedules an act its assigned
+  role cannot legally or physically perform is Critical.
 - No work-phase task takes the doc layer's state as its subject. Authoring or
   editing under `docs/**`, folding pending markers, and confirming or verifying
   whether they are folded are the same violation: the doc layer is authored on
@@ -353,13 +299,11 @@ recorded as re-verifiable facts) alongside its conclusion — and validate:
   A missing sibling implementation is a Critical diagnosis defect; an unexplained
   census entry in the plan is a Critical derivation defect. Reviewing only the plan's
   selected `referenced-paths` is self-consistency, not completeness.
-- **The plan's verification proves the cause is gone.** The plan derives its own
-  verification from the root cause and credibly proves the reported `input` symptom
-  is resolved. Where the bug is hard to reproduce, the plan must carry a concrete
-  task to build the functional/e2e coverage that captures it; a hand-waved or absent
-  verification is Critical.
+- **The plan removes the cause.** The plan's tasks remove the diagnosed root
+  cause and cover the reported `input` symptom. In a project that opts into
+  tests, bind the regression scenario under its testing contract.
 - **The plan delivers the fix and nothing else.** Every task traces to removing
-  the diagnosed root cause or to the verification that proves the symptom gone.
+  the diagnosed root cause or, where tests are opted into, its regression test.
   A task that traces to neither — hardening, extra validation layers, defensive
   defaults, adjacent refactors, new capability — is Critical (scope violation),
   and tracing it to a scenario or doc snippet this same prepare pass authored
@@ -367,7 +311,7 @@ recorded as re-verifiable facts) alongside its conclusion — and validate:
   the `input` symptom are the only scope authorities for a bug.
 - **Scenario authoring is bounded to the regression scenario.** A bug plan
   authors at most one pending feature-spec scenario — the one encoding the
-  reported symptom that its reproduction test binds (plan-draft step 3c). A
+  reported symptom (plan-draft step 3c). A
   second authored scenario, or one encoding behavior beyond the reported
   symptom, is Critical. When a bindable scenario already exists, the plan binds
   it and authors none.
@@ -389,12 +333,8 @@ silence is not coverage. For deliverable-producing lanes the line names the
 specific artifact the build-review lane will validate and the plan task that
 produces it; the key ones to pre-satisfy:
 
-- **Tests**: name the test file and the specific behavior each task observes at
-  a meaningful boundary. "Tests" as a category is not compliance. Logger,
-  metric/trace, config/model/native-shape, private-helper, constructor-wiring,
-  and mock-call-echo assertions are not acceptable deliverables.
-  Independently verdict every `TQ-*` predicate: the plan names evidence for
-  each triggered ID and gives a reasoned `N/A` for every other ID.
+- **Tests**: name the governing project testing contract. Where the project
+  opts into tests, name the task and scenario-bound test it delivers.
 - **Security**: name the validation point, the auth check, and the task that
   adds them.
 - **Documentation (hard gate)**: name the doc snippet id, the section, and the
@@ -440,8 +380,8 @@ produces it; the key ones to pre-satisfy:
   not trigger this gate.
 - **Config surface**: name the config key, the wizard entry, the sample line,
   and the spec section — each with the task that delivers it.
-- **Browser-based frontend or web UI**: name the Playwright smoke path and
-  the task that records evidence for build and review.
+- **Browser-based frontend or web UI**: name the task that delivers the changed
+  flow; the project's browser review runs during delivery review.
 - **Reuse / duplication** (`code` Duplication #4, `paradigm` Component reuse #2,
   `simplify`): these produce no deliverable artifact, so verdict them against the
   plan's `referenced-paths` — does any task re-derive, mirror, or re-implement

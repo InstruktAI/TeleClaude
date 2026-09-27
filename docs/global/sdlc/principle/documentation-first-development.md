@@ -50,7 +50,7 @@ A worker preparing or building a slug runs `telec docs index --target <slug>` to
 
 ### 2. Domain specs carry `delivered_by:` when their context is being rewritten
 
-A per-context domain spec (see `sdlc/spec/domain-spec`) for a service that is being rewritten carries `delivered_by:` listing the slugs that will deliver the rewrite. Workers on the new implementation build against the pending spec. When the new implementation ships and cuts over, the integrator clears `delivered_by:`. The parity check verifies the clear is honest — that the running system actually satisfies what the spec describes.
+A per-context domain spec (see `sdlc/spec/domain-spec`) for a service that is being rewritten carries `delivered_by:` listing the slugs that will deliver the rewrite. Workers on the new implementation build against the pending spec. Build review checks the implementation against that spec. When the new implementation ships and cuts over, the integrator clears `delivered_by:`.
 
 This is the structural reason a service rewrite is safe under this discipline: the domain spec is the shared design anchor; both the old implementation (in its declining role) and the new one (in its ascending role) must satisfy it; the cutover happens when the new implementation satisfies the same spec the old one satisfies.
 
@@ -80,9 +80,8 @@ agents — so "observable by no one" is not a real classification, and
 agent-facing surface changes (new CLI verbs, new events, refined invariants)
 are behavioral work that gets use cases with agent-typed actors. The scenario's
 facing-typed actor (see
-`sdlc/procedure/feature-spec-authoring`) selects the acceptance
-authority downstream: human observation for human-facing behavior, structured
-runtime evidence for agent-facing behavior. Silence on the classification
+`sdlc/procedure/feature-spec-authoring`) identifies who experiences the
+behavior. Silence on the classification
 question means unclassified — it is asked, never defaulted.
 
 A non-behavioral todo that produces a feature spec is a defect. The namespace

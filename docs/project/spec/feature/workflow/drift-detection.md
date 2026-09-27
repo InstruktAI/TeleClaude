@@ -170,8 +170,8 @@ snippets). `implementation-plan` does not author durable snippets, so it
 has no owned-snippet class.
 
 `dependency-artifact` applies to the `implementation-plan` only: the plan is
-where a dependency's contract becomes task premises, ordering claims, and
-observation-map anchors, while every other tracked artifact reaches the plan
+where a dependency's contract becomes task premises and ordering claims,
+while every other tracked artifact reaches the plan
 through `upstream-artifact`.
 
 Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is

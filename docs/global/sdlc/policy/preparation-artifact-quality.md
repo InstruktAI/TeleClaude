@@ -389,66 +389,12 @@ Quality rules:
 
 Plans anticipate what delivery review will check. The PRD owns observable
 outcomes; architecture owns the technical reconciliation needed to preserve
-them; the plan owns concrete proof under the project's applicable verification
-contract.
-
-For each outcome and architectural constraint, the plan identifies the task
-that delivers it and the evidence by which a builder and reviewer can observe
-completion. Evidence may be an executable test, a live-system probe, a browser
-walk, a configuration surface, a documentation contract, or another
-project-sanctioned verification source. The plan names the concrete boundary
-and observation; “tests” or “verify it works” is not compliance.
-
-Arrive at that evidence by asking, per outcome: **what plausible wrong outcome
-must this check distinguish from success, and where would that difference be
-observable?** The answer yields both the failure the probe has to catch and the
-boundary where it is caught. The task records that wrong outcome beside its
-evidence line, so a reviewer can judge whether the named boundary actually
-distinguishes it. A check that would pass whether or not the work is correct is
-not evidence, however concretely it is named — specificity is not discriminating
-power.
-
-**Executable by the receiving role, from where it runs.** Evidence and the act
-that produces it must be executable by the role and phase the task is assigned
-to, within that role's authority and execution environment — location is one
-input to that judgment. A verification the assigned role cannot legally or
-physically perform from its environment is not evidence for that task, however
-discriminating it would be if it could run. A later phase's established
-obligation may be cited as the downstream evidence that discharges an outcome;
-it is never authored as a task for a role that cannot execute it. Where the
-project's verification contract declares a class of live evidence unreachable
-from the work phase's environment, the plan cites that contract's downstream
-discharge instead of inventing a probe.
-
-Evidence is specific to the work:
-
-- CLI behavior names the command surface and observable invocation.
-- Browser behavior names the changed flow and live smoke path.
-- Configuration names the public configuration surface and effective behavior.
-- Security boundaries name the validation and authorization observations.
-- Documentation names the affected contract snippet.
-- User-visible behavior names the observable outcome and where it is exercised.
-
-A plan task without a concrete deliverable and applicable proof is incomplete.
-The PRD remains mechanism-free and carries no DoD-implications block.
-
-### Observation map — the plan wires behavior to runtime evidence
-
-For behavioral work, the plan carries an **observation map** binding every
-in-scope use case to the runtime evidence that will prove it, per
-`sdlc/spec/observation-map`. The planner authors it; the plan
-reviewer recomputes its denominator independently — the use cases the spec
-delta delivers plus the unchanged use cases the change's blast radius places at
-risk — and judges whether each entry would let its acceptance authority see
-the failure the entry names, the bounded burden `sdlc/spec/observation-map`
-defines. A map checked only against the plan's own inventory is
-self-consistency dressed as coverage.
-
-Plan approval freezes the map under the approved artifact digest. A builder who
-discovers the map is wrong kicks preparation back; it never revises the map it
-implements. Delivery requires the map's instrumentation to be independently
-reviewed as present and correctly placed (**armed**); it never waits for
-runtime observation.
+them; the plan names the task that delivers each outcome and architectural
+constraint. A plan task without a concrete deliverable is incomplete. Where a
+project opts into tests, the plan names the scenario-bound test the task binds
+under that project's testing contract. Preparation prescribes no log records or
+runtime evidence for a delivery. The PRD remains mechanism-free and carries no
+DoD-implications block.
 
 ### Tasks are checked against each other, not only against their scenarios
 
@@ -501,8 +447,7 @@ files or executable tests during prepare. Quality rules:
 - **Behavioral focus**: scenarios encode observable behavior (inputs, outputs,
   side effects), not implementation structure. A scenario that asserts a
   specific internal function call is implementation leakage. Every scenario
-  sentence survives any behavior-preserving refactor; the mechanism that proves
-  it lives in the plan's observation map, never in scenario text.
+  sentence survives any behavior-preserving refactor.
 - **Forbidden assertion targets**: scenarios must not prescribe logger-call,
   log-level, metric/trace, config/model/native-shape, private-helper,
   constructor-wiring, or mock-call-echo assertions. Logs are diagnostic evidence,
@@ -532,11 +477,9 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   item, is defective. Copy-pasting the upstream text into the task is
   defective; the reference is the contract.
 - Every task has a rationale explaining _why_ this approach, not just _what_.
-- Every task has a verification step that references specific feature-spec scenarios,
-  existing tests, or direct checks: a test to satisfy, behavior to observe, or check to run.
-  "Tests" as an abstract category is not compliance — name the specific test
-  file and the behavior observed at a meaningful boundary. Do not name
-  logger/config/native-shape/private-helper/wiring assertions as deliverables.
+- Where the project opts into tests, each task that binds a scenario names the
+  specific scenario-bound test. Do not name logger/config/native-shape/private-
+  helper/wiring assertions as deliverables.
 - Tasks trace to PRD, architecture, or feature-spec scenarios. No orphan tasks
   (gold-plating) and no orphan PRD criteria (coverage gaps).
 - Referenced file paths are explicit in the plan tasks for grounding and
@@ -546,9 +489,9 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   the authoritative code drift surface. Per-task prose may still name files for
   builder grounding, but prose path mentions are not part of the drift contract.
 - **A remediation carries its premise through the whole plan.** When a fix
-  changes something the plan stands on — a mechanism, an evidence source, a
-  scope boundary — every statement that depends on it is brought into line in
-  the same revision: tasks, observation map, blast radius, lane coverage. The
+  changes something the plan stands on — a mechanism or scope boundary —
+  every statement that depends on it is brought into line in the same
+  revision: tasks, blast radius, lane coverage. The
   disposition names the changed premise and the sections carried through.
 
 ## Rationale
@@ -559,7 +502,7 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 - Separating target formation from implementation reconciliation prevents the
   present codebase from becoming an accidental product veto while preserving
   the economy and safety of established patterns.
-- Keeping observable outcomes in the PRD and concrete proof in the plan lets
+- Keeping observable outcomes in the PRD and delivery tasks in the plan lets
   each artifact answer one question without embedding implementation detail in
   the product contract.
 
@@ -586,16 +529,9 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   keeps the useful lead instead of discarding it. See
   `project/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` for why a
   creation-time gate was rejected.
-- An observation-map entry is written before any code exists and is read after
-  delivery by intelligence (`general/principle/intelligence-boundaries`). Asked
-  to exclude every conceivable wrong implementation, it has no terminal state:
-  each tightened predicate exposes the next hypothetical it admits, and the map
-  grows while the delivered outcome stays fixed. Naming the one failure the
-  entry exists to catch gives plan review a question it can finish, and leaves
-  unforeseen failures to the runtime evidence and judgment that can actually
-  see them. Letting the planner add observation at the decision it changes
-  keeps that failure visible without reconstructing hidden state from records
-  that never carried it.
+- Runtime log judgment belongs to the integrator after activation. Designing
+  per-outcome evidence during preparation adds contracts and review work
+  without improving that judgment.
 - A fix applied only where a finding points leaves every other statement that
   relied on the old premise asserting it. Each leftover surfaces as the next
   pass's finding, so a plan remediated spot by spot converges one leftover per

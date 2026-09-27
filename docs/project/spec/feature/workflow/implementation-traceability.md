@@ -28,7 +28,7 @@ unique only within its defining specification. Prefix similarity and a matching
 UC id in another specification create no relationship.
 
 Before delivery, approved implementation-plan tasks associate use cases with
-their declared referenced paths and observation-map evidence. After delivery,
+their declared referenced paths. After delivery,
 the todo record supplies the delivery commit and that commit's diff supplies the
 actual changed paths. The projection reports both when they differ; it never
 rewrites either source.

@@ -1,5 +1,5 @@
 ---
-description: 'Language-neutral observability contract: log level semantics, observation-record admissibility, structured fields, never-log rules, and identifier integrity.'
+description: 'Language-neutral observability contract: log levels, boundary coverage, structured fields, never-log rules, and identifier integrity.'
 visibility: 'public'
 ---
 
@@ -16,18 +16,6 @@ visibility: 'public'
 - **ERROR/CRITICAL** — Failures or contract violations that should be fixed
 
 INFO is the production level: what a deployed runtime emits with no configuration change.
-
-### Observation records prove behavior at INFO
-
-- A structured record that an observation map binds as evidence
-  (`sdlc/spec/observation-map`) is a contract-significant
-  decision, and contract-significant decisions are business-relevant by
-  definition — they are INFO. Proof never depends on raising a global level:
-  TRACE is never admissible evidence, and running production at DEBUG to make
-  proof visible is a defect, not a configuration choice.
-- A required proof record that feels too noisy for INFO means the semantic
-  boundary is wrong — aggregate or move the emission point; never demote the
-  record below the production level.
 
 ### Structured fields
 
@@ -57,7 +45,7 @@ INFO is the production level: what a deployed runtime emits with no configuratio
 
 ## Rationale
 
-Level semantics, the never-log list, identifier integrity, and the admissibility of observation records are outcomes that hold whatever language implements them. Stating them once, above every language policy, gives review and tooling a single authoritative source and leaves each language policy owning only what its syntax, logger, and configuration actually decide.
+Level semantics, boundary coverage, the never-log list, and identifier integrity are outcomes that hold whatever language implements them. Stating them once, above every language policy, gives review and tooling a single authoritative source and leaves each language policy owning only what its syntax, logger, and configuration actually decide.
 
 When a language policy absorbs these rules instead, two failures follow together: the rules are primed as that one language's convention, and every other language is left deferring to a contract that does not exist.
 
@@ -68,7 +56,7 @@ When a language policy absorbs these rules instead, two failures follow together
 
 ## Enforcement
 
-- Reviewers cite this policy for level assignment, structured-field discipline, never-log, identifier integrity, and observation-record admissibility; they cite the applicable language logging policy for the mechanism.
+- Reviewers cite this policy for level assignment, boundary coverage, structured-field discipline, never-log, and identifier integrity; they cite the applicable language logging policy for the mechanism.
 - A language or project snippet that restates these rules instead of referencing them is wrong-owner placement under `sdlc/policy/language-policy-ownership`.
 
 ## Exceptions
@@ -77,5 +65,4 @@ When a language policy absorbs these rules instead, two failures follow together
 
 ## See Also
 
-- ~/.teleclaude/docs/sdlc/spec/observation-map.md
 - ~/.teleclaude/docs/sdlc/policy/language-policy-ownership.md

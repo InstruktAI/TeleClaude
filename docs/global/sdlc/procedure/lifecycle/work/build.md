@@ -91,14 +91,12 @@ artifact relevant to executing this plan.
    structural rubrics. The defining test: would this code be unnecessary
    if the agent's briefing said the right thing?
 
-8. **Own the how inside frozen intent.** The frozen obligation inventory is the
-   complete union of carriers `sdlc/spec/obligation-inventory`
-   defines — plan tasks, the quality checklist's builder gates and user-facing
-   verification lines, and the observation map's entries; the implementation
-   choices inside them are yours. Kick back to prepare when code reality
-   invalidates the contract, a reviewed decision, or an inventory entry — not
-   whenever implementation differs from prose. Never revise the plan or the map
-   to fit what you built. A material decision discovered during build — one
+8. **Own the how inside frozen intent.** The approved intent, plan tasks, and
+   applicable quality gates bound the delivery; the implementation choices
+   inside them are yours. Kick back to prepare when code reality invalidates
+   the contract or a reviewed decision — not whenever implementation differs
+   from prose. Never revise the plan to fit what you built. A material decision
+   discovered during build — one
    whose alternatives change scope, ownership, contract, or risk — is a kickback
    trigger; `log` may record the evidence and reason for the kickback, never
    authorize the decision. When your own earlier action created the problem, the

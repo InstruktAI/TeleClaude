@@ -58,17 +58,9 @@ Gates (all required):
      management, review overhead, and sequencing complexity. If the coordination
      cost exceeds the session-size benefit, don't split.
 
-3. **Verification**
+3. **Delivery quality**
 
-- Observable verification criteria exist for every behavioral outcome.
-- Every behavioral outcome has an observation-map entry in the plan wiring it
-  to the runtime evidence that proves it
-  (`sdlc/spec/observation-map`), covering both the use cases
-  the work delivers and the unchanged use cases its blast radius places at
-  risk.
-- The implementation plan names the concrete proof that applies under the
-  project's verification contract: executable tests, live-system behavior,
-  browser evidence, or another sanctioned source.
+- The project's testing contract applies where it has opted into tests.
 - Edge cases and error paths are addressed or explicitly deferred with a
   meaningful trigger.
 - Definition of Done applies and is not contradicted by the task.
@@ -138,8 +130,7 @@ Remediation playbook:
 - Unresolved or shared ownership → resolve the context boundary and contracts
   before planning implementation; current placement, hosting, or caller
   proximity is not a default.
-- Missing verification → establish observable outcomes, then make the plan
-  name concrete project-sanctioned proof.
+- Missing observable outcome → clarify the intent before planning implementation.
 - Security, performance, or tooling gaps → address them where this situation
   triggers them; do not add work merely to satisfy a catalogue.
 

@@ -65,8 +65,8 @@ with intent supplies no justification.
 ### The judged never rewrite their judge
 
 A session whose artifact is in an open review loop does not change, in either
-direction, a contract that review applies to it: the observation-map spec, the
-review procedures, the artifact-quality policy, or any other contract a finding
+direction, a contract that review applies to it: the review procedures, the
+artifact-quality policy, or any other contract a finding
 against it cites. A defect it finds in such a contract is corrected by a
 session with no artifact under that review, on the path its kind takes: a
 documentation repair when the text contradicts a higher-authority contract or
