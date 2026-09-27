@@ -14,7 +14,7 @@ Two regimes travel under "compatibility." Which one applies is decided by **who 
 Shapes consumed by independent parties that cannot be rolled forward atomically: API payloads, WebSocket events, hook payloads, tool interfaces, and any contract crossing a multi-version fleet.
 
 - Treat compatibility as a default requirement, not an optional improvement.
-- Do not introduce breaking changes in any non-major release. Pre-1.0, minor releases are still non-breaking; for 1.0+, breaking changes are allowed only in major releases.
+- Do not introduce breaking changes in any non-major release.
 - Evolve a shared shape additively until the slowest consumer has caught up; readers tolerate unknown fields rather than reject them.
 - Retire a contract through deprecation with an explicit window: mark the old surface, keep it serving for the window, and document before merge what breaks, who is affected, the migration path, and the rollback plan.
 - Compatibility decisions are visible in PR or release notes, not implicit.
