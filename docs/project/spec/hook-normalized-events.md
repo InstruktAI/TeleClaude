@@ -153,6 +153,11 @@ Receiver-added payload fields:
 - source computer,
 - normalized event type,
 - optional native identity fields when available (`native_session_id`, `native_log_file`).
+<!-- planned:event-driven-agent-status -->
+- for `agent_blocked`, the adapter's normalization reason, which tells a
+  usage-limit wait apart from a wait on an approval or answer, so consumers
+  never read provider subtypes to learn which one it is.
+<!-- /planned:event-driven-agent-status -->
 
 Important: native identity fields are **optional**, not required.
 

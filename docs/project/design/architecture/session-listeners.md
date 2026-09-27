@@ -86,8 +86,10 @@ audience is empty.
 - **Distress follows the agent-status transition.** Every entry into `blocked`
   or `stalled` produces one notification of the matching kind for that turn,
   whether the runtime reported it or a watchdog inferred it, under the same
-  per-`(target, kind)` gate. A `no_start` stall happens before any turn and is
-  gated once per start.
+  per-`(target, kind)` gate. An inferred stall claims its own slot in that
+  gate, never the terminal-outcome slot, so the turn's own end or
+  runtime-reported failure still notifies when it arrives. A `no_start` stall
+  happens before any turn and is gated once per start.
 <!-- /planned:event-driven-agent-status -->
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither reads, delivers to, nor removes a

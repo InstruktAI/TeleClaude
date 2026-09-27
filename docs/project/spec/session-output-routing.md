@@ -110,7 +110,11 @@ Assistant output follows a symmetric admin-copy rule so non-Discord-origin sessi
 - Final-output repair (`reconcile_outstanding_final_outputs`) enumerates persisted obligations, never current routing, and targets a lane whose obligation is newer than its receipt. An enrolled lane compares and delivers under its persisted obligation version. A legacy session carrying no obligation markers may repair only its provisioned origin lane, measured and delivered against the retained payload's `last_output_stop_at`. A later no-op completion does not become that payload's version. A lane holding no obligation predates the record and is never enrolled retroactively, so widening the routing policy cannot conscript session history.
 - Recovery runs as a single background pass once the request surface is listening, never inline in startup ahead of it. It carries no volume or rate budget.
 - Channel provisioning for the admin copy is on-demand via the same path the reflection lane uses.
+<!-- planned-change:event-driven-agent-status -->
 - Lifecycle status controls (`accepted`, `active`, `active_output`) may request throttled typing pulses on the origin and Discord admin lanes. These are platform presence signals, not message delivery, and must not render visible UI content.
+<!-- change:event-driven-agent-status -->
+- Lifecycle status controls (`accepted`, and the agent status `active`) may request throttled typing pulses on the origin and Discord admin lanes. These are platform presence signals, not message delivery, and must not render visible UI content.
+<!-- /planned-change:event-driven-agent-status -->
 - UI-origin input emits the existing `accepted` control at the input acceptance boundary (`deliver_inbound`), where all modalities converge, so the typing indicator appears promptly on input rather than only after the late `user_prompt_submit` hook. This reuses the lifecycle presence lane, stays throttled and scoped to the same origin/admin lane selection, and does not introduce a new `ctrl_activity` value for typing. Terminal-origin input retains the `user_prompt_submit` emission.
 - Cache-backed remote session status dispatch uses existing origin metadata to request presence pulses. It must not provision local channels for cache-only remote sessions.
 

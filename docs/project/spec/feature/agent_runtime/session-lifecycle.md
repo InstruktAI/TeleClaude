@@ -180,6 +180,8 @@ And the rest of that entry is unchanged
 ```
 
 
+<!-- planned-change:event-driven-agent-status -->
+
 #### UC-SL23: Only the declared runtime-start boundary establishes liveness
 
 ```gherkin
@@ -192,6 +194,24 @@ When the child runtime announces its declared start boundary
 Then the child is reported live and remains supervised
 And headless or terminal sessions are not reactivated
 ```
+
+<!-- change:event-driven-agent-status -->
+
+#### UC-SL23: Only the declared runtime-start boundary establishes liveness
+
+```gherkin
+Given an orchestrating agent has started a non-headless child session
+And the child runtime has not announced its declared start boundary
+When the orchestrating agent reads the child session
+Then the child is reported as initializing
+And its agent status is `unknown` within the startup window and `stalled` with reason `no_start` once that window has elapsed
+And session creation, launch delivery, host-pane readiness, host-pane changes, generic timestamps, and other runtime activity do not report it live
+When the child runtime announces its declared start boundary
+Then the child is reported live and remains supervised
+And headless or terminal sessions are not reactivated
+```
+
+<!-- /planned-change:event-driven-agent-status -->
 
 <!-- planned-change:event-driven-agent-status -->
 
