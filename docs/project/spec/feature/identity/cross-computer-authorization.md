@@ -7,6 +7,11 @@ delivered_by:
 
 # Cross-Computer Authorization — Spec
 
+## Required reads
+
+- @docs/project/design/architecture/scoped-roles.md
+- @docs/project/spec/feature/identity/command-clearance.md
+
 ## What it is
 
 A person or agent on one computer can act on objects another computer holds: a
