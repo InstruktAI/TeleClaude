@@ -6,9 +6,8 @@ description: Claude Code permission rules and the separate Bash sandbox filesyst
 
 ## Purpose
 
-Record how Claude Code confines shell commands and built-in file tools, and
-which controls can keep an autonomous linked-worktree session inside its
-assigned filesystem boundary.
+Record Claude Code's distinct shell sandbox and built-in file-tool permission
+surfaces.
 
 ## Distinct enforcement surfaces
 
@@ -22,8 +21,8 @@ Sandbox mode and permission mode are independent. The sandbox's auto-allow mode
 approves commands that run inside it without prompting; regular permissions
 mode retains command prompts. Neither mode turns the Bash sandbox into a
 process-wide filesystem boundary. `--dangerously-skip-permissions` suppresses
-tool approval checks and protected-path checks, so the Bash sandbox alone
-cannot confine built-in file edits under that flag.
+tool approval checks and protected-path checks; it does not expand the Bash
+sandbox to built-in file tools.
 
 ## Bash sandbox filesystem
 
@@ -41,28 +40,23 @@ denied. The main checkout's source files do not become writable merely because
 the worktree shares that Git directory.
 
 `sandbox.allowUnsandboxedCommands` defaults to an escape path: Claude can retry
-a blocked command outside the sandbox through the permission flow. Set it to
-`false` to prevent that retry. `sandbox.failIfUnavailable` must be `true` when
-startup without a working sandbox should fail rather than continue
-unsandboxed. A command listed in `sandbox.excludedCommands` is outside the
-Bash sandbox; that list needs separate review.
+a blocked command outside the sandbox through the permission flow. When set to
+`false`, that retry is disabled. With `sandbox.failIfUnavailable` unset or
+`false`, missing sandbox dependencies can cause commands to run unsandboxed;
+`true` makes sandbox setup failure fatal. A command listed in
+`sandbox.excludedCommands` runs outside the Bash sandbox.
 
 ## File-tool permissions
 
 Read and Edit permission rules govern the built-in file tools. A `deny` rule
 overrides an `allow` rule. Permission rules are a separate tool decision layer,
-not OS confinement of an arbitrary command or child process. A launch that
-uses bypass-permissions mode cannot rely on those rules to prevent an Edit or
-Write call from targeting another worktree.
+not OS confinement of an arbitrary command or child process.
 
 ## Gaps / Unknowns
 
-- The built-in Bash sandbox plus permission rules is not one OS-level boundary
-  around every Claude Code tool. A complete worker boundary must account for
-  built-in file edits and any tools outside Bash separately.
-- A session's effective rules depend on merged managed, user, project, local,
-  and CLI settings. The resolved configuration needs inspection in the running
-  version before relying on a particular path grant or denial.
+- The effective path grants of a particular session depend on merged managed,
+  user, project, local, and CLI settings. No particular merged configuration
+  has been exercised here.
 
 ## Sources
 
