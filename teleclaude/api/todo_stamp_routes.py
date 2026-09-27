@@ -11,7 +11,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from teleclaude.api.auth import CallerIdentity, clearance_todos_stamp
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_routes import _SlugStatusResponse, _validate_slug_for_update
 from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
 from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp
@@ -38,7 +38,7 @@ async def todo_stamp(
     cwd: Annotated[str | None, Body()] = None,
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_stamp),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> _SlugStatusResponse:
     """Apply one todo stamp daemon-side, against the initialized session DB.
 

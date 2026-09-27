@@ -19,18 +19,7 @@ from teleclaude.api.agent_dispatch_errors import (
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
-from teleclaude.api.auth import (
-    CallerIdentity,
-    clearance_sessions_agent_restart,
-    clearance_sessions_escalate,
-    clearance_sessions_file,
-    clearance_sessions_keys,
-    clearance_sessions_revive,
-    clearance_sessions_run,
-    clearance_sessions_tail,
-    clearance_sessions_unsubscribe,
-    resolve_caller_provenance,
-)
+from teleclaude.api.auth import CallerIdentity, carried_caller, resolve_caller_provenance
 from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_procedure import normalize_procedure_activation_request
 from teleclaude.api.run_session_refusals import (
@@ -449,11 +438,9 @@ def _prepare_run_session(
         origin_metadata = TerminalOriginMetadata(email=identity.email)
 
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
-
-    if role_info and identity.system_role:
+    if role_info is not None and identity.system_role:
         target_role = role_info[0]
-        allowed = DISPATCH_ALLOWED.get(identity.system_role, frozenset())
-        if target_role not in allowed:
+        if target_role not in DISPATCH_ALLOWED.get(identity.system_role, frozenset()):
             raise RunSessionRefusal(
                 status_code=403,
                 detail=(
@@ -491,7 +478,7 @@ async def send_keys_endpoint(
     session_id: str,
     request: KeysRequest,
     computer: str | None = Query(None),
-    _identity: CallerIdentity = Depends(clearance_sessions_keys),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
     try:
@@ -519,7 +506,7 @@ async def send_keys_endpoint(
 @router.post("/sessions/self/file")
 async def send_file_endpoint(
     request: FileUploadRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_file),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send a file attachment to the session's user."""
     session_id = identity.session_id
@@ -545,7 +532,7 @@ async def agent_restart(
     session_id: str,
     computer: str | None = Query(None),
     restart_request: AgentRestartRequest | None = None,
-    identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> AgentRestartResponseDTO:
     """Restart agent in session (preserves conversation via --resume), or hand off to a successor.
 
@@ -571,7 +558,7 @@ async def agent_restart(
         self_restart = restart_request.self_restart if restart_request else False
         agent = restart_request.agent.value if restart_request and restart_request.agent else None
         request_id = str(uuid.uuid4())
-        caller = resolve_caller_provenance(identity)
+        caller = await resolve_caller_provenance(identity)
         selected_agent: str | None = None
 
         cmd: HandoffAgentCommand | RestartAgentCommand
@@ -614,7 +601,7 @@ async def revive_session(
     session_id: str,
     agent: str | None = Query(None, description="When provided, session_id is a native agent session ID"),
     computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(clearance_sessions_revive),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> CreateSessionResponseDTO:
     """Revive a session by TeleClaude or native session ID."""
     session_id = await _resolve_revive_session_id(http_request, session_id, agent, identity)
@@ -630,7 +617,7 @@ async def revive_session(
 
         cmd = ReviveAgentCommand(session_id=session_id)
         cmd.computer = computer
-        cmd.caller = resolve_caller_provenance(identity)
+        cmd.caller = await resolve_caller_provenance(identity)
         result = await dispatch_command(_STATE.client, cmd)
         if isinstance(result, tuple | list) and len(result) >= 2:
             success = bool(result[0])
@@ -661,7 +648,7 @@ async def revive_session(
 async def get_session_messages(
     session_id: str,
     query: SessionMessagesQuery = Depends(parse_session_messages_query),
-    _identity: CallerIdentity = Depends(clearance_sessions_tail),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> SessionMessagesDTO:
     """Get structured messages from a session's transcript files."""
     try:
@@ -724,7 +711,7 @@ async def get_session_messages(
 
 
 # =====================================================================
-# Tool CLI endpoints (require dual-factor auth via verify_caller)
+# Tool CLI endpoints receive caller identity resolved by the requesting client.
 # =====================================================================
 
 
@@ -909,7 +896,7 @@ async def _run_session(
 @router.post("/sessions/run", response_model_exclude_none=True)
 async def run_session(
     request: RunSessionRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_run),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> CreateSessionResponseDTO:
     """Run a public request with API-created provenance only."""
     return await _run_session(request, identity, entry_point=SessionEntryPoint.RUN_SESSION_API)
@@ -919,7 +906,7 @@ async def run_session(
 async def unsubscribe_session(
     session_id: str,
     computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(clearance_sessions_unsubscribe),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Stop caring about a target session — umbrella verb across both subscription axes.
 
@@ -939,7 +926,7 @@ async def unsubscribe_session(
 @router.post("/sessions/self/escalate")
 async def escalate_session(
     request: EscalateRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_escalate),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Escalate a customer session to an admin via Discord.
 

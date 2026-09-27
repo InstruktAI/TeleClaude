@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, clearance_projects_list
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import ProjectDTO, TodoDTO
 from teleclaude.config import config
 from teleclaude.core import command_handlers
@@ -50,7 +50,7 @@ def _build_todos_snapshot(projects: list[ProjectInfo]) -> dict[str, list[TodoDTO
 @router.get("/projects")
 async def list_projects(
     computer: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_projects_list),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> list[ProjectDTO]:
     """List projects (local + cached remote projects).
 

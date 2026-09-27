@@ -15,7 +15,7 @@ from pydantic import TypeAdapter
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
-from teleclaude.api.auth import CallerIdentity, caller_from_verified_identity
+from teleclaude.api.auth import CallerIdentity, caller_from_carried_identity
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import execute_command_envelope
@@ -92,12 +92,11 @@ _HISTORY_SHOW_REQUEST_ADAPTER: TypeAdapter[HistoryShowRequest] = TypeAdapter(His
 
 
 def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAccess:
-    caller = caller_from_verified_identity(
+    caller = caller_from_carried_identity(
         CallerIdentity(
             session_id=parsed.session_id or "",
             system_role=parsed.system_role,
             human_role=parsed.human_role,
-            tmux_session_name=None,
             email=parsed.human_email,
             principal=parsed.caller_principal,
         )

@@ -51,11 +51,7 @@ _MAIN_BRANCH_NAME = "main"
 _GIT_HEAD_REFERENCE = "HEAD"
 _GIT_ORIGINAL_HEAD_REFERENCE = "ORIG_HEAD"
 _GIT_COUNT_FLAG = "--count"
-_CLI_MODULE_FLAG = "-m"
-_CLI_MODULE = "teleclaude.cli.telec"
-_CODE_COMMAND = "code"
-_MAINTENANCE_COMMAND = "maintenance"
-_DRAIN_COMMAND = "drain"
+_PUBLISHER_MODULE = "teleclaude.core.integration.post_commit_maintenance"
 _MAINTENANCE_RECORDED_EVENT = "post_commit_maintenance_recorded"
 _MAINTENANCE_CONTENDER_STARTED_EVENT = "post_commit_maintenance_contender_started"
 _MAINTENANCE_CONTENDER_FAILED_EVENT = "post_commit_maintenance_contender_spawn_failed"
@@ -195,7 +191,7 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
 def start_drain_contender(project_root: Path) -> bool:
     """Start one detached drain contender without making Git wait for its work."""
     root = project_root.resolve()
-    command = [sys.executable, _CLI_MODULE_FLAG, _CLI_MODULE, _CODE_COMMAND, _MAINTENANCE_COMMAND, _DRAIN_COMMAND]
+    command = [sys.executable, "-m", _PUBLISHER_MODULE]
     try:
         # A detached child is required because this work outlives the Git hook process.
         subprocess.Popen(
@@ -225,6 +221,11 @@ def drain_maintenance(project_root: Path) -> bool:
     with maintenance_drain_lock(root):
         _drain_locked(root)
     return not any(record.state is MaintenanceRecordState.FAILED for record in read_records(root))
+
+
+def main() -> int:
+    """Drain maintenance for the current canonical checkout."""
+    return 0 if drain_maintenance(Path.cwd()) else 1
 
 
 def retry_failed_action(project_root: Path, after_sha: str, action_id: str) -> bool:
@@ -320,7 +321,11 @@ def _drain_locked(project_root: Path) -> None:
                     after_sha=record.after_sha,
                     action_id=record.action_id,
                 )
-                command = fill_activation_range(model.maintenance[record.action_id].command, _range_for(record))
+                command = fill_activation_range(
+                    model.maintenance[record.action_id].command,
+                    _range_for(record),
+                    interpreter=sys.executable,
+                )
                 commands.append(command)
             results = run_process_group_commands(commands, root)
             for record, result in zip(wave_records, results, strict=True):
@@ -431,3 +436,7 @@ def _log_skipped(activation_range: ActivationRange, reason: str, root: Path) -> 
         reason=reason,
         project_root=str(root),
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -14,13 +14,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
-from teleclaude.api.auth import (
-    CallerIdentity,
-    clearance_todos_artifacts_list,
-    clearance_todos_artifacts_read,
-    clearance_todos_artifacts_remove,
-    clearance_todos_artifacts_write,
-)
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_artifact_authority import (
     refuse_foreign_claim,
     refuse_non_prepare_writer,
@@ -125,7 +119,7 @@ async def read_artifact(
     slug: str,
     name: str,
     cwd: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_todos_artifacts_read),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactReadResponse:
     """Read a todo artifact by slug and name."""
     effective_cwd = cwd or _default_cwd()
@@ -142,7 +136,7 @@ async def write_artifact(
     cwd: Annotated[str | None, Body()] = None,
     codebase_sha_at_write: Annotated[str | None, Body()] = None,
     referenced_paths: Annotated[list[str] | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_artifacts_write),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactWriteResponse:
     """Write (create or update) a todo artifact."""
     if name not in ARTIFACT_NAMES_WRITABLE:
@@ -207,7 +201,7 @@ async def remove_artifact(
     slug: str,
     name: str,
     cwd: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_todos_artifacts_remove),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactRemoveResponse:
     """Remove a todo artifact and its version history."""
     effective_cwd = cwd or _default_cwd()
@@ -244,7 +238,7 @@ async def remove_artifact(
 async def list_artifacts(
     slug: str,
     cwd: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_todos_artifacts_list),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactListResponse:
     """List artifact names for a slug, with each artifact's distinct writers."""
     effective_cwd = cwd or _default_cwd()

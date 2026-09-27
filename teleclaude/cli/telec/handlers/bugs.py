@@ -7,19 +7,14 @@ import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from teleclaude.api_models import BugListEntryDTO, TodoDumpRequest
-from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
-from teleclaude.cli.tool_client import tool_api_request
-from teleclaude.config import config
-from teleclaude.core.identity import NoIdentityCliCaller
-from teleclaude.core.todos_db import TodosDb
 from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
@@ -32,10 +27,11 @@ from teleclaude.services.log_bug_hunter_suppressions import (
     remove,
     suppressions_path_for,
 )
-from teleclaude.services.project_catalog.loaders import load_project_node
-from teleclaude.services.work import get_work_service
-from teleclaude.slug import normalize_slug
 from teleclaude.types.todo_kind import TODO_KIND_BUG
+
+if TYPE_CHECKING:
+    from teleclaude.api_models import BugListEntryDTO
+    from teleclaude.core.todos_db import TodosDb
 
 __all__ = [
     "_handle_bugs",
@@ -84,6 +80,8 @@ _BUG_FILING_GATE = (
 
 def _resolve_project_by_name(name: str) -> Path:
     """Resolve a project name to its path using trusted_dirs config."""
+    from teleclaude.config import config  # noqa: PLC0415 - deferred command-local dependency.
+
     trusted = config.computer.get_all_trusted_dirs()
     for td in trusted:
         if td.name.lower() == name.lower():
@@ -102,6 +100,10 @@ def _resolve_project_slug(project_name: str | None) -> str:
     Mirrors the service's slug derivation (``load_project_node``) so the CLI
     writer and the daemon reader resolve the identical ledger path.
     """
+    from teleclaude.services.project_catalog.loaders import (  # noqa: PLC0415 - project lookup belongs to suppression resolution.
+        load_project_node,
+    )
+
     root = _resolve_project_by_name(project_name) if project_name else resolve_invocation_cwd()
     node = load_project_node(root)
     if node is None:
@@ -145,6 +147,10 @@ def _handle_bugs_report(args: list[str]) -> None:
     if not args:
         print(_usage("bugs", "report"))
         return
+
+    from teleclaude.api_models import TodoDumpRequest  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.slug import normalize_slug  # noqa: PLC0415 - deferred command-local dependency.
 
     parsed = parse_command_args(BUGS_REPORT, args)
     positionals = parsed.positionals
@@ -220,10 +226,12 @@ def _handle_bugs_list(args: list[str]) -> None:
         raise SystemExit(1)
 
     async def read_bugs(_todos_db: TodosDb) -> list[BugListEntryDTO]:
+        from teleclaude.services.work import get_work_service  # noqa: PLC0415 - deferred command-local dependency.
+
         project_root = resolve_project_root(resolve_invocation_cwd())
         return get_work_service(str(project_root)).todo.bug_entries()
 
-    bugs = run_todo_read("telec bugs list", read_bugs)
+    bugs = run_todo_read(read_bugs)
 
     if not bugs:
         print("No bugs found")
@@ -249,6 +257,12 @@ def _parse_expires(raw: str) -> datetime:
 
 def _handle_bugs_suppress(args: list[str]) -> None:
     """Handle telec bugs suppress "<pattern>" --reason <r> [...]."""
+    from teleclaude.caller_identity import NoIdentityCliCaller  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.session_auth import (  # noqa: PLC0415 - deferred command-local dependency.
+        no_identity_refusal,
+        resolve_cli_identity,
+    )
+
     parsed = parse_command_args(BUGS_SUPPRESS, args)
     positionals = parsed.positionals
     if len(positionals) > 1:
@@ -315,7 +329,6 @@ def _handle_bugs_suppress(args: list[str]) -> None:
 
 def _handle_bugs_suppressions(args: list[str]) -> None:
     """Handle telec bugs suppressions [--project <name>] — list the ledger."""
-    require_cli_clearance("telec bugs suppressions")
     parsed = parse_command_args(BUGS_SUPPRESSIONS, args)
     if parsed.positionals:
         print(f"Unknown option: {parsed.positionals[0]}")

@@ -14,20 +14,19 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from teleclaude.api.auth import (
     CallerIdentity,
-    caller_from_verified_identity,
-    clearance_history_search,
-    clearance_history_show,
-    principal_for_verified_caller,
+    caller_from_carried_identity,
+    carried_caller,
+    principal_for_carried_caller,
 )
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.command_dispatch import RemoteDispatchError, parse_remote_dispatch_data_diagnosed
 from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.history.search_payload import HistorySearchPayload
 from teleclaude.history.service import (
     HistoryDetailPayload,
     HistoryRelayCommand,
-    HistorySearchPayload,
     HistoryShowRequest,
     build_history_detail_payload,
     build_history_search_payload,
@@ -138,10 +137,10 @@ async def search_history(
     include_workers: bool = False,
     identity: str | None = None,
     project: str | None = None,
-    caller: CallerIdentity = Depends(clearance_history_search),
+    caller: CallerIdentity = Depends(carried_caller),
 ) -> HistorySearchPayload:
     """Search local or peer mirrors through the authenticated daemon boundary."""
-    resolved_caller = caller_from_verified_identity(caller)
+    resolved_caller = caller_from_carried_identity(caller)
     access = history_access_for_caller(resolved_caller)
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
@@ -170,7 +169,7 @@ async def search_history(
             origin_metadata=origin_metadata,
             human_email=caller.email,
             human_role=caller.human_role,
-            caller_principal=principal_for_verified_caller(caller),
+            caller_principal=principal_for_carried_caller(caller),
         )
         return await _dispatch_remote_history_request(
             computer=target_computer,
@@ -203,10 +202,10 @@ async def show_history(
     thinking: bool = False,
     raw: bool = False,
     computer: str | None = None,
-    caller: CallerIdentity = Depends(clearance_history_show),
+    caller: CallerIdentity = Depends(carried_caller),
 ) -> HistoryDetailPayload:
     """Resolve and return one local or peer-scoped history detail."""
-    access = history_access_for_caller(caller_from_verified_identity(caller))
+    access = history_access_for_caller(caller_from_carried_identity(caller))
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     try:
@@ -232,7 +231,7 @@ async def show_history(
             origin_metadata=cast(JsonDict, request),
             human_email=caller.email,
             human_role=caller.human_role,
-            caller_principal=principal_for_verified_caller(caller),
+            caller_principal=principal_for_carried_caller(caller),
         )
         response_adapter: TypeAdapter[HistoryDetailPayload | None] = TypeAdapter(HistoryDetailPayload | None)
         payload = await _dispatch_remote_history_request(

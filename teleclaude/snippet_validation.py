@@ -13,6 +13,7 @@ import yaml
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
+from teleclaude.snippet_scope import SnippetScope as SnippetScope
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _GENERATED_DOMAIN_BUNDLE_FILENAME = "domain-baseline-bundle.md"
@@ -28,15 +29,6 @@ class SnippetTaxonomy(StrEnum):
     DESIGN = "design"
     SPEC = "spec"
     ADR = "adr"
-
-
-class SnippetScope(StrEnum):
-    """Closed scope values materialized in the snippet index."""
-
-    GLOBAL = "global"
-    PROJECT = "project"
-    PERSON = "person"
-    COMPANY = "company"
 
 
 #: Snippet-id prefixes reserved by the scope vocabulary, never a project slug.

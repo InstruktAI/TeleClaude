@@ -8,10 +8,9 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import resolve_session_principal
 from teleclaude.config.loader import find_company_config_path, list_company_configs
 from teleclaude.config.schema import CompanyRole
-from teleclaude.core.db._sync import resolve_session_principal
-from teleclaude.core.identity import get_identity_resolver
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
@@ -155,6 +154,8 @@ def resolve_company_selection(company: str, human_email: str | None) -> CompanyS
         return CompanySelection(outcome=CompanySelectionOutcome.UNKNOWN_COMPANY, company=None)
     if not human_email:
         return CompanySelection(outcome=CompanySelectionOutcome.ACCEPTED, company=company)
+    from teleclaude.core.identity import get_identity_resolver  # noqa: PLC0415 - deferred command-local dependency.
+
     identity = get_identity_resolver().resolve_by_email(human_email)
     if identity.person_slug is None:
         return CompanySelection(outcome=CompanySelectionOutcome.NOT_MEMBER, company=None)
@@ -200,6 +201,8 @@ def resolve_session_company_context(session: Session) -> SessionCompanyContext:
         return SessionCompanyContext(company=session.company, origin=principal, state=SessionCompanyState.RESOLVED)
     eligible: tuple[str, ...] = ()
     if session.human_email:
+        from teleclaude.core.identity import get_identity_resolver  # noqa: PLC0415 - deferred command-local dependency.
+
         identity = get_identity_resolver().resolve_by_email(session.human_email)
         if identity.person_slug is not None:
             eligible = tuple(

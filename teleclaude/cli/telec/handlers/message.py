@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from teleclaude.api_models import PersonMessageRequest
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import MESSAGE
 from teleclaude.cli.tool_client import tool_api_request
-from teleclaude.config.schema import MessagingChannel
 
 __all__ = ["_handle_message"]
 
@@ -32,6 +30,9 @@ def _handle_message(args: list[str]) -> None:
         print("Missing required <slug> and <text>.")
         print(_usage("message"))
         raise SystemExit(1)
+
+    from teleclaude.api_models import PersonMessageRequest  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.config.schema import MessagingChannel  # noqa: PLC0415 - deferred command-local dependency.
 
     channel_raw = parsed.value(F.FLAG_MSG_CHANNEL)
     channel: MessagingChannel | None = None

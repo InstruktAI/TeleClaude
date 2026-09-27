@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, clearance_computers_list
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import ComputerDTO
 from teleclaude.config import config
 from teleclaude.core import command_handlers
@@ -29,7 +29,7 @@ def configure(cache: DaemonCache | None) -> None:
 
 @router.get("/computers")
 async def list_computers(
-    _identity: CallerIdentity = Depends(clearance_computers_list),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> list[ComputerDTO]:
     """List available computers (local + cached remote computers)."""
     try:

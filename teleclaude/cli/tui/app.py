@@ -352,6 +352,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
 
         self.api = api
+        from teleclaude.cli.session_auth import resolve_cli_identity  # noqa: PLC0415 - capture the TUI's launch caller.
+
+        self._clearance_identity = resolve_cli_identity()
         is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         self._init_state = _AppInitState(
             start_view=start_view,
@@ -593,12 +596,14 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         except APP_RUNTIME_ERRORS:
             logger.exception("Failed to connect API")
 
-        self.api.start_websocket(
+        refusals = self.api.start_websocket(
             callback=self._on_ws_event,
             subscriptions=["sessions", "preparation", "todos"],
             on_connect=self._on_ws_connected,
             include_removed=True,
         )
+        for refusal in refusals:
+            self.notify_text(refusal, severity="error")
 
         logger.trace("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
 

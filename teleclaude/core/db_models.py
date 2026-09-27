@@ -724,15 +724,3 @@ class MemoryManualSession(SQLModel, table=True):
     memory_session_id: str = Field(primary_key=True)
     project: str
     created_at_epoch: int
-
-
-class SessionToken(SQLModel, table=True):
-    """session_tokens table — agent session authentication ledger."""
-
-    __tablename__ = "session_tokens"
-    __table_args__ = {"extend_existing": True}
-
-    token: str = Field(primary_key=True)
-    session_id: str
-    principal: str  # "human:<email>" or "system:<stable-id>"
-    role: str  # authorization role (e.g. "admin", "worker")

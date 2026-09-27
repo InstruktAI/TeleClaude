@@ -9,11 +9,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.agent_registry import AgentName, registry_digest
-from teleclaude.api.auth import (
-    CallerIdentity,
-    clearance_agents_availability,
-    clearance_agents_status,
-)
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.event_serialization import availability_legacy_fields
 from teleclaude.api_models import AgentAvailabilityDTO, AgentStatusRequest, ModelAvailabilityDTO
 from teleclaude.config import config
@@ -69,7 +65,7 @@ def _build_agent_dto(
 
 @router.get("/agents/availability")
 async def get_agent_availability(
-    _identity: CallerIdentity = Depends(clearance_agents_availability),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, AgentAvailabilityDTO]:
     """Get agent availability."""
     result: dict[str, AgentAvailabilityDTO] = {}
@@ -112,7 +108,7 @@ async def get_agent_availability(
 async def set_agent_status(
     agent: str,
     request: AgentStatusRequest,
-    _identity: CallerIdentity = Depends(clearance_agents_status),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Set agent dispatch status (available/unavailable/degraded).
 

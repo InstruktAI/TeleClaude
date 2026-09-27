@@ -36,14 +36,13 @@
 # Trusted external tools may set TELECLAUDE_TRUSTED_TOOL=1 to step aside the
 # wrapper entirely (all gates). Logged as event=bypass reason=trusted_tool.
 #
-# Identity source: $TMPDIR/teleclaude_identity.json (written by daemon).
-# Fields: system_role, human_role, session_id.
+# The lean caller-role entrypoint runs only on the replay-on-main and push-on-main gates.
 #
 # Behavior by context:
 #   Outside tmux ($TMUX unset): pass through, no restrictions.
-#   Inside tmux, human session (human_role set, no system_role): worker restrictions.
-#   Inside tmux, agent session (system_role set): role-based restrictions.
-#   TELECLAUDE_SYSTEM_ROLE env override: honored only when human_role is present.
+#   Inside tmux: apply code and commit protections from the repository declaration.
+#   Resolve caller role only for commit-producing replay on main and push from main.
+#   TELECLAUDE_SYSTEM_ROLE override is honored only for a person-rooted session.
 #
 # Installed via `make install` as a symlink at ~/.teleclaude/bin/git, beside
 # the teleclaude-capabilities.sh declaration reader it sources.
@@ -58,7 +57,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRAPPER_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/instrukt-ai/teleclaude/git-wrapper.log"
 mkdir -p "$(dirname "$WRAPPER_LOG")" 2>/dev/null || true
-IDENTITY_FILENAME="teleclaude_identity.json"
+_role=""
 
 # Use gdate when available so timestamps match the daemon log format
 # (ms-precision ISO-8601 Z). Fall back to BSD date (s-precision).
@@ -205,6 +204,40 @@ _log_block() {
     fi
 }
 
+_resolve_caller_role() {
+    local _source="$0" _dir _target _checkout _output _line
+    while [ -L "$_source" ]; do
+        _dir="$(cd "$(dirname "$_source")" && pwd)"
+        _target="$(readlink "$_source")"
+        if [[ "$_target" == /* ]]; then
+            _source="$_target"
+        else
+            _source="$_dir/$_target"
+        fi
+    done
+    _checkout="$(cd "$(dirname "$_source")/../../.." && pwd)" || return 1
+    if ! _output="$(UV_NO_SYNC=1 uv run --directory "$_checkout" --quiet python -m teleclaude.cli.caller_role)"; then
+        return 1
+    fi
+
+    _system_role=""
+    _person_role=""
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        case "$_line" in
+            system_role=*) _system_role="${_line#system_role=}" ;;
+            person_role=*) _person_role="${_line#person_role=}" ;;
+        esac
+    done <<< "$_output"
+    if [ -n "$_person_role" ] && [ -n "${TELECLAUDE_SYSTEM_ROLE:-}" ]; then
+        _system_role="$TELECLAUDE_SYSTEM_ROLE"
+    fi
+    if [ -n "$_person_role" ] && [ -z "$_system_role" ]; then
+        _role="worker"
+    else
+        _role="$_system_role"
+    fi
+}
+
 # Shared knowledge: which git global options consume the following argument
 # and which are fully self-contained. Both the subcommand-detection parser
 # below (which needs -C's value as a directory) and the local-`main` ref
@@ -325,38 +358,6 @@ if [ "$_code_enabled" -eq 0 ] && [ "$_commit_enabled" -eq 0 ] && [ "$_sealed_inv
     exec "$_real_git_bin" "$@"
 fi
 
-# ── Read identity from JSON file ─────────────────────────────────────────────
-# Identity is relevant only after capability ownership is established. Plain,
-# data-only, and agents-only repositories pass through before this read.
-_identity_file="${TMPDIR:-}/${IDENTITY_FILENAME}"
-_system_role=""
-_human_role=""
-
-if [ -f "$_identity_file" ]; then
-    # Minimal JSON parsing with sed — no jq dependency.
-    _system_role="$(sed -n 's/.*"system_role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_identity_file" 2>/dev/null || true)"
-    _human_role="$(sed -n 's/.*"human_role"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_identity_file" 2>/dev/null || true)"
-fi
-
-# Env var override — only honored when a human owns this session.
-if [ -n "$_human_role" ] && [ -n "${TELECLAUDE_SYSTEM_ROLE:-}" ]; then
-    _system_role="$TELECLAUDE_SYSTEM_ROLE"
-fi
-
-# No identity file or empty — fail fast (broken session).
-if [ -z "$_system_role" ] && [ -z "$_human_role" ]; then
-    _log_block identity_missing
-    echo "ERROR: No system_role or human_role in ${_identity_file}. Session identity is broken." >&2
-    exit 1
-fi
-
-# Human in tmux without explicit system_role → apply worker restrictions.
-if [ -n "$_human_role" ] && [ -z "$_system_role" ]; then
-    _system_role="worker"
-fi
-
-_role="$_system_role"
-
 # Git's explicit flag overrides the autoStash config values disabled above.
 # Scan the full argument vector: an unrecognized global option may make the
 # subcommand detector mistake its value for the subcommand. Git accepts
@@ -386,13 +387,9 @@ if [ "$_code_enabled" -eq 1 ]; then
     done
 fi
 
-# ── Block per-command stash config carriers and alias redefinition ────────────
 # Command-line config can override the false autoStash values injected by
-# _real_git. A valueless -c key is true, and include.path/includeIf.*.path can
-# insert autoStash=true from another file at command scope. Refuse both direct
-# autoStash keys and per-command includes before Git reads either one.
-# `git -c alias.X=stash X` would bypass every subcmd-name-based block (the
-# wrapper sees `X` as `_subcmd`, not `stash`).
+# _real_git. Refuse direct autoStash keys and per-command includes before Git
+# reads them; the argument scan below retains the alias-redefinition guard.
 _prev_arg=""
 for _arg in "$@"; do
     _config_override=""
@@ -442,14 +439,6 @@ if [ "$_code_enabled" -eq 1 ]; then
             exit 1
             ;;
     esac
-fi
-
-# ── Human session without tmux override: directory scope only ─────────────────
-# (This path is unreachable now — humans outside tmux exec'd above, humans
-#  inside tmux get _system_role=worker. Kept for defensive completeness.)
-if [ -n "$_human_role" ] && [ "$_role" = "" ]; then
-    _real_git "$@"
-    exit $?
 fi
 
 # ── Detect effective working tree: integration vs. slug vs. neither ─────────
@@ -947,11 +936,17 @@ case "$_subcmd" in
                     ;;
             esac
         done
-        if [ "$_produces_commit" -eq 1 ] && [ "${TELECLAUDE_OVERRIDE_APPROVED:-}" != "1" ] && [ "$_role" != "integrator" ]; then
+        if [ "$_produces_commit" -eq 1 ] && [ "${TELECLAUDE_OVERRIDE_APPROVED:-}" != "1" ]; then
             _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
             if [ "$_current_branch" = "main" ]; then
-                _log_block "replay_main_unauthorized_${_subcmd}"
-                cat >&2 <<MSG
+                if ! _resolve_caller_role; then
+                    _log_block caller_role_resolution_failed
+                    echo "ERROR: Could not resolve caller role for git $_subcmd on main." >&2
+                    exit 1
+                fi
+                if [ "$_role" != "integrator" ]; then
+                    _log_block "replay_main_unauthorized_${_subcmd}"
+                    cat >&2 <<MSG
 ERROR: 'git $_subcmd' on main produces commits without going through telec code commit.
 
 This bypasses telec code commit's main-branch lock, scope checks, and the
@@ -960,7 +955,8 @@ commit-first review-routing gate.
 To proceed (explicit override, one-shot):
   TELECLAUDE_OVERRIDE_APPROVED=1 git $_subcmd <args>
 MSG
-                exit 1
+                    exit 1
+                fi
             fi
         fi
         ;;
@@ -969,10 +965,17 @@ fi
 
 if { [ "$_code_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } && [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
-        _log_block push_main_non_integrator
-        echo "ERROR: Push from main is a protected operation. Only the integrator role may push from main." >&2
-        exit 1
+    if [ "$_current_branch" = "main" ]; then
+        if ! _resolve_caller_role; then
+            _log_block caller_role_resolution_failed
+            echo "ERROR: Could not resolve caller role for git push from main." >&2
+            exit 1
+        fi
+        if [ "$_role" != "integrator" ]; then
+            _log_block push_main_non_integrator
+            echo "ERROR: Push from main is a protected operation. Only the integrator role may push from main." >&2
+            exit 1
+        fi
     fi
 fi
 

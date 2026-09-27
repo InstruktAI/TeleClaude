@@ -13,6 +13,7 @@ from pydantic import Field, field_validator, model_validator
 from teleclaude.agent_registry import AgentName
 from teleclaude.closed_model import ClosedModel
 from teleclaude.config.tiers import Tier
+from teleclaude.config_roster import PersonEntry as PersonEntry
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
@@ -207,50 +208,12 @@ class BusinessConfig(ClosedModel):
     publishes: list[PublishesEntry] = []
 
 
-ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
 OUTPUT_VISIBILITY_MOBILE: Final = "mobile"
 OUTPUT_VISIBILITY_FULL: Final = "full"
 OUTPUT_VISIBILITY_BOTH: Final = "both"
 OUTPUT_VISIBILITY_OFF: Final = "off"
 OutputVisibilityValue = Literal["mobile", "full", "both", "off"]
 _PROJECT_OWNER_CONFLICT = "Project configuration cannot declare both company and person owners"
-
-
-class PersonEntry(ClosedModel):
-    """Person identity and role configuration."""
-
-    name: str
-    email: str = Field(min_length=1)
-    slug: str | None = None
-    username: str | None = None
-    role: Literal["admin", "member", "contributor", "newcomer"] = "member"
-    preferences: str | None = None  # Plain-text user preferences
-    expertise: dict[str, ProficiencyLevel] | None = None
-
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, v: str) -> str:
-        """Normalize and reject empty person email values."""
-        value = v.strip()
-        if not value:
-            raise ValueError("Person email must be non-empty")
-        return value
-
-    @field_validator("slug")
-    @classmethod
-    def validate_person_slug(cls, value: str | None) -> str | None:
-        """Enforce slug format when the field is set.
-
-        Empty/missing values normalize to ``None`` so pre-slug configs still
-        load; slug migration fills the value. Mirrors ``validate_project_slug``.
-        """
-        if value is None:
-            return None
-        stripped = value.strip()
-        if not stripped:
-            return None
-        validate_slug(stripped)
-        return stripped
 
 
 class MailConnector(StrEnum):

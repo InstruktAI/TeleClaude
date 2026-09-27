@@ -9,7 +9,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from sqlalchemy import Engine, text  # guard: raw-sql
@@ -17,7 +16,8 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.caller_identity import SessionIdentityError as SessionIdentityError
+from teleclaude.caller_identity import resolve_session_principal as resolve_session_principal
 from teleclaude.core.agent_availability import (
     AgentAvailabilityStatus,
     AvailabilityState,
@@ -26,11 +26,9 @@ from teleclaude.core.agent_availability import (
 )
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import Session as SessionRecord
+from teleclaude.core.session_identity_facts import read_session_identity_facts
 
 from .. import db_models
-
-if TYPE_CHECKING:
-    from teleclaude.core.models import Session
 
 _NO_SUCH_TABLE_ERROR = "no such table"
 _EMPTY_SESSION_TEXT = ""
@@ -300,53 +298,30 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
 
 def get_session_identity_sync(db_path: str, session_id: str) -> SessionRecord | None:
     """Load one session's identity-bearing fields from the session record."""
-    engine = create_sync_db_engine(db_path)
-    try:
-        with SqlSession(engine) as session:
-            stmt = select(
-                db_models.Session.session_id,
-                db_models.Session.computer_name,
-                db_models.Session.principal,
-                db_models.Session.human_email,
-                db_models.Session.human_role,
-                db_models.Session.system_role,
-                db_models.Session.working_slug,
-                db_models.Session.closed_at,
-            ).where(db_models.Session.session_id == session_id)
-            row = session.exec(stmt).first()
-            if row is None:
-                return None
-            return SessionRecord(
-                session_id=str(row[0]),
-                computer_name=str(row[1]),
-                tmux_session_name=_EMPTY_SESSION_TEXT,
-                title=_EMPTY_SESSION_TEXT,
-                principal=row[2],
-                human_email=row[3],
-                human_role=row[4],
-                system_role=row[5],
-                working_slug=row[6],
-                closed_at=row[7],
-            )
-    finally:
-        engine.dispose()
+    facts = read_session_identity_facts(db_path, session_id)
+    if facts is None:
+        return None
+    return SessionRecord(
+        session_id=facts.session_id,
+        computer_name=facts.computer_name,
+        tmux_session_name=_EMPTY_SESSION_TEXT,
+        title=_EMPTY_SESSION_TEXT,
+        principal=facts.principal,
+        human_email=facts.human_email,
+        human_role=facts.human_role,
+        system_role=facts.system_role,
+        working_slug=facts.working_slug,
+        job=facts.job,
+        initiator_session_id=facts.initiator_session_id,
+        company=facts.company,
+        closed_at=facts.closed_at,
+    )
 
 
 def get_session_company_sync(db_path: str, session_id: str) -> str | None:
-    """Load one session's company, selecting only that column.
-
-    Kept separate from ``get_session_identity_sync`` so the query every
-    in-session command's caller resolution runs never selects a column that
-    may not exist yet on an unmigrated row.
-    """
-    engine = create_sync_db_engine(db_path)
-    try:
-        with SqlSession(engine) as session:
-            stmt = select(db_models.Session.company).where(db_models.Session.session_id == session_id)
-            row = session.exec(stmt).first()
-            return row if row is None else str(row)
-    finally:
-        engine.dispose()
+    """Load the recorded company from the shared lightweight identity query."""
+    facts = read_session_identity_facts(db_path, session_id)
+    return facts.company if facts is not None else None
 
 
 def get_session_ids_by_native_sync(db_path: str, native_session_ids: Sequence[str]) -> dict[str, str]:
@@ -478,35 +453,3 @@ def delete_process_spawn_registry_entry_sync(db_path: str, owner: str, *, timeou
             (owner,),
         )
         conn.commit()
-
-
-class SessionIdentityError(ValueError):
-    """Raised when a session has no resolvable identity."""
-
-
-def resolve_session_principal(session: "Session") -> tuple[str, str]:
-    """Resolve the principal identity for a session.
-
-    Returns (principal, role) where role is informational only — system sessions
-    get their authoritative role from session.system_role, not from this function.
-
-    Rules:
-    - Inherited principal (session.principal set by parent): reuse it.
-    - Human session (human_email present): principal="human:<email>".
-    - System session (session.system_role present): principal is the daemon identity.
-    - No identity: raises SessionIdentityError (401).
-    """
-    if session.principal:
-        return session.principal, session.human_role or HUMAN_ROLE_CUSTOMER
-    if session.human_email:
-        principal = f"human:{session.human_email}"
-        role = session.human_role or HUMAN_ROLE_CUSTOMER
-        return principal, role
-    # System session — only if explicitly created with a system_role.
-    if session.system_role:
-        return SYSTEM_DAEMON_PRINCIPAL, session.system_role
-    raise SessionIdentityError(
-        f"Session {session.session_id} has no identity: "
-        "no principal, no human_email, no system_role. "
-        "Authentication required."
-    )

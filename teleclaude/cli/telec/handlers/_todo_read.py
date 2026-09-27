@@ -6,14 +6,12 @@ import asyncio
 import sys
 from collections.abc import Awaitable, Callable
 
-from teleclaude.cli.session_auth import require_cli_clearance
 from teleclaude.core.todos_db import TodosDb, close_todos_db_instances, get_todos_db
 from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
 
 
-def run_todo_read[T](command_path: str, operation: Callable[[TodosDb], Awaitable[T]]) -> T:
-    """Authorize and run one workflow-store read for the invocation project."""
-    require_cli_clearance(command_path)
+def run_todo_read[T](operation: Callable[[TodosDb], Awaitable[T]]) -> T:
+    """Run one workflow-store read for the invocation project after CLI clearance."""
     try:
         project_root = resolve_project_root(resolve_invocation_cwd())
     except FileNotFoundError as exc:

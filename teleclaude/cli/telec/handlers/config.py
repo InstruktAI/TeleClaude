@@ -6,7 +6,6 @@ import asyncio
 import importlib
 import sys
 
-from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
@@ -34,6 +33,8 @@ def _handle_legacy_config_cli(args: list[str]) -> None:
 
 async def _deprovision_tts() -> None:
     """Call the daemon's TTS deprovision action."""
+    from teleclaude.cli.api_client import TelecAPIClient  # noqa: PLC0415 - deferred command-local dependency.
+
     api = TelecAPIClient()
     await api.connect()
     try:
@@ -44,6 +45,8 @@ async def _deprovision_tts() -> None:
 
 def _handle_config_tts(args: list[str]) -> None:
     """Handle telec config tts commands."""
+    from teleclaude.cli.api_client import APIError  # noqa: PLC0415 - deferred command-local dependency.
+
     if not args or args[0] != "deprovision":
         print(_usage("config", "tts"))
         raise SystemExit(1)

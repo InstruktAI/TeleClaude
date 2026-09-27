@@ -8,7 +8,7 @@ from pathlib import Path
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_INSTALL, CODE_LINT, CODE_TEST
+from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_LINT, CODE_TEST
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import run_lint_gate, run_make_target
 from teleclaude.quality.scope import (
@@ -86,18 +86,6 @@ def handle_format(args: list[str]) -> None:
         scoped_files = None
 
     exit_code = _run_make("format", project_root, files=scoped_files)
-    if exit_code != 0:
-        raise SystemExit(exit_code)
-
-
-def handle_install(args: list[str]) -> None:
-    """Handle the ``telec code install`` command."""
-    parsed = parse_command_args(CODE_INSTALL, args)
-    if parsed.positionals:
-        print("ERROR: telec code install does not accept operands", file=sys.stderr)
-        raise SystemExit(2)
-    project_root = resolve_git_root(resolve_invocation_cwd())
-    exit_code = _run_make("install", project_root)
     if exit_code != 0:
         raise SystemExit(exit_code)
 

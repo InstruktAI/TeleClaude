@@ -31,7 +31,7 @@ checkpoint:
     plumbing-convergence:
       main_only: true
       precedence: 15
-      command: [telec, projects, converge]
+      command: ['{interpreter}', -m, teleclaude.project_setup.plumbing]
     restart:
       main_only: true
       precedence: 100
@@ -55,7 +55,7 @@ checkpoint:
     tui-reload:
       main_only: true
       precedence: 40
-      command: [telec, reload]
+      command: ['{interpreter}', -m, teleclaude.cli.tui.processes]
   integrator_judgment:
     - log-check
   bindings:

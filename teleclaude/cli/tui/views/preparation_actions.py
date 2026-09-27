@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 from textual import work
 
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.cli.clearance import ClearanceScope
 from teleclaude.cli.tool_client import ToolAPIError, ToolQueryParams, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest, StateChanged
 from teleclaude.cli.tui.tree import project_collapse_key
@@ -172,6 +173,16 @@ _ROW_ADDRESSED_ACTIONS: frozenset[PreparationAction] = frozenset(
         PreparationAction.PREVIEW_FILE,
     }
 )
+_ACTION_CLEARANCE_VERBS: dict[PreparationAction, str] = {
+    PreparationAction.PREPARE: "todo prepare",
+    PreparationAction.START_WORK: "todo work",
+    PreparationAction.FREEZE: "todo freeze",
+    PreparationAction.UNFREEZE: "todo unfreeze",
+    PreparationAction.HOLD: "todo update",
+    PreparationAction.APPROVE_GATE: "todo stamp",
+    PreparationAction.REMOVE_ARTIFACT: "todo artifacts remove",
+    PreparationAction.REACTIVATE_SELECTED: "todo reactivate",
+}
 
 
 class _ApprovalGateState(TypedDict, total=False):
@@ -253,7 +264,15 @@ class PreparationViewActionsMixin:
     ) -> None:
         """Run one row-addressed API action and contain transport failures at the UI edge."""
         try:
-            result = tool_api_request(method, path, json_body=body, params=params, timeout=10.0)
+            result = tool_api_request(
+                method,
+                path,
+                json_body=body,
+                params=params,
+                timeout=10.0,
+                clearance_scope=ClearanceScope.verb(_ACTION_CLEARANCE_VERBS[action]),
+                clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
+            )
         except ToolAPIError as exc:
             self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
             return
@@ -592,7 +611,12 @@ class PreparationViewActionsMixin:
 
             try:
                 result = tool_api_request(
-                    "POST", "/todos/dump", json_body=request.model_dump(mode="json"), timeout=10.0
+                    "POST",
+                    "/todos/dump",
+                    json_body=request.model_dump(mode="json"),
+                    timeout=10.0,
+                    clearance_scope=ClearanceScope.verb("bugs report" if kind == TODO_KIND_BUG else "todo create"),
+                    clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
                 )
             except Exception as exc:
                 self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
@@ -712,7 +736,12 @@ class PreparationViewActionsMixin:
         def _on_confirm_todo(confirmed: bool | None) -> None:
             if not confirmed:
                 return
-            self._submit_lifecycle_operation(path, project_path, _REMOVING_TODO_LABEL_TEMPLATE.format(slug=slug))
+            self._submit_lifecycle_operation(
+                path,
+                project_path,
+                _REMOVING_TODO_LABEL_TEMPLATE.format(slug=slug),
+                scope=ClearanceScope.verb("todo remove"),
+            )
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
@@ -722,13 +751,22 @@ class PreparationViewActionsMixin:
             _on_confirm_todo,
         )
 
-    def _submit_lifecycle_operation(self, path: str, project_path: str, display_label: str) -> None:
+    def _submit_lifecycle_operation(
+        self,
+        path: str,
+        project_path: str,
+        display_label: str,
+        *,
+        scope: ClearanceScope,
+    ) -> None:
         try:
             result = tool_api_request(
                 _ROW_ACTION_POST,
                 path,
                 json_body={_CWD_BODY_KEY: project_path},
                 timeout=10.0,
+                clearance_scope=scope,
+                clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
         except ToolAPIError as exc:
             self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
@@ -736,7 +774,7 @@ class PreparationViewActionsMixin:
         if isinstance(result, dict) and result.get("operation_id"):
             self.app.notify_text(f"{display_label}...")  # type: ignore[attr-defined]
             self.app._refresh_data()  # type: ignore[attr-defined]
-            self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
+            self._follow_lifecycle_operation(str(result["operation_id"]), scope)  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get("detail"):
             self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
@@ -744,7 +782,7 @@ class PreparationViewActionsMixin:
         self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
     @work(thread=True, group="lifecycle-op")
-    def _follow_lifecycle_operation(self, operation_id: str) -> None:
+    def _follow_lifecycle_operation(self, operation_id: str, scope: ClearanceScope) -> None:
         """Follow a submitted lifecycle operation to its terminal state.
 
         The receipt only confirms acceptance; the operation's real outcome
@@ -760,7 +798,14 @@ class PreparationViewActionsMixin:
             if delay_s > 0:
                 time.sleep(delay_s)
             try:
-                response = tool_api_request(_HTTP_METHOD_GET, status_path, timeout=10.0)
+                # Polling inherits the cleared lifecycle verb; it is not a separate `operations get` action.
+                response = tool_api_request(
+                    _HTTP_METHOD_GET,
+                    status_path,
+                    timeout=10.0,
+                    clearance_scope=scope,
+                    clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
+                )
             except ToolAPIError as exc:
                 if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
                     self.app.call_from_thread(  # type: ignore[attr-defined]
@@ -830,7 +875,9 @@ class PreparationViewActionsMixin:
         project_path = context.project_path
         slug = context.slug
         if slug is None:
-            self._submit_lifecycle_operation(_TODO_PREPARE_PATH, project_path, "Preparing")
+            self._submit_lifecycle_operation(
+                _TODO_PREPARE_PATH, project_path, "Preparing", scope=ClearanceScope.verb("todo prepare")
+            )
             return
         row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
         if row is None:
@@ -839,7 +886,9 @@ class PreparationViewActionsMixin:
         if todo_id is None:
             return
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.PREPARE.value)
-        self._submit_lifecycle_operation(path, project_path, _PREPARING_LABEL_TEMPLATE.format(slug=slug))
+        self._submit_lifecycle_operation(
+            path, project_path, _PREPARING_LABEL_TEMPLATE.format(slug=slug), scope=ClearanceScope.verb("todo prepare")
+        )
 
     def action_start_work(self) -> None:
         """s: submit a work operation for the selected scope.
@@ -874,12 +923,16 @@ class PreparationViewActionsMixin:
                     return
 
         if slug is None:
-            self._submit_lifecycle_operation(_TODO_WORK_PATH, project_path, "Starting work")
+            self._submit_lifecycle_operation(
+                _TODO_WORK_PATH, project_path, "Starting work", scope=ClearanceScope.verb("todo work")
+            )
             return
         if todo_id is None:
             return
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.WORK.value)
-        self._submit_lifecycle_operation(path, project_path, _STARTING_WORK_LABEL_TEMPLATE.format(slug=slug))
+        self._submit_lifecycle_operation(
+            path, project_path, _STARTING_WORK_LABEL_TEMPLATE.format(slug=slug), scope=ClearanceScope.verb("todo work")
+        )
 
     def action_freeze(self) -> None:
         """f: freeze a todo to the icebox."""
@@ -1149,6 +1202,8 @@ class PreparationViewActionsMixin:
                 f"/todos/by-id/{todo_id}/reactivate",
                 json_body={"cwd": project_path},
                 timeout=10.0,
+                clearance_scope=ClearanceScope.verb("todo reactivate"),
+                clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
             if isinstance(result, dict) and result.get("status") == "ok":
                 self.app.notify_text(f"Restored '{slug}' to todo")  # type: ignore[attr-defined]

@@ -15,9 +15,9 @@ from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
     ROLE_TASKER,
     ROLE_WORKER,
+    SystemRole,
 )
 
 
@@ -46,7 +46,6 @@ class TelecCommand(str, Enum):
     MCP = "mcp"
     CODE = "code"
     MESSAGE = "message"
-    RELOAD = "reload"
 
 
 # =============================================================================
@@ -56,10 +55,11 @@ class TelecCommand(str, Enum):
 
 @dataclass(frozen=True)
 class CommandAuth:
-    """Role allow-list for a CLI command."""
+    """Caller-independent declaration or role allow-list for a CLI command."""
 
     system: frozenset[str]  # allowed system roles
     human: frozenset[str]  # allowed human roles (admin must be explicit)
+    caller_independent: bool = False
 
     def allows(self, system_role: str | None, human_role: str | None) -> bool:
         """Check whether a caller with the given roles is authorized.
@@ -67,6 +67,8 @@ class CommandAuth:
         Agent callers (system_role set) check the system set.
         Human callers (no system_role) check the human set.
         """
+        if self.caller_independent:
+            return True
         if system_role is not None:
             return system_role in self.system
         return human_role in self.human if human_role is not None else False
@@ -166,25 +168,12 @@ def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:
 
 
 # =============================================================================
-# Auth shorthand constants — used in CLI_SURFACE auth fields
+# Role reach groups — used in CLI_SURFACE auth fields
 # =============================================================================
-
-_SYS_ORCH = frozenset({ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
-_SYS_ALL = frozenset({ROLE_WORKER, ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, ROLE_TASKER})
-_SYS_INTG = frozenset({ROLE_INTEGRATOR})
-# Dispatch-capable like _SYS_ORCH for the session-management family
-# (`sessions start/run/revive/end`) tasker needs to manage sessions it spawns;
-# tasker still does not gain the state-machine-driving verbs (todo prepare/work).
-_SYS_ORCH_TASKER = _SYS_ORCH | {ROLE_TASKER}
-# Claim-scoped todo mutation admits every agent role except worker; ownership
-# is checked against the todo's claim rather than encoded in the band.
-_SYS_CLAIM_SCOPED_TODO_UPDATE = frozenset(
-    {ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, ROLE_TASKER, ROLE_JOB_RUNNER}
-)
-# A job-runner session is not dispatch-capable and must not gain the broad
-# _SYS_ALL clearance (sessions send/restart, channels publish, message, ...).
-# It gains selected additional verbs only where job lineage bounds the action.
-_SYS_ALL_PLUS_JOB_RUNNER = _SYS_ALL | {ROLE_JOB_RUNNER}
+_WORKER_REACH = frozenset({ROLE_WORKER})
+_AGENT_REACH = frozenset({ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, SystemRole.COORDINATOR, ROLE_TASKER, ROLE_JOB_RUNNER})
+_ORCHESTRATOR_RESERVATION = frozenset({ROLE_ORCHESTRATOR})
+_INTEGRATOR_RESERVATION = frozenset({ROLE_INTEGRATOR})
 
 _HR_ADMIN = frozenset({HUMAN_ROLE_ADMIN})
 _HR_MEMBER = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER})

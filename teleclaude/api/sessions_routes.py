@@ -22,14 +22,7 @@ from teleclaude.api.agent_dispatch_errors import (
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
-from teleclaude.api.auth import (
-    CallerIdentity,
-    clearance_sessions_end,
-    clearance_sessions_list,
-    clearance_sessions_send,
-    clearance_sessions_start,
-    resolve_caller_provenance,
-)
+from teleclaude.api.auth import CallerIdentity, carried_caller, resolve_caller_provenance
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
 from teleclaude.api.session_authority import ACT_END, ACT_SEND_MESSAGE, refuse_act_on_ancestor
@@ -355,7 +348,7 @@ def _prepare_interactive_create_request(request: CreateSessionRequest) -> Create
 async def list_sessions(
     request: Request,
     query: ListSessionsQuery = Depends(_parse_list_sessions_query),
-    _identity: CallerIdentity = Depends(clearance_sessions_list),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> list[SessionDTO]:
     """List sessions from local storage and remote cache.
 
@@ -591,7 +584,7 @@ async def _create_session_response(
 @router.post("/sessions", response_model_exclude_none=True)
 async def create_session(
     request: CreateSessionRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_start),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> CreateSessionResponseDTO:
     """Create a generic session with only automatic or manual-preference intent."""
     return await _create_session_response(request, identity)
@@ -606,7 +599,7 @@ async def end_session(
     request: Request,
     session_id: str,
     computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(clearance_sessions_end),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session via CloseSessionCommand through the command system."""
     await refuse_act_on_ancestor(identity, session_id, ACT_END)
@@ -618,7 +611,7 @@ async def end_session(
         user_agent,
     )
 
-    caller = resolve_caller_provenance(identity)
+    caller = await resolve_caller_provenance(identity)
     if computer and is_remote_target(computer, config.computer.name):
         ownership = await resolve_session_ownership(session_id, db=db, cache=_STATE.cache)
         target_computer: str | None = None
@@ -865,7 +858,7 @@ async def send_message_endpoint(
     session_id: str,
     request: SendMessageRequest,
     computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(clearance_sessions_send),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SendMessageResponseDTO:
     try:
         await refuse_act_on_ancestor(identity, session_id, ACT_SEND_MESSAGE)
@@ -898,12 +891,18 @@ async def send_message_endpoint(
             return existing_link_response
 
         # Auto-register a one-shot listener so the caller receives the response.
-        if identity.session_id and identity.session_id != session_id and identity.tmux_session_name:
+        caller_session = await db.get_session(identity.session_id) if identity.session_id else None
+        if (
+            identity.session_id
+            and identity.session_id != session_id
+            and caller_session
+            and caller_session.tmux_session_name
+        ):
             try:
                 await register_listener(
                     target_session_id=session_id,
                     caller_session_id=identity.session_id,
-                    caller_tmux_session=identity.tmux_session_name,
+                    caller_tmux_session=caller_session.tmux_session_name,
                     one_shot=True,
                 )
             except Exception:

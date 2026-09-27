@@ -20,11 +20,10 @@ from teleclaude.config.loader import load_app_config
 from teleclaude.config.schema import ConfigKind
 from teleclaude.context_selector import ActivationClosureError, build_context_output
 from teleclaude.core.project_state import resolve_project_state_root
-from teleclaude.domains import valid_domains
 from teleclaude.project_root import (
     resolve_invocation_cwd,
 )
-from teleclaude.snippet_validation import SnippetScope
+from teleclaude.snippet_scope import SnippetScope
 
 __all__ = [
     "_handle_docs",
@@ -127,6 +126,8 @@ def _parse_domains(value: str, subcommand: str) -> list[str]:
     structural scopes like ``general``/``project`` are not selectable here, mirroring
     the phase-1 header's advertised choices.
     """
+    from teleclaude.domains import valid_domains  # noqa: PLC0415 - deferred command-local dependency.
+
     requested = [d.strip() for d in value.split(",") if d.strip()]
     if not requested:
         # An empty/whitespace/comma-only value supplies no domain; treat it as a

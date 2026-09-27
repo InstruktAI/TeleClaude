@@ -7,15 +7,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from teleclaude.api import auth as auth_module
-from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.channels.publisher import list_channels, publish
 from teleclaude.channels.types import ChannelInfo
 from teleclaude.transport.redis_transport import RedisTransport
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
-clearance_channels_list = auth_module.clearance_channels_list
-clearance_channels_publish = auth_module.clearance_channels_publish
 
 # Set once by daemon during startup before requests are served.
 # Safe because asyncio is single-threaded: set_redis_transport runs before
@@ -58,7 +55,7 @@ class PublishResponse(BaseModel):
 async def publish_to_channel(
     name: str,
     req: PublishRequest,
-    _identity: CallerIdentity = Depends(clearance_channels_publish),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> PublishResponse:
     """Publish a message to a named channel."""
     transport = _get_transport()
@@ -70,7 +67,7 @@ async def publish_to_channel(
 @router.get("/")
 async def list_all_channels(
     project: str | None = None,
-    _identity: CallerIdentity = Depends(clearance_channels_list),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> list[ChannelInfo]:
     """List active channels, optionally filtered by project."""
     transport = _get_transport()

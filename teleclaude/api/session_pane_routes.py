@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, clearance_sessions_tail
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.session_pane_models import SessionPaneDTO
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
@@ -37,7 +37,7 @@ def configure(client: AdapterClient | None = None) -> None:
 async def get_session_pane_endpoint(
     session_id: str,
     computer: str | None = Query(None, description="Target computer"),
-    _identity: CallerIdentity = Depends(clearance_sessions_tail),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> SessionPaneDTO:
     """Get an explicit live terminal observation independent of transcripts."""
     try:

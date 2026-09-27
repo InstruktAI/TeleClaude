@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, clearance_message_send
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import PersonMessageRequest
 from teleclaude.core.person_messaging import (
     ChannelCapabilityError,
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/people", tags=["people"])
 @router.post("/message")
 async def send_message(
     body: PersonMessageRequest,
-    identity: CallerIdentity = Depends(clearance_message_send),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - ad hoc {status, channel, message_id} response, no consumer contract
     """Dispatch a person-addressed message through the routed channel."""
     try:

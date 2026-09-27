@@ -76,17 +76,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_initiator ON sessions(initiator_session_
 CREATE INDEX IF NOT EXISTS idx_sessions_lifecycle_status ON sessions(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_sessions_native_session_id ON sessions(native_session_id);
 
--- Session auth tokens
-CREATE TABLE IF NOT EXISTS session_tokens (
-    token TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    principal TEXT NOT NULL,
-    role TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id);
-
 -- Session listeners (AI-to-AI notification subscriptions)
 CREATE TABLE IF NOT EXISTS session_listeners (
     target_session_id TEXT NOT NULL,

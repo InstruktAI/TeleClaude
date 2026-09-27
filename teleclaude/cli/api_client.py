@@ -1,17 +1,17 @@
 """HTTP client for telec TUI."""
 
+from __future__ import annotations
+
 import asyncio
-import importlib
 import json
 import os
 import stat
-import subprocess
 import threading
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from http import HTTPMethod
-from typing import Any, NotRequired, Required, TypedDict, Unpack
+from typing import TYPE_CHECKING, Any, NotRequired, Required, TypedDict, Unpack
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -34,21 +34,26 @@ from teleclaude.api_models import (
     TuiBootstrapPillar,
 )
 from teleclaude.api_session_actions_models import AgentRestartResponseDTO
+from teleclaude.caller_identity import CarriedIdentity
+from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
-from teleclaude.config import config
+from teleclaude.cli.session_auth import ResolvedCliIdentity
+from teleclaude.cli.tui_clearance import clear_tui_bootstrap_pillars
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.daemon_lifecycle_identity import daemon_credential_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
-from teleclaude.history.service import HistoryDetailPayload, HistorySearchPayload
-from teleclaude.session_identity import get_session_id, get_session_token
+from teleclaude.core.session_identity_facts import read_session_identity_facts
+from teleclaude.history.search_payload import HistorySearchPayload
+from teleclaude.paths import MAIN_DB_PATH
+
+if TYPE_CHECKING:
+    from teleclaude.history.service import HistoryDetailPayload
 
 logger = get_logger(__name__)
 
 BASE_URL = "http://localhost"
 WS_URI = "ws://localhost/ws"
-_TUI_SESSION_NAME = "tc_tui"
-_TMUX_ENV = "TMUX"
 _ALL_SESSIONS_PARAM = "all"
 _QUERY_TRUE = "true"
 _HISTORY_SHOW_PATH_TEMPLATE = "/history/show/{session_id}"
@@ -72,18 +77,13 @@ WS_OPERATION_ERRORS = (OSError, RuntimeError, WebSocketException)
 REQUEST_WRAP_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
 
 
-def read_current_session_email() -> str | None:
-    """Resolve terminal auth state without importing session_auth at module load."""
-    session_auth = importlib.import_module("teleclaude.cli.session_auth")
-    return session_auth.read_current_session_email()
-
-
 @dataclass(frozen=True)
 class RequestOptions:
     """Optional HTTP request inputs."""
 
     params: dict[str, str] | None = None
     json_body: JsonBody | None = None
+    clearance_scope: ClearanceScope = field(default_factory=ClearanceScope.ungoverned)
 
 
 @dataclass
@@ -93,6 +93,7 @@ class _HTTPState:
     client: httpx.AsyncClient | None = None
     last_connect_error_log: float | None = None
     identity_headers: dict[str, str] = field(default_factory=dict)
+    clearance_identity: ResolvedCliIdentity | None = None
 
 
 @dataclass
@@ -195,7 +196,11 @@ class _TelecConnectionClient:
     async def connect(self) -> None:
         """Connect to API socket."""
         transport = httpx.AsyncHTTPTransport(uds=self.socket_path)
-        self._http_state.identity_headers = self._build_identity_headers()
+        if not self._daemon_credential:
+            from teleclaude.cli.session_auth import resolve_cli_identity  # noqa: PLC0415 - capture the client caller.
+
+            self._http_state.clearance_identity = resolve_cli_identity()
+        self._http_state.identity_headers = self._build_identity_headers(self._http_state.clearance_identity)
         self._http_state.client = httpx.AsyncClient(
             transport=transport,
             base_url=BASE_URL,
@@ -226,7 +231,7 @@ class _TelecConnectionClient:
         subscriptions: list[str] | None = None,
         on_connect: Callable[[], None] | None = None,
         include_removed: bool = False,
-    ) -> None:
+    ) -> list[str]:
         """Start WebSocket connection for push updates.
 
         Runs in a background thread to avoid blocking the TUI event loop.
@@ -238,17 +243,40 @@ class _TelecConnectionClient:
         """
         if self._ws_state.running:
             logger.debug("WebSocket already running")
-            return
+            return []
+
+        subscription_scopes = {
+            "sessions": ClearanceScope.verb("sessions list"),
+            "preparation": ClearanceScope.verb("todo list"),
+            "todos": ClearanceScope.verb("todo list"),
+        }
+        allowed_subscriptions: list[str] = []
+        refusals: list[str] = []
+        for subscription in subscriptions or ["sessions", "preparation"]:
+            scope = subscription_scopes.get(subscription, ClearanceScope.ungoverned())
+            refusal = clearance_scope_refusal(scope, self._http_state.clearance_identity)
+            if refusal is None:
+                allowed_subscriptions.append(subscription)
+            else:
+                refusals.append(refusal)
+        if not allowed_subscriptions:
+            return refusals
+
+        if not self._daemon_credential and self._http_state.clearance_identity is not None:
+            self._http_state.identity_headers = self._build_identity_headers(
+                refresh_cli_identity_role(self._http_state.clearance_identity)
+            )
 
         self._ws_state.callback = callback
         self._ws_state.on_connect = on_connect
-        self._ws_state.subscriptions = set(subscriptions or ["sessions", "preparation"])
+        self._ws_state.subscriptions = set(allowed_subscriptions)
         self._ws_state.include_removed = include_removed
         self._ws_state.running = True
 
         self._ws_state.thread = threading.Thread(target=self._ws_loop, daemon=True, name="ws-client")
         self._ws_state.thread.start()
         logger.info("WebSocket client thread started")
+        return refusals
 
     def stop_websocket(self) -> None:
         """Stop WebSocket connection."""
@@ -343,6 +371,8 @@ class _TelecConnectionClient:
         }
         ws.send(json.dumps(initial_payload))
 
+        from teleclaude.config import config  # noqa: PLC0415 - deferred command-local dependency.
+
         # Subscribe to each config-defined remote computer
         for rc in config.remote_computers:
             remote_payload: WsPayload = {
@@ -386,6 +416,7 @@ class _TelecConnectionClient:
         url: str,
         timeout: float,
         request_options: RequestOptions,
+        identity_headers: dict[str, str],
     ) -> httpx.Response:
         """Dispatch a single HTTP request."""
         if not self._http_state.client:
@@ -393,7 +424,7 @@ class _TelecConnectionClient:
 
         request_kwargs: dict[str, Any] = {  # guard: loose-dict - HTTP request kwargs
             "params": request_options.params,
-            "headers": self._http_state.identity_headers,
+            "headers": identity_headers,
             "timeout": timeout,
         }
         if request_options.json_body is not None:
@@ -446,6 +477,18 @@ class _TelecConnectionClient:
         request_timeout = timeout if timeout is not None else 15.0
         options = request_options or RequestOptions()
         method_enum = self._normalize_http_method(method)
+        identity = (
+            refresh_cli_identity_role(self._http_state.clearance_identity)
+            if not self._daemon_credential and self._http_state.clearance_identity is not None
+            else self._http_state.clearance_identity
+        )
+
+        refusal = None if self._daemon_credential else clearance_scope_refusal(options.clearance_scope, identity)
+        if refusal is not None:
+            raise APIError(refusal)
+        identity_headers = (
+            self._build_identity_headers(identity) if identity is not None else self._http_state.identity_headers
+        )
 
         try:
             retry_delays = (0.0, *API_CONNECT_RETRY_DELAYS_S)
@@ -453,7 +496,7 @@ class _TelecConnectionClient:
                 if delay:
                     await asyncio.sleep(delay)
                 try:
-                    return await self._request_once(method_enum, url, request_timeout, options)
+                    return await self._request_once(method_enum, url, request_timeout, options, identity_headers)
                 except httpx.ConnectError as error:
                     self._log_connect_error(method, url, request_timeout, error)
                     await self._wait_for_socket()
@@ -486,61 +529,25 @@ class _TelecConnectionClient:
         """Return a monotonic timestamp for debounce logic."""
         return time.monotonic()
 
-    def _build_identity_headers(self) -> dict[str, str]:
-        """Build caller identity headers for daemon-side auth checks."""
-        headers: dict[str, str] = {}
-
+    def _build_identity_headers(self, identity: ResolvedCliIdentity | None = None) -> dict[str, str]:
+        """Build the carried caller headers from the invocation's resolved identity."""
         if self._daemon_credential:
-            headers.update(daemon_credential_headers())
-            return headers
+            return daemon_credential_headers()
 
-        # Identity-context-spawned tasks (daemon-hosted lifecycle operations) carry the
-        # caller's session id via a contextvar override but run with no tmux pane. The
-        # ambient tmux read resolves to the daemon's most-recently-active foreign session,
-        # which the server's dual-factor cross-check rejects as an identity mismatch.
-        # Honor the caller-verification contract's pane-less caveat: send the session-id
-        # factor only, no tmux signal. In a genuine agent process the override is absent
-        # and the live tmux read is preserved unchanged.
-        in_caller_context = get_caller_session_id() is not None
-        tmux_session = None if in_caller_context else self._read_tmux_session_name()
-        use_session_identity = in_caller_context or tmux_session != _TUI_SESSION_NAME
+        operation_session_id = get_caller_session_id()
+        if operation_session_id is not None:
+            facts = read_session_identity_facts(str(MAIN_DB_PATH), operation_session_id)
+            if facts is None:
+                return CarriedIdentity().to_headers()
+            return CarriedIdentity.from_session_facts(facts).to_headers()
 
-        # Agent sessions: send daemon-issued token first (takes priority on the server side).
-        token = get_session_token() if use_session_identity else None
-        if token:
-            headers["x-session-token"] = token
-
-        session_id = get_session_id() if use_session_identity else None
-        if session_id:
-            headers["x-caller-session-id"] = session_id
-
-        terminal_email = read_current_session_email()
-        if terminal_email:
-            headers["x-telec-email"] = terminal_email
-
-        if tmux_session:
-            headers["x-tmux-session"] = tmux_session
-
-        return headers
-
-    def _read_tmux_session_name(self) -> str | None:
-        """Read tmux session name from tmux server for dual-factor checks."""
-        if not os.getenv(_TMUX_ENV):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-            return None
-        try:
-            result = subprocess.run(
-                ["tmux", "display-message", "-p", "#S"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-                check=False,
+        if identity is None:
+            from teleclaude.cli.session_auth import (  # noqa: PLC0415 - request construction resolves edge callers.
+                resolve_cli_identity,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            return None
 
-        if result.returncode != 0:
-            return None
-        return result.stdout.strip() or None
+            identity = resolve_cli_identity()
+        return CarriedIdentity.from_cli_identity(identity).to_headers()
 
     async def _wait_for_socket(self, *, timeout_s: float = 1.0) -> None:
         """Wait briefly for the API socket to appear and be connectable."""
@@ -560,6 +567,7 @@ class _TelecSessionAPI:
     """Session and daemon operations."""
 
     _request: Callable[..., Awaitable[httpx.Response]]
+    _http_state: _HTTPState
 
     async def list_sessions(
         self,
@@ -576,12 +584,18 @@ class _TelecSessionAPI:
             params["closed"] = "true"
         if all_sessions:
             params[_ALL_SESSIONS_PARAM] = _QUERY_TRUE
-        resp = await self._request("GET", "/sessions", request_options=RequestOptions(params=params))
+        resp = await self._request(
+            "GET",
+            "/sessions",
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("sessions list")),
+        )
         return TypeAdapter(list[SessionDTO]).validate_json(resp.text)
 
     async def list_computers(self) -> list[ComputerDTO]:
         """List online computers only."""
-        resp = await self._request("GET", "/computers")
+        resp = await self._request(
+            "GET", "/computers", request_options=RequestOptions(clearance_scope=ClearanceScope.verb("computers list"))
+        )
         return TypeAdapter(list[ComputerDTO]).validate_json(resp.text)
 
     async def search_history(
@@ -611,7 +625,7 @@ class _TelecSessionAPI:
         resp = await self._request(
             "GET",
             "/history/search",
-            request_options=RequestOptions(params=params),
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("history search")),
         )
         return TypeAdapter(HistorySearchPayload).validate_json(resp.text)
 
@@ -619,6 +633,10 @@ class _TelecSessionAPI:
         self, session_id: str, *, agent: str, thinking: bool, raw: bool, computer: str
     ) -> HistoryDetailPayload:
         """Fetch one local or peer history detail through the daemon."""
+        from teleclaude.history.service import (  # noqa: PLC0415 - detail parsing is specific to history show.
+            HistoryDetailPayload,
+        )
+
         resp = await self._request(
             HTTPMethod.GET,
             _HISTORY_SHOW_PATH_TEMPLATE.format(session_id=session_id),
@@ -628,7 +646,8 @@ class _TelecSessionAPI:
                     _HISTORY_THINKING_PARAM: str(thinking).lower(),
                     _HISTORY_RAW_PARAM: str(raw).lower(),
                     _HISTORY_COMPUTER_PARAM: computer,
-                }
+                },
+                clearance_scope=ClearanceScope.verb("history show"),
             ),
         )
         return TypeAdapter(HistoryDetailPayload).validate_json(resp.text)
@@ -636,7 +655,11 @@ class _TelecSessionAPI:
     async def list_projects(self, computer: str | None = None) -> list[ProjectDTO]:
         """List projects from all or a specific computer."""
         params: dict[str, str] = {"computer": computer} if computer else {}
-        resp = await self._request("GET", "/projects", request_options=RequestOptions(params=params))
+        resp = await self._request(
+            "GET",
+            "/projects",
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("projects list")),
+        )
         return TypeAdapter(list[ProjectDTO]).validate_json(resp.text)
 
     async def create_session(self, **kwargs: Unpack[CreateSessionArgs]) -> CreateSessionResponseDTO:
@@ -674,7 +697,7 @@ class _TelecSessionAPI:
             "POST",
             "/sessions",
             timeout=30.0,
-            request_options=RequestOptions(json_body=payload),
+            request_options=RequestOptions(json_body=payload, clearance_scope=ClearanceScope.verb("sessions start")),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
@@ -700,7 +723,9 @@ class _TelecSessionAPI:
             "POST",
             "/sessions/run",
             timeout=30.0,
-            request_options=RequestOptions(json_body=request.model_dump(exclude_unset=True)),
+            request_options=RequestOptions(
+                json_body=request.model_dump(exclude_unset=True), clearance_scope=ClearanceScope.verb("sessions run")
+            ),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
@@ -709,7 +734,10 @@ class _TelecSessionAPI:
         resp = await self._request(
             "DELETE",
             f"/sessions/{session_id}",
-            request_options=RequestOptions(params={"computer": computer}),
+            request_options=RequestOptions(
+                params={"computer": computer},
+                clearance_scope=ClearanceScope.verb("sessions end", target_session_id=session_id),
+            ),
         )
         return resp.status_code == 200
 
@@ -721,6 +749,7 @@ class _TelecSessionAPI:
             request_options=RequestOptions(
                 params={"computer": computer},
                 json_body={"message": message},
+                clearance_scope=ClearanceScope.verb("sessions send"),
             ),
         )
         return resp.status_code in {200, 202}
@@ -736,6 +765,7 @@ class _TelecSessionAPI:
             request_options=RequestOptions(
                 params={"computer": computer},
                 json_body=payload,
+                clearance_scope=ClearanceScope.ungoverned(),
             ),
         )
         return resp.status_code in {200, 202}
@@ -746,29 +776,38 @@ class _TelecSessionAPI:
         include_removed: bool = False,
     ) -> TuiBootstrapDTO:
         """Fetch aggregate TUI bootstrap data with partial-success semantics."""
-        params: dict[str, str] = {}
-        if pillars:
-            params["pillars"] = ",".join(pillars)
+        requested = pillars or ["computers", "projects", "sessions", "availability", "jobs", "settings", "chiptunes"]
+        clearance = clear_tui_bootstrap_pillars(requested, self._http_state.clearance_identity)
+        if not clearance.allowed:
+            return TuiBootstrapDTO(requested=requested, errors=clearance.denied)
+
+        params: dict[str, str] = {"pillars": ",".join(clearance.allowed)}
         if include_removed:
             params["include_removed"] = "true"
 
         resp = await self._request(
             "GET",
             "/tui/bootstrap",
-            request_options=RequestOptions(params=params if params else None),
+            request_options=RequestOptions(params=params, clearance_scope=clearance.request_scope),
         )
-        return TypeAdapter(TuiBootstrapDTO).validate_json(resp.text)
+        response = TypeAdapter(TuiBootstrapDTO).validate_json(resp.text)
+        return response.model_copy(update={"requested": requested, "errors": [*response.errors, *clearance.denied]})
 
     async def list_jobs(self) -> list[JobDTO]:
         """List scheduled jobs."""
-        resp = await self._request("GET", "/jobs")
+        resp = await self._request(
+            "GET", "/jobs", request_options=RequestOptions(clearance_scope=ClearanceScope.ungoverned())
+        )
         return TypeAdapter(list[JobDTO]).validate_json(resp.text)
 
     async def run_job(self, name: str, project: str | None = None) -> bool:
         """Run a scheduled job immediately."""
         params = {"project": project} if project else None
         resp = await self._request(
-            "POST", f"/jobs/{name}/run", timeout=30.0, request_options=RequestOptions(params=params)
+            "POST",
+            f"/jobs/{name}/run",
+            timeout=30.0,
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.ungoverned()),
         )
         data = resp.json()
         return data.get("status") == "success"
@@ -789,6 +828,7 @@ class _TelecSessionAPI:
             request_options=RequestOptions(
                 params=params,
                 json_body={"handoff": handoff, "agent": agent} if handoff else None,
+                clearance_scope=ClearanceScope.verb("sessions restart", target_session_id=session_id),
             ),
         )
         return TypeAdapter(AgentRestartResponseDTO).validate_json(resp.text)
@@ -810,7 +850,11 @@ class _TelecRuntimeAPI:
 
     async def deprovision_tts(self) -> SettingsDTO:
         """Force TTS off and remove the TTS-exclusive optional dependencies."""
-        resp = await self._request("POST", "/settings/tts/deprovision")
+        resp = await self._request(
+            "POST",
+            "/settings/tts/deprovision",
+            request_options=RequestOptions(clearance_scope=ClearanceScope.verb("config tts deprovision")),
+        )
         return TypeAdapter(SettingsDTO).validate_json(resp.text)
 
     async def chiptunes_next(self) -> ChiptunesCommandReceiptDTO:
@@ -861,7 +905,7 @@ class _TelecRuntimeAPI:
             "POST",
             f"/sessions/{session_id}/revive",
             timeout=30.0,
-            request_options=RequestOptions(params=params),
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("sessions revive")),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
@@ -878,7 +922,11 @@ class _TelecRuntimeAPI:
             params["type"] = obs_type
         if project:
             params["project"] = project
-        resp = await self._request("GET", "/api/memory/search", request_options=RequestOptions(params=params))
+        resp = await self._request(
+            "GET",
+            "/api/memory/search",
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("memories search")),
+        )
         return resp.json()
 
     async def memory_save(
@@ -899,7 +947,7 @@ class _TelecRuntimeAPI:
         resp = await self._request(
             "POST",
             "/api/memory/save",
-            request_options=RequestOptions(json_body=body),
+            request_options=RequestOptions(json_body=body, clearance_scope=ClearanceScope.ungoverned()),
         )
         return resp.json()
 
@@ -907,7 +955,11 @@ class _TelecRuntimeAPI:
         self, observation_id: int
     ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
         """Delete a memory observation by ID."""
-        resp = await self._request("DELETE", f"/api/memory/{observation_id}")
+        resp = await self._request(
+            "DELETE",
+            f"/api/memory/{observation_id}",
+            request_options=RequestOptions(clearance_scope=ClearanceScope.verb("memories delete")),
+        )
         return resp.json()
 
     async def memory_timeline(
@@ -925,7 +977,11 @@ class _TelecRuntimeAPI:
         }
         if project:
             params["project"] = project
-        resp = await self._request("GET", "/api/memory/timeline", request_options=RequestOptions(params=params))
+        resp = await self._request(
+            "GET",
+            "/api/memory/timeline",
+            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("memories timeline")),
+        )
         return resp.json()
 
 

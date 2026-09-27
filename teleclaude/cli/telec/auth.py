@@ -40,4 +40,6 @@ def is_command_allowed(
     auth = _resolve_command_auth(command_path)
     if auth is None:
         return False
+    if auth.caller_independent:
+        return True
     return auth.allows(system_role, human_role)

@@ -19,10 +19,10 @@ from typing import Any
 
 import yaml
 
-from teleclaude.cli.session_auth import ResolvedCliIdentity, require_cli_clearance
-from teleclaude.cli.telec import _maybe_show_help
+from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import (
     CONFIG_COMPANY_GET,
     CONFIG_COMPANY_INIT,
@@ -186,8 +186,8 @@ def _gate(
     request_id: str,
 ) -> ResolvedCliIdentity:
     """Verb band, then target clearance. Refuses and exits before any config is read."""
-    identity = require_cli_clearance(f"telec config {kind} {verb}")
-    standing = standing_for(identity.principal)
+    identity = resolve_cli_identity()
+    standing = standing_for(identity)
     target = ConfigurationTarget(kind=subject_kind, instance=instance, operation=operation, sections=sections)
     decision = decide(standing, target, request_id=request_id)
     if not decision.allowed:
@@ -285,7 +285,7 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
     if subject_kind is ConfigSubjectKind.PERSON and instance is not None:
         read_only["organization"] = resolve_organization(instance)
     sections = dict(view.sections)
-    if subject_kind is ConfigSubjectKind.COMPUTER and not is_administrator(standing_for(identity.principal)):
+    if subject_kind is ConfigSubjectKind.COMPUTER and not is_administrator(standing_for(identity)):
         computer_section = sections.get(kind)
         if isinstance(computer_section, Mapping):
             sections[kind] = _redact_sensitive_machine_fields(computer_section)

@@ -18,7 +18,7 @@ from teleclaude.api import (
     sessions_routes,
     settings_routes,
 )
-from teleclaude.api.auth import CallerIdentity, _is_tool_denied, verify_caller
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.sessions_routes import ListSessionsQuery
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
@@ -51,15 +51,6 @@ _DEFAULT_PILLARS: tuple[TuiBootstrapPillar, ...] = (
     "settings",
     "chiptunes",
 )
-_PILLAR_TOOL_NAMES: dict[TuiBootstrapPillar, str] = {
-    "computers": "telec computers list",
-    "projects": "telec projects list",
-    "sessions": "telec sessions list",
-    "availability": "telec agents availability",
-    "jobs": "telec sessions list",
-    "settings": "telec sessions list",
-    "chiptunes": "telec sessions list",
-}
 
 
 def configure(cache: DaemonCache | None) -> None:
@@ -83,17 +74,6 @@ def _parse_pillars(raw_pillars: str | None) -> list[TuiBootstrapPillar]:
         if pillar not in pillars:
             pillars.append(pillar)  # type: ignore[arg-type]
     return pillars or list(_DEFAULT_PILLARS)
-
-
-def _require_pillar_clearance(pillar: TuiBootstrapPillar, identity: CallerIdentity) -> None:
-    """Raise when the caller is not allowed to read a bootstrap pillar."""
-    tool_name = _PILLAR_TOOL_NAMES[pillar]
-    if _is_tool_denied(tool_name, identity):
-        role_desc = identity.system_role or identity.human_role or "unauthorized"
-        raise HTTPException(
-            status_code=403,
-            detail=f"role '{role_desc}' is not permitted to call {tool_name}",
-        )
 
 
 async def _load_computers(*, identity: CallerIdentity) -> list[ComputerDTO]:
@@ -220,7 +200,6 @@ async def _load_pillar(
     include_removed: bool = False,
 ) -> tuple[TuiBootstrapPillar, object | Exception]:
     """Load one pillar, converting expected service failures into pillar errors."""
-    _require_pillar_clearance(pillar, identity)
     loader = _build_loader(pillar, request=request, identity=identity, include_removed=include_removed)
     try:
         return pillar, await loader()
@@ -235,7 +214,7 @@ async def get_tui_bootstrap(
     request: Request,
     pillars: str | None = Query(None),
     include_removed: bool = Query(False),
-    identity: CallerIdentity = Depends(verify_caller),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> TuiBootstrapDTO:
     """Return initial TUI state with per-pillar partial-success semantics."""
     requested = _parse_pillars(pillars)

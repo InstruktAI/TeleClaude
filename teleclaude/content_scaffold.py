@@ -9,7 +9,7 @@ from typing import TypedDict
 
 import yaml
 
-from teleclaude.cli.tool_client import get_resolved_caller
+from teleclaude.cli.session_auth import resolve_cli_identity
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 _CALLER_PRINCIPAL_REQUIRED_DETAIL = "The daemon did not resolve a caller principal."
@@ -25,11 +25,11 @@ def _derive_slug(text: str) -> str:
 
 
 def _resolve_author() -> str:
-    """Resolve the author from the daemon's verified caller answer."""
-    caller = get_resolved_caller()
-    if not caller.principal:
+    """Resolve the author from the CLI's shared caller identity."""
+    principal = resolve_cli_identity().principal
+    if not principal:
         raise ValueError(_CALLER_PRINCIPAL_REQUIRED_DETAIL)
-    return caller.principal
+    return principal
 
 
 class _MetaPayload(TypedDict):

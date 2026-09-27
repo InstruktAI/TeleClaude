@@ -46,7 +46,6 @@ from ._sync import (
     replace_process_spawn_registry_entry_sync,
     resolve_session_principal,
 )
-from ._tokens import DbTokensMixin
 from ._voice_transcriptions import DbVoiceTranscriptionsMixin
 from ._webhooks import DbWebhooksMixin
 
@@ -57,7 +56,6 @@ class Db(
     DbControlDeliveryMixin,
     DbRemindersMixin,
     DbConversationDeliveryMixin,
-    DbTokensMixin,
     DbLinksMixin,
     DbListenersMixin,
     DbWebhooksMixin,

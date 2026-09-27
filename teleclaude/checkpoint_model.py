@@ -8,6 +8,7 @@ merged declaration only; no consumer recreates path or capability policy.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -41,6 +42,7 @@ _DEFAULT_PROJECT_SLUG = "project"
 _PROJECT_SLUG_PLACEHOLDER = "{slug}"
 _ACTIVATION_BEFORE_PLACEHOLDER = "{before_sha}"
 _ACTIVATION_AFTER_PLACEHOLDER = "{after_sha}"
+_INTERPRETER_PLACEHOLDER = "{interpreter}"
 _ACTIVATION_BEFORE_FLAG = "--before-sha"
 _EMPTY_COMMAND_ARGUMENT = ""
 _MAINTENANCE_ACTIONS_RESOLVED_EVENT = "checkpoint_maintenance_actions_resolved"
@@ -68,12 +70,19 @@ class ActivationRange:
     after_sha: str
 
 
-def fill_activation_range(command: tuple[str, ...], activation_range: ActivationRange) -> tuple[str, ...]:
-    """Substitute recorded ids, omitting the before flag for a root commit."""
+def fill_activation_range(
+    command: tuple[str, ...], activation_range: ActivationRange, *, interpreter: str | None = None
+) -> tuple[str, ...]:
+    """Substitute the interpreter and recorded ids, omitting before for a root commit."""
     resolved: list[str] = []
+    python = interpreter or sys.executable
     index = 0
     while index < len(command):
         argument = command[index]
+        if argument == _INTERPRETER_PLACEHOLDER:
+            resolved.append(python)
+            index += 1
+            continue
         next_argument = command[index + 1] if index + 1 < len(command) else _EMPTY_COMMAND_ARGUMENT
         if argument == _ACTIVATION_BEFORE_FLAG and next_argument == _ACTIVATION_BEFORE_PLACEHOLDER:
             if activation_range.before_sha is not None:

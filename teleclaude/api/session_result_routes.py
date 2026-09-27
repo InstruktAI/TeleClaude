@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from teleclaude.api.auth import CallerIdentity, clearance_sessions_result
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import SendResultRequest
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.types.commands import SystemCommand
@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("/sessions/self/result")
 async def send_result_endpoint(
     request: SendResultRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_result),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send formatted session output through the command service."""
     cmd = SystemCommand(

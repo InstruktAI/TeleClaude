@@ -17,17 +17,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
 
 import teleclaude.core.todo_dependency_warnings as dependency_warnings
-from teleclaude.api.auth import (
-    CallerIdentity,
-    clearance_todos_create,
-    clearance_todos_integrate,
-    clearance_todos_prepare,
-    clearance_todos_reactivate,
-    clearance_todos_remove,
-    clearance_todos_update,
-    clearance_todos_work,
-    optional_caller_identity,
-)
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api.todo_artifact_authority import (
     refuse_todo_update_outside_claiming_group,
@@ -183,7 +173,7 @@ async def todo_create(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_create),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Run the creative lifecycle state machine.
 
@@ -205,7 +195,7 @@ async def todo_prepare(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_prepare),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Run the Phase A (prepare) state machine.
 
@@ -227,7 +217,7 @@ async def todo_work(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_work),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Run the Phase B (work) state machine.
 
@@ -253,7 +243,7 @@ async def todo_integrate(  # pyright: ignore
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
     abandon: Annotated[bool, Body()] = False,
-    identity: CallerIdentity = Depends(clearance_todos_integrate),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Run the integration state machine.
 
@@ -289,7 +279,7 @@ async def todo_update(  # pyright: ignore
     force: Annotated[bool, Body()] = False,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_update),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation | _TodoUpdateResponse:
     """Update a todo slug, dependencies, or kind through one mutation facade."""
     if not cwd:
@@ -535,7 +525,7 @@ async def _sync_artifact_provenance_state(
 @router.post("/dump")
 async def todo_content_create(
     request: TodoDumpRequest,
-    identity: CallerIdentity | None = Depends(optional_caller_identity),
+    identity: CallerIdentity | None = Depends(carried_caller),
 ) -> _SlugStatusResponse:
     """Create a todo: state + artifact + todo entry in todos.db.
 
@@ -752,7 +742,7 @@ async def todo_remove(  # pyright: ignore
     force: Annotated[bool, Body()] = False,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_remove),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Remove a todo: delete state, artifacts, todo entry, and clean up worktree.
 
@@ -798,7 +788,7 @@ async def todo_unfreeze(
 async def todo_reactivate(
     slug: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_reactivate),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> _SlugStatusResponse:
     """Restore a soft-removed todo addressed by slug."""
     effective_cwd = cwd or _default_cwd()
@@ -830,7 +820,7 @@ async def todo_reactivate(
 async def todo_reactivate_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_reactivate),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> _SlugStatusResponse:
     """Restore a soft-removed todo addressed by its durable row id."""
     effective_cwd = cwd or _default_cwd()

@@ -65,7 +65,7 @@ def _handle_todo_list(args: list[str]) -> None:
             delivered_since=since_cutoff or None,
         )
 
-    todos = run_todo_read("telec todo list", read_entries)
+    todos = run_todo_read(read_entries)
 
     if not todos:
         if parsed["json_output"]:

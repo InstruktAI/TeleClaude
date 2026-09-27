@@ -43,9 +43,9 @@ from teleclaude.api import (
 )
 from teleclaude.api.auth import (
     CallerIdentity,
-    caller_from_verified_identity,
-    principal_for_verified_caller,
-    verify_caller,
+    caller_from_carried_identity,
+    carried_caller,
+    principal_for_carried_caller,
 )
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.operations_routes import configure as configure_operations_routes
@@ -64,6 +64,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
+from teleclaude.caller_identity import PersonCliCaller, authorizing_role
 from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
@@ -82,7 +83,6 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.identity import PersonCliCaller, authorizing_role
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
@@ -464,14 +464,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         @self.app.get("/auth/whoami")
         async def auth_whoami(  # pyright: ignore
-            identity: CallerIdentity = Depends(verify_caller),
+            identity: CallerIdentity = Depends(carried_caller),
         ) -> WhoAmIDTO:
             """Return the resolved identity, role, email, and session of the caller."""
-            caller = caller_from_verified_identity(identity)
+            caller = caller_from_carried_identity(identity)
             role = authorizing_role(caller, identity.system_role)
             email = caller.email if isinstance(caller, PersonCliCaller) else None
             return WhoAmIDTO(
-                principal=principal_for_verified_caller(identity),
+                principal=principal_for_carried_caller(identity),
                 role=role,
                 email=email,
                 session_id=identity.session_id or None,

@@ -25,6 +25,7 @@ from teleclaude.constants import (
     DriverLaunchClass,
     JobRole,
     SlashCommand,
+    SystemRole,
 )
 from teleclaude.core import voice_focus
 from teleclaude.core.command_handlers import (
@@ -144,6 +145,7 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
 DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
     ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}),
     ROLE_INTEGRATOR: frozenset({ROLE_WORKER}),
+    SystemRole.COORDINATOR: frozenset(),
     ROLE_SYSTEM: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_JOB_RUNNER, ROLE_TASKER}),
     ROLE_TASKER: frozenset({ROLE_WORKER}),
     ROLE_WORKER: frozenset(),

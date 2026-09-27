@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, verify_caller
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import SettingsDTO, TTSSettingsDTO
 from teleclaude.config.runtime_settings import RuntimeSettings
 from teleclaude.tts.provision import TTSProvisionError
@@ -46,7 +46,7 @@ async def get_settings() -> SettingsDTO:
 @router.patch("")
 async def patch_settings(
     body: dict[str, PatchBodyValue] = Body(...),
-    _identity: CallerIdentity = Depends(verify_caller),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> SettingsDTO:
     """Apply partial updates to mutable runtime settings.
 
@@ -68,7 +68,7 @@ async def patch_settings(
 
 @router.post("/tts/deprovision")
 async def deprovision_tts(
-    _identity: CallerIdentity = Depends(verify_caller),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> SettingsDTO:
     """Force TTS off and remove the TTS-exclusive optional dependencies.
 

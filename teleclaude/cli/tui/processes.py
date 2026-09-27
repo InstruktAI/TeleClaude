@@ -83,6 +83,16 @@ def signal_tui_reload() -> list[int]:
     return reached
 
 
+def main() -> int:
+    """Signal every recorded TUI process for the checkpoint maintenance action."""
+    reached = signal_tui_reload()
+    if not reached:
+        print("No running telec TUI to reload.")
+        return 0
+    print(f"Reloaded {len(reached)} telec TUI(s): {', '.join(str(pid) for pid in reached)}")
+    return 0
+
+
 def _record_path(pid: int) -> Path:
     return TUI_PIDS_DIR / str(pid)
 
@@ -109,3 +119,7 @@ def _is_running(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

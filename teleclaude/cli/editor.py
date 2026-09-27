@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import shutil
 import signal
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,6 +28,8 @@ from textual.containers import VerticalScroll
 from textual.events import AppBlur
 from textual.widgets import Label, Markdown, TextArea
 
+from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal
+from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tui.theme import (
     _TELECLAUDE_DARK_AGENT_THEME,
@@ -50,12 +53,19 @@ class MaterializedArtifact:
     slug: str
     artifact_name: str
     todo_id: str | None
+    clearance_identity: ResolvedCliIdentity
     file_path: Path
     _temp_dir_path: Path
 
     @classmethod
     def from_db(
-        cls, *, project_root: Path, slug: str, artifact_name: str, todo_id: str | None = None
+        cls,
+        *,
+        project_root: Path,
+        slug: str,
+        artifact_name: str,
+        todo_id: str | None = None,
+        clearance_identity: ResolvedCliIdentity,
     ) -> MaterializedArtifact:
         """Materialize an artifact from todos.db into a temporary file."""
         temp_dir = Path(tempfile.mkdtemp(prefix="teleclaude-artifact-"))
@@ -71,6 +81,7 @@ class MaterializedArtifact:
             slug=slug,
             artifact_name=artifact_name,
             todo_id=todo_id,
+            clearance_identity=clearance_identity,
             file_path=file_path,
             _temp_dir_path=temp_dir,
         )
@@ -100,6 +111,8 @@ class MaterializedArtifact:
                 "cwd": str(self.project_root),
                 "updated_by": "teleclaude.cli.editor",
             },
+            clearance_scope=ClearanceScope.verb("todo artifacts write"),
+            clearance_identity=self.clearance_identity,
         )
 
     def cleanup(self) -> None:
@@ -293,11 +306,17 @@ def main() -> None:
         parser.error("provide either filepath or --project-root/--artifact-slug/--artifact-name")
 
     if artifact_mode:
+        identity = resolve_cli_identity()
+        refusal = clearance_scope_refusal(ClearanceScope.verb("todo artifacts read"), identity)
+        if refusal is not None:
+            print(f"Error: {refusal}", file=sys.stderr)
+            raise SystemExit(1)
         materialized = MaterializedArtifact.from_db(
             project_root=args.project_root.resolve(),
             slug=args.artifact_slug,
             artifact_name=args.artifact_name,
             todo_id=args.artifact_todo_id,
+            clearance_identity=identity,
         )
         file_path = materialized.file_path
         display_name = materialized.display_name
