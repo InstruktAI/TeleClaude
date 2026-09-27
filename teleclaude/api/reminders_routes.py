@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, require_clearance
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import (
     ReminderDTO,
     ReminderEntryDTO,
@@ -49,9 +49,9 @@ _RFC3339_ERROR = "at must be an RFC3339 timestamp with an explicit timezone"
 _DURATION_ERROR = "duration must be a finite positive interval"
 _CANCEL_PROTECTED_DETAIL = "selected reminder is protected from cancellation"
 
-_set_clearance = require_clearance("telec reminders set")
-_list_clearance = require_clearance("telec reminders list")
-_cancel_clearance = require_clearance("telec reminders cancel")
+_set_clearance = carried_caller
+_list_clearance = carried_caller
+_cancel_clearance = carried_caller
 
 
 def configure(service: ReminderService | None) -> None:

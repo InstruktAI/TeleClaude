@@ -14,7 +14,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import OperationalError
 
-from teleclaude.cli.session_auth import resolve_cli_identity
+from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._code_commit_guidance import (
@@ -34,8 +34,6 @@ from teleclaude.cli.telec.handlers._code_maintenance import handle_code_maintena
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
 from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
-from teleclaude.cli.telec.handlers._code_publish import handle_code_publish
-from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT
 from teleclaude.commit_identity import (
@@ -59,7 +57,7 @@ from teleclaude.quality.scope import (
     validate_context_paths,
     validate_scoped_paths,
 )
-from teleclaude.session_identity import get_session_id, get_system_role
+from teleclaude.session_identity import get_session_id
 from teleclaude.session_scoping import clear as clear_session_paths
 from teleclaude.session_scoping import declare as declare_session_paths
 
@@ -93,14 +91,12 @@ class CodeSubcommand(StrEnum):
     LINT = "lint"
     TEST = "test"
     FORMAT = "format"
-    INSTALL = "install"
     COMMIT = "commit"
     ADD = "add"
     BLUEPRINT = "blueprint"
     POST_COMMIT = "post-commit"
     POST_MERGE = "post-merge"
     PRE_COMMIT = "pre-commit"
-    PUBLISH = "publish"
     MAINTENANCE = "maintenance"
 
 
@@ -109,7 +105,6 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.LINT,
         CodeSubcommand.TEST,
         CodeSubcommand.FORMAT,
-        CodeSubcommand.INSTALL,
         CodeSubcommand.BLUEPRINT,
         CodeSubcommand.MAINTENANCE,
     }
@@ -137,18 +132,25 @@ def handle_code(args: list[str]) -> None:
     if sub is CodeSubcommand.PRE_COMMIT:
         handle_code_pre_commit(rest)
         return
-    if sub is CodeSubcommand.PUBLISH:
-        handle_code_publish(rest)
-        return
     _require_code_capability(sub)
     if sub is CodeSubcommand.LINT:
+        from teleclaude.cli.telec.handlers.quality import (  # noqa: PLC0415 - each quality command owns its handler import.
+            handle_lint,
+        )
+
         handle_lint(rest)
     elif sub is CodeSubcommand.TEST:
+        from teleclaude.cli.telec.handlers.quality import (  # noqa: PLC0415 - each quality command owns its handler import.
+            handle_test,
+        )
+
         handle_test(rest)
     elif sub is CodeSubcommand.FORMAT:
+        from teleclaude.cli.telec.handlers.quality import (  # noqa: PLC0415 - each quality command owns its handler import.
+            handle_format,
+        )
+
         handle_format(rest)
-    elif sub is CodeSubcommand.INSTALL:
-        handle_install(rest)
     elif sub is CodeSubcommand.COMMIT:
         handle_code_commit(rest)
     elif sub is CodeSubcommand.ADD:
@@ -355,7 +357,7 @@ def handle_code_commit(args: list[str]) -> None:
         raise SystemExit(2)
 
     message = positionals[0] if positionals else None
-    system_role = get_system_role()
+    caller_identity = resolve_cli_identity()
     state = resolve_invocation_state()
     project_root = state.project_root
     includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
@@ -370,7 +372,7 @@ def handle_code_commit(args: list[str]) -> None:
     if not approved:
         forgot_gate = message is not None
         current_branch = resolve_current_branch(project_root)
-        if current_branch == "main" and system_role != "integrator":
+        if current_branch == "main" and caller_identity.system_role != "integrator":
             _print_commit_review_guidance(project_root, state.context_root)
             raise SystemExit(1 if forgot_gate else 0)
         print(
@@ -400,7 +402,7 @@ def handle_code_commit(args: list[str]) -> None:
             context_root=state.context_root,
             quality_gate_legs=state.quality_gate_legs,
             enforce_context_bound=state.is_non_project_invocation_context,
-            system_role=system_role,
+            caller_identity=caller_identity,
             only=only or None,
             human_involved=human_involved,
         )
@@ -451,7 +453,7 @@ def _commit_under_lock(
     context_root: Path | None,
     quality_gate_legs: frozenset[QualityGateLeg],
     enforce_context_bound: bool,
-    system_role: str | None,
+    caller_identity: ResolvedCliIdentity,
     only: list[str] | None = None,
     human_involved: bool = False,
 ) -> None:
@@ -472,9 +474,9 @@ def _commit_under_lock(
             context_root=context_root,
             quality_gate_legs=quality_gate_legs,
             enforce_context_bound=enforce_context_bound,
+            caller_identity=caller_identity,
             human_involved=human_involved,
         )
-        del system_role
         return
 
     scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=context_root)
@@ -589,6 +591,7 @@ def _commit_under_lock(
         repo,
         message,
         commit_args=("-F", "{message_file}", "--no-verify", "--", *pathspec),
+        caller_identity=caller_identity,
         human_involved=human_involved,
     )
     if stdout:
@@ -602,7 +605,6 @@ def _commit_under_lock(
         committed_files = list(pathspec)
     _record_commit_checkpoint_markers(project_root, committed_files)
     _clear_landed_commit_declarations(committed_files, only=only)
-    del system_role
 
 
 def _clear_landed_commit_declarations(committed_files: list[str], *, only: list[str] | None) -> None:
@@ -668,6 +670,7 @@ def _commit_active_merge(
     context_root: Path | None,
     quality_gate_legs: frozenset[QualityGateLeg],
     enforce_context_bound: bool,
+    caller_identity: ResolvedCliIdentity,
     human_involved: bool = False,
 ) -> None:
     """Close an active merge as a full-index commit."""
@@ -697,6 +700,7 @@ def _commit_active_merge(
         repo,
         message,
         commit_args=("-F", "{message_file}", "--no-verify"),
+        caller_identity=caller_identity,
         human_involved=human_involved,
     )
     if stdout:
@@ -716,6 +720,10 @@ def _run_commit_quality_gate(
     quality_gate_legs: frozenset[QualityGateLeg],
 ) -> None:
     """Run the acting tier's selected checks against the commit pathspec."""
+    from teleclaude.cli.telec.handlers.quality import (  # noqa: PLC0415 - commit quality checks need formatting only here.
+        handle_format,
+    )
+
     if QualityGateLeg.NATIVE in quality_gate_legs:
         handle_format(quality_paths)
     result = run_lint_gate(
@@ -738,6 +746,7 @@ def _commit_repo_with_message(
     message: str,
     *,
     commit_args: tuple[str, ...],
+    caller_identity: ResolvedCliIdentity,
     human_involved: bool = False,
 ) -> tuple[str, str]:
     """Commit with the resolved author identity and mandated footer.
@@ -749,7 +758,7 @@ def _commit_repo_with_message(
     misattributing it.
     """
     try:
-        git_identity, session_id = resolve_commit_identity_from_caller(resolve_cli_identity())
+        git_identity, session_id = resolve_commit_identity_from_caller(caller_identity)
     except CommitIdentityUnresolvable as exc:
         raise SystemExit(str(exc)) from exc
 

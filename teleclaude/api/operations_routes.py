@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from teleclaude.api.auth import CallerIdentity, clearance_operations_get
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
@@ -35,7 +35,7 @@ def configure(client: AdapterClient | None = None) -> None:
 async def get_operation(
     operation_id: str,
     computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(clearance_operations_get),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Fetch receipt-backed operation status for the caller, local or on a named owning computer."""
     if is_remote_target(computer, config.computer.name):

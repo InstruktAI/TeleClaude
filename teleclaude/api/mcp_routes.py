@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, verify_caller
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.mcp.protocol import JsonObject
 from teleclaude.mcp.runtime import McpInvocationContext, McpRuntime, McpRuntimeError, McpRuntimePool
@@ -31,7 +31,7 @@ def configure(runtime: McpRuntimePool | None) -> None:
 @router.get("/servers")
 async def list_servers(
     exclude: Annotated[list[str] | None, Query()] = None,
-    _identity: CallerIdentity = Depends(verify_caller),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> JsonObject:
     """Return configured MCP servers without initializing any lease."""
     runtime = _require_runtime().machine_runtime
@@ -43,7 +43,7 @@ async def list_servers(
 async def list_tools(
     slug: str,
     project_root: Annotated[str | None, Header(alias=_PROJECT_ROOT_HEADER)] = None,
-    _identity: CallerIdentity = Depends(verify_caller),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> JsonObject:
     """Initialize one server lazily and return its tools."""
     try:
@@ -60,7 +60,7 @@ async def call_tool(
     tool_name: str,
     arguments: Annotated[object, Body(...)] = None,
     project_root: Annotated[str | None, Header(alias=_PROJECT_ROOT_HEADER)] = None,
-    _identity: CallerIdentity = Depends(verify_caller),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> JsonObject:
     """Call one MCP tool through the daemon-owned runtime."""
     if not isinstance(arguments, dict):

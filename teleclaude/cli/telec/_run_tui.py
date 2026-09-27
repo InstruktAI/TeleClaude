@@ -5,18 +5,66 @@ from __future__ import annotations
 import importlib
 import os
 import shutil
+import subprocess
 import sys
 import time as _t
 from typing import Any
 
+from teleclaude.cli.session_auth import TUI_CARRIED_IDENTITY_ENV_KEY, read_current_session_email
+from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME
+from teleclaude.cli.telec.handlers.auth_cmds import _requires_tui_login
 from teleclaude.cli.tui.processes import deregister_tui
+from teleclaude.config import config
+from teleclaude.constants import ENV_ENABLE
+from teleclaude.runtime.environment import filter_tui_tmux_environment
 
 __all__ = [
     "_run_tui",
     "_run_tui_config_mode",
+    "start_tui",
 ]
 
 _TUI_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
+
+
+def start_tui() -> None:
+    """Launch the TUI, creating its tmux session when invoked outside tmux."""
+    logger = importlib.import_module("instrukt_ai_logging").get_logger(__name__)
+    if not os.environ.get(TMUX_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        _exec_tmux_tui()
+        return
+    try:
+        _run_tui()
+    except KeyboardInterrupt:
+        pass
+    except _TUI_FAILURES:
+        logger.exception("telec TUI crashed during startup")
+
+
+def _exec_tmux_tui() -> None:
+    terminal_email = read_current_session_email()
+    if _requires_tui_login() and not terminal_email:
+        print("Error: telec auth login is required before starting the TUI in multi-user mode.")
+        print("Run: telec auth login <email>")
+        raise SystemExit(1)
+
+    tmux = config.computer.tmux_binary
+    result = subprocess.run([tmux, "has-session", "-t", TUI_SESSION_NAME], capture_output=True, check=False)
+    if result.returncode == 0:
+        subprocess.run(
+            [tmux, "kill-session", "-t", TUI_SESSION_NAME],
+            check=False,
+            capture_output=True,
+        )
+    tui_env = filter_tui_tmux_environment(os.environ)  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    tui_env[TUI_ENV_KEY] = ENV_ENABLE
+    if terminal_email:
+        tui_env[TUI_CARRIED_IDENTITY_ENV_KEY] = terminal_email
+    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME]
+    for key, value in tui_env.items():
+        tmux_args.extend(["-e", f"{key}={value}"])
+    tmux_args.append("telec")
+    os.execlp(tmux, *tmux_args)
 
 
 def _load_tui_runtime() -> tuple[Any, ...]:

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import tomllib
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import cast
+
+__version__: str
 
 
 def _version_from_pyproject() -> str:
@@ -28,9 +31,10 @@ def _version_from_pyproject() -> str:
 def _resolve_version() -> str:
     """Read runtime version from installed package metadata."""
     pyproject_version = _version_from_pyproject()
+    metadata = importlib.import_module("importlib.metadata")
     try:
-        metadata_version = version("teleclaude")
-    except PackageNotFoundError:
+        metadata_version = cast(str, metadata.version("teleclaude"))
+    except metadata.PackageNotFoundError:
         return pyproject_version
 
     # In source-tree runs, local pyproject version is authoritative.
@@ -40,6 +44,13 @@ def _resolve_version() -> str:
     return metadata_version
 
 
-__version__ = _resolve_version()
+def __getattr__(name: str) -> str:
+    """Resolve package metadata only when a caller asks for the version."""
+    if name != "__version__":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = _resolve_version()
+    globals()[name] = value
+    return value
+
 
 __all__ = ["__version__"]

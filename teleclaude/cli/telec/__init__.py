@@ -1,102 +1,33 @@
 """telec: TUI client for TeleClaude."""
 
+import importlib
 import os
-import subprocess
 import sys
-import time as _t
 from collections.abc import Callable
 
-from instrukt_ai_logging import InstruktAILogger, get_logger
-from pydantic import ValidationError
-
-from teleclaude.cli.session_auth import TUI_CARRIED_IDENTITY_ENV_KEY, read_current_session_email
-
-# Re-export TUI runners
-from teleclaude.cli.telec._run_tui import _run_tui, _run_tui_config_mode
-
-# Re-export shared config accessor and constants
-from teleclaude.cli.telec._shared import (
-    TMUX_ENV_KEY,
-    TUI_ENV_KEY,
-    TUI_SESSION_NAME,
-    config,
-)
-
-# Re-export auth helpers
-from teleclaude.cli.telec.auth import _resolve_command_auth, is_command_allowed
+from teleclaude.cli.session_auth import require_cli_clearance
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
-
-# Re-export help functions (light — kept top-level for completion + help fast paths)
 from teleclaude.cli.telec.help import (
-    _complete_flags,
-    _complete_subcmd,
-    _flag_matches,
-    _flag_used,
     _handle_completion,
     _maybe_show_help,
-    _print_completion,
-    _print_flag,
     _resolve_command_path,
     _usage,
-    _usage_leaf,
-    _usage_main,
     _usage_resolved,
-    _usage_subcmd,
 )
-
-# Re-export surface symbols
 from teleclaude.cli.telec.surface import (
     CLI_SURFACE,
-    HELP_SUBCOMMAND_EXPANSIONS,
-    CommandAuth,
+    SESSIONS_END,
+    SESSIONS_RESTART,
     CommandDef,
-    Flag,
     TelecCommand,
 )
-from teleclaude.cli.tool_client import ToolAPIError
-from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
-from teleclaude.logging_config import setup_logging
-from teleclaude.runtime.environment import filter_tui_tmux_environment
+from teleclaude.constants import MAIN_MODULE
 
-# Handler modules (handlers.{auth_cmds,bugs,code,config,content,docs,events_signals,
-# history,memories,misc,todo}) and tool_commands are lazy-loaded inside
-# the dispatch path. Eager loading drags in the OpenAI/Anthropic SDKs, the
-# summarizer, the mirrors DB, and the todos DB — ~800ms — for every CLI call,
-# including the in-process lint pass `telec code commit` runs, which touches none of them.
+from . import flags as F
 
-_BOOT = _t.monotonic()
-_CLI_RUNTIME_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
 _INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
 
-__all__ = [
-    "CLI_SURFACE",
-    "HELP_SUBCOMMAND_EXPANSIONS",
-    "TMUX_ENV_KEY",
-    "TUI_ENV_KEY",
-    "TUI_SESSION_NAME",
-    "CommandAuth",
-    "CommandDef",
-    "Flag",
-    "TelecCommand",
-    "_complete_flags",
-    "_complete_subcmd",
-    "_flag_matches",
-    "_flag_used",
-    "_handle_completion",
-    "_maybe_show_help",
-    "_print_completion",
-    "_print_flag",
-    "_resolve_command_auth",
-    "_run_tui",
-    "_run_tui_config_mode",
-    "_usage",
-    "_usage_leaf",
-    "_usage_main",
-    "_usage_subcmd",
-    "config",
-    "is_command_allowed",
-    "main",
-]
+__all__ = ["main"]
 
 
 def main() -> None:
@@ -106,9 +37,6 @@ def main() -> None:
         _handle_completion()
         return
 
-    setup_logging()
-    logger = get_logger(__name__)
-    logger.trace("[PERF] main() imports done dt=%.3f", _t.monotonic() - _BOOT)
     argv = sys.argv[1:]
 
     # Handle --help / -h
@@ -117,19 +45,10 @@ def main() -> None:
         return
 
     if argv:
-        try:
-            _handle_cli_argv(argv)
-        except ToolAPIError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            raise SystemExit(1) from exc
-        except ValidationError as exc:
-            # Configuration a human authored is rejected with the validator's own
-            # message rather than a traceback; the exit code is unchanged.
-            print(_INVALID_CONFIGURATION_ERROR % exc, file=sys.stderr)
-            raise SystemExit(1) from exc
+        _handle_cli_argv(argv)
         return
 
-    _start_tui(logger)
+    _start_tui()
 
 
 def _resolve_and_enforce(cmd: str, args: list[str]) -> tuple[list[str], CommandDef, list[str]]:
@@ -167,26 +86,32 @@ def _handle_cli_command(argv: list[str]) -> None:
         cmd_enum = None
 
     cmd_def = CLI_SURFACE.get(cmd)
+    if cmd_def is None:
+        print(f"Unknown command: /{cmd}")
+        print(_usage())
+        return
     if cmd_def and cmd_def.subcommands and not cmd_def.standalone and not args:
         print(_usage(cmd))
         return
+
+    try:
+        path, node, remainder = _resolve_and_enforce(cmd, args)
+    except CliUsageError as exc:
+        path, node = _resolve_command_path(cmd, args)
+        print(str(exc), file=sys.stderr)
+        print(_usage_resolved(path, node), file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    target_session_id = _session_action_target(node, remainder)
+    command_path = " ".join(path)
+    require_cli_clearance(command_path, target_session_id, node.auth)
 
     handler = _resolve_cli_handler(cmd_enum, args)
     if handler is None:
         print(f"Unknown command: /{cmd}")
         print(_usage())
         return
-
-    if cmd_def is not None:
-        try:
-            _resolve_and_enforce(cmd, args)
-        except CliUsageError as exc:
-            path, node = _resolve_command_path(cmd, args)
-            print(str(exc), file=sys.stderr)
-            print(_usage_resolved(path, node), file=sys.stderr)
-            raise SystemExit(1) from exc
-
-    handler()
+    _dispatch_handler(handler)
 
 
 def _handle_cli_argv(argv: list[str]) -> None:
@@ -199,71 +124,61 @@ def _handle_cli_argv(argv: list[str]) -> None:
     raise SystemExit(1)
 
 
-def _start_tui(logger: InstruktAILogger) -> None:
-    if not os.environ.get(TMUX_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-        _exec_tmux_tui()
-        return
+def _start_tui() -> None:
+    tui = importlib.import_module("teleclaude.cli.telec._run_tui")
+    tui.start_tui()
 
+
+def _session_action_target(node: CommandDef, args: list[str]) -> str | None:
+    if node is SESSIONS_END:
+        parsed = parse_command_args(node, args)
+        return parsed.positionals[0] if parsed.positionals else parsed.value(F.FLAG_SESSION)
+    if node is SESSIONS_RESTART:
+        parsed = parse_command_args(node, args)
+        return parsed.positionals[0] if parsed.positionals else None
+    return None
+
+
+def _dispatch_handler(handler: Callable[[], None]) -> None:
+    importlib.import_module("teleclaude.logging_config").setup_logging()
     try:
-        _run_tui()
-    except KeyboardInterrupt:
-        pass  # Clean exit on Ctrl-C
-    except _CLI_RUNTIME_FAILURES:
-        logger.exception("telec TUI crashed during startup")
+        handler()
+    except Exception as exc:
+        if _is_loaded_exception(exc, "teleclaude.cli.tool_client", "ToolAPIError"):
+            print(f"Error: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        if _is_loaded_exception(exc, "pydantic", "ValidationError"):
+            print(_INVALID_CONFIGURATION_ERROR % exc, file=sys.stderr)
+            raise SystemExit(1) from exc
+        raise
 
 
-def _exec_tmux_tui() -> None:
-    from teleclaude.cli.telec.handlers.auth_cmds import _requires_tui_login
-
-    terminal_email = read_current_session_email()
-    if _requires_tui_login() and not terminal_email:
-        print("Error: telec auth login is required before starting the TUI in multi-user mode.")
-        print("Run: telec auth login <email>")
-        raise SystemExit(1)
-
-    tmux = config.computer.tmux_binary
-    result = subprocess.run(
-        [tmux, "has-session", "-t", TUI_SESSION_NAME],
-        capture_output=True,
-        check=False,
+def _is_loaded_exception(error: Exception, module_name: str, exception_name: str) -> bool:
+    module = sys.modules.get(module_name)
+    if module is None:
+        return False
+    exception_type = getattr(module, exception_name, None)
+    return (
+        isinstance(exception_type, type)
+        and issubclass(exception_type, BaseException)
+        and isinstance(error, exception_type)
     )
-    if result.returncode == 0:
-        subprocess.run(
-            [tmux, "kill-session", "-t", TUI_SESSION_NAME],
-            check=False,
-            capture_output=True,
-        )
-
-    tui_env = filter_tui_tmux_environment(os.environ)  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
-    tui_env[TUI_ENV_KEY] = ENV_ENABLE
-    if terminal_email:
-        tui_env[TUI_CARRIED_IDENTITY_ENV_KEY] = terminal_email
-    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME]
-    for key, value in tui_env.items():
-        tmux_args.extend(["-e", f"{key}={value}"])
-    tmux_args.append("telec")
-    os.execlp(tmux, *tmux_args)
 
 
 def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Callable[[], None] | None:
     def _lazy(module: str, attr: str, *, pass_args: bool = True) -> Callable[[], None]:
         def _call() -> None:
-            from importlib import import_module
-
-            fn = getattr(import_module(module), attr)
+            fn = getattr(importlib.import_module(module), attr)
             fn(args) if pass_args else fn()
 
         return _call
 
     def handle_sessions_command() -> None:
         if args and args[0] == "revive":
-            from teleclaude.cli.telec.handlers.misc import _handle_revive
-
-            _handle_revive(args[1:])
+            revive_handler = importlib.import_module("teleclaude.cli.telec.handlers.misc")._handle_revive
+            revive_handler(args[1:])
             return
-        from teleclaude.cli.tool_commands import handle_sessions
-
-        handle_sessions(args)
+        importlib.import_module("teleclaude.cli.tool_commands.sessions").handle_sessions(args)
 
     handlers: dict[TelecCommand, Callable[[], None]] = {
         TelecCommand.SESSIONS: handle_sessions_command,
@@ -274,7 +189,6 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.CHANNELS: _lazy("teleclaude.cli.tool_commands", "handle_channels"),
         TelecCommand.OPERATIONS: _lazy("teleclaude.cli.tool_commands", "handle_operations"),
         TelecCommand.VERSION: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_version", pass_args=False),
-        TelecCommand.RELOAD: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_reload"),
         TelecCommand.DOCS: _lazy("teleclaude.cli.telec.handlers.docs", "_handle_docs"),
         TelecCommand.TODO: _lazy("teleclaude.cli.telec.handlers.todo", "_handle_todo"),
         TelecCommand.BUGS: _lazy("teleclaude.cli.telec.handlers.bugs", "_handle_bugs"),

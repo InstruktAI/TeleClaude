@@ -8,11 +8,12 @@ import sys
 from collections.abc import Sequence
 
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance
+from teleclaude.cli.session_auth import no_identity_refusal, resolve_cli_identity
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
-from teleclaude.history.service import HistorySearchPayload, HistorySearchRow, build_history_search_payload
+from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
+from teleclaude.history.service import build_history_search_payload
 from teleclaude.mirrors.store import history_access_for_caller
 
 
@@ -103,7 +104,7 @@ def display_combined_history(
     excluded_workers = 0
 
     if local_targets:
-        resolved_caller = require_cli_clearance("telec history search")
+        resolved_caller = resolve_cli_identity()
         access = history_access_for_caller(resolved_caller.caller)
         if access is None:
             print(f"Error: {no_identity_refusal(resolved_caller)}", file=sys.stderr)

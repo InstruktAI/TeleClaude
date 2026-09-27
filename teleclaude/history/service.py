@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db._sync import get_session_field_sync
+from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
 from teleclaude.mirrors.store import (
     AllMirrorAccess,
     MirrorAccess,
@@ -67,27 +68,6 @@ class HistoryShowRequest(TypedDict):
     agent: str
     thinking: bool
     raw: bool
-
-
-class HistorySearchRow(TypedDict):
-    """Wire-safe history search row with both identity namespaces."""
-
-    sort_timestamp: str
-    timestamp: str
-    computer: str
-    agent: str
-    project: str
-    topic: str
-    tc_id: str | None
-    native_id: str | None
-
-
-class HistorySearchPayload(TypedDict):
-    """Search rows plus the count withheld by the worker default."""
-
-    computer: str
-    rows: list[HistorySearchRow]
-    excluded_workers: int
 
 
 class IdNamespace(StrEnum):

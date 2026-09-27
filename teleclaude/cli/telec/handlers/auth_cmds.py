@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import replace
-from typing import Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
+from teleclaude.caller_identity import NoIdentityCliCaller, PersonCliCaller, authorizing_role
 from teleclaude.cli.session_auth import (
+    ResolvedCliIdentity,
     clear_current_session_email,
     get_current_session_context,
     no_identity_refusal,
@@ -14,12 +16,12 @@ from teleclaude.cli.session_auth import (
     write_current_session_email,
 )
 from teleclaude.cli.telec.help import _usage
-from teleclaude.constants import MarkerState
-from teleclaude.core.identity import NoIdentityCliCaller, PersonCliCaller, authorizing_role
-from teleclaude.paths import MAIN_DB_PATH
-from teleclaude.session_identity import inspect_session_identity_marker
 
-_UNUSABLE_SESSION_IDENTITY_MESSAGE = "The current session carries no usable identity."
+if TYPE_CHECKING:
+    from teleclaude.config.schema import GlobalConfig
+    from teleclaude.core.models import Session
+    from teleclaude.core.organization import SessionCompanyContext, SessionCompanyState
+
 _NO_IDENTITY_FOR_TTY_MESSAGE = "No identity for current TTY ({tty}): {detail}"
 _UNRESOLVED_ROLE = "unresolved"
 
@@ -33,8 +35,9 @@ __all__ = [
 ]
 
 
-def _load_global_config() -> Any:
-    return importlib.import_module("teleclaude.config.loader").load_global_config()
+def _load_global_config() -> GlobalConfig:
+    loader = importlib.import_module("teleclaude.config.loader")
+    return cast("GlobalConfig", loader.load_global_config())
 
 
 def _handle_auth(args: list[str]) -> None:
@@ -110,22 +113,21 @@ def _handle_login(args: list[str]) -> None:
     print(f"Session auth file updated: {auth_state.context.auth_path}")
 
 
-def _print_company_line(session_id: str) -> None:
-    """Print the session's resolved company context, read through its record."""
-    from teleclaude.core import db  # noqa: PLC0415 - deferred: core.db reaches this CLI module during startup
-    from teleclaude.core.organization import (  # noqa: PLC0415
-        SessionCompanyState,
-        resolve_session_company_context,
-    )
-
-    session = db.get_session_identity_sync(str(MAIN_DB_PATH), session_id)
-    if session is None:
+def _print_company_line(identity: ResolvedCliIdentity) -> None:
+    """Print the company context from the facts resolved by the command gate."""
+    facts = identity.session_facts
+    if facts is None:
         return
-    company = db.get_session_company_sync(str(MAIN_DB_PATH), session_id)
-    context = resolve_session_company_context(replace(session, company=company))
-    if context.state is SessionCompanyState.RESOLVED:
+    organization = importlib.import_module("teleclaude.core.organization")
+    resolve_context = cast(
+        Callable[[Session], SessionCompanyContext],
+        organization.resolve_session_company_context,
+    )
+    context = resolve_context(cast("Session", facts))
+    state_class = cast(type[SessionCompanyState], organization.SessionCompanyState)
+    if context.state is state_class.RESOLVED:
         print(f"Company: {context.company}")
-    elif context.state is SessionCompanyState.AMBIGUOUS:
+    elif context.state is state_class.AMBIGUOUS:
         print(f"Company: ambiguous ({', '.join(context.eligible)}) — select one with --company <slug>")
     else:
         print("Company: none")
@@ -138,13 +140,8 @@ def _handle_whoami(args: list[str]) -> None:
         print(_usage("auth", "whoami"))
         raise SystemExit(1)
 
-    marker_state, session_id = inspect_session_identity_marker()
-    if marker_state is not MarkerState.ABSENT:
-        if marker_state is not MarkerState.VALID or not session_id:
-            print(_UNUSABLE_SESSION_IDENTITY_MESSAGE)
-            raise SystemExit(1)
-
-        identity = resolve_cli_identity()
+    identity = resolve_cli_identity()
+    if identity.in_session:
         if isinstance(identity.caller, NoIdentityCliCaller):
             print(no_identity_refusal(identity))
             raise SystemExit(1)
@@ -154,7 +151,7 @@ def _handle_whoami(args: list[str]) -> None:
         if role:
             print(f"Role: {role}")
         if identity.session_id:
-            _print_company_line(identity.session_id)
+            _print_company_line(identity)
         return
 
     context = get_current_session_context()
@@ -162,7 +159,6 @@ def _handle_whoami(args: list[str]) -> None:
         print("Error: no terminal session detected (TTY unavailable).")
         raise SystemExit(1)
 
-    identity = resolve_cli_identity()
     if isinstance(identity.caller, NoIdentityCliCaller):
         print(_NO_IDENTITY_FOR_TTY_MESSAGE.format(tty=context.tty, detail=no_identity_refusal(identity)))
         return

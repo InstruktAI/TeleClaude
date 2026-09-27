@@ -12,9 +12,9 @@ import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.config.schema import AppConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
-from teleclaude.core.identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.core.organization import OrganizationalMembership, resolve_organization
 from teleclaude.doc_body import (
     INLINE_REF_RE,

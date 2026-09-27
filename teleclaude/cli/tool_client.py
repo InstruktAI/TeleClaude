@@ -12,24 +12,21 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
-from teleclaude.api_models_identity import WhoAmIDTO
-from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH, LOGIN_REQUIRED_DETAIL
-from teleclaude.session_identity import get_session_id, get_session_token
 
-_TUI_SESSION_NAME = "tc_tui"
+if TYPE_CHECKING:
+    from teleclaude.cli.clearance import ClearanceScope
+    from teleclaude.cli.session_auth import ResolvedCliIdentity
+
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
-_TMUX_ENV = "TMUX"
 _PROJECT_ROOT_HEADER = "x-teleclaude-project-root"
-_AUTH_WHOAMI_PATH = "/auth/whoami"
-_GET_METHOD = "GET"
 type QueryParamValue = str | int | float | bool | None
 type ToolQueryParams = (
     Mapping[str, QueryParamValue | Sequence[QueryParamValue]]
@@ -56,28 +53,6 @@ class ToolAPIError(Exception):
         self.is_unavailable = is_unavailable
 
 
-def _read_tmux_session_name() -> str | None:
-    """Query tmux server for current session name.
-
-    Queries the server only from an active tmux pane.
-    """
-    if not os.getenv(_TMUX_ENV):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-        return None
-    try:
-        result = subprocess.run(
-            ["tmux", "display-message", "-p", "#S"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip() or None
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    return None
-
-
 def tool_api_request(
     method: str,
     path: str,
@@ -86,6 +61,8 @@ def tool_api_request(
     timeout: float = 30.0,
     socket_path: str | None = None,
     project_root: Path | None = None,
+    clearance_scope: ClearanceScope | None = None,
+    clearance_identity: ResolvedCliIdentity | None = None,
 ) -> object:
     """Make a synchronous API call to the daemon.
 
@@ -107,21 +84,43 @@ def tool_api_request(
         ToolAPIError: On daemon unavailability, timeout, or HTTP error response.
     """
     resolved_socket_path = socket_path or os.environ.get(_API_SOCKET_ENV, API_SOCKET_PATH)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-    tmux_session = _read_tmux_session_name()
-    use_session_identity = tmux_session != _TUI_SESSION_NAME
-    session_id = get_session_id() if use_session_identity else None
-    terminal_email = read_current_session_email()
+    scoped_identity: ResolvedCliIdentity | None = None
+    if clearance_scope is not None:
+        from teleclaude.cli.clearance import (  # noqa: PLC0415 - TUI call sites supply an explicit authorization scope.
+            clearance_scope_refusal,
+            refresh_cli_identity_role,
+        )
+        from teleclaude.cli.session_auth import (  # noqa: PLC0415 - resolve only when a caller omitted the TUI snapshot.
+            resolve_cli_identity,
+        )
 
-    headers: dict[str, str] = {}
-    token = get_session_token() if use_session_identity else None
-    if token:
-        headers["x-session-token"] = token
-    if session_id:
-        headers["x-caller-session-id"] = session_id
-    if terminal_email:
-        headers["x-telec-email"] = terminal_email
-    if tmux_session:
-        headers["x-tmux-session"] = tmux_session
+        scoped_identity = refresh_cli_identity_role(clearance_identity or resolve_cli_identity())
+        refusal = clearance_scope_refusal(clearance_scope, scoped_identity)
+        if refusal is not None:
+            raise ToolAPIError(refusal, status_code=403)
+    from teleclaude.caller_identity import (  # noqa: PLC0415 - request construction owns caller serialization.
+        CarriedIdentity,
+    )
+    from teleclaude.core.operation_caller_identity import (  # noqa: PLC0415 - operation context is a request-time input.
+        get_caller_session_id,
+    )
+
+    operation_session_id = get_caller_session_id()
+    if operation_session_id is not None:
+        from teleclaude.core.session_identity_facts import (  # noqa: PLC0415 - operation identity uses the published lean row read.
+            read_session_identity_facts,
+        )
+        from teleclaude.paths import MAIN_DB_PATH  # noqa: PLC0415 - operation identity uses the active session store.
+
+        session_facts = read_session_identity_facts(str(MAIN_DB_PATH), operation_session_id)
+        carried = CarriedIdentity.from_session_facts(session_facts) if session_facts is not None else CarriedIdentity()
+    else:
+        from teleclaude.cli.session_auth import (  # noqa: PLC0415 - caller resolution is needed only at request time.
+            resolve_cli_identity,
+        )
+
+        carried = CarriedIdentity.from_cli_identity(scoped_identity or resolve_cli_identity())
+    headers = carried.to_headers()
     if project_root is not None:
         headers[_PROJECT_ROOT_HEADER] = str(project_root)
 
@@ -175,6 +174,8 @@ def tool_api_call(
     timeout: float = 30.0,
     socket_path: str | None = None,
     project_root: Path | None = None,
+    clearance_scope: ClearanceScope | None = None,
+    clearance_identity: ResolvedCliIdentity | None = None,
 ) -> object:
     """Make a synchronous API call and exit on failure."""
     try:
@@ -186,15 +187,12 @@ def tool_api_call(
             timeout=timeout,
             socket_path=socket_path,
             project_root=project_root,
+            clearance_scope=clearance_scope,
+            clearance_identity=clearance_identity,
         )
     except ToolAPIError as exc:
         print(f"Error: {exc.message}", file=sys.stderr)
         raise SystemExit(1) from exc
-
-
-def get_resolved_caller() -> WhoAmIDTO:
-    """Return the caller identity resolved by the daemon."""
-    return WhoAmIDTO.model_validate(tool_api_request(_GET_METHOD, _AUTH_WHOAMI_PATH))
 
 
 def _extract_detail(resp: httpx.Response) -> str:

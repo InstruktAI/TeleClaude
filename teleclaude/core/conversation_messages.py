@@ -55,6 +55,7 @@ from teleclaude.constants import (
     ROLE_SYSTEM,
     ROLE_TASKER,
     ROLE_WORKER,
+    SystemRole,
 )
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.injected_text import (
@@ -109,6 +110,7 @@ MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
     {
         ROLE_ORCHESTRATOR: MachineRoleLabel.ORCHESTRATOR,
         ROLE_INTEGRATOR: MachineRoleLabel.INTEGRATOR,
+        SystemRole.COORDINATOR: MachineRoleLabel.ORCHESTRATOR,
         ROLE_SYSTEM: MachineRoleLabel.SYSTEM,
         ROLE_WORKER: MachineRoleLabel.WORKER,
         ROLE_TASKER: MachineRoleLabel.TASKER,

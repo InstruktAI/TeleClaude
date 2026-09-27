@@ -21,7 +21,6 @@ from uuid import UUID, uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import invalidate_session_cache, invalidate_token_cache
 from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
@@ -316,25 +315,12 @@ async def _terminate_session_inner(
 
     logger.info("Terminating session %s (%s)", session_id, reason)
 
-    # Revoke session tokens early so any in-flight CLI calls with the old token are rejected.
-    try:
-        await db.revoke_session_tokens(session_id)
-        invalidate_token_cache(session_id)
-    except Exception as exc:
-        logger.error("Failed to revoke tokens for session %s: %s", session_id, exc)
-
     if not already_closed and not is_close_started(lifecycle_status=session.lifecycle_status):
         await transition_session(
             db,
             session_id,
             LifecycleTransition(SessionLifecycleStatus.CLOSING, LifecycleTransitionReason.CLOSE_STARTED),
         )
-
-    # Drop any cached pre-close session record AFTER the DB write so the next auth
-    # cache miss reads the fresh closing/closed lifecycle state. Without this the
-    # defense-in-depth check in _verify_token_identity can be bypassed for up to
-    # the session-cache TTL after close starts.
-    invalidate_session_cache(session_id)
 
     if kill_tmux is None:
         kill_tmux = True
@@ -442,10 +428,6 @@ async def _terminate_session_inner(
         elif not already_closed:
             await db.close_session(session.session_id)
             logger.info("Closed session %s in database", session.session_id)
-        # Final cache invalidation after the lifecycle write so any token-auth
-        # request after this point sees the closed state on its next DB read.
-        invalidate_session_cache(session.session_id)
-        invalidate_token_cache(session.session_id)
     return not already_closed or delete_db
 
 

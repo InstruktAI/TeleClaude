@@ -34,6 +34,7 @@ _ROOT_ARGUMENT_REQUIRED = "A project root is required."
 _HOOK_RESULT = "{hook_name}: {outcome}"
 _FILTER_RESULT = "filter-driver: {disposition}"
 _ROOT_RESULT = "{project_root}: {outcome} (schema-link: {schema_link}, schema-copy: {schema_copy})"
+_RUN_RESULT = "Plumbing convergence {outcome}: {root_count} registered root(s)."
 
 
 class PlumbingConvergenceOutcome(StrEnum):
@@ -281,7 +282,22 @@ def converge_registered_roots() -> PlumbingConvergenceRunResult:
 
 
 def main() -> None:
-    """Run single-root convergence for installation carriers."""
+    """Run registered-root convergence, or one-root convergence for installers."""
+    if len(sys.argv) == 1:
+        run_result = converge_registered_roots()
+        for root_result in run_result.results:
+            print(
+                _ROOT_RESULT.format(
+                    project_root=root_result.project_root,
+                    outcome=root_result.outcome,
+                    schema_link=root_result.schema_link,
+                    schema_copy=root_result.schema_copy,
+                ),
+            )
+        print(_RUN_RESULT.format(outcome=run_result.outcome, root_count=run_result.root_count))
+        if run_result.outcome is PlumbingConvergenceRunOutcome.FAILED:
+            raise SystemExit(1)
+        return
     if len(sys.argv) != 2:
         raise SystemExit(_ROOT_ARGUMENT_REQUIRED)
     result = converge_plumbing(Path(sys.argv[1]))

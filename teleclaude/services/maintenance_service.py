@@ -472,7 +472,6 @@ class MaintenanceService:
                 await db.cleanup_terminal_operations(runtime_cutoff_iso)
                 await db.cleanup_webhook_outbox(runtime_cutoff_iso)
                 await db.cleanup_hook_outbox(runtime_cutoff_iso)
-                await db.cleanup_orphan_session_tokens()
                 await db.cleanup_orphan_session_listeners()
                 try:
                     event_db = await get_event_db()

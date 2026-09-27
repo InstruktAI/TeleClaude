@@ -3,14 +3,14 @@
 Tool name filtering is derived from CLI_SURFACE CommandAuth entries.
 The legacy hardcoded exclusion sets (WORKER_ALLOWED_TOOLS, MEMBER_EXCLUDED_TOOLS,
 UNAUTHORIZED_EXCLUDED_TOOLS) have been retired. Authorization uses
-is_command_allowed() from teleclaude.cli.telec as the single source of truth.
+is_command_allowed() from teleclaude.cli.telec.auth as the single source of truth.
 """
 
 from collections.abc import Iterator
 from typing import TypedDict
 
-from teleclaude.cli.telec import CLI_SURFACE, is_command_allowed
-from teleclaude.cli.telec.surface import CommandDef
+from teleclaude.cli.telec.auth import is_command_allowed
+from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef
 
 
 class ToolSpec(TypedDict, total=False):
@@ -38,7 +38,7 @@ def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[s
 
     Derived from CLI_SURFACE CommandAuth entries — human-role filtering only.
     The role parameter is accepted for API compatibility but unused here;
-    system-role enforcement is handled by _is_tool_denied() in daemon auth.
+    system-role filtering is performed by the client's command clearance gate.
     """
     excluded = set()
     for path in _collect_gated_paths():

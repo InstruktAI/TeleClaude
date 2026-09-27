@@ -6,18 +6,15 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 
 from __future__ import annotations
 
+import importlib
 import os
 import subprocess
 import sys
 import time
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-from pydantic import TypeAdapter, ValidationError
-
-from teleclaude.api_models import SessionDTO
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.handlers.misc import _handle_revive
 from teleclaude.cli.telec.surface import (
     SESSIONS_END,
     SESSIONS_ESCALATE,
@@ -35,13 +32,15 @@ from teleclaude.cli.tool_client import ToolAPIError, print_json, tool_api_call, 
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
 
+if TYPE_CHECKING:
+    from teleclaude.api_models import SessionDTO
+
 _COORDINATE_SUBCOMMAND = "coordinate"
 _COORDINATE_HELP_FLAGS = ("-h", "--help")
 _COORDINATE_ENDPOINT = "/sessions/self/coordinate"
 _POST_METHOD = "POST"
 _BULK_END_TIMEOUT_S = 30.0
 _BULK_END_POLL_INTERVAL_S = 0.25
-_SESSION_LIST_ADAPTER = TypeAdapter(list[SessionDTO])
 _SESSION_END_DUPLICATE_TARGET_ERROR = "Error: do not specify more than one session_id"
 
 
@@ -89,7 +88,7 @@ def handle_sessions(args: list[str]) -> None:
     elif sub == "revive":
         # Keep revive behavior centralized in telec CLI entrypoint since it
         # includes post-revive kick and optional tmux attach semantics.
-        _handle_revive(rest)
+        importlib.import_module("teleclaude.cli.telec.handlers.misc")._handle_revive(rest)
     elif sub == "end":
         handle_sessions_end(rest)
     elif sub == "unsubscribe":
@@ -506,9 +505,14 @@ def _end_caller_child_sessions() -> None:
 
 def _list_caller_child_sessions() -> list[SessionDTO]:
     """Read the caller-scoped child projection and reject malformed routing records."""
+    from pydantic import TypeAdapter, ValidationError  # noqa: PLC0415 - deferred command-local dependency.
+
+    from teleclaude.api_models import SessionDTO  # noqa: PLC0415 - deferred command-local dependency.
+
+    adapter = TypeAdapter(list[SessionDTO])
     try:
         data = tool_api_request("GET", "/sessions")
-        sessions = _SESSION_LIST_ADAPTER.validate_python(data)
+        sessions = adapter.validate_python(data)
     except (ToolAPIError, ValidationError) as exc:
         print(f"Error: failed to list caller child sessions: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

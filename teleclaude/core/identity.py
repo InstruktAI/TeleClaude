@@ -6,24 +6,51 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import (
+    CliCaller as CliCaller,
+)
+from teleclaude.caller_identity import (
+    CliCallerKind as CliCallerKind,
+)
+from teleclaude.caller_identity import (
+    NoIdentityCliCaller as NoIdentityCliCaller,
+)
+from teleclaude.caller_identity import (
+    PersonCliCaller as PersonCliCaller,
+)
+from teleclaude.caller_identity import (
+    SessionIdentity as SessionIdentity,
+)
+from teleclaude.caller_identity import (
+    SystemCliCaller as SystemCliCaller,
+)
+from teleclaude.caller_identity import (
+    authorizing_role as authorizing_role,
+)
+from teleclaude.caller_identity import (
+    caller_from_principal as caller_from_principal,
+)
+from teleclaude.caller_identity import (
+    derive_session_system_role as derive_session_system_role,
+)
+from teleclaude.caller_identity import (
+    human_principal_for_email as human_principal_for_email,
+)
+from teleclaude.caller_identity import (
+    identity_for_session,
+)
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
-from teleclaude.config.schema import PersonChipColor, PersonEntry
+from teleclaude.config.schema import PersonChipColor
+from teleclaude.config_roster import PersonEntry
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,
-    ROLE_INTEGRATOR,
-    ROLE_JOB_RUNNER,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
-    ROLE_TASKER,
-    ROLE_WORKER,
 )
 from teleclaude.core.agents import AgentName
-from teleclaude.core.db import SessionIdentityError, resolve_session_principal
 from teleclaude.core.models import MessageAuthorKind, Session
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 
@@ -31,61 +58,6 @@ if TYPE_CHECKING:
     from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
-
-_HUMAN_PRINCIPAL_PREFIX = "human:"
-_SYSTEM_PRINCIPAL_PREFIX = "system:"
-
-
-class CliCallerKind(StrEnum):
-    """Kinds of identity a local CLI caller can carry."""
-
-    PERSON = "person"
-    SYSTEM = "system"
-    NONE = "none"
-
-
-@dataclass(frozen=True)
-class PersonCliCaller:
-    """A caller acting with a person's carried or terminal identity."""
-
-    kind: Literal[CliCallerKind.PERSON] = CliCallerKind.PERSON
-    email: str | None = None
-    person_slug: str | None = None
-    human_role: str | None = None
-
-
-@dataclass(frozen=True)
-class SystemCliCaller:
-    """A caller acting with a system principal and no person role."""
-
-    kind: Literal[CliCallerKind.SYSTEM] = CliCallerKind.SYSTEM
-    email: None = None
-    person_slug: None = None
-    human_role: None = None
-
-
-@dataclass(frozen=True)
-class NoIdentityCliCaller:
-    """A caller for which no person or system identity is available."""
-
-    kind: Literal[CliCallerKind.NONE] = CliCallerKind.NONE
-    email: None = None
-    person_slug: None = None
-    human_role: None = None
-
-
-type CliCaller = PersonCliCaller | SystemCliCaller | NoIdentityCliCaller
-
-
-@dataclass(frozen=True)
-class SessionIdentity:
-    """Resolved principal, roles, and caller for one session record."""
-
-    principal: str | None
-    principal_role: str | None
-    system_role: str | None
-    caller: CliCaller
-
 
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
 _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
@@ -590,87 +562,9 @@ def get_identity_resolver() -> IdentityResolver:
     return _resolver_instance
 
 
-def caller_from_principal(principal: str | None) -> CliCaller:
-    """Resolve a carried principal into its current caller identity."""
-    if not principal:
-        return NoIdentityCliCaller()
-    if principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
-        email = principal.removeprefix(_HUMAN_PRINCIPAL_PREFIX)
-        if not email:
-            return NoIdentityCliCaller()
-        identity = get_identity_resolver().resolve_by_email(email)
-        return PersonCliCaller(
-            email=email,
-            person_slug=identity.person_slug,
-            human_role=identity.person_role,
-        )
-    if principal.startswith(_SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(_SYSTEM_PRINCIPAL_PREFIX):
-        return SystemCliCaller()
-    return NoIdentityCliCaller()
-
-
 def caller_for_session(session: Session) -> CliCaller:
     """Resolve a session record into its current local CLI caller."""
     return identity_for_session(session).caller
-
-
-def derive_session_system_role(session: Session) -> str | None:
-    """Derive system role from daemon-owned session state.
-
-    Priority:
-    1. Explicit ``session.system_role`` if present and valid.
-    2. Worker heuristic: sessions with a ``working_slug`` are worker sessions.
-    3. Otherwise unknown (treated as non-worker for system-role restrictions).
-    """
-    if session.system_role:
-        normalized = session.system_role.strip().lower()
-        if normalized in {
-            ROLE_WORKER,
-            ROLE_SYSTEM,
-            ROLE_INTEGRATOR,
-            ROLE_ORCHESTRATOR,
-            ROLE_TASKER,
-            ROLE_JOB_RUNNER,
-        }:
-            return normalized
-
-    if session.working_slug:
-        return ROLE_WORKER
-    return None
-
-
-def identity_for_session(session: Session) -> SessionIdentity:
-    """Resolve a session record into all identity facts used at local edges."""
-    caller: CliCaller
-    try:
-        principal, principal_role = resolve_session_principal(session)
-    except SessionIdentityError:
-        principal, principal_role = None, None
-        caller = NoIdentityCliCaller()
-    else:
-        caller = caller_from_principal(principal)
-        if isinstance(caller, NoIdentityCliCaller):
-            principal, principal_role = None, None
-    return SessionIdentity(
-        principal=principal,
-        principal_role=principal_role,
-        system_role=derive_session_system_role(session),
-        caller=caller,
-    )
-
-
-def authorizing_role(caller: CliCaller, system_role: str | None) -> str | None:
-    """Return the role that authorizes a caller at a CLI or API edge."""
-    if isinstance(caller, PersonCliCaller):
-        return caller.human_role
-    if isinstance(caller, SystemCliCaller):
-        return system_role
-    return None
-
-
-def human_principal_for_email(email: str) -> str:
-    """Build the canonical principal for a verified person email."""
-    return f"{_HUMAN_PRINCIPAL_PREFIX}{email}"
 
 
 def resolve_discord_author_alias(

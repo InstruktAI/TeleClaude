@@ -67,18 +67,31 @@ INTEGRATOR_GITOP_ENV = "TELECLAUDE_INTEGRATOR_GITOP"
 # operation carrying this marker is a refusal, not a success.
 RUNNER_NOT_DISPATCHED = "RUNNER_NOT_DISPATCHED"
 
+
 # System roles
-ROLE_SYSTEM = "system"
-ROLE_ORCHESTRATOR = "orchestrator"
-ROLE_WORKER = "worker"
-ROLE_INTEGRATOR = "integrator"
-ROLE_TASKER = "tasker"
+class SystemRole(StrEnum):
+    """Closed vocabulary for roles a session can carry."""
+
+    SYSTEM = "system"
+    ORCHESTRATOR = "orchestrator"
+    WORKER = "worker"
+    INTEGRATOR = "integrator"
+    TASKER = "tasker"
+    COORDINATOR = "coordinator"
+    JOB_RUNNER = "job_runner"
+
+
+ROLE_SYSTEM = SystemRole.SYSTEM
+ROLE_ORCHESTRATOR = SystemRole.ORCHESTRATOR
+ROLE_WORKER = SystemRole.WORKER
+ROLE_INTEGRATOR = SystemRole.INTEGRATOR
+ROLE_TASKER = SystemRole.TASKER
 SYSTEM_DAEMON_PRINCIPAL = "system:daemon"
 # A job-runner session is a recurring scheduled job, e.g. log_bug_hunter or a
 # generic cron agent job. It is one of the standing roles (see
 # STANDING_SYSTEM_ROLES / is_standing_role below) permitted a no-human lineage
 # root at todo/bug creation — see project/spec/domain/workflow.
-ROLE_JOB_RUNNER = "job_runner"
+ROLE_JOB_RUNNER = SystemRole.JOB_RUNNER
 
 
 class DriverLaunchClass(StrEnum):
@@ -118,10 +131,8 @@ HUMAN_ROLE_NEWCOMER = "newcomer"
 HUMAN_ROLE_CUSTOMER = "customer"
 HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
 
-# The 401 detail verify_caller raises when a terminal has no resolvable
-# identity and more than one person is registered. Named so the CLI-facing
-# error surface can recognize it and name the fix, without string-matching
-# arbitrary server text.
+# The CLI-facing error surface recognizes this login-required detail and names
+# the fix without string-matching arbitrary server text.
 LOGIN_REQUIRED_DETAIL = "login required in multi-user mode"
 
 SNIPPET_VISIBILITY_PUBLIC = "public"
@@ -400,7 +411,7 @@ class JobRole(str, Enum):
 # worker for fleet classification, while its job still names what it authors. The
 # prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`) recognizes the job
 # regardless of which system role carries it.
-COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
+COMMAND_ROLE_MAP: dict[SlashCommand, tuple[SystemRole, JobRole]] = {
     SlashCommand.ASSIST: (ROLE_WORKER, JobRole.ASSIST),
     SlashCommand.BUILD: (ROLE_WORKER, JobRole.BUILDER),
     SlashCommand.REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
@@ -421,7 +432,7 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
     SlashCommand.RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
     SlashCommand.INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
-    SlashCommand.COORDINATE: (ROLE_ORCHESTRATOR, JobRole.COORDINATOR),
+    SlashCommand.COORDINATE: (SystemRole.COORDINATOR, JobRole.COORDINATOR),
     SlashCommand.CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
     SlashCommand.RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
     SlashCommand.ACTIVATE_PROCEDURE: (ROLE_TASKER, JobRole.PROCEDURE_AGENT),
@@ -663,9 +674,9 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
     "sync": MaintenanceAction(
         id="sync",
         command=(
-            "telec",
-            "code",
-            "publish",
+            "{interpreter}",
+            "-m",
+            "teleclaude.core.integration.publish_action",
             "--after-sha",
             "{after_sha}",
             "--before-sha",

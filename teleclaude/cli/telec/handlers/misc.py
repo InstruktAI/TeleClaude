@@ -6,27 +6,22 @@ import asyncio
 import importlib
 import os
 import subprocess
+from typing import TYPE_CHECKING
 
-from teleclaude.api_models import CreateSessionResponseDTO
-from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec import flags as F
-from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
+from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import SESSIONS_REVIVE
-from teleclaude.cli.tui.processes import signal_tui_reload
+from teleclaude.config import config
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import (
     resolve_invocation_cwd,
 )
-from teleclaude.project_setup.plumbing import PlumbingConvergenceRunOutcome, converge_registered_roots
 
-_NO_TUI_RUNNING = "No running telec TUI to reload."
-_RELOADED_TUIS = "Reloaded %d telec TUI(s): %s"
-_PID_SEPARATOR = ", "
-_PLUMBING_ROOT_RESULT = "{project_root}: {outcome} (schema-link: {schema_link}, schema-copy: {schema_copy})"
-_PLUMBING_RUN_RESULT = "Plumbing convergence {outcome}: {root_count} registered root(s)."
+if TYPE_CHECKING:
+    from teleclaude.api_models import CreateSessionResponseDTO
 
 __all__ = [
     "_attach_tmux_session",
@@ -35,7 +30,6 @@ __all__ = [
     "_git_short_commit_hash",
     "_handle_computers",
     "_handle_projects",
-    "_handle_reload",
     "_handle_revive",
     "_handle_version",
     "_maybe_kill_tui_session",
@@ -51,7 +45,7 @@ def _teleclaude_version() -> str:
 
 
 def _handle_tool_command(name: str, args: list[str]) -> None:
-    importlib.import_module("teleclaude.cli.tool_commands").__dict__[name](args)
+    importlib.import_module("teleclaude.cli.tool_commands.infra").__dict__[name](args)
 
 
 def _git_short_commit_hash() -> str:
@@ -77,15 +71,6 @@ def _handle_version() -> None:
 
     channel_str = f"{channel} ({pinned_minor})" if channel == "stable" and pinned_minor else channel
     print(f"TeleClaude v{_teleclaude_version()} (channel: {channel_str}, commit: {commit_hash})")
-
-
-def _handle_reload(_args: list[str]) -> None:
-    """Reload every running TUI so it picks up changed TUI code."""
-    reached = signal_tui_reload()
-    if not reached:
-        print(_NO_TUI_RUNNING)
-        return
-    print(_RELOADED_TUIS % (len(reached), _PID_SEPARATOR.join(str(pid) for pid in reached)))
 
 
 def _handle_revive(args: list[str]) -> None:
@@ -121,6 +106,7 @@ def _revive_session(
     computer: str | None = None,
 ) -> None:
     """Revive a session by TeleClaude or native session ID."""
+    APIError = importlib.import_module("teleclaude.cli.api_client").APIError
     try:
         result = asyncio.run(_revive_session_via_api(session_id, agent=agent, computer=computer))
     except APIError as e:
@@ -147,6 +133,8 @@ async def _revive_session_via_api(
     computer: str | None = None,
 ) -> CreateSessionResponseDTO:
     """Revive a session via API and return the response."""
+    from teleclaude.cli.api_client import TelecAPIClient  # noqa: PLC0415 - revive owns its API client.
+
     api = TelecAPIClient()
     await api.connect()
     try:
@@ -158,6 +146,8 @@ async def _revive_session_via_api(
 
 async def _send_revive_enter_via_api(session_id: str, *, computer: str | None = None) -> bool:
     """Send an enter key after revive so headless activity resumes immediately."""
+    from teleclaude.cli.api_client import TelecAPIClient  # noqa: PLC0415 - revive owns its API client.
+
     api = TelecAPIClient()
     await api.connect()
     try:
@@ -211,21 +201,6 @@ def _handle_projects(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "list":
         _handle_tool_command("handle_projects", args[1:])
-        return
-    if subcommand == "converge":
-        result = converge_registered_roots()
-        for root_result in result.results:
-            print(
-                _PLUMBING_ROOT_RESULT.format(
-                    project_root=root_result.project_root,
-                    outcome=root_result.outcome,
-                    schema_link=root_result.schema_link,
-                    schema_copy=root_result.schema_copy,
-                ),
-            )
-        print(_PLUMBING_RUN_RESULT.format(outcome=result.outcome, root_count=result.root_count))
-        if result.outcome is PlumbingConvergenceRunOutcome.FAILED:
-            raise SystemExit(1)
         return
     print(f"Unknown projects subcommand: {subcommand}")
     print(_usage("projects"))

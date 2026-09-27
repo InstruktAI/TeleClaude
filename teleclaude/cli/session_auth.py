@@ -5,17 +5,31 @@ from __future__ import annotations
 import json
 import os
 import sys
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Protocol
 
 import psutil
 
+from teleclaude.caller_identity import (
+    CliCaller,
+    NoIdentityCliCaller,
+    PersonCliCaller,
+    SessionAct,
+    human_principal_for_email,
+    identity_for_session,
+    person_entry_for_email,
+    session_act_exception,
+)
+from teleclaude.config_roster import load_people_roster
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL, MarkerState
+from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
 from teleclaude.session_identity import inspect_session_identity_marker
+from teleclaude.types.creation_record import EntryPoint
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
@@ -25,10 +39,6 @@ _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
 _INODE_ALLOCATION_PREFIX = "ino:"
 _CTIME_ALLOCATION_PREFIX = "ctime:"
-
-if TYPE_CHECKING:
-    from teleclaude.core.identity import CliCaller
-    from teleclaude.core.models import Session
 
 
 @dataclass(frozen=True)
@@ -57,6 +67,41 @@ class ResolvedCliIdentity:
     system_role: str | None
     session_id: str | None
     in_session: bool
+    initiator_session_id: str | None = None
+    job: str | None = None
+    working_slug: str | None = None
+    company: str | None = None
+    session_facts: SessionIdentityFacts | None = None
+    entry_point: str | None = None
+
+
+@dataclass(frozen=True)
+class CliClearance:
+    """One command's non-exiting caller clearance decision."""
+
+    identity: ResolvedCliIdentity | None
+    refusal: str | None
+
+
+class CommandAuthDeclaration(Protocol):
+    """The auth declaration fields the identity gate consumes."""
+
+    @property
+    def caller_independent(self) -> bool: ...
+
+    def allows(self, system_role: str | None, human_role: str | None) -> bool: ...
+
+
+_INVOCATION_IDENTITY_NAME = "telec_cli_invocation_identity"
+_INVOCATION_IDENTITY: ContextVar[ResolvedCliIdentity | None] = ContextVar(
+    _INVOCATION_IDENTITY_NAME,
+    default=None,
+)
+_SELF_TARGET = "self"
+_SESSION_END_PATH = "sessions end"
+_SESSION_RESTART_PATH = "sessions restart"
+_CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
+_PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
 
 
 def _detect_ancestor_tty() -> str | None:
@@ -185,95 +230,94 @@ def _read_live_document(path: Path, tty: str) -> str | None:
 
 
 def read_current_session_email() -> str | None:
-    """Read login email.
-
-    A present session identity document, valid or not, suppresses terminal
-    login before any other source is consulted. With no such document, resolve
-    in order:
-    1. Identity carried into a trusted TUI session (only where the TUI runtime
-       marker is present — never honoured outside it)
-    2. A live auth document for the process's terminal — its own, else its
-       nearest terminal-bearing ancestor's (device node present, allocation
-       token matching)
-    3. The sole registered person — only while exactly one person is registered
-
-    A process with no terminal of its own or in its ancestry presents no
-    identity: nothing is consulted past that point.
-    """
+    """Resolve a terminal email without consulting the configuration aggregate."""
     marker_state, _session_id = inspect_session_identity_marker()
     if marker_state is not MarkerState.ABSENT:
         return None
-
     if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         carried = os.environ.get(TUI_CARRIED_IDENTITY_ENV_KEY)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         if carried:
             return _normalize_email(carried) or None
-
     context = get_current_session_context()
     if context is None:
         return None
-
     email = _read_live_document(context.auth_path, context.tty)
     if email:
         return email
+    people = load_people_roster()
+    return people[0].email.strip().lower() if len(people) == 1 else None
 
-    from teleclaude.core.identity import (  # noqa: PLC0415 - deferred: api_client deliberately defers importing this module at load time; a module-scope import of the config-loading identity resolver would pull that cost into every CLI start
-        get_identity_resolver,
+
+def _no_identity(in_session: bool) -> ResolvedCliIdentity:
+    return ResolvedCliIdentity(
+        caller=NoIdentityCliCaller(),
+        principal=None,
+        system_role=None,
+        session_id=None,
+        in_session=in_session,
+        entry_point=_entry_point_for_caller(in_session=in_session),
     )
 
-    return get_identity_resolver().sole_person_email
 
-
-def resolve_cli_caller() -> CliCaller:
-    """Resolve the local caller from its carried principal or edge identity."""
-    return resolve_cli_identity().caller
+def _entry_point_for_caller(*, in_session: bool) -> str:
+    """Name the client door that resolved this identity."""
+    if in_session:
+        return EntryPoint.AGENT.value
+    if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        return EntryPoint.TUI.value
+    return EntryPoint.CLI.value
 
 
 def resolve_cli_identity() -> ResolvedCliIdentity:
-    """Resolve the local caller and all carried identity facts once."""
-    from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
-        NoIdentityCliCaller,
-        PersonCliCaller,
-        get_identity_resolver,
-        human_principal_for_email,
-        identity_for_session,
-    )
+    """Return the gate resolution for this invocation or resolve an identity for an edge caller."""
+    invocation_identity = _INVOCATION_IDENTITY.get()
+    if invocation_identity is not None:
+        return invocation_identity
 
     marker_state, session_id = inspect_session_identity_marker()
     if marker_state is MarkerState.ABSENT:
         email = read_current_session_email()
-        if not email:
-            return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, False)
-        identity_resolver = get_identity_resolver()
-        person = identity_resolver.resolve_by_email(email)
-        if not person.person_email:
-            return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, False)
+        person = person_entry_for_email(email) if email else None
+        if person is None:
+            return _no_identity(False)
         caller = PersonCliCaller(
-            email=person.person_email,
-            person_slug=person.person_slug,
-            human_role=person.person_role,
+            email=person.email,
+            person_slug=person.slug,
+            human_role=person.role,
         )
         return ResolvedCliIdentity(
             caller=caller,
-            principal=human_principal_for_email(person.person_email),
+            principal=human_principal_for_email(person.email),
             system_role=None,
             session_id=None,
             in_session=False,
+            entry_point=_entry_point_for_caller(in_session=False),
         )
     if marker_state is MarkerState.INVALID:
-        return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, True)
+        return _no_identity(True)
 
-    session = _admitted_session_record(_load_session_record(session_id))
-    if session is None:
-        return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, True)
-    resolved = identity_for_session(session)
+    facts = _admitted_session_record(_load_session_record(session_id))
+    if facts is None:
+        return _no_identity(True)
+    resolved = identity_for_session(facts)
     return ResolvedCliIdentity(
         caller=resolved.caller,
         principal=resolved.principal,
         system_role=resolved.system_role,
-        session_id=session.session_id,
+        session_id=facts.session_id,
         in_session=True,
+        initiator_session_id=facts.initiator_session_id,
+        job=facts.job,
+        working_slug=facts.working_slug,
+        company=facts.company,
+        session_facts=facts,
+        entry_point=_entry_point_for_caller(in_session=True),
     )
+
+
+def resolve_cli_caller() -> CliCaller:
+    """Resolve the local caller from the gate's decision or current edge identity."""
+    return resolve_cli_identity().caller
 
 
 def no_identity_refusal(identity: ResolvedCliIdentity) -> str:
@@ -283,61 +327,88 @@ def no_identity_refusal(identity: ResolvedCliIdentity) -> str:
     return f"{LOGIN_REQUIRED_DETAIL}. Run: telec auth login <email>"
 
 
-def require_cli_clearance(command_path: str) -> ResolvedCliIdentity:
-    """Resolve and authorize a local caller for one command path."""
-    from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
-        NoIdentityCliCaller,
-    )
-
-    identity = resolve_cli_identity()
+def cli_clearance(
+    command_path: str,
+    identity: ResolvedCliIdentity | None,
+    target_session_id: str | None = None,
+    auth: CommandAuthDeclaration | None = None,
+) -> CliClearance:
+    """Decide one command's clearance without printing or exiting."""
+    if auth is None:
+        return CliClearance(identity=identity, refusal=_CALLER_INDEPENDENT_COMMAND_REFUSAL)
+    if auth.caller_independent:
+        return CliClearance(identity=None, refusal=None)
+    if identity is None:
+        identity = _no_identity(False)
     if isinstance(identity.caller, NoIdentityCliCaller):
-        print(f"Error: {no_identity_refusal(identity)}", file=sys.stderr)
-        raise SystemExit(1)
+        return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
-    # Deferred because importing the CLI package at module scope cycles through
-    # its startup module, which imports this authentication module.
-    from teleclaude.cli.telec.auth import (  # noqa: PLC0415 - importing telec at module load cycles through this module
-        is_command_allowed,
+    action = {
+        _SESSION_END_PATH: SessionAct.END,
+        _SESSION_RESTART_PATH: SessionAct.RESTART,
+    }.get(command_path)
+    if action is not None:
+        resolved_target = identity.session_id if target_session_id == _SELF_TARGET else target_session_id
+        exception = session_act_exception(
+            action,
+            identity.session_id,
+            identity.initiator_session_id,
+            identity.system_role,
+            resolved_target,
+        )
+        if exception is True:
+            return CliClearance(identity=identity, refusal=None)
+        if exception is False:
+            role = identity.system_role or identity.caller.human_role or "unauthorized"
+            return CliClearance(
+                identity=identity,
+                refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
+            )
+
+    if auth.allows(identity.system_role, identity.caller.human_role):
+        return CliClearance(identity=identity, refusal=None)
+    role = identity.system_role or identity.caller.human_role or "unauthorized"
+    return CliClearance(
+        identity=identity,
+        refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
     )
 
-    if not is_command_allowed(command_path, identity.system_role, identity.caller.human_role):
-        role = identity.system_role or identity.caller.human_role or "unauthorized"
-        print(
-            f"Error: permission denied — role '{role}' is not permitted to call {command_path}",
-            file=sys.stderr,
-        )
+
+def require_cli_clearance(
+    command_path: str,
+    target_session_id: str | None = None,
+    auth: CommandAuthDeclaration | None = None,
+) -> ResolvedCliIdentity | None:
+    """Resolve and enforce one local CLI command's declared authorization."""
+    identity = None if auth is not None and auth.caller_independent else resolve_cli_identity()
+    clearance = cli_clearance(command_path, identity, target_session_id, auth)
+    if clearance.refusal is not None:
+        print(f"Error: {clearance.refusal}", file=sys.stderr)
         raise SystemExit(1)
-    return identity
+    _INVOCATION_IDENTITY.set(clearance.identity)
+    return clearance.identity
 
 
 def resolve_cli_system_role() -> str | None:
-    """Resolve the current session's system role from its admitted record."""
-    marker_state, session_id = inspect_session_identity_marker()
-    if marker_state is not MarkerState.VALID:
-        return None
-    session = _admitted_session_record(_load_session_record(session_id))
-    if session is None or session.system_role is None:
-        return None
-    return session.system_role.strip().lower()
+    """Resolve the current CLI caller's system role from the shared identity."""
+    return resolve_cli_identity().system_role
 
 
-def _load_session_record(session_id: str | None) -> Session | None:
+def _load_session_record(session_id: str | None) -> SessionIdentityFacts | None:
     if session_id is None:
         return None
-    from teleclaude.core import db  # noqa: PLC0415 - deferred: core.db reaches this CLI module during startup
-
-    return db.get_session_identity_sync(str(MAIN_DB_PATH), session_id)
+    return read_session_identity_facts(str(MAIN_DB_PATH), session_id)
 
 
-def _admitted_session_record(session: Session | None) -> Session | None:
-    if session is None or session.closed_at is not None:
+def _admitted_session_record(facts: SessionIdentityFacts | None) -> SessionIdentityFacts | None:
+    if facts is None or facts.closed_at is not None:
         return None
-    return session
+    return facts
 
 
 def effective_caller_role() -> str | None:
-    """Return the current CLI caller's human role, if it has a person identity."""
-    return resolve_cli_caller().human_role
+    """Return the current CLI caller's human role, if they have one."""
+    return resolve_cli_identity().caller.human_role
 
 
 def _write_auth_file(path: Path, payload: dict[str, str | float]) -> None:

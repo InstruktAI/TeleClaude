@@ -36,7 +36,7 @@ def _handle_todo_show(args: list[str]) -> None:
             include_artifact_content=include_artifact_content,
         )
 
-    result = run_todo_read("telec todo show", read_show)
+    result = run_todo_read(read_show)
     if result is not None:
         print(_json.dumps(result, indent=2))
     else:

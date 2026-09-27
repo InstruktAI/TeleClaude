@@ -13,8 +13,9 @@ from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import CliCallerKind, person_entries_for_email
+from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.config.subjects import ConfigSubjectKind
-from teleclaude.core.identity import CliCallerKind, caller_from_principal, get_identity_resolver
 
 logger = get_logger(__name__)
 
@@ -92,22 +93,25 @@ class ClearanceDecision:
     reason: str
 
 
-def standing_for(principal: str | None) -> ConfigurationStanding:
-    """Resolve one caller's configuration standing from their carried principal.
+def standing_for(identity: ResolvedCliIdentity) -> ConfigurationStanding:
+    """Resolve one caller's target standing from the gate's carried identity.
 
     Uses the exact-one identity lookup: an email mapping to zero or several
-    registered people carries no person standing, distinct from `caller_from_principal`'s
-    ordinary (non-exact) resolution used elsewhere in the CLI.
+    registered people carries no person standing, even though the ordinary CLI
+    identity retains its caller identity for other commands.
     """
-    caller = caller_from_principal(principal)
+    caller = identity.caller
     if caller.kind is not CliCallerKind.PERSON:
         return ConfigurationStanding(person_slug=None, platform_role=None, principal_kind=caller.kind)
     if caller.email is None:
         return ConfigurationStanding(person_slug=None, platform_role=None, principal_kind=CliCallerKind.PERSON)
-    context = get_identity_resolver().resolve_exact_one_by_email(caller.email)
+    people = person_entries_for_email(caller.email)
+    if len(people) != 1:
+        return ConfigurationStanding(person_slug=None, platform_role=None, principal_kind=CliCallerKind.PERSON)
+    person = people[0]
     return ConfigurationStanding(
-        person_slug=context.person_slug,
-        platform_role=context.person_role,
+        person_slug=person.slug,
+        platform_role=person.role,
         principal_kind=CliCallerKind.PERSON,
     )
 

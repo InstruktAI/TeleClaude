@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from http import HTTPStatus
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
-from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance
+from teleclaude.cli.session_auth import no_identity_refusal, resolve_cli_identity
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
@@ -108,7 +108,7 @@ def show_transcript(
         )
         return
 
-    identity = require_cli_clearance("telec history show")
+    identity = resolve_cli_identity()
     access = history_access_for_caller(identity.caller)
     if access is None:
         print(f"Error: {no_identity_refusal(identity)}", file=sys.stderr)

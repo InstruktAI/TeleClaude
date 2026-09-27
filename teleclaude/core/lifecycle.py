@@ -20,7 +20,6 @@ from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.next_machine.delivery import remove_legacy_worktree_trash
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
-from teleclaude.core.session_bootstrap import reconcile_live_session_identity_documents
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 
@@ -193,8 +192,6 @@ class DaemonLifecycle:
         omitted_intent_count = await reconcile_pending_discord_send_intents()
         if omitted_intent_count:
             logger.info(_DISCORD_SEND_INTENTS_RECONCILED_EVENT, omitted_count=omitted_intent_count)
-
-        await reconcile_live_session_identity_documents()
 
     def _schedule_legacy_worktree_trash_removal(self) -> None:
         """Clear leftover worktree trash outside the startup path."""

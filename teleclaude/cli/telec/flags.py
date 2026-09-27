@@ -14,7 +14,7 @@ from dataclasses import replace
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.constants import TAXONOMY_TYPES
-from teleclaude.snippet_validation import SnippetScope
+from teleclaude.snippet_scope import SnippetScope
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
 from .surface_types import Flag, FlagArity

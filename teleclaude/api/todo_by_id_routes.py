@@ -10,18 +10,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
-from teleclaude.api.auth import (
-    CallerIdentity,
-    clearance_todos_artifacts_remove,
-    clearance_todos_artifacts_write,
-    clearance_todos_freeze,
-    clearance_todos_prepare,
-    clearance_todos_remove,
-    clearance_todos_stamp,
-    clearance_todos_unfreeze,
-    clearance_todos_update,
-    clearance_todos_work,
-)
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
@@ -195,7 +184,7 @@ async def todo_prepare_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_prepare),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Submit prepare for exactly the identified todo row."""
     return await _perform_identity_action(
@@ -222,7 +211,7 @@ async def todo_work_by_id(
     todo_id: str,
     cwd: Annotated[str, Body()],
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_work),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Submit work for exactly the identified todo row."""
     return await _perform_identity_action(
@@ -250,7 +239,7 @@ async def todo_remove_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_remove),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Submit removal for exactly the identified todo row."""
     return await _perform_identity_action(
@@ -272,7 +261,7 @@ async def todo_remove_by_id(
 async def todo_freeze_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_freeze),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._SlugStatusResponse:
     """Freeze exactly the identified todo row."""
     return await _perform_identity_action(
@@ -287,7 +276,7 @@ async def todo_freeze_by_id(
 async def todo_unfreeze_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_unfreeze),
+    _identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._SlugStatusResponse:
     """Unfreeze exactly the identified todo row."""
     return await _perform_identity_action(
@@ -303,7 +292,7 @@ async def todo_hold_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body()] = None,
     reason: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_update),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._TodoUpdateResponse | SerializedOperation:
     """Set a manual hold on exactly the identified todo row."""
     return await _perform_identity_action(
@@ -324,7 +313,7 @@ async def todo_hold_by_id(
 async def todo_release_by_id(
     todo_id: str,
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_update),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._TodoUpdateResponse | SerializedOperation:
     """Release a hold on exactly the identified todo row."""
     return await _perform_identity_action(
@@ -347,7 +336,7 @@ async def todo_stamp_by_id(
     cwd: Annotated[str | None, Body()] = None,
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_stamp),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._SlugStatusResponse:
     """Apply a stamp to exactly the identified todo row."""
     return await _perform_identity_action(
@@ -371,7 +360,7 @@ async def write_artifact_by_id(
     name: str,
     content: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_artifacts_write),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_artifact_routes._ArtifactWriteResponse:
     """Write an artifact to exactly the identified todo row."""
     return await _perform_identity_action(
@@ -393,7 +382,7 @@ async def remove_artifact_by_id(
     todo_id: str,
     name: str,
     cwd: str | None = None,
-    identity: CallerIdentity = Depends(clearance_todos_artifacts_remove),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_artifact_routes._ArtifactRemoveResponse:
     """Remove an artifact from exactly the identified todo row."""
     return await _perform_identity_action(

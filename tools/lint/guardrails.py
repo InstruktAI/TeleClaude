@@ -8,6 +8,7 @@ import ast
 import fnmatch
 import re
 import subprocess
+import sys
 from collections.abc import Iterable, Sequence
 from functools import cache
 from pathlib import Path
@@ -111,9 +112,229 @@ def main(argv: Sequence[str] | None = None) -> None:
     _check_source_patterns(repo_root, selected_paths)
     _check_runtime_path_bypasses(repo_root, selected_paths)
     _check_direct_environment_reads(repo_root, selected_paths)
+    _check_pre_dispatch_import_closure(repo_root)
 
     # Loose-dict typing guardrail
     _warn_for_loose_dicts(repo_root, selected_paths)
+
+
+_PRE_DISPATCH_FIRST_PARTY_MODULES = frozenset(
+    {
+        "teleclaude",
+        "teleclaude.agent_registry",
+        "teleclaude.caller_identity",
+        "teleclaude.cli",
+        "teleclaude.cli.session_auth",
+        "teleclaude.cli.telec",
+        "teleclaude.cli.telec.flags",
+        "teleclaude.cli.telec.handlers",
+        "teleclaude.cli.telec.handlers._arg_parsing",
+        "teleclaude.cli.telec.help",
+        "teleclaude.cli.telec.surface",
+        "teleclaude.cli.telec.surface_types",
+        "teleclaude.closed_model",
+        "teleclaude.config_roster",
+        "teleclaude.constants",
+        "teleclaude.core",
+        "teleclaude.core.operation_caller_identity",
+        "teleclaude.core.session_identity_facts",
+        "teleclaude.paths",
+        "teleclaude.runtime",
+        "teleclaude.runtime.binaries",
+        "teleclaude.runtime.config",
+        "teleclaude.session_identity",
+        "teleclaude.slug",
+        "teleclaude.snippet_scope",
+        "teleclaude.types",
+        "teleclaude.types.creation_record",
+        "teleclaude.types.system",
+        "teleclaude.types.todo_kind",
+    }
+)
+_PRE_DISPATCH_THIRD_PARTY_ROOTS = frozenset(
+    {
+        "annotated_types",
+        "psutil",
+        "pydantic",
+        "pydantic_core",
+        "typing_extensions",
+        "typing_inspection",
+        "yaml",
+    }
+)
+_PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS = frozenset({"_virtualenv"})
+_PRE_DISPATCH_BARE_PACKAGE_PROBE = """
+import sys
+import teleclaude
+
+if "importlib.metadata" in sys.modules:
+    raise SystemExit("bare import teleclaude loaded importlib.metadata")
+"""
+
+
+def _pre_dispatch_import_probe(expected_first_party: frozenset[str]) -> str:
+    """Return the isolated import-recorder program for the pre-dispatch path."""
+    expected = repr(sorted(expected_first_party))
+    return f"""
+import builtins
+import ast
+import importlib.util
+import sys
+from pathlib import Path
+
+expected_first_party = set({expected})
+expected_third_party_roots = set({_PRE_DISPATCH_THIRD_PARTY_ROOTS!r})
+ignored_environment_roots = set({_PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS!r})
+edges = []
+original_import = builtins.__import__
+
+def tracked_import(name, globals=None, locals=None, fromlist=(), level=0):
+    caller = (globals or {{}}).get("__name__", "")
+    frame = sys._getframe(1)
+    scope = frame.f_code.co_name
+    try:
+        package = (globals or {{}}).get("__package__") or caller
+        target = importlib.util.resolve_name("." * level + name, package) if level else name
+    except (ImportError, ValueError):
+        target = name
+    if caller.startswith("teleclaude.") or target == "importlib.metadata":
+        edges.append((caller, target, scope))
+    result = original_import(name, globals, locals, fromlist, level)
+    for part in fromlist or ():
+        imported_child = f"{{target}}.{{part}}"
+        if imported_child in sys.modules and (caller.startswith("teleclaude.") or imported_child == "importlib.metadata"):
+            edges.append((caller, imported_child, scope))
+    return result
+
+builtins.__import__ = tracked_import
+import teleclaude
+import teleclaude.cli.telec
+import teleclaude.cli.session_auth
+import teleclaude.caller_identity
+import teleclaude.cli.telec.surface
+import teleclaude.cli.telec.surface_types
+import teleclaude.cli.telec.flags
+import teleclaude.cli.telec.help
+import teleclaude.cli.telec.handlers._arg_parsing
+
+errors = []
+first_party = {{name for name in sys.modules if name == "teleclaude" or name.startswith("teleclaude.")}}
+if first_party != expected_first_party:
+    added = sorted(first_party - expected_first_party)
+    missing = sorted(expected_first_party - first_party)
+    if added:
+        errors.append("undeclared first-party modules: " + ", ".join(added))
+    if missing:
+        errors.append("expected first-party modules not loaded: " + ", ".join(missing))
+
+class ScopedImportVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.scope_depth = 0
+        self.local_imports = []
+
+    def visit_FunctionDef(self, node):
+        self.scope_depth += 1
+        for child in node.body:
+            self.visit(child)
+        self.scope_depth -= 1
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_ClassDef(self, node):
+        self.scope_depth += 1
+        for child in node.body:
+            self.visit(child)
+        self.scope_depth -= 1
+
+    def visit_Import(self, node):
+        if self.scope_depth:
+            self.local_imports.append((node.lineno, ast.unparse(node)))
+
+    def visit_ImportFrom(self, node):
+        if self.scope_depth:
+            self.local_imports.append((node.lineno, ast.unparse(node)))
+
+local_imports = []
+for module_name in sorted(expected_first_party):
+    module_path = Path(*module_name.split("."))
+    source_path = Path(str(module_path) + ".py")
+    if not source_path.is_file():
+        source_path = module_path / "__init__.py"
+    if not source_path.is_file():
+        continue
+    visitor = ScopedImportVisitor()
+    visitor.visit(ast.parse(source_path.read_text(encoding="utf-8")))
+    if visitor.local_imports:
+        local_imports.extend((source_path.as_posix(), line, statement) for line, statement in visitor.local_imports)
+if local_imports:
+    errors.append("pre-dispatch imports outside module scope: " + repr(local_imports))
+
+third_party_roots = set()
+for module_name, module in sys.modules.items():
+    location = getattr(module, "__file__", None)
+    if not location:
+        continue
+    path = Path(location)
+    if "site-packages" in path.parts:
+        third_party_roots.add(module_name.split(".", 1)[0])
+third_party_roots -= ignored_environment_roots
+third_party_roots = {{root for root in third_party_roots if not root.startswith("__editable__")}}
+unexpected_third_party = sorted(third_party_roots - expected_third_party_roots)
+if unexpected_third_party:
+    errors.append("undeclared third-party roots: " + ", ".join(unexpected_third_party))
+
+if "importlib.metadata" not in sys.modules:
+    errors.append("expected Pydantic roster discovery to load importlib.metadata")
+metadata_edges = {{caller for caller, target, _scope in edges if target == "importlib.metadata"}}
+if "pydantic.plugin._loader" not in metadata_edges:
+    errors.append("importlib.metadata did not load through Pydantic plugin discovery")
+first_party_metadata_edges = sorted(
+    (caller, target) for caller, target, _scope in edges
+    if caller in expected_first_party and target == "importlib.metadata"
+)
+if first_party_metadata_edges:
+    errors.append("first-party import edges to importlib.metadata: " + repr(first_party_metadata_edges))
+
+local_import_edges = sorted(
+    (caller, target, scope) for caller, target, scope in edges
+    if caller in expected_first_party and scope != "<module>"
+)
+if local_import_edges:
+    errors.append("pre-dispatch imports outside module scope: " + repr(local_import_edges))
+
+for caller, target, _scope in sorted(set(edges)):
+    if caller in expected_first_party and target.startswith("teleclaude.") and target not in expected_first_party:
+        errors.append(f"undeclared first-party import edge: {{caller}} -> {{target}}")
+
+if errors:
+    raise SystemExit("\\n".join(errors))
+"""
+
+
+def _check_pre_dispatch_import_closure(repo_root: Path) -> None:
+    """Keep authentication's fresh-process import closure explicit and lean."""
+    if not (repo_root / "teleclaude/cli/telec/__init__.py").is_file():
+        return
+
+    probes = (
+        ("bare package version", _PRE_DISPATCH_BARE_PACKAGE_PROBE),
+        ("pre-dispatch import closure", _pre_dispatch_import_probe(_PRE_DISPATCH_FIRST_PARTY_MODULES)),
+    )
+    failures: list[str] = []
+    for label, source in probes:
+        result = subprocess.run(
+            [sys.executable, "-c", source],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            failures.append(f"{label} failed: {detail}")
+    if failures:
+        _fail("\n".join(failures))
 
 
 def _normalize_selected_paths(repo_root: Path, raw_paths: Sequence[str]) -> set[str] | None:

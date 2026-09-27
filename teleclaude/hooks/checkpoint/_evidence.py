@@ -148,7 +148,6 @@ _MUTATOR_TOOLS = {
     "exec_command",
 }
 _SHELL_TOOLS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
-_TELEC_RELOAD_EVIDENCE = "telec reload"
 
 
 def _record_touched_paths(
@@ -262,8 +261,6 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         )
     if evidence == "instrukt-ai-logs":
         return head == "instrukt-ai-logs"
-    if evidence == _TELEC_RELOAD_EVIDENCE:
-        return matches_command_prefix(segment, ("telec", "reload"))
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
     if evidence == SlashCommand.REVIEW_COMMITS.value:
