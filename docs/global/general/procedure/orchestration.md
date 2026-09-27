@@ -97,15 +97,12 @@ Status semantics:
 
 <!-- change:event-driven-agent-status -->
 
-Status semantics:
+Respond by `agent_status`. Each status carries its reason and the moment it was entered, and entering `blocked` or `stalled` notifies you with the evidence:
 
-- `active`: the session is in a turn. Every agent event keeps it active, and an open tool call keeps it active until the tool returns.
-- `blocked`: the session paused mid-turn waiting for an approval, an answer, or a usage limit to reset. The same turn continues once that is resolved.
-- `stalled`: the turn is dead or never started: the runtime reported a failed turn, the session gave no agent activity within its liveness window, or it did not start within its startup window. The turn does not continue on its own — see Agent Degradation Handling.
-- `idle`: the latest turn ended cleanly and no later input arrived.
-- `unknown`: the agent has produced no event since it last (re)started.
-
-Every status carries its reason and the moment it was entered. Entering `blocked` or `stalled` notifies you with the evidence — the runtime's own payload, or the daemon's observation for an inferred stall.
+- `active` or `unknown`: keep waiting for the next event.
+- `idle`: the turn ended; continue the loop.
+- `blocked`: handle it under When Worker Needs Help; the same turn continues once the wait is resolved.
+- `stalled`: handle it under Agent Degradation Handling; the turn does not continue on its own.
 
 <!-- /planned-change:event-driven-agent-status -->
 
