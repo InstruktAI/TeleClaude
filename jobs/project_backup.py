@@ -168,8 +168,6 @@ def _upload_archive(archive_path: Path, target: UploadTarget) -> None:
 class ProjectBackupJob(Job):
     """Back up the project-local todo database."""
 
-    name = "project_backup"
-
     def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute the backup workflow and return a JobResult."""
         project_root = context.project_root if context is not None else _REPO_ROOT

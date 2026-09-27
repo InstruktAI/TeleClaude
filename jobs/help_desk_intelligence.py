@@ -44,8 +44,6 @@ class HelpDeskIntelligenceJob(Job):
     patterns, and produces a structured digest for the intelligence channel.
     """
 
-    name = "help-desk-intelligence"
-
     def __init__(self, *, lookback_hours: int = 24) -> None:
         self.lookback_hours = lookback_hours
 

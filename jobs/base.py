@@ -2,8 +2,8 @@
 
 Job modules implement the work to be done. Scheduling is managed externally
 via teleclaude.yml — jobs are invoked by the runner when their configured
-schedule is due. Jobs are schedule-ignorant: they define a name and a run()
-method, nothing more.
+schedule is due. Jobs are schedule-ignorant: they define a run() method,
+nothing more.
 """
 
 from __future__ import annotations
@@ -75,11 +75,9 @@ class JobRunContext:
 class Job(ABC):
     """Base class for scheduled jobs.
 
-    Subclasses provide a unique name and implement run(). Scheduling
-    configuration lives in teleclaude.yml, not in the job itself.
+    Subclasses implement run(). Scheduling and identity live in teleclaude.yml,
+    not in the job itself.
     """
-
-    name: str
 
     @abstractmethod
     def run(self, context: JobRunContext | None = None) -> JobResult:

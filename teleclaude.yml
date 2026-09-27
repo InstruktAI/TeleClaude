@@ -140,16 +140,19 @@ jobs:
   #   script: jobs/youtube_sync_subscriptions.py
 
   - category: system
+    name: temp-reaper
     when:
       every: 60m
     script: jobs/temp_reaper.py
 
   - category: system
+    name: project-backup
     when:
       at: 05:00
     script: jobs/project_backup.py
 
   - category: system
+    name: log-bug-hunter
     when:
       at: 03:00
     job: sdlc/procedure/maintenance/log-bug-hunter

@@ -149,8 +149,6 @@ class SessionMemoryExtractionJob(Job):
     members, and other long-lived session types.
     """
 
-    name = "session-memory-extraction"
-
     def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute memory extraction for all pending sessions."""
         del context

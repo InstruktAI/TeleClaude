@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -127,6 +127,7 @@ WORKTREE_BOUND_WORKER_COMMANDS = {
 NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.REVIEW_COMMITS, SlashCommand.RUN_JOB, SlashCommand.ACTIVATE_PROCEDURE}
 
 _JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job and activate-procedure must be dispatched through /sessions/run"
+_RUN_JOB_INSTRUCTION_FORMAT: Final[str] = "/{command} {job_name} {procedure_id}"
 
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
@@ -377,8 +378,9 @@ def _prepare_run_session(
     is_job_command = slash_cmd is SlashCommand.RUN_JOB
     is_activation_command = slash_cmd is SlashCommand.ACTIVATE_PROCEDURE
     company: str | None = request.company
+    job_procedure_id: str | None = None
     if is_job_command:
-        candidate_order, thinking_mode, job = normalize_job_run_request(request, normalized_args)
+        candidate_order, thinking_mode, job, job_procedure_id = normalize_job_run_request(request, normalized_args)
         effective_agent = None
         dispatch_mode = AgentDispatchMode.AUTOMATIC
         preferred_agent = None
@@ -405,6 +407,12 @@ def _prepare_run_session(
         job = None
         candidate_order = None
     full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
+    if job is not None and job_procedure_id is not None:
+        full_command = _RUN_JOB_INSTRUCTION_FORMAT.format(
+            command=normalized_cmd,
+            job_name=job,
+            procedure_id=job_procedure_id,
+        )
     startup_message = full_command
     if request.additional_context:
         full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"

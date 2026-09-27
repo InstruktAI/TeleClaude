@@ -63,8 +63,6 @@ class YouTubeSyncJob(Job):
     and runs tagging for each.
     """
 
-    name = "youtube_sync_subscriptions"
-
     def __init__(
         self,
         *,
