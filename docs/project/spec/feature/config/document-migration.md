@@ -1,6 +1,8 @@
 ---
-description: Every configuration document carries the version of its shape; reads bring an older document to the current shape in memory without writing, and only a migration run or a writer persists the migrated shape — a migration run commits it in the document's own repository.
-delivered_by: [config-migration-chain]
+description: Every configuration document carries the version of its shape; reads
+  bring an older document to the current shape in memory without writing, and only
+  a migration run or a writer persists the migrated shape — a migration run commits
+  it in the document's own repository.
 ---
 
 # Document Migration — Spec

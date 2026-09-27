@@ -1,6 +1,8 @@
 ---
-description: How a configuration migration is written — one numbered step in one ordered list, a pure transform usable both in memory and when persisted, idempotent against whatever shape it finds, and never carrying a value out of a document before its destination holds it.
-delivered_by: [config-migration-chain]
+description: How a configuration migration is written — one numbered step in one ordered
+  list, a pure transform usable both in memory and when persisted, idempotent against
+  whatever shape it finds, and never carrying a value out of a document before its
+  destination holds it.
 ---
 
 # Configuration Migrations — Policy

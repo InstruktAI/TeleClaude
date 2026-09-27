@@ -43,15 +43,8 @@ person. The per-person workspace folder (`~/.teleclaude/people/<slug>/`) and
 every folder-keyed lookup resolve through `slug`; `name` is display and `email`
 is the contact identifier. The slug is validated at load time with the shared
 slug validator — the same format the project slug enforces — so empty,
-<!-- planned-change:config-migration-chain -->
-whitespace-only, or absent normalizes to `None` and any non-empty value must be
-kebab-case. A legacy entry authored before slugs derives its slug from the
-current name (or username) on load, persists it, and renames its workspace
-folder to the slug; the slug never changes thereafter.
-<!-- change:config-migration-chain -->
 whitespace-only, or absent normalizes to `None` and any non-empty value must be
 kebab-case. Once set, the slug never changes.
-<!-- /planned-change:config-migration-chain -->
 
 ## Canonical fields
 
@@ -207,15 +200,6 @@ And the stored slug is "alice-smith"
 
 #### UC-CFG-PERSON-14: Empty or absent slug normalizes to None for legacy load
 
-<!-- planned-change:config-migration-chain -->
-```
-Given the global overlay's people list entry that omits slug, or sets it to "" or "   "
-When PersonEntry validation runs
-Then the slug validator returns None
-And the entry is accepted so a pre-slug config still loads
-And the stored slug is None until slug migration fills it
-```
-<!-- change:config-migration-chain -->
 ```
 Given the global overlay's people list entry that omits slug, or sets it to "" or "   "
 When PersonEntry validation runs
@@ -223,7 +207,6 @@ Then the slug validator returns None
 And the entry is accepted so a pre-slug config still loads
 And the stored slug is None
 ```
-<!-- /planned-change:config-migration-chain -->
 
 #### UC-CFG-PERSON-15: Invalid slug format rejected
 
@@ -235,21 +218,7 @@ And a validation error is raised: "Invalid slug. Use lowercase letters, numbers,
 And the global overlay loader raises on the slug field before the app config is returned
 ```
 
-<!-- planned-change:config-migration-chain -->
 #### UC-CFG-PERSON-16: Legacy person without slug is migrated on load
-
-```
-Given the global config lists a person { name: "Alice Smith", email: "alice@example.com" } with no slug
-And a workspace folder for the legacy name key exists under ~/.teleclaude/people/
-When person-slug migration runs
-Then a slug is derived from the name via normalize_slug ("alice-smith")
-And the slug is persisted on the person entry in global config
-And the workspace folder is renamed to ~/.teleclaude/people/alice-smith/
-And re-running the migration leaves the already-slugged entry and its folder unchanged
-```
-<!-- change:config-migration-chain -->
-#### UC-CFG-PERSON-16: Legacy person without slug is migrated on load
-<!-- /planned-change:config-migration-chain -->
 
 ### Cross-context references
 
@@ -276,11 +245,7 @@ And re-running the migration leaves the already-slugged entry and its folder unc
 <!-- /planned-change:authorize-person-roles-at-scope -->
 - `expertise` — optional `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]`. Default: `None`.
 - `proficiency` — optional `ProficiencyLevel`. **Deprecated** — use `expertise` instead. Default: `None`.
-<!-- planned-change:config-migration-chain -->
-- `slug` — `None`, or a non-empty kebab-case string matching the shared slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$` after stripping. Empty, whitespace-only, or absent normalize to `None`. The canonical, stable reference key for the person; populated by slug migration or by `telec config person init`, and immutable thereafter.
-<!-- change:config-migration-chain -->
 - `slug` — `None`, or a non-empty kebab-case string matching the shared slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$` after stripping. Empty, whitespace-only, or absent normalize to `None`. The canonical, stable reference key for the person; populated by `telec config person init`, and immutable thereafter.
-<!-- /planned-change:config-migration-chain -->
 
 ## Known caveats
 

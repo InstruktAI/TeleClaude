@@ -64,30 +64,6 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 
-<!-- planned-change:config-migration-chain -->
-- The declaration is the only home of capability state. The installed plumbing —
-  the git hooks and the git wrapper — reads the toggles directly from the
-  project's `teleclaude.yml`, the same file the runtime resolves, so the shell
-  side holds no copy that can go stale or go missing. There is no projection, no
-  sentinel, and no marker directory, and therefore no legacy state to
-  disambiguate. The plumbing reads only what it decides on: the declaration's
-  tier and, for a project declaration, the capability blocks. A capability block
-  that is absent, or present without an `enabled` value, resolves to subscribed,
-  which is the same default the typed overlay applies, so a project onboarded
-  before the manifest keeps today's behavior with no migration. A block whose
-  `enabled` value is an unquoted boolean in a spelling the runtime's YAML parser
-  accepts is honoured as written, in block form or inline form alike. A block
-  whose value the plumbing cannot read as a boolean is refused: the git
-  invocation aborts with a message naming `teleclaude.yml` and the block, and no
-  capability state is substituted for it — the direction the runtime takes for a
-  declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
-  never falls closed on such a block, and it claims nothing about the rest of
-  the file: overlay validation belongs to the runtime. A global or person
-  declaration carries no capability blocks; what the plumbing decides at such a
-  repository root is the seal, per `project/design/code-commit`. Because the
-  declaration is a file the project tracks, a clone carries the project's real
-  capability state before any TeleClaude command has run against it.
-<!-- change:config-migration-chain -->
 - The declaration is the only home of capability state. The installed plumbing —
   the git hooks and the git wrapper — resolves the toggles through the runtime's
   own reading of the repository root's own declaration: brought to its current
@@ -115,7 +91,6 @@ Derivation rules:
   `project/design/code-commit`. Because the declaration is a file the project
   tracks, a clone carries the project's real capability state before any
   TeleClaude command has run against it.
-<!-- /planned-change:config-migration-chain -->
 
 - A capability toggle never edits, removes from, or truncates a file the project
   tracks. The only capability plumbing in the project's tracked tree is the
@@ -148,11 +123,6 @@ Derivation rules:
   as a failure rather than resolving to any capability state.
 - The project's `teleclaude.yml`, `.env`, and equivalent native files are
   project-owned and are never removed, superseded, or displaced.
-<!-- planned-change:config-migration-chain -->
-- Each `enabled` defaults to `true` for an already-onboarded project so
-  existing repos keep today's behavior; analyze writes explicit values on the
-  next assessment.
-<!-- change:config-migration-chain -->
 - A capability block that is absent, or present without an `enabled` value,
   resolves to unsubscribed: only an explicit value claims a capability.
   Registration declares every capability the document leaves undeclared, with
@@ -162,29 +132,9 @@ Derivation rules:
   brings its declaration forward with each of them written explicitly, and the
   same holds for its linked worktrees' copies. A declaration the registries do
   not name gains no subscription from that migration.
-<!-- /planned-change:config-migration-chain -->
 
 ### Use cases
 
-<!-- planned-change:config-migration-chain -->
-#### UC-CFG-CAP-1: Omitted capability blocks default to subscribed
-
-```
-Given a project overlay that declares no capability blocks
-When the project configuration is loaded
-Then the code, docs, and agents capabilities each resolve to enabled
-And the project's existing maintenance behavior is unchanged
-```
-
-#### UC-CFG-CAP-2: An explicitly disabled capability is honored
-
-```
-Given a project overlay declaring the code capability disabled
-When the project configuration is loaded
-Then the code capability resolves to disabled
-And the docs and agents capabilities resolve to enabled
-```
-<!-- change:config-migration-chain -->
 #### UC-CFG-CAP-1: Omitted capability blocks resolve to unsubscribed
 
 ```
@@ -202,7 +152,6 @@ When the project configuration is loaded
 Then the code capability resolves to disabled
 And the docs and agents capabilities resolve to enabled
 ```
-<!-- /planned-change:config-migration-chain -->
 
 
 #### UC-CFG-CAP-3: An unreadable declaration on an adopted project surfaces the failure
@@ -303,16 +252,6 @@ Then the installed plumbing resolves the new value on its next invocation
 And no separate pass is required to make the change take effect
 ```
 
-<!-- planned-change:config-migration-chain -->
-#### UC-CFG-CAP-16: The installed plumbing reads capability state from the declaration
-
-```
-Given a project whose code capability is unsubscribed
-When the git wrapper runs on a git invocation
-Then it decides by reading the capability toggles from the project's teleclaude.yml
-And it spawns no interpreter to read them
-```
-<!-- change:config-migration-chain -->
 #### UC-CFG-CAP-16: The installed plumbing answers a repeated read without an interpreter
 
 ```
@@ -322,7 +261,6 @@ When the git wrapper runs on a git invocation
 Then it decides from the capability subscriptions the runtime resolves for that declaration
 And it spawns no interpreter to read them
 ```
-<!-- /planned-change:config-migration-chain -->
 
 
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
@@ -368,25 +306,6 @@ And it resolves identically to the same declaration written in block form
 
 #### UC-CFG-CAP-22:
 
-<!-- planned-change:config-migration-chain -->
-#### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
-
-```
-Given a project whose teleclaude.yml carries a code capability block whose enabled value is not a boolean
-When an agent session invokes git inside that project and the installed plumbing resolves its capabilities
-Then the invocation aborts with a message naming teleclaude.yml and the code block
-And no capability state is substituted for the unreadable block
-And no interpreter is spawned to reach that decision
-```
-
-#### UC-CFG-CAP-25: A capability block without an enabled value resolves to subscribed
-
-```
-Given a project whose teleclaude.yml carries a code capability block that declares no enabled value
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then the code capability resolves to subscribed on both readers
-```
-<!-- change:config-migration-chain -->
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
 ```
@@ -403,9 +322,7 @@ Given a project whose teleclaude.yml, at the current configuration version, carr
 When the capabilities are resolved by the runtime or by the installed plumbing
 Then the code capability resolves to unsubscribed on both readers
 ```
-<!-- /planned-change:config-migration-chain -->
 
-<!-- planned:config-migration-chain -->
 #### UC-CFG-CAP-26: A registered project keeps its subscriptions across the unsubscribed default
 
 ```
@@ -485,7 +402,6 @@ When the capabilities are resolved by the runtime or by the installed plumbing
 Then both readers resolve the code capability to the value the .env holds
 And after that value changes in the .env, the next git invocation decides from the new value
 ```
-<!-- /planned:config-migration-chain -->
 
 
 ## Known caveats
@@ -497,15 +413,6 @@ And after that value changes in the .env, the next git invocation decides from t
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by the quality-configuration assessment procedure.
 
-<!-- planned-change:config-migration-chain -->
-- The runtime and the installed plumbing agree on every declaration whose
-  capability blocks carry unquoted boolean values. They part on one input: a
-  block whose `enabled` value the runtime coerces from a quoted string or a
-  number is refused by the plumbing, which reads only unquoted booleans. Both
-  readers read only the tier and the capability blocks, so a declaration that
-  fails validation elsewhere in the overlay keeps its capability answer on
-  both; loading the full overlay still refuses it.
-<!-- change:config-migration-chain -->
 - The runtime's capability answer and the installed plumbing both read only a
   declaration's tier and capability blocks, so they answer alike for every
   declaration. A declaration whose tier and capability blocks are readable but
@@ -517,7 +424,6 @@ And after that value changes in the .env, the next git invocation decides from t
   second as a change to one of its files is returned but not kept, because
   whole-second modification times cannot tell a later change within that second
   apart; the next read resolves again.
-<!-- /planned-change:config-migration-chain -->
 
 
 ## See Also

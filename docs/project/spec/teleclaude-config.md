@@ -42,15 +42,10 @@ declaring another tier fails validation rather than loading as that tier.
 Resolution reads this key; it never infers a tier from where the file sits. The
 resolution contract is `project/spec/feature/config/tier-declaration`.
 
-<!-- planned-change:config-migration-chain -->
-The machine runtime `config.yml` is outside this: it carries a different
-filename and takes no part in tier resolution.
-<!-- change:config-migration-chain -->
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution. It declares `kind: computer`,
 which addresses the file and is never a tier
 (`project/spec/feature/config/machine-config-load`).
-<!-- /planned-change:config-migration-chain -->
 
 One JSON Schema per tier is generated from the same models the runtime
 validates against and published, with the MCP registry schema, into the
@@ -68,7 +63,6 @@ network fetch and no machine-local path. The modeline serves the editor only:
 loading reads `kind` alone, and a file whose modeline does not resolve loads
 identically.
 
-<!-- planned:config-migration-chain -->
 Every configuration document — each of the four tier files and the machine
 `config.yml` — also carries a top-level `schema_version` integer: the document's
 position in the configuration migration list. It is a declared internal field of
@@ -76,7 +70,6 @@ each tier's model and of the machine configuration's input vocabulary, removed
 before the machine aggregate is built, and never an operator setting. How a
 document reaches the current version, and what reads and writes it, is
 `project/spec/feature/config/document-migration`.
-<!-- /planned:config-migration-chain -->
 
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach
@@ -137,16 +130,10 @@ hooks:
 channel_subscriptions: list[ChannelSubscription]
 ```
 
-<!-- planned-change:config-migration-chain -->
-The project also declares which platform capabilities it subscribes to. Each block
-is optional and defaults to subscribed, so a project config written before the
-manifest existed keeps its current behavior:
-<!-- change:config-migration-chain -->
 The project also declares which platform capabilities it subscribes to. Each block
 is optional, and an omitted block or one without an `enabled` value is
 unsubscribed, so only an explicit value claims a capability
 (`project/spec/feature/config/project-capability-manifest`):
-<!-- /planned-change:config-migration-chain -->
 
 ```yaml
 code:
@@ -481,14 +468,6 @@ locally, so every consumer resolves to one declaring node.
 
 ### Daemon runtime config keys (`config.yml`)
 
-<!-- planned-change:config-migration-chain -->
-The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
-Installation produces the runtime file from the configuration schema when the host
-carries none, writing each sensitive field as its derived environment reference. A host
-that already carries a runtime file keeps it unchanged. The TUI, daemon, and installer
-read and write only the runtime
-file. `make install` writes opted-in agents' `enabled`
-<!-- change:config-migration-chain -->
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
 Installation produces the runtime file from the configuration schema when the host
 carries none, writing each sensitive field as its derived environment reference. A host
@@ -497,7 +476,6 @@ configuration migrations the file has not yet passed
 (`project/spec/feature/config/document-migration`). The TUI, daemon, and installer
 read and write only the runtime
 file. `make install` writes opted-in agents' `enabled`
-<!-- /planned-change:config-migration-chain -->
 
 state into the runtime file. The runtime file's path is
 `<TELECLAUDE_HOME>/config.yml` with no override: moving the runtime tree moves

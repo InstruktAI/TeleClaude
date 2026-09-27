@@ -102,34 +102,6 @@ repository's own root carries no declaration at all, the wrapper decides nothing
 from this matrix: it execs the real git binary unmodified, the same transparent
 passthrough it applies outside tmux.
 
-<!-- planned-change:config-migration-chain -->
-The wrapper reads capability state from the repository root's `teleclaude.yml`
-— the same declaration the runtime resolves — deriving `code ∨ docs` for commit
-interception and `code` for worktree and branch discipline. It reads the file
-directly in shell, spawning no interpreter, so the read costs less than
-locating a projected copy would. It reads the declaration's tier first. A
-project declaration carries the capability blocks: a block that is absent, or
-present without an `enabled` value, leaves that capability subscribed, which is
-the typed overlay's own default, so a project onboarded before the manifest
-keeps its pre-manifest behavior; a block carrying an unquoted boolean is
-honoured as written. A global or person declaration carries no subscriptions:
-the repository is sealed on the declaration alone, so the commit-interception
-rows and the main-branch replay and push rows apply there, while the worktree
-and destructive-operation rows follow `code`, which no non-project tier
-carries. A company declaration anchors no context and seals nothing: the
-wrapper execs the real git binary unmodified.
-
-A declaration the wrapper cannot resolve — no readable tier, or a capability
-block whose value is not a boolean — refuses the git invocation with a message
-naming `teleclaude.yml` and the field, and substitutes no capability state. The
-wrapper and the runtime answer alike for every declared tier and for every
-capability block carrying an unquoted boolean. They part on one input: a block
-whose value the runtime coerces from a quoted string or a number is refused by
-the wrapper. Both read only the tier and the capability blocks, so a declaration
-that fails validation elsewhere in the overlay keeps its capability answer on
-both; loading the full overlay still refuses it
-(`project/spec/feature/config/project-capability-manifest`).
-<!-- change:config-migration-chain -->
 The wrapper takes capability state from the runtime's answer for the repository
 root's own `teleclaude.yml`, deriving `code ∨ docs` for commit interception and
 `code` for worktree and branch discipline. The wrapper reads no declaration
@@ -157,7 +129,6 @@ answer both read only the tier and the capability blocks, so they answer alike
 for every declaration; a declaration that fails validation elsewhere in the
 overlay is refused only where the full overlay is loaded
 (`project/spec/feature/config/project-capability-manifest`).
-<!-- /planned-change:config-migration-chain -->
 
 <!-- planned:telec-startup-does-only-auth -->
 The role the matrix reads is resolved from the caller's session record through the

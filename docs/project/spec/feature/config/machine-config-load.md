@@ -32,33 +32,16 @@ construction, and refuses a machine configuration declaring any other kind.
 It does not make the machine file an overlay tier or a context root, and a
 machine configuration without the declaration loads unchanged.
 
-<!-- planned:config-migration-chain -->
 Every stored machine configuration comes to declare `kind: computer`.
 Installation creates a new machine configuration declared, and a stored one
 without the declaration gains it through the configuration migration list
 (`project/spec/feature/config/document-migration`). A load supplies the absent
 declaration in memory and writes nothing.
-<!-- /planned:config-migration-chain -->
 
 ## Canonical fields
 
 ### Use cases
 
-<!-- planned-change:config-migration-chain -->
-#### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
-
-```gherkin
-Given a machine configuration declaring the computer kind
-When the machine configuration is validated and read through the computer configuration
-Then it validates as it does without the declaration
-And the computer configuration view carries no kind and reports the same revision as without the declaration
-And neither loading nor any configuration change adds, removes, or rewrites the declaration
-
-Given a machine configuration declaring any kind other than computer
-When the machine configuration loads
-Then the load fails naming the file and the declared kind
-```
-<!-- change:config-migration-chain -->
 #### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
 
 ```gherkin
@@ -72,9 +55,7 @@ Given a machine configuration declaring any kind other than computer
 When the machine configuration loads
 Then the load fails naming the file and the declared kind
 ```
-<!-- /planned-change:config-migration-chain -->
 
-<!-- planned:config-migration-chain -->
 #### UC-CFG-LOAD-15: A stored machine configuration gains its declared kind
 
 ```gherkin
@@ -84,7 +65,6 @@ Then it declares the computer kind
 And its existing operator values are preserved
 And it resolves the same runtime configuration as before the run
 ```
-<!-- /planned:config-migration-chain -->
 
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
@@ -100,17 +80,6 @@ And the module-level `config_path` global is set to the absolute path
 
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
-<!-- planned-change:config-migration-chain -->
-#### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
-
-```
-Given a host carrying no machine configuration at <RuntimeConfig.home>/config.yml
-When installation runs
-Then the machine configuration is produced from the configuration schema
-And each field declared sensitive is written as its derived environment reference
-And no field's resolved secret value is written
-```
-<!-- change:config-migration-chain -->
 #### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
 
 ```
@@ -121,19 +90,8 @@ And it declares the computer kind
 And each field declared sensitive is written as its derived environment reference
 And no field's resolved secret value is written
 ```
-<!-- /planned-change:config-migration-chain -->
 
 
-<!-- planned-change:config-migration-chain -->
-#### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
-
-```
-Given a host already carrying a machine configuration at <RuntimeConfig.home>/config.yml
-When installation runs
-Then that configuration is left byte-for-byte unchanged
-And no field is added, removed, or re-derived from the schema
-```
-<!-- change:config-migration-chain -->
 #### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
 
 ```
@@ -142,7 +100,6 @@ When installation runs
 Then that configuration is not regenerated from the schema
 And the configuration migrations it has not yet passed are applied to it
 ```
-<!-- /planned-change:config-migration-chain -->
 
 #### UC-CFG-LOAD-13: Installation can load generation before runtime configuration exists
 
@@ -264,19 +221,6 @@ And the daemon process remains running without a restart
 
 ## Known caveats
 
-<!-- planned-change:config-migration-chain -->
-- **Stored-file migration and candidate validation are distinct.** Legacy
-  content owned by the config context is migrated and persisted before the
-  file reaches raw input validation, on initial load and reload. A retired
-  field whose destination belongs to another bounded context is instead
-  projected out of the current-schema runtime view while its committed source
-  remains intact. The destination owner durably imports the value before it
-  invokes config-owned cleanup; reload repeats the projection, unrelated
-  mutations preserve the retained source, and raw edit candidates receive
-  current-schema validation without either migration path. The local
-  config-owned migration contract is specified by
-  `project/spec/feature/config/unknown-key-warning`.
-<!-- change:config-migration-chain -->
 - **Stored-file migration and candidate validation are distinct.** On initial
   load and reload, the stored document is brought to the current shape in
   memory by the configuration migration list before it reaches raw input
@@ -286,7 +230,6 @@ And the daemon process remains running without a restart
   a migration run stores the document only after delivering that value to its
   config-owned hand-off, from which the destination owner imports it. Raw edit
   candidates receive current-schema validation without migration.
-<!-- /planned-change:config-migration-chain -->
 
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing

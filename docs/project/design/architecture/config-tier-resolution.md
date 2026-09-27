@@ -45,19 +45,11 @@ and how existing installations reach the declared state.
   (`sdlc/policy/domain-ownership`). Consumers cross each
   boundary through the owning contract, and no consumer walks the ancestor
   chain, reads a tier declaration, or interprets git metadata itself.
-<!-- planned-change:config-migration-chain -->
-- **Resolution carries no location logic.** No resolver, loader, or consumer
-  derives a tier from where a file sits. Consulting a location belongs to
-  advancement alone, and there it is a lookup in the tier registries rather than
-  a match against a path pattern: a path the registries do not name is not
-  advanced.
-<!-- change:config-migration-chain -->
 - **Resolution carries no location logic.** No resolver, loader, or consumer
   derives a tier from where a file sits. Consulting a location belongs to the
   declaring configuration migration alone, and there it is a lookup in the tier
   registries rather than a match against a path pattern: a path the registries
   do not name is given no tier.
-<!-- /planned-change:config-migration-chain -->
 - **The context walk consults declarations only.** The nearest ancestor
   directory carrying a same-named configuration file wins, and that file's
   declared tier is the answer. An anchoring tier — global, project, or person —
@@ -202,77 +194,6 @@ names the home's schema directory relative to its designated location. Every con
 published its schemas, with no network fetch and no path that means something
 different on another machine.
 
-<!-- planned-change:config-migration-chain -->
-**Advancing stored files.** A same-named configuration file is advanced before
-it is loaded. Advancement supplies what the file lacks — its tier declaration,
-its schema association, or both — and each is an independent idempotent repair,
-so a file carrying a valid declaration and no association gains the association
-alone and a file carrying both is untouched.
-
-Advancement runs against an epoch, held in config-owned durable state in the
-home and keyed by the identity of the advancement itself, so a later advancement
-neither collides with this one nor inherits its state. An epoch is opened only
-by the versioned installation upgrade that introduces that advancement, running
-over an established installation. Nothing at runtime opens one: a load that
-finds no epoch is strict, which is also the correct answer for an installation
-new enough that its files were born declared.
-
-Opening an epoch captures the eligible set from the registries as they stand at
-that moment: the home's own configuration, every person and company folder at
-its designated location, and every entry in the project manifest — including
-entries whose directory is unavailable, which are carried as pending rather than
-omitted. Completion is recorded per root, so no record claims anything about a
-root it has not seen.
-
-Eligibility is decided by that captured set and never by first encounter. A root
-in the set is advanced when it is reached, whenever that is. A root outside it —
-one registered after the epoch opened, moved, cloned onto another machine, or
-living on an installation whose epoch found nothing to do — is strict from the
-start: an undeclared file there fails rather than being repaired. Deleting a
-declaration and moving the repository therefore restores nothing anywhere.
-
-Advancement obtains an absent tier by asking the tier registries the model
-already defines — the designated locations for the home's own configuration,
-person, and company files, and the project manifest for project roots. A path
-the registries do not name is not advanced, so it reaches loading undeclared and
-fails there.
-
-Whether a root may still be advanced is settled from the epoch before any
-repair is attempted: with no open epoch, or for a root outside the eligible set
-or already recorded complete, the root is strict, and a file there missing or
-misdeclaring its tier fails whatever else it does or does not carry. Strictness therefore arrives for a root
-the moment its advancement completes, and for every other root immediately.
-Editing a file cannot return its root to the eligible state, because neither the
-epoch nor its completion records live in the file.
-
-The schema association carries no evidential weight. It serves the editor, it is
-repaired independently at any point, and its absence never makes an advanced
-root eligible for advancement again.
-
-A best-effort sweep advances the eligible roots it can reach, at the boundaries
-where a full pass is already natural: daemon start, reconciliation, and project
-registration. The sweep is an optimization over the per-root guarantee, never a
-precondition of it. A root that is unavailable when the sweep runs stays pending
-in the epoch and is advanced when it returns; the sweep records completion only
-for roots it actually reached. Nothing about one root's advancement affects
-another's.
-
-A file advancement cannot write fails that file's load, naming the file and the
-declaration it needs. The failure is scoped to that file; every other root
-continues to resolve.
-
-Writing a schema association does not depend on the schema being present on
-the writing machine. The association is a fixed function of the tier, so
-advancement writes it together with the declaration, and every later write of a
-declared file writes it again. Gating it on local presence would make a
-committed file's content depend on the machine that wrote it.
-
-A newly created global, person, company, or project configuration is written
-declared and associated.
-
-Advancement never overwrites a declaration that is present: an unknown or
-model-inconsistent value fails rather than being replaced.
-<!-- change:config-migration-chain -->
 **Migrating stored files.** A same-named configuration file reaches its
 declared state through the configuration migration list, the one mechanism that
 moves every configuration document's stored shape forward
@@ -317,30 +238,9 @@ declared and associated, at the current version.
 
 No migration overwrites a declaration that is present: an unknown or
 model-inconsistent value fails rather than being replaced.
-<!-- /planned-change:config-migration-chain -->
 
 ## Failure modes
 
-<!-- planned-change:config-migration-chain -->
-- **A same-named configuration file carries no declaration.** Loading fails
-  naming the file and the missing declaration, wherever the file sits. Three
-  files reach this by construction: one at a root the tier registries do not
-  name, one at a root outside the epoch's eligible set, and one at a root
-  already recorded complete. The remedy for all three is to declare the file.
-- **The epoch's state is lost.** Nothing reopens it at runtime: every root is
-  strict, so an undeclared file fails loud rather than being repaired against
-  registries captured after the fact. A completed transition survives this
-  untouched, because the declarations it wrote live in the files themselves.
-  What is lost is the pending remainder, and the remedy for each such file is
-  the one its failure names — declare it.
-- **Advancement cannot write a file the registries name.** That file's load
-  fails, naming it and the declaration it needs, rather than substituting a
-  value that leaves the stored file undeclared. Other roots are unaffected.
-- **A registered project root is unavailable.** It stays pending in the epoch,
-  which captured it as eligible whether or not it could be reached. No
-  completion is recorded for it and nothing else is blocked; it is advanced when
-  it returns and is next read.
-<!-- change:config-migration-chain -->
 - **A same-named configuration file carries no declaration.** Loading fails
   naming the file and the missing declaration, wherever the file sits, unless
   the tier registries name it and it has not passed the declaring migration.
@@ -354,7 +254,6 @@ model-inconsistent value fails rather than being replaced.
   unaffected, and the migration run migrates every document it can reach. The
   root's file is stored at the current version by the next run that reaches it,
   by registration, or by the next writer; until then any read upcasts it.
-<!-- /planned-change:config-migration-chain -->
 - **A schema association is absent, stale, or unresolvable.** Not an error: the
   association serves the editor, and loading reads the declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**

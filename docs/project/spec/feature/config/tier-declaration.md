@@ -42,15 +42,17 @@ answers two separate questions:
   not exist for the global, person, or company tiers — persons and companies
   commit into the home repository, not repositories of their own.
 
-An established configuration file reaches the declared state by being advanced
-before it is loaded, with an absent tier obtained from the registries that
-define the tiers — the designated locations for the home's own configuration,
-person, and company files, and the project manifest for project roots. A file
-those registries do not name is not advanced. A file the platform creates is
-written declared. A file that reaches loading without a valid declaration fails
-wherever it sits, and a declaration naming an unknown or tier-inconsistent kind
-is never advanced over: it fails, and the file is never loaded as another
-tier.
+An established configuration file reaches the declared state through the
+configuration migration list (`project/spec/feature/config/document-migration`).
+A document that has not passed the declaring migration obtains an absent tier
+from the registries that define the tiers — the designated locations for the
+home's own configuration, person, and company files, and the project registry
+for project roots and the linked worktrees of those roots. A read supplies that tier in memory; a migration run or a
+writer stores it. A file those registries do not name is never given a tier. A
+file the platform creates is written declared. A file that reaches loading
+without a valid declaration fails wherever it sits, and a declaration naming an
+unknown or tier-inconsistent kind is never replaced: it fails, and the file is
+never loaded as another tier.
 
 ## Canonical fields
 
@@ -76,15 +78,13 @@ tier.
   tier's schema reference, whether or not the writing machine holds that schema,
   so a file's committed content never depends on the state of the machine that
   wrote it.
-- Advancement runs against an epoch, opened only by the versioned installation
-  upgrade that introduces it and never by a load. Its eligible set is captured
-  from the registries when it opens and includes manifest entries that are
-  unavailable at that moment. Only a root in that set is ever advanced, and
-  completion is recorded per root. With no open epoch every root is strict, as
-  is any root outside the set and any root already recorded complete: a file there missing or
-  misdeclaring its tier fails, that failure is settled before any repair is
-  attempted, and no declaration is restored. The schema reference carries no
-  evidential weight and its absence never makes a root eligible again.
+- Whether an absent declaration may still be supplied is decided by the
+  document's own version and nothing else. Only a document that has not passed
+  the declaring migration is declared from the registries. A document past it is
+  strict wherever it sits and on whichever machine reads it: a missing or
+  misdeclared tier fails, and no declaration is restored. The schema reference
+  carries no evidential weight, and neither its absence nor any edit other than
+  the document's version makes a document eligible for a declaration again.
 
 ### Use cases
 
@@ -134,15 +134,15 @@ When shared project state is resolved for that project
 Then resolution fails with a clear error naming the project root
 ```
 
-#### UC-CFG-WSD6: A file the registries name is advanced before it is loaded
+#### UC-CFG-WSD6: A file the registries name is declared by its migration
 
 ```
 Given a same-named configuration file authored before tier declarations existed
-And its root is in the advancement epoch's eligible set and not yet complete
-When that file is loaded
-Then it is advanced to carry its correct tier declaration before the load reads it
-And its root is recorded complete
-And loading it again leaves the file unchanged
+And the tier registries name its location
+When an agent loads that file
+Then it loads as the tier the registries name
+And the stored file is unchanged by the load
+And once a migration run has stored it, the file carries that tier declaration
 ```
 
 #### UC-CFG-WSD7: An undeclared file fails wherever it sits
@@ -177,93 +177,87 @@ And invocation from within the company folder behaves as invocation with no cont
 And company configuration composes alongside its member projects through their declared company membership
 ```
 
-#### UC-CFG-WSD10: A declared file missing its schema reference is repaired
+#### UC-CFG-WSD10: A declared file missing its schema reference gains it when stored
 
 ```
 Given a same-named configuration file the tier registries name
 And that file carries a valid tier declaration and no schema reference
-When that file is advanced
-Then the file is advanced to carry its schema reference
+When a migration run or an agent's configuration operation stores that file
+Then the file carries its schema reference
 And its existing tier declaration is left as it stands
 ```
 
-#### UC-CFG-WSD11: A file that cannot be written fails its own load
+#### UC-CFG-WSD11: A file that cannot be written still loads
 
 ```
 Given a same-named configuration file the tier registries name
 And that file is not writable by the invoking user
-And that file carries no tier declaration
-When that file is loaded
-Then loading fails with an error naming the file and the declaration it needs
-And the file is never loaded as any tier
+And that file carries no tier declaration and has not passed the declaring migration
+When an agent loads that file
+Then it loads as the tier the registries name
+And the file is not modified
 ```
 
-#### UC-CFG-WSD12: An unavailable registered root is advanced when it returns
+#### UC-CFG-WSD12: An unavailable registered root is migrated when it returns
 
 ```
-Given a registered project root that is unavailable when the advancement epoch opens
+Given a registered project root that is unavailable while a migration run executes
 When that root becomes available and its configuration file is loaded
-Then the root was carried in the eligible set as pending rather than omitted
-And that file is advanced before the load reads it
-And an unwritable file at one root leaves every other root resolving
+Then the file loads in its current shape
+And a later migration run stores it at the current version
+And its absence left every other root migrated by the earlier run
 ```
 
 #### UC-CFG-WSD13: A schema reference is never written ahead of its schema
 
-
-#### UC-CFG-WSD14: A declaration removed after advancement is not restored
+#### UC-CFG-WSD14: A declaration removed after migration is not restored
 
 ```
-Given a root recorded complete
-And its configuration file's tier declaration has been removed
-And the tier registries name that root
+Given a configuration file stored past the declaring migration
+And its tier declaration has been removed
+And the tier registries name its location
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
-And the failure is reached before any repair is attempted
 And no tier declaration is restored
 And the file is never loaded as any tier
 ```
 
-#### UC-CFG-WSD15: Removing the schema reference too does not reopen advancement
+#### UC-CFG-WSD15: Removing the schema reference too does not restore a declaration
 
 ```
-Given a root recorded complete
-And its configuration file carries neither a tier declaration nor a schema reference
+Given a configuration file stored past the declaring migration
+And it carries neither a tier declaration nor a schema reference
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
 And no tier declaration is restored
-And editing the file does not return its root to the eligible state
 ```
 
-#### UC-CFG-WSD16: A root outside the eligible set is strict from the start
+#### UC-CFG-WSD16: A root registered later is declared by its registration
 
 ```
-Given a project root registered after the advancement epoch opened
-And its configuration file carries no tier declaration
-When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is supplied from the root's location
+Given a project root whose configuration file was authored without a tier declaration
+And the root is not yet registered
+When an operator or agent registers that project
+Then its configuration file is stored declaring the project tier
 ```
 
-#### UC-CFG-WSD17: Moving a repository does not reopen advancement
+#### UC-CFG-WSD17: Moving a repository does not restore a declaration
 
 ```
-Given a configuration file whose tier declaration has been removed
-And its repository is cloned to a machine where its root is not in an eligible set
-When that file is loaded
+Given a configuration file stored past the declaring migration whose tier declaration has been removed
+And its repository is cloned to another machine
+When that file is loaded there
 Then loading fails with an error naming the file and the missing declaration
 And no tier declaration is restored on that machine
 ```
 
-#### UC-CFG-WSD18: No open epoch means every root is strict
+#### UC-CFG-WSD18: Loading an undeclared file writes nothing
 
 ```
-Given an installation with no open advancement epoch
-And a same-named configuration file carrying no tier declaration
+Given a same-named configuration file carrying no tier declaration
 When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no epoch is opened by the load
-And no tier declaration is supplied from the file's location
+Then the stored file is byte-identical before and after the load, whether the load succeeds or fails
+And no record of the load is kept that a later load consults
 ```
 
 #### UC-CFG-WSD19: A written file carries its tier's schema reference on every machine
@@ -278,6 +272,8 @@ And the written content is identical to what any other machine writes for the sa
 
 ### Cross-context references
 
+- How a document reaches its current shape, including its declaration, is
+  specified in `project/spec/feature/config/document-migration`.
 - The layered overlay composition this declaration dispatches is specified in
   `project/spec/feature/config/layered-overlay-resolution.md`; the declared
   tier replaces path-shape detection as the dispatch signal.
