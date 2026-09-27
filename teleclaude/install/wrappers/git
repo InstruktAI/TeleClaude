@@ -223,10 +223,10 @@ _classify_global_opt() {
         -C)
             _global_opt_result="capture-C"
             ;;
-        -c|--git-dir|--work-tree|--namespace)
+        -c|--config-env|--git-dir|--work-tree|--namespace)
             _global_opt_result="skip"
             ;;
-        --git-dir=*|--work-tree=*|--namespace=*|-c*)
+        --config-env=*|--git-dir=*|--work-tree=*|--namespace=*|-c*)
             _global_opt_result="self"
             ;;
         *)
@@ -237,10 +237,13 @@ _classify_global_opt() {
 
 # ── Parse git subcommand and -C args ─────────────────────────────────────────
 _subcmd=""
+_subcmd_index=0
+_arg_index=0
 _skip_next=0
 _capture_C=0
 _dir_args=()
 for _arg in "$@"; do
+    _arg_index=$((_arg_index + 1))
     if [ "$_capture_C" -eq 1 ]; then
         _dir_args+=("-C" "$_arg")
         _capture_C=0
@@ -269,6 +272,7 @@ for _arg in "$@"; do
             ;;
         *)
             _subcmd="$_arg"
+            _subcmd_index="$_arg_index"
             break
             ;;
     esac
@@ -365,12 +369,16 @@ if [ "$_code_enabled" -eq 1 ]; then
     esac
 fi
 
-# ── Block `-c alias.*` config redefinition ───────────────────────────────────
-# `git -c alias.X=stash X` would otherwise bypass every subcmd-name-based block
-# (the wrapper sees `X` as `_subcmd`, not `stash`). Agents have no legitimate
-# use for per-invocation alias redefinition.
+# ── Block per-command autoStash overrides and alias redefinition ─────────────
+# Command-line config can override the false autoStash values injected by
+# _real_git. A valueless -c key is true, so refuse it as well as key=value.
+# `git -c alias.X=stash X` would bypass every subcmd-name-based block (the
+# wrapper sees `X` as `_subcmd`, not `stash`).
 _prev_arg=""
+_arg_index=0
 for _arg in "$@"; do
+    _arg_index=$((_arg_index + 1))
+    [ "$_arg_index" -ge "$_subcmd_index" ] && break
     _config_override=""
     case "$_prev_arg" in
         -c|--config-env) _config_override="$_arg" ;;
@@ -379,14 +387,16 @@ for _arg in "$@"; do
         -c?*) _config_override="${_arg#-c}" ;;
         --config-env=*) _config_override="${_arg#--config-env=}" ;;
     esac
-    case "$_config_override" in
-        *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]=*)
-            _log_block autostash_config_override
-            echo "ERROR: Per-command autoStash configuration is prohibited in agent sessions." >&2
-            echo "       Resolve or commit worktree changes before replaying history." >&2
-            exit 1
-            ;;
-    esac
+    if [ "$_code_enabled" -eq 1 ]; then
+        case "$_config_override" in
+            *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]|*.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]=*)
+                _log_block autostash_config_override
+                echo "ERROR: Per-command autoStash configuration is prohibited in agent sessions." >&2
+                echo "       Resolve or commit worktree changes before replaying history." >&2
+                exit 1
+                ;;
+        esac
+    fi
     case "$_prev_arg:$_arg" in
         -c:alias.*)
             _subcmd="config"
@@ -407,6 +417,16 @@ for _arg in "$@"; do
     esac
     _prev_arg="$_arg"
 done
+if [ "$_code_enabled" -eq 1 ]; then
+    case "${GIT_CONFIG_PARAMETERS:-}" in
+        *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]*)
+            _log_block autostash_config_override
+            echo "ERROR: Inherited autoStash configuration is prohibited in agent sessions." >&2
+            echo "       Resolve or commit worktree changes before replaying history." >&2
+            exit 1
+            ;;
+    esac
+fi
 
 # ── Human session without tmux override: directory scope only ─────────────────
 # (This path is unreachable now — humans outside tmux exec'd above, humans
