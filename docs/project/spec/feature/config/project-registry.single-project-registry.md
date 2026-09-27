@@ -58,9 +58,10 @@ structured record. A listed folder whose
 identity another entry already holds is a conflict: the machine configuration
 keeps its list and its version, and the run reports the conflict.
 
-Until the machine configuration is stored past that migration, the registry's
-reader also answers the folders the list still holds
-(`project/policy/configuration-migrations`).
+Until the machine configuration is stored past that migration, the consumers
+that place sessions also see the folders the list still holds
+(`project/policy/configuration-migrations`); a folder not yet adopted is not a
+project to the project-acting consumers.
 
 ## Canonical fields
 
