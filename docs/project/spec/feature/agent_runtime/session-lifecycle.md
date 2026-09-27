@@ -193,6 +193,8 @@ Then the child is reported live and remains supervised
 And headless or terminal sessions are not reactivated
 ```
 
+<!-- planned-change:event-driven-agent-status -->
+
 #### UC-SL29: A silent in-turn session derives stalled
 
 ```
@@ -204,6 +206,75 @@ And any subsequent observed activity makes the same derivation report `active` a
 And a session within the stall threshold continues to report `active`
 And the authoritative-idle, terminal-lifecycle, and no-activity rules remain unchanged
 ```
+
+<!-- change:event-driven-agent-status -->
+
+#### UC-SL29: A silent in-turn session becomes stalled
+
+```
+Given a non-terminal session whose agent status is `active`
+And no tool call is open, meaning every `pre_tool_use` has its `post_tool_use`
+And no normalized agent event has arrived for five minutes
+When the liveness watchdog evaluates the session
+Then the session's agent status becomes `stalled` with reason `no_signal`
+And the next normalized agent event sets the status that event maps to
+And a session with an open tool call stays `active` however long that tool runs
+And a session whose status is `idle`, `blocked`, or `unknown` is never evaluated by this watchdog
+```
+
+<!-- /planned-change:event-driven-agent-status -->
+
+<!-- planned:event-driven-agent-status -->
+
+#### UC-SL41: Agent status follows the normalized agent events
+
+```
+Given a non-terminal agent session
+When the daemon receives a normalized agent event
+Then the session's agent status becomes the status that event maps to, with its reason
+And the status records the moment it was entered
+And the status, its reason, and that moment are stored on the session record rather than derived from timestamps on read
+
+Examples:
+  | event                 | status  | reason                        |
+  | session_start         | idle    |                               |
+  | user_prompt_submit    | active  |                               |
+  | pre_tool_use          | active  | opens the tool call           |
+  | post_tool_use         | active  | closes the tool call          |
+  | agent_blocked         | blocked | needs_input or quota_wait     |
+  | agent_stop            | idle    |                               |
+  | agent_idle            | idle    |                               |
+  | agent_turn_failed     | stalled | turn_failed                   |
+```
+
+#### UC-SL42: Every agent (re)start begins at unknown
+
+```
+Given an agent session whose agent process starts, restarts, is handed off, or is revived
+When that start is dispatched
+Then the session's agent status becomes `unknown`
+And it leaves `unknown` only on the first normalized agent event of that run
+```
+
+#### UC-SL43: A start that never proves liveness becomes stalled
+
+```
+Given an agent session whose agent status is `unknown` after a (re)start
+When 90 seconds pass without a normalized agent event
+Then the session's agent status becomes `stalled` with reason `no_start`
+And a later normalized agent event sets the status that event maps to
+```
+
+#### UC-SL44: Listings carry the agent status with its reason and since
+
+```
+Given an agent reads a session through a listing, a tail, or a snapshot
+When the response is returned
+Then it carries the session's agent status, the reason for that status, and the moment the status was entered
+And the vocabulary is `unknown`, `active`, `idle`, `blocked`, `stalled`
+```
+
+<!-- /planned:event-driven-agent-status -->
 
 
 <!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->

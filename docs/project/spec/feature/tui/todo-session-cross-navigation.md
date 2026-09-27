@@ -369,6 +369,21 @@ Then a chip showing the single letter "S" is rendered in the chip's place
 And the chip carries no person's colors and does not act as a person filter
 ```
 
+<!-- planned:event-driven-agent-status -->
+
+#### UC-XNAV-30: A session row shows an attention status as a leading dot
+
+```
+Given a session whose agent status is `blocked` or `stalled`
+When the session row title line is rendered
+Then a dot occupies the column immediately before the index
+And the dot is orange for `blocked` and red for `stalled`
+And a session whose status is `active`, `idle`, or `unknown` renders that column blank
+And the rendered line reads: • [N] ▶ claude/med <chip> /work config-public-surface-contract
+```
+
+<!-- /planned:event-driven-agent-status -->
+
 ## Known caveats
 
 - **Legacy todos show no chip.** Todos created before `created_by_principal`
