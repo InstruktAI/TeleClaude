@@ -9,8 +9,17 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from teleclaude.config.context_root import resolve_context_root
-from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS, WORKTREE_DIR
+from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS
 from teleclaude.core.project_state import resolve_project_state_root
+from teleclaude.core.worktree_layout import (
+    is_integration_worktree as _is_integration_worktree,
+)
+from teleclaude.core.worktree_layout import (
+    is_slug_worktree as _is_slug_worktree,
+)
+from teleclaude.core.worktree_layout import (
+    worktree_home_for_checkout,
+)
 
 DOC_LAYER_PATTERN = "docs/**"
 
@@ -29,6 +38,7 @@ __all__ = [
     "resolve_invocation_roots",
     "resolve_project_root",
     "resolve_workspace_root",
+    "worktree_home_root",
 ]
 
 
@@ -151,12 +161,17 @@ def is_integration_worktree(root: Path) -> bool:
     landing the doc layer. Shared home for the slug-vs-integration boundary so
     code-path checks cannot drift apart.
     """
-    return root.parent.name == WORKTREE_DIR and root.name == "_integration"
+    return _is_integration_worktree(root)
 
 
 def is_slug_worktree(root: Path) -> bool:
     """Return True when root is a todo slug worktree (trees/<slug>, not trees/_integration)."""
-    return root.parent.name == WORKTREE_DIR and not is_integration_worktree(root)
+    return _is_slug_worktree(root)
+
+
+def worktree_home_root(root: Path) -> Path | None:
+    """Return the home clone path for a slug worktree checkout."""
+    return worktree_home_for_checkout(root)
 
 
 def declaration_root(context_root: Path) -> Path:

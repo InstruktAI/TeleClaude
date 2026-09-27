@@ -9,12 +9,18 @@ import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.next_machine.worktree_home import (
+    WorktreeHomeCleanupError,
+    move_worktree_home,
+    release_worktree_home,
+)
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.paths import STORAGE_DIR
 
@@ -25,6 +31,7 @@ GitNameSetFailureHandler = Callable[[list[str], str], None]
 _WORKTREE_REMOVAL_FAILED = "worktree removal failed for %s: %s"
 _LEGACY_WORKTREE_TRASH_DIR = ".trash"
 _LEGACY_TRASH_REMOVAL_FAILED = "legacy worktree trash removal failed for %s: %s"
+_WORKTREE_HOME_RELEASE_FAILED = "worktree home release failed for %s: %s"
 
 
 def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tuple[int, str, str]:
@@ -87,9 +94,19 @@ _STORAGE_ROOT = STORAGE_DIR
 class TodoSlugSurfaceMove:
     """A completed physical rename leg."""
 
-    surface: str
+    surface: TodoSlugSurface
     old: Path | str
     new: Path | str
+
+
+class TodoSlugSurface(StrEnum):
+    """Closed vocabulary for physical todo-slug rename surfaces."""
+
+    REMOTE_BRANCH = "remote_branch"
+    WORKTREE = "worktree"
+    HOME = "home"
+    LOCAL_BRANCH = "local_branch"
+    WORKSPACE = "workspace"
 
 
 def _path_exists(path: Path) -> bool:
@@ -134,7 +151,7 @@ def move_todo_slug_surfaces(cwd: str, old_slug: str, new_slug: str) -> list[Todo
             if rc != 0:
                 msg = f"git push new rename ref failed for {old_slug!r}->{new_slug!r}: {stderr.strip()}"
                 raise RuntimeError(msg)
-            moves.append(TodoSlugSurfaceMove(surface="remote_branch", old=old_slug, new=new_slug))
+            moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.REMOTE_BRANCH, old=old_slug, new=new_slug))
 
         old_worktree = project_root / WORKTREE_DIR / old_slug
         new_worktree = project_root / WORKTREE_DIR / new_slug
@@ -149,20 +166,23 @@ def move_todo_slug_surfaces(cwd: str, old_slug: str, new_slug: str) -> list[Todo
                     raise RuntimeError(msg)
             else:
                 _move_path(old_worktree, new_worktree)
-            moves.append(TodoSlugSurfaceMove(surface="worktree", old=old_worktree, new=new_worktree))
+            moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.WORKTREE, old=old_worktree, new=new_worktree))
+
+        if move_worktree_home(project_root, old_slug, new_slug):
+            moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.HOME, old=old_slug, new=new_slug))
 
         if _project_has_git(project_root) and _local_branch_exists(cwd, old_slug):
             rc, _, stderr = _run_git_cmd(["branch", "-m", old_slug, new_slug], cwd=cwd, timeout=10)
             if rc != 0:
                 msg = f"git branch rename failed for {old_slug!r}->{new_slug!r}: {stderr.strip()}"
                 raise RuntimeError(msg)
-            moves.append(TodoSlugSurfaceMove(surface="local_branch", old=old_slug, new=new_slug))
+            moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.LOCAL_BRANCH, old=old_slug, new=new_slug))
 
         old_workspace = project_root / "workspace" / old_slug
         new_workspace = project_root / "workspace" / new_slug
         if _path_exists(old_workspace):
             _move_path(old_workspace, new_workspace)
-            moves.append(TodoSlugSurfaceMove(surface="workspace", old=old_workspace, new=new_workspace))
+            moves.append(TodoSlugSurfaceMove(surface=TodoSlugSurface.WORKSPACE, old=old_workspace, new=new_workspace))
     except Exception:
         rollback_todo_slug_surfaces(cwd, moves)
         raise
@@ -175,9 +195,9 @@ def rollback_todo_slug_surfaces(cwd: str, moves: list[TodoSlugSurfaceMove]) -> N
     project_root = Path(cwd)
     for move in reversed(moves):
         try:
-            if move.surface == "workspace":
+            if move.surface is TodoSlugSurface.WORKSPACE:
                 _rollback_path(Path(move.old), Path(move.new))
-            elif move.surface == "worktree":
+            elif move.surface is TodoSlugSurface.WORKTREE:
                 if _project_has_git(project_root):
                     rc, _, stderr = _run_git_cmd(
                         ["worktree", "move", str(move.new), str(move.old)], cwd=cwd, timeout=10
@@ -187,9 +207,11 @@ def rollback_todo_slug_surfaces(cwd: str, moves: list[TodoSlugSurfaceMove]) -> N
                         raise RuntimeError(msg)
                 else:
                     _rollback_path(Path(move.old), Path(move.new))
-            elif move.surface == "local_branch":
+            elif move.surface is TodoSlugSurface.HOME:
+                move_worktree_home(project_root, str(move.new), str(move.old))
+            elif move.surface is TodoSlugSurface.LOCAL_BRANCH:
                 _run_git_cmd(["branch", "-m", str(move.new), str(move.old)], cwd=cwd, timeout=10)
-            elif move.surface == "remote_branch":
+            elif move.surface is TodoSlugSurface.REMOTE_BRANCH:
                 _run_git_cmd(["push", "origin", "--delete", str(move.new)], cwd=cwd, timeout=5)
         except Exception as exc:  # pragma: no cover - rollback logging is best effort
             logger.warning("rename rollback failed for %s: %s", move.surface, exc)
@@ -275,6 +297,11 @@ def cleanup_delivered_slug(
         except OSError as exc:
             logger.warning(_WORKTREE_REMOVAL_FAILED, slug, exc)
         _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=cwd, timeout=None)
+
+    try:
+        release_worktree_home(project_root, slug)
+    except WorktreeHomeCleanupError as exc:
+        logger.warning(_WORKTREE_HOME_RELEASE_FAILED, slug, exc, exc_info=True)
 
     # 2. Delete local branch
     _run_git_cmd(["branch", "-D", branch], cwd=cwd)

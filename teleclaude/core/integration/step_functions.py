@@ -79,6 +79,7 @@ from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import build_git_hook_env
 from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt
+from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.quality.gate import LintGateOutcome, run_lint_gate
@@ -187,6 +188,7 @@ def _step_idle(
     """IDLE: sweep stale artifacts, scan for finalize-ready candidates, acquire lease, proceed to merge."""
     # Sweep worktrees for already-delivered slugs left by crashed integrations
     _sweep_stale_artifacts(cwd)
+    reconcile_worktree_homes(Path(cwd), at_startup=False)
 
     exclude = checkpoint.candidate_slug
     parked_slugs = {parked["slug"] for parked in checkpoint.parked}

@@ -10,6 +10,7 @@ from enum import Enum, StrEnum
 from typing import Final
 
 from teleclaude import agent_registry
+from teleclaude.core.worktree_layout import WORKTREE_DIR as WORKTREE_DIR
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
@@ -714,9 +715,6 @@ CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),
     actions=("install",),
 )
-# Worktree directory name (git worktrees live at {project}/trees/{slug})
-WORKTREE_DIR = "trees"
-
 # Misc markers / defaults
 RELATIVE_CURRENT = "."
 TC_WORKDIR = "TC WORKDIR"
