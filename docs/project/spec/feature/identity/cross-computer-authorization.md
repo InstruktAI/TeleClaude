@@ -41,6 +41,9 @@ Deciding relayed commands is a capability computers advertise to each other
 that does not advertise it, the caller's computer relays nothing it cannot have
 decided: a caller holding a platform role on the caller's computer is served as
 before, and any other caller is refused with a failure that names that computer.
+In the other direction, a read from a computer that does not advertise it is
+answered as it was before until that computer does; a caller's read without a
+principal from a computer that advertises it is refused.
 
 ## Canonical fields
 
@@ -132,6 +135,7 @@ Given a computer that does not advertise that it decides relayed commands
 When a person holding no platform role runs a command naming that computer
 Then the command is refused on the caller's computer, and the refusal names that computer
 And a person holding a platform role on the caller's computer is served by that computer as before
+And a transcript, pane or operation read that such a computer sends to an upgraded one is answered as before
 ```
 
 ## Known caveats

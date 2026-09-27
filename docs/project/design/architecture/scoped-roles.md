@@ -89,7 +89,9 @@ session's role and its help-desk confinement in
    (`project/spec/feature/session_mirrors/cross-computer-history-federation`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
-   request is never an input. The caller's computer decides only what it alone
+   request is never an input, except in a read from a computer that does not
+   advertise that it decides relayed acts, which is answered as it was before
+   (Failure modes). The caller's computer decides only what it alone
    holds about its own caller: that the caller is identified, that a session
    caller's system role is admitted by the command's agent band (invariant 8),
    and that the caller's dispatch chain permits the act; each narrows and none
@@ -157,6 +159,7 @@ company scope.
 | A relayed act reaches another computer carrying no principal               | The target refuses it.                                                                                                                                                                                                                                                                                                                                       |
 | The target holds no role for the relayed principal that reaches the object | The effective role there is `customer`; the act proceeds only if the command admits `customer`.                                                                                                                                                                                                                                                              |
 | The target computer is unreachable or cannot resolve its facts             | The act fails and is reported for that computer; the caller's computer decides nothing in its place.                                                                                                                                                                                                                                                         |
+| A computer that does not advertise that it decides relayed acts sends a read | The target answers it as it answered that read before, until that computer advertises the capability; a caller read without a principal from a computer that advertises it is refused.                                                                                                                                   |
 | The target computer does not advertise that it decides relayed acts        | The caller's computer relays the act only for a caller holding a platform role on the caller's computer, as before; any other caller is refused, and the refusal names that computer.                                                                                                                                                                      |
 <!-- /planned-change:relay-scoped-role-decisions -->
 
