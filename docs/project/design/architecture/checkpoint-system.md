@@ -91,15 +91,12 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 The effective action model is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). The base contains disjoint checkpoint and maintenance registries plus one binding table. Base bindings attach per subscribed capability (`project/spec/feature/config/project-capability-manifest`): `docs: enabled` and `agents: enabled` activate their fixed scopes (`docs/**`; `agents/**`, `.agents/**`, `**/AGENTS.master.md`) carrying artifact-pipeline maintenance; `code: enabled` activates toolchain maintenance and the slug-parameterized log judgment on changed code (`instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig`, superseding the hardcoded command in Invariant 15). A binding names the action a changed path owes without regard to which registry declares it. The overlay extends each registry with the project's own actions. Unreadable project config fails open to both base registries and the base bindings — the fail-open posture of Invariant 13 extended to configuration.
 
 The base registries are unconditionally present in every merged model (the
-maintenance registry is not capability-gated; only its bindings are). The
-checkpoint registry owns `log-check` and `test`; the maintenance registry owns
-`install` and `sync`. Their `run`/`command` text, `main_only`/`precedence`
-values, and default bindings are owned by `teleclaude/constants.py`
-(`CHECKPOINT_BASE_ACTIONS`, `CHECKPOINT_BASE_MAINTENANCE`,
-`CHECKPOINT_BASE_*_BINDING`) — read there for the current values rather than
-this doc. An overlay binding referencing any of these four ids already
-resolves with no project-side declaration; a project only ever extends _which
-paths_ trigger one.
+maintenance registry is not capability-gated; only its bindings are). Their
+membership, `run`/`command` text, `main_only`/`precedence` values, and default
+bindings are owned by `teleclaude/constants.py` (`CHECKPOINT_BASE_ACTIONS`,
+`CHECKPOINT_BASE_MAINTENANCE`, `CHECKPOINT_BASE_*_BINDING`) — read there before
+declaring a new action, rather than assuming a project overlay's own binding
+to an unfamiliar id is undeclared.
 
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, and `precedence`; it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
 
