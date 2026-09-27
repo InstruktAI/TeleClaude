@@ -251,6 +251,16 @@ for repository-specific names.
 
 Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 
+<!-- planned:single-project-registry -->
+Optional `name` and `description` describe the person home as a place for
+sessions. They are independent of the global person record's name and are
+carried from the former trusted-directory entry where the corresponding
+field is absent.
+The home name takes precedence for session placement; without it, the global
+person name remains the display name, falling back to the slug. The home's
+description is shown when present.
+<!-- /planned:single-project-registry -->
+
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }

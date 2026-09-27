@@ -23,9 +23,12 @@ directory onto its project, and the Discord project forums — enumerate every
 entry.
 
 An entry's identity is its slug: a project's own project slug, which
-initialization derives from the folder name, or a home's tier slug. Its display
-name is the project name it declares, and its slug when it declares none.
-Identities are unique among a machine's entries.
+initialization derives from the folder name, or a home's tier slug. A project's
+display name is its declared project name, then its slug. A person home's
+display name is its declared home name, then the global person name, then its
+slug. A company home's display name is its declared name, then its slug. Each
+entry's description comes from its own configuration when present. Identities
+are unique among a machine's entries.
 
 Adoption is what writes the registry, and nothing else does: no deployment or
 synchronization path adds, removes, or rewrites an entry. Adoption is reached
@@ -49,8 +52,8 @@ A machine configuration that still lists trusted directories has that list
 folded into the registry by a configuration migration, on every machine that
 carries one. The migration adopts each listed folder that exists, in list order,
 after the entries the registry already holds. It carries each entry's name and
-description into the adopted project's configuration where that configuration
-declares none, and it hands each entry's former name to the Discord reflection
+description into the adopted folder's tier configuration where the corresponding
+field is absent, and it hands each entry's former name to the Discord reflection
 hand-off so the forum that name keyed stays bound to the same folder
 (`project/spec/feature/integration/discord-admin-reflection-state`). A listed
 folder that no longer exists is dropped and named in the migration run's
@@ -69,7 +72,8 @@ project to the project-acting consumers.
 - **Kind.** The tier the folder's own configuration declares: project, person,
   or company.
 - **Identity.** The entry's slug, unique among the machine's entries.
-- **Display name.** The declared project name, else the slug.
+- **Display name.** The entry's declared tier-local name, then the global person
+  name for a person home, then the slug.
 - **Order.** Entries keep the order in which they were adopted. Consumers that
   present entries follow it.
 - **Writer.** Adoption only. Idempotent, and never performed by a deployment or
@@ -108,7 +112,7 @@ And one listed folder holds neither a git repository nor a TeleClaude configurat
 When a migration run reaches that machine configuration
 Then the registry lists every listed folder that exists, in list order after the entries it already held
 And the folder that held nothing is a project whose repository is on main
-And each adopted project's configuration carries its listed name and description where it declared none
+And each adopted folder's tier configuration carries its listed name and description where the corresponding field was absent
 And an agent reading the machine configuration finds no trusted-directory list
 ```
 
