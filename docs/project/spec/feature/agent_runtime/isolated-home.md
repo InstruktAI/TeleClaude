@@ -34,7 +34,8 @@ unset, empty, or names a live home by any spelling — the home the installation
 of the worktree's owning checkout recorded, or the default home — and refuses
 at startup, naming the clone, when the clone is missing. It never falls back to a live home. Any other home its caller
 names explicitly is used as named, a relative name meaning the same location it
-meant where the caller invoked the command. Code loaded from any other checkout —
+meant where the caller invoked the command. While the owning checkout's installation has recorded
+no home, worktree code treats every named home as live. Code loaded from any other checkout —
 the installed canonical checkout, the integration worktree — resolves its home
 as before, so agent sessions, hooks, installed commands, and the daemon keep
 operating the live platform and their environment is unchanged.
