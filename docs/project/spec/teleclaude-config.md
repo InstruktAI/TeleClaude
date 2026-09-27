@@ -29,7 +29,11 @@ authoritative model definitions.
 
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 
+<!-- planned-change:single-project-registry -->
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `creds`, `subscriptions`, `interests`, `settings` |
+<!-- change:single-project-registry -->
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings` |
+<!-- /planned-change:single-project-registry -->
 
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members` (folder-discovered; composed alongside `project`) |
 
