@@ -16,7 +16,8 @@ from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.checkout_grading import (
     CheckoutGradingDecision,
     resolve_checkout_grading_decision,
-    run_subject_checkout_lint,
+    run_subject_checkout_guardrails,
+    subject_checkout_grading_environment,
 )
 from teleclaude.quality.lint import LintRunner
 from teleclaude.runtime.command_runner import run_process_group_command
@@ -35,7 +36,6 @@ _MAKE_VARIABLE_TEMPLATE = "{key}={value}"
 _FILES_FROM_ARGUMENT_TEMPLATE = "FILES_FROM={files_from}"
 _NATIVE_LINT_FAILURE_TEMPLATE = "Native lint failed with exit code {exit_code}."
 _GUARDRAILS_FAILURE_TEMPLATE = "Guardrails failed with exit code {exit_code}."
-_DELEGATED_LINT_FAILURE_TEMPLATE = "{execution_root}'s own telec code lint exited {exit_code}."
 _DELEGATED_GUARDRAILS_FAILURE_TEMPLATE = (
     "{execution_root}'s own guardrail lane (tools/lint/checkout_guardrails.py) exited {exit_code}."
 )
@@ -70,13 +70,10 @@ class LintGateResult:
     native_exit_code: int | None
     guardrails_exit_code: int | None
     failure_reason: str | None = None
-    delegated_exit_code: int | None = None
 
     @property
     def exit_code(self) -> int:
-        """Return a delegated checkout's own exit status first, else the existing CLI precedence."""
-        if self.delegated_exit_code not in (None, 0):
-            return self.delegated_exit_code
+        """Return the guardrail status first, then the native status."""
         if self.guardrails_exit_code not in (None, 0):
             return self.guardrails_exit_code
         if self.native_exit_code not in (None, 0):
@@ -114,10 +111,10 @@ def run_lint_gate(
     ``request_subject_checkout_grading`` is off by default: the legs run in this
     process against ``execution_root``. When enabled, grading is handed to
     ``execution_root``'s own code when it is a TeleClaude checkout other than the
-    running installation: its own ``telec code lint`` for a full leg selection, or
-    an installed entry that starts its own guardrail lane alone
-    (``tools/lint/checkout_guardrails.py``) for a guardrails-only selection. A
-    ``quality_gate_checkout_grading`` record is emitted naming which code graded it.
+    running installation. The native leg runs that checkout's project-native lint
+    under an isolated environment, and the guardrail lane runs through the installed
+    entry (``tools/lint/checkout_guardrails.py``). A
+    ``quality_gate_checkout_grading`` record names which code graded it.
     """
     execution_head = None
     if subject_sha is not None:
@@ -141,30 +138,37 @@ def run_lint_gate(
         return _build_in_process_result(subject_sha, execution_head, native_exit_code, guardrails_exit_code)
 
     decision = resolve_checkout_grading_decision(execution_root)
-    # The guardrail lane is the only leg that needs the graded checkout's own code
-    # (gate.run_make_target's native leg is already a cwd-scoped `make lint` subprocess
-    # that imports no installed `teleclaude`). A native-only selection has no caller
-    # today and is not delegated either: it runs in-process below, exactly as today.
+    # The guardrail lane is the only leg that loads first-party code. The native leg
+    # runs the subject checkout's own project-native lint through its existing make target.
+    # A native-only selection runs in-process, exactly as before.
     if decision is CheckoutGradingDecision.SUBJECT_CHECKOUT and QualityGateLeg.GUARDRAILS in selection:
-        include_native = QualityGateLeg.NATIVE in selection
-        delegated_exit_code = run_subject_checkout_lint(execution_root, files, include_native=include_native)
+        with subject_checkout_grading_environment(execution_root) as grading_env:
+            native_exit_code, _ = _run_in_process_legs(
+                execution_root,
+                files,
+                format_scoped,
+                grading_env,
+                selection & frozenset({QualityGateLeg.NATIVE}),
+            )
+            guardrails_exit_code = run_subject_checkout_guardrails(execution_root, files, grading_env)
         result = LintGateResult(
-            outcome=LintGateOutcome.PASSED if delegated_exit_code == 0 else LintGateOutcome.FAILED,
+            outcome=(
+                LintGateOutcome.PASSED
+                if native_exit_code in (None, 0) and guardrails_exit_code == 0
+                else LintGateOutcome.FAILED
+            ),
             subject_sha=subject_sha,
             execution_head=execution_head,
-            native_exit_code=None,
-            guardrails_exit_code=None,
-            delegated_exit_code=delegated_exit_code,
-            failure_reason=_delegated_lint_failure_reason(
-                execution_root, delegated_exit_code, include_native=include_native
-            ),
+            native_exit_code=native_exit_code,
+            guardrails_exit_code=guardrails_exit_code,
+            failure_reason=_subject_checkout_failure_reason(execution_root, native_exit_code, guardrails_exit_code),
         )
     else:
         native_exit_code, guardrails_exit_code = _run_in_process_legs(
             execution_root, files, format_scoped, child_env, selection
         )
         result = _build_in_process_result(subject_sha, execution_head, native_exit_code, guardrails_exit_code)
-    _log_checkout_grading(execution_root, decision, selection, result.exit_code)
+    _log_checkout_grading(execution_root, decision, selection, result)
     return result
 
 
@@ -215,18 +219,27 @@ def _build_in_process_result(
     )
 
 
-def _delegated_lint_failure_reason(execution_root: Path, exit_code: int, *, include_native: bool) -> str | None:
-    if exit_code == 0:
-        return None
-    template = _DELEGATED_LINT_FAILURE_TEMPLATE if include_native else _DELEGATED_GUARDRAILS_FAILURE_TEMPLATE
-    return template.format(execution_root=execution_root, exit_code=exit_code)
+def _subject_checkout_failure_reason(
+    execution_root: Path,
+    native_exit_code: int | None,
+    guardrails_exit_code: int | None,
+) -> str | None:
+    reasons: list[str] = []
+    native_reason = _lint_failure_reason(native_exit_code, None)
+    if native_reason is not None:
+        reasons.append(native_reason)
+    if guardrails_exit_code not in (None, 0):
+        reasons.append(
+            _DELEGATED_GUARDRAILS_FAILURE_TEMPLATE.format(execution_root=execution_root, exit_code=guardrails_exit_code)
+        )
+    return _FAILURE_REASON_SEPARATOR.join(reasons) or None
 
 
 def _log_checkout_grading(
     execution_root: Path,
     decision: CheckoutGradingDecision,
     selection: frozenset[QualityGateLeg],
-    exit_code: int,
+    result: LintGateResult,
 ) -> None:
     logger.info(
         _QUALITY_GATE_CHECKOUT_GRADING_EVENT,
@@ -235,7 +248,9 @@ def _log_checkout_grading(
         runner=decision.runner,
         reason=decision.reason,
         selection=sorted(selection),
-        exit_code=exit_code,
+        exit_code=result.exit_code,
+        native_exit_code=result.native_exit_code,
+        guardrails_exit_code=result.guardrails_exit_code,
         session_id=get_session_id(),
     )
 
