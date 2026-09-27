@@ -193,7 +193,8 @@ happened.
 `--autostash` argument (including Git's accepted abbreviations), per-command
 autoStash config overrides, per-command config includes, and inherited
 autoStash or include parameters are refused before Git runs;
-`--no-autostash` remains allowed.
+`--no-autostash` remains allowed. A managed session refuses a malformed
+inherited `GIT_CONFIG_COUNT` before choosing a repository.
 `git add -A`/`git add --all`/`git add .` are blocked on main for
 non-integrators regardless of the table above — staging on main always
 names files explicitly.

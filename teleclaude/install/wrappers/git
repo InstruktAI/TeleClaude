@@ -274,6 +274,17 @@ for _arg in "$@"; do
     esac
 done
 
+# Git uses numeric indexes for GIT_CONFIG_KEY/VALUE pairs, while Bash treats an
+# unvalidated count as arithmetic. Reject non-decimal or unbounded counts before
+# the repository lookup or the forced autoStash values can use them.
+_inherited_config_count="${GIT_CONFIG_COUNT:-0}"
+if [[ ! "$_inherited_config_count" =~ ^(0|[1-9][0-9]{0,2})$ ]]; then
+    _log_block invalid_git_config_count
+    echo "ERROR: GIT_CONFIG_COUNT must be a decimal count from 0 to 999 in agent sessions." >&2
+    exit 1
+fi
+export GIT_CONFIG_COUNT="$_inherited_config_count"
+
 # ── Not a telec-registered project → transparent passthrough ─────────────────
 # teleclaude.yml sits at the repo root next to .git. When the working tree this
 # command operates on carries no teleclaude.yml, the repo is not telec-managed:
