@@ -52,37 +52,6 @@ before the declaration is validated.
 
 ### 3. Register in teleclaude.yml
 
-<!-- planned-change:job-name-identity -->
-Declare a job as an entry of the `jobs:` list with a `when` schedule and exactly one execution
-pointer — the pointer present is the execution class and the job's identity; there is no name
-key and no `type` field:
-
-```yaml
-jobs:
-  - when:
-      at: '06:00' # or: every: 60m
-    job: <procedure snippet id> # agent job — OR `script: jobs/{job_slug}.py` for a script job
-    agent: [claude, codex, gemini] # agent jobs only: ordered preference, resolved through availability
-    thinking_mode: fast | med | slow # agent jobs only
-```
-
-To publish a job for every project, declare it the same way in the `jobs:` registry list of
-the global `~/.teleclaude/teleclaude.yml`. A project gets nothing by default; it
-**subscribes** with a `jobs` entry carrying the same execution pointer, and that entry may
-override any setting for that project — its own `when`, `agent`, `thinking_mode`, `timeout` —
-or set `enabled: false` to unsubscribe. Whatever it leaves unset falls back to the published
-defaults, and the job runs inside the subscribing project.
-
-The `job:` value is the procedure's canonical snippet ID and is the agent job's
-identity everywhere: dispatch, run state, the run directory, and the structured
-report all use it. A global-registry declaration uses an ID that resolves from
-every project (global-scope or slug-prefixed); a project-local declaration may
-use its own `project/procedure/...` ID.
-
-### 4. For script jobs: write the script
-
-The module's stem is the script job's identity in run state, the run directory, and the runner's job filter.
-<!-- change:job-name-identity -->
 Declare a job as an entry of the `jobs:` list with a `name`, a `when` schedule, and exactly
 one execution pointer — the pointer present is the execution class; there is no `type` field:
 
@@ -115,7 +84,6 @@ slug-prefixed); a project-local declaration may use its own
 `project/procedure/...` ID.
 
 ### 4. For script jobs: write the script
-<!-- /planned-change:job-name-identity -->
 
 Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose
 `run(context)` returns a `JobResult`, and expose it as a module-level `JOB` instance. The
@@ -130,19 +98,11 @@ debuggable standalone.
 Commit the change. The commit gate validates:
 
 - Snippet schema: required H2 sections per taxonomy type.
-<!-- planned-change:job-name-identity -->
-- Job config: schedule shape, execution pointer, and — for an agent job — that the
-  `job:` pointer resolves to a delivered procedure snippet.
-
-A declaration authored in the global registry is validated through a project that
-subscribes its execution pointer, where the effective set resolves the published
-<!-- change:job-name-identity -->
 - Job config: name, schedule shape, execution pointer, and — for an agent job — that
   the `job:` pointer resolves to a delivered procedure snippet.
 
 A declaration authored in the global registry is validated through a project that
 subscribes to its name, where the effective set resolves the published
-<!-- /planned-change:job-name-identity -->
 declaration onto that project's own: commit from that project root and let its
 publication run. The global registry root is not a publication target, so
 publication there validates nothing.

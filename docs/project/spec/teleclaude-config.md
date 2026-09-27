@@ -123,11 +123,7 @@ business:
   publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
     - slug: string # required: the published domain
       trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
-<!-- planned-change:job-name-identity -->
-jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, identified by execution pointer; a subscription overrides any setting it carries; no name key (project/spec/feature/config/job-declaration-model)
-<!-- change:job-name-identity -->
 jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (project/spec/feature/config/job-declaration-model)
-<!-- /planned-change:job-name-identity -->
 hooks:
   inbound: mapping[string, InboundSourceConfig]
   subscriptions: list[SubscriptionConfig]

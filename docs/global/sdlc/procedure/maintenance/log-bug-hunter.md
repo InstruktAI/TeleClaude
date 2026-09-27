@@ -13,14 +13,9 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
 
 ## Preconditions
 
-<!-- planned-change:job-name-identity -->
-- The runner started this session in the target project with this procedure's
-  snippet ID as the job identity.
-<!-- change:job-name-identity -->
 - The runner started this session in the target project for a job declaration
   whose `job` pointer names this procedure; the declaration's `name` is the job
   identity.
-<!-- /planned-change:job-name-identity -->
 - The project's log name and the job's schedule are available from its configuration.
 - `instrukt-ai-logs`, `telec bugs suppressions`, `telec bugs list`,
   `telec todo list`, `telec todo artifacts read`, `telec docs index`, `git`,
@@ -130,14 +125,9 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
 
 - A bug filed for each observed error that passes the causal gate and is neither suppressed
   nor already tracked.
-<!-- planned-change:job-name-identity -->
-- A Markdown report named by the run timestamp in the job's run directory:
-  `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/`.
-<!-- change:job-name-identity -->
 - A Markdown report named by the run timestamp in the job's run directory under
   `JOBS_DIR`, keyed by the runner's project-qualified `<project>:<name>` identity.
   Use the same run directory that `telec jobs report <name>` writes to.
-<!-- /planned-change:job-name-identity -->
 
 Create the directory when needed. Each report carries:
 
