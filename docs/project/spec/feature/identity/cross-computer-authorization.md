@@ -96,7 +96,8 @@ When it carries no principal
 Then that computer refuses it before acting, and reads no role it carries
 And the refusal is reported to the caller for that computer
 And the refusal says to update the calling computer or run the command on the computer that holds the object
-And a command of a kind a caller can send, carrying no principal and not marked by the sending computer as its own forward, is refused the same way, and its sender sees that command fail
+And a command of a kind a caller can send, carrying no principal and not marked by the sending computer as its own forward, is refused the same way
+And the sending computer's daemon receives that refusal as a failed command, whether a person's request or its own forwarding sent it
 ```
 
 #### UC-XCA5: An unreachable computer fails the command for that computer
