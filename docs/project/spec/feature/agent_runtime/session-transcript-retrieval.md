@@ -50,6 +50,7 @@ And `tail_chars`: bounds the FALLBACK pane/session output character budget only 
 And entry index + file index on each message entry identify the source position (which file in the chain, which entry within it) so downstream callers can dedupe across reads
 ```
 
+<!-- planned-change:reviewer-claimant-input-corroboration -->
 #### UC-STR5: Transcript files missing or yield nothing
 
 ```
@@ -60,8 +61,25 @@ And if the resulting payload's messages field is a non-empty string, packages it
 And otherwise returns an empty messages list
 And status/timestamp/agent-status fields are still populated from session-ledger metadata
 ```
+<!-- change:reviewer-claimant-input-corroboration -->
+#### UC-STR5: Transcript files missing or yield nothing
 
+```
+Given the chain is empty OR every file in the chain is missing on disk OR parsing produces zero structured blocks
+And the request does not withhold terminal observation
+When the transcript-retrieval flow discovers the empty result
+Then it dispatches a get-session-data command (session id, since timestamp = since, tail chars = supplied positive value, otherwise default 10000) through the command service
+And if the resulting payload's messages field is a non-empty string, packages it as a SINGLE message entry (role="assistant", type="text", text=<that string>, timestamp=None, entry index=0, file index=0)
+And otherwise returns an empty messages list
+And status/timestamp/agent-status fields are still populated from session-ledger metadata
+```
+<!-- /planned-change:reviewer-claimant-input-corroboration -->
+
+<!-- planned-change:reviewer-claimant-input-corroboration -->
 The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block.
+<!-- change:reviewer-claimant-input-corroboration -->
+The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block. A request that withholds terminal observation — the transcript read of a worker caller, whose reach excludes terminals (`project/spec/feature/identity/command-clearance`, Claim-scoped transcript read) — skips this fallback and returns an empty messages list.
+<!-- /planned-change:reviewer-claimant-input-corroboration -->
 
 #### UC-STR1: Terminal session agent status
 
