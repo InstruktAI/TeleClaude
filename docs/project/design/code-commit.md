@@ -190,8 +190,9 @@ happened.
 
 **Wrapper stash rule:** For code-capable checkouts, `rebase.autoStash`,
 `merge.autoStash`, and `pull.autoStash` are forced off. An explicit
-`--autostash` argument, per-command autoStash config overrides,
-and inherited autoStash config parameters are refused before Git runs;
+`--autostash` argument (including Git's accepted abbreviations), per-command
+autoStash config overrides, and inherited autoStash config parameters are
+refused before Git runs;
 `--no-autostash` remains allowed.
 `git add -A`/`git add --all`/`git add .` are blocked on main for
 non-integrators regardless of the table above — staging on main always

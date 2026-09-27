@@ -348,17 +348,30 @@ _role="$_system_role"
 
 # Git's explicit flag overrides the autoStash config values disabled above.
 # Scan the full argument vector: an unrecognized global option may make the
-# subcommand detector mistake its value for the subcommand.
+# subcommand detector mistake its value for the subcommand. Git accepts
+# unambiguous long-option prefixes: merge and pull accept --au, while rebase
+# accepts --autost. Do not catch --auto on unrelated commands such as git gc.
 if [ "$_code_enabled" -eq 1 ]; then
+    _has_merge_or_pull=0
     for _arg in "$@"; do
         case "$_arg" in
-            --autostash|--autostash=*)
-                _log_block autostash_explicit
-                echo "ERROR: Explicit '--autostash' is prohibited in agent sessions." >&2
-                echo "       Resolve or commit worktree changes before replaying history." >&2
-                exit 1
+            merge|pull) _has_merge_or_pull=1 ;;
+        esac
+    done
+    for _arg in "$@"; do
+        _autostash_option=0
+        case "$_arg" in
+            --autost*) _autostash_option=1 ;;
+            --au*)
+                [ "$_has_merge_or_pull" -eq 1 ] && _autostash_option=1
                 ;;
         esac
+        if [ "$_autostash_option" -eq 1 ]; then
+            _log_block autostash_explicit
+            echo "ERROR: An autostash option is prohibited in agent sessions." >&2
+            echo "       Resolve or commit worktree changes before replaying history." >&2
+            exit 1
+        fi
     done
 fi
 
