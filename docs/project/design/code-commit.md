@@ -188,8 +188,10 @@ produce a delivery-reverting commit on origin/main. `--confirmed` is
 the integrator's deliberate ratification that the inspection has
 happened.
 
-**Wrapper defaults:** `rebase.autoStash` and
-`merge.autoStash` are forced off on every wrapper-driven git call.
+**Wrapper stash rule:** `rebase.autoStash`, `merge.autoStash`, and
+`pull.autoStash` are forced off on every wrapper-driven git call. An explicit
+`--autostash` on merge, rebase, or pull and per-command autoStash config
+overrides are refused before Git runs; `--no-autostash` remains allowed.
 `git add -A`/`git add --all`/`git add .` are blocked on main for
 non-integrators regardless of the table above — staging on main always
 names files explicitly.

@@ -8,7 +8,8 @@
 # Permission model for agent sessions (see docs/project/design/code-commit.md
 # for the full operations matrix):
 #   DESTRUCTIVE  — blocked for all agent roles, no override
-#                  (stash, clean, switch, reset --hard/--merge/--keep,
+#                  (stash, merge/rebase/pull --autostash, clean, switch,
+#                   reset --hard/--merge/--keep,
 #                   branch-switching checkout)
 #   PROTECTED    — integrator only (push on main)
 #                  REPLAY  (cherry-pick/rebase/merge on main) — integrator role
@@ -121,13 +122,15 @@ if [ "${TELECLAUDE_TRUSTED_TOOL:-}" = "1" ]; then
 fi
 
 _real_git() {
-    # Disable all auto-stash for every git invocation through the wrapper.
+    # Disable config-driven auto-stash for every git invocation through the wrapper.
     local _count="${GIT_CONFIG_COUNT:-0}"
-    export GIT_CONFIG_COUNT=$((_count + 2))
+    export GIT_CONFIG_COUNT=$((_count + 3))
     export "GIT_CONFIG_KEY_${_count}=rebase.autoStash"
     export "GIT_CONFIG_VALUE_${_count}=false"
     export "GIT_CONFIG_KEY_$((_count + 1))=merge.autoStash"
     export "GIT_CONFIG_VALUE_$((_count + 1))=false"
+    export "GIT_CONFIG_KEY_$((_count + 2))=pull.autoStash"
+    export "GIT_CONFIG_VALUE_$((_count + 2))=false"
 
     # Per-invocation id correlates stderr and end/error lines in WRAPPER_LOG
     # across concurrent git invocations.
@@ -343,12 +346,47 @@ fi
 
 _role="$_system_role"
 
+# Git's explicit flag overrides the autoStash config values disabled above.
+# Refuse it before Git can create a repository-wide stash during a replay.
+if [ "$_code_enabled" -eq 1 ]; then
+    case "$_subcmd" in
+        merge|rebase|pull)
+            for _arg in "$@"; do
+                case "$_arg" in
+                    --autostash|--autostash=*)
+                        _log_block autostash_explicit
+                        echo "ERROR: 'git $_subcmd --autostash' is prohibited in agent sessions." >&2
+                        echo "       Resolve or commit worktree changes before replaying history." >&2
+                        exit 1
+                        ;;
+                esac
+            done
+            ;;
+    esac
+fi
+
 # ── Block `-c alias.*` config redefinition ───────────────────────────────────
 # `git -c alias.X=stash X` would otherwise bypass every subcmd-name-based block
 # (the wrapper sees `X` as `_subcmd`, not `stash`). Agents have no legitimate
 # use for per-invocation alias redefinition.
 _prev_arg=""
 for _arg in "$@"; do
+    _config_override=""
+    case "$_prev_arg" in
+        -c|--config-env) _config_override="$_arg" ;;
+    esac
+    case "$_arg" in
+        -c?*) _config_override="${_arg#-c}" ;;
+        --config-env=*) _config_override="${_arg#--config-env=}" ;;
+    esac
+    case "$_config_override" in
+        *.[Aa][Uu][Tt][Oo][Ss][Tt][Aa][Ss][Hh]=*)
+            _log_block autostash_config_override
+            echo "ERROR: Per-command autoStash configuration is prohibited in agent sessions." >&2
+            echo "       Resolve or commit worktree changes before replaying history." >&2
+            exit 1
+            ;;
+    esac
     case "$_prev_arg:$_arg" in
         -c:alias.*)
             _subcmd="config"
