@@ -18,17 +18,15 @@ it.
 A session that is not rooted in a slug worktree has no worktree home, and its
 environment carries none.
 
-The clone is a Git repository holding the home repository's tracked material
-that the home's retained set keeps — the project registry and the global,
-person, and company tier documents — including tracked working-tree edits
-present when it is provisioned. It carries neither the home repository's
-history nor a remote. When the live home's tracked content has changed, the
-next dispatch into the worktree refreshes the clone; writes made inside the
-clone are disposable. Databases, credentials, secrets, sockets, logs, and other
-runtime state are not part of the clone and are never linked into it; a
-company's ERP connection record, which the home retains with its credentials,
-is not copied. The worktree's code therefore reaches no live runtime state
-through its home. The cloned registry remains readable with its real project
+The clone is a Git clone of the home repository — its history and its tracked
+material, the project registry and the global, person, and company tier
+documents — carrying the tracked working-tree edits present when it is
+provisioned. It keeps no remote, so nothing in it writes back to the live
+home. When the live home's tracked content has changed, the next dispatch into
+the worktree refreshes the clone; writes made inside the clone are disposable.
+Databases, credentials, secrets, sockets, logs, and other runtime state are not
+part of the clone and are never linked into it, so the worktree's code reaches
+no live runtime state through its home. The cloned registry remains readable with its real project
 entries; it alone grants no permission for undelivered code to modify those
 live repositories.
 
