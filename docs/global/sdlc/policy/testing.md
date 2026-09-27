@@ -11,7 +11,7 @@ visibility: 'public'
 
 **No test is authored in a project that has not declared otherwise.** Absent a
 declaration, agents do not author, demand, or reward tests in that project, and
-verification follows the evidence named below.
+the project's ordinary build review and post-activation operations still apply.
 
 A project that keeps or grows a test corpus declares that in a project-scope
 ruling, per `general/policy/conflict-resolution`. The declaration states which
@@ -28,18 +28,14 @@ kept, frozen, or removed by a recorded decision.
 forbids.**
 
 The default, and any project ruling under it, reaches checks where the agent
-that wrote the code also wrote down what the correct result is. It never reaches
-two things. First, live
-verification: an agent driving the real running system in its own session
-(CLI, API, a Playwright-driven browser walk of the changed flow) to prove its
-change works is verification, mandated by the definition of done everywhere,
-under every ruling, in every project. Second, checks that compare against
-something captured rather than decided: a visual screenshot baseline captured
-from the rendered system and approved by the human, so a committed
-screenshot-regression harness survives any test ban — baselines are updated
-only with approval from outside the authoring session, and an agent never
-blesses a diff its own change produced. Reading a test ban as a ban on either
-is a violation of the ruling, not compliance.
+that wrote the code also wrote down what the correct result is. Post-activation
+operational inspection follows the integration procedure and creates no
+per-change proof obligation. The builder and reviewer browser smoke required
+by the Definition of Done is a delivery check, not test authorship. A committed
+screenshot-regression harness with baselines captured from the rendered system
+and approved outside the authoring session may survive a test ban. Baselines
+are updated only with approval from outside the authoring session; an agent
+never blesses a diff its own change produced.
 
 ### What a test is
 

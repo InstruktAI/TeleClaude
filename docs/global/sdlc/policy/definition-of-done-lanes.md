@@ -736,24 +736,28 @@ sharpened by the `diagnosis` root cause. Verify:
    verify that the delivered behavior satisfies that concern under the diagnosed conditions.
    A recorded disposition or named follow-up does not establish delivery.
 2. Root cause analysis is sound.
-3. Fix is minimal and targeted: the smallest change that removes the diagnosed root cause, plus the
-   verification proving the symptom gone — and **nothing else**. A delta that removes no part of the
-   cause and proves nothing gone — hardening, extra validation layers, defensive defaults, fallbacks,
+3. Fix is minimal and targeted: the smallest change that removes the diagnosed
+   root cause, plus a scenario-bound regression test where the project opts into
+   test authorship — and **nothing else**. A delta that removes no part of the
+   cause — hardening, extra validation layers, defensive defaults, fallbacks,
    adjacent refactors, new capability — is a **Critical** scope finding, even when the approved plan
    contains it: for a bug, `input` + `diagnosis` outrank the plan as scope authority.
 4. Investigation and documentation sections are complete.
-5. A reproduction test exists — the bug was reproduced as a test before the fix — binding either a
-   pre-existing scenario or the single regression scenario the plan phase authored for this symptom
-   (`policy/testing` rule 2, bug-lane exception) — unless the fix is a contract-defining artifact
-   with no bindable scenario (see `sdlc/policy/testing`, "Contract-defining artifacts
-   are not tested"), in which case there is correctly no test.
-6. The reproduction test passes after the fix (when item 5 requires one).
+5. Where the project opts into test authorship, a reproduction test exists before
+   the fix, binding either a pre-existing scenario or the single regression
+   scenario the plan phase authored for this symptom (`policy/testing` rule 2,
+   bug-lane exception). A contract-defining artifact with no bindable scenario
+   needs no test (`sdlc/policy/testing`, "Contract-defining artifacts are not
+   tested").
+6. The reproduction test passes after the fix when item 5 requires one.
 7. No scenario beyond the single regression scenario was authored, and beyond that scenario no new
    contract text shipped unless the diagnosed cause is a wrong documented contract — a fix that
    restores documented behavior carries `doc_impact_none`.
 
-Missing reproduction test for a bug fix is a **Critical** finding **only when a bindable scenario
-exists**. Demanding a test for a fix that is itself a declaration is the error, not the missing test.
+Missing reproduction test for a bug fix is a **Critical** finding only where the
+project opts into test authorship and a bindable scenario exists. Demanding a
+test under a no-tests ruling or for a fix that is itself a declaration is the
+error, not the missing test.
 All other review lanes still apply.
 
 **Record-drift exception to item 2.** "Root cause analysis is sound" is not

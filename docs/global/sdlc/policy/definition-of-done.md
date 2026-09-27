@@ -16,7 +16,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] All requirements implemented
 - [ ] Code works as specified
 - [ ] Edge cases handled
-- [ ] Error paths tested
+- [ ] Error paths handled and reviewed
 - [ ] No debug/temp code remains
 
 ### 2. Code Quality
@@ -41,6 +41,12 @@ deferral. No delivery may introduce or worsen a principle violation.
 ### 3. Testing
 
 - [ ] Pre-commit hooks pass
+- [ ] Browser-based frontend or web UI changes pass a Playwright smoke test
+
+Apply the scenario-binding and test-quality checks below only where the project
+opts into test authorship. Existing tests in a project that keeps a frozen
+corpus still run under that project's ruling.
+
 - [ ] All tests pass
 - [ ] Every in-scope added or changed scenario is bound (functional or smoke); no binding is stale
 - [ ] Removed scenarios' tests are deleted; no orphan bindings remain
@@ -51,7 +57,6 @@ deferral. No delivery may introduce or worsen a principle violation.
 - [ ] Test names are descriptive behavioral specifications
 - [ ] Tests verify behavior, not implementation
 - [ ] Tests do not assert logger calls/log levels, config/model/native shapes, private helpers, constructor/DI wiring, or mock-call echoes as primary evidence
-- [ ] Browser-based frontend or web UI changes pass a Playwright smoke test
 
 ### 4. Linting & Type Checking
 
@@ -95,10 +100,6 @@ deferral. No delivery may introduce or worsen a principle violation.
 - [ ] Appropriate log levels used
 - [ ] Context included in log messages
 - [ ] Error paths logged
-- [ ] When behavior emerges across time or event boundaries, observation bounds
-      were named before monitoring, enough real boundaries were observed to
-      support the conclusion, and unexercised branches remain explicitly
-      unclaimed
 
 ### After Build
 
@@ -112,7 +113,7 @@ deferral. No delivery may introduce or worsen a principle violation.
 - [ ] All review findings addressed
 - [ ] Verdict is APPROVE
 - [ ] No critical issues remain
-- [ ] Tests still pass
+- [ ] Applicable tests still pass
 - [ ] Browser-based frontend or web UI changes are re-verified during review, or a verification gap is recorded as a finding
 
 ### Before Finalize
