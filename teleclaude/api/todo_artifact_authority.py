@@ -121,21 +121,13 @@ async def _foreign_live_claim_holder(
     slug: str,
 ) -> str | None:
     """Return the live claim holder when the caller is outside its group."""
-    holder = await live_claim_holder(todos_db, slug)
-    if holder is None:
-        return None
-    if caller_session_id and await session_in_claiming_group(caller_session_id, holder):
-        return None
-    return holder
-
-
-async def live_claim_holder(todos_db: TodosDb, slug: str) -> str | None:
-    """Return the slug's active runner when its session still has a live claim."""
     state = await todos_db.read_state(slug)
     holder = (state or {}).get("active_runner")
     if not isinstance(holder, str) or not holder:
         return None
     if not await is_live_session_id(runtime_db, holder):
+        return None
+    if caller_session_id and await session_in_claiming_group(caller_session_id, holder):
         return None
     return holder
 

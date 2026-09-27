@@ -62,7 +62,6 @@ class SessionMessageProjectionOptions:
     include_thinking: bool = False
     tail_chars: int = 10000
     tail_scope: str = "all"
-    pane_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -247,7 +246,7 @@ async def build_session_messages_dto(
     )
     messages = native_projection.messages
 
-    if options.pane_fallback and not messages and not native_projection.bare_noop_suppressed:
+    if not messages and not native_projection.bare_noop_suppressed:
         fallback_command = GetSessionDataCommand(
             session_id=session_id,
             since_timestamp=options.since,

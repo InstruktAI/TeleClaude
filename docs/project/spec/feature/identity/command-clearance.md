@@ -251,7 +251,7 @@ And the requested mutation is applied to the todo state
 
 ### Role reach
 
-Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`project/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions, reads no other session's history, reads another session's transcript only among the participants of the todo it works (the claim-scoped transcript read below), and starts, revives, restarts or ends no session but its own through the self-acts above. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential admits no command a session can run. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
+Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`project/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions and reads no history, and starts, revives, restarts or ends no session but its own through the self-acts above. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential admits no command a session can run. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
 
 
 #### UC-CCB1: Tasker starts a session
@@ -335,22 +335,6 @@ Given the agent session that holds the coordinator role
 When it runs `telec sessions list`, `telec sessions send` or `telec sessions start`
 Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
-```
-
-### Claim-scoped transcript read
-
-`telec sessions tail` admits a worker at its system band for transcript reads; the daemon then decides each read from the object, as it does for `todo update`. The object is the todo the worker's session works — the working slug and project its session record carries — and that todo's claiming group, defined exactly as for the claim-scoped todo update: the session holding the todo's live claim plus every session it dispatched, transitively through `initiator_session_id`. A worker in that claiming group reads the transcript of the claim holder, and of any session in the claiming group whose record carries the same working slug and project; its own session is one of them. So a reviewer reads the claimant that dispatched it, and an assist reads the producer and reviewer of the loop it watches. A descendant of the holder working another todo or project is outside this reach. Every other target is refused with the not-permitted failure, which names the worker's todo as its reach and its dispatching session as the door, before any transcript is read and before any request is relayed to another computer. A session the answering daemon cannot place from its own session records — one held by another computer included — is outside the reach. A worker with no working slug, whose todo carries no live claim, or that is outside that todo's claiming group reads no other session. Terminal observation admits no worker: `--pane` is refused, and a worker's transcript read omits the transcript-retrieval pane-tail fallback, so no pane-derived text reaches a worker. Non-worker callers are not subject to this rule. The claim is read once, when the request is handled.
-
-#### UC-CCR6: A worker reads the transcripts of its own todo's participants and no others
-
-```
-Given a live session `h-1` holding the claim on a todo
-And a worker session `w-1` that `h-1` dispatched to work that todo
-When `w-1` runs `telec sessions tail h-1`
-Then the transcript of `h-1` is returned
-But when `w-1` runs `telec sessions tail` for a session working another todo, or with `--pane`
-Then the command is refused with the not-permitted failure
-And no transcript or terminal content is returned
 ```
 
 ### Local read clearance
