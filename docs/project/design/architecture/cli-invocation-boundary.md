@@ -126,15 +126,13 @@ verified after delivery (`project/policy/test-moratorium`).
 `telec code lint` or `telec code commit` from a worktree runs installed code for its
 own orchestration and hands the checks its acting context selects to the worktree's
 own code, run against a fresh scratch home, so a change that edits a guardrail
-allowlist or a schema is judged by the edited version. A selection carrying the native
-leg and the guardrail lane goes to a worktree-owned quality module entrypoint that runs
-the selected checks without invoking a second `telec` command. The outer command has
-already cleared its caller; the scratch home holds no session record for a second CLI
-gate to resolve. A selection carrying the guardrail lane alone — a context that
-participates in documentation without subscribing `code` — runs the worktree's own
-guardrail lane through a process entry the installation supplies: the entry only starts
-the lane, and every rule the lane applies is the worktree's. Each entry confirms it
-loaded the worktree's code and refuses otherwise. A checkout that is the installation,
+allowlist or a schema is judged by the edited version. Both a selection carrying the
+native leg and guardrail lane and a selection carrying only guardrails run through a
+process entry the installation supplies. The entry loads the worktree's code, runs
+exactly the selected checks, and invokes no second `telec` command. The outer command
+has already cleared its caller; the scratch home holds no session record for a second
+CLI gate to resolve. The entry confirms it loaded the worktree's code and refuses
+otherwise. A checkout that is the installation,
 or that is not a TeleClaude checkout, is graded by installed code as before.
 
 ## Failure modes
