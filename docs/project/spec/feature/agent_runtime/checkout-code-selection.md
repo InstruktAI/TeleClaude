@@ -27,12 +27,12 @@ creates a temporary home, runs the worktree's code against it, and removes it wh
 command ends. A home that holds no machine configuration starts from a copy of the live
 one.
 <!-- change:agent-home-clone-provisioning -->
-A checkout's own `bin/telec` runs that checkout's code. A managed agent receives
-an isolated clone of the home repository through agent-runtime provisioning
-(`project/spec/feature/agent_runtime/isolated-home`) and runs its checkout code
-against that clone. A standalone invocation of a slug worktree's wrapper with
-no isolated home creates and removes the same kind of clone for that call.
-Neither path runs worktree code against the live home.
+A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
+its own change by hand, calling the wrapper and nothing more. From a slug worktree the
+wrapper never runs against the live home: unless its caller names another home, it runs
+the worktree's code against the home repository clone the worktree was provisioned with
+(`project/spec/feature/agent_runtime/isolated-home`), whoever invokes it, and it refuses
+when that home is missing. The wrapper creates no home of its own.
 <!-- /planned-change:agent-home-clone-provisioning -->
 
 <!-- planned-change:agent-home-clone-provisioning -->
@@ -40,10 +40,10 @@ Grading stays self-referential: `telec code lint` and `telec code commit` called
 worktree hand their lint gate to that worktree's own code, run against a fresh scratch
 home of its own, so a change is judged by the rules it carries.
 <!-- change:agent-home-clone-provisioning -->
-Grading stays self-referential: `telec code lint` and `telec code commit` called
-from a worktree hand their lint gate to that worktree's own code, with the
-provisioned home repository clone available to that code. A change is judged
-by the rules it carries without creating a partial home for grading.
+Grading stays self-referential: `telec code lint` and `telec code commit` called from a
+worktree hand their lint gate to that worktree's own code, run against that worktree's
+home, so a change is judged by the rules it carries with the complete tracked
+configuration.
 <!-- /planned-change:agent-home-clone-provisioning -->
 
 The path this behavior sits on is described in
@@ -72,6 +72,7 @@ Then the command runs the worktree's code against that home
 And the worktree's code writes nothing into the live home
 ```
 
+<!-- planned-change:agent-home-clone-provisioning -->
 #### UC-CCS3: A worktree's own wrapper supplies and removes its own temporary home
 
 ```gherkin
@@ -82,6 +83,17 @@ And the temporary home no longer exists once the call ends, whether the command 
 And the call's exit status is the command's own
 And nothing in the live home changes
 ```
+<!-- change:agent-home-clone-provisioning -->
+#### UC-CCS3: A worktree's own wrapper runs against its worktree's home
+
+```gherkin
+Given a slug worktree with its provisioned home
+When an agent or operator invokes the worktree's own telec wrapper with no home set, or with a home that resolves to the live home however it is spelled
+Then the worktree's code runs against the worktree's home
+And the call's exit status is the command's own
+And nothing in the live home changes
+```
+<!-- /planned-change:agent-home-clone-provisioning -->
 
 <!-- planned-change:agent-home-clone-provisioning -->
 #### UC-CCS4: A worktree home without a machine configuration starts from the live one
@@ -97,7 +109,7 @@ And the live machine configuration is unchanged
 #### UC-CCS4: A worktree home contains the tracked home repository
 
 ```gherkin
-Given a slug worktree's own telec wrapper runs with an automatically provisioned home
+Given a slug worktree's own telec wrapper runs against its worktree's home
 When the wrapper starts the worktree's code
 Then the home contains the tracked project registry and tier configuration documents
 And the live home repository is unchanged
