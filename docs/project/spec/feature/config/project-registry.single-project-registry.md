@@ -53,9 +53,11 @@ folded into the registry by a configuration migration, on every machine that
 carries one. The migration adopts each listed folder that exists, in list order,
 after the entries the registry already holds. It carries each entry's name and
 description into the adopted folder's tier configuration where the corresponding
-field is absent, and it hands each entry's former name to the Discord reflection
-hand-off so the forum that name keyed stays bound to the same folder
-(`project/spec/feature/integration/discord-admin-reflection-state`). A listed
+field is absent. The Discord reflection hand-off binds each former-name key to
+the folder that received threads from that forum before the fold. When several
+entries shared one former name, every present folder is adopted, but only that
+prior routing owner inherits the existing forum; the other entries receive
+separate identity-keyed forums (`project/spec/feature/integration/discord-admin-reflection-state`). A listed
 folder that no longer exists is dropped and named in the migration run's
 structured record. A listed folder whose
 identity another entry already holds is a conflict: the machine configuration
