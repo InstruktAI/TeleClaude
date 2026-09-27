@@ -97,7 +97,7 @@ Status semantics:
 
 <!-- change:event-driven-agent-status -->
 
-Respond by `agent_status`. Each status carries its reason and the moment it was entered, and entering `blocked` or `stalled` notifies you with the evidence:
+Respond by `agent_status`:
 
 - `active` or `unknown`: keep waiting for the next event.
 - `idle`: the turn ended; continue the loop.
