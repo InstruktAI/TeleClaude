@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
@@ -16,7 +15,7 @@ from teleclaude.config.tiers import Tier
 from teleclaude.config_roster import PersonEntry as PersonEntry
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE
 from teleclaude.events.domain_config import DomainsConfig
-from teleclaude.slug import validate_slug
+from teleclaude.slug import SLUG_PATTERN, validate_slug
 
 CURRENT_SCHEMA_VERSION = 8
 
@@ -121,6 +120,7 @@ class JobWhenConfig(ClosedModel):
 class JobScheduleConfig(ClosedModel):
     """One declarative scheduled job or subscription override."""
 
+    name: str
     category: Literal["subscription", "system"] = "subscription"
     enabled: bool = True
     when: JobWhenConfig | None = None
@@ -129,6 +129,14 @@ class JobScheduleConfig(ClosedModel):
     agent: list[AgentName] | None = None
     thinking_mode: str | None = None
     timeout: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_job_name(cls, value: str) -> str:
+        """Require the declared job identity in its exact kebab-case form."""
+        if not SLUG_PATTERN.fullmatch(value):
+            raise ValueError(_JOB_NAME_INVALID_ERROR)
+        return value
 
     @field_validator("agent", mode="before")
     @classmethod
@@ -142,31 +150,39 @@ class JobScheduleConfig(ClosedModel):
 
     @model_validator(mode="after")
     def require_one_execution_target(self) -> JobScheduleConfig:
-        """Reject declarations that are ambiguous or have no runnable target."""
+        """Reject declarations that carry both execution targets."""
         script = self.script.strip() if self.script else ""
         procedure = self.job.strip() if self.job else ""
-        if bool(script) == bool(procedure):
-            raise ValueError("jobs require exactly one nonblank script or job execution pointer")
+        if script and procedure:
+            raise ValueError(_JOB_BOTH_EXECUTION_TARGETS_ERROR.format(name=self.name))
         return self
+
+
+_JOB_NAME_INVALID_ERROR: Final = "job name must be lowercase kebab-case"
+_JOB_BOTH_EXECUTION_TARGETS_ERROR: Final = "job '{name}' carries both script and job execution pointers"
+_JOB_DUPLICATE_NAME_ERROR: Final = "duplicate job name: {name}"
+_PUBLISHED_JOB_TARGET_REQUIRED_ERROR: Final = "published job '{name}' requires exactly one execution pointer"
+
+
+def _validate_job_tier(
+    jobs: list[JobScheduleConfig], *, require_execution_target: bool = False
+) -> list[JobScheduleConfig]:
+    """Validate name uniqueness and the published tier's execution pointers."""
+    names: set[str] = set()
+    for declaration in jobs:
+        if declaration.name in names:
+            raise ValueError(_JOB_DUPLICATE_NAME_ERROR.format(name=declaration.name))
+        names.add(declaration.name)
+        if require_execution_target:
+            pointers = (declaration.script, declaration.job)
+            if sum(bool(pointer and pointer.strip()) for pointer in pointers) != 1:
+                raise ValueError(_PUBLISHED_JOB_TARGET_REQUIRED_ERROR.format(name=declaration.name))
+    return jobs
 
 
 def is_agent_job(schedule: JobScheduleConfig) -> bool:
     """Return whether a declaration targets an agent procedure."""
     return bool(schedule.job and schedule.job.strip())
-
-
-def job_identity(declared_name: str, schedule: JobScheduleConfig) -> str:
-    """The one identity a job carries everywhere it is named.
-
-    An agent job is identified by its `job` procedure snippet ID: dispatch,
-    run state, the run directory, and the structured report all use it. A
-    script job identity is its configured module stem.
-    """
-    if is_agent_job(schedule) and schedule.job:
-        return schedule.job.strip()
-    if schedule.script:
-        return Path(schedule.script).stem
-    return declared_name
 
 
 PUBLISHES_TRIGGER_MAX_LENGTH: Final = 200
@@ -577,6 +593,12 @@ class ProjectConfig(ClosedModel):
     docs: CapabilityConfig = CapabilityConfig()
     agents: CapabilityConfig = CapabilityConfig()
 
+    @field_validator("jobs")
+    @classmethod
+    def validate_jobs(cls, jobs: list[JobScheduleConfig]) -> list[JobScheduleConfig]:
+        """Require unique names while allowing pointer-free subscriptions."""
+        return _validate_job_tier(jobs)
+
     @field_validator("project_slug")
     @classmethod
     def validate_project_slug(cls, value: str | None) -> str | None:
@@ -655,6 +677,12 @@ class GlobalConfig(ClosedModel):
     interests: list[str] = []
     event_domains: DomainsConfig | None = None
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
+
+    @field_validator("jobs")
+    @classmethod
+    def validate_jobs(cls, jobs: list[JobScheduleConfig]) -> list[JobScheduleConfig]:
+        """Require unique names and one target for every published job."""
+        return _validate_job_tier(jobs, require_execution_target=True)
 
     @field_validator("env_allow_list")
     @classmethod

@@ -1,16 +1,16 @@
-"""Cron runner — discovers jobs and executes those whose configured schedule is due.
+"""Cron runner — executes named jobs whose configured schedule is due.
 
 Two job types are supported:
 
-1. **Script jobs** — module-level `JOB` instances declared in teleclaude.yml.
-2. **Agent jobs** — declared in teleclaude.yml with `type: agent`. The runner
+1. **Script jobs** — module-level `JOB` instances named in teleclaude.yml.
+2. **Agent jobs** — declared in teleclaude.yml with a procedure pointer. The runner
    opens a run when it dispatches the session and closes it from a structured
    `telec jobs report` result.
 
 Scheduling configuration (frequency, preferred timing) lives in teleclaude.yml
-under the `jobs:` key. The runner reads this config, evaluates whether each job
-is due based on its last run timestamp and the configured schedule, and invokes
-due jobs.
+under the `jobs:` key. Each declaration's `name` is its identity. The runner
+evaluates whether each job is due based on its last run timestamp and the
+configured schedule, and invokes due jobs.
 
 Jobs that have no entry in teleclaude.yml are skipped unless --force is used.
 Jobs that have never run wait for their first real scheduled occurrence after
@@ -40,8 +40,8 @@ from jobs.base import Job, JobResult, JobRunContext
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
-from teleclaude.config.loader import load_person_config, load_project_config
-from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job, job_identity
+from teleclaude.config.loader import load_person_config
+from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job
 from teleclaude.constants import SlashCommand
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
@@ -67,20 +67,6 @@ class Schedule(Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
-
-
-def _load_job_schedules(config_path: Path | None = None) -> list[JobScheduleConfig]:
-    """Load job schedule configuration from teleclaude.yml."""
-    if config_path is None:
-        config_path = _REPO_ROOT / ConfigFileName.OVERLAY
-
-    config = load_project_config(config_path)
-    return config.jobs
-
-
-def load_job_schedules(config_path: Path | None = None) -> list[JobScheduleConfig]:
-    """Load job schedule configuration from teleclaude.yml."""
-    return _load_job_schedules(config_path)
 
 
 def load_job_state(catalog: ProjectCatalogService | None = None) -> CronState:
@@ -240,8 +226,8 @@ def _release_pidlock() -> None:
 
 
 def _job_command_args(schedule: JobScheduleConfig) -> str:
-    """The one argument the run boundary validates for an agent job: its procedure snippet ID."""
-    return str(schedule.job or "").strip()
+    """Return the declared identity validated by the run boundary."""
+    return schedule.name
 
 
 def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path) -> tuple[str | None, str | None]:
@@ -285,7 +271,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path)
 
 
 def _should_run_subscription_job(
-    job_identity: str,
+    job_name: str,
     state_key: str,
     state: CronState,
     now: datetime,
@@ -295,7 +281,7 @@ def _should_run_subscription_job(
     """Check if any subscriber's schedule makes a subscription job due.
 
     Iterates person configs for enabled JobSubscription entries matching
-    *job_identity* and checks if any subscriber's ``when`` schedule is due.
+    *job_name* and checks if any subscriber's ``when`` schedule is due.
     """
     if root is None:
         root = TELECLAUDE_HOME
@@ -320,11 +306,11 @@ def _should_run_subscription_job(
         for sub in person_cfg.subscriptions:
             if not isinstance(sub, JobSubscription):
                 continue
-            if sub.job != job_identity or not sub.enabled:
+            if sub.job != job_name or not sub.enabled:
                 continue
             # Found an enabled subscriber; check schedule
             if sub.when:
-                schedule_cfg = JobScheduleConfig(when=sub.when)
+                schedule_cfg = JobScheduleConfig(name=job_name, when=sub.when)
                 if job_state.last_run is None:
                     if _is_first_run_due(schedule_cfg, job_state.first_seen_at, now):
                         return True
@@ -357,35 +343,6 @@ def _script_to_module_name(script: str, root: Path | None = None) -> str | None:
     except ValueError:
         return None
     return ".".join(relative.parts)
-
-
-def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
-    """Discover configured standalone script jobs from teleclaude.yml."""
-    if jobs_dir is None:
-        config_path = _REPO_ROOT / ConfigFileName.OVERLAY
-    else:
-        config_path = jobs_dir.parent / ConfigFileName.OVERLAY
-    config_root = config_path.parent
-
-    schedules = _load_job_schedules(config_path)
-    jobs: list[ScriptJob] = []
-
-    for config in schedules:
-        name = job_identity("", config)
-        script = str(config.script or "").strip()
-        if not script:
-            continue
-        script_path = _resolve_script_path(script, root=config_root)
-        if not script_path.exists():
-            logger.error("configured job script not found", name=name, script=str(script_path))
-            continue
-        if _script_to_module_name(script, root=config_root) is None:
-            logger.error("configured job script is outside project root", name=name, script=str(script_path))
-            continue
-        jobs.append(ScriptJob(name=name, script=script, origin=config_root))
-        logger.debug("discovered job", name=name, script=script)
-
-    return jobs
 
 
 def _load_script_job(job: ScriptJob) -> Job:
@@ -638,7 +595,7 @@ def _mark_stalled_runs(
 
 def _job_is_due(
     state_key: str,
-    job_identity: str,
+    job_name: str,
     job_state_last_run: datetime | None,
     job_state_first_seen_at: datetime | None,
     schedule_config: JobScheduleConfig | None,
@@ -653,7 +610,7 @@ def _job_is_due(
     if schedule_config is None:
         return False
     if schedule_config.category == "subscription":
-        return _should_run_subscription_job(job_identity, state_key, state, now, root=root)
+        return _should_run_subscription_job(job_name, state_key, state, now, root=root)
     if job_state_last_run is None:
         return _is_first_run_due(schedule_config, job_state_first_seen_at, now)
     return _is_due(schedule_config, job_state_last_run, now)
@@ -732,7 +689,7 @@ def run_due_jobs(
     Supports two job types:
 
     - **Script jobs** — declared in ``teleclaude.yml`` with ``script`` entries.
-    - **Agent jobs** — declared in ``teleclaude.yml`` with ``type: agent``.
+    - **Agent jobs** — declared in ``teleclaude.yml`` with a ``job`` procedure pointer.
 
     Subscription-category jobs are only run when at least one person has an
     enabled ``JobSubscription`` with a matching ``when`` schedule that is due.

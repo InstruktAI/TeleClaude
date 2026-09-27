@@ -86,8 +86,6 @@ class YouTubeScraperJob(Job):
     video metadata per matching channel.
     """
 
-    name = "youtube_scraper"
-
     def __init__(self, *, period_days: int = _DEFAULT_PERIOD_DAYS):
         self.period_days = period_days
 

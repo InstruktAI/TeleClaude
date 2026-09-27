@@ -8,13 +8,20 @@ from pathlib import Path
 from typing import Final
 
 from teleclaude.config.loader import load_declared_project_config, load_global_config
-from teleclaude.config.schema import JobScheduleConfig, is_agent_job, job_identity
+from teleclaude.config.schema import JobScheduleConfig, is_agent_job
 from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.paths import GLOBAL_CONFIG_PATH
 
 _WHEN_FIELD: Final = "when"
 _AGENT_FIELD: Final = "agent"
 _ENABLED_FIELD: Final = "enabled"
+_LOCAL_JOB_POINTER_ERROR: Final = "local job '{name}' requires exactly one execution pointer"
+_SUBSCRIPTION_POINTER_ERROR: Final = "job '{name}' subscription cannot change its published execution pointer"
+_JOB_WHEN_ERROR: Final = "job '{name}' requires when"
+_AGENT_CANDIDATES_ERROR: Final = "agent job '{name}' requires candidates"
+_UNKNOWN_PROCEDURE_ERROR: Final = "agent job '{name}' names unknown procedure: {pointer}"
+_NON_PROCEDURE_ERROR: Final = "agent job '{name}' must name a procedure: {pointer}"
+_PENDING_PROCEDURE_ERROR: Final = "agent job '{name}' names a pending procedure: {pointer}"
 
 
 @dataclass(frozen=True)
@@ -41,38 +48,47 @@ def load_effective_jobs(project_root: Path) -> tuple[EffectiveJob, ...]:
     published = load_global_config().jobs
     declared_project = load_declared_project_config(target_root)
     local = declared_project.jobs if declared_project is not None else []
-    local_pointers = {_execution_pointer(declaration) for declaration in local}
-    published_by_pointer = _index_by_pointer(
-        declaration for declaration in published if _execution_pointer(declaration) in local_pointers
-    )
+    published_by_name = _index_by_name(published)
     effective: list[EffectiveJob] = []
     for declaration in local:
-        pointer = _execution_pointer(declaration)
-        inherited = published_by_pointer.get(pointer)
-        resolved = _overlay(inherited, declaration) if inherited else declaration
+        inherited = published_by_name.get(declaration.name)
+        if inherited is not None:
+            if _has_execution_pointer(declaration) and (
+                _execution_pointer(declaration) != _execution_pointer(inherited)
+            ):
+                raise ValueError(_SUBSCRIPTION_POINTER_ERROR.format(name=declaration.name))
+            resolved = _overlay(inherited, declaration)
+        else:
+            if not _has_exactly_one_execution_pointer(declaration):
+                raise ValueError(_LOCAL_JOB_POINTER_ERROR.format(name=declaration.name))
+            resolved = declaration
         _validate_complete(resolved, target_root)
         if not resolved.enabled:
             continue
         origin_root = published_root if inherited else target_root
         effective.append(
             EffectiveJob(
-                identity=job_identity(pointer, resolved),
+                identity=resolved.name,
                 declaration=resolved,
                 origin=JobOrigin(root=origin_root, published=inherited is not None),
             )
         )
-    _reject_identity_collisions(effective)
     return tuple(effective)
 
 
-def _index_by_pointer(declarations: Iterable[JobScheduleConfig]) -> dict[str, JobScheduleConfig]:
+def _index_by_name(declarations: Iterable[JobScheduleConfig]) -> dict[str, JobScheduleConfig]:
     indexed: dict[str, JobScheduleConfig] = {}
     for declaration in declarations:
-        pointer = _execution_pointer(declaration)
-        if pointer in indexed:
-            raise ValueError(f"duplicate published job execution pointer: {pointer}")
-        indexed[pointer] = declaration
+        indexed[declaration.name] = declaration
     return indexed
+
+
+def _has_execution_pointer(declaration: JobScheduleConfig) -> bool:
+    return any(pointer and pointer.strip() for pointer in (declaration.script, declaration.job))
+
+
+def _has_exactly_one_execution_pointer(declaration: JobScheduleConfig) -> bool:
+    return sum(bool(pointer and pointer.strip()) for pointer in (declaration.script, declaration.job)) == 1
 
 
 def _execution_pointer(declaration: JobScheduleConfig) -> str:
@@ -91,23 +107,15 @@ def _validate_complete(declaration: JobScheduleConfig, project_root: Path) -> No
     if not declaration.enabled:
         return
     if _WHEN_FIELD not in declaration.model_fields_set or declaration.when is None:
-        raise ValueError(f"job declaration {_execution_pointer(declaration)} requires when")
+        raise ValueError(_JOB_WHEN_ERROR.format(name=declaration.name))
     if is_agent_job(declaration):
         if not declaration.agent:
-            raise ValueError(f"agent job {_execution_pointer(declaration)} requires candidates")
-        metadata = resolve_snippet_meta(_execution_pointer(declaration), project_root=project_root)
+            raise ValueError(_AGENT_CANDIDATES_ERROR.format(name=declaration.name))
+        pointer = _execution_pointer(declaration)
+        metadata = resolve_snippet_meta(pointer, project_root=project_root)
         if metadata is None:
-            raise ValueError(f"agent job names unknown procedure: {_execution_pointer(declaration)}")
+            raise ValueError(_UNKNOWN_PROCEDURE_ERROR.format(name=declaration.name, pointer=pointer))
         if metadata.snippet_type != "procedure":
-            raise ValueError(f"agent job must name a procedure: {_execution_pointer(declaration)}")
+            raise ValueError(_NON_PROCEDURE_ERROR.format(name=declaration.name, pointer=pointer))
         if metadata.delivered_by:
-            raise ValueError(f"agent job names a pending procedure: {_execution_pointer(declaration)}")
-
-
-def _reject_identity_collisions(jobs: list[EffectiveJob]) -> None:
-    identities: dict[str, EffectiveJob] = {}
-    for effective in jobs:
-        prior = identities.get(effective.identity)
-        if prior is not None and _execution_pointer(prior.declaration) != _execution_pointer(effective.declaration):
-            raise ValueError(f"effective job identity collision: {effective.identity}")
-        identities[effective.identity] = effective
+            raise ValueError(_PENDING_PROCEDURE_ERROR.format(name=declaration.name, pointer=pointer))

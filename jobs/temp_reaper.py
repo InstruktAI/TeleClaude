@@ -136,8 +136,6 @@ def _reap_orphaned_sockets() -> int:
 class TempReaperJob(Job):
     """Reap stale Claude Code temp files and orphaned sockets."""
 
-    name = "temp_reaper"
-
     def run(self, context: JobRunContext | None = None) -> JobResult:
         """Find and remove stale temp files."""
         del context

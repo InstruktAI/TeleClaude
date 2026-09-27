@@ -6,6 +6,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 from jobs.base import JobResult
 from teleclaude.cli.telec import flags as F
@@ -16,6 +17,8 @@ from teleclaude.paths import JOBS_DIR
 from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.session_identity import get_session_id
+
+_JOB_NAME_REQUIRED_ERROR: Final[str] = "Error: job name required"
 
 
 def handle_jobs(args: list[str]) -> None:
@@ -38,11 +41,10 @@ def handle_jobs(args: list[str]) -> None:
 def handle_jobs_report(args: list[str]) -> None:
     """Write a structured JobResult record for a configured recurring job.
 
-    Usage: telec jobs report <job_id> --success true|false --message <text>
+    Usage: telec jobs report <name> --success true|false --message <text>
                              [--items-processed <n>] [--error <text> ...]
 
-    <job_id> is the job's identity: an agent job's procedure snippet ID (the
-    value of its `job:` declaration), or a script job's declared name.
+    <name> is the job's declared identity for both agent and script jobs.
     """
     parsed = parse_command_args(JOBS_REPORT, args)
     positionals = parsed.positionals
@@ -51,7 +53,7 @@ def handle_jobs_report(args: list[str]) -> None:
         raise SystemExit(1)
     job_name = positionals[0] if positionals else None
     if not job_name:
-        print("Error: job_id required", file=sys.stderr)
+        print(_JOB_NAME_REQUIRED_ERROR, file=sys.stderr)
         raise SystemExit(1)
 
     success_raw = parsed.value(F.FLAG_JOB_SUCCESS)
