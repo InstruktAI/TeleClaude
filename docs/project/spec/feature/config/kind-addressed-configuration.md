@@ -33,10 +33,22 @@ invitation is a separate explicit action.
 
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a
+<!-- planned-change:authorize-person-roles-at-scope -->
 subsequent write. A person view joins the identity entry in global
 configuration with that person's overlay. It also reports resolved company
 memberships as a marked read-only projection; those facts remain sourced only
 from company rosters.
+<!-- change:authorize-person-roles-at-scope -->
+subsequent write. A person view joins the identity entry in global
+configuration with that person's overlay. It also reports the person's roles as
+a marked read-only projection: one entry for each scope the person holds a role
+at — the platform, or a company by name — with the role held there. An entry
+below `admin` in a company also lists the projects the person is assigned to
+there; an `admin` entry lists none, since it reaches every project that company
+owns. Those facts remain sourced only from the person registry and company
+rosters, and the projection authorizes nothing
+(`project/design/architecture/scoped-roles`).
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 `patch` targets one kind and instance. Mapping keys merge into the latest
 document and an array supplied by the caller replaces that array in full.
