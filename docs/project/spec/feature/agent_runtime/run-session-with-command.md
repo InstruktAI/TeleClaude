@@ -381,15 +381,10 @@ Then dispatch is permitted — tasker may spawn worker sessions, same grant as i
 Given a caller carrying the tasker system role
 When it dispatches an orchestrator-role command (/prepare, /work)
 Then it is rejected — the tasker's dispatch grant is worker-only
-<!-- planned-change:telec-startup-does-only-auth -->
-And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
-<!-- change:telec-startup-does-only-auth -->
 And the tasker drives no todo state machine, which only an orchestrator runs (`project/design/cli-authorization-matrix`)
-<!-- /planned-change:telec-startup-does-only-auth -->
 ```
 
 
-<!-- planned:telec-startup-does-only-auth -->
 #### UC-DPE5: The coordinator dispatches no lifecycle command
 
 ```
@@ -398,7 +393,6 @@ When it dispatches any command that maps to a system role (a worker, orchestrato
 Then it is rejected — the coordinator's dispatch grant is empty
 And a peer session it starts without a lifecycle command is not a dispatch and is admitted
 ```
-<!-- /planned:telec-startup-does-only-auth -->
 
 #### Lifecycle driver-start dedup
 

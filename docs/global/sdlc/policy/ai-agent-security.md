@@ -63,12 +63,8 @@ tool call parameters visible to other sessions, or log output.
 Agent sessions must be isolated from each other to prevent cross-session
 contamination, privilege escalation, and data leakage.
 
-<!-- planned-change:telec-startup-does-only-auth -->
-- Inject session identifiers at the transport layer (not from agent-controlled input).
-<!-- change:telec-startup-does-only-auth -->
 - Establish a session's identity where the session is created, from infrastructure-owned
   state, and carry it from there; never derive it from content the agent processes.
-<!-- /planned-change:telec-startup-does-only-auth -->
 - Restrict tool access based on the session's assigned role — worker sessions
   must not access orchestration tools.
 - Use filesystem permissions and per-session temporary directories to prevent
@@ -133,7 +129,6 @@ access only to the tools required for their role.
   orchestration tools.
 - Role markers must be set by the infrastructure (wrapper, daemon), not by
   the agent itself.
-<!-- planned:telec-startup-does-only-auth -->
 - The wrapper that executes a tool on the agent's behalf is an execution-phase
   filter. Where the agent, the wrapper, and the service it calls run as one
   operating-system user, that wrapper is the enforcement point: the service
@@ -142,7 +137,6 @@ access only to the tools required for their role.
 - On such a host, identity and role checks are guardrails against mistakes, not
   barriers against a process that bypasses the wrapper. Isolating agents that
   untrusted humans drive requires operating-system isolation.
-<!-- /planned:telec-startup-does-only-auth -->
 
 ### Supply chain security for agent ecosystems
 
@@ -168,14 +162,12 @@ account hijacking during rebranding operations. The fundamental architectural
 tension — useful agents require broad permissions, broad permissions create
 massive attack surfaces — cannot be resolved, only managed through defense
 in depth.
-<!-- planned:telec-startup-does-only-auth -->
 
 A service cannot tell a wrapper from any other process running as the same
 operating-system user, so repeating the wrapper's check inside the service adds
 a second implementation to keep in step without adding isolation; the two drift,
 and the drift is what fails. Naming the checks as guardrails keeps anything
 sensitive from being built on an isolation that is not there.
-<!-- /planned:telec-startup-does-only-auth -->
 
 Workspace trust is not a content-authority decision. Requiring an agent to seek
 additional instruction to acknowledge a local tool's setup prompt delays work

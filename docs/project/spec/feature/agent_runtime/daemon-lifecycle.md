@@ -59,10 +59,6 @@ And voice-transcription recovery resumes any transcription left in flight by a p
 And operations normalized to their stale outcome by the operations stage have their outcomes delivered here (see `durable-operation-outcomes#uc-do3-staleness-is-an-outcome-and-reaches-the-caller` for the delivery contract)
 And the inbound queue manager is brought up
 And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
-<!-- planned-change:telec-startup-does-only-auth -->
-And session-identity reconciliation rewrites every live local session's identity document from its durable record, adding fields the document predates while leaving the session's existing token and host pane untouched
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
 And the request surface starts AFTER these tasks have completed
 ```
@@ -113,11 +109,7 @@ Then it sweeps:
   - Orphan workspace directories — removes workspace dirs whose session is not active in storage
   - Orphan per-session tmpdirs — removes per-session tmpdirs not referenced by live sessions
   - In-process hook-receiver caller→session entries
-<!-- planned-change:telec-startup-does-only-auth -->
-  - Orphan inbound rows, session tokens, session listeners
-<!-- change:telec-startup-does-only-auth -->
   - Orphan inbound rows, session listeners
-<!-- /planned-change:telec-startup-does-only-auth -->
   - Voice-transcription rows in terminal states past the runtime retention window
   - Orphan voice temp audio — removes old voice files with no recoverable durable row
   - Retention sweeps for inbound, terminal operations, webhook outbox, hook outbox (7-day cutoff)

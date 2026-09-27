@@ -3,8 +3,6 @@ description: The path from a shell to a telec command handler — which checkout
   runs, the one auth gate that alone precedes dispatch, and how a worktree exercises
   its own change without reaching live state.
 visibility: internal
-delivered_by:
-  - telec-startup-does-only-auth
 ---
 
 # CLI Invocation Boundary — Design

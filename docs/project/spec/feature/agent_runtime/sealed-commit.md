@@ -77,7 +77,6 @@ And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
 
-<!-- planned:telec-startup-does-only-auth -->
 
 #### UC-GWR-1 — The integrator rows follow the role the caller's session record resolves to
 
@@ -88,7 +87,6 @@ Then the wrapper admits it only when the session's record resolves to the integr
 And any other role is refused with the integrator-only message
 ```
 
-<!-- /planned:telec-startup-does-only-auth -->
 
 #### UC-LMR-1 — A slug worktree cannot reference local main
 

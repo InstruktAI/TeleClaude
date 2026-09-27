@@ -12,67 +12,12 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:telec-startup-does-only-auth -->
-Command clearance is v1's authorization gate. After caller verification resolves a call into a `CallerIdentity`, the clearance capability consults the CLI surface schema for the named verb (e.g. `"telec sessions start"`) and checks the caller's Role against that verb's `CommandAuth(system=..., human=...)` allowlist. Agent callers (those with a `system_role`) are evaluated against the verb's system band; terminal callers (no `system_role`) are evaluated against the human band. Token-auth callers without a `human_role` fall back to their token-stamped `principal_role`. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and binding the corresponding clearance gate.
-<!-- change:telec-startup-does-only-auth -->
 Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller's Role against that verb's `CommandAuth(system=..., human=...)` allowlist. Agent callers (those resolved to a session with a system role) are evaluated against the verb's system band; person callers are evaluated against the human band with the role the people registry holds for their principal. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 ## Canonical fields
 
 ### Use cases
 
-<!-- planned-change:telec-startup-does-only-auth -->
-```
-Given a token-authenticated call from a session whose CallerIdentity has system_role=`worker` and human_role=None
-And the operation is gated by command clearance for `telec sessions tail`
-And the CLI surface allowlist for `sessions tail` system band contains `worker`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
-```
-Given the same call, but the gated operation is `telec sessions start`
-And the CLI surface allowlist for `sessions start` system band does NOT contain `worker`
-When the clearance gate runs
-Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
-```
-
-```
-Given a terminal-authenticated call whose CallerIdentity has system_role=None, human_role=`member`, email=`maurice@instrukt.ai`
-And the gated operation is `telec todo prepare`
-And the verb's human band includes admin + member + contributor
-When the clearance gate runs
-Then the gate evaluates `member` against the human band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
-```
-Given a token-authenticated CallerIdentity with human_role=None and principal_role=`admin`
-And the gated operation is `telec agents status` whose human band contains `admin`
-When the clearance gate runs
-Then principal_role substitutes for the missing human_role
-And the gate evaluates `admin` against the human band and accepts the caller
-```
-
-```
-Given any CallerIdentity
-And a clearance gate for a verb that does not resolve to any known CLI surface entry
-When the clearance gate runs
-Then the verb resolver returns no match
-And the gate rejects the caller (fail-closed)
-```
-
-```
-Given a system-role CallerIdentity (system_role=`worker`)
-And an operation whose system band is empty but whose human band contains the caller's nominal human band
-When the clearance gate runs
-Then only the system branch is evaluated (system_role is not None)
-And the gate rejects the caller — the human band is never consulted for agent callers
-```
-
-<!-- change:telec-startup-does-only-auth -->
 ```
 Given an agent inside a session whose resolved system role is `worker`
 And the verb it performs is `telec todo show`
@@ -112,7 +57,6 @@ Then only the system branch is evaluated
 And the caller is refused — the human band is never consulted for agent callers
 ```
 
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 <!-- planned:authorize-person-roles-at-scope -->
 #### UC-CCS1: A company administrator works as an administrator in their company's projects
@@ -184,11 +128,7 @@ And a platform administrator running the same command is admitted and reaches th
 ### Cross-context references
 
 - The verb→Role allowlist data lives in the CLI surface schema, owned by the `config`/CLI-shape concern. The identity context owns only the gate logic.
-<!-- planned-change:telec-startup-does-only-auth -->
-- Consumed everywhere a protected operation is bound. Each operation binding imports the per-verb clearance gate.
-<!-- change:telec-startup-does-only-auth -->
 - Consumed by every client path that asks the daemon to act and by the CLI's local commands. Each clears the verb it performs, where it performs it.
-<!-- /planned-change:telec-startup-does-only-auth -->
 - The self-agent-restart carve-out adds a self-restart bypass on top of the standard rule — see `feature/identity/self-restart-authorization-bypass`.
 - The self-end carve-out adds a self-end bypass on top of the standard rule, allowing a parentless session (`initiator_session_id is None`) to end itself — see `feature/identity/self-end-authorization-bypass`.
 
@@ -196,10 +136,6 @@ And a platform administrator running the same command is admitted and reaches th
 - The `telec todo update` gate replaces role privilege with object state for every agent caller uniformly — see the Claim-scoped todo update section below.
 
 
-<!-- planned-change:telec-startup-does-only-auth -->
-- The token-path `principal_role` substitution interlocks with token issuance — see `feature/identity/principal-resolution` (which stamps the role onto the token at issuance time).
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 - In v2 this responsibility moves out of identity: each bounded context defines its own authorization rules against the resolved `Principal`'s Role. Identity returns the Principal; the bounded context decides which operations require which roles.
 
 
@@ -309,16 +245,9 @@ And the requested mutation is applied to the todo state
 ```
 
 
-<!-- planned-change:telec-startup-does-only-auth -->
-### Session-family and todo-list clearance
-
-
-`sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class; `sessions end` additionally carries the integrator. `telec todo list` carries the full agent system band — `worker`, `system`, `orchestrator`, `integrator`, and `tasker`. The todo state-machine-driving verbs (`todo prepare`, `todo work`) and the other todo-mutation verbs do not carry `tasker`; `todo update` is governed by the claim-scoped rule instead.
-<!-- change:telec-startup-does-only-auth -->
 ### Role reach
 
 Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`project/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions, reads no other session's transcript or history, and starts, revives, restarts or ends no session but its own through the self-acts above. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential admits no command a session can run. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 
 #### UC-CCB1: Tasker starts a session
@@ -338,11 +267,7 @@ Given a tasker agent session with system_role=`tasker`
 And the gated operation is `telec sessions revive`
 When the clearance gate runs
 Then the gate evaluates the system band and accepts the caller
-<!-- planned-change:telec-startup-does-only-auth -->
-And the real revive route admits the caller past clearance
-<!-- change:telec-startup-does-only-auth -->
 And the revive is performed
-<!-- /planned-change:telec-startup-does-only-auth -->
 ```
 
 #### UC-CCB3: Tasker ends a session
@@ -364,7 +289,6 @@ When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
 ```
 
-<!-- planned:telec-startup-does-only-auth -->
 #### UC-CCR1: A command that does not depend on its caller runs without an identity
 
 ```
@@ -408,15 +332,10 @@ When it runs `telec sessions list`, `telec sessions send` or `telec sessions sta
 Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
 ```
-<!-- /planned:telec-startup-does-only-auth -->
 
 ### Local read clearance
 
-<!-- planned-change:telec-startup-does-only-auth -->
-The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the system-role derivation caller verification applies (`feature/identity/caller-verification`), and its person role is the role the people registry holds for its principal, so a local gate admits and refuses what the daemon's gate admits and refuses. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
-<!-- change:telec-startup-does-only-auth -->
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 #### UC-CCL1: A read is cleared and answered without the daemon
 
@@ -438,11 +357,7 @@ And the refusal states that the session carries no usable identity
 And no todo, artifact, bug, suppression, or conversation content is printed
 ```
 
-<!-- planned-change:telec-startup-does-only-auth -->
-#### UC-CCL3: A session is cleared by the role caller verification derives for it
-<!-- change:telec-startup-does-only-auth -->
 #### UC-CCL3: A session is cleared by the role derived from its record
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 ```
 Given a session record that carries a working slug and no explicit system role
@@ -460,7 +375,6 @@ Then the command is refused with the not-permitted failure naming the role and t
 And no content is printed
 ```
 
-<!-- planned:telec-startup-does-only-auth -->
 ### Clearance of commands that ask the daemon to act
 
 Every `telec` command is cleared once, in the CLI process, by the gate that precedes its handler (`project/design/architecture/cli-invocation-boundary`), so every request it sends to the daemon has been cleared as that command before the first one leaves: against the command's own verb allowlist, with the caller the shared caller resolution yields (`project/spec/identity-and-auth` §6). No request leaves uncleared, whichever handler sends it and however many requests the command makes — a receipt poll or a listing inside a command is part of that command. The same holds when the command names another computer: the command is cleared here, and the request that reaches the peer carries the caller the local clearance resolved. A caller that resolves to no person and no system principal is refused before any request is sent. A role outside the verb's band is refused with the not-permitted failure naming the role and the verb. The request that follows carries the resolved identity, and the daemon applies no verb band of its own. A command that sends no request to the daemon is cleared by the same gate.
@@ -516,7 +430,6 @@ Then the TUI reports that the role is not permitted to revive a session
 And no request reaches the daemon
 And the session is not revived
 ```
-<!-- /planned:telec-startup-does-only-auth -->
 
 <!-- planned:authorize-person-roles-at-scope -->
 ### Person role at the command's scope
@@ -554,21 +467,13 @@ the objects' owners then narrow what it returns.
 
 ## Known caveats
 
-<!-- planned-change:telec-startup-does-only-auth -->
-- The authorization-failure message echoes the caller's role back to the wire: `"role '<role>' is not permitted to call <tool>"`. This is helpful for diagnostics but exposes the role taxonomy to any unauthenticated probe.
-<!-- change:telec-startup-does-only-auth -->
 - The refusal names the caller's role: `"role '<role>' is not permitted to call <tool>"`.
-<!-- /planned-change:telec-startup-does-only-auth -->
 - Admin is NOT implicit. The "all human roles" band lists `admin` explicitly alongside the other human roles. A future band that forgets to include `admin` will lock admins out of that verb — there is no automatic override.
 <!-- planned-change:authorize-person-roles-at-scope -->
 - Agent callers check only the system band. A `CallerIdentity` with `system_role=worker` and a permissive `human_role` cannot fall through to the human band — the allowlist evaluator returns immediately on the system branch.
 <!-- change:authorize-person-roles-at-scope -->
 - An agent caller never falls through to the person band as an alternative: an agent band that refuses the session's system role refuses the command, whatever role the person holds. The person band applies to an agent caller only as the further bound on a session acting for a person.
 <!-- /planned-change:authorize-person-roles-at-scope -->
-<!-- planned-change:telec-startup-does-only-auth -->
-- The `principal_role` fallback fires only when `human_role is None and identity.principal is not None`. A token-auth caller carrying both a `human_role` and a `principal_role` uses the human one; the two should agree (both are stamped from the same session at issuance) but the code does not enforce equality.
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 - Unknown verb paths return False. A typo in a binding's verb argument silently locks out every caller — there is no startup-time check that every verb identifier resolves to a real entry in the CLI surface.
 - The verb resolver normalizes `"telec sessions start"`, `"sessions.start"`, and `"sessions start"` to the same path. Mixed forms across operation bindings do not cause divergence, but the dot form is undocumented.
 

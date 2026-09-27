@@ -130,14 +130,12 @@ for every declaration; a declaration that fails validation elsewhere in the
 overlay is refused only where the full overlay is loaded
 (`project/spec/feature/config/project-capability-manifest`).
 
-<!-- planned:telec-startup-does-only-auth -->
 The role the matrix reads is resolved from the caller's session record through the
 shared caller resolution (`project/spec/identity-and-auth` §6), never from the
 session identity document, which carries only the session id
 (`project/spec/feature/identity/session-identity-file`). The wrapper resolves it
 only where a row depends on role: a push to main, and a replay that produces a
 commit on main.
-<!-- /planned:telec-startup-does-only-auth -->
 
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the

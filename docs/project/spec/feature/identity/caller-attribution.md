@@ -19,24 +19,13 @@ and never a terminal login from inside a session. A content inbox entry's author
 known-issue suppression's creation provenance name the resolved principal:
 `human:<email>` for a registered person, whether a session carries that principal or a
 terminal login names them, and the carried system principal for work with no human
-<!-- planned-change:telec-startup-does-only-auth -->
-origin. A known-issue suppression and a sealed commit resolve their caller in the CLI
-process; a content inbox entry takes its author from caller verification. A sealed
-commit takes its author under the rules `project/spec/feature/agent_runtime/sealed-commit`
-owns.
-<!-- change:telec-startup-does-only-auth -->
 origin. A known-issue suppression, a sealed commit and a content inbox entry resolve their
 caller in the CLI process. A sealed
 commit takes its author under the rules `project/spec/feature/agent_runtime/sealed-commit`
 owns.
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 
-<!-- planned-change:telec-startup-does-only-auth -->
-A caller that caller verification cannot identify has nothing recorded under a
-<!-- change:telec-startup-does-only-auth -->
 A caller the platform cannot identify has nothing recorded under a
-<!-- /planned-change:telec-startup-does-only-auth -->
 borrowed name: a command that would have to attribute a record to it refuses
 instead, naming how to establish an identity. A name the operator states
 explicitly for the record — a content author credited by `--author` — is authored

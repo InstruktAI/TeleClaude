@@ -1,5 +1,5 @@
 ---
-description: "Resolve every authenticated inbound call into a `CallerIdentity` via the identity context's single caller-verification capability."
+description: "Turn the identity every inbound call carries into a `CallerIdentity` via the identity context's single caller-verification capability, without re-verifying it."
 visibility: 'public'
 ---
 
@@ -12,70 +12,62 @@ visibility: 'public'
 
 ## What it is
 
-Caller verification is the identity context's single resolution capability: it turns the four caller-identity signals carried on every authenticated inbound call into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`). Every authorized operation begins with the same precedence — a session-token check, then a dual-factor session-id + tmux cross-check, then a terminal-email lookup. A call that none of them resolves to a session or a registered person is rejected as unauthenticated, whatever the number of registered people. On a call that names a session, the session's own identity outranks the terminal-email signal. The capability answers "who is this caller and what bands do they carry?" before any business logic runs.
+Caller verification is the identity context's single intake capability at the daemon's request surface: it turns the identity an inbound call carries into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`) before any business logic runs. The client that sent the call has already resolved and cleared its caller in its own process (`project/spec/identity-and-auth` §6) and carries the result — the caller's session, principal, system role, person role, person email, entry point, and session company when present (`project/spec/identity-and-auth` §2). Caller verification takes those values as given. It loads no session to confirm them, resolves no terminal signal, compares no tmux session, validates no session token, and applies no role band; a call that carries no identity yields a `CallerIdentity` with none, and the operation it reaches decides what a caller without identity may do. The one credential it checks is the daemon's own process-local credential, which resolves the daemon's calls to its system principal.
 
 ## Canonical fields
 
 ### Use cases
 
+#### UC-CV-CARRIED-SESSION: A call carrying a session's identity is taken as carried
+
 ```
-Given an authenticated call carrying a session-token signal `c3f1d8a2-7b94-4e6c-9f0e-2a8d7b6c4e5f`
+Given a client resolved its caller to a session and carries that session, its principal, and its system role on a call
 When caller verification runs
-Then the token-path branch resolves the token against the session-token ledger
-And the session referenced by the token is loaded and verified open
-And the returned CallerIdentity carries the token's principal and principal_role
-And the dual-factor session-id branch is not taken
+Then the returned CallerIdentity carries that session, principal, and system role
+And when the session has a company, it carries that company as business context
+And no session record is loaded to confirm them
+And no terminal, tmux, or token signal is consulted
 ```
 
+#### UC-CV-CARRIED-PERSON: A call carrying a person's identity is taken as carried
+
 ```
-Given a call with no session-token signal, with caller-session-id `8a2c1f4d-6e0b-4f3a-90ab-5cd7e9b21f3c` and tmux-session signal `worker-8a2c1f4d`
-And the identity context's session record stores `tmux_session_name: worker-8a2c1f4d`
+Given a client at a terminal, or the TUI, resolved its caller to a registered person and carries that person's principal, email, and role on a call
 When caller verification runs
-Then the dual-factor branch confirms the tmux signal matches the stored name
-And the returned CallerIdentity carries session_id, derived system_role, and resolved human_role
-And the returned CallerIdentity carries the principal and principal_role resolved from the session record through the principal-resolution capability
+Then the returned CallerIdentity carries that principal, email, and role, and no session
+And the people registry is not consulted to confirm them
 ```
 
+#### UC-CV-NO-IDENTITY: A call that carries no identity reaches its operation as a caller with none
+
 ```
-Given the same call with tmux-session signal `tc_tui` while the stored tmux_session_name is `worker-8a2c1f4d`
+Given a call that carries no caller identity and no daemon credential
 When caller verification runs
-Then the dual-factor branch rejects the call as a session-identity mismatch
+Then the call is not refused by caller verification
+And the returned CallerIdentity carries no session, no principal, and no role
+And an operation that acts only for a calling session refuses the caller itself
 ```
 
-```
-Given a managed descendant inherits a caller-session-id or session-token from its session identity file
-And the descendant has no TMUX environment membership
-When a CLI client assembles caller identity signals
-Then it sends the inherited session-token when present
-And otherwise sends the inherited caller-session-id
-And it omits the tmux-session signal without querying ambient tmux server state
-And caller verification uses the token path or the intentional pane-less session-id path
-```
+#### UC-CV-SIGNALS-NOT-CREDENTIALS: A session token or tmux session on a call resolves nothing
 
 ```
-Given a call with no session-token, no caller-session-id, and a terminal-email signal `maurice@instrukt.ai`
-And the configured `people` list maps that email to an `admin` Role
+Given a call that presents a session token or a tmux session name alongside, or instead of, a carried identity
 When caller verification runs
-Then the terminal-identity branch returns a CallerIdentity with no session_id, no system_role, human_role=`admin`, and email recorded
+Then neither value is consulted
+And the returned CallerIdentity is exactly the carried identity, or none
 ```
 
-```
-Given a call with no token, no session id, and an unresolvable terminal-email signal
-And the configured `people` list has more than one registered person (multi-user mode)
-When caller verification runs
-Then the terminal-identity branch rejects the call as login-required-in-multi-user-mode
-```
-
-#### UC-CV-TERMINAL-NO-PERSON: A call that names no person is refused on every host
+#### UC-CV-OPERATION-CARRIES-CALLER: Work the daemon runs for a caller carries that caller
 
 ```
-Given a call with no session-token and no session id
-And it carries no terminal-email signal, or one that matches no registered person
-When caller verification runs
-Then the terminal-identity branch rejects the call as login-required
-And this holds whatever the number of registered people, including zero or one
-And no role is granted to a call that names no person
+Given the daemon accepted a request from a session and runs work for it after the request returns
+When that work makes a request to the daemon's request surface
+Then the request carries the identity of the session that asked
+And it carries that session's company when one is recorded
+And the work is attributed to that session, never to the daemon's own principal or a terminal login
 ```
+
+#### UC-CV-TERMINAL-NO-PERSON
 
 #### UC-CV-DAEMON-SELF: The daemon's own calls resolve to its system principal, never to a person
 
@@ -93,66 +85,30 @@ And the terminal-email branch is not taken
 Given a call from outside the daemon process carrying a daemon-credential value the daemon did not mint
 When caller verification runs
 Then the credential resolves no identity
-And verification continues with the caller's remaining signals, rejecting the call when none of them resolve
+And the returned CallerIdentity is the identity the call carries, or none
 ```
 
-#### UC-CV-SESSION-PRINCIPAL-HUMAN: A human-rooted session resolves to a human principal and clears the human gate
+#### UC-CV-SESSION-PRINCIPAL-HUMAN
 
-```
-Given a call with no session-token signal and a caller-session-id whose session record has human_email set and no inherited principal
-When caller verification runs
-Then the dual-factor branch resolves the session through the principal-resolution capability
-And the returned CallerIdentity carries principal="human:<email>" and the session's human_role
-And a gate that requires a human principal accepts the caller
-```
+#### UC-CV-SESSION-PRINCIPAL-SYSTEM
 
-#### UC-CV-SESSION-PRINCIPAL-SYSTEM: A system-role session resolves to a system principal and the human gate refuses it
+#### UC-CV-SESSION-PRINCIPAL-NONE
 
-```
-Given a call with no session-token signal and a caller-session-id whose session record has system_role set, no human_email, and no inherited principal
-When caller verification runs
-Then the returned CallerIdentity carries principal="system:daemon"
-And a gate that requires a human principal refuses the caller
-```
-
-#### UC-CV-SESSION-PRINCIPAL-NONE: A human_role-only session keeps no principal yet stays authorized on its role
-
-```
-Given a call with no session-token signal and a caller-session-id whose session record carries only a human_role — no inherited principal, no human_email, and no system_role
-When caller verification runs
-Then the returned CallerIdentity carries principal=None and retains the session's human_role as the authorization basis
-And a gate that requires a human principal refuses the caller
-```
-
-#### UC-CV-SESSION-OUTRANKS-TERMINAL: A session's own identity outranks a terminal-email signal
-
-```
-Given a call with no session-token signal and a caller-session-id whose session record carries an identity — a principal, or a person's email
-And the call also carries a terminal-email signal
-When caller verification runs
-Then the returned CallerIdentity takes its email from the session record, never from the signal
-And a human role the session record does not store is resolved for the session's own person
-And a session carrying the platform's principal gains no email from the signal
-And the terminal-email signal is consulted only for a session record that carries no identity at all
-```
+#### UC-CV-SESSION-OUTRANKS-TERMINAL
 
 ### Cross-context references
 
-- Consumed by every protected operation in the identity context, either directly or transitively through the command-clearance capability.
-- Reads from the `agent_runtime` bounded context (sessions, via the session loader) and from the `config` bounded context (the human-identity resolution capability for email→Role mapping).
-- The session-token branch interlocks with session-token issuance — see `project/spec/identity-and-auth` §3. The derived system_role is the same value principal resolution would stamp on a token — see `feature/identity/principal-resolution`.
-- In v2 this collapses into `identity.resolve(headers)` returning a typed `Principal` (or Anonymous); the v2 model unifies token-auth, session-id-auth, and email-trust under one resolution call.
+- Consumed by every operation on the daemon's request surface. An operation that scopes an act to its objects — the session authority rule, reminder ownership, the claiming-group rule, person-bound service selection — evaluates that rule against the returned `CallerIdentity`.
+- The identity it takes is produced by the client-side caller resolution and clearance in `project/spec/identity-and-auth` §6 and `feature/identity/command-clearance`; session principals resolve there through `feature/identity/principal-resolution`.
+- Reads nothing from the `agent_runtime` or `config` bounded contexts: the carried identity already names the session and the person.
+- A remote peer receives the caller the local daemon took, carried on the relay — see `feature/session_mirrors/cross-computer-history-federation`.
+- In v2 this collapses into `identity.resolve(headers)` returning a typed `Principal` (or Anonymous).
 
 ## Known caveats
 
-- The tmux cross-check is conditional. The dual-factor branch only rejects when BOTH the inbound tmux signal AND the stored session tmux name are present and differ. A call with no tmux signal (or a session record with no stored tmux name) passes the check silently. This is intentional — identity-context-spawned tasks without a tmux pane must still authenticate — but it weakens the dual-factor property for that subset of callers.
+- A carried identity is not proven. Any process that can reach the daemon's local socket can carry any identity; the daemon's request surface is not an isolation boundary between local processes (`project/spec/identity-and-auth`, Known caveats).
+- The daemon credential is the one value caller verification checks, because it is minted in the daemon's own memory and no other process can produce it.
 
-- CLI clients treat `TMUX` environment membership as the prerequisite for
-  querying the current tmux session name. A successful ambient
-  `tmux display-message` result without that membership is foreign server state,
-  not caller identity, and is omitted.
+## See Also
 
-- The session and token resolution layers maintain short-lived caches. A freshly closed session can resolve briefly through the cache; cache invalidation is called on session close to mitigate, but a race window exists.
-- No host shape turns a call that names no person into an admin. The single-person convenience lives in the terminal reader, which answers a fresh terminal with the sole registered person's email (`feature/identity/terminal-email-login` UC-TEL5); a caller with no terminal sends no email and is refused here.
-- System-role derivation falls back to the heuristic "if `working_slug` is set, treat as worker" when `system_role` is unset. A session record with a stale `working_slug` would mis-band as worker. The column-first ordering protects current deployments.
-- The CLI deliberately suppresses token/session-id signals when the tmux session name is `tc_tui` (the trusted TUI). TUI callers ALWAYS go the terminal-email path even though they live in tmux.
+- docs/project/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why the daemon takes the carried identity as given.

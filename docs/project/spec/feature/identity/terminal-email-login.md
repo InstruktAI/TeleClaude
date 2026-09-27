@@ -1,5 +1,5 @@
 ---
-description: 'Bind a human email to the current terminal via `telec auth login`, written to a per-TTY identity file and injected as the terminal-email signal on outbound calls into the identity context.'
+description: 'Bind a human email to the current terminal via `telec auth login`, written to a per-TTY identity file and read by the client to resolve the caller it serves.'
 visibility: 'public'
 ---
 
@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document and inject the email into outbound calls into the identity context as the terminal-email signal, where caller verification resolves it against the configured `people` list to derive a Principal and role. While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. This is the v1 binding between a real person at a real terminal and the identity context's authorization model.
+The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`project/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. This is the v1 binding between a real person at a real terminal and the identity context's authorization model.
 
 ## Canonical fields
 
@@ -64,17 +64,17 @@ And no file is written
 
 ```
 Given a telec invocation from a TTY whose per-TTY login document records the device's current allocation token
-When the CLI builds outbound identity signals
+When the CLI resolves its caller
 Then the session-auth reader returns that document's email
-And the outbound call carries the terminal-email signal
-And the identity context resolves the principal via the terminal-email auth path
+And the caller resolves to the registered person that email names
+And every request the command sends carries that person's identity
 ```
 
 #### UC-TEL4: A per-TTY document outlives neither its device nor its allocation
 
 ```
 Given a per-TTY login document whose terminal device no longer exists, or exists with a different allocation token than the one recorded at login
-When the CLI builds outbound identity signals from that TTY
+When the CLI resolves its caller from that TTY
 Then the session-auth reader does not return that document's email
 And the terminal is treated as carrying no login document of its own
 ```
@@ -84,7 +84,7 @@ And the terminal is treated as carrying no login document of its own
 ```
 Given a telec invocation from a TTY that carries no login document of its own
 And exactly one person is registered
-When the CLI builds outbound identity signals
+When the CLI resolves its caller
 Then the session-auth reader returns that person's email from the people registry
 And the human is spared logging in on a shell they just opened
 ```
@@ -92,7 +92,7 @@ And the human is spared logging in on a shell they just opened
 ```
 Given a telec invocation from a TTY that carries no login document of its own
 And no person is registered
-When the CLI builds outbound identity signals
+When the CLI resolves its caller
 Then the session-auth reader returns no email
 ```
 
@@ -101,9 +101,9 @@ Then the session-auth reader returns no email
 ```
 Given a telec invocation from a TTY that carries no login document of its own
 And more than one person is registered
-When the CLI builds outbound identity signals
+When the CLI resolves its caller
 Then the session-auth reader returns no email
-And the outbound call carries no terminal-email signal
+And the caller resolves to no person
 And the operator is told that login is required before the command can proceed
 ```
 
@@ -111,16 +111,16 @@ And the operator is told that login is required before the command can proceed
 
 ```
 Given a process with no detectable TTY (no ttyname on fd 0/1/2, no SSH_TTY, and no ancestor process with a terminal)
-When it builds outbound identity signals
+When it resolves its caller
 Then the session-auth reader returns no email
-And the outbound call carries no terminal-email signal
+And the caller resolves to no person
 And this holds for the daemon and for every process it spawns with no terminal
 ```
 
 ```
 Given a process with no terminal on fd 0/1/2 and no SSH_TTY, and no session identity document
 And an ancestor process runs on a terminal (e.g. an agent CLI started from /dev/ttys003 running a detached tool shell)
-When it builds outbound identity signals
+When it resolves its caller
 Then the session-auth reader resolves the nearest such ancestor's terminal
 And reads that terminal's login document on the same liveness terms as the terminal itself
 And the email it returns is that terminal's human identity, never a session identity
@@ -131,9 +131,9 @@ And the email it returns is that terminal's human identity, never a session iden
 ```
 Given a process whose session identity document is present, whether well-formed or not
 And its own terminal, or its nearest terminal-bearing ancestor's, carries a live login document
-When the process builds outbound identity signals, or any consumer reads the terminal login
+When the process resolves its caller, or any consumer reads the terminal login
 Then the session-auth reader returns no email
-And the outbound call carries no terminal-email signal
+And the caller resolves to no terminal person
 And with exactly one person registered, that person is not presented either
 ```
 
@@ -153,7 +153,7 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 
 ### Cross-context references
 
-- Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Identity resolution itself happens inside the identity context from the terminal-email signal — see `feature/identity/principal-resolution` and `feature/identity/caller-verification`.
+- Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Caller resolution from the login happens in the client that serves the caller — see `project/spec/identity-and-auth` §6.
 - Writes operator-local filesystem state under the session-auth directory. No identity-context state is touched by login itself.
 - Coordinates with the TUI launcher: a successful login is the precondition for `feature/identity/tui-multi-user-login-gate` when more than one person is configured.
 - The TUI launcher carries the identity it resolved in the outer terminal into the `tc_tui` tmux session alongside the TUI runtime marker, and the reader honours that carried identity only where the marker is present. The marker reaches that session and no other: it is absent from the environment filters that build agent sessions.
@@ -167,7 +167,7 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 - The terminal-device allocation token is the recycling discriminator, and it is platform-specific because each platform keeps a different attribute stable for exactly one allocation. On macOS it is the device node's inode: devfs issues a fresh inode each time a pty is allocated, while the node's ctime moves on every write to the terminal and so cannot identify an allocation. On Linux it is the device node's ctime: devpts derives the inode from the pty index, so a reused terminal keeps it, while terminal I/O leaves ctime untouched. On Linux, anything that touches the device node's metadata — `mesg y`, for instance — moves ctime; the cost is one re-login on a terminal that is still open. The alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
 - A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
 - A document that records no device allocation token cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation token instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
-- Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the identity context tries to match it against `people`.
+- Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the client tries to match it against `people`.
 - A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document on the same device terms as any other terminal, for a process that carries no session identity. A process inside a session reads no terminal login, whichever pane it runs on. The trusted-TUI marker gates one thing only — whether an identity carried in the environment is honoured — and never what a terminal's own document answers.
-- The terminal-email signal is intended as a development/local convenience and is honored only when the identity context is bound to a local-socket transport; v2 hardens this with an explicit config-gated production toggle (see the Known caveats in `docs/project/spec/domain/identity.md`).
+- A terminal login is a local convenience: it answers only for a client running on this host, and v2 hardens it with an explicit config-gated production toggle (see the Known caveats in `docs/project/spec/domain/identity.md`).
 - Legacy plaintext auth documents (a bare email string instead of structured form) are still readable for backward compatibility. There is no automatic rewrite — the document is upgraded only on the next successful login.

@@ -249,11 +249,7 @@ And the resumed agent receives the resulting turn in the restored conversation
 
 ### Cross-context references
 
-<!-- planned-change:telec-startup-does-only-auth -->
-- **identity** — the revive clearance resolves the caller identity (session token + role); the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.
-<!-- change:telec-startup-does-only-auth -->
 - **identity** — the client clears the revive before sending it (`feature/identity/command-clearance`) and the request carries the caller it resolved; the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.
-<!-- /planned-change:telec-startup-does-only-auth -->
 <!-- planned-change:single-project-registry -->
 - **config** — per-agent enablement (invoked transitively by the restart-agent flow) is checked against configuration; trusted-directory configuration gates the project-path argument so revival cannot drop a session into an arbitrary directory.
 <!-- change:single-project-registry -->

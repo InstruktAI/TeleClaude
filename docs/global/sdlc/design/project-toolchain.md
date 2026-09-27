@@ -64,12 +64,7 @@ carry an executable body.
 4. `telec code` only ever runs the project's own configured tools / make targets; it
    embeds no toolchain of its own (beyond TeleClaude-flavored policy checks layered on
    top where TeleClaude is present).
-<!-- planned-change:telec-startup-does-only-auth -->
-5. `make install` is the prerequisite for `telec code`; `telec code install` defers to
-   it.
-<!-- change:telec-startup-does-only-auth -->
 5. `make install` is the prerequisite for `telec code`.
-<!-- /planned-change:telec-startup-does-only-auth -->
 
 6. `make test` is never file-scoped — the spec-anchored model has no 1:1 source→test
    map.
@@ -79,10 +74,6 @@ carry an executable body.
 `telec code` is the scoping / orchestration layer; it delegates execution to the
 project's `make`:
 
-<!-- planned-change:telec-startup-does-only-auth -->
-- `telec code install` → `make install` (the install prerequisite).
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 - `telec code lint` → resolve workspace scope → `make lint FILES_FROM=<tmpfile>`.
 
 - `telec code test` → `make test` (unscoped).
@@ -105,13 +96,8 @@ TeleClaude is present.
 - **No Makefile / missing target.** `telec code <verb>` has nothing to delegate to —
   it reports the missing target and points at the steward
   (`sdlc/procedure/code-config-assessment`) to wire it up.
-<!-- planned-change:telec-startup-does-only-auth -->
-- **Toolchain not installed.** `make install` (or `telec code install`, which the
-  checkpoint flags when a package manifest changes on main) provisions it. A project
-<!-- change:telec-startup-does-only-auth -->
 - **Toolchain not installed.** `make install` (which the checkpoint flags when a
   package manifest changes on main) provisions it. A project
-<!-- /planned-change:telec-startup-does-only-auth -->
   that runs `make test` before `make install` fails on missing binaries — that is the
   prerequisite ordering, surfaced by the checkpoint flag, not a defect in the runner.
 - **Project diverges from a default.** The steward raises the floor and respects the

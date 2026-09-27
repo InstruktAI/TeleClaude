@@ -30,14 +30,7 @@ Given a non-closed session row exists for session_id
 And the caller invokes terminate-session for the session with a reason
 When the cleanup begins
 Then the session id is added to the in-flight cleanup set (concurrency guard)
-<!-- planned-change:telec-startup-does-only-auth -->
-And session-token revocation runs early so any in-flight CLI calls with old tokens fail fast
-And the token cache for the session is invalidated
 And the lifecycle status is written to "closing"
-And the session cache is invalidated after the write so subsequent auth misses read "closing"
-<!-- change:telec-startup-does-only-auth -->
-And the lifecycle status is written to "closing"
-<!-- /planned-change:telec-startup-does-only-auth -->
 And the host pane is terminated when a host pane reference is present and the session is not headless
 And the resource-cleanup step runs (links, listeners, channel delete, workspace removal)
 And the per-session tmpdir cleanup runs
@@ -278,10 +271,6 @@ And incomplete ownership evidence produces no provider deletion
 
 - **session_mirrors** — consumer of the `session.ended` event family produced when the lifecycle write transitions to closed. Mirror extraction at session-end depends on the lifecycle write running, which is why the cleanup module guarantees the final close-session even when intermediate cleanup steps raise.
 - **integration** — the escalation-end step clears relay status / Discord channel binding / relay-started-at on the session and emits `session.escalation_ended` (CLUSTER visibility) so the escalation integration can drop its corresponding Discord channel binding. The adapter-channel deletion side runs via the adapter client's delete-channel inside the resource-cleanup step.
-<!-- planned-change:telec-startup-does-only-auth -->
-- **identity** — token revocation runs early via session-token revocation plus token-cache invalidation. Downstream identity consumers see the token gone on the next cache miss.
-<!-- change:telec-startup-does-only-auth -->
-<!-- /planned-change:telec-startup-does-only-auth -->
 - **workflow** — sessions spawned by orchestrators register one-shot stop-listeners on creation (see `session-lifecycle`); the resource-cleanup step removes both target-side and caller-side listener rows so notifications stop firing for the dead session.
 
 ## Known caveats
