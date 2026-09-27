@@ -29,10 +29,11 @@ one.
 <!-- change:agent-home-clone-provisioning -->
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
-wrapper never runs against the live home: unless its caller names another home, it runs
-the worktree's code against the home repository clone the worktree was provisioned with
-(`project/spec/feature/agent_runtime/isolated-home`), whoever invokes it, and it refuses
-when that home is missing. The wrapper creates no home of its own.
+wrapper never runs against the live home: the worktree's code runs against the home
+repository clone the worktree was provisioned with
+(`project/spec/feature/agent_runtime/isolated-home`), whatever home its caller names and
+whoever invokes it, and refuses when that home is missing. The wrapper creates no home of
+its own.
 <!-- /planned-change:agent-home-clone-provisioning -->
 
 <!-- planned-change:agent-home-clone-provisioning -->
@@ -69,6 +70,7 @@ Then the command runs the installed canonical checkout's code
 And the command acts on the directory the agent invoked it from
 ```
 
+<!-- planned-change:agent-home-clone-provisioning -->
 #### UC-CCS2: A worktree's own wrapper runs the worktree's code against a named home
 
 ```gherkin
@@ -78,6 +80,8 @@ When an operator or platform process invokes the worktree's own telec wrapper wi
 Then the command runs the worktree's code against that home
 And the worktree's code writes nothing into the live home
 ```
+<!-- change:agent-home-clone-provisioning -->
+<!-- /planned-change:agent-home-clone-provisioning -->
 
 <!-- planned-change:agent-home-clone-provisioning -->
 #### UC-CCS3: A worktree's own wrapper supplies and removes its own temporary home
@@ -95,7 +99,7 @@ And nothing in the live home changes
 
 ```gherkin
 Given a slug worktree with its provisioned home
-When an agent or operator invokes the worktree's own telec wrapper with no home set, or with a home that resolves to the live home however it is spelled
+When an agent or operator invokes the worktree's own telec wrapper with any home set, or none
 Then the worktree's code runs against the worktree's home
 And the call's exit status is the command's own
 And nothing in the live home changes

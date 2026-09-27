@@ -29,16 +29,12 @@ grants no permission for undelivered code to modify those live repositories.
 
 The clone's location follows from the worktree's own location, so it is known
 before the clone exists. Code loaded from a slug worktree, however it is
-started, resolves its home to that worktree's clone when `TELECLAUDE_HOME` is
-unset, empty, or names a live home by any spelling — the home the installation
-of the worktree's owning checkout recorded, or the default home — and refuses
-at startup, naming the clone, when the clone is missing. It never falls back to a live home. Any other home its caller
-names explicitly is used as named, a relative name meaning the same location it
-meant where the caller invoked the command. While the owning checkout's installation has recorded
-no home, worktree code treats every named home as live. Code loaded from any other checkout —
-the installed canonical checkout, the integration worktree — resolves its home
-as before, so agent sessions, hooks, installed commands, and the daemon keep
-operating the live platform and their environment is unchanged.
+started, runs against that worktree's clone and never reads `TELECLAUDE_HOME`;
+when the clone is missing it refuses at startup, naming the clone. Code loaded
+from any other checkout — the installed canonical checkout, the integration
+worktree — resolves its home as before, so agent sessions, hooks, installed
+commands, and the daemon keep operating the live platform and their
+environment is unchanged.
 
 ## Canonical fields
 
@@ -148,7 +144,7 @@ And no home remains under the former slug
 
 ```gherkin
 Given code loaded from a slug worktree
-When it starts with TELECLAUDE_HOME unset, empty, or naming the installation's recorded home or the default home however it is spelled
+When it starts with TELECLAUDE_HOME unset, empty, or naming any location
 Then it runs against that worktree's home
 And the live home is unchanged
 ```
