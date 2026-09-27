@@ -149,7 +149,7 @@ And mirrors recorded in a project owned by another company are returned only whe
 ```
 Given the caller is a person whose role is member
 And an orchestrator or worker session was spawned in a chain that person started
-When the caller searches history
+When the caller searches history with dispatched workers included
 Then that spawned session's conversation is returned
 And a session spawned in another person's chain is not returned
 ```
@@ -163,6 +163,15 @@ Then that mirror is not returned
 And a platform administrator's search returns it
 ```
 
+#### UC-RSHA-12: A mirror linked to no session stays with the person its record names
+
+```
+Given a mirror linked to no session attribution, recorded with a person's email
+When that person searches history or requests that session's conversation
+Then that mirror is returned
+And a company administrator who is not that person does not receive it
+```
+
 ## Known caveats
 
 - The scope is decided from the identity the caller carries. A process inside a
@@ -172,6 +181,10 @@ And a platform administrator's search returns it
 - A mirror recorded under no person principal — a system-rooted session's — is
   visible only to a person whose effective role for its project is admin, and to
   system principals.
+- A mirror linked to no session attribution records no principal and no
+  registered project. It is recorded under the person its own email names — the
+  person its session ran under (`feature/session_mirrors/mirror-identity-enrichment`)
+  — and has no company scope.
 - The mirror record's `visibility` value is stored but grants nothing: no scope
   reads it.
 - A peer applies this same scope to the identity relayed with a remote search (see
