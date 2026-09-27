@@ -90,6 +90,22 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 The effective action model is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). The base contains disjoint checkpoint and maintenance registries plus one binding table. Base bindings attach per subscribed capability (`project/spec/feature/config/project-capability-manifest`): `docs: enabled` and `agents: enabled` activate their fixed scopes (`docs/**`; `agents/**`, `.agents/**`, `**/AGENTS.master.md`) carrying artifact-pipeline maintenance; `code: enabled` activates toolchain maintenance and the slug-parameterized log judgment on changed code (`instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig`, superseding the hardcoded command in Invariant 15). A binding names the action a changed path owes without regard to which registry declares it. The overlay extends each registry with the project's own actions. Unreadable project config fails open to both base registries and the base bindings — the fail-open posture of Invariant 13 extended to configuration.
 
+The base registries, unconditionally present in every merged model (the maintenance registry is not capability-gated; only its bindings are):
+
+| id          | registry    | run / command                                                                | default binding                                                              |
+| ----------- | ----------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `log-check` | checkpoint  | `Check logs: instrukt-ai-logs {slug} --since {window} --exclude git-wrapper` | the project-declared `code` scope                                            |
+| `test`      | checkpoint  | `Run targeted tests for only YOUR changed behavior`                          | the project-declared `code` scope                                            |
+| `install`   | maintenance | `make install`                                                               | `Makefile`, `.pre-commit-config.yaml`, `.gitattributes`, `.husky/pre-commit` |
+| `sync`      | maintenance | `telec code publish --after-sha {after_sha} --before-sha {before_sha}`       | `docs/**`; agent-artifact source globs                                       |
+
+An overlay binding referencing `install` or `sync` already resolves through this
+table with no project-side declaration — a project only ever needs to extend
+_which paths_ trigger a base id (e.g. a project binding a dependency-manifest
+file onto `install` so a manifest change also re-provisions), never redeclare
+the id itself. Authoring a second, differently-named action for an outcome one
+of these four already covers is a duplicate, not a new capability.
+
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, and `precedence`; it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
@@ -98,7 +114,7 @@ Every checkpoint-registry action also carries its judgment owner: an ordinary se
 
 An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only` and `precedence`, beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
 
- The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
+The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
 
 24. **Code is an allowlist; there is no code/non-code classifier**: "Owes `test` + `log-check`" is an ordinary action set bound to a project-declared `code` scope — broad source-root globs authored at analyze-time by intelligence, never sniffed at runtime. A changed file owes test+log iff it matches such a binding; an unmatched file is silent. There is no `is_code` flag, no enumerated non-code set, and no collective cross-category code detection. A code-shaped path that must skip validation (vendored, generated) is carved out with the binding's own `exclude`. Action selection is structural glob + evidence matching over the merged declaration only — no runtime code path inspects file language or content (`general/principle/intelligence-boundaries`).
 
@@ -232,20 +248,20 @@ sequenceDiagram
 
 ## Failure modes
 
-| Scenario                                                      | Behavior                                                                                          | Recovery                                                              |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly                                   | No action needed                                                      |
-| DB field missing (migration not run)                          | `AttributeError` on session access                                                                | Run migration 004; daemon auto-runs on startup                        |
-| Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                                                     | TTS dedup skips speaking; DB still updates                            |
-| Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                                                               | Correct behavior                                                      |
-| Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop                                               | Correct behavior                                                      |
-| Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                                                                | First real user message sets `last_message_sent_at`                   |
-| DB unavailable in receiver                                    | `_maybe_checkpoint_output` returns None (fail-open)                                               | Stop passes through normally                                          |
-| Hook output malformed                                         | CLI ignores non-JSON stdout; agent stops normally                                                 | Next stop re-evaluates                                                |
-| Git not available in hook subprocess                          | `_get_uncommitted_files` returns None → generic Phase 1 message                                   | Correct fail-open behavior                                            |
-| Transcript missing or corrupt                                 | `TurnTimeline(has_data=False)` → file-based instructions only                                     | No suppression; all actions listed                                    |
-| Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`                                         | Performance acceptable for checkpoint frequency                       |
-| False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                                                     | Acceptable: false suppression > false negative (R8)                   |
+| Scenario                                                      | Behavior                                                        | Recovery                                            |
+| ------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly | No action needed                                    |
+| DB field missing (migration not run)                          | `AttributeError` on session access                              | Run migration 004; daemon auto-runs on startup      |
+| Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                   | TTS dedup skips speaking; DB still updates          |
+| Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                             | Correct behavior                                    |
+| Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop             | Correct behavior                                    |
+| Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                              | First real user message sets `last_message_sent_at` |
+| DB unavailable in receiver                                    | `_maybe_checkpoint_output` returns None (fail-open)             | Stop passes through normally                        |
+| Hook output malformed                                         | CLI ignores non-JSON stdout; agent stops normally               | Next stop re-evaluates                              |
+| Git not available in hook subprocess                          | `_get_uncommitted_files` returns None → generic Phase 1 message | Correct fail-open behavior                          |
+| Transcript missing or corrupt                                 | `TurnTimeline(has_data=False)` → file-based instructions only   | No suppression; all actions listed                  |
+| Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`       | Performance acceptable for checkpoint frequency     |
+| False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                   | Acceptable: false suppression > false negative (R8) |
 
 ## See Also
 

@@ -51,7 +51,13 @@ remains outside every synchronization path.
 - **Hooks.** A project receives the TeleClaude-owned hook set when any enabled
   capability or declared binding can resolve an executable action. A hook the
   project authored itself is preserved rather than overwritten. A project with
-  no executable binding receives no TeleClaude-owned hook.
+  no executable binding receives no TeleClaude-owned hook. A project-authored
+  hook may itself invoke `telec code <hook-name>` as one of its own steps, so
+  TeleClaude's dispatch and logic the platform cannot express run from the same
+  file; it still carries no sentinel and is still preserved exactly as any
+  project-authored hook is — it does not converge when the platform's template
+  next changes, so leaving it in place is recorded rather than treated as
+  ordinary, silent preservation.
 - **Filter driver.** The driver is present exactly when the project subscribes
   `docs`. Convergence is two-directional: the driver is installed when `docs` is
   subscribed and removed when it is not, so the act runs regardless of the
@@ -119,6 +125,16 @@ And which also carries a hook the project authored itself
 When an agent runs project initialization for that repository
 Then the TeleClaude-owned hooks are refreshed from their current templates
 And the project-authored hook is left in place
+```
+
+#### UC-RPC17: A project-authored hook that itself calls TeleClaude's dispatch is preserved
+
+```gherkin
+Given a project-authored hook that carries no TeleClaude sentinel
+And that hook itself invokes telec code <hook-name> alongside its own logic
+When an agent runs project initialization or fleet convergence for that project
+Then that hook is left in place, unmodified
+And it is not converged when the platform's hook template next changes
 ```
 
 #### UC-RPC4: A project subscribing neither receives no git plumbing
