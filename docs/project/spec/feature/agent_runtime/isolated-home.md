@@ -11,31 +11,40 @@ delivered_by: [agent-home-clone-provisioning]
 Every slug worktree owns an isolated, temporary Git clone of the TeleClaude
 home repository. The platform creates the clone in the step that creates or
 attaches the worktree and removes it in the step that releases the worktree at
-delivery or removal. No agent session creates, selects, sets, or removes it.
+delivery or removal; platform maintenance gives an existing worktree that has
+no clone its clone and removes a clone whose worktree is gone. A renamed todo's
+worktree keeps its clone. No agent session creates, selects, sets, or removes
+it.
 A session that is not rooted in a slug worktree has no worktree home, and its
 environment carries none.
 
-The clone contains the home repository's tracked material — the project
-registry and the global, person, and company tier documents — including
-tracked working-tree edits present when it is provisioned. When the live
-home's tracked content has changed, the next dispatch into the worktree
-refreshes the clone; writes made inside the clone are disposable. Databases,
-credentials, secrets, sockets, logs, and other runtime state are not part of
-the clone and are never linked into it, so the worktree's code reaches no live
-runtime state through its home. The cloned registry remains readable with its
-real project entries; it alone grants no permission for undelivered code to
-modify those live repositories.
+The clone is a Git repository holding the home repository's tracked material
+that the home's retained set keeps — the project registry and the global,
+person, and company tier documents — including tracked working-tree edits
+present when it is provisioned. It carries neither the home repository's
+history nor a remote. When the live home's tracked content has changed, the
+next dispatch into the worktree refreshes the clone; writes made inside the
+clone are disposable. Databases, credentials, secrets, sockets, logs, and other
+runtime state are not part of the clone and are never linked into it; a
+company's ERP connection record, which the home retains with its credentials,
+is not copied. The worktree's code therefore reaches no live runtime state
+through its home. The cloned registry remains readable with its real project
+entries; it alone grants no permission for undelivered code to modify those
+live repositories.
 
 The worktree's code finds its home from the worktree. The worktree's own
 `telec` wrapper and checkout grading both run that code against the clone, and
 a worktree whose home is missing is refused rather than given a partial one.
 An agent session started in a slug worktree carries `TELECLAUDE_HOME` naming
 the clone, so anything the agent builds from that variable resolves to
-disposable material. The installed TeleClaude entry points — the global
-`telec`, the agent hook receiver, and the TeleClaude shell — resolve the live
-home themselves and never adopt the session's value, so hooks, session-scoped
-checkpoint state, caller resolution, todos, and the daemon stay on the live
-platform.
+disposable material. Every entry point TeleClaude installs for agent sessions —
+the global `telec`, the agent hook receiver, the TeleClaude shell and its
+startup files, the git wrapper and the declaration reader it shares, the other
+command wrappers in the home's `bin`, and the git hooks installed into managed
+projects — resolves the live home the installation recorded and never adopts
+the session's value, so hooks, session-scoped checkpoint state, caller
+resolution, todos, and the daemon stay on the live platform. None of them
+exports the live home as the session's `TELECLAUDE_HOME`.
 
 ## Canonical fields
 
@@ -139,6 +148,34 @@ Given an agent session that is not rooted in a slug worktree
 When the session starts
 Then its environment names no worktree home
 And its commands operate the live platform
+```
+
+#### UC-IAH12: The agent shell and git keep their installed guards in a worktree session
+
+```gherkin
+Given an agent session in a slug worktree whose environment names the worktree's clone
+When the agent starts a nested shell or runs git in the worktree
+Then the TeleClaude git wrapper governs that git command
+And the project's installed git hooks find the platform's declaration reader
+And both read the project's declaration through the live platform
+```
+
+#### UC-IAH13: Maintenance gives an existing worktree its home
+
+```gherkin
+Given a slug worktree that has no home
+When platform maintenance runs
+Then the worktree owns a home holding the current tracked configuration
+And no agent created or selected that home
+```
+
+#### UC-IAH14: A renamed todo's worktree keeps its home
+
+```gherkin
+Given a todo whose slug worktree owns a home
+When the todo is renamed
+Then the renamed worktree owns that home
+And no home remains under the former slug
 ```
 
 ## Known caveats

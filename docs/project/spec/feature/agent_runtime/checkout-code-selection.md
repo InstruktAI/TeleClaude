@@ -169,10 +169,17 @@ And grading reports their outcome without an unidentified-caller refusal from it
 
 ## Known caveats
 
+<!-- planned-change:agent-home-clone-provisioning -->
 - A temporary or named home moves only the state rooted in the home. A checkout's todo store and
   the running daemon do not follow it: a probe of a command that writes project state
   or acts through the daemon reaches the live one, which is why such behavior is
   verified after delivery (`project/policy/test-moratorium`).
+<!-- change:agent-home-clone-provisioning -->
+- A worktree or named home moves only the state rooted in the home. A checkout's todo store and
+  the running daemon do not follow it: a probe of a command that writes project state
+  or acts through the daemon reaches the live one, which is why such behavior is
+  verified after delivery (`project/policy/test-moratorium`).
+<!-- /planned-change:agent-home-clone-provisioning -->
 
 ## See Also
 
