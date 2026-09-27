@@ -47,11 +47,12 @@ configuration.
 <!-- /planned-change:agent-home-clone-provisioning -->
 
 <!-- planned:grade-worktrees-without-cli-reentry -->
-The installed `telec code lint` and `telec code commit` commands hand their
-selected native and guardrail checks to one installation-supplied process entry.
-That entry confirms it loaded the subject checkout's code and runs exactly the
-selected checks without invoking a second `telec` command. The outer command's
-caller clearance governs the grading act.
+The installed `telec code lint` and `telec code commit` commands grade such a
+worktree without invoking a second `telec` command; the outer command's caller
+clearance governs the grading act. Within the grading act's isolated home, a
+selected native leg runs the worktree's own project-native lint, and a selected
+guardrail lane runs through one installation-supplied process entry that
+confirms it loaded the worktree's code before running exactly that lane.
 <!-- /planned:grade-worktrees-without-cli-reentry -->
 
 The path this behavior sits on is described in
