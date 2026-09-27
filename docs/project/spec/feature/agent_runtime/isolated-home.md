@@ -21,8 +21,7 @@ environment carries none.
 The clone is a Git clone of the home repository — its history and its tracked
 material, the project registry and the global, person, and company tier
 documents — carrying the tracked working-tree edits present when it is
-provisioned. It keeps no remote, so nothing in it writes back to the live
-home. When the live home's tracked content has changed, the next dispatch into
+provisioned. It keeps no remote. When the live home's tracked content has changed, the next dispatch into
 the worktree refreshes the clone; writes made inside the clone are disposable.
 Databases, credentials, secrets, sockets, logs, and other runtime state are not
 part of the clone and are never linked into it, so the worktree's code reaches
