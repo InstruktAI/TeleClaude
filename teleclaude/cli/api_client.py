@@ -40,7 +40,7 @@ from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.daemon_lifecycle_identity import daemon_credential_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
-from teleclaude.history.service import HistorySearchPayload
+from teleclaude.history.service import HistoryDetailPayload, HistorySearchPayload
 from teleclaude.session_identity import get_session_id, get_session_token
 
 logger = get_logger(__name__)
@@ -51,6 +51,11 @@ _TUI_SESSION_NAME = "tc_tui"
 _TMUX_ENV = "TMUX"
 _ALL_SESSIONS_PARAM = "all"
 _QUERY_TRUE = "true"
+_HISTORY_SHOW_PATH_TEMPLATE = "/history/show/{session_id}"
+_HISTORY_AGENT_PARAM = "agent"
+_HISTORY_THINKING_PARAM = "thinking"
+_HISTORY_RAW_PARAM = "raw"
+_HISTORY_COMPUTER_PARAM = "computer"
 
 # Reconnection settings
 WS_INITIAL_BACKOFF = 0.5  # Initial reconnect delay in seconds
@@ -609,6 +614,24 @@ class _TelecSessionAPI:
             request_options=RequestOptions(params=params),
         )
         return TypeAdapter(HistorySearchPayload).validate_json(resp.text)
+
+    async def show_history(
+        self, session_id: str, *, agent: str, thinking: bool, raw: bool, computer: str
+    ) -> HistoryDetailPayload:
+        """Fetch one local or peer history detail through the daemon."""
+        resp = await self._request(
+            HTTPMethod.GET,
+            _HISTORY_SHOW_PATH_TEMPLATE.format(session_id=session_id),
+            request_options=RequestOptions(
+                params={
+                    _HISTORY_AGENT_PARAM: agent,
+                    _HISTORY_THINKING_PARAM: str(thinking).lower(),
+                    _HISTORY_RAW_PARAM: str(raw).lower(),
+                    _HISTORY_COMPUTER_PARAM: computer,
+                }
+            ),
+        )
+        return TypeAdapter(HistoryDetailPayload).validate_json(resp.text)
 
     async def list_projects(self, computer: str | None = None) -> list[ProjectDTO]:
         """List projects from all or a specific computer."""

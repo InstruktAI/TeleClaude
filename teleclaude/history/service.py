@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -31,9 +31,9 @@ from teleclaude.utils.transcript_discovery import discover_transcripts, extract_
 logger = get_logger(__name__)
 
 __all__ = [
+    "HistoryRelayCommand",
+    "HistoryShowRequest",
     "_format_display_timestamp",
-    "_remote_coverage_state",
-    "_remote_shrink_refused_at",
     "build_history_detail_payload",
     "parse_history_agents",
 ]
@@ -47,14 +47,26 @@ _UNKNOWN_VALUE = "unknown"
 _YES_VALUE = "yes"
 _NO_VALUE = "no"
 _TRANSCRIPT_ID_READ_FAILED_EVENT = "history.transcript_id_read_failed"
-_COVERAGE_STATE_FIELD = "coverage_state"
-_SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
 _COVERAGE_LINE_TEMPLATE = "Coverage: through {timestamp_end}; state: {coverage_state}"
 _RETAINED_COVERAGE_LINE_TEMPLATE = (
     "Coverage: through {timestamp_end}; state: {coverage_state}; shrink refusal observed: {shrink_refused_at}"
 )
-_MALFORMED_COVERAGE_STATE_MESSAGE = "Invalid mirror coverage state"
-_MALFORMED_SHRINK_REFUSED_AT_MESSAGE = "Invalid mirror shrink-refusal timestamp"
+
+
+class HistoryRelayCommand(StrEnum):
+    """Commands supported by the history relay."""
+
+    SEARCH = "history_search"
+    SHOW = "history_show"
+
+
+class HistoryShowRequest(TypedDict):
+    """Structured request carried by the history-show relay command."""
+
+    session_id: str
+    agent: str
+    thinking: bool
+    raw: bool
 
 
 class HistorySearchRow(TypedDict):
@@ -182,26 +194,6 @@ def _detail_json_payload(
         "raw": raw,
         "conversation_text": body,
     }
-
-
-def _remote_coverage_state(payload: Mapping[str, object]) -> MirrorCoverageState:
-    """Decode an additive remote coverage field, preserving older-peer unknowns."""
-    value = payload.get(_COVERAGE_STATE_FIELD)
-    if value is None:
-        return MirrorCoverageState.UNKNOWN
-    if not isinstance(value, str):
-        raise ValueError(_MALFORMED_COVERAGE_STATE_MESSAGE)
-    return MirrorCoverageState(value)
-
-
-def _remote_shrink_refused_at(payload: Mapping[str, object]) -> str | None:
-    """Decode the optional remote shrink-refusal observation timestamp."""
-    value = payload.get(_SHRINK_REFUSED_AT_FIELD)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError(_MALFORMED_SHRINK_REFUSED_AT_MESSAGE)
-    return value
 
 
 def _resolve_local_mirror(

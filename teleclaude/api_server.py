@@ -90,7 +90,6 @@ from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.hooks.api_routes import router as hooks_router
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
-from teleclaude.mirrors.api_routes import router as mirrors_router
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
@@ -167,7 +166,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(mcp_routes.router)
         self.app.include_router(memory_router)
 
-        self.app.include_router(mirrors_router)
         self.app.include_router(history_routes.router)
 
         self.app.include_router(hooks_router)

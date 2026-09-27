@@ -6,31 +6,22 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from http import HTTPStatus
 
+from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
-from teleclaude.history.remote_detail import get_remote_detail, resolve_remote_detail_base
-from teleclaude.history.service import (
-    DetailSource,
-    HistoryDetailPayload,
-    IdNamespace,
-    MirrorResolution,
-    _detail_json_payload,
-    _remote_coverage_state,
-    _remote_shrink_refused_at,
-    build_history_detail_payload,
-)
-from teleclaude.mirrors.store import MirrorCoverageState, MirrorRecord, history_access_for_caller
+from teleclaude.history.service import HistoryDetailPayload, build_history_detail_payload
+from teleclaude.mirrors.store import MirrorCoverageState, history_access_for_caller
 
 __all__ = ["show_transcript"]
 
-_REMOTE_RAW_MIRROR_PATH_TEMPLATE = "/api/mirrors/{session_id}/transcript"
-_REMOTE_MIRROR_PATH_TEMPLATE = "/api/mirrors/{session_id}"
 _TRANSCRIPT_NOT_FOUND = "No transcript found for session '{session_id}'"
 _HISTORY_SHOW_ONE_COMPUTER_ERROR = "history show accepts exactly one --computer value"
+_REMOTE_DETAIL_FAILURE_TEMPLATE = "Failed to fetch session '{session_id}' from {computer}: {detail}"
 _UNKNOWN_VALUE = "unknown"
 _COVERAGE_LINE_TEMPLATE = "Coverage: through {timestamp_end}; state: {coverage_state}"
 _RETAINED_COVERAGE_LINE_TEMPLATE = (
@@ -107,10 +98,11 @@ def show_transcript(
         print(_HISTORY_SHOW_ONE_COMPUTER_ERROR)
         raise SystemExit(1)
     if computers and is_remote_target(computers[0], config.computer.name):
-        _show_remote_detail(
+        _show_peer_history_detail(
             session_id,
             computer=computers[0],
-            agent_count=len(computers),
+            agents=agents,
+            include_thinking=include_thinking,
             raw=raw,
             json_output=json_output,
         )
@@ -134,74 +126,57 @@ def show_transcript(
     render_history_detail(detail, json_output=json_output)
 
 
-def _show_remote_detail(
+async def _fetch_peer_history_detail(
     session_id: str,
     *,
     computer: str,
-    agent_count: int,
+    agents: Sequence[AgentName],
+    include_thinking: bool,
+    raw: bool,
+) -> HistoryDetailPayload:
+    client = TelecAPIClient()
+    await client.connect()
+    try:
+        return await client.show_history(
+            session_id,
+            agent=",".join(agent.value for agent in agents),
+            thinking=include_thinking,
+            raw=raw,
+            computer=computer,
+        )
+    finally:
+        await client.close()
+
+
+def _show_peer_history_detail(
+    session_id: str,
+    *,
+    computer: str,
+    agents: Sequence[AgentName],
+    include_thinking: bool,
     raw: bool,
     json_output: bool,
 ) -> None:
-    if agent_count != 1:
-        print(_HISTORY_SHOW_ONE_COMPUTER_ERROR)
-        raise SystemExit(1)
-    path = (
-        _REMOTE_RAW_MIRROR_PATH_TEMPLATE.format(session_id=session_id)
-        if raw
-        else _REMOTE_MIRROR_PATH_TEMPLATE.format(session_id=session_id)
-    )
     try:
-        base_url = asyncio.run(resolve_remote_detail_base(computer))
-        response = asyncio.run(get_remote_detail(base_url, path))
-    except Exception as exc:
-        print(f"Failed to fetch session '{session_id}' from {computer}: {exc}")
-        raise SystemExit(1) from exc
-
-    if raw:
-        resolution = MirrorResolution(
-            mirror=None,
-            requested_id=session_id,
-            requested_namespace=IdNamespace.NATIVE,
-            tc_id=None,
-            native_id=session_id,
-            source=DetailSource.TRANSCRIPT,
+        payload = asyncio.run(
+            _fetch_peer_history_detail(
+                session_id,
+                computer=computer,
+                agents=agents,
+                include_thinking=include_thinking,
+                raw=raw,
+            )
         )
-        render_history_detail(_detail_json_payload(resolution, body=response.text, raw=True), json_output=json_output)
-        return
-
-    payload = response.json()
-    if not isinstance(payload, dict):
-        print(f"Invalid mirror response for session '{session_id}'")
-        raise SystemExit(1)
-    try:
-        mirror = MirrorRecord(
-            native_session_id=str(payload.get("session_id", session_id)),
-            session_id=None,
-            position=None,
-            computer=str(payload.get("computer", computer)),
-            agent=str(payload.get("agent", "")),
-            project_path=str(payload.get("project", "")),
-            title=str(payload.get("title", "")),
-            timestamp_start=payload.get("timestamp_start"),
-            timestamp_end=payload.get("timestamp_end"),
-            conversation_text=str(payload.get("conversation_text", "")),
-            message_count=int(payload.get("message_count", 0) or 0),
-            metadata={},
-            created_at="",
-            updated_at="",
-            coverage_state=_remote_coverage_state(payload),
-            shrink_refused_at=_remote_shrink_refused_at(payload),
-        )
-    except ValueError as exc:
-        print(f"Invalid mirror response for session '{session_id}': {exc}")
+    except APIError as exc:
+        if exc.status_code == HTTPStatus.NOT_FOUND:
+            print(_TRANSCRIPT_NOT_FOUND.format(session_id=session_id))
+        else:
+            print(
+                _REMOTE_DETAIL_FAILURE_TEMPLATE.format(
+                    session_id=session_id,
+                    computer=computer,
+                    detail=exc.detail,
+                )
+            )
         raise SystemExit(1) from exc
-    resolution = MirrorResolution(
-        mirror=mirror,
-        requested_id=session_id,
-        requested_namespace=IdNamespace.NATIVE,
-        tc_id=mirror.session_id,
-        native_id=mirror.native_session_id,
-        source=DetailSource.MIRROR,
-    )
-    detail = _detail_json_payload(resolution, body=mirror.conversation_text.rstrip(), raw=False)
-    render_history_detail(detail, json_output=json_output)
+    render_history_detail(payload, json_output=json_output)
