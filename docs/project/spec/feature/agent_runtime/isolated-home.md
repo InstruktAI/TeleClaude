@@ -36,9 +36,8 @@ An agent session started in a slug worktree carries `TELECLAUDE_HOME` naming
 the clone, so anything the agent builds from that variable resolves to
 disposable material. Every entry point TeleClaude installs for agent sessions —
 the global `telec`, the agent hook receiver, the TeleClaude shell and its
-startup files, the git wrapper and the declaration reader it shares, the other
-command wrappers in the home's `bin`, and the git hooks installed into managed
-projects — resolves the live home the installation recorded and never adopts
+startup files, the git wrapper and the declaration reader it shares, and the
+other command wrappers in the home's `bin` — resolves the live home the installation recorded and never adopts
 the session's value, so hooks, session-scoped checkpoint state, caller
 resolution, todos, and the daemon stay on the live platform. None of them
 exports the live home as the session's `TELECLAUDE_HOME`.
@@ -153,8 +152,8 @@ And its commands operate the live platform
 Given an agent session in a slug worktree whose environment names the worktree's clone
 When the agent starts a nested shell or runs git in the worktree
 Then the TeleClaude git wrapper governs that git command
-And the project's installed git hooks find the platform's declaration reader
-And both read the project's declaration through the live platform
+And the wrapper reads the project's declaration through the live platform
+And a push of the worktree's branch runs the project's installed hooks without resolving any home
 ```
 
 #### UC-IAH13: Maintenance gives an existing worktree its home
