@@ -15,9 +15,9 @@ delivered_by:
 ## What it is
 
 A person or agent on one computer can act on objects another computer holds: a
-session running there, a session to start there, an operation it owns, and the
-sessions and history it can list or search. Such a command is decided by the
-computer that holds the object (`project/design/architecture/scoped-roles`): that
+session running there, a session to start there, an operation it owns, the
+sessions it can list, and the history it can search or show. Such a command is
+decided by the computer that holds the object (`project/design/architecture/scoped-roles`): that
 computer resolves the caller's roles from its own person registry, company rosters,
 and project registry, reads the object's scope from its own records, and applies the
 command's person band and the object's rules as one decision
@@ -31,8 +31,9 @@ by the command's agent band, and that the caller's dispatch chain permits the ac
 (`project/spec/feature/agent_runtime/session-authority`). Each of these narrows; none
 widens what the holding computer decides.
 
-A listing or search sent to another computer is a read across many objects. The
-holding computer admits it when the command's person band admits the highest role the
+A session listing or a history read sent to another computer reaches objects whose
+owner decides, object by object, whether the caller reaches them. The holding
+computer admits it when the command's person band admits the highest role the
 caller holds on that computer, and returns each object only when its owner's rule
 admits the caller for that object.
 
@@ -112,15 +113,15 @@ Then the command is admitted and that computer serves it
 But a read sent by a computer that does not decide relayed commands carries no principal and is refused as UC-XCA4 states
 ```
 
-#### UC-XCA7: Another computer answers a listing or search of its own objects
+#### UC-XCA7: Another computer answers a listing or history read of its own objects
 
 ```
 Given a person holding no platform role and the admin role in one company
 When the person lists sessions naming another computer
 Then that computer returns its sessions running in projects that company owns there
 And no session running there in a project owned by another company, or in no registered project
-And a history search naming that computer is answered by that computer, within its own history scope
-And a person holding no role on that computer is refused the listing and the search there
+And a history search or a history show naming that computer is answered by that computer, within its own history scope
+And a person holding no role on that computer is refused the listing and the history reads there
 ```
 
 #### UC-XCA8: An operation is read on the computer that owns it
@@ -145,5 +146,4 @@ And a person holding a platform role on the caller's computer is served by that 
 ## Known caveats
 
 - A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, peer synchronization — is not a caller's command and carries no principal. It keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other.
-- Remote history detail and raw retrieval keep their direct path (`project/spec/feature/session_mirrors/cross-computer-history-federation`) and are not relayed commands; `project/spec/feature/identity/command-clearance` judges them on the caller's computer.
 - Sessions another computer shares with this one are listed here under `project/spec/feature/agent_runtime/session-lifecycle`, not by this contract.
