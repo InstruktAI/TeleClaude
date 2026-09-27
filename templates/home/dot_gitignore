@@ -18,7 +18,6 @@ companies/*
 companies/*/*
 !companies/*/teleclaude.yml
 !companies/*/meta.yaml
-!companies/*/erpnext.json
 !companies/*/docs/
 companies/*/docs/*
 !companies/*/docs/**
