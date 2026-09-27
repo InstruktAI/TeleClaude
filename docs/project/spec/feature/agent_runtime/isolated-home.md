@@ -1,5 +1,5 @@
 ---
-description: A slug worktree owns a temporary clone of the TeleClaude home repository, provisioned and retired with the worktree, which the worktree's code runs against while installed commands keep operating the live platform.
+description: A slug worktree owns a temporary clone of the TeleClaude home repository, provisioned and retired with the worktree; code loaded from the worktree resolves that clone as its home and never the live home, while installed code keeps operating the live platform.
 visibility: internal
 delivered_by: [agent-home-clone-provisioning]
 ---
@@ -10,37 +10,31 @@ delivered_by: [agent-home-clone-provisioning]
 
 Every slug worktree owns an isolated, temporary Git clone of the TeleClaude
 home repository. The platform creates the clone in the step that creates or
-attaches the worktree and removes it in the step that releases the worktree at
+attaches the worktree and deletes it in the step that releases the worktree at
 delivery or removal; platform maintenance gives an existing worktree that has
-no clone its clone and removes a clone whose worktree is gone. A renamed todo's
+no clone its clone and deletes a clone whose worktree is gone. A renamed todo's
 worktree keeps its clone. No agent session creates, selects, sets, or removes
 it.
-A session that is not rooted in a slug worktree has no worktree home, and its
-environment carries none.
 
 The clone is a Git clone of the home repository — its history and its tracked
 material, the project registry and the global, person, and company tier
 documents — carrying the tracked working-tree edits present when it is
-provisioned. It keeps no remote. When the live home's tracked content has changed, the next dispatch into
-the worktree refreshes the clone; writes made inside the clone are disposable.
-Databases, credentials, secrets, sockets, logs, and other runtime state are not
-part of the clone and are never linked into it, so the worktree's code reaches
-no live runtime state through its home. The cloned registry remains readable with its real project
-entries; it alone grants no permission for undelivered code to modify those
-live repositories.
+provisioned. It keeps no remote. When the live home's tracked content has
+changed, the next dispatch into the worktree refreshes the clone; writes made
+inside the clone are disposable. Databases, credentials, secrets, sockets,
+logs, and other runtime state are not part of the clone and are never linked
+into it, so the worktree's code reaches no live runtime state through its home.
+The cloned registry remains readable with its real project entries; it alone
+grants no permission for undelivered code to modify those live repositories.
 
-The worktree's code finds its home from the worktree. The worktree's own
-`telec` wrapper and checkout grading both run that code against the clone, and
-a worktree whose home is missing is refused rather than given a partial one.
-An agent session started in a slug worktree carries `TELECLAUDE_HOME` naming
-the clone, so anything the agent builds from that variable resolves to
-disposable material. Every entry point TeleClaude installs for agent sessions —
-the global `telec`, the agent hook receiver, the TeleClaude shell and its
-startup files, the git wrapper and the declaration reader it shares, and the
-other command wrappers in the home's `bin` — resolves the live home the installation recorded and never adopts
-the session's value, so hooks, session-scoped checkpoint state, caller
-resolution, todos, and the daemon stay on the live platform. None of them
-exports the live home as the session's `TELECLAUDE_HOME`.
+The clone's location follows from the worktree's own location, so it is known
+before the clone exists. Code loaded from a slug worktree resolves its home to
+that worktree's clone whatever `TELECLAUDE_HOME` names, however the code is
+started, and refuses at startup, naming the clone, when the clone is missing.
+It never falls back to the live home. Code loaded from any other checkout —
+the installed canonical checkout, the integration worktree — resolves its home
+as before, so agent sessions, hooks, installed commands, and the daemon keep
+operating the live platform and their environment is unchanged.
 
 ## Canonical fields
 
@@ -73,23 +67,23 @@ When each runs the worktree's code
 Then both run it against the same worktree home
 ```
 
-#### UC-IAH4: A worktree session's environment names its home
+#### UC-IAH4: Worktree code never resolves the live home
 
 ```gherkin
-Given an agent session starts in a slug worktree
-When the agent builds a command from TELECLAUDE_HOME
-Then that command resolves inside the worktree's clone
+Given code loaded from a slug worktree
+When it starts with TELECLAUDE_HOME unset, empty, naming the live home, or naming any other location
+Then it runs against that worktree's home
 And the live home is unchanged
 ```
 
-#### UC-IAH5: Installed commands keep operating the live platform
+#### UC-IAH5: A missing worktree home is refused
 
 ```gherkin
-Given an agent session in a slug worktree whose environment names the worktree's clone
-When the global telec or an agent hook runs in that session
-Then it resolves the caller from the live platform and acts on the live records it addresses
-And its session-scoped checkpoint state is recorded where the live platform reads it
-And the agent does not change its environment to make it work
+Given a slug worktree whose home does not exist
+When code loaded from that worktree starts
+Then it refuses at startup with the missing home named
+And no home is created
+And the live home is unchanged
 ```
 
 #### UC-IAH6: Checkout grading uses the worktree's home
@@ -102,61 +96,24 @@ And no quality step assembles a separate partial home
 And the live home is unchanged
 ```
 
-#### UC-IAH7: A missing worktree home is refused
-
-```gherkin
-Given a slug worktree whose home no longer exists
-When the worktree's own telec wrapper or checkout grading would run the worktree's code
-Then the invocation is refused with the missing home named
-And no partial home is created
-```
-
-#### UC-IAH8: Releasing the worktree retires its home
+#### UC-IAH7: Releasing the worktree deletes its home
 
 ```gherkin
 Given a slug worktree with its home
 When the worktree is released at delivery or removal
-Then its home is removed
+Then its home is deleted
 And the source home repository is unchanged
 ```
 
-#### UC-IAH9: Maintenance removes an orphaned home
+#### UC-IAH8: Maintenance deletes an orphaned home
 
 ```gherkin
 Given a worktree home whose worktree no longer exists
 When platform maintenance runs
-Then that home is removed
+Then that home is deleted
 ```
 
-#### UC-IAH10: Registry reads do not authorize live project writes
-
-```gherkin
-Given a worktree's clone contains the real project registry
-When undelivered checkout code invokes an operation that would update registered projects
-Then the operation cannot change any live repository named by that cloned registry
-And the registry remains available for configuration reads
-```
-
-#### UC-IAH11: Sessions outside worktrees carry no worktree home
-
-```gherkin
-Given an agent session that is not rooted in a slug worktree
-When the session starts
-Then its environment names no worktree home
-And its commands operate the live platform
-```
-
-#### UC-IAH12: The agent shell and git keep their installed guards in a worktree session
-
-```gherkin
-Given an agent session in a slug worktree whose environment names the worktree's clone
-When the agent starts a nested shell or runs git in the worktree
-Then the TeleClaude git wrapper governs that git command
-And the wrapper reads the project's declaration through the live platform
-And a push of the worktree's branch runs the project's installed hooks without resolving any home
-```
-
-#### UC-IAH13: Maintenance gives an existing worktree its home
+#### UC-IAH9: Maintenance gives an existing worktree its home
 
 ```gherkin
 Given a slug worktree that has no home
@@ -165,13 +122,31 @@ Then the worktree owns a home holding the current tracked configuration
 And no agent created or selected that home
 ```
 
-#### UC-IAH14: A renamed todo's worktree keeps its home
+#### UC-IAH10: A renamed todo's worktree keeps its home
 
 ```gherkin
 Given a todo whose slug worktree owns a home
 When the todo is renamed
 Then the renamed worktree owns that home
 And no home remains under the former slug
+```
+
+#### UC-IAH11: Registry reads do not authorize live project writes
+
+```gherkin
+Given a worktree's clone contains the real project registry
+When undelivered checkout code invokes an operation that would update registered projects
+Then the operation cannot change any live repository named by that cloned registry
+And the registry remains available for configuration reads
+```
+
+#### UC-IAH12: Installed code keeps operating the live platform
+
+```gherkin
+Given an agent session in a slug worktree
+When the global telec, an agent hook, the agent shell, or git runs in that session
+Then it resolves the live home exactly as it does outside a worktree
+And the session's environment names no worktree home
 ```
 
 ## Known caveats

@@ -33,19 +33,10 @@ Each is added only when present and their relative order is not load-bearing.
 
 One directory is **agent-shell only**:
 
-<!-- planned-change:agent-home-clone-provisioning -->
 - `$TELECLAUDE_HOME/bin` (default `~/.teleclaude/bin`) — force-pinned to the
   front so the agent-session git wrapper wins over the real `git`. The daemon
   does not add it: its git calls resolve absolutely, and it does not use the
   wrapper.
-<!-- change:agent-home-clone-provisioning -->
-- The live home's `bin` — the home the installation recorded, never the
-  session's `TELECLAUDE_HOME`, which names a worktree's disposable home in a
-  worktree session (`project/spec/feature/agent_runtime/isolated-home`) —
-  force-pinned to the front so the agent-session git wrapper wins over the real
-  `git`. The daemon does not add it: its git calls resolve absolutely, and it
-  does not use the wrapper.
-<!-- /planned-change:agent-home-clone-provisioning -->
 
 ### Implementation 1 — agent shells
 
@@ -54,20 +45,10 @@ body (everything below the `TC_HOME=` line): the PATH-pin block followed by the
 terminal-hints block. They are deployed as
 `~/.teleclaude/shell/.{zshenv,bashenv,profile}` (symlinks, via
 `teleclaude/install/configure_agent_cli.py`) and selected by the
-<!-- planned-change:agent-home-clone-provisioning -->
 `teleclaude/install/wrappers/teleclaude-shell` entry wrapper, which sets
 `ZDOTDIR`, `BASH_ENV`, and `ENV` so zsh, bash, and sh agents all land on them.
 The wrapper itself does not build PATH — it only adds `~/.teleclaude/bin` and
 execs the host shell; the guarantees live in the three env files.
-<!-- change:agent-home-clone-provisioning -->
-`teleclaude/install/wrappers/teleclaude-shell` entry wrapper, which sets
-`ZDOTDIR`, `BASH_ENV`, and `ENV` so zsh, bash, and sh agents all land on them.
-The wrapper resolves the live home from the installation's record and each
-startup file from the location it was loaded from; none of them reads
-`TELECLAUDE_HOME` or exports it. The wrapper itself does not build PATH — it
-only adds the live home's `bin` and execs the host shell; the guarantees live
-in the three env files.
-<!-- /planned-change:agent-home-clone-provisioning -->
 
 Editing any one of the three requires editing all three identically. The body is
 POSIX-sh so the same text is valid in zsh, bash, and sh.

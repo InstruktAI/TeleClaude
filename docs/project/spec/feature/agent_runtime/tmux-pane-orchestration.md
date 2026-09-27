@@ -33,7 +33,6 @@ And returns success if the pane is present at function exit, failure otherwise
 
 #### A fresh host pane is created with a TeleClaude-controlled shell and a sealed env
 
-<!-- planned-change:agent-home-clone-provisioning -->
 ```
 Given the create primitive is invoked for (name, working_dir, session_id, env_vars)
 When the bridge builds the create command
@@ -50,24 +49,6 @@ And the shell command sources the private agent env file before executing the Te
 And on success, a follow-up environment-setup chain runs to drop NO_COLOR and set hooks, with per-step markers logged so the failing step can be identified
 And the call returns success on a zero-exit create, failure otherwise (including subprocess-timeout)
 ```
-<!-- change:agent-home-clone-provisioning -->
-```
-Given the create primitive is invoked for (name, working_dir, session_id, env_vars)
-When the bridge builds the create command
-Then a per-session tmpdir is materialized under the configured per-session tmpdir base, keyed by the session id
-And the directory is recreated empty with restrictive mode to drop any stray unix sockets
-And the TeleClaude-controlled env dict injects TELECLAUDE_HOME naming the slug worktree's home when the working directory lies in a slug worktree, and otherwise only when the daemon runs from a home other than the default one, and injects the TeleClaude shell selector, the configured rc roots, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, the working-directory tracking marker, and TMPDIR/TMP/TEMP all pointing at the per-session tmpdir
-And authorized agent env vars are resolved from the global and per-project env allowlists
-And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance, locale, voice selectors, and the platform log level
-And common runtime env filtering uses one shared allowlist for appearance and locale keys, with TUI and agent panes adding only surface-specific extras
-And agent env vars are written to a private file under the per-session tmpdir
-And each env var name is validated against a strict identifier pattern — invalid names are refused
-And the multiplexer is invoked to create a detached session with only TeleClaude-controlled values surfaced
-And the shell command sources the private agent env file before executing the TeleClaude shell
-And on success, a follow-up environment-setup chain runs to drop NO_COLOR and set hooks, with per-step markers logged so the failing step can be identified
-And the call returns success on a zero-exit create, failure otherwise (including subprocess-timeout)
-```
-<!-- /planned-change:agent-home-clone-provisioning -->
 
 #### Per-session tmpdir layout
 
