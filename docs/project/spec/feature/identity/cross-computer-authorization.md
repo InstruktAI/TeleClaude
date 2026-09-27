@@ -39,13 +39,14 @@ admits the caller for that object.
 Deciding relayed commands is a capability computers advertise to each other
 (`project/spec/feature/reconciliation/fleet-cross-version-interop`). Toward a computer
 that does not advertise it, the caller's computer relays nothing it cannot have
-decided: it judges the command at platform scope itself, relays it unmarked with
-the caller's email and role for a caller holding a platform role on the caller's
-computer, and refuses any other caller with a failure that names that computer.
-In the other direction, a read from a computer that does not advertise it carries
-no principal, only the caller's email, role and session; the holding computer
-answers it from those, because the sending computer's own gate judged it at
-platform scope. A caller's read without a principal from a computer that
+decided: it judges the command at platform scope itself, relays it unmarked, in
+the form a computer without the capability reads, for a caller holding a platform
+role on the caller's computer, and refuses any other caller with a failure that
+names that computer.
+In the other direction, a read from a computer that does not advertise it may
+carry no principal, only the caller identity and role that computer's read
+sends; the holding computer answers it from what the read carries, because the
+sending computer's own gate judged it at platform scope. A caller's read without a principal from a computer that
 advertises the capability is refused.
 
 ## Canonical fields
@@ -138,7 +139,7 @@ Given a computer that does not advertise that it decides relayed commands
 When a person holding no platform role runs a command naming that computer
 Then the command is refused on the caller's computer, and the refusal names that computer
 And a person holding a platform role on the caller's computer is served by that computer
-And a transcript, pane or operation read that such a computer sends is answered from the email, role and session it carries
+And a transcript, pane or operation read that such a computer sends is answered from the caller identity and role it carries
 ```
 
 ## Known caveats
