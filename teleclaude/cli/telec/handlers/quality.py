@@ -38,7 +38,6 @@ def handle_lint(args: list[str]) -> None:
 
     result = run_lint_gate(
         project_root,
-        project_root,
         None,
         scoped_files,
         scoped_files is not None,

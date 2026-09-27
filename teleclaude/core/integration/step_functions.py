@@ -820,7 +820,7 @@ def _run_final_content_gate(
         if isinstance(shell, str):
             base_env[_SHELL_ENV_KEY] = shell
         child_env = build_git_hook_env(str(project_root), base_env)
-        gate_result = run_lint_gate(project_root, execution_root, subject_sha, None, False, child_env)
+        gate_result = run_lint_gate(execution_root, subject_sha, None, False, child_env)
         outcome = (
             FinalContentGateOutcome.PASSED
             if gate_result.outcome is LintGateOutcome.PASSED
