@@ -133,7 +133,7 @@ Agents discover the memory API through `telec docs index` + `telec docs get` and
 | `/api/memory/save`     | POST   | Store a new observation                    |
 | `/api/memory/search`   | GET    | Full-text search with optional type filter |
 | `/api/memory/timeline` | GET    | Observations around an anchor ID           |
-| `/api/memory/batch`    | POST   | Bulk fetch by IDs                          |
+| `/api/memory/batch`    | POST   | Bulk fetch by IDs, optionally filtered to one project: the found observations newest-first, missing IDs omitted, an empty list for an empty ID list |
 | `/api/memory/inject`   | GET    | Generate context markdown for a project    |
 <!-- change:remove-uncalled-api-routes -->
 | Endpoint               | Method | Purpose                                    |
