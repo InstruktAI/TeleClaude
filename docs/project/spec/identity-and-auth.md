@@ -46,6 +46,17 @@ TeleClaude uses one identity model across API, TUI, and adapters:
 
 People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
+<!-- planned:authorize-person-roles-at-scope -->
+The people listing (`GET /api/people`) returns, per registered person, `name`,
+`email`, `expertise`, `platform_role` — the declared platform role, or `null`
+when the person holds none — and `role`. `role` is deprecated: it keeps the
+value it has always carried, the declared platform role or `member` when none is
+declared, so existing readers see no change, and it is served until the 1.0.0
+release, where it is removed in favour of `platform_role`
+(`sdlc/policy/backward-compatibility-hygiene`, external contracts). Neither field
+authorizes anything; authority for an object is the effective role for it.
+<!-- /planned:authorize-person-roles-at-scope -->
+
 ### 2) Runtime identity headers
 
 <!-- planned-change:telec-startup-does-only-auth -->
