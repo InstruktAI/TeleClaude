@@ -73,6 +73,7 @@ from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 _KIND_KEY = "kind"
 _SLUG_KEY = "slug"
+_NAME_KEY = "name"
 _PEOPLE_KEY = "people"
 _COMPUTER_SECTION = "computer"
 _GLOBAL_SECTION = "global"
@@ -159,6 +160,23 @@ def _computer_view(inspection: MachineConfigInspection | MachineConfigMutationRe
 
 def _person_overlay_path(slug: str) -> Path:
     return PEOPLE_DIR / slug / ConfigFileName.OVERLAY
+
+
+def _person_init_lookup_key(fields: Mapping[str, object] | None) -> str | None:
+    """Return the person key init will address, whether supplied or name-derived."""
+    fields = fields or {}
+    requested_slug = fields.get(_SLUG_KEY)
+    if requested_slug:
+        return str(requested_slug)
+    name = fields.get(_NAME_KEY)
+    return normalize_slug(str(name)) if name else None
+
+
+def _person_is_registered(slug: str) -> bool:
+    """Check the global registry without opening the person's overlay transaction."""
+    with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
+        global_raw = _load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
+        return _find_person_raw(_raw_people(global_raw), slug) is not None
 
 
 def _find_person_raw(
@@ -415,25 +433,25 @@ def _init_global(_ref: SubjectRef, _fields: Mapping[str, object] | None, evidenc
 
 
 def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence: OwnEvidence) -> SubjectView:
-    """Converge one person: create when the slug is absent, scaffold-only when present.
+    """Converge a person by its supplied or name-derived lookup key.
 
-    A present slug never touches the global file — existing identity values
-    are left exactly as they are; any supplied value that differs from the
-    stored one is simply not applied (the CLI edge, Task 8, is where a caller
-    learns which supplied values were preserved rather than written).
+    Initialization may migrate the global people registry before lookup. A
+    matching entry is returned without applying identity values from this
+    payload; a new entry is appended to the registry.
     """
     fields = fields or {}
     migrate_person_slugs_if_needed()
     requested_slug = fields.get(_SLUG_KEY)
+    lookup_key = _person_init_lookup_key(fields)
 
     with file_transaction(GLOBAL_CONFIG_PATH) as g_txn:
         committed_text = g_txn.read_text()
         global_raw = _load_mapping(committed_text, GLOBAL_CONFIG_PATH)
         people_raw = _raw_people(global_raw)
-        existing = _find_person_raw(people_raw, str(requested_slug)) if requested_slug else None
+        existing = _find_person_raw(people_raw, lookup_key) if lookup_key else None
 
         if existing is not None:
-            slug = str(requested_slug)
+            slug = lookup_key
         else:
             name = fields.get("name")
             email = fields.get("email")
@@ -516,22 +534,35 @@ def init_subject(
     caller's checkout", a filesystem context no `SubjectRef` carries, so the
     CLI edge calls `init_project_subject(root)` directly for that kind.
     """
-    # For person/company, the caller addresses `init` with no instance yet (Task 4's
-    # SubjectRef relaxation) — a supplied `slug` field is the only way to know ahead of
-    # time whether this converges an existing subject (unchanged) or creates one (committed).
+    # For person/company, the caller addresses `init` with no instance yet; person init
+    # can also derive its lookup key from the name before deciding whether it converges.
     probe_instance = ref.instance
     if probe_instance is None and fields:
         supplied_slug = fields.get(_SLUG_KEY)
         if supplied_slug:
             probe_instance = str(supplied_slug)
-    revision_before = _try_revision_before(ref.kind, probe_instance)
+    no_slug_person = (
+        ref.instance is None and ref.kind is ConfigSubjectKind.PERSON and not (fields and fields.get(_SLUG_KEY))
+    )
+    derived_instance = _person_init_lookup_key(fields) if no_slug_person else None
+    person_key_derived = no_slug_person and fields is not None and _NAME_KEY in fields
+    revision_before = None if no_slug_person else _try_revision_before(ref.kind, probe_instance)
+
+    def compute(evidence: OwnEvidence) -> SubjectView:
+        nonlocal probe_instance, revision_before
+        if no_slug_person and derived_instance is not None and _person_is_registered(derived_instance):
+            probe_instance = derived_instance
+            revision_before = _try_revision_before(ref.kind, probe_instance)
+        return _INIT_SUBJECT[ref.kind](ref, fields, evidence)
+
     view = run_observed(
-        lambda evidence: _INIT_SUBJECT[ref.kind](ref, fields, evidence),
+        compute,
         request_id=request_id,
         kind=ref.kind,
         instance=probe_instance,
         operation=ResourceOperation.INIT,
         revision_before=revision_before,
+        person_key_derived=person_key_derived,
     )
     outcome = ResourceChangeOutcome.UNCHANGED if view.revision == revision_before else ResourceChangeOutcome.COMMITTED
     emit_resource_change(
@@ -542,6 +573,8 @@ def init_subject(
         outcome=outcome,
         revision_before=revision_before,
         revision_after=view.revision,
+        person_key_derived=person_key_derived,
+        derived_key_matches_instance=(view.ref.instance == derived_instance) if derived_instance is not None else None,
     )
     return view
 

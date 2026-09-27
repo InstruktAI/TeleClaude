@@ -23,6 +23,8 @@ from teleclaude.config.roster import RosterRefused
 from teleclaude.slug import validate_slug
 
 _CONFIG_RESOURCE_CHANGE_EVENT = "config_resource_change"
+_PERSON_KEY_DERIVED_FIELD = "person_key_derived"
+_DERIVED_KEY_MATCHES_FIELD = "derived_key_matches_instance"
 
 logger = get_logger(__name__)
 
@@ -159,13 +161,15 @@ def emit_resource_change(
     companies_written: tuple[str, ...] | None = None,
     removed_assignments: tuple[tuple[str, str], ...] | None = None,
     unrestored_targets: tuple[str, ...] | None = None,
+    person_key_derived: bool | None = None,
+    derived_key_matches_instance: bool | None = None,
 ) -> None:
     """Emit the one terminal record every mutating resource verb promises."""
     logger.info(
         _CONFIG_RESOURCE_CHANGE_EVENT,
         request_id=request_id,
         kind=kind.value,
-        instance=instance,
+        instance=None if kind is ConfigSubjectKind.PERSON and operation is ResourceOperation.INIT else instance,
         operation=operation.value,
         outcome=outcome.value,
         revision_before=revision_before,
@@ -174,6 +178,12 @@ def emit_resource_change(
         companies_written=list(companies_written) if companies_written is not None else None,
         removed_assignments=[list(pair) for pair in removed_assignments] if removed_assignments is not None else None,
         unrestored_targets=list(unrestored_targets) if unrestored_targets else None,
+        **({_PERSON_KEY_DERIVED_FIELD: person_key_derived} if person_key_derived else {}),
+        **(
+            {_DERIVED_KEY_MATCHES_FIELD: derived_key_matches_instance}
+            if derived_key_matches_instance is not None
+            else {}
+        ),
     )
 
 
@@ -301,6 +311,7 @@ def run_observed[T](
     operation: ResourceOperation,
     revision_before: str | None,
     sections: frozenset[str] | None = None,
+    person_key_derived: bool | None = None,
 ) -> T:
     """Run one mutation, emitting the shared record for every way it can fail.
 
@@ -325,6 +336,7 @@ def run_observed[T](
             revision_before=revision_before,
             revision_after=None,
             sections=sections,
+            person_key_derived=person_key_derived,
         )
         raise
     except BaseException:
@@ -344,5 +356,6 @@ def run_observed[T](
             revision_after=None,
             sections=sections,
             unrestored_targets=evidence.remaining or None,
+            person_key_derived=person_key_derived,
         )
         raise
