@@ -48,13 +48,11 @@ People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
 <!-- planned:authorize-person-roles-at-scope -->
 The people listing (`GET /api/people`) returns, per registered person, `name`,
-`email`, `expertise`, `platform_role` — the declared platform role, or `null`
-when the person holds none — and `role`. `role` is deprecated: it keeps the
-value it has always carried, the declared platform role or `member` when none is
-declared, so existing readers see no change, and it is served until the 1.0.0
-release, where it is removed in favour of `platform_role`
-(`sdlc/policy/backward-compatibility-hygiene`, external contracts). Neither field
-authorizes anything; authority for an object is the effective role for it.
+`email`, `expertise`, and the roles the person holds at each scope: `role`, the
+platform role, or `null` where none is held, and `company_roles`, the role held
+in each company they belong to. A company administrator is listed as `admin` of
+that company. Neither field authorizes anything; authority for an object is the
+effective role for it (`project/design/architecture/scoped-roles`).
 <!-- /planned:authorize-person-roles-at-scope -->
 
 ### 2) Runtime identity headers
