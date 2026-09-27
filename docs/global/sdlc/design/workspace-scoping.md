@@ -116,7 +116,6 @@ A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same
 path; each is an owner, and no arbitration selects between them.
 
-
 ## Invariants
 
 1. **No stashing.** The scoping mechanism keeps files outside the agent's scope untouched, so there is never a need to stash anything aside.
@@ -161,6 +160,9 @@ path; each is an owner, and no arbitration selects between them.
     unowned — that is a fact about the record, not a judgment about the work.
     Undeclared dirt is expected from a human editing the branch directly, and no
     surface infers a claimant for it.
+    These declarations scope `telec code` operations only; they do not set or
+    confine file-edit targets. In a worktree, edit targets are resolved beneath
+    the active worktree root as required by `sdlc/policy/version-control-safety`.
 13. **A commit clears the declarations it carried.** A committed path's
     declaration ends at that commit; a later `telec code add` creates a new one.
     An uncommitted declaration stays live for as long as its session does.
@@ -190,7 +192,6 @@ telec code commit (worktree detected)
   → handle_lint(quality_paths)                            (in-process, no stash)
   → git commit --no-verify
 ```
-
 
 ### Shared branch flow (session available)
 
@@ -227,7 +228,6 @@ telec code lint <files...>
   → skip scoping; validate paths
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
-
 
 ### Thin hook flow
 
@@ -275,7 +275,6 @@ empty set that reads as a pass, and a commit that records nothing, are the two
 outcomes that must never look like success. The condition reads only the acting
 session's own declarations. It inspects no other path's provenance, so dirt this
 session did not declare — a human's direct edits among it — never triggers it.
-
 
 ### No recognised language artifacts / missing make target
 

@@ -59,6 +59,7 @@ artifact relevant to executing this plan.
    - **Removed scenario** — delete its bound test, then the code it exclusively covered.
      You bind the scenarios the spec defines; you never invent what to test. See `policy/testing`.
 5. Execute tasks sequentially:
+   - Before editing, resolve the active todo worktree root with `git rev-parse --show-toplevel`. Resolve every edit target from that root and its repository-relative path. Use repository-relative paths where the edit tool supports them; when it requires an absolute path, construct it from the freshly resolved root. Do not reuse absolute paths from the project checkout or another worktree. After each edit, verify the expected target with `git -C <worktree-root> diff -- <relative-path>` before continuing.
    - Follow the build mode determined in step 4.
    - Commit changes for the task (one commit per task). The commit is the record
      that the task is done — the implementation-plan artifact is prepare-owned and
