@@ -6,7 +6,7 @@ import json
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
@@ -22,10 +22,17 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.identity import CliCaller, PersonCliCaller, SystemCliCaller
-from teleclaude.mirrors._migrations import migrate_add_mirror_columns
-
-JsonScalar = str | int | float | bool | None
-JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+from teleclaude.mirrors._attribution import (
+    MirrorSessionAttribution,
+    backfill_session_attributions,
+    upsert_session_attribution,
+)
+from teleclaude.mirrors._migrations import (
+    LATEST_DATA_REVISION,
+    create_current_attribution_schema,
+    migrate_add_mirror_columns,
+)
+from teleclaude.mirrors._types import JsonValue
 
 
 @dataclass(frozen=True)
@@ -60,10 +67,10 @@ def history_access_for_caller(caller: CliCaller) -> MirrorAccess | None:
 # Search shows only the sessions worth auditing; dispatched workers are the noise.
 _WORKER_EXCLUSION_CLAUSE = "mirrors.is_worker = 0"
 _WORKER_ONLY_CLAUSE = "mirrors.is_worker = 1"
-_SESSION_ID_FIELD = "session_id"
+_NATIVE_SESSION_ID_FIELD = "native_session_id"
 _FTS_MATCH_CLAUSE = "mirrors_fts MATCH :match_query"
 _IDENTITY_FILTER_CLAUSE = "(mirrors.human_email = :identity OR mirrors.source_identity = :identity)"
-_PROJECT_FILTER_CLAUSE = "mirrors.project = :project"
+_PROJECT_FILTER_CLAUSE = "mirrors.project_path = :project"
 _FTS_SEARCH_FROM = "FROM mirrors_fts JOIN mirrors ON mirrors_fts.rowid = mirrors.id"
 _SELECTOR_SEARCH_FROM = "FROM mirrors"
 _FTS_RESULT_JOIN = "JOIN mirrors_fts ON mirrors_fts.rowid = mirrors.id"
@@ -83,23 +90,28 @@ _SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
 _IDENTITY_PARAM = "identity"
 _PROJECT_PARAM = "project"
 _CALLER_EMAIL_PARAM = "caller_email"
+_SOURCE_IDENTITY_PARAM = "source_identity"
+_METADATA_PARAM = "metadata"
 _CALLER_EMAIL_SCOPE_CLAUSE = "mirrors.human_email = :caller_email"
 _SQL_AND_SEPARATOR = " AND "
+_BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
+_SELECT_EXISTING_MIRROR_METADATA_SQL = "SELECT metadata FROM mirrors WHERE source_identity = :source_identity"
 _SEARCH_SQL_TEMPLATE = """
     WITH ranked_candidates AS (
         SELECT
             COALESCE(mirrors.timestamp_start, mirrors.updated_at) AS sort_timestamp,
             mirrors.updated_at AS ranking_updated_at,
             mirrors.id AS physical_id,
-            ROW_NUMBER() OVER (PARTITION BY mirrors.agent, CASE WHEN mirrors.session_id IS NULL THEN mirrors.id ELSE mirrors.session_id END ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC, mirrors.updated_at DESC, mirrors.id DESC) AS canonical_rank
+            ROW_NUMBER() OVER (PARTITION BY mirrors.agent, CASE WHEN mirrors.session IS NULL THEN mirrors.id ELSE mirrors.session END ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC, mirrors.updated_at DESC, mirrors.id DESC) AS canonical_rank
         {search_from}
         WHERE {where_clause}
     )
     SELECT
-        mirrors.session_id,
+        mirrors.native_session_id,
+        mirror_sessions.session_id,
         mirrors.computer,
         mirrors.agent,
-        mirrors.project,
+        mirrors.project_path,
         mirrors.title,
         ranked_candidates.sort_timestamp,
         {snippet_select},
@@ -110,6 +122,7 @@ _SEARCH_SQL_TEMPLATE = """
         mirrors.source_identity
     FROM ranked_candidates
     JOIN mirrors ON mirrors.id = ranked_candidates.physical_id
+    LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session
     {result_join}
     WHERE canonical_rank = 1 {result_match_clause}
     ORDER BY ranked_candidates.sort_timestamp DESC, ranked_candidates.ranking_updated_at DESC, ranked_candidates.physical_id DESC
@@ -120,17 +133,20 @@ _CANONICAL_COUNT_SQL_TEMPLATE = """
     SELECT COUNT(*) FROM (
         SELECT 1 {search_from}
         WHERE {where_clause}
-        GROUP BY mirrors.agent, CASE WHEN mirrors.session_id IS NULL THEN mirrors.id ELSE mirrors.session_id END
+        GROUP BY mirrors.agent, CASE WHEN mirrors.session IS NULL THEN mirrors.id ELSE mirrors.session END
     )
 """
 _GET_MIRROR_SQL_TEMPLATE = f"""
-    SELECT mirrors.session_id, mirrors.source_identity, mirrors.computer, mirrors.agent, mirrors.project,
+    SELECT mirrors.native_session_id, mirror_sessions.session_id, mirrors.session, mirrors.position,
+        mirrors.source_identity, mirrors.computer, mirrors.agent, mirrors.project_path,
         mirrors.title, mirrors.timestamp_start, mirrors.timestamp_end, mirrors.conversation_text,
         mirrors.message_count, mirrors.metadata, mirrors.created_at, mirrors.updated_at, mirrors.summary,
-        mirrors.human_email, mirrors.visibility, mirrors.command, mirrors.slug, mirrors.is_worker,
+        mirrors.human_email, mirrors.visibility, mirrors.command, mirrors.todo, mirrors.is_worker,
         mirrors.derivation_version,
         mirror_shrink_refusals.{_SHRINK_REFUSED_AT_FIELD}
-    FROM mirrors LEFT JOIN {_MIRROR_SHRINK_REFUSALS_TABLE} AS mirror_shrink_refusals
+    FROM mirrors
+    LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session
+    LEFT JOIN {_MIRROR_SHRINK_REFUSALS_TABLE} AS mirror_shrink_refusals
         ON mirror_shrink_refusals.source_identity = mirrors.source_identity
     WHERE {{where_clause}} ORDER BY mirrors.updated_at DESC LIMIT 1
 """
@@ -152,10 +168,11 @@ _ro_engines: dict[str, Engine] = {}
 class MirrorSearchResult:
     """A single FTS5 search hit from the mirrors table."""
 
+    native_session_id: str | None
     session_id: str | None
     computer: str
     agent: str
-    project: str
+    project_path: str
     title: str
     sort_timestamp: str
     timestamp: str
@@ -191,11 +208,13 @@ class MirrorCoverageState(StrEnum):
 class MirrorRecord:
     """Full mirror row for a session transcript."""
 
+    native_session_id: str | None
     session_id: str | None
-    computer: str
+    position: int | None
+    computer: str | None
     agent: str
-    project: str
-    title: str
+    project_path: str | None
+    title: str | None
     timestamp_start: str | None
     timestamp_end: str | None
     conversation_text: str
@@ -206,10 +225,10 @@ class MirrorRecord:
     source_identity: str | None = None
     summary: str | None = None
     human_email: str | None = None
-    visibility: str = "private"
+    visibility: str | None = None
     command: str | None = None
-    slug: str | None = None
-    is_worker: bool = False
+    todo: str | None = None
+    is_worker: bool | None = None
     derivation_version: int = 0
     coverage_state: MirrorCoverageState = MirrorCoverageState.UNKNOWN
     shrink_refused_at: str | None = None
@@ -231,23 +250,27 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
     """Create mirrors tables and FTS index if they don't exist."""
     if path in _schema_initialized:
         return
+    mirrors_exists = conn.execute(_MIRRORS_TABLE_EXISTS_SQL).fetchone() is not None
     conn.executescript(_MIRRORS_SCHEMA)
-    migrate_add_mirror_columns(conn)
+    if mirrors_exists:
+        migrate_add_mirror_columns(conn, path, backfill_session_attributions)
+    else:
+        create_current_attribution_schema(conn)
+        conn.execute(f"PRAGMA user_version = {LATEST_DATA_REVISION}")
     _schema_initialized.add(path)
 
 
 _MIRRORS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS mirrors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT, source_identity TEXT UNIQUE, computer TEXT NOT NULL, agent TEXT NOT NULL,
-    project TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', timestamp_start TEXT, timestamp_end TEXT,
+    native_session_id TEXT, source_identity TEXT UNIQUE, computer TEXT NOT NULL, agent TEXT NOT NULL,
+    project_path TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', timestamp_start TEXT, timestamp_end TEXT,
     conversation_text TEXT NOT NULL DEFAULT '', message_count INTEGER NOT NULL DEFAULT 0, metadata TEXT DEFAULT '{}',
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, summary TEXT, human_email TEXT,
-    visibility TEXT DEFAULT 'private', command TEXT, slug TEXT, is_worker INTEGER NOT NULL DEFAULT 0,
-    derivation_version INTEGER NOT NULL DEFAULT 0
+    visibility TEXT DEFAULT 'private', command TEXT, todo TEXT, is_worker INTEGER NOT NULL DEFAULT 0,
+    derivation_version INTEGER NOT NULL DEFAULT 0, session INTEGER, position INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
-CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project);
 CREATE INDEX IF NOT EXISTS idx_mirrors_timestamp ON mirrors(timestamp_start DESC);
 CREATE INDEX IF NOT EXISTS idx_mirrors_source_identity ON mirrors(source_identity);
 CREATE TABLE IF NOT EXISTS mirror_tombstones (source_identity TEXT PRIMARY KEY, agent TEXT NOT NULL DEFAULT '',
@@ -267,6 +290,47 @@ CREATE TRIGGER IF NOT EXISTS mirrors_au AFTER UPDATE ON mirrors BEGIN
     INSERT INTO mirrors_fts(rowid, title, conversation_text) VALUES (new.id, new.title, new.conversation_text);
 END;
 """
+
+_MIRRORS_TABLE_EXISTS_SQL = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mirrors'"
+_UPSERT_MIRROR_SQL = """\
+INSERT INTO mirrors (
+    native_session_id, source_identity, computer, agent, project_path, title, timestamp_start,
+    timestamp_end, conversation_text, message_count, metadata, created_at, updated_at,
+    human_email, visibility, command, todo, is_worker, derivation_version, session, position
+) VALUES (
+    :native_session_id, :source_identity, COALESCE(:computer, ''), :agent,
+    COALESCE(:project_path, ''), COALESCE(:title, ''), :timestamp_start, :timestamp_end,
+    :conversation_text, :message_count, :metadata, :created_at, :updated_at,
+    :human_email, COALESCE(:visibility, 'private'), :command, :todo,
+    COALESCE(:is_worker, 0), :derivation_version, :session, :position
+)
+ON CONFLICT(source_identity) DO UPDATE SET
+    native_session_id = excluded.native_session_id,
+    session = COALESCE(excluded.session, mirrors.session),
+    position = COALESCE(excluded.position, mirrors.position),
+    computer = COALESCE(NULLIF(excluded.computer, ''), mirrors.computer),
+    agent = excluded.agent,
+    project_path = COALESCE(NULLIF(excluded.project_path, ''), mirrors.project_path),
+    title = COALESCE(NULLIF(excluded.title, ''), mirrors.title),
+    timestamp_start = excluded.timestamp_start,
+    timestamp_end = excluded.timestamp_end,
+    conversation_text = excluded.conversation_text,
+    message_count = excluded.message_count,
+    metadata = excluded.metadata,
+    updated_at = excluded.updated_at,
+    human_email = COALESCE(NULLIF(excluded.human_email, ''), mirrors.human_email),
+    visibility = COALESCE(NULLIF(excluded.visibility, ''), mirrors.visibility),
+    command = COALESCE(NULLIF(excluded.command, ''), mirrors.command),
+    todo = COALESCE(NULLIF(excluded.todo, ''), mirrors.todo),
+    is_worker = COALESCE(excluded.is_worker, mirrors.is_worker),
+    derivation_version = excluded.derivation_version
+"""
+_RECORD_SESSION_CLOSE_SQL = """\
+UPDATE mirror_sessions SET closed_at = COALESCE(closed_at, :closed_at), updated_at = :updated_at
+WHERE session_id = :session_id AND closed_at IS NULL
+"""
+_OPEN_ATTRIBUTED_SESSION_IDS_SQL = "SELECT session_id FROM mirror_sessions WHERE closed_at IS NULL"
+_DELETE_MIRROR_BY_NATIVE_SESSION_ID_SQL = "DELETE FROM mirrors WHERE native_session_id = :native_session_id"
 
 
 def _resolve_mirrors_db_path(db: str | Path | None = None) -> str:
@@ -379,14 +443,25 @@ def _int_value(value: object) -> int:
     return int(str(value))
 
 
+def _optional_bool(value: object) -> bool | None:
+    """Return a boolean fact when the write supplied one."""
+    return None if value is None else bool(_int_value(value))
+
+
+def _optional_int(value: object) -> int | None:
+    """Return an integer when a row contains a value."""
+    return None if value is None else _int_value(value)
+
+
 def _mirror_search_result_from_row(row: RowMapping) -> MirrorSearchResult:
     """Convert a SQLAlchemy row mapping into the public search dataclass."""
     sort_timestamp = str(row.get("sort_timestamp") or "")
     return MirrorSearchResult(
-        session_id=_optional_str(row.get(_SESSION_ID_FIELD)),
+        native_session_id=_optional_str(row.get(_NATIVE_SESSION_ID_FIELD)),
+        session_id=_optional_str(row.get("session_id")),
         computer=str(row["computer"]),
         agent=str(row["agent"]),
-        project=str(row["project"]),
+        project_path=str(row["project_path"]),
         title=str(row["title"] or ""),
         sort_timestamp=sort_timestamp,
         timestamp=_format_search_timestamp(sort_timestamp),
@@ -402,11 +477,13 @@ def _mirror_search_result_from_row(row: RowMapping) -> MirrorSearchResult:
 def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
     """Convert a SQLAlchemy row mapping into the public mirror dataclass."""
     return MirrorRecord(
-        session_id=_optional_str(row.get(_SESSION_ID_FIELD)),
-        computer=str(row["computer"]),
+        native_session_id=_optional_str(row.get(_NATIVE_SESSION_ID_FIELD)),
+        session_id=_optional_str(row.get("session_id")),
+        position=_optional_int(row.get("position")),
+        computer=_optional_str(row.get("computer")),
         agent=str(row["agent"]),
-        project=str(row["project"]),
-        title=str(row.get("title") or ""),
+        project_path=_optional_str(row.get("project_path")),
+        title=_optional_str(row.get("title")),
         timestamp_start=_optional_str(row.get("timestamp_start")),
         timestamp_end=_optional_str(row.get("timestamp_end")),
         conversation_text=str(row.get("conversation_text") or ""),
@@ -417,10 +494,10 @@ def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
         source_identity=_optional_str(row.get("source_identity")),
         summary=_optional_str(row.get("summary")),
         human_email=_optional_str(row.get("human_email")),
-        visibility=str(row.get("visibility") or "private"),
+        visibility=_optional_str(row.get("visibility")),
         command=_optional_str(row.get("command")),
-        slug=_optional_str(row.get("slug")),
-        is_worker=bool(_int_value(row.get("is_worker"))),
+        todo=_optional_str(row.get("todo")),
+        is_worker=_optional_bool(row.get("is_worker")),
         derivation_version=_int_value(row.get("derivation_version")),
         coverage_state=(
             MirrorCoverageState.RETAINED_AFTER_SHRINK
@@ -571,22 +648,22 @@ def search_mirrors(
 
 
 def get_mirror(
-    session_id: str | None = None,
+    native_session_id: str | None = None,
     *,
     access: MirrorAccess,
     db: str | Path | None = None,
     computer: str | None = None,
     source_identity: str | None = None,
 ) -> MirrorRecord | None:
-    """Fetch a mirror by exact session id or source identity."""
+    """Fetch a mirror by native transcript id or source identity."""
     clauses: list[str]
     params: dict[str, object]  # guard: loose-dict - SQL bind params vary by lookup path.
     if source_identity:
         clauses = ["mirrors.source_identity = :source_identity"]
         params = {"source_identity": source_identity}
-    elif session_id:
-        clauses = ["mirrors.session_id = :session_id"]
-        params = {"session_id": session_id}
+    elif native_session_id:
+        clauses = ["mirrors.native_session_id = :native_session_id"]
+        params = {"native_session_id": native_session_id}
         if computer:
             clauses.append("mirrors.computer = :computer")
             params["computer"] = computer
@@ -611,111 +688,123 @@ def get_mirror(
     return _mirror_record_from_row(row)
 
 
-def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None:
-    """Insert or update a mirror row."""
+def get_session_mirror(
+    session_id: str,
+    *,
+    access: MirrorAccess,
+    db: str | Path | None = None,
+) -> MirrorRecord | None:
+    """Fetch the latest transcript mirror attributed to one TeleClaude session."""
+    clauses = ["mirror_sessions.session_id = :session_id"]
+    params: dict[str, object] = {"session_id": session_id}  # guard: loose-dict - access scope extends these SQL values.
+    _apply_access_filter(clauses, params, access)
+    sql = _GET_MIRROR_SQL_TEMPLATE.format(where_clause=_SQL_AND_SEPARATOR.join(clauses))
+    sql = sql.replace("ORDER BY mirrors.updated_at DESC", "ORDER BY mirrors.position DESC, mirrors.updated_at DESC")
+    try:
+        with _get_ro_engine(db).connect() as conn:
+            row = conn.execute(text(sql), params).mappings().first()
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
+            return None
+        raise
+    return _mirror_record_from_row(row) if row is not None else None
+
+
+def upsert_mirror(
+    record: MirrorRecord,
+    attribution: MirrorSessionAttribution | None,
+    *,
+    db: str | Path | None = None,
+) -> None:
+    """Upsert the mirror and its session attribution atomically."""
     if not record.source_identity:
         msg = "MirrorRecord.source_identity is required"
         raise ValueError(msg)
 
     metadata_json = json.dumps(record.metadata, sort_keys=True)
-    payload = {
+    now = datetime.now(UTC).isoformat()
+    payload: dict[str, object] = {  # guard: loose-dict - SQL columns accept heterogeneous bound values.
         "agent": record.agent,
         "command": record.command,
         "computer": record.computer,
-        "content": record.conversation_text,
+        "conversation_text": record.conversation_text,
         "created_at": record.created_at,
         "derivation_version": record.derivation_version,
         "human_email": record.human_email,
-        "is_worker": 1 if record.is_worker else 0,
+        "is_worker": None if record.is_worker is None else int(record.is_worker),
         "message_count": record.message_count,
-        "metadata": metadata_json,
-        "project": record.project,
-        "session_id": record.session_id,
-        "slug": record.slug,
+        _METADATA_PARAM: metadata_json,
+        "project_path": record.project_path,
+        "native_session_id": record.native_session_id,
+        "position": record.position,
+        "session": None,
+        "todo": record.todo,
         "source_identity": record.source_identity,
-        "summary": record.summary,
         "timestamp_end": record.timestamp_end,
         "timestamp_start": record.timestamp_start,
         "title": record.title,
         "updated_at": record.updated_at,
         "visibility": record.visibility,
     }
+    with _get_rw_engine(db).connect() as conn:
+        conn.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)  # guard: raw-sql - serialize metadata merge with mirror writes.
+        try:
+            raw_conn = cast(sqlite3.Connection, conn.connection.driver_connection)
+            if attribution is not None:
+                payload["session"] = upsert_session_attribution(raw_conn, attribution, now)
+            stored_metadata = _parse_metadata(
+                conn.execute(
+                    text(_SELECT_EXISTING_MIRROR_METADATA_SQL),
+                    {_SOURCE_IDENTITY_PARAM: record.source_identity},
+                ).scalar_one_or_none()
+            )
+            metadata = dict(stored_metadata)
+            metadata.update(
+                {
+                    key: value
+                    for key, value in record.metadata.items()
+                    if value is not None or key not in stored_metadata
+                }
+            )
+            payload[_METADATA_PARAM] = json.dumps(metadata, sort_keys=True)
+            conn.execute(text(_UPSERT_MIRROR_SQL), payload)
+            conn.execute(
+                text("DELETE FROM mirror_unreprojectable_sources WHERE source_identity = :source_identity"),
+                {_SOURCE_IDENTITY_PARAM: record.source_identity},
+            )
+            conn.execute(text(_CLEAR_MIRROR_SHRINK_REFUSAL_SQL), {_SOURCE_IDENTITY_PARAM: record.source_identity})
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def open_attributed_session_ids(*, db: str | Path | None = None) -> list[str]:
+    """Return TeleClaude session ids whose close has not yet been recorded."""
+    try:
+        with _get_ro_engine(db).connect() as conn:
+            rows = conn.execute(text(_OPEN_ATTRIBUTED_SESSION_IDS_SQL)).scalars().all()
+            return [str(session_id) for session_id in rows]
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
+            return []
+        raise
+
+
+def record_session_close(
+    session_id: str,
+    closed_at: str,
+    *,
+    db: str | Path | None = None,
+) -> bool:
+    """Record a session close once without touching any transcript mirror."""
+    updated_at = datetime.now(UTC).isoformat()
     with _get_rw_engine(db).begin() as conn:
-        conn.execute(
-            text(
-                """
-            INSERT INTO mirrors (
-                session_id,
-                source_identity,
-                computer,
-                agent,
-                project,
-                title,
-                timestamp_start,
-                timestamp_end,
-                conversation_text,
-                message_count,
-                metadata,
-                created_at,
-                updated_at,
-                summary,
-                human_email,
-                visibility,
-                command,
-                slug,
-                is_worker,
-                derivation_version
-            )
-            VALUES (
-                :session_id,
-                :source_identity,
-                :computer,
-                :agent,
-                :project,
-                :title,
-                :timestamp_start,
-                :timestamp_end,
-                :content,
-                :message_count,
-                :metadata,
-                :created_at,
-                :updated_at,
-                :summary,
-                :human_email,
-                :visibility,
-                :command,
-                :slug,
-                :is_worker,
-                :derivation_version
-            )
-            ON CONFLICT(source_identity) DO UPDATE SET
-                session_id = :session_id,
-                computer = :computer,
-                agent = :agent,
-                project = :project,
-                title = :title,
-                timestamp_start = :timestamp_start,
-                timestamp_end = :timestamp_end,
-                conversation_text = :content,
-                message_count = :message_count,
-                metadata = :metadata,
-                updated_at = :updated_at,
-                summary = :summary,
-                human_email = :human_email,
-                visibility = :visibility,
-                command = :command,
-                slug = :slug,
-                is_worker = :is_worker,
-                derivation_version = :derivation_version
-            """
-            ),
-            payload,
+        result = conn.execute(
+            text(_RECORD_SESSION_CLOSE_SQL),
+            {"session_id": session_id, "closed_at": closed_at, "updated_at": updated_at},
         )
-        conn.execute(
-            text("DELETE FROM mirror_unreprojectable_sources WHERE source_identity = :source_identity"),
-            {"source_identity": record.source_identity},
-        )
-        conn.execute(text(_CLEAR_MIRROR_SHRINK_REFUSAL_SQL), {"source_identity": record.source_identity})
+        return result.rowcount > 0
 
 
 def record_mirror_shrink_refusal(
@@ -733,13 +822,13 @@ def record_mirror_shrink_refusal(
 
 
 def delete_mirror(
-    session_id: str | None = None,
+    native_session_id: str | None = None,
     *,
     db: str | Path | None = None,
     source_identity: str | None = None,
 ) -> None:
     """Delete a mirror row if it exists."""
-    if not session_id and not source_identity:
+    if not native_session_id and not source_identity:
         return
     with _get_rw_engine(db).begin() as conn:
         if source_identity:
@@ -748,7 +837,10 @@ def delete_mirror(
                 {"source_identity": source_identity},
             )
         else:
-            conn.execute(text("DELETE FROM mirrors WHERE session_id = :session_id"), {"session_id": session_id})
+            conn.execute(
+                text(_DELETE_MIRROR_BY_NATIVE_SESSION_ID_SQL),
+                {"native_session_id": native_session_id},
+            )
 
 
 def _apply_access_filter(
@@ -764,87 +856,12 @@ def _apply_access_filter(
 
 
 @dataclass(frozen=True)
-class MirrorTranscriptState:
-    """Per-transcript mirror state consulted during reconciliation skip checks."""
-
-    updated_at: str
-    derivation_version: int
-
-
-@dataclass(frozen=True)
 class OrphanMirror:
     """A stale stored mirror whose source transcript may no longer be available."""
 
     source_identity: str
     agent: str
     transcript_path: str | None
-
-
-def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, MirrorTranscriptState]:
-    """Return transcript-path keyed mirror state for reconciliation."""
-    try:
-        with _get_ro_engine(db).connect() as conn:
-            rows = conn.execute(text("SELECT metadata, updated_at, derivation_version FROM mirrors")).mappings().all()
-    except SqlAlchemyOperationalError as exc:
-        if _is_missing_table_error(exc):
-            return {}
-        raise
-
-    state: dict[str, MirrorTranscriptState] = {}
-    for row in rows:
-        metadata = _parse_metadata(row.get("metadata"))
-        transcript_path = metadata.get("transcript_path")
-        updated_at = _optional_str(row.get("updated_at"))
-        if not isinstance(transcript_path, str) or not transcript_path or updated_at is None:
-            continue
-        state[transcript_path] = MirrorTranscriptState(
-            updated_at=updated_at,
-            derivation_version=_int_value(row.get("derivation_version")),
-        )
-    return state
-
-
-def get_stale_mirrors(derivation_version: int, *, db: str | Path | None = None) -> list[OrphanMirror]:
-    """Return mirrors whose derivation_version is older than the given version."""
-    try:
-        with _get_ro_engine(db).connect() as conn:
-            rows = (
-                conn.execute(
-                    text(
-                        """
-                        SELECT source_identity, agent, metadata
-                        FROM mirrors
-                        WHERE derivation_version < :derivation_version
-                          AND source_identity NOT IN (
-                              SELECT source_identity FROM mirror_unreprojectable_sources
-                          )
-                        """
-                    ),
-                    {"derivation_version": derivation_version},
-                )
-                .mappings()
-                .all()
-            )
-    except SqlAlchemyOperationalError as exc:
-        if _is_missing_table_error(exc):
-            return []
-        raise
-
-    stale: list[OrphanMirror] = []
-    for row in rows:
-        source_identity = _optional_str(row.get("source_identity"))
-        if source_identity is None:
-            continue
-        metadata = _parse_metadata(row.get("metadata"))
-        transcript_path = metadata.get("transcript_path")
-        stale.append(
-            OrphanMirror(
-                source_identity=source_identity,
-                agent=str(row.get("agent") or ""),
-                transcript_path=transcript_path if isinstance(transcript_path, str) and transcript_path else None,
-            )
-        )
-    return stale
 
 
 def mark_mirror_unreprojectable(

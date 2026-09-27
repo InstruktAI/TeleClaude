@@ -247,7 +247,7 @@ class SessionMemoryExtractionJob(Job):
 
         Returns the transcript text, or None if no new content exists.
         """
-        mirror = get_mirror(session_id, access=ALL_MIRROR_ACCESS)
+        mirror = get_mirror(native_session_id=session_id, access=ALL_MIRROR_ACCESS)
         if mirror is None:
             return None
 

@@ -10,9 +10,9 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
-from teleclaude.core.summarizer import SUMMARY_SCHEMA, _call_summarizer, _parse_summary_response
 
 from teleclaude.utils.transcript import StructuredMessage  # isort: skip  # transcript initialization imports the projector
 
@@ -20,10 +20,12 @@ from teleclaude.output_projection.conversation_projector import project_conversa
 from teleclaude.output_projection.models import VisibilityPolicy
 from teleclaude.output_projection.serializers import to_structured_message
 
+from ._attribution import MirrorSessionAttribution
+from ._types import JsonValue
 from .derivation import DERIVATION_VERSION, derive_human_title
+from .session_context import MirrorAttributionReason, SessionMirrorContext
 from .store import (
     ALL_MIRROR_ACCESS,
-    JsonValue,
     MirrorRecord,
     delete_mirror,
     get_mirror,
@@ -71,66 +73,43 @@ def _render_conversation(messages: list[StructuredMessage]) -> str:
     return "\n\n".join(lines)
 
 
-_SUMMARY_MAX_INPUT_CHARS = 4000
-
 logger = get_logger(__name__)
 
 MIRROR_SHRINK_REFUSED = "mirror.regeneration.shrink_refused"
 MIRROR_SHRINK_ACCEPTED = "mirror.regeneration.shrink_accepted"
+MIRROR_ATTRIBUTION_RECORDED_EVENT = "mirror.session_attribution.recorded"
 
 
-def _build_mirror_summary_prompt(conversation_text: str) -> str:
-    """Build a prompt asking for a one-paragraph session summary."""
-    truncated = conversation_text[:_SUMMARY_MAX_INPUT_CHARS]
-    return f"""Summarize this conversation in one concise paragraph.
+class MirrorWriteTrigger(StrEnum):
+    """The writer that caused a mirror upsert."""
 
-## Conversation:
-{truncated}
-
-## Output:
-1. **summary**: A concise one-paragraph summary of what happened in this conversation.
-"""
+    RECONCILE = "reconcile"
+    FANOUT = "fanout"
 
 
-def _generate_session_summary(conversation_text: str) -> str | None:
-    """Generate a one-paragraph session summary. Best-effort — failure does not block mirror creation."""
-    if not conversation_text:
-        return None
-    prompt = _build_mirror_summary_prompt(conversation_text)
-    try:
-        return asyncio.run(  # type: ignore[no-any-return]
-            _call_summarizer(prompt, SUMMARY_SCHEMA, _parse_summary_response)
-        )
-    except Exception:
-        logger.debug("Mirror summary generation failed (best-effort skip)")
-        return None
+class MirrorAttributionOutcome(StrEnum):
+    """Whether a mirror write found an owning session record."""
+
+    ATTRIBUTED = "attributed"
+    UNATTRIBUTED = "unattributed"
 
 
 def generate_mirror_sync(
-    session_id: str,
+    native_session_id: str,
     source_identity: str,
     transcript_path: str,
     agent_name: AgentName,
-    computer: str,
-    project: str,
     db: str | Path | None,
     *,
-    human_email: str | None = None,
-    visibility: str = "private",
-    last_input_origin: str | None = None,
-    channel_identifiers: dict[str, str] | None = None,
-    system_role: str | None = None,
-    command: str | None = None,
-    slug: str | None = None,
-    title: str | None = None,
-    has_record: bool = False,
+    context: SessionMirrorContext | None = None,
+    trigger: MirrorWriteTrigger,
+    reconcile_id: str | None = None,
+    fallback_project_path: str | None = None,
 ) -> MirrorGenerationOutcome:
     """Extract conversation-only text from a transcript and upsert a mirror.
 
-    Classification (``is_worker``), ``command``, ``slug``, and ``title`` come from
-    the caller's session-record lookup, never from the transcript text. ``has_record``
-    distinguishes a record whose title is genuinely empty from no record at all: only
-    the latter falls back to a first-message title derived from the conversation.
+    Session classification and facts come from the session record. Transcript text
+    supplies a title only when creating a new unattributed mirror.
     """
     projected_blocks = project_conversation_chain(
         [transcript_path],
@@ -139,7 +118,7 @@ def generate_mirror_sync(
         cleanup_runtime_user_spans=True,
     )
     structured = [to_structured_message(block) for block in projected_blocks]
-    is_worker = system_role == ROLE_WORKER
+    is_worker = context.system_role == ROLE_WORKER if context is not None else None
     conversation_messages = _normalize_conversation_messages(structured)
     existing = get_mirror(source_identity=source_identity, access=ALL_MIRROR_ACCESS, db=db)
 
@@ -149,7 +128,7 @@ def generate_mirror_sync(
         # here, and for most sessions the stored mirror is the only copy left. Leave the
         # row alone; the caller records a tombstone so the pass is not repeated blindly.
         if existing is None:
-            delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
+            delete_mirror(native_session_id=native_session_id, source_identity=source_identity, db=db)
         return MirrorGenerationOutcome.NO_CONVERSATION
 
     if existing is not None and len(conversation_messages) < existing.message_count:
@@ -181,21 +160,28 @@ def generate_mirror_sync(
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
     conversation_text = _render_conversation(conversation_messages)
-    resolved_title = (title or "") if has_record else derive_human_title(conversation_messages)
-
-    metadata: dict[str, JsonValue] = {"transcript_path": transcript_path, "agent": agent_name.value}
-    if last_input_origin:
-        metadata["origin_channel"] = last_input_origin
-    if channel_identifiers:
-        metadata.update(channel_identifiers)
-
-    summary = _generate_session_summary(conversation_text)
+    resolved_title = (
+        context.title
+        if context is not None
+        else existing.title
+        if existing is not None
+        else derive_human_title(conversation_messages)
+    )
+    metadata: dict[str, JsonValue] = {}
+    metadata["transcript_path"] = transcript_path
+    metadata["agent"] = agent_name.value
+    if context is not None and context.last_input_origin:
+        metadata["origin_channel"] = context.last_input_origin
+    if context is not None:
+        metadata.update(context.channel_identifiers)
 
     record = MirrorRecord(
-        session_id=session_id,
-        computer=computer,
+        native_session_id=native_session_id,
+        session_id=context.session_id if context is not None else None,
+        position=context.position if context is not None else None,
+        computer=(context.computer or config.computer.name) if context is not None else config.computer.name,
         agent=agent_name.value,
-        project=project,
+        project_path=context.project_path if context is not None else fallback_project_path,
         title=resolved_title,
         timestamp_start=timestamp_start,
         timestamp_end=timestamp_end,
@@ -205,15 +191,45 @@ def generate_mirror_sync(
         created_at=existing.created_at if existing else now,
         updated_at=now,
         source_identity=source_identity,
-        summary=summary,
-        human_email=human_email,
-        visibility=visibility,
-        command=command,
-        slug=slug,
+        human_email=context.human_email if context is not None else None,
+        visibility=context.visibility if context is not None else None,
+        command=context.command if context is not None else None,
+        todo=context.todo if context is not None else None,
         is_worker=is_worker,
         derivation_version=DERIVATION_VERSION,
     )
-    upsert_mirror(record, db=db)
+    attribution = (
+        MirrorSessionAttribution(
+            session_id=context.session_id,
+            principal=context.principal,
+            project=context.project,
+            subdir=context.subdir,
+            initiator_session_id=context.initiator_session_id,
+            initiator_computer=context.initiator_computer,
+            initiated_by_ai=context.initiated_by_ai,
+            job=context.job,
+            started_at=context.created_at,
+            closed_at=None,
+        )
+        if context is not None
+        else None
+    )
+    upsert_mirror(record, attribution, db=db)
+    reason = context.reason if context is not None else MirrorAttributionReason.NO_RECORD
+    logger.info(
+        MIRROR_ATTRIBUTION_RECORDED_EVENT,
+        trigger=trigger,
+        reconcile_id=reconcile_id,
+        outcome=MirrorAttributionOutcome.ATTRIBUTED if context is not None else MirrorAttributionOutcome.UNATTRIBUTED,
+        reason=reason,
+        session_id=context.session_id if context is not None else None,
+        native_session_id=native_session_id,
+        position=context.position if context is not None else None,
+        has_principal=bool(context and context.principal),
+        has_project=bool(context and context.project),
+        facts_supplied=context is not None,
+        source_identity=source_identity,
+    )
     if shrink_outcome is MirrorGenerationOutcome.SHRINK_ACCEPTED:
         logger.info(
             MIRROR_SHRINK_ACCEPTED,
@@ -228,41 +244,27 @@ def generate_mirror_sync(
 
 
 async def generate_mirror(
-    session_id: str,
+    native_session_id: str,
     source_identity: str,
     transcript_path: str,
     agent_name: AgentName,
-    computer: str,
-    project: str,
     db: str | Path | None,
     *,
-    human_email: str | None = None,
-    visibility: str = "private",
-    last_input_origin: str | None = None,
-    channel_identifiers: dict[str, str] | None = None,
-    system_role: str | None = None,
-    command: str | None = None,
-    slug: str | None = None,
-    title: str | None = None,
-    has_record: bool = False,
+    context: SessionMirrorContext | None = None,
+    trigger: MirrorWriteTrigger,
+    reconcile_id: str | None = None,
+    fallback_project_path: str | None = None,
 ) -> MirrorGenerationOutcome:
     """Async entry point that offloads blocking mirror generation work."""
     return await asyncio.to_thread(
         generate_mirror_sync,
-        session_id=session_id,
+        native_session_id=native_session_id,
         source_identity=source_identity,
         transcript_path=transcript_path,
         agent_name=agent_name,
-        computer=computer,
-        project=project,
         db=db,
-        human_email=human_email,
-        visibility=visibility,
-        last_input_origin=last_input_origin,
-        channel_identifiers=channel_identifiers,
-        system_role=system_role,
-        command=command,
-        slug=slug,
-        title=title,
-        has_record=has_record,
+        context=context,
+        trigger=trigger,
+        reconcile_id=reconcile_id,
+        fallback_project_path=fallback_project_path,
     )

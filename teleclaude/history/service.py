@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
-from teleclaude.core.db._sync import get_session_field_sync, get_session_ids_by_native_sync
+from teleclaude.core.db._sync import get_session_field_sync
 from teleclaude.mirrors.store import (
     AllMirrorAccess,
     MirrorAccess,
@@ -21,6 +21,7 @@ from teleclaude.mirrors.store import (
     MirrorRecord,
     MirrorSearchResult,
     get_mirror,
+    get_session_mirror,
     search_mirrors,
 )
 from teleclaude.paths import MAIN_DB_PATH
@@ -170,7 +171,7 @@ def _detail_json_payload(
         "tc_id": resolution.tc_id,
         "native_id": resolution.native_id,
         "title": mirror.title if mirror is not None else None,
-        "project": mirror.project if mirror is not None else None,
+        "project": mirror.project_path if mirror is not None else None,
         "computer": mirror.computer if mirror is not None else None,
         "timestamp_start": mirror.timestamp_start if mirror is not None else None,
         "timestamp_end": mirror.timestamp_end if mirror is not None else None,
@@ -208,25 +209,31 @@ def _resolve_local_mirror(
     *,
     access: MirrorAccess,
 ) -> MirrorResolution:
-    mirror = get_mirror(session_id, access=access)
+    mirror = get_mirror(native_session_id=session_id, access=access)
     if mirror is not None:
-        native_id = mirror.session_id
-        tc_ids = get_session_ids_by_native_sync(
-            str(MAIN_DB_PATH),
-            [native_id] if native_id is not None else [],
-        )
         return MirrorResolution(
             mirror=mirror,
             requested_id=session_id,
             requested_namespace=IdNamespace.NATIVE,
-            tc_id=tc_ids.get(native_id) if native_id is not None else None,
-            native_id=native_id,
+            tc_id=mirror.session_id,
+            native_id=mirror.native_session_id,
+            source=DetailSource.MIRROR,
+        )
+
+    attributed_mirror = get_session_mirror(session_id, access=access)
+    if attributed_mirror is not None:
+        return MirrorResolution(
+            mirror=attributed_mirror,
+            requested_id=session_id,
+            requested_namespace=IdNamespace.TELECLAUDE,
+            tc_id=attributed_mirror.session_id,
+            native_id=attributed_mirror.native_session_id,
             source=DetailSource.MIRROR,
         )
 
     resolved_native_id = get_session_field_sync(str(MAIN_DB_PATH), session_id, _NATIVE_SESSION_ID_FIELD)
     if isinstance(resolved_native_id, str) and resolved_native_id:
-        translated_mirror = get_mirror(resolved_native_id, access=access)
+        translated_mirror = get_mirror(native_session_id=resolved_native_id, access=access)
         return MirrorResolution(
             mirror=translated_mirror,
             requested_id=session_id,
@@ -293,18 +300,16 @@ def parse_history_agents(agent_filter: str) -> list[AgentName]:
 
 def history_results_to_rows(results: Sequence[MirrorSearchResult]) -> list[HistorySearchRow]:
     """Attach TeleClaude ids to mirror-native search rows."""
-    native_ids = [result.session_id for result in results if result.session_id is not None]
-    tc_ids = get_session_ids_by_native_sync(str(MAIN_DB_PATH), native_ids)
     return [
         HistorySearchRow(
             sort_timestamp=result.sort_timestamp,
             timestamp=result.timestamp,
             computer=result.computer,
             agent=result.agent,
-            project=result.project,
+            project=result.project_path or "",
             topic=result.topic,
-            tc_id=tc_ids.get(result.session_id) if result.session_id is not None else None,
-            native_id=result.session_id,
+            tc_id=result.session_id,
+            native_id=result.native_session_id,
         )
         for result in results
     ]
