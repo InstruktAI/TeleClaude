@@ -27,6 +27,7 @@ into it, so the worktree's code reaches no live runtime state through its home.
 The cloned registry remains readable with its real project entries; it alone
 grants no permission for undelivered code to modify those live repositories.
 
+<!-- planned:worktree-code-uses-its-home -->
 The clone's location follows from the worktree's own location, so it is known
 before the clone exists. Code loaded from a slug worktree, however it is
 started, runs against that worktree's clone and never reads `TELECLAUDE_HOME`;
@@ -35,6 +36,7 @@ from any other checkout — the installed canonical checkout, the integration
 worktree — resolves its home as before, so agent sessions, hooks, installed
 commands, and the daemon keep operating the live platform and their
 environment is unchanged.
+<!-- /planned:worktree-code-uses-its-home -->
 
 ## Canonical fields
 
@@ -59,6 +61,7 @@ Then its clone holds the current tracked working-tree content
 And the source document is unchanged
 ```
 
+<!-- planned:worktree-code-uses-its-home -->
 #### UC-IAH3: Sessions on one worktree share its home
 
 ```gherkin
@@ -66,7 +69,9 @@ Given a build session and a later review session work in the same slug worktree
 When each runs the worktree's code
 Then both run it against the same worktree home
 ```
+<!-- /planned:worktree-code-uses-its-home -->
 
+<!-- planned:worktree-code-uses-its-home -->
 #### UC-IAH5: Installed code keeps operating the live platform
 
 ```gherkin
@@ -75,7 +80,9 @@ When the global telec, an agent hook, the agent shell, or git runs in that sessi
 Then it resolves the live home exactly as it does outside a worktree
 And the session's environment names no worktree home
 ```
+<!-- /planned:worktree-code-uses-its-home -->
 
+<!-- planned:worktree-code-uses-its-home -->
 #### UC-IAH6: Checkout grading uses the worktree's home
 
 ```gherkin
@@ -85,7 +92,9 @@ Then the worktree's code is graded with the tracked configuration in its worktre
 And no quality step assembles a separate partial home
 And the live home is unchanged
 ```
+<!-- /planned:worktree-code-uses-its-home -->
 
+<!-- planned:worktree-code-uses-its-home -->
 #### UC-IAH7: A missing worktree home is refused
 
 ```gherkin
@@ -95,6 +104,7 @@ Then it refuses at startup with the missing home named
 And no home is created
 And the live home is unchanged
 ```
+<!-- /planned:worktree-code-uses-its-home -->
 
 #### UC-IAH8: Releasing the worktree deletes its home
 
@@ -113,6 +123,7 @@ When platform maintenance runs
 Then that home is deleted
 ```
 
+<!-- planned:worktree-code-uses-its-home -->
 #### UC-IAH10: Registry reads do not authorize live project writes
 
 ```gherkin
@@ -121,6 +132,7 @@ When undelivered checkout code invokes an operation that would update registered
 Then the operation cannot change any live repository named by that cloned registry
 And the registry remains available for configuration reads
 ```
+<!-- /planned:worktree-code-uses-its-home -->
 
 #### UC-IAH13: Maintenance gives an existing worktree its home
 
@@ -140,6 +152,7 @@ Then the renamed worktree owns that home
 And no home remains under the former slug
 ```
 
+<!-- planned:worktree-code-uses-its-home -->
 #### UC-IAH15: Worktree code never resolves the live home
 
 ```gherkin
@@ -148,6 +161,7 @@ When it starts with TELECLAUDE_HOME unset, empty, or naming any location
 Then it runs against that worktree's home
 And the live home is unchanged
 ```
+<!-- /planned:worktree-code-uses-its-home -->
 
 ## Known caveats
 

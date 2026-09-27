@@ -19,14 +19,14 @@ canonical checkout's code wherever it is called from, so an ordinary call made w
 standing in a slug worktree behaves exactly like the same call made from the canonical
 checkout, and undelivered code never reaches the live home through it.
 
-<!-- planned-change:agent-home-clone-provisioning -->
+<!-- planned-change:worktree-code-uses-its-home -->
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
 wrapper never runs against the live home: unless its caller names another home, it
 creates a temporary home, runs the worktree's code against it, and removes it when the
 command ends. A home that holds no machine configuration starts from a copy of the live
 one.
-<!-- change:agent-home-clone-provisioning -->
+<!-- change:worktree-code-uses-its-home -->
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
 wrapper never runs against the live home: the worktree's code runs against the home
@@ -34,18 +34,18 @@ repository clone the worktree was provisioned with
 (`project/spec/feature/agent_runtime/isolated-home`), whatever home its caller names and
 whoever invokes it, and refuses when that home is missing. The wrapper creates no home of
 its own.
-<!-- /planned-change:agent-home-clone-provisioning -->
+<!-- /planned-change:worktree-code-uses-its-home -->
 
-<!-- planned-change:agent-home-clone-provisioning -->
+<!-- planned-change:worktree-code-uses-its-home -->
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
 worktree hand their lint gate to that worktree's own code, run against a fresh scratch
 home of its own, so a change is judged by the rules it carries.
-<!-- change:agent-home-clone-provisioning -->
+<!-- change:worktree-code-uses-its-home -->
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
 worktree hand their lint gate to that worktree's own code, run against that worktree's
 home, so a change is judged by the rules it carries with the complete tracked
 configuration.
-<!-- /planned-change:agent-home-clone-provisioning -->
+<!-- /planned-change:worktree-code-uses-its-home -->
 
 The installed `telec code lint` and `telec code commit` commands grade such a
 worktree without invoking a second `telec` command; the outer command's caller
@@ -70,7 +70,7 @@ Then the command runs the installed canonical checkout's code
 And the command acts on the directory the agent invoked it from
 ```
 
-<!-- planned-change:agent-home-clone-provisioning -->
+<!-- planned-change:worktree-code-uses-its-home -->
 #### UC-CCS2: A worktree's own wrapper runs the worktree's code against a named home
 
 ```gherkin
@@ -80,10 +80,10 @@ When an operator or platform process invokes the worktree's own telec wrapper wi
 Then the command runs the worktree's code against that home
 And the worktree's code writes nothing into the live home
 ```
-<!-- change:agent-home-clone-provisioning -->
-<!-- /planned-change:agent-home-clone-provisioning -->
+<!-- change:worktree-code-uses-its-home -->
+<!-- /planned-change:worktree-code-uses-its-home -->
 
-<!-- planned-change:agent-home-clone-provisioning -->
+<!-- planned-change:worktree-code-uses-its-home -->
 #### UC-CCS3: A worktree's own wrapper supplies and removes its own temporary home
 
 ```gherkin
@@ -94,7 +94,7 @@ And the temporary home no longer exists once the call ends, whether the command 
 And the call's exit status is the command's own
 And nothing in the live home changes
 ```
-<!-- change:agent-home-clone-provisioning -->
+<!-- change:worktree-code-uses-its-home -->
 #### UC-CCS3: A worktree's own wrapper runs against its worktree's home
 
 ```gherkin
@@ -104,9 +104,9 @@ Then the worktree's code runs against the worktree's home
 And the call's exit status is the command's own
 And nothing in the live home changes
 ```
-<!-- /planned-change:agent-home-clone-provisioning -->
+<!-- /planned-change:worktree-code-uses-its-home -->
 
-<!-- planned-change:agent-home-clone-provisioning -->
+<!-- planned-change:worktree-code-uses-its-home -->
 #### UC-CCS4: A worktree home without a machine configuration starts from the live one
 
 ```gherkin
@@ -116,7 +116,7 @@ Then that home holds a copy of the live machine configuration before the worktre
 And nothing else is copied from the live home
 And the live machine configuration is unchanged
 ```
-<!-- change:agent-home-clone-provisioning -->
+<!-- change:worktree-code-uses-its-home -->
 #### UC-CCS4: A worktree home contains the tracked home repository
 
 ```gherkin
@@ -125,7 +125,7 @@ When the wrapper starts the worktree's code
 Then the home contains the tracked project registry and tier configuration documents
 And the live home repository is unchanged
 ```
-<!-- /planned-change:agent-home-clone-provisioning -->
+<!-- /planned-change:worktree-code-uses-its-home -->
 
 #### UC-CCS5: Grading from a worktree applies the worktree's own rules
 
@@ -169,17 +169,17 @@ And grading reports their outcome without an unidentified-caller refusal from it
 
 ## Known caveats
 
-<!-- planned-change:agent-home-clone-provisioning -->
+<!-- planned-change:worktree-code-uses-its-home -->
 - A temporary or named home moves only the state rooted in the home. A checkout's todo store and
   the running daemon do not follow it: a probe of a command that writes project state
   or acts through the daemon reaches the live one, which is why such behavior is
   verified after delivery (`project/policy/test-moratorium`).
-<!-- change:agent-home-clone-provisioning -->
+<!-- change:worktree-code-uses-its-home -->
 - A worktree or named home moves only the state rooted in the home. A checkout's todo store and
   the running daemon do not follow it: a probe of a command that writes project state
   or acts through the daemon reaches the live one, which is why such behavior is
   verified after delivery (`project/policy/test-moratorium`).
-<!-- /planned-change:agent-home-clone-provisioning -->
+<!-- /planned-change:worktree-code-uses-its-home -->
 
 ## See Also
 

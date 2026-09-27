@@ -265,7 +265,7 @@ The pathspec commit is built internally from `workspace scope plus
    before `git commit --no-verify`, in that order where both apply. A tier that
    participates in documentation and carries no project subscriptions is gated,
    runs the guardrails lane, and requires no native toolchain contract at its
-   <!-- planned-change:agent-home-clone-provisioning -->
+   <!-- planned-change:worktree-code-uses-its-home -->
    root. The selected checks run in-process when the checkout under commit is
    the installation or is not a TeleClaude checkout. For any other TeleClaude
    checkout exactly the selected checks run in that checkout's own code against
@@ -273,7 +273,7 @@ The pathspec commit is built internally from `workspace scope plus
    undelivered code never runs against the live home; a checkout that cannot run
    the selected checks in its own code is refused rather than graded by
    installed rules (`project/design/architecture/cli-invocation-boundary`).
-   <!-- change:agent-home-clone-provisioning -->
+   <!-- change:worktree-code-uses-its-home -->
    root. The selected checks run in-process when the checkout under commit is
    the installation or is not a TeleClaude checkout. For any other TeleClaude
    checkout exactly the selected checks run in that checkout's own code — a slug
@@ -284,7 +284,7 @@ The pathspec commit is built internally from `workspace scope plus
    run the selected checks in its own code, or a slug worktree whose home is
    missing, is refused rather than graded by installed rules
    (`project/design/architecture/cli-invocation-boundary`).
-   <!-- /planned-change:agent-home-clone-provisioning -->
+   <!-- /planned-change:worktree-code-uses-its-home -->
 Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
