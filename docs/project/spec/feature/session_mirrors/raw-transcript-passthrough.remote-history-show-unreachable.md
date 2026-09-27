@@ -11,11 +11,11 @@ visibility: 'public'
 
 ## What it is
 
-Some debugging and forensic workflows need the original agent transcript
-verbatim — tool calls, thinking blocks, system reminders — rather than
-the mirror's text-only normalized conversation. `telec history show --raw
-<session-id>` exposes this: the session_mirrors service's history detail
-capability answers for the caller the platform verifies. It first looks up
+`telec history show --raw <session-id>` returns the original agent
+transcript verbatim — tool calls, thinking blocks, system reminders — rather
+than the mirror's text-only normalized conversation. The session_mirrors
+service's history detail capability answers for the caller the platform
+verifies. It first looks up
 the mirror; if found, it reads the `transcript_path` recorded in the mirror's
 metadata and returns the file whole. If no mirror is found and the caller's
 scope admits every mirror, it falls back to its on-disk transcript discovery —
@@ -24,9 +24,7 @@ and returns that file rendered by the structured parser. The CLI prints the
 answer and reads no file itself.
 
 The answer takes no character cut. A transcript is streamed whole and bounded
-by the caller's own tooling: slicing a JSONL stream by character count truncates
-mid-record, and a shell or `jq` bounds it correctly without the surface
-reimplementing that badly.
+by the caller's own tooling.
 
 ## Canonical fields
 
