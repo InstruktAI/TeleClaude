@@ -20,7 +20,11 @@ Provide a resource-first API for TUI and CLI clients.
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
 - API handlers do not fetch remote data directly; cache owns refresh.
 - Session updates are merged from local DB and cached remote summaries.
+<!-- planned-change:remove-uncalled-api-routes -->
 - Memory endpoints (`/api/memory/*`) are mounted in the same FastAPI process for observation save/search/injection flows.
+<!-- change:remove-uncalled-api-routes -->
+- Memory endpoints (`/api/memory/*`) are mounted in the same FastAPI process for observation save/search flows.
+<!-- /planned-change:remove-uncalled-api-routes -->
 
 - MCP endpoints (`/mcp/*`) are mounted in the same FastAPI process and route through a daemon-owned lazy MCP runtime.
 
@@ -158,6 +162,7 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 `IMMEDIATE` → 200/201, `RECEIPT` → 202 + `OperationReceipt`. `READ` marks a read endpoint
 and `—` a route that carries no command at all; neither has a response mode to derive from.
 
+<!-- planned-change:remove-uncalled-api-routes -->
 | Method | Endpoint                        | Mode            | Action                             |
 | ------ | ------------------------------- | --------------- | ---------------------------------- |
 | GET    | /health                         | READ            | Health check                       |
@@ -189,6 +194,33 @@ and `—` a route that carries no command at all; neither has a response mode to
 | GET    | /api/memory/timeline            | READ            | Timeline around anchor             |
 | POST   | /api/memory/batch               | READ            | Bulk fetch observations            |
 | GET    | /api/memory/inject              | READ            | Generate memory context markdown   |
+<!-- change:remove-uncalled-api-routes -->
+| Method | Endpoint                        | Mode            | Action                             |
+| ------ | ------------------------------- | --------------- | ---------------------------------- |
+| GET    | /health                         | READ            | Health check                       |
+| GET    | /sessions                       | READ            | List sessions (cache)              |
+| POST   | /sessions                       | IMMEDIATE       | Create session → session_id        |
+| POST   | /sessions/{id}/message          | IMMEDIATE       | Send message to session            |
+| POST   | /sessions/{id}/keys             | IMMEDIATE       | Inject key input                   |
+| POST   | /sessions/self/file             | IMMEDIATE       | Deliver file attachment to user    |
+| POST   | /sessions/self/result           | IMMEDIATE       | Send formatted result to user      |
+| POST   | /sessions/{id}/agent-restart    | RECEIPT         | Restart agent                      |
+| POST   | /sessions/self/escalate         | IMMEDIATE       | Escalate customer session          |
+| POST   | /sessions/run                   | IMMEDIATE       | Create session + run slash command |
+| DELETE | /sessions/{id}                  | RECEIPT         | Request async session close        |
+| POST   | /jobs/{name}/run                | —               | Run background job                 |
+| GET    | /tui/bootstrap                  | READ            | TUI partial initial state          |
+| GET    | /computers                      | READ            | List computers (cache + remote)    |
+| GET    | /projects                       | READ            | List projects (cache)              |
+| POST   | /todos/work                     | RECEIPT         | Run work state machine        |
+| POST   | /todos/integrate                | RECEIPT         | Run integration state machine      |
+| POST   | /todos/create                   | RECEIPT         | Run creative state machine         |
+| POST   | /todos/prepare                  | RECEIPT         | Run prepare state machine          |
+| GET    | /operations/{id}                | READ            | Poll operation receipt             |
+| POST   | /api/memory/save                | IMMEDIATE       | Save observation                   |
+| GET    | /api/memory/search              | READ            | Search observations                |
+| GET    | /api/memory/timeline            | READ            | Timeline around anchor             |
+<!-- /planned-change:remove-uncalled-api-routes -->
 
 MCP endpoints are resource-shaped but may initialize or reuse a daemon-owned MCP lease as part of satisfying the read or call.
 
