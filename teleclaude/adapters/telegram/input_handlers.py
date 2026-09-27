@@ -365,7 +365,8 @@ class InputHandlersMixin:
                     file_path=str(file_path),
                     filename=file_name,
                     caption=message.caption.strip() if message.caption else None,
-                    file_size=(file_obj.file_size if hasattr(file_obj, "file_size") else 0),
+                    # Telegram may omit size; zero keeps the upload notice size-free.
+                    file_size=file_obj.file_size if file_obj.file_size is not None else 0,
                 )
             )
             decision.accept()
