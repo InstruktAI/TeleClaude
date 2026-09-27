@@ -20,6 +20,13 @@ description: This repository authors no tests. The Python test corpus and its to
 
 Why a self-authored check carries no information is `general/principle/verification-independence`, and is not restated here. Two things are specific to this repository.
 
+An uneventful log window does not prove that every specified behavior occurred.
+That limit is accepted here: build review judges conformance to the specs, the
+logging policy exposes significant operations and failures, and the integrator
+judges anomalies after activation. Breakage found later enters normal recovery
+and is fixed forward. Requiring live proof for each delivery would recreate the
+preparation work this ruling removes.
+
 **The substrate makes the worthless path the cheapest one.** Python's runtime patching means faking a collaborator costs one line, so the cheapest route to a green test is a test that asserts nothing. The Rust runtime's corpus carries no mocks at all. That contrast reflects substrate and doctrine together — a different language, a stricter doctrine, and a younger codebase — not the language alone.
 
 ### Measured evidence
