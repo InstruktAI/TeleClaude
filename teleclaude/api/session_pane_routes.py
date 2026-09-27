@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.session_authority import refuse_worker_terminal_observation
 from teleclaude.api.session_pane_models import SessionPaneDTO
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
@@ -40,6 +41,7 @@ async def get_session_pane_endpoint(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> SessionPaneDTO:
     """Get an explicit live terminal observation independent of transcripts."""
+    refuse_worker_terminal_observation(_identity)
     try:
         if is_remote_target(computer, config.computer.name):
             if _STATE.client is None:

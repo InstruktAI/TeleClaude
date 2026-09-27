@@ -171,7 +171,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_TAIL_PANE,
                     F.FLAG_COMPUTER,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "run": CommandDef(
                 desc="Run a canonical command on a new agent session",
