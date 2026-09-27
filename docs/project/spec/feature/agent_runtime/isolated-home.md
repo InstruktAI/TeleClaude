@@ -28,10 +28,12 @@ The cloned registry remains readable with its real project entries; it alone
 grants no permission for undelivered code to modify those live repositories.
 
 The clone's location follows from the worktree's own location, so it is known
-before the clone exists. Code loaded from a slug worktree resolves its home to
-that worktree's clone whatever `TELECLAUDE_HOME` names, however the code is
-started, and refuses at startup, naming the clone, when the clone is missing.
-It never falls back to the live home. Code loaded from any other checkout —
+before the clone exists. Code loaded from a slug worktree, however it is
+started, resolves its home to that worktree's clone when `TELECLAUDE_HOME` is
+unset, empty, or names the live home by any spelling, and refuses at startup,
+naming the clone, when the clone is missing. It never falls back to the live
+home. A home its caller names explicitly, other than the live home, is used as
+named. Code loaded from any other checkout —
 the installed canonical checkout, the integration worktree — resolves its home
 as before, so agent sessions, hooks, installed commands, and the daemon keep
 operating the live platform and their environment is unchanged.
@@ -71,7 +73,7 @@ Then both run it against the same worktree home
 
 ```gherkin
 Given code loaded from a slug worktree
-When it starts with TELECLAUDE_HOME unset, empty, naming the live home, or naming any other location
+When it starts with TELECLAUDE_HOME unset, empty, or naming the live home however it is spelled
 Then it runs against that worktree's home
 And the live home is unchanged
 ```
