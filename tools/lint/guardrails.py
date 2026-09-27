@@ -138,6 +138,7 @@ _PRE_DISPATCH_FIRST_PARTY_MODULES = frozenset(
         "teleclaude.core",
         "teleclaude.core.operation_caller_identity",
         "teleclaude.core.session_identity_facts",
+        "teleclaude.core.worktree_layout",
         "teleclaude.paths",
         "teleclaude.runtime",
         "teleclaude.runtime.binaries",

@@ -27,6 +27,7 @@ from teleclaude.core.next_machine._types import (
     WorktreePrepDecision,
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
+from teleclaude.core.next_machine.worktree_home import ensure_worktree_home
 from teleclaude.core.reconciliation.config_schemas import converge_project_schema_link
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
 
@@ -182,6 +183,7 @@ def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
             disposition=schema_link.disposition,
             resolved_target=str(schema_link.resolved_target) if schema_link.resolved_target is not None else None,
         )
+    ensure_worktree_home(Path(cwd), slug)
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
     if prep_decision.should_prepare:
         _prepare_worktree(cwd, slug)

@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import CacheEvent
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.delivery import (
+    TodoSlugSurface,
     TodoSlugSurfaceMove,
     delete_old_remote_slug_ref,
     move_todo_slug_surfaces,
@@ -33,9 +34,9 @@ def _moved_surfaces(*, snippet_count: int, moves: list[TodoSlugSurfaceMove]) -> 
     surfaces = ["todos.db"]
     if snippet_count:
         surfaces.append(f"delivered_by:{snippet_count}")
-    surfaces.extend(move.surface for move in moves if move.surface != "remote_branch")
-    if any(move.surface == "remote_branch" for move in moves):
-        surfaces.append("remote_branch")
+    surfaces.extend(move.surface for move in moves if move.surface is not TodoSlugSurface.REMOTE_BRANCH)
+    if any(move.surface is TodoSlugSurface.REMOTE_BRANCH for move in moves):
+        surfaces.append(TodoSlugSurface.REMOTE_BRANCH)
     return surfaces
 
 
