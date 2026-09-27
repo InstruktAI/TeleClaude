@@ -28,7 +28,13 @@ from teleclaude.api.run_session_refusals import (
     resolve_run_session_agent,
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
-from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_ancestor
+from teleclaude.api.session_authority import (
+    ACT_RESTART,
+    ACT_UNSUBSCRIBE,
+    admits_terminal_observation,
+    refuse_act_on_ancestor,
+    refuse_worker_transcript_read_outside_todo,
+)
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
 from teleclaude.api.session_pane_routes import router as session_pane_router
@@ -659,6 +665,7 @@ async def get_session_messages(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> SessionMessagesDTO:
     """Get structured messages from a session's transcript files."""
+    await refuse_worker_transcript_read_outside_todo(_identity, session_id, session_db=db)
     try:
         options = SessionMessageProjectionOptions(
             since=query.since,
@@ -666,6 +673,7 @@ async def get_session_messages(
             include_thinking=query.include_thinking,
             tail_chars=query.tail_chars,
             tail_scope=query.tail_scope,
+            pane_fallback=admits_terminal_observation(_identity),
         )
         if is_remote_target(query.computer, config.computer.name):
             if _STATE.client is None:
