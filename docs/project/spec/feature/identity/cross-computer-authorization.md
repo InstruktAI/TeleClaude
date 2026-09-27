@@ -42,12 +42,10 @@ that does not advertise it, the caller's computer relays nothing it cannot have
 decided: it judges the command at platform scope itself, relays it unmarked, in
 the form a computer without the capability reads, for a caller holding a platform
 role on the caller's computer, and refuses any other caller with a failure that
-names that computer.
-In the other direction, a read from a computer that does not advertise it may
-carry no principal, only the caller identity and role that computer's read
-sends; the holding computer answers it from what the read carries, because the
-sending computer's own gate judged it at platform scope. A caller's read without a principal from a computer that
-advertises the capability is refused.
+names that computer. A caller's command or read that reaches a computer carrying
+no principal is refused there, whatever build sent it; the refusal names its way
+out: update the calling computer, or run the command on the computer that holds
+the object.
 
 ## Canonical fields
 
@@ -88,10 +86,11 @@ And no role carried with the request raises or lowers it
 #### UC-XCA4: A relayed command without a principal is refused
 
 ```
-Given a command relayed to a computer as a caller's command
+Given a caller's command or read relayed to a computer, from a computer on any build
 When it carries no principal
-Then that computer refuses it before acting
+Then that computer refuses it before acting, and reads no role it carries
 And the refusal is reported to the caller for that computer
+And the refusal says to update the calling computer or run the command on the computer that holds the object
 ```
 
 #### UC-XCA5: An unreachable computer fails the command for that computer
@@ -139,7 +138,6 @@ Given a computer that does not advertise that it decides relayed commands
 When a person holding no platform role runs a command naming that computer
 Then the command is refused on the caller's computer, and the refusal names that computer
 And a person holding a platform role on the caller's computer is served by that computer
-And a transcript, pane or operation read that such a computer sends is answered from the caller identity and role it carries
 ```
 
 ## Known caveats
