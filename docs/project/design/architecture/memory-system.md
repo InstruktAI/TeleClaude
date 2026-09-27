@@ -24,21 +24,6 @@ Give AI agents persistent memory across sessions by storing relationship-centric
 
 ### Module Layout
 
-<!-- planned-change:remove-uncalled-api-routes -->
-```
-teleclaude/memory/
-├── __init__.py          # Public API: MemoryStore, MemorySearch, ObservationType, ObservationConcept
-├── types.py             # Enums (ObservationType, ObservationConcept) and dataclasses
-├── store.py             # MemoryStore: save/retrieve observations (async + sync)
-├── search.py            # MemorySearch: FTS5/LIKE search, timeline, batch fetch
-├── api_routes.py        # FastAPI router: /api/memory/* endpoints
-└── context/
-    ├── __init__.py      # Exports: generate_context, generate_context_sync
-    ├── builder.py       # Entry points: fetch observations + summaries, compile, render
-    ├── compiler.py      # Merge observations + summaries into unified timeline
-    └── renderer.py      # Render timeline entries to markdown
-```
-<!-- change:remove-uncalled-api-routes -->
 ```
 teleclaude/memory/
 ├── __init__.py          # Public API: MemoryStore, MemorySearch, ObservationType, ObservationConcept
@@ -52,7 +37,6 @@ teleclaude/memory/
     ├── compiler.py      # Merge observations + summaries into unified timeline
     └── renderer.py      # Render timeline entries to markdown
 ```
-<!-- /planned-change:remove-uncalled-api-routes -->
 
 ### Data Model
 
@@ -127,21 +111,11 @@ The `files_read` and `files_modified` columns are retained in the schema for bac
 
 Agents discover the memory API through `telec docs index` + `telec docs get` and then call the daemon API over the local unix socket.
 
-<!-- planned-change:remove-uncalled-api-routes -->
 | Endpoint               | Method | Purpose                                    |
 | ---------------------- | ------ | ------------------------------------------ |
 | `/api/memory/save`     | POST   | Store a new observation                    |
 | `/api/memory/search`   | GET    | Full-text search with optional type filter |
 | `/api/memory/timeline` | GET    | Observations around an anchor ID           |
-| `/api/memory/batch`    | POST   | Bulk fetch by IDs, optionally filtered to one project: the found observations newest-first, missing IDs omitted, an empty list for an empty ID list |
-| `/api/memory/inject`   | GET    | Generate context markdown for a project    |
-<!-- change:remove-uncalled-api-routes -->
-| Endpoint               | Method | Purpose                                    |
-| ---------------------- | ------ | ------------------------------------------ |
-| `/api/memory/save`     | POST   | Store a new observation                    |
-| `/api/memory/search`   | GET    | Full-text search with optional type filter |
-| `/api/memory/timeline` | GET    | Observations around an anchor ID           |
-<!-- /planned-change:remove-uncalled-api-routes -->
 
 The router is registered in `api_server.py` via `include_router(memory_router)`.
 

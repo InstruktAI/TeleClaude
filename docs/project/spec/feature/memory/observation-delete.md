@@ -42,10 +42,6 @@ And the search index is kept in sync with the removal
 
 - **No event emitted on delete.** Deletion produces no `memory.observation.deleted` event. Subscribers that want to react to deletions must poll.
 - **No authorization check.** No author-or-admin authorization is enforced on delete (the memory domain spec calls for "author or authorized operator"). Any caller can delete any observation by id.
-<!-- planned-change:remove-uncalled-api-routes -->
-- **No bulk delete surface.** Deletion is one-at-a-time. There is no batch delete analogous to bulk-fetch.
-<!-- change:remove-uncalled-api-routes -->
 - **No bulk delete surface.** Deletion is one-at-a-time. There is no batch delete.
-<!-- /planned-change:remove-uncalled-api-routes -->
 - **Hard delete only.** No soft-delete / tombstone behavior is provided. The observation is removed; the search-index entry is removed; no audit record survives.
 - **Idempotency surfaces as not-found.** A second deletion of the same id returns not-found. Callers needing idempotent semantics should treat not-found as success on retry.

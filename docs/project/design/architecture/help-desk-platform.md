@@ -443,10 +443,6 @@ The hook receiver resolves the session's identity (from adapter metadata via the
 
 - `POST /api/memory/save` — add optional `identity_key` field
 - `GET /api/memory/search` — add optional `identity_key` query param
-<!-- planned-change:remove-uncalled-api-routes -->
-- `GET /api/memory/inject` — add optional `identity_key` query param
-<!-- change:remove-uncalled-api-routes -->
-<!-- /planned-change:remove-uncalled-api-routes -->
 - No `identity_key` → saved/queried as project-level memory (NULL)
 
 ### Customer Session Lifecycle
