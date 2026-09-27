@@ -128,3 +128,5 @@ helpdesk/
 publications/inbox/*
 !publications/inbox/.gitkeep
 scratchpad/
+
+.enjoy/
