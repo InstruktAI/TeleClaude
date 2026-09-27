@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
+from pydantic import TypeAdapter
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -43,9 +44,16 @@ from teleclaude.core.session_message_projection import (
 )
 from teleclaude.core.session_pane import get_session_pane
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.history.service import build_history_search_payload, parse_history_agents
-from teleclaude.mirrors.store import history_access_for_caller
+from teleclaude.history.service import (
+    HistoryRelayCommand,
+    HistoryShowRequest,
+    build_history_detail_payload,
+    build_history_search_payload,
+    parse_history_agents,
+)
+from teleclaude.mirrors.store import MirrorAccess, history_access_for_caller
 from teleclaude.types.commands import command_from_dict
+from teleclaude.utils.transcript_discovery import SessionId
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -80,6 +88,24 @@ _INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE: JsonDict = {
     "status": "error",
     "error": _INVALID_STOP_NOTIFICATION_VARIANT_ERROR,
 }
+_HISTORY_SHOW_REQUEST_ADAPTER: TypeAdapter[HistoryShowRequest] = TypeAdapter(HistoryShowRequest)
+
+
+def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAccess:
+    caller = caller_from_verified_identity(
+        CallerIdentity(
+            session_id=parsed.session_id or "",
+            system_role=parsed.system_role,
+            human_role=parsed.human_role,
+            tmux_session_name=None,
+            email=parsed.human_email,
+            principal=parsed.caller_principal,
+        )
+    )
+    access = history_access_for_caller(caller)
+    if access is None:
+        raise PermissionError(LOGIN_REQUIRED_DETAIL)
+    return access
 
 
 def _session_message_projection_options(data: JsonDict) -> SessionMessageProjectionOptions:
@@ -297,7 +323,8 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 "list_projects_with_todos",
                 "get_session_messages",
                 "get_session_pane",
-                "history_search",
+                HistoryRelayCommand.SEARCH.value,
+                HistoryRelayCommand.SHOW.value,
                 "get_session_final_output",
                 "get_operation",
             }:
@@ -338,7 +365,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         "available": pane.available,
                         "text": pane.text,
                     }
-                elif cmd_name == "history_search":
+                elif cmd_name == HistoryRelayCommand.SEARCH.value:
                     search_data = parsed.origin_metadata or {}
                     agent_filter = str(search_data.get("agent") or "all")
                     agents = parse_history_agents(agent_filter)
@@ -346,19 +373,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     limit = limit_value if isinstance(limit_value, int) else 20
                     include_workers_value = search_data.get("include_workers")
                     include_workers = include_workers_value if isinstance(include_workers_value, bool) else False
-                    caller = caller_from_verified_identity(
-                        CallerIdentity(
-                            session_id=parsed.session_id or "",
-                            system_role=parsed.system_role,
-                            human_role=parsed.human_role,
-                            tmux_session_name=None,
-                            email=parsed.human_email,
-                            principal=parsed.caller_principal,
-                        )
-                    )
-                    access = history_access_for_caller(caller)
-                    if access is None:
-                        raise PermissionError(LOGIN_REQUIRED_DETAIL)
+                    access = _history_access_for_relayed_caller(parsed)
                     payload = await asyncio.to_thread(
                         build_history_search_payload,
                         computer=self.computer_name,
@@ -369,6 +384,19 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         include_workers=include_workers,
                         identity=(str(search_data["identity"]) if search_data.get("identity") is not None else None),
                         project=(str(search_data["project"]) if search_data.get("project") is not None else None),
+                    )
+                elif cmd_name == HistoryRelayCommand.SHOW.value:
+                    show_data = _HISTORY_SHOW_REQUEST_ADAPTER.validate_python(parsed.origin_metadata or {})
+                    session_id = str(SessionId(show_data["session_id"]))
+                    agents = parse_history_agents(show_data["agent"])
+                    access = _history_access_for_relayed_caller(parsed)
+                    payload = await asyncio.to_thread(
+                        build_history_detail_payload,
+                        session_id,
+                        access=access,
+                        agents=agents,
+                        include_thinking=show_data["thinking"],
+                        raw=show_data["raw"],
                     )
                 elif cmd_name == "get_session_final_output":
                     final_output_session = await db.get_session(parsed.session_id or "")

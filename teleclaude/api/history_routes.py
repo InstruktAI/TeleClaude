@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, NoReturn, cast
 from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 from pydantic import TypeAdapter
+from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from teleclaude.api.auth import (
     CallerIdentity,
@@ -24,7 +26,9 @@ from teleclaude.core.command_dispatch import RemoteDispatchError, parse_remote_d
 from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.history.service import (
     HistoryDetailPayload,
+    HistoryRelayCommand,
     HistorySearchPayload,
+    HistoryShowRequest,
     build_history_detail_payload,
     build_history_search_payload,
     parse_history_agents,
@@ -35,10 +39,15 @@ from teleclaude.utils.transcript_discovery import SessionId
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-REMOTE_HISTORY_SEARCH_COMMAND = "history_search"
 REMOTE_HISTORY_SEARCH_FAILURE_EVENT = "history_search.remote_failure"
 REMOTE_HISTORY_SEARCH_FAILURE_DETAIL = "Remote history search failed"
 REMOTE_HISTORY_SEARCH_TIMEOUT_DETAIL = "Remote history search timed out"
+REMOTE_HISTORY_SHOW_FAILURE_EVENT = "history_show.remote_failure"
+REMOTE_HISTORY_SHOW_FAILURE_DETAIL = "Remote history show failed"
+REMOTE_HISTORY_SHOW_TIMEOUT_DETAIL = "Remote history show timed out"
+_REMOTE_HISTORY_RELAY_UNAVAILABLE_DETAIL = "Remote history relay is unavailable"
+_REMOTE_HISTORY_SHOW_UNAVAILABLE_DETAIL = "Remote history show is unavailable"
+_REQUESTED_SESSION_ID_LOG_FIELD = "requested_session_id"
 _NO_REMOTE_COMPUTER = ""
 _HISTORY_DETAIL_NOT_FOUND = "No transcript found for session '{session_id}'"
 _UNKNOWN_AGENT_FILTER = "Unknown agent filter: {agent}"
@@ -54,15 +63,70 @@ def configure(client: AdapterClient | None = None) -> None:
         _STATE.client = client
 
 
-def _raise_remote_history_search_failure(
+def _raise_remote_history_request_failure(
     *,
-    computer: str,
+    event: str,
     detail: str,
+    computer: str,
+    log_fields: dict[str, str],
     cause: Exception,
 ) -> NoReturn:
-    """Log a remote-search failure and return a translated HTTP error."""
-    logger.error(REMOTE_HISTORY_SEARCH_FAILURE_EVENT, computer=computer, exc_info=True)
+    """Log a remote-history failure and return a translated HTTP error."""
+    logger.error(event, computer=computer, **log_fields, exc_info=True)
     raise HTTPException(status_code=500, detail=detail) from cause
+
+
+async def _dispatch_remote_history_request[Response](
+    *,
+    computer: str,
+    command: HistoryRelayCommand,
+    metadata: MessageMetadata,
+    response_adapter: TypeAdapter[Response],
+    failure_event: str,
+    failure_detail: str,
+    timeout_detail: str,
+    failure_log_fields: dict[str, str],
+) -> Response:
+    """Relay one history request and translate failures at the route boundary."""
+    client = _STATE.client
+    if client is None:
+        raise HTTPException(status_code=503, detail=_REMOTE_HISTORY_RELAY_UNAVAILABLE_DETAIL)
+    try:
+        message_id = await client.send_request(computer, command.value, metadata)
+        response_text = await client.read_response(message_id, target_computer=computer)
+        data = await parse_remote_dispatch_data_diagnosed(
+            client,
+            response_text,
+            target_computer=computer,
+            command=command.value,
+        )
+        return response_adapter.validate_python(data)
+    except HTTPException:
+        raise
+    except RemoteDispatchError as exc:
+        _raise_remote_history_request_failure(
+            event=failure_event,
+            computer=computer,
+            detail=str(exc),
+            log_fields=failure_log_fields,
+            cause=exc,
+        )
+    except (TimeoutError, RedisTimeoutError) as exc:
+        _raise_remote_history_request_failure(
+            event=failure_event,
+            computer=computer,
+            detail=timeout_detail,
+            log_fields=failure_log_fields,
+            cause=exc,
+        )
+    except (OSError, RedisError) as exc:
+        _raise_remote_history_request_failure(
+            event=failure_event,
+            computer=computer,
+            detail=failure_detail,
+            log_fields=failure_log_fields,
+            cause=exc,
+        )
 
 
 @router.get("/history/search")
@@ -108,43 +172,16 @@ async def search_history(
             human_role=caller.human_role,
             caller_principal=principal_for_verified_caller(caller),
         )
-        try:
-            message_id = await _STATE.client.send_request(
-                target_computer,
-                REMOTE_HISTORY_SEARCH_COMMAND,
-                metadata,
-            )
-            response_text = await _STATE.client.read_response(
-                message_id,
-                target_computer=target_computer,
-            )
-            data = await parse_remote_dispatch_data_diagnosed(
-                _STATE.client,
-                response_text,
-                target_computer=target_computer,
-                command=REMOTE_HISTORY_SEARCH_COMMAND,
-            )
-            return TypeAdapter(HistorySearchPayload).validate_python(data)
-        except HTTPException:
-            raise
-        except RemoteDispatchError as exc:
-            _raise_remote_history_search_failure(
-                computer=target_computer,
-                detail=str(exc),
-                cause=exc,
-            )
-        except TimeoutError as exc:
-            _raise_remote_history_search_failure(
-                computer=target_computer,
-                detail=REMOTE_HISTORY_SEARCH_TIMEOUT_DETAIL,
-                cause=exc,
-            )
-        except Exception as exc:
-            _raise_remote_history_search_failure(
-                computer=target_computer,
-                detail=REMOTE_HISTORY_SEARCH_FAILURE_DETAIL,
-                cause=exc,
-            )
+        return await _dispatch_remote_history_request(
+            computer=target_computer,
+            command=HistoryRelayCommand.SEARCH,
+            metadata=metadata,
+            response_adapter=TypeAdapter(HistorySearchPayload),
+            failure_event=REMOTE_HISTORY_SEARCH_FAILURE_EVENT,
+            failure_detail=REMOTE_HISTORY_SEARCH_FAILURE_DETAIL,
+            timeout_detail=REMOTE_HISTORY_SEARCH_TIMEOUT_DETAIL,
+            failure_log_fields={},
+        )
 
     return await asyncio.to_thread(
         build_history_search_payload,
@@ -165,9 +202,10 @@ async def show_history(
     agent: str = Query(default="all"),
     thinking: bool = False,
     raw: bool = False,
+    computer: str | None = None,
     caller: CallerIdentity = Depends(clearance_history_show),
 ) -> HistoryDetailPayload:
-    """Resolve and return one caller-scoped history detail."""
+    """Resolve and return one local or peer-scoped history detail."""
     access = history_access_for_caller(caller_from_verified_identity(caller))
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
@@ -180,7 +218,41 @@ async def show_history(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Unknown agent filter: {agent}") from exc
 
-    payload = await asyncio.to_thread(
+    if is_remote_target(computer, config.computer.name):
+        if _STATE.client is None:
+            raise HTTPException(status_code=503, detail=_REMOTE_HISTORY_SHOW_UNAVAILABLE_DETAIL)
+        target_computer = computer or _NO_REMOTE_COMPUTER
+        request = HistoryShowRequest(
+            session_id=parsed_session_id,
+            agent=agent,
+            thinking=thinking,
+            raw=raw,
+        )
+        metadata = MessageMetadata(
+            origin_metadata=cast(JsonDict, request),
+            human_email=caller.email,
+            human_role=caller.human_role,
+            caller_principal=principal_for_verified_caller(caller),
+        )
+        response_adapter: TypeAdapter[HistoryDetailPayload | None] = TypeAdapter(HistoryDetailPayload | None)
+        payload = await _dispatch_remote_history_request(
+            computer=target_computer,
+            command=HistoryRelayCommand.SHOW,
+            metadata=metadata,
+            response_adapter=response_adapter,
+            failure_event=REMOTE_HISTORY_SHOW_FAILURE_EVENT,
+            failure_detail=REMOTE_HISTORY_SHOW_FAILURE_DETAIL,
+            timeout_detail=REMOTE_HISTORY_SHOW_TIMEOUT_DETAIL,
+            failure_log_fields={_REQUESTED_SESSION_ID_LOG_FIELD: parsed_session_id},
+        )
+        if payload is None:
+            raise HTTPException(
+                status_code=404,
+                detail=_HISTORY_DETAIL_NOT_FOUND.format(session_id=parsed_session_id),
+            )
+        return payload
+
+    payload: HistoryDetailPayload | None = await asyncio.to_thread(
         build_history_detail_payload,
         parsed_session_id,
         access=access,
