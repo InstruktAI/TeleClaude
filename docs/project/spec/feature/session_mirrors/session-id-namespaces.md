@@ -33,12 +33,6 @@ and the mirror is durable, so keying the archive on the platform id would make a
 conversation unreachable exactly when its session row is gone — which is the case
 the archive exists for.
 
-<!-- planned-change:mirror-session-attribution -->
-Translation therefore belongs at the edge that receives a caller's id, never in the
-store. A surface that accepts an id resolves it against the session registry and
-queries the mirror store in the store's own namespace; the store stays a query over
-the key it owns.
-<!-- change:mirror-session-attribution -->
 Translation therefore belongs at the edge that receives a caller's id, never in the
 store. The store does record, as a fact written with each mirror, the TeleClaude
 session that mirror belongs to (`mirror-identity-enrichment`), so the TeleClaude id
@@ -47,7 +41,6 @@ TeleClaude id first asks the store for the mirrors attributed to that session; o
 when none is attributed does it resolve the id against the session registry and
 query the store under the native id. Neither step is translation inside the store:
 the store answers queries over the key it owns and the facts it recorded.
-<!-- /planned-change:mirror-session-attribution -->
 
 A session id is a full UUID. A value that is not one is not an identity, and the
 boundary where a derived value first becomes an identity refuses it rather than
@@ -66,27 +59,6 @@ Then they differ
 And neither can be distinguished from the other by shape, since both are full UUIDs
 ```
 
-<!-- planned-change:mirror-session-attribution -->
-#### UC-SIN-2: A mirror is keyed on the agent-native id
-
-```
-Given a transcript is mirrored
-When the mirror row is written
-Then its session_id column holds the agent-native session id read from the transcript
-And the row remains addressable by that id after the session record is gone
-```
-
-#### UC-SIN-3: An accepting surface translates; the store does not
-
-```
-Given a surface accepts a session id from a caller
-And the id belongs to the TeleClaude namespace
-When the surface resolves it
-Then the surface consults the session registry for that session's native id
-And queries the mirror store under the native id
-And the mirror store applies no namespace translation of its own
-```
-<!-- change:mirror-session-attribution -->
 #### UC-SIN-2: A mirror is keyed on the agent-native id
 
 ```
@@ -106,7 +78,6 @@ Then the surface first asks the mirror store for the mirrors attributed to that 
 And only when none is attributed does it consult the session registry for that session's native id and query the mirror store under the native id
 And the mirror store applies no namespace translation of its own
 ```
-<!-- /planned-change:mirror-session-attribution -->
 
 #### UC-SIN-4: A derived identity is a full UUID or it is refused
 
@@ -130,16 +101,10 @@ And the archive holds no mirror whose session id is null
 
 ## Known caveats
 
-<!-- planned-change:mirror-session-attribution -->
-- A mirror whose session record has been pruned has no reachable TeleClaude id.
-  Such a mirror is addressable by its native id alone, and a surface that prints
-  ids states which namespace it is printing.
-<!-- change:mirror-session-attribution -->
 - A mirror no session record ever claimed has no TeleClaude id. It is
   addressable by its native id alone, and a surface that prints ids states which
   namespace it is printing. An attributed mirror keeps its TeleClaude id after
   its session record is pruned.
-<!-- /planned-change:mirror-session-attribution -->
 - Agent runtimes own their transcript filenames and have changed them. A filename
   is a hint about identity, never the identity itself; the authoritative value is
   read from the transcript's own contents.

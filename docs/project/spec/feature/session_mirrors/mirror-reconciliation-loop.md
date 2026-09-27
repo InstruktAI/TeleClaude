@@ -182,7 +182,6 @@ Then the project resolves to the repository the worktree belongs to
 And it is not taken from the final segment of the transcript directory name
 ```
 
-<!-- planned:mirror-session-attribution -->
 #### UC-MRL-14: A pass records the close of every attributed session
 
 ```
@@ -193,7 +192,6 @@ Then the pass records the session's close on its attribution
 And it does so whether or not any of the session's transcripts changed since their last write
 And a session already recorded as closed is not written again
 ```
-<!-- /planned:mirror-session-attribution -->
 
 ## Known caveats
 
@@ -208,15 +206,9 @@ And a session already recorded as closed is not written again
 - The pass binds to the resolved mirror-store path at worker construction
   time and does not honor path overrides applied after the worker has
   started.
-<!-- planned-change:mirror-session-attribution -->
-- A failing summary or generator step is counted as `failed` and logged
-  with traceback. The corresponding mirror is left in its previous state —
-  there is no retry queue.
-<!-- change:mirror-session-attribution -->
 - A failing generator step is counted as `failed` and logged with
   traceback. The corresponding mirror is left in its previous state — there
   is no retry queue.
-<!-- /planned-change:mirror-session-attribution -->
 - A stale row whose transcript is gone is marked unreprojectable rather than
   re-derived: the rendered `conversation_text` is lossier than the transcript,
   so nothing recomputes the row's fields from it. A row whose transcript still

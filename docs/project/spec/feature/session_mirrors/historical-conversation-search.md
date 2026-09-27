@@ -116,16 +116,6 @@ And the call returns an empty result set
 
 #### UC-HCS-8: A result line states the namespace of the id it prints
 
-<!-- planned-change:mirror-session-attribution -->
-```
-Given a search result for a mirror that has a session record
-Then the row prints that session's TeleClaude id, labelled as such
-Given a search result for a mirror with a session id but no session record
-Then the row prints the agent-native id, labelled as such
-And every row carries the full project path, an agent name, and a UTC timestamp to the second
-And a matched snippet is rendered on one line, with newlines replaced by spaces
-```
-<!-- change:mirror-session-attribution -->
 ```
 Given a search result for a mirror attributed to a TeleClaude session
 Then the row prints that session's TeleClaude id, labelled as such
@@ -135,7 +125,6 @@ Then the row prints the agent-native id, labelled as such
 And every row carries the full project path, an agent name, and a UTC timestamp to the second
 And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
-<!-- /planned-change:mirror-session-attribution -->
 
 #### UC-HCS-11: Identity and project filters, inherited from the retired listing verb
 

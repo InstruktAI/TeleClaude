@@ -1,5 +1,5 @@
 ---
-description: 'Event-driven mirror creation/refresh. The agent-stop and session-closed lifecycle signals dispatch through a processor registry that calls the mirror extractor for the affected session. Processors run concurrently and failures are isolated.'
+description: 'Event-driven mirror refresh. The agent-stop lifecycle signal dispatches through a processor registry that calls the mirror extractor for the affected session. Closing a session triggers no mirror write; the reconciliation loop records its final state. Processors run concurrently and failures are isolated.'
 visibility: 'public'
 ---
 
@@ -12,16 +12,19 @@ visibility: 'public'
 
 ## What it is
 
-Mirrors get their freshest content at session end. Two lifecycle signals
-from the agent_runtime bounded context trigger the fanout: the agent-stop
-signal (the agent CLI announced the turn is over and the transcript file
-may have advanced) and the session-closed signal (the session record just
-became closed). The session_mirrors service exposes two handler entry
-points — one per signal — that wrap each event in a normalized event
-payload and dispatch it to every registered processor. A single default
-processor is registered at service boot; it resolves session context,
-validates that the transcript belongs to a canonical per-agent session
-root, and invokes mirror generation.
+One lifecycle signal from the agent_runtime bounded context triggers the
+fanout: the agent-stop signal (the agent CLI announced the turn is over and the
+transcript file may have advanced). The locally dispatched agent stop does not
+reach the fanout (UC-SEMF-3). The session_mirrors service exposes one handler
+entry point that wraps the event in a normalized event payload and dispatches it
+to every registered processor. A single default processor is registered at
+service boot; it resolves session context, validates that the transcript belongs
+to a canonical per-agent session root, and invokes mirror generation.
+
+Closing a session adds no conversation, so the session-closed signal triggers no
+mirror write. The reconciliation loop mirrors every transcript that changed,
+including a closed session's final turn, and records the session's close
+(`mirror-reconciliation-loop`, `mirror-identity-enrichment`).
 
 The dispatcher runs all processors in parallel with per-processor error
 isolation so one failing processor cannot block the others.
@@ -49,15 +52,6 @@ Then the coordinator handles the event
 And no mirror processor is dispatched for that session
 ```
 
-#### Session-closed signal omits transcript_path
-
-```
-Given a session-closed signal arrives at the session_mirrors service
-When the session-closed handler runs
-Then a mirror event with session_id and no transcript_path is built
-And the default processor must look up the transcript_path from the upstream session record
-```
-
 #### Default processor session-context resolution
 
 ```
@@ -76,7 +70,6 @@ When the default processor runs
 Then the processor records the skip as a production-level decision record naming the transcript path
 And mirror generation is NOT invoked
 ```
-
 
 #### Guard: canonical transcript paths only
 
@@ -104,14 +97,9 @@ In both cases mirror generation is NOT invoked
 ```
 Given the guards pass
 When the default processor invokes mirror generation
-Then session_id is the native session id extracted from the transcript path for the resolved agent
+Then native_session_id is the native session id extracted from the transcript path for the resolved agent
 And source_identity is the canonical identity derived from the transcript path and agent
-And computer = context.computer OR the local computer name
-And project = context.project OR ""
-And human_email = context.human_email
-And visibility = context.visibility OR "private"
-And last_input_origin = context.last_input_origin
-And channel_identifiers are derived per `mirror-identity-enrichment`
+And the resolved session context is passed whole, so the mirror records the same identity facts and session attribution the reconciliation loop records, per `mirror-identity-enrichment`
 ```
 
 #### Parallel dispatch and failure isolation
@@ -132,14 +120,20 @@ When the second registration runs
 Then it is a no-op (the processor is not added a second time)
 ```
 
+#### UC-SEMF-4: Closing a session writes no mirror by itself
+
+```
+Given a session closes
+When the session-closed signal is published
+Then no mirror is written in response to that signal
+And the reconciliation loop's next pass records the session's final conversation and its close, whether or not the transcript changed after its last write
+```
+
 ## Known caveats
 
 - The agent-stop path runs AFTER the agent_runtime coordinator's per-event
   handling returns. A long-running coordinator step delays the mirror
   refresh.
-- The session-closed handler is observer-only; if the close flow itself
-  failed mid-flight the mirror handler still runs against whatever state
-  the upstream store has.
 - Older agent-stop payloads may not carry a `transcript_path`. The
   default processor tolerates the absence and falls back to the upstream
   session-record lookup.
@@ -149,3 +143,5 @@ Then it is a no-op (the processor is not added a second time)
 - The default processor invokes mirror generation against the canonical
   mirror store and cannot be pointed at an alternate store without
   re-registering.
+- A closed session's final turn and close time reach its mirror within one
+  reconciliation interval, not at the moment of close.

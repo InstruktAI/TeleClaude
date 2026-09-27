@@ -49,13 +49,7 @@ And the caller's role band applies before any row is returned
 
 ## Known caveats
 
-<!-- planned-change:mirror-session-attribution -->
-- Mirrors whose session record has been pruned are reachable through search
-  but carry no TeleClaude id to enumerate them by; search states the namespace
-  of whatever identifier it prints.
-<!-- change:mirror-session-attribution -->
 - Mirrors no session record ever claimed are reachable through search but carry
   no TeleClaude id to enumerate them by; search states the namespace of whatever
   identifier it prints. An attributed mirror keeps its TeleClaude id after its
   session record is pruned.
-<!-- /planned-change:mirror-session-attribution -->
