@@ -65,9 +65,9 @@ The scheduling contract is the `when` block alone (see
 `project/spec/feature/config/job-schedule-contract`); a declaration carries no
 legacy schedule or preferred-timing fields, no execution-class discriminator, and
 no agent-prompt override field.
-Recognized stored job declarations are normalized to the current shape before
-validation. Fields outside that recognized migration follow the owning
-configuration boundary's unknown-input contract.
+Job declarations are validated as stored: a mapping-valued `jobs` block, a
+scalar `agent`, or an unknown field is refused. No job-entry rewrite runs at
+load.
 
 A project's effective job set is its local jobs plus every global job it
 subscribes to, each resolved as the published declaration overlaid by the
@@ -202,25 +202,6 @@ And the run closes as failed with candidate exhaustion identified as the reason
 And the failure remains available through the established failed-run reporting path
 ```
 
-#### UC-JDM-10: Removed field does not drive behavior
-
-```
-Given an agent loads stored job configuration containing a recognized retired setting
-When the configuration is prepared for execution
-Then the setting is migrated to the current declaration shape before validation
-And it does not independently control scheduling or execution
-```
-
-#### UC-JDM-15: Pre-declarative jobs document is migrated forward at load
-
-```
-Given a project or global configuration whose `jobs` block is a name-keyed mapping, or whose entries carry a scalar `agent` or a removed field
-When the configuration is loaded
-Then the document is rewritten on disk to the list shape with a list-valued `agent` and no removed field
-And the effective job set composed from the rewritten document is the one the mapping declared
-And a later load finds nothing left to rewrite
-```
-
 #### UC-JDM-16: A script job's identity is its module stem
 
 ```
@@ -267,7 +248,6 @@ And an aggregate dispatch result does not become a successful project run
 And history that cannot be attributed remains recoverable without closing another project's run
 ```
 
-
 #### UC-JDM-21: The commit gate validates a project's jobs declaration
 
 ```gherkin
@@ -284,9 +264,5 @@ And a commit whose pathspec does not carry that declaration does not run the job
   separate surface, so anything that asks "which projects run job X" consults
   each project's composed effective job set by identity; raw entries are never
   read as membership.
-- A pre-declarative `jobs` document — a name-keyed mapping, a scalar `agent`, or
-  a removed field — is rewritten to the current shape at the config load
-  boundary and persisted, so an overlay written before this contract loads to
-  the current shape without an operator edit.
 - A global job runs in a project only on that project's subscription; there is
   no subscribed-everywhere default.

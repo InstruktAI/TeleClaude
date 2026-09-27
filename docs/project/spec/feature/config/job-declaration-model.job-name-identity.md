@@ -69,10 +69,9 @@ own.
 The scheduling contract is the `when` block alone (see
 `project/spec/feature/config/job-schedule-contract`); a declaration carries no
 legacy schedule or preferred-timing fields, no execution-class discriminator, and
-no agent-prompt override field. Recognized stored job declarations are
-normalized to the current shape before validation; no normalization supplies a
-name. Fields outside that recognized migration follow the owning configuration
-boundary's unknown-input contract.
+no agent-prompt override field. Job declarations are validated as stored: a
+mapping-valued `jobs` block, a scalar `agent`, or an unknown field is refused.
+No job-entry rewrite runs at load.
 
 A project's effective job set is its local jobs plus every global job it
 subscribes to, each resolved as the published declaration overlaid by the
@@ -206,15 +205,6 @@ When the job is due and dispatch is attempted
 Then no session is created
 And the run closes as failed with candidate exhaustion identified as the reason
 And the failure remains available through the established failed-run reporting path
-```
-
-#### UC-JDM-10: Removed field does not drive behavior
-
-```
-Given an agent loads stored job configuration containing a recognized retired setting
-When the configuration is prepared for execution
-Then the setting is migrated to the current declaration shape before validation
-And it does not independently control scheduling or execution
 ```
 
 #### UC-JDM-16: A job's identity is its declared name
