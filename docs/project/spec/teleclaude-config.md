@@ -513,7 +513,10 @@ computer:
   default_working_dir: string
   timezone: string
   host: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
+<!-- planned-change:single-project-registry -->
   trusted_dirs: list[TrustedDir]
+<!-- change:single-project-registry -->
+<!-- /planned-change:single-project-registry -->
 remote_computers:
   <name>:
     user: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
@@ -678,6 +681,7 @@ watermark's omitted-value derivation subtracts the literal value eight and is
 independent of a configured critical reserve.
 
 
+<!-- planned-change:single-project-registry -->
 Discord provider IDs are not config. `config.yml` carries only the desired setup
 inputs a machine declares — `computer.name`, `computer.is_master`, the registered
 `trusted_dirs` entries, `discord.enabled`, and `discord.guild_id` (the operator's
@@ -687,6 +691,18 @@ reflection records in the runtime database, and the daemon never writes them bac
 to `config.yml`. Project forum bindings, launcher threads, and launcher starter
 messages are read from and written to that reflection state; see
 `project/spec/feature/integration/discord-admin-reflection-state`.
+<!-- change:single-project-registry -->
+Discord provider IDs are not config. `config.yml` carries only the desired setup
+inputs a machine declares — `computer.name`, `computer.is_master`,
+`discord.enabled`, and `discord.guild_id` (the operator's own guild identifier,
+never provider-returned reflection state); the project forums a machine reflects
+follow its project registry (`project/spec/feature/config/project-registry`).
+Category, channel, forum, thread, and message IDs the Discord provider returns are durable
+reflection records in the runtime database, and the daemon never writes them back
+to `config.yml`. Project forum bindings, launcher threads, and launcher starter
+messages are read from and written to that reflection state; see
+`project/spec/feature/integration/discord-admin-reflection-state`.
+<!-- /planned-change:single-project-registry -->
 
 
 ### Maintenance
@@ -699,8 +715,14 @@ Daemon-only structural keys in `config.yml` must also be documented here, but th
 
 ### Project registry
 
+<!-- planned-change:single-project-registry -->
 Registered project roots live in `~/.teleclaude/projects.yaml`, a root-only
 registry — it stores only absolute project paths:
+<!-- change:single-project-registry -->
+Registered project roots and session homes live in `~/.teleclaude/projects.yaml`,
+a root-only registry — it stores only absolute folder paths, and each folder's
+own `teleclaude.yml` declares its tier:
+<!-- /planned-change:single-project-registry -->
 
 ```yaml
 projects:
@@ -710,8 +732,14 @@ projects:
 
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
+<!-- planned-change:single-project-registry -->
 through `ProjectCatalogService`. `telec config project init` is the sole writer of the
 registry; publication never registers projects. `project_slug` is the
+<!-- change:single-project-registry -->
+through `ProjectCatalogService`. Adoption is the sole writer of the registry
+(`project/spec/feature/config/project-registry`); publication never registers
+projects. `project_slug` is the
+<!-- /planned-change:single-project-registry -->
 canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and
 service-level project lookup. `project_name` remains display-only.

@@ -20,6 +20,12 @@ read.
   `~/.teleclaude/projects.yaml`, which stores roots only; each root's
   `teleclaude.yml` is then read to hydrate the project. Nothing walks the
   filesystem looking for projects.
+<!-- planned:single-project-registry -->
+- **The same manifest lists session homes.** A person or company home adopted
+  onto the manifest is listed there as a place sessions run, and its own
+  configuration declares its tier; that tier is still discovered at its
+  designated location below, never through the manifest.
+<!-- /planned:single-project-registry -->
 - **Every other tier lives at a designated location.** The global configuration
   is `~/.teleclaude/teleclaude.yml`. A person is
   `~/.teleclaude/people/<slug>/teleclaude.yml`. A company is

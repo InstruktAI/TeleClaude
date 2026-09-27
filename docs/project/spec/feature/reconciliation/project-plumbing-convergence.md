@@ -73,6 +73,13 @@ remains outside every synchronization path.
   checkout and its worktrees. An absent link is created, a link pointing
   elsewhere is repointed, and a correct link is left untouched. A directory or
   file already occupying the link path is reported and left untouched.
+<!-- planned:single-project-registry -->
+- **Local state exclusion.** Every adopted project's local exclude list names
+  TeleClaude's machine-local state in that project — its `.teleclaude/`
+  directory and the configuration writer's lock files — whatever the project
+  subscribes and whatever its own ignore rules say. A missing name is added and
+  a present one is left as it is.
+<!-- /planned:single-project-registry -->
 - **Stray schema copies.** A per-project schema copy left at the project root is
   removed when the project does not track it and it holds nothing but
   TeleClaude's generated schema files. A tracked copy,
@@ -85,8 +92,15 @@ remains outside every synchronization path.
   state. The one project-tracked file TeleClaude ever writes is the
   `.gitattributes` docs-filter line, written additively at adoption by its own
   step and never touched by a later convergence.
+<!-- planned-change:single-project-registry -->
 - **Fleet convergence is one operation.** A single operation converges every
   registered root on the machine: it enumerates roots from the project registry,
+<!-- change:single-project-registry -->
+- **Fleet convergence is one operation.** A single operation converges every
+  registered project root on the machine: it enumerates the project entries of
+  the project registry — a person or company home on it is part of the platform
+  home, which machine installation converges —
+<!-- /planned-change:single-project-registry -->
   compares each root's installed plumbing against the current templates, and
   performs only the actions that close a gap. It is what the commit-boundary
   trigger invokes, and it is invocable on its own. A root whose plumbing already
@@ -254,6 +268,17 @@ And the agent sees that root reported as having its schema link path occupied
 And the project's hooks and docs filter driver still converge
 ```
 
+<!-- planned:single-project-registry -->
+#### UC-RPC18: An adopted project never offers TeleClaude's local state for commit
+
+```gherkin
+Given a folder with no git repository and no TeleClaude configuration
+When an operator adopts it with `telec config project init`
+Then the operator's `git status` in that folder lists neither the project's TeleClaude state directory nor the configuration lock file
+And the same holds for a project that subscribes neither code nor docs
+```
+
+<!-- /planned:single-project-registry -->
 ## Known caveats
 
 - A changed hook template reaches a machine's registered roots when that change

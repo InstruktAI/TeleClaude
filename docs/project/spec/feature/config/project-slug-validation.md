@@ -27,8 +27,14 @@ leading/trailing hyphens and no consecutive hyphens. The stripped slug is
 returned; anything that fails the pattern raises a validation error and the
 schema layer surfaces the failure on the `project_slug` field.
 
+<!-- planned-change:single-project-registry -->
 The slug is _populated_ — not validated — by `telec config project init`, which is
 the sole writer of `~/.teleclaude/projects.yaml`. Existing project files whose
+<!-- change:single-project-registry -->
+The slug is _populated_ — not validated — by project adoption, the sole writer
+of `~/.teleclaude/projects.yaml` (`project/spec/feature/config/project-registry`).
+Existing project files whose
+<!-- /planned-change:single-project-registry -->
 `project_slug` is still missing or empty load successfully as `None`; init then
 fills the value during registration.
 

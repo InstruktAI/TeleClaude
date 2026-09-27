@@ -22,11 +22,23 @@ that TeleClaude creates or adopts to reflect its operational structure: admin
 categories, shared channels, help-desk forums, per-machine project forums, team
 channels, and session-launcher forum threads/messages.
 
+<!-- planned-change:single-project-registry -->
 The desired operational shape comes from configuration and project discovery:
 machine identity, master/non-master role, enabled agents, registered project
 roots, project display names, and configured people. Discord provider IDs are
 not desired-state configuration. They are observed external state returned by
 the Discord adapter boundary, and the database stores them as reflection records.
+<!-- change:single-project-registry -->
+The desired operational shape comes from configuration and the project
+registry: machine identity, master/non-master role, enabled agents, every entry
+on the machine's project registry — projects and person or company homes alike —
+with its identity, display name, and registry order, and configured people
+(`project/spec/feature/config/project-registry`). A project forum is keyed by its
+entry's identity, and the forums in a machine's project category follow registry
+order. Discord provider IDs are not desired-state configuration. They are
+observed external state returned by the Discord adapter boundary, and the
+database stores them as reflection records.
+<!-- /planned-change:single-project-registry -->
 
 Startup and restart reconcile Discord toward the desired shape through one
 DB-backed reflection-state seam. A reconciler first reads any stored provider
@@ -226,6 +238,37 @@ When Discord admin reconciliation starts
 Then reconciliation does not create, delete, or mutate Discord provider artifacts
 And startup surfaces an operator-visible failure or degraded state
 ```
+<!-- planned:single-project-registry -->
+
+#### UC-DARS-14: A forum keyed by a retired trusted-directory name moves to its entry's identity
+
+```gherkin
+Given the database holds a project-forum reflection record keyed by a retired trusted-directory name
+And the configuration hand-off binds that name to a folder that is now on the project registry
+When the Discord reconciler runs
+Then the stored forum is recorded under that registry entry's identity
+And no forum is created for that entry
+And a session started from a thread in that forum is placed in the entry's folder
+```
+
+#### UC-DARS-15: A newly adopted registry entry gets its forum without a restart
+
+```gherkin
+Given the daemon is running with Discord enabled
+When an operator adopts a folder onto the machine's project registry
+Then the operator sees that entry's forum in the machine's project category in Discord within seconds
+And the daemon did not restart
+```
+
+#### UC-DARS-16: Project forums follow registry order
+
+```gherkin
+Given the machine's project registry lists its entries in a given order
+And each entry has a reflected forum in the machine's project category
+When the Discord reconciler runs at startup or after the registry changes
+Then an operator reading Discord sees those forums in registry order
+```
+<!-- /planned:single-project-registry -->
 
 
 ### Cross-context references

@@ -27,6 +27,7 @@ invocations from a terminal) observable as TeleClaude sessions.
 
 ### Use cases
 
+<!-- planned-change:single-project-registry -->
 #### UC-HB1: Manual agent invocation registers a headless session
 
 ```gherkin
@@ -47,6 +48,28 @@ And the command service creates the record
 And a session-started event is published with cluster visibility
 And the dispatcher continues normal dispatch for the now-existing session
 ```
+<!-- change:single-project-registry -->
+#### UC-HB1: Manual agent invocation registers a headless session
+
+```gherkin
+Given a user runs `claude` manually in /Users/me/work/myproject
+And the user is authenticated via the platform's session auth in this TTY
+And Claude invokes the receiver with a SessionStart event from /Users/me/work/myproject
+And the integration service has no session record for this native session
+When the dispatcher claims the agent-session-start outbox entry
+Then the dispatcher detects the session is unknown
+And the event type is agent-session-start
+And the receiver-owned headless-bootstrap authorization is present
+And the headless-bootstrap path runs
+And it reads the native log file, native session id, agent name, and cwd from the hook payload
+And the headless project-context resolver maps cwd to (project_path, subdir) using the project registry's entries
+And the current caller's email is resolved from the per-TTY auth state if any
+And a create-session command is built with headless=true, the native binding fields, project context, terminal origin, and caller-email metadata
+And the command service creates the record
+And a session-started event is published with cluster visibility
+And the dispatcher continues normal dispatch for the now-existing session
+```
+<!-- /planned-change:single-project-registry -->
 
 #### UC-HB2: Non-session-start event for unknown session is dropped
 
@@ -59,6 +82,7 @@ And the dispatch returns early without bootstrap
 And the outbox entry is removed as processed (no retry)
 ```
 
+<!-- planned-change:single-project-registry -->
 #### UC-HB3: Untrusted cwd produces null project context
 
 ```gherkin
@@ -69,6 +93,18 @@ And the create-session command is built with an empty project path
 And the session is created without a project association
 And subsequent hooks still update the record but no project-scoped behaviors (memory, person header) fire
 ```
+<!-- change:single-project-registry -->
+#### UC-HB3: A cwd outside every registry entry produces null project context
+
+```gherkin
+Given the hook cwd is a directory not under any project registry entry
+When the headless project-context resolver runs
+Then it returns (none, none)
+And the create-session command is built with an empty project path
+And the session is created without a project association
+And subsequent hooks still update the record but no project-scoped behaviors (memory, person header) fire
+```
+<!-- /planned-change:single-project-registry -->
 
 #### UC-HB4: Caller email role assignment
 
@@ -80,6 +116,7 @@ And the human role is left unset (allowing config role resolution)
 Otherwise (no email): the human role defaults to the customer role
 ```
 
+<!-- planned-change:single-project-registry -->
 #### UC-HB5: Worktree subdir captured from cwd
 
 ```gherkin
@@ -90,6 +127,18 @@ Then project_path = "/Users/me/work/myproject", subdir = "trees/feature-x"
 And the create-session command carries both
 And the session record reflects the worktree branch
 ```
+<!-- change:single-project-registry -->
+#### UC-HB5: Worktree subdir captured from cwd
+
+```gherkin
+Given the cwd is /Users/me/work/myproject/trees/feature-x
+And /Users/me/work/myproject is a project registry entry
+When the headless project-context resolver runs
+Then project_path = "/Users/me/work/myproject", subdir = "trees/feature-x"
+And the create-session command carries both
+And the session record reflects the worktree branch
+```
+<!-- /planned-change:single-project-registry -->
 
 #### UC-HB6: SESSION_STARTED event fires after creation
 
@@ -129,7 +178,11 @@ And provider-supplied data cannot opt into headless bootstrap
   Bootstrap remains a property of session creation, not of integration.
 - Reads identity context (caller email) via the auth subsystem;
   resolution rules live in `identity`.
+<!-- planned-change:single-project-registry -->
 - Reads the trusted-directory set from `config`.
+<!-- change:single-project-registry -->
+- Reads the project registry's entries from `config` (`project/spec/feature/config/project-registry`).
+<!-- /planned-change:single-project-registry -->
 - Publishes a session-started event with cluster visibility; downstream
   consumers include the API server, frontends, and any notification
   dispatcher.
@@ -146,9 +199,15 @@ And provider-supplied data cannot opt into headless bootstrap
   exactly one person is registered — from that person. When none of these
   answers, email resolution returns nothing and the bootstrap builds the
   command with the customer human role.
+<!-- planned-change:single-project-registry -->
 - The headless project-context resolver returns (none, none) for any
   cwd not under a configured trusted directory; the session is still
   created, just without a project association.
+<!-- change:single-project-registry -->
+- The headless project-context resolver returns (none, none) for any
+  cwd not under a project registry entry; the session is still
+  created, just without a project association.
+<!-- /planned-change:single-project-registry -->
 - The bootstrap path is taken once per session; subsequent hooks for
   the same session id find the record and skip directly to normal
   dispatch.

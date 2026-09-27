@@ -21,7 +21,11 @@ Set up a distributed TeleClaude deployment across multiple computers.
 
 1. Create a unique Telegram bot per computer.
 2. Install on each machine with `make install`, then run `telec config wizard`, then `make start`.
+<!-- planned-change:single-project-registry -->
 3. Configure `computer_name`, `telegram.is_master` (exactly one master), `redis_url`, and `trusted_dirs`.
+<!-- change:single-project-registry -->
+3. Configure `computer_name`, `telegram.is_master` (exactly one master), and `redis_url`, then adopt each project on that machine with `telec config project init` from its folder, or from the TUI's new-project action.
+<!-- /planned-change:single-project-registry -->
 4. Configure SSH keychain using the ssh-agent-keychain procedure. Verify each peer can `ssh user@peerhost` without a prompt before continuing — the TUI's remote-attach path requires it.
 5. Verify `make status` on all nodes.
 6. Use `telec computers list` to confirm network discovery. Each peer should appear with non-null `user` and `host` from the heartbeat payload (see `project/adr/0013-unified-cluster-events`).
@@ -37,7 +41,11 @@ Set up a distributed TeleClaude deployment across multiple computers.
 
 - Multiple computers with `telegram.is_master: true` — causes duplicate command handling and message collisions.
 - Reusing bot tokens across computers — Telegram will deliver updates to only one instance.
+<!-- planned-change:single-project-registry -->
 - Missing `trusted_dirs` entries — `telec`/API project commands won't expose projects on that computer.
+<!-- change:single-project-registry -->
+- A project missing from a computer's listing — it was never adopted there; run `telec config project init` in its folder on that computer.
+<!-- /planned-change:single-project-registry -->
 - Redis unreachable — `make start` fails fast and surfaces the unreachable Redis at startup instead of reporting a healthy runtime; verify `REDIS_URL` and that the Redis server is reachable, then re-run `make start`.
 - TUI remote-session attach prompts for password or fails — SSH key auth between peers is missing or not loaded into the agent (step 4). Verify with `ssh -o BatchMode=yes user@peerhost true` from a non-interactive shell.
 - Peer shows in `telec computers` with `host=null` / `user=null` — that peer is running the pre-cluster-events daemon. Upgrade and restart the peer; the next heartbeat will publish full identity.

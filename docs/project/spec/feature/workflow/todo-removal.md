@@ -144,6 +144,7 @@ Then the removed Todo entry is hard-purged (its 7-day window has elapsed)
 And the closed session row remains retained (its 90-day window has not elapsed)
 ```
 
+<!-- planned-change:single-project-registry -->
 #### UC-TR-SWEEP-SKIPS-NON-CHECKOUT: Retention sweep tolerates a non-checkout trusted directory carrying a legacy todo store
 
 ```
@@ -154,6 +155,18 @@ Then the sweep skips the directory without resolving, opening, or creating a tod
 And the sweep raises no error for the directory
 And project-checkout trusted directories are still swept
 ```
+<!-- change:single-project-registry -->
+#### UC-TR-SWEEP-SKIPS-NON-CHECKOUT: Retention sweep tolerates a non-checkout registry entry carrying a legacy todo store
+
+```
+Given a project registry entry exists on disk carrying .teleclaude/todos.db
+And the directory is not a TeleClaude project checkout
+When the removed-todo retention sweep runs
+Then the sweep skips the directory without resolving, opening, or creating a todo store for it
+And the sweep raises no error for the directory
+And project entries that are project checkouts are still swept
+```
+<!-- /planned-change:single-project-registry -->
 
 #### UC-TR-REFUSES-LIVE-WORK: Removal refuses while live work holds the slug
 
