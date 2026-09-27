@@ -46,6 +46,15 @@ to the active workspace and configured writable roots. Protected paths remain
 read-only within writable roots, including `.git`, `.agents`, and `.codex`.
 Additional writable directories require explicit `--add-dir` arguments.
 
+In a linked Git worktree, `.git` is a pointer file. The default
+`workspace-write` policy also protects the Git directory to which it points,
+so switching an autonomous worker from full access to this mode alone does not
+establish that local `git add` or `git commit` can run. An added directory is a
+write grant, not a read-only mount. The installed 0.157.1 CLI exposes
+`--sandbox workspace-write`, `--ask-for-approval never`, `--add-dir`, and
+`--strict-config`; its effective Git behavior still needs a live worktree
+probe before a launch profile depends on it.
+
 Network access is off by default in `workspace-write`. Enabling constrained
 networking is a separate configuration action; enabling a network-policy
 feature does not itself grant network access.
@@ -94,6 +103,19 @@ older sandbox model instead of `default_permissions`. A launcher that needs
 fine-grained filesystem denials and Unix-socket allowlisting must select a
 custom permission profile and omit `--sandbox`; approval policy remains a
 separate control.
+
+The profile filesystem map accepts `read`, `write`, and `deny` entries. Its
+special roots include `:workspace_roots` and `:tmpdir`; specific entries can
+override broader grants. The profile's Unix-socket map allows individual
+absolute socket paths. The installed CLI exposes
+`codex sandbox --permission-profile <name>` and repeatable
+`--allow-unix-socket <path>` for a local command probe. A custom profile that
+writes a linked worktree's shared Git directory while keeping the main checkout
+read-only has not yet been verified on this host.
+
+Permission profiles govern local sandboxed command execution. Connectors, MCP
+servers, browser and computer-use surfaces have separate controls; a filesystem
+profile alone is not a process-wide boundary for every tool surface.
 
 ## Verification requirements
 

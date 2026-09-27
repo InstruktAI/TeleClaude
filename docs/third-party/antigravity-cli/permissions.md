@@ -56,7 +56,33 @@ TeleClaude also launches `agy` with `--dangerously-skip-permissions`. The flag
 and the persisted JSON settings intentionally agree so both managed sessions
 and direct invocations use the same autonomous permission posture.
 
+## Terminal sandbox and file-tool boundary
+
+The CLI's terminal sandbox uses OS isolation for agent-run commands. On macOS
+it uses Seatbelt; on Linux it uses namespaces. The sandbox receives read-only
+paths from `read_file` grants and read-write paths from `write_file` grants.
+The file tools themselves are governed by the permission engine, which applies
+`Deny > Ask > Allow` to their path targets. Approval posture and filesystem
+reach are therefore separate settings.
+
+An `unsandboxed(...)` allow rule lets matching commands execute outside the
+terminal sandbox without a prompt. The global `unsandboxed(*)` form matches
+every command. `write_file(*)` grants file-tool writes throughout the host and
+also broadens the terminal sandbox's read-write mounts. Consequently, setting
+`enableTerminalSandbox` to `true` while retaining those wildcard grants does
+not establish a worktree write boundary. `--dangerously-skip-permissions`
+auto-approves permission requests; it is not evidence of filesystem
+containment.
+
+## Gaps / Unknowns
+
+- The combined effective behavior of a per-session `--sandbox` launch with
+  persisted wildcard grants and `--dangerously-skip-permissions` has not been
+  verified in the installed CLI. Inspect the resolved permissions and prove a
+  denied write to a sibling worktree before depending on that combination.
+
 ## Sources
 
-- https://antigravity.google/docs/cli-permissions
-- https://antigravity.google/docs/cli-settings
+- https://antigravity.google/docs/permissions?tab=cli
+- https://antigravity.google/docs/sandbox?tab=cli
+- https://antigravity.google/docs/cli/reference/
