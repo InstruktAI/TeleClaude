@@ -69,23 +69,13 @@ When each runs the worktree's code
 Then both run it against the same worktree home
 ```
 
-#### UC-IAH4: Worktree code never resolves the live home
+#### UC-IAH5: Installed code keeps operating the live platform
 
 ```gherkin
-Given code loaded from a slug worktree
-When it starts with TELECLAUDE_HOME unset, empty, or naming the live home however it is spelled
-Then it runs against that worktree's home
-And the live home is unchanged
-```
-
-#### UC-IAH5: A missing worktree home is refused
-
-```gherkin
-Given a slug worktree whose home does not exist
-When code loaded from that worktree starts
-Then it refuses at startup with the missing home named
-And no home is created
-And the live home is unchanged
+Given an agent session in a slug worktree
+When the global telec, an agent hook, the agent shell, or git runs in that session
+Then it resolves the live home exactly as it does outside a worktree
+And the session's environment names no worktree home
 ```
 
 #### UC-IAH6: Checkout grading uses the worktree's home
@@ -98,7 +88,17 @@ And no quality step assembles a separate partial home
 And the live home is unchanged
 ```
 
-#### UC-IAH7: Releasing the worktree deletes its home
+#### UC-IAH7: A missing worktree home is refused
+
+```gherkin
+Given a slug worktree whose home does not exist
+When code loaded from that worktree starts
+Then it refuses at startup with the missing home named
+And no home is created
+And the live home is unchanged
+```
+
+#### UC-IAH8: Releasing the worktree deletes its home
 
 ```gherkin
 Given a slug worktree with its home
@@ -107,7 +107,7 @@ Then its home is deleted
 And the source home repository is unchanged
 ```
 
-#### UC-IAH8: Maintenance deletes an orphaned home
+#### UC-IAH9: Maintenance deletes an orphaned home
 
 ```gherkin
 Given a worktree home whose worktree no longer exists
@@ -115,25 +115,7 @@ When platform maintenance runs
 Then that home is deleted
 ```
 
-#### UC-IAH9: Maintenance gives an existing worktree its home
-
-```gherkin
-Given a slug worktree that has no home
-When platform maintenance runs
-Then the worktree owns a home holding the current tracked configuration
-And no agent created or selected that home
-```
-
-#### UC-IAH10: A renamed todo's worktree keeps its home
-
-```gherkin
-Given a todo whose slug worktree owns a home
-When the todo is renamed
-Then the renamed worktree owns that home
-And no home remains under the former slug
-```
-
-#### UC-IAH11: Registry reads do not authorize live project writes
+#### UC-IAH10: Registry reads do not authorize live project writes
 
 ```gherkin
 Given a worktree's clone contains the real project registry
@@ -142,13 +124,31 @@ Then the operation cannot change any live repository named by that cloned regist
 And the registry remains available for configuration reads
 ```
 
-#### UC-IAH12: Installed code keeps operating the live platform
+#### UC-IAH13: Maintenance gives an existing worktree its home
 
 ```gherkin
-Given an agent session in a slug worktree
-When the global telec, an agent hook, the agent shell, or git runs in that session
-Then it resolves the live home exactly as it does outside a worktree
-And the session's environment names no worktree home
+Given a slug worktree that has no home
+When platform maintenance runs
+Then the worktree owns a home holding the current tracked configuration
+And no agent created or selected that home
+```
+
+#### UC-IAH14: A renamed todo's worktree keeps its home
+
+```gherkin
+Given a todo whose slug worktree owns a home
+When the todo is renamed
+Then the renamed worktree owns that home
+And no home remains under the former slug
+```
+
+#### UC-IAH15: Worktree code never resolves the live home
+
+```gherkin
+Given code loaded from a slug worktree
+When it starts with TELECLAUDE_HOME unset, empty, or naming the live home however it is spelled
+Then it runs against that worktree's home
+And the live home is unchanged
 ```
 
 ## Known caveats
