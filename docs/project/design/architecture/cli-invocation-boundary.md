@@ -127,11 +127,13 @@ verified after delivery (`project/policy/test-moratorium`).
 own orchestration and hands the checks its acting context selects to the worktree's
 own code, run against a fresh scratch home, so a change that edits a guardrail
 allowlist or a schema is judged by the edited version. A selection carrying the native
-leg and the guardrail lane goes to the worktree's own `telec code lint`, which every
-TeleClaude checkout carries. A selection carrying the guardrail lane alone — a context
-that participates in documentation without subscribing `code` — runs the worktree's own
+leg and the guardrail lane goes to a worktree-owned quality module entrypoint that runs
+the selected checks without invoking a second `telec` command. The outer command has
+already cleared its caller; the scratch home holds no session record for a second CLI
+gate to resolve. A selection carrying the guardrail lane alone — a context that
+participates in documentation without subscribing `code` — runs the worktree's own
 guardrail lane through a process entry the installation supplies: the entry only starts
-the lane, and every rule the lane applies is the worktree's. The entry confirms it
+the lane, and every rule the lane applies is the worktree's. Each entry confirms it
 loaded the worktree's code and refuses otherwise. A checkout that is the installation,
 or that is not a TeleClaude checkout, is graded by installed code as before.
 
