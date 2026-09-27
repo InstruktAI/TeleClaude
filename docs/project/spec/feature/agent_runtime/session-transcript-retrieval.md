@@ -78,7 +78,7 @@ And status/timestamp/agent-status fields are still populated from session-ledger
 <!-- planned-change:reviewer-claimant-input-corroboration -->
 The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block.
 <!-- change:reviewer-claimant-input-corroboration -->
-The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block. A request that withholds terminal observation — the transcript read of a worker caller, whose reach excludes terminals (`project/spec/feature/identity/command-clearance`, Claim-scoped transcript read) — skips this fallback and returns an empty messages list.
+The fallback is the "pane tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the service scrapes a bounded live host-pane window through the get-session-data command and returns the raw assistant-side text as one block. A request that withholds terminal observation — the transcript read of a worker caller, whose reach excludes terminals (`project/spec/feature/identity/command-clearance`, Claim-scoped transcript read) — skips this fallback, so no pane-derived text reaches it; reminder entries the flow merges independently of the fallback are returned as for any caller.
 <!-- /planned-change:reviewer-claimant-input-corroboration -->
 
 #### UC-STR1: Terminal session agent status
@@ -138,10 +138,18 @@ messages or an authored assistant turn. A missing terminal is reported
 unavailable; a capture failure is surfaced as a failure. An empty available
 terminal is distinct from an unavailable terminal.
 
+<!-- planned-change:reviewer-claimant-input-corroboration -->
 The query writes no session input and does not parse the transcript. The default
 tail command and messages endpoint retain their transcript projection and
 fallback behavior. Transcript filtering flags apply to the transcript query;
 they are not accepted with explicit terminal mode.
+<!-- change:reviewer-claimant-input-corroboration -->
+The query writes no session input and does not parse the transcript. The default
+tail command and messages endpoint retain their transcript projection and
+fallback behavior; a request that withholds terminal observation receives no
+fallback. Transcript filtering flags apply to the transcript query;
+they are not accepted with explicit terminal mode.
+<!-- /planned-change:reviewer-claimant-input-corroboration -->
 
 ### Cross-context references
 
@@ -153,7 +161,11 @@ they are not accepted with explicit terminal mode.
 ## Known caveats
 
 - **Chain is authoritative; missing files are silently skipped.** The chain builder returns paths even when they no longer exist; the projector opens each one and ignores entries it cannot read. There is no error surfaced when a prior transcript has been pruned or moved — the chain just "starts later".
+<!-- planned-change:reviewer-claimant-input-corroboration -->
 - **Fallback collapses many lines into one message entry.** When the structured path yields no entries, the pane-tail text is returned as a single `assistant` text block with entry index = 0, file index = 0. Callers expecting one entry per logical message must detect this case (e.g., by the synthetic `timestamp=None`).
+<!-- change:reviewer-claimant-input-corroboration -->
+- **Fallback collapses many lines into one message entry.** When the structured path yields no entries and the request does not withhold terminal observation, the pane-tail text is returned as a single `assistant` text block with entry index = 0, file index = 0. Callers expecting one entry per logical message must detect this case (e.g., by the synthetic `timestamp=None`).
+<!-- /planned-change:reviewer-claimant-input-corroboration -->
 - **`since` semantics are projector-defined.** The projector compares against entry timestamps when they are present; entries without timestamps cannot be reliably filtered and may pass through.
 - **`include_tools` is one knob for pre_tool_use AND tool_result.** The entry sets both include-tools and include-tool-results on the visibility policy from the single query flag — a caller cannot ask for pre_tool_use only.
 - **`tail_chars` only affects fallback output truncation.** It is silently ignored when the structured projection succeeds. Positive values are honored as supplied; zero or negative values fall back to 10000. The fallback pane capture itself uses a small fixed line window before this character truncation is applied.
