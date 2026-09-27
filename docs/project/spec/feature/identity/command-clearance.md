@@ -16,6 +16,12 @@ visibility: 'public'
 Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller's Role against that verb's `CommandAuth(system=..., human=...)` allowlist. Agent callers (those resolved to a session with a system role) are evaluated against the verb's system band; person callers are evaluated against the human band with the role the people registry holds for their principal. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
 <!-- change:authorize-person-roles-at-scope -->
 Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller against that verb's `CommandAuth(system=..., human=...)` allowlist at the command's scope (Person role at the command's scope). A person caller is evaluated against the human band with their effective role at that scope (`project/design/architecture/scoped-roles`); an agent session acting for a person is evaluated against the system band and, with that person's effective role, the human band; an agent session acting for a system principal is evaluated against the system band alone. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
+
+For a CLI command whose `--project` value names a machine-configured trusted
+directory, the gate resolves the caller and enforces any agent band. The handler
+resolves the name through typed configuration, then completes that command's
+person-band clearance on the exact directory it will use before any project
+action or daemon request. The name is never treated as a project slug.
 <!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Canonical fields
@@ -126,6 +132,36 @@ When the person, from a checkout of a project that company owns, runs `telec ses
 Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
 And no request reaches that computer
 And a platform administrator running the same command is admitted and reaches that computer
+```
+
+#### UC-CCS8: A trusted-directory name reaches its selected project
+
+```
+Given a person holding no platform role and the admin role in one company
+And a trusted-directory name for a project that company owns differs from the project's registered slug
+When the person invokes a `telec bugs` project action with `--project` naming that directory
+Then the command resolves the name to its directory through the typed machine configuration
+And the person's effective role for that directory admits the action before the command's project operation runs
+And the action uses the same resolved directory
+```
+
+#### UC-CCS9: A named project outside the person's scope is refused
+
+```
+Given a person holding no platform role and the admin role in one company
+And a trusted-directory name resolves to a project another company owns
+When the person invokes a `telec bugs` project action with `--project` naming that directory
+Then the command is refused with the not-permitted failure naming `customer`
+And no project operation runs and no daemon request is sent
+```
+
+#### UC-CCS10: An unknown trusted-directory name reveals no project list to an outsider
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person invokes a `telec bugs` project action with `--project` naming no trusted directory
+Then the command is refused at platform scope before listing available directory names
+And a platform administrator receives the existing unknown-name listing
 ```
 <!-- /planned:authorize-person-roles-at-scope -->
 
@@ -457,6 +493,14 @@ supplies.
   in.
 - A command that names a directory to act in is judged at the project containing
   that directory.
+- A `telec bugs` command whose `--project` value names a trusted directory is
+  judged at the project containing the directory selected from typed machine
+  configuration, never at a project inferred from the supplied name. The
+  pre-dispatch gate validates the caller and any agent band; the handler completes
+  the same command's person-band clearance on the selected directory before any
+  project action or daemon request. The directory returned by that lookup is the
+  directory the action uses. An unknown name is checked at platform scope before
+  the available names are shown.
 - A command that names another computer is judged at platform scope
   (`project/design/architecture/scoped-roles`).
 - Every other command is judged at the project the invocation runs in — the project
