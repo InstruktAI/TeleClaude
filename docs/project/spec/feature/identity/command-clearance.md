@@ -494,13 +494,8 @@ supplies.
 - A command that names a directory to act in is judged at the project containing
   that directory.
 - A `telec bugs` command whose `--project` value names a trusted directory is
-  judged at the project containing the directory selected from typed machine
-  configuration, never at a project inferred from the supplied name. The
-  pre-dispatch gate validates the caller and any agent band; the handler completes
-  the same command's person-band clearance on the selected directory before any
-  project action or daemon request. The directory returned by that lookup is the
-  directory the action uses. An unknown name is checked at platform scope before
-  the available names are shown.
+  judged at the project containing the directory that name resolves to
+  (`project/design/architecture/cli-invocation-boundary` invariant 5).
 - A command that names another computer is judged at platform scope
   (`project/design/architecture/scoped-roles`).
 - Every other command is judged at the project the invocation runs in — the project
