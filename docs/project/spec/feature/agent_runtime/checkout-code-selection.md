@@ -19,16 +19,32 @@ canonical checkout's code wherever it is called from, so an ordinary call made w
 standing in a slug worktree behaves exactly like the same call made from the canonical
 checkout, and undelivered code never reaches the live home through it.
 
+<!-- planned-change:agent-home-clone-provisioning -->
 A checkout's own `bin/telec` runs that checkout's code. That is how an agent exercises
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
 wrapper never runs against the live home: unless its caller names another home, it
 creates a temporary home, runs the worktree's code against it, and removes it when the
 command ends. A home that holds no machine configuration starts from a copy of the live
 one.
+<!-- change:agent-home-clone-provisioning -->
+A checkout's own `bin/telec` runs that checkout's code. A managed agent receives
+an isolated clone of the home repository through agent-runtime provisioning
+(`project/spec/feature/agent_runtime/isolated-home`) and runs its checkout code
+against that clone. A standalone invocation of a slug worktree's wrapper with
+no isolated home creates and removes the same kind of clone for that call.
+Neither path runs worktree code against the live home.
+<!-- /planned-change:agent-home-clone-provisioning -->
 
+<!-- planned-change:agent-home-clone-provisioning -->
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
 worktree hand their lint gate to that worktree's own code, run against a fresh scratch
 home of its own, so a change is judged by the rules it carries.
+<!-- change:agent-home-clone-provisioning -->
+Grading stays self-referential: `telec code lint` and `telec code commit` called
+from a worktree hand their lint gate to that worktree's own code, with the
+provisioned home repository clone available to that code. A change is judged
+by the rules it carries without creating a partial home for grading.
+<!-- /planned-change:agent-home-clone-provisioning -->
 
 The path this behavior sits on is described in
 `project/design/architecture/cli-invocation-boundary`.
@@ -67,6 +83,7 @@ And the call's exit status is the command's own
 And nothing in the live home changes
 ```
 
+<!-- planned-change:agent-home-clone-provisioning -->
 #### UC-CCS4: A worktree home without a machine configuration starts from the live one
 
 ```gherkin
@@ -76,6 +93,16 @@ Then that home holds a copy of the live machine configuration before the worktre
 And nothing else is copied from the live home
 And the live machine configuration is unchanged
 ```
+<!-- change:agent-home-clone-provisioning -->
+#### UC-CCS4: A worktree home contains the tracked home repository
+
+```gherkin
+Given a slug worktree's own telec wrapper runs with an automatically provisioned home
+When the wrapper starts the worktree's code
+Then the home contains the tracked project registry and tier configuration documents
+And the live home repository is unchanged
+```
+<!-- /planned-change:agent-home-clone-provisioning -->
 
 #### UC-CCS5: Grading from a worktree applies the worktree's own rules
 
