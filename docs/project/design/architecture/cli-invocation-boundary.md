@@ -121,20 +121,6 @@ daemon do not move with the home. A command that writes project state or acts th
 the daemon reaches the live one, whose code is delivered code; that behavior is
 verified after delivery (`project/policy/test-moratorium`).
 
-### Grading a change
-
-`telec code lint` or `telec code commit` from a worktree runs installed code for its
-own orchestration and hands the checks its acting context selects to the worktree's
-own code, run against a fresh scratch home, so a change that edits a guardrail
-allowlist or a schema is judged by the edited version. Both a selection carrying the
-native leg and guardrail lane and a selection carrying only guardrails run through a
-process entry the installation supplies. The entry loads the worktree's code, runs
-exactly the selected checks, and invokes no second `telec` command. The outer command
-has already cleared its caller; the scratch home holds no session record for a second
-CLI gate to resolve. The entry confirms it loaded the worktree's code and refuses
-otherwise. A checkout that is the installation,
-or that is not a TeleClaude checkout, is graded by installed code as before.
-
 ## Failure modes
 
 | Condition                                                 | Effect                                                                                                                               |
