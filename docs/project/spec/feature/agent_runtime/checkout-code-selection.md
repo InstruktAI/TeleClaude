@@ -46,14 +46,12 @@ home, so a change is judged by the rules it carries with the complete tracked
 configuration.
 <!-- /planned-change:agent-home-clone-provisioning -->
 
-<!-- planned:grade-worktrees-without-cli-reentry -->
 The installed `telec code lint` and `telec code commit` commands grade such a
 worktree without invoking a second `telec` command; the outer command's caller
 clearance governs the grading act. Within the grading act's isolated home, a
 selected native leg runs the worktree's own project-native lint, and a selected
 guardrail lane runs through one installation-supplied process entry that
 confirms it loaded the worktree's code before running exactly that lane.
-<!-- /planned:grade-worktrees-without-cli-reentry -->
 
 The path this behavior sits on is described in
 `project/design/architecture/cli-invocation-boundary`.
@@ -156,7 +154,6 @@ Then the reported version and commit both describe the checkout whose code runs
 ```
 <!-- /planned:worktree-or-project-scope -->
 
-<!-- planned:grade-worktrees-without-cli-reentry -->
 #### UC-CCS9: Authorized worktree grading reaches its checks
 
 ```gherkin
@@ -165,7 +162,6 @@ When the agent invokes that gate through the global telec
 Then the selected checks execute using the worktree's own rules
 And grading reports their outcome without an unidentified-caller refusal from its isolated execution
 ```
-<!-- /planned:grade-worktrees-without-cli-reentry -->
 
 ## Known caveats
 
