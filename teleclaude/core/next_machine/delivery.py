@@ -23,6 +23,8 @@ logger = get_logger(__name__)
 GitNameSetFailureHandler = Callable[[list[str], str], None]
 
 _WORKTREE_REMOVAL_FAILED = "worktree removal failed for %s: %s"
+_LEGACY_WORKTREE_TRASH_DIR = ".trash"
+_LEGACY_TRASH_REMOVAL_FAILED = "legacy worktree trash removal failed for %s: %s"
 
 
 def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tuple[int, str, str]:
@@ -228,6 +230,21 @@ def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
             logger.info("Archived %s/%s → %s", slug, dirname, dest)
         except Exception as exc:
             logger.warning("Failed to archive %s/%s: %s", slug, dirname, exc)
+
+
+def remove_legacy_worktree_trash(cwd: str) -> None:
+    """Delete the ``trees/.trash`` directory released worktrees were once parked in.
+
+    Cleanup now removes worktrees directly; this only clears what the retired
+    deferral left behind on a machine that has not run since.
+    """
+    trash_dir = Path(cwd) / WORKTREE_DIR / _LEGACY_WORKTREE_TRASH_DIR
+    try:
+        shutil.rmtree(trash_dir)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        logger.warning(_LEGACY_TRASH_REMOVAL_FAILED, trash_dir, exc)
 
 
 def cleanup_delivered_slug(
