@@ -64,6 +64,7 @@ design owns only the path that connects them.
 4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
    command surface to identify the command and passes the caller through one gate.
    Nothing else runs, loads, or validates first.
+<!-- planned-change:authorize-person-roles-at-scope -->
 5. **The gate is cheap and narrow.** It reads the auth the command surface declares for
    the command, and resolves the caller from the session identity marker, one session
    row, and the people roster. A session row is admitted by the marker that names it.
@@ -73,6 +74,19 @@ design owns only the path that connects them.
    authorized here. A command declared independent of its caller
    (`project/design/cli-authorization-matrix`) passes the gate without any caller
    resolution.
+<!-- change:authorize-person-roles-at-scope -->
+5. **The gate is cheap and narrow.** It reads the auth the command surface declares for
+   the command, and resolves the caller from the session identity marker, one session
+   row, the people roster, and the organization facts the command's scope needs — the
+   person's company memberships and the ownership declaration of the registered
+   project the command acts on, read narrowly as the roster is. A session row is
+   admitted by the marker that names it. The gate loads neither the machine
+   configuration nor the ORM, and never validates a configuration document beyond
+   those identity facts, so an invalid document unrelated to identity does not lock
+   callers out. Every command the CLI authorizes in process is authorized here. A
+   command declared independent of its caller (`project/design/cli-authorization-matrix`)
+   passes the gate without any caller resolution.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 6. **A command pays only for its own dependencies.** Configuration, the ORM, the daemon
    API client, history, mirrors, summarizers and the LLM SDKs load inside the handler
    of a command that needs them. A module shared by several commands imports nothing

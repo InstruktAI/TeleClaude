@@ -12,7 +12,11 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller's Role against that verb's `CommandAuth(system=..., human=...)` allowlist. Agent callers (those resolved to a session with a system role) are evaluated against the verb's system band; person callers are evaluated against the human band with the role the people registry holds for their principal. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
+<!-- change:authorize-person-roles-at-scope -->
+Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller against that verb's `CommandAuth(system=..., human=...)` allowlist at the command's scope (Person role at the command's scope). A person caller is evaluated against the human band with their effective role at that scope (`project/design/architecture/scoped-roles`); an agent session acting for a person is evaluated against the system band and, with that person's effective role, the human band; an agent session acting for a system principal is evaluated against the system band alone. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Canonical fields
 
@@ -486,4 +490,3 @@ the objects' owners then narrow what it returns.
 
 - docs/project/adr/0067-authorization-reads-the-object-not-the-caller-role.md — why `telec todo update` authorizes on the todo's claim rather than the caller's role.
 - docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — the claiming-group boundary and the direct human-identity exemption this gate shares.
-
