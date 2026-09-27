@@ -78,17 +78,28 @@ session's role and its help-desk confinement in
    computer replicates from its peers are judged at platform scope, so only a
    platform role reaches them.
 <!-- change:relay-scoped-role-decisions -->
-9. **The computer holding the object decides.** An act on an object another
-   computer holds — a session running there — is authorized entirely on that
-   computer, band and object rules together as one decision; the caller's
-   computer does not clear the band for it. The caller's computer establishes
-   who is calling and carries only that verified principal over the daemon
-   relay, as remote history search already does
+9. **The computer holding the object decides.** A command that acts on an
+   object another computer holds — a session running there, a session to start
+   there, an operation it owns — is authorized on that computer, the person band
+   and the object's rules together as one decision; the caller's computer does
+   not clear the person band for it. The caller's computer establishes who is
+   calling and carries only that over the daemon relay — the verified principal
+   and, for a session caller, that session's identity — as remote history search
+   already does
    (`project/spec/feature/session_mirrors/cross-computer-history-federation`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
-   request is never an input. A cross-computer listing is answered the same way:
-   each computer returns only what the caller's effective role reaches there.
+   request is never an input. The caller's computer decides only what it alone
+   holds about its own caller: that the caller is identified, that a session
+   caller's system role is admitted by the command's agent band (invariant 8),
+   and that the caller's dispatch chain permits the act; each narrows and none
+   widens. A listing or search that names another computer is answered there the
+   same way: that computer returns only what the caller's effective role reaches
+   there. The session records a computer replicates from its peers carry no
+   decision of the computer holding them, so they are judged at platform scope,
+   except that a session sees its own direct children, whose parent link the
+   holding computer recorded when it admitted their start
+   (`project/spec/feature/identity/cross-computer-authorization`).
 <!-- /planned-change:relay-scoped-role-decisions -->
 
 ## Primary flows
@@ -146,6 +157,7 @@ company scope.
 | A relayed act reaches another computer carrying no principal               | The target refuses it.                                                                                                                                                                                                                                                                                                                                       |
 | The target holds no role for the relayed principal that reaches the object | The effective role there is `customer`; the act proceeds only if the command admits `customer`.                                                                                                                                                                                                                                                              |
 | The target computer is unreachable or cannot resolve its facts             | The act fails and is reported for that computer; the caller's computer decides nothing in its place.                                                                                                                                                                                                                                                         |
+| The target computer does not advertise that it decides relayed acts        | The caller's computer relays the act only for a caller holding a platform role on the caller's computer, as before; any other caller is refused, and the refusal names that computer.                                                                                                                                                                      |
 <!-- /planned-change:relay-scoped-role-decisions -->
 
 ## See Also
