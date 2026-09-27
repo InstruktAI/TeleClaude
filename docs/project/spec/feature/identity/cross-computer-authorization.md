@@ -46,7 +46,11 @@ role on the caller's computer, and refuses any other caller with a failure that
 names that computer. A caller's command or read that reaches a computer carrying
 no principal is refused there, whatever build sent it; the refusal names its way
 out: update the calling computer, or run the command on the computer that holds
-the object.
+the object. A command of a kind a caller can send that arrives with no principal
+and without the sending computer's mark of its own forwarding is refused the same
+way, whether a caller or that computer's daemon sent it: the holding computer cannot
+tell them apart, and it executes no such command without a principal. The sender
+receives the refusal as a failed command.
 
 ## Canonical fields
 
@@ -92,6 +96,7 @@ When it carries no principal
 Then that computer refuses it before acting, and reads no role it carries
 And the refusal is reported to the caller for that computer
 And the refusal says to update the calling computer or run the command on the computer that holds the object
+And a command of a kind a caller can send, carrying no principal and not marked by the sending computer as its own forward, is refused the same way, and its sender sees that command fail
 ```
 
 #### UC-XCA5: An unreachable computer fails the command for that computer
@@ -145,5 +150,5 @@ And a person holding a platform role on the caller's computer is served by that 
 
 ## Known caveats
 
-- A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, peer synchronization — is not a caller's command and carries no principal. It keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other.
+- A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, closing a session another computer runs, peer synchronization — is not a caller's command and carries no principal. When the sending computer marks it as its own forward, or it is of a kind no caller sends, it keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other. An unmarked forward of a kind a caller can send is refused as UC-XCA4 states, so a computer that does not mark its forwards has its session closes and direct-conversation deliveries toward this computer refused, as failures naming the way out, until it is updated.
 - Sessions another computer shares with this one are listed here under `project/spec/feature/agent_runtime/session-lifecycle`, not by this contract.
