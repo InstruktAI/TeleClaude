@@ -120,11 +120,11 @@ def _print_company_line(identity: ResolvedCliIdentity) -> None:
         return
     organization = importlib.import_module("teleclaude.core.organization")
     resolve_context = cast(
-        Callable[[Session], SessionCompanyContext],
+        "Callable[[Session], SessionCompanyContext]",
         organization.resolve_session_company_context,
     )
     context = resolve_context(cast("Session", facts))
-    state_class = cast(type[SessionCompanyState], organization.SessionCompanyState)
+    state_class = cast("type[SessionCompanyState]", organization.SessionCompanyState)
     if context.state is state_class.RESOLVED:
         print(f"Company: {context.company}")
     elif context.state is state_class.AMBIGUOUS:
