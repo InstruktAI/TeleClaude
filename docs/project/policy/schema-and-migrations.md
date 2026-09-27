@@ -1,5 +1,5 @@
 ---
-description: 'How the daemon database reaches the current schema: schema.sql is the end state, fresh databases stamp their migrations, existing databases replay them, and every migration is therefore idempotent.'
+description: 'How the daemon database reaches the current schema: schema.sql is the end state, fresh databases stamp their migrations, existing databases replay them before schema.sql adds the rest, and every migration is idempotent.'
 visibility: 'internal'
 ---
 
@@ -15,17 +15,19 @@ visibility: 'internal'
   schema has nothing to upgrade; replaying history over it is redundant where the
   result is already present and fatal where the schema has since been reshaped
   past the shape a migration was written against.
-- **A database that already holds tables executes `schema.sql` first, then runs its
-  pending migrations.** `schema.sql` is written with `CREATE ... IF NOT EXISTS`, so
-  this is additive — but it means **a migration can find its own result already
-  present** before it runs.
-- **Every migration is therefore idempotent.** `CREATE TABLE IF NOT EXISTS`,
+- **A database that already holds tables runs its pending migrations first, then
+  executes `schema.sql`.** Each pending migration meets the shape its predecessors
+  left, however many releases the database skipped; `schema.sql`, written with
+  `CREATE ... IF NOT EXISTS`, then only adds what the migration history does not
+  create.
+- **A migration is written against the shape its predecessors leave.** That shape
+  is its contract; `schema.sql` moves forward with the code and is never the input
+  a migration converges from.
+- **Every migration is idempotent.** `CREATE TABLE IF NOT EXISTS`,
   `CREATE INDEX IF NOT EXISTS`, and an `ALTER TABLE ... ADD COLUMN` guarded by a
-  `pragma_table_info` check for the column. A migration converges on the current
-  shape whether or not `schema.sql` reached it first.
-- **A migration never assumes the shape `schema.sql` had when it was authored.**
-  `schema.sql` moves forward with the code; the migration must still converge
-  against the shape it finds.
+  `pragma_table_info` check for the column. A database can already hold a
+  migration's result — created by an earlier `schema.sql` run before the
+  migration existed — and the migration converges on it without failing.
 - **Adding a table or column requires both `schema.sql` and a migration.** Either
   alone is a defect: `schema.sql` alone leaves every existing database without the
   change, and a migration alone leaves every fresh database without it, because a
@@ -38,14 +40,18 @@ visibility: 'internal'
 
 Two paths reach the same schema and only one of them runs migration bodies. Fresh
 databases take the whole shape from `schema.sql` in one step; existing databases
-take whatever `schema.sql` adds and then close the remaining gap by migration.
-Because `schema.sql` runs first on both paths, the migration is the party that
-must tolerate finding the work done — never the reverse.
+close the gap by replaying their pending history, then take whatever `schema.sql`
+still adds.
 
-The idempotency rule is what makes the split safe rather than merely convenient.
-Without it, every forward edit to `schema.sql` arms a failure on the existing-
-database path: the table appears at bootstrap, the migration then asserts it into
-a schema that already has it, and startup raises.
+Replaying history before applying the end state is what makes a skipped release
+safe. `schema.sql` presents tables in their newest shape; a migration that reshapes
+a table from an older shape cannot recognise that it has been overtaken, so running
+`schema.sql` first hands it an input it was never written for and startup raises.
+Replayed in order, each migration reads exactly the shape it was authored against.
+
+The idempotency rule covers what ordering cannot: a database already carries
+whatever earlier startups created, so a migration can still find its own result
+present.
 
 Startup is non-retryable, so the blast radius is the whole daemon rather than one
 feature. Hook receivers compound it — they execute from the checkout per event and
@@ -64,9 +70,9 @@ Every database this repository owns and every migration under
 - A table or column present in `schema.sql` with no migration, or in a migration
   with no `schema.sql` declaration, is a defect.
 - Reviewers check both paths for any change touching `schema.sql` or
-  `teleclaude/core/migrations/`: would this apply cleanly to a database that has
-  the table already, and would a database created purely from `schema.sql` be
-  complete without it.
+  `teleclaude/core/migrations/`: would this apply cleanly to a database that
+  already has its result, and to one at its predecessor's shape; and would a
+  database created purely from `schema.sql` be complete without it.
 
 ## Exceptions
 

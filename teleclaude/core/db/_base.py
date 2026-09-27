@@ -265,19 +265,25 @@ class DbBase:
         schema_path = Path(__file__).parent.parent / "schema.sql"
         schema_sql = schema_path.read_text(encoding="utf-8")
 
-        await self.conn.executescript(schema_sql)  # guard: raw-sql
-        await self.conn.commit()
-
         if created_from_current_schema:
+            await self.conn.executescript(schema_sql)  # guard: raw-sql
+            await self.conn.commit()
             # Reached only for a genuine bootstrap not invoked from a worktree
             # (canonical checkout or daemon) — recording the current migration
             # set as applied is correct because this call owns the schema it
             # just wrote.
             await baseline_migrations(self.conn)
-        elif self.db_path != DB_IN_MEMORY and _invoked_from_slug_worktree():
-            logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, self.db_path)
         else:
-            await run_pending_migrations(self.conn)
+            # Pending migrations run against the shape their predecessors left,
+            # before the current schema adds anything: each one finds the input
+            # it was written for, however many releases the database skipped.
+            # The current schema then only adds what the history does not create.
+            if self.db_path != DB_IN_MEMORY and _invoked_from_slug_worktree():
+                logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, self.db_path)
+            else:
+                await run_pending_migrations(self.conn)
+            await self.conn.executescript(schema_sql)  # guard: raw-sql
+            await self.conn.commit()
 
         # Close bootstrap connection — runtime access uses the SQLAlchemy pool
         await self.conn.close()
