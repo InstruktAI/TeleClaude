@@ -48,9 +48,12 @@ A document that has not passed the declaring migration obtains an absent tier
 from the registries that define the tiers — the designated locations for the
 home's own configuration, person, and company files, and the project registry
 for project roots and the linked worktrees of those roots. A read supplies that tier in memory; a migration run or a
-writer stores it. A file those registries do not name is never given a tier. A
-file the platform creates is written declared. A file that reaches loading
-without a valid declaration fails wherever it sits, and a declaration naming an
+writer stores it. Every tier but project has a designated location, so a
+document from before the declaring migration that those registries do not name
+can only be a project: a read gives it the project tier without registry
+standing. A file the platform creates is written declared. A file past the
+declaring migration that reaches loading without a valid declaration fails
+wherever it sits, and a declaration naming an
 unknown or tier-inconsistent kind is never replaced: it fails, and the file is
 never loaded as another tier.
 
@@ -145,15 +148,14 @@ And the stored file is unchanged by the load
 And once a migration run has stored it, the file carries that tier declaration
 ```
 
-#### UC-CFG-WSD7: An undeclared file fails wherever it sits
+#### UC-CFG-WSD7: An unregistered file from before declarations loads as a project
 
 ```
-Given a same-named configuration file carrying no tier declaration
+Given a same-named configuration file authored before tier declarations existed
 And the tier registries do not name its location
 When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no tier is derived from the file's location
-And the file is never loaded as any tier
+Then it loads as a project configuration without registry standing
+And the stored file is unchanged by the load
 ```
 
 #### UC-CFG-WSD8: An invalid declaration never loads as another tier
