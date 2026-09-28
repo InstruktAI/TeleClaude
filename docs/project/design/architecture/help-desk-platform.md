@@ -161,30 +161,6 @@ The command reads the doc-snippet-authoring procedure and snippet-authoring-sche
 
 All adapters resolve identity through the same path: person config lookup by platform credentials, with platform-specific defaults for unknown users.
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-```mermaid
-flowchart TD
-    MSG[Incoming message] --> ORIGIN{Origin?}
-    ORIGIN -->|Telegram| TG_LOOKUP[Lookup telegram_user_id in people config]
-    ORIGIN -->|Discord| DC_LOOKUP[Lookup discord_user_id in people config]
-    ORIGIN -->|API| API[Caller identity]
-
-    TG_LOOKUP --> FOUND{Person found?}
-    DC_LOOKUP --> FOUND
-
-    FOUND -->|Yes| ROLE[Use configured role]
-    FOUND -->|No| DEFAULT[Default to customer role]
-
-    ROLE --> SESSION[Create/resume session]
-    DEFAULT --> SESSION
-    API --> SESSION
-
-    SESSION --> JAIL{Role?}
-    JAIL -->|admin or member| UNRESTRICTED[Full access]
-    JAIL -->|contributor, newcomer or customer| HELP_DESK[Jailed to help-desk/]
-    JAIL -->|system role| UNRESTRICTED
-```
-<!-- change:authorize-person-roles-at-scope -->
 ```mermaid
 flowchart TD
     MSG[Incoming message] --> ORIGIN{Origin?}
@@ -207,7 +183,6 @@ flowchart TD
     JAIL -->|contributor, newcomer or customer| HELP_DESK[Jailed to help-desk/]
     JAIL -->|system role| UNRESTRICTED
 ```
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 **Discord identity fix:** Add `DiscordCreds` to `PersonConfig` and `CredsConfig` (same pattern as `TelegramCreds`). Build a `_by_discord_user_id` lookup map in `IdentityResolver._load_config()`. Known Discord users get their configured role; unknown ones default to `customer` (jailed).
 

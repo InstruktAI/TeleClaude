@@ -48,13 +48,9 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
   `state: "completed"|"failed"|"stale"` and `result` or `error`.
 - **Output (delivery):** the caller recorded on the row is woken with an address —
   operation identity, outcome, and the command that reads the record.
-<!-- planned-change:authorize-person-roles-at-scope -->
-- Operation rows are keyed to the caller session; non-admins may only inspect their own.
-<!-- change:authorize-person-roles-at-scope -->
 - Operation rows are keyed to the caller session; a caller may inspect its own, and a caller
   whose effective role for the operation's project is `admin`
   (`project/design/architecture/scoped-roles`) may inspect any in that project.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Invariants
 
@@ -134,14 +130,9 @@ sequenceDiagram
   `running` until the heartbeat window expires and then becomes `stale`, which delivers.
 - **Caller session gone at delivery:** The wake is dropped without retry and the row is
   unchanged. The outcome remains answerable by any later reader.
-<!-- planned-change:authorize-person-roles-at-scope -->
-- **Caller mismatch:** Non-admin callers attempting to access another session's operation
-  receive a 404 (not a 403) to avoid session ID enumeration.
-<!-- change:authorize-person-roles-at-scope -->
 - **Caller mismatch:** A caller whose effective role for the operation's project is not
   `admin`, attempting to access another session's operation, receives a 404 (not a 403) to
   avoid session ID enumeration.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 - **Event fires, row not yet terminal:** Trust the row. The event is a convenience
   signal; the DB row is authoritative.
 

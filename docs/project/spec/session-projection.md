@@ -196,17 +196,11 @@ Per-person preferences control two configurable categories:
 - `system_messages` — orchestrator, integrator, finalizer, worker, and other system coordination messages.
 - `tool_calls` — tool invocation blocks, never tool result bodies.
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-Defaults are role-sensitive: admins see `system_messages` and `tool_calls` on mobile
-and full-surface projection unless their per-person config says otherwise; members,
-contributors, and newcomers see neither by default.
-<!-- change:authorize-person-roles-at-scope -->
 Defaults are role-sensitive: a recipient whose effective role for the session's
 project is `admin` (`project/design/architecture/scoped-roles`) sees
 `system_messages` and `tool_calls` on mobile and full-surface projection unless
 their per-person config says otherwise; every other recipient sees neither by
 default.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 Some source categories are not configurable. Tool result bodies are TUI-only.
 Checkpoint messages and agent-CLI side-channel artifacts are dropped from every

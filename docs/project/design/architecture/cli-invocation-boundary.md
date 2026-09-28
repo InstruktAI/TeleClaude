@@ -31,18 +31,12 @@ design owns only the path that connects them.
 
 **Outputs**
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-- The command's handler runs with a resolved, authorized caller, or
-- a refusal before the handler runs: an unidentified caller, or a role the command
-  does not admit.
-<!-- change:authorize-person-roles-at-scope -->
 - The pre-dispatch gate refuses an unidentified caller or a role outside a band
   it can decide before dispatch.
 - A handler whose target is already known runs with full command clearance.
 - A handler that resolves a trusted-directory name runs with caller and agent
   admission, then either completes person-band clearance on the selected
   directory or refuses before any project operation or daemon request.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Invariants
 
@@ -71,17 +65,6 @@ design owns only the path that connects them.
 4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
    command surface to identify the command and passes the caller through one gate.
    Nothing else runs, loads, or validates first.
-<!-- planned-change:authorize-person-roles-at-scope -->
-5. **The gate is cheap and narrow.** It reads the auth the command surface declares for
-   the command, and resolves the caller from the session identity marker, one session
-   row, and the people roster. A session row is admitted by the marker that names it.
-   The gate loads neither the machine configuration nor the ORM, and never validates a
-   configuration document beyond the roster it reads, so an invalid document unrelated
-   to identity does not lock callers out. Every command the CLI authorizes in process is
-   authorized here. A command declared independent of its caller
-   (`project/design/cli-authorization-matrix`) passes the gate without any caller
-   resolution.
-<!-- change:authorize-person-roles-at-scope -->
 5. **The gate is cheap and narrow.** It reads the auth the command surface declares for
    the command, and resolves the caller from the session identity marker, one session
    row, the people roster, and the organization facts the command's scope needs — the
@@ -100,7 +83,6 @@ design owns only the path that connects them.
    checked at platform scope before available names are shown. A command declared
    independent of its caller (`project/design/cli-authorization-matrix`) passes
    the gate without any caller resolution.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 6. **A command pays only for its own dependencies.** Configuration, the ORM, the daemon
    API client, history, mirrors, summarizers and the LLM SDKs load inside the handler
    of a command that needs them. A module shared by several commands imports nothing
@@ -129,17 +111,12 @@ flowchart TD
     Installed --> Interp[interpreter]
     Interp --> Surface[read command surface]
     Surface --> Gate[auth gate: marker, session row, roster]
-<!-- planned-change:authorize-person-roles-at-scope -->
-    Gate -->|admitted| Handler[handler loads its own dependencies]
-    Gate -->|not admitted| Deny[refused before the handler]
-<!-- change:authorize-person-roles-at-scope -->
     Gate -->|target known and cleared| Handler[handler loads its own dependencies]
     Gate -->|trusted-directory name; caller and agent admitted| NamedHandler[handler resolves name through typed config]
     NamedHandler --> TargetCheck[person band at selected directory]
     TargetCheck -->|admitted| Act[project operation or daemon request]
     TargetCheck -->|refused| Deny[refused before action]
     Gate -->|refused| Deny
-<!-- /planned-change:authorize-person-roles-at-scope -->
 ```
 
 ### Exercising one's own change from a worktree

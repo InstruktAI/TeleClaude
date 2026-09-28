@@ -1,8 +1,8 @@
 ---
-description: One person-role vocabulary held at a platform or company scope; every person authorization decision reads the caller's effective role for the object it acts on.
+description: One person-role vocabulary held at a platform or company scope; every
+  person authorization decision reads the caller's effective role for the object it
+  acts on.
 visibility: internal
-delivered_by:
-  - authorize-person-roles-at-scope
 ---
 
 # Scoped Roles — Design

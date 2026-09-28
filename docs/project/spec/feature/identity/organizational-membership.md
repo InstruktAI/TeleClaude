@@ -1,7 +1,7 @@
 ---
 description: What a person's company membership, company role, and project assignment
   mean, and what resolving them reports — belonging to a company confers no project,
-  and the platform role stays independent.
+  and a company role is the person's role held at that company's scope.
 ---
 
 # Organizational Membership — Spec
@@ -39,14 +39,16 @@ operation: a consumer that turns these facts into permission — documentation
 visibility, command authorization, provisioning onto a business system — owns
 that decision itself.
 
-Organizational membership is independent of the platform role. The platform role
-governs authority over TeleClaude itself and decides who may maintain a
-membership declaration; it states nothing about any business. The company role
-states one person's relationship to one business; it confers no platform
-authority. Neither follows from the other.
+A company role is a person role held at that company's scope. It is drawn from
+the same vocabulary as the platform role and means the same thing; the scope
+bounds what it reaches (`project/design/architecture/scoped-roles`). Declaring,
+changing, or withdrawing a membership never changes the person's platform role,
+and holding a platform role confers no membership.
 
-The company role is not a visibility tier: nothing here grades what a member may
-read by the role they hold.
+Resolution also answers a person's effective role for an object: the
+highest-ranked role the person holds at any scope containing that object, and
+`customer` where none does. Consumers read that answer and never re-derive it
+from the facts above.
 
 A person with no declaration holds no company relationship and no project
 assignment. Absence resolves to nothing, never to a default company.
@@ -59,13 +61,16 @@ assignment. Absence resolves to nothing, never to a default company.
 : A person's belonging to one registered company, carrying the role that person holds in that business.
 
 **Company role**
-: The role a person holds inside one business, drawn from the closed set `admin` and `member`. `admin` is the company administrative role; `member` is every other business relationship. Independent of the platform role, and never a visibility tier.
+: The person role held at one company's scope, drawn from the one person-role vocabulary (`admin`, `member`, `contributor`, `newcomer`). `admin` is the company administrative role; the others reach only the company projects the person is assigned to.
 
 **Project assignment**
 : A person's assignment to work in one registered project. Never inferred from company membership.
 
 **Company administrative role**
-: `admin` — the company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
+: `admin` — the company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business.
+
+**Effective role**
+: The highest-ranked role a person holds at any scope containing a given object; `customer` where no scope contains it.
 
 **Undeclared person**
 : A person carrying no company membership and no project assignment. Resolves to no company relationship and an empty assignment set.
@@ -127,7 +132,6 @@ And no company is supplied as a default
 Given a person carrying a platform role
 When an administrator declares, changes, or withdraws that person's company membership or project assignment
 Then the person's platform role is unchanged
-And every decision that reads the platform role behaves exactly as before
 And holding any platform role confers no company membership and no project assignment
 ```
 
@@ -163,11 +167,39 @@ And the person's membership in that company is reported unchanged
 And the stale assignment is surfaced as stale rather than silently dropped, so an administrator can remove it
 ```
 
+#### UC-ORGID-9: A company administrator's effective role inside the company's lineage is admin
+
+```gherkin
+Given a person holding no platform role who holds the administrative role in one company
+When an agent resolves that person's effective role for that company, for a project that company owns, or for the platform's shared documentation
+Then the effective role is admin
+And the person's effective role for a project owned by a different company is customer
+```
+
+#### UC-ORGID-10: A role below admin reaches only assigned projects
+
+```gherkin
+Given a person holding no platform role who holds the member role in one company and is assigned to one of its projects
+When an agent resolves that person's effective role for that project and for another project the company owns
+Then the effective role for the assigned project is member
+And the effective role for the unassigned project is customer
+And the effective role for the company itself is member
+```
+
+#### UC-ORGID-11: The highest role across containing scopes applies
+
+```gherkin
+Given a person holding the member platform role and the administrative role in one company
+When an agent resolves that person's effective role for a project that company owns
+Then the effective role is admin
+And the person's effective role for a project owned by no company is member
+```
+
 ## Known caveats
 
-- UC-ORGID-3 is the only place a company role affects what resolution reports.
-  Any further derivation from company role is a change to this contract, not an
-  implementation detail.
+- Coverage (UC-ORGID-3) and the effective role (UC-ORGID-9 to UC-ORGID-11) are
+  the only answers derived from a company role. Any further derivation is a
+  change to this contract, not an implementation detail.
 - The two directions are not symmetric, and both are settled. Membership confers
   no project assignment; an assignment to a company-owned project presupposes
   membership in that company. The prerequisite binds an assignment to the
@@ -179,10 +211,11 @@ And the stale assignment is surfaced as stale rather than silently dropped, so a
   as access, never fatal to loading the company's configuration, and visible as
   stale until an administrator removes it.
 - Resolution reports the same shape on a platform carrying no companies as it
-  does for an undeclared person: empty, never a default. Such a platform relies
-  on the platform role alone, which this contract leaves untouched.
+  does for an undeclared person: empty, never a default. On such a platform the
+  effective role is the platform role, or `customer` where none is declared.
 
 ## See Also
 
 - docs/project/spec/feature/config/organizational-membership.md — the declaration, validation, and maintenance surface these facts are stated through.
-- docs/project/spec/feature/config/person-identity-schema.md — the person declaration carrying the independent platform role.
+- docs/project/spec/feature/config/person-identity-schema.md — the person declaration carrying the platform role.
+- docs/project/design/architecture/scoped-roles.md — the scopes, what each contains, and how an effective role is resolved.

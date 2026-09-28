@@ -12,9 +12,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller's Role against that verb's `CommandAuth(system=..., human=...)` allowlist. Agent callers (those resolved to a session with a system role) are evaluated against the verb's system band; person callers are evaluated against the human band with the role the people registry holds for their principal. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
-<!-- change:authorize-person-roles-at-scope -->
 Command clearance is v1's authorization gate, evaluated in the client process that serves the caller before any request reaches the daemon (`project/spec/identity-and-auth` §6). The client resolves its caller through the identity context's shared caller resolution, consults the CLI surface schema for the verb it performs (e.g. `"telec sessions start"`), and checks the caller against that verb's `CommandAuth(system=..., human=...)` allowlist at the command's scope (Person role at the command's scope). A person caller is evaluated against the human band with their effective role at that scope (`project/design/architecture/scoped-roles`); an agent session acting for a person is evaluated against the system band and, with that person's effective role, the human band; an agent session acting for a system principal is evaluated against the system band alone. Unknown verb paths fail closed. The verb→Role table lives declaratively in the CLI surface schema, so adding a new operation means adding a `CommandAuth` to the schema and clearing its verb where the operation is performed.
 
 For a CLI command whose `--project` value names a machine-configured trusted
@@ -22,7 +19,6 @@ directory, the gate resolves the caller and enforces any agent band. The handler
 resolves the name through typed configuration, then completes that command's
 person-band clearance on the exact directory it will use before any project
 action or daemon request. The name is never treated as a project slug.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Canonical fields
 
@@ -68,7 +64,6 @@ And the caller is refused — the human band is never consulted for agent caller
 ```
 
 
-<!-- planned:authorize-person-roles-at-scope -->
 #### UC-CCS1: A company administrator works as an administrator in their company's projects
 
 ```
@@ -163,7 +158,6 @@ When the person invokes a `telec bugs` project action with `--project` naming no
 Then the command is refused at platform scope before listing available directory names
 And a platform administrator receives the existing unknown-name listing
 ```
-<!-- /planned:authorize-person-roles-at-scope -->
 
 ### Cross-context references
 
@@ -427,12 +421,10 @@ Every `telec` command is cleared once, in the CLI process, by the gate that prec
 The TUI clears each action it performs before sending it, against the verb of the command that action performs, with the identity it was launched with; an action on an object another computer holds is cleared as that command is. An action that performs no `telec` command, or one whose command no gate clears, is not cleared.
 <!-- /planned-change:relay-scoped-role-decisions -->
 
-<!-- planned:authorize-person-roles-at-scope -->
 The preceding pre-handler clearance rule has one named-target exception:
 `telec bugs --project` naming a trusted directory completes person-band
 clearance inside its handler (`project/design/architecture/cli-invocation-boundary`
 invariant 5).
-<!-- /planned:authorize-person-roles-at-scope -->
 
 `telec sessions end` and `telec sessions restart` each admit one act outside their band, decided in the same clearance from the caller's own session record and the command's target: a session may end itself when its record names no orchestrating parent (`feature/identity/self-end-authorization-bypass`), and a session may restart itself (`feature/identity/self-restart-authorization-bypass`). A worker is refused a restart of any session other than its own, whatever the band says.
 
@@ -484,7 +476,6 @@ And no request reaches the daemon
 And the session is not revived
 ```
 
-<!-- planned:authorize-person-roles-at-scope -->
 ### Person role at the command's scope
 
 A person is cleared by their effective role at the command's scope
@@ -519,17 +510,12 @@ person's session may run and never widens it. A session acting for a system
 principal carries no person and is judged by the agent band alone. A command that
 reads across many objects, such as a history search, is cleared at its scope, and
 the objects' owners then narrow what it returns.
-<!-- /planned:authorize-person-roles-at-scope -->
 
 ## Known caveats
 
 - The refusal names the caller's role: `"role '<role>' is not permitted to call <tool>"`.
 - Admin is NOT implicit. The "all human roles" band lists `admin` explicitly alongside the other human roles. A future band that forgets to include `admin` will lock admins out of that verb — there is no automatic override.
-<!-- planned-change:authorize-person-roles-at-scope -->
-- Agent callers check only the system band. A `CallerIdentity` with `system_role=worker` and a permissive `human_role` cannot fall through to the human band — the allowlist evaluator returns immediately on the system branch.
-<!-- change:authorize-person-roles-at-scope -->
 - An agent caller never falls through to the person band as an alternative: an agent band that refuses the session's system role refuses the command, whatever role the person holds. The person band applies to an agent caller only as the further bound on a session acting for a person.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 - Unknown verb paths return False. A typo in a binding's verb argument silently locks out every caller — there is no startup-time check that every verb identifier resolves to a real entry in the CLI surface.
 - The verb resolver normalizes `"telec sessions start"`, `"sessions.start"`, and `"sessions start"` to the same path. Mixed forms across operation bindings do not cause divergence, but the dot form is undocumented.
 

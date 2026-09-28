@@ -7,32 +7,16 @@ visibility: 'public'
 
 ## Purpose
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-Who may run which `telec` command. Every command declares, in the CLI surface schema (`CLI_SURFACE`), the agent roles and the person roles it admits; the schema owns each command's exact declaration. This design owns how those declarations group roles, so an agent role's reach reads in one place instead of being scattered across per-command lists. The gate that enforces a declaration before the command's handler runs is `project/design/architecture/cli-invocation-boundary`; the clearance rule it applies is `project/spec/feature/identity/command-clearance`.
-<!-- change:authorize-person-roles-at-scope -->
 Who may run which `telec` command. Every command declares, in the CLI surface schema (`CLI_SURFACE`), the agent roles and the person roles it admits; the schema owns each command's exact declaration. This design owns how those declarations group roles, so an agent role's reach reads in one place instead of being scattered across per-command lists. The clearance boundary, including a named-target decision that completes inside its handler, is `project/design/architecture/cli-invocation-boundary`; its role rule is `project/spec/feature/identity/command-clearance`.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Inputs/Outputs
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-- **Input:** the caller the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6) — a session's system role derived from its record, or a person's role as the people registry holds it when the command runs — and the command's declaration.
-<!-- change:authorize-person-roles-at-scope -->
 - **Input:** the caller the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6) — a session's system role derived from its record, or a person's effective role for the object the command acts on (`project/design/architecture/scoped-roles`) — and the command's declaration.
-<!-- /planned-change:authorize-person-roles-at-scope -->
-<!-- planned-change:authorize-person-roles-at-scope -->
-- **Output:** admit or refuse, decided in the process that runs the command, before its handler runs and before any request reaches the daemon. The TUI applies the declaration of the command each of its actions performs.
-<!-- change:authorize-person-roles-at-scope -->
 - **Output:** admit or refuse, decided in the process that runs the command before any project operation or daemon request. The pre-dispatch gate completes commands whose target is known; a trusted-directory-named command completes its person band when its handler resolves the directory. The TUI applies the declaration of the command each of its actions performs.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Invariants
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-1. An agent caller is judged by the agent roles a declaration admits and a person caller by the command's person band; neither falls through to the other.
-<!-- change:authorize-person-roles-at-scope -->
 1. An agent caller is judged by the agent roles a declaration admits, and a person caller by the command's person band at the person's effective role for the command's scope; neither falls through to the other. A session acting for a person must also pass the person band with that person's effective role — its agent role narrows and never widens the person's reach.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 2. The worker is the one focused agent role: it reaches the commands its briefs run and nothing that reads or acts across the fleet.
 3. Every other agent role reaches every agent command, starting sessions included, except the reservations in invariant 4. No agent role carries a band of its own beyond them.
 4. Only an orchestrator drives a todo state machine. The integrator alone holds integration and maintenance.
@@ -61,11 +45,7 @@ A role's reach is declared once, as a group, in the CLI surface schema; a comman
 
 ### Person role bands
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-Each command keeps a person band of its own in the CLI surface schema. The tiers are:
-<!-- change:authorize-person-roles-at-scope -->
 Each command keeps a person band of its own in the CLI surface schema, evaluated against the person's effective role at the command's scope (`project/spec/feature/identity/command-clearance`). The tiers are:
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 - **Admin** — the system owner: every command except `sessions escalate`, whose target they are.
 - **Member** — works on projects and manages sessions; no infrastructure acts such as reviving sessions, setting agent status, or reading and writing the machine environment.

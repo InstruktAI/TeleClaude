@@ -38,15 +38,6 @@ And the `agent_runtime.session.started` event is published when the session is l
 
 #### UC-SL2: Principal binding from identity
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-```
-Given the request supplies terminal origin metadata (email payload)
-When the agent_runtime service resolves identity via the identity resolver
-Then human_email and human_role are populated from the identity context when not explicitly provided
-And when an initiator session id references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
-And a session creation without any resolved human_role AND no system role is rejected — the request is refused
-```
-<!-- change:authorize-person-roles-at-scope -->
 ```
 Given the request supplies terminal origin metadata (email payload)
 When the agent_runtime service resolves identity via the identity resolver
@@ -55,7 +46,6 @@ And when an initiator session id references a parent session, missing human_emai
 And the session's human_role is the effective role of the person it runs for, for the project it runs in (`project/design/architecture/scoped-roles`), never the parent's role and never a role above that effective role
 And a session creation without any resolved human_role AND no system role is rejected — the request is refused
 ```
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 #### UC-SL20: Single-user terminal caller resolves to admin
 
@@ -68,20 +58,12 @@ Then the session record's human_role is admin, taken from the caller identity th
 
 #### UC-SL21: Restricted role is jailed to the help-desk
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-```
-Given the request carries a human_role that is neither admin nor member, and no system_role
-When the session is created
-Then the session's project_path is confined to the computer's help-desk directory
-```
-<!-- change:authorize-person-roles-at-scope -->
 ```
 Given the session's human_role for the requested project is neither admin nor member
 And the request carries no system_role
 When the session is created
 Then the session's project_path is confined to the computer's help-desk directory
 ```
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 #### Computer routing
 
@@ -407,7 +389,6 @@ And the launch intent's message is wrapped with the direct-conversation protocol
 And the conversation link operates orthogonally to stop-listener subscriptions
 ```
 
-<!-- planned:authorize-person-roles-at-scope -->
 #### UC-SL39: A session holds its person's role for the project it runs in
 
 ```
@@ -430,7 +411,6 @@ And no session running in a project owned by another company, or in no registere
 And sessions other computers share with this one, or a listing that names another computer, are available only to a person holding a platform role here
 And a platform administrator's listing is unchanged
 ```
-<!-- /planned:authorize-person-roles-at-scope -->
 
 ### Cross-context references
 
@@ -445,24 +425,14 @@ And a platform administrator's listing is unchanged
 
 ## Known caveats
 
-<!-- planned:authorize-person-roles-at-scope -->
 - **The recorded human_role decides placement at creation.** It decides help-desk confinement when the session is created, and a confined session keeps its placement for its life. Every later decision about a session run for a person — its launch profile, customer-facing channel routing, projection defaults — reads that person's effective role for the session's project when the decision is made, whether or not the session is confined: a granted or withdrawn role applies from the next decision, and a person no longer registered holds none above customer (`project/design/architecture/scoped-roles`). A session run for an unregistered platform user keeps its recorded role, customer.
-<!-- /planned:authorize-person-roles-at-scope -->
 - **Host-pane reference uses the full session id.** The format is `<teleclaude-prefix><session-id>` with the full id; the v2-target domain spec phrases it as a short id for readability, but no shortening occurs here.
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
-<!-- planned-change:authorize-person-roles-at-scope -->
-- **Listing reveals everything reachable.** TUI and tool clients are unfiltered. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
-<!-- change:authorize-person-roles-at-scope -->
 - **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project is listed only for a platform role. Another computer's sessions, whether named or shared between computers, are judged at platform scope (`project/design/architecture/scoped-roles`), so they are listed only for a platform role held here. The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
-<!-- /planned-change:authorize-person-roles-at-scope -->
-<!-- planned-change:authorize-person-roles-at-scope -->
-- **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the human role is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
-<!-- change:authorize-person-roles-at-scope -->
 - **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 
 ## See Also

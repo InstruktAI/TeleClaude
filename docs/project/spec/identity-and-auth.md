@@ -26,19 +26,11 @@ TeleClaude uses one identity model across API, TUI, and adapters:
 
 ### 1) Person source of truth
 
-<!-- planned-change:authorize-person-roles-at-scope -->
-| Field   | Type   | Description                                           |
-| ------- | ------ | ----------------------------------------------------- |
-| `name`  | string | Display name used in UI and logs.                     |
-| `email` | string | Canonical email address used for OTP authentication.  |
-| `role`  | enum   | One of: `admin`, `member`, `contributor`, `newcomer`. |
-<!-- change:authorize-person-roles-at-scope -->
 | Field   | Type   | Description                                           |
 | ------- | ------ | ----------------------------------------------------- |
 | `name`  | string | Display name used in UI and logs.                     |
 | `email` | string | Canonical email address used for OTP authentication.  |
 | `role`  | enum   | Optional platform role — one of `admin`, `member`, `contributor`, `newcomer`; absent when the person holds no role at platform scope. A person's authority for an object is their effective role for it (`project/design/architecture/scoped-roles`). |
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
@@ -154,19 +146,12 @@ the client sends any request:
   through the session id its identity document names, and a principal copied into
   that document is never trusted; a caller outside any session resolves from its
   terminal login, and the TUI from the identity it was launched with,
-<!-- planned-change:authorize-person-roles-at-scope -->
-- a session's principal resolves through the principal-resolution capability; its
-  person role is the role the people registry holds for that principal when the
-  command runs, so a changed person role applies from the session's next command,
-  and a gate grants a session no role its principal does not resolve to,
-<!-- change:authorize-person-roles-at-scope -->
 - a session's principal resolves through the principal-resolution capability; its
   person role for a command is that person's effective role at the command's scope
   (`project/design/architecture/scoped-roles`), read from the people registry and
   company rosters when the command runs, so a changed role applies from the
   session's next command, and a gate grants a session no role its principal does
   not resolve to; a session acting for a person is also bounded by that role,
-<!-- /planned-change:authorize-person-roles-at-scope -->
 <!-- planned-change:relay-scoped-role-decisions -->
 - every request a `telec` command sends to the daemon is cleared as that command,
   against its verb band (`project/design/cli-authorization-matrix`), once, before

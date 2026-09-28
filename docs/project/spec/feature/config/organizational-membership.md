@@ -50,11 +50,7 @@ with a valid one.
 : A company or project that exists in the platform's own registries. Every declaration names one; a declaration naming anything else is invalid.
 
 **Company role**
-<!-- planned-change:authorize-person-roles-at-scope -->
-: The role a person holds in the business, drawn from the closed set `admin` and `member`. `admin` is the company's own administrator and owner; `member` is every other business relationship. Every membership declaration carries one, and this vocabulary is independent of the platform role a person holds.
-<!-- change:authorize-person-roles-at-scope -->
 : The role a person holds in the business, drawn from the person-role vocabulary the platform role also uses: `admin`, `member`, `contributor`, `newcomer`. `admin` is the company's own administrator and owner. Every membership declaration carries one; a declaration naming any other value is invalid.
-<!-- /planned-change:authorize-person-roles-at-scope -->
 
 **Maintenance surface**
 : The ordinary administrator-facing configuration surface through which declarations are written and withdrawn, so no declaration requires editing a file by hand.
