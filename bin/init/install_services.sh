@@ -222,20 +222,6 @@ install_systemd_service() {
     local service_file="/etc/systemd/system/${service_name}.service"
     local path_file="/etc/systemd/system/${service_name}-config.path"
 
-    # Create wrapper script for SSH agent support
-    cat > "$PROJECT_ROOT/bin/teleclaude-wrapper.sh" <<'EOF'
-#!/bin/bash
-# Resolve project root from this script location so it works under systemd.
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# Source keychain SSH agent environment
-if [ -f ~/.keychain/$(hostname)-sh ]; then
-    source ~/.keychain/$(hostname)-sh
-fi
-# Execute daemon
-exec $PROJECT_ROOT/.venv/bin/python -m teleclaude.daemon
-EOF
-    chmod +x "$PROJECT_ROOT/bin/teleclaude-wrapper.sh"
-
     local rendered_service
     rendered_service="$(mktemp)"
     cat > "$rendered_service" <<EOF
