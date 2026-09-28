@@ -192,9 +192,6 @@ class Platform:
 type RoleTarget = ProjectPath | Project | Company | Person | SessionOf | DocsTier | OperationOf | Platform
 
 
-_UNKNOWN_ROLE_SCOPE_ERROR = "Unknown role scope: {scope}"
-
-
 class CliResolvedIdentityFields(Protocol):
     """Resolved identity facts the client serializes onto its daemon request."""
 
@@ -289,7 +286,7 @@ def effective_role(facts: PersonRoleFacts, scope: RoleScope) -> str:
             if person == facts.person_slug:
                 candidates.append(HUMAN_ROLE_ADMIN)
         case _:
-            raise TypeError(_UNKNOWN_ROLE_SCOPE_ERROR.format(scope=scope))
+            return assert_never(scope)
 
     recognized = [role for role in candidates if role in HUMAN_ROLES]
     if not recognized:
