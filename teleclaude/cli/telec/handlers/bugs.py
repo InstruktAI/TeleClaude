@@ -15,7 +15,7 @@ from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
-from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
+from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
     MatchMode,
@@ -104,7 +104,14 @@ def _resolve_project_slug(project_name: str | None) -> str:
         load_project_node,
     )
 
-    root = _resolve_project_by_name(project_name) if project_name else resolve_invocation_cwd()
+    if project_name:
+        root = _resolve_project_by_name(project_name)
+    else:
+        try:
+            root = resolve_invocation_roots().require_project_root()
+        except FileNotFoundError as exc:
+            print(exc, file=sys.stderr)
+            raise SystemExit(1) from exc
     node = load_project_node(root)
     if node is None:
         print(f"No loadable teleclaude.yml under {root}; cannot resolve project for suppression.")
@@ -228,7 +235,7 @@ def _handle_bugs_list(args: list[str]) -> None:
     async def read_bugs(_todos_db: TodosDb) -> list[BugListEntryDTO]:
         from teleclaude.services.work import get_work_service  # noqa: PLC0415 - deferred command-local dependency.
 
-        project_root = resolve_project_root(resolve_invocation_cwd())
+        project_root = resolve_invocation_roots().require_project_root()
         return get_work_service(str(project_root)).todo.bug_entries()
 
     bugs = run_todo_read(read_bugs)

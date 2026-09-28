@@ -37,6 +37,7 @@ from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import HolderWriteRefused
+from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -155,7 +156,11 @@ async def write_artifact(
         )
     effective_cwd = cwd or _default_cwd()
     request_id = str(uuid.uuid4())
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    try:
+        project_root = str(resolve_project_root(effective_cwd))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    todos_db = await _get_todos_db_from_cwd(project_root)
     await require_slug_in_todo(todos_db, slug)
     await _refuse_holder_mutation(todos_db, slug)
     await refuse_foreign_claim(todos_db, identity, slug)
@@ -170,7 +175,7 @@ async def write_artifact(
                 todos_db,
                 slug,
                 name,
-                repo_root=effective_cwd,
+                repo_root=project_root,
                 artifact_body=content,
                 prepared_session_id=identity.session_id,
             )

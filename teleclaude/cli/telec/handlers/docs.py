@@ -15,14 +15,10 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import DOCS_GET, DOCS_INDEX
-from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.loader import load_app_config
 from teleclaude.config.schema import ConfigKind
 from teleclaude.context_selector import ActivationClosureError, build_context_output
-from teleclaude.core.project_state import resolve_project_state_root
-from teleclaude.project_root import (
-    resolve_invocation_cwd,
-)
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.snippet_scope import SnippetScope
 
 __all__ = [
@@ -99,13 +95,12 @@ def _emit_retrieval_accepted(
 
 
 def _resolve_docs_context() -> DocsContext:
-    invocation_cwd = resolve_invocation_cwd()
-    context = resolve_context_root(invocation_cwd)
-    if context is None:
-        return DocsContext(project_root=invocation_cwd, include_registered_projects=True)
-    if context.kind is ConfigKind.PROJECT:
-        return DocsContext(project_root=resolve_project_state_root(context.path), include_registered_projects=False)
-    return DocsContext(project_root=context.path, include_registered_projects=False)
+    roots = resolve_invocation_roots()
+    if roots.context_root is None:
+        return DocsContext(project_root=roots.invocation_dir, include_registered_projects=True)
+    if roots.context_kind is ConfigKind.PROJECT:
+        return DocsContext(project_root=roots.require_project_root(), include_registered_projects=False)
+    return DocsContext(project_root=roots.context_root, include_registered_projects=False)
 
 
 def _parse_scope(value: str, subcommand: str) -> SnippetScope:

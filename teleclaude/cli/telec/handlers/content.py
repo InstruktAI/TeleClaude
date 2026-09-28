@@ -17,7 +17,7 @@ from teleclaude.config import config
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event, loop_local_producer
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.slug import normalize_slug
 
 __all__ = [
@@ -63,13 +63,12 @@ def _handle_content_dump(args: list[str]) -> None:
         return
 
     text, slug, tags, author = _parse_content_dump_args(args)
-    project_root = resolve_invocation_cwd()
-
     if slug:
         # Validate and normalise provided slug
         slug = normalize_slug(slug)
 
     try:
+        project_root = resolve_invocation_roots().require_project_root()
         resolved_author = author if author is not None else _resolve_author()
         resolved_tags = tags or []
         entry_dir = create_content_inbox_entry(

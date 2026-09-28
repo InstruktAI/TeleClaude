@@ -12,7 +12,7 @@ from teleclaude.capabilities import (
     resolve_capabilities,
     resolve_tier_permissions,
 )
-from teleclaude.project_root import declaration_root, resolve_invocation_roots
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.quality.gate import QualityGateLeg
 
 
@@ -23,11 +23,6 @@ class InvocationState:
     context_root: Path | None
     repository_root: Path
     tier_permissions: TierPermissions | None
-
-    @property
-    def project_root(self) -> Path:
-        """Return the repository root retained by existing code paths."""
-        return self.repository_root
 
     @property
     def capabilities(self) -> Capabilities:
@@ -63,9 +58,7 @@ class InvocationState:
 def resolve_invocation_state() -> InvocationState:
     """Resolve the acting context and containing repository for one command."""
     roots = resolve_invocation_roots()
-    permissions = (
-        resolve_tier_permissions(declaration_root(roots.context_root)) if roots.context_root is not None else None
-    )
+    permissions = resolve_tier_permissions(roots.context_root) if roots.context_root is not None else None
     return InvocationState(
         context_root=roots.context_root,
         repository_root=roots.repository_root,

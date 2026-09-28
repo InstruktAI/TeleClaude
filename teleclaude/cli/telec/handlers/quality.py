@@ -9,7 +9,7 @@ from pathlib import Path
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_LINT, CODE_TEST
-from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.quality.gate import run_lint_gate, run_make_target
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
@@ -30,7 +30,7 @@ def handle_lint(args: list[str]) -> None:
     parsed = parse_command_args(CODE_LINT, args)
     run_all = parsed.has(F.FLAG_CODE_ALL_LINT)
     files = list(parsed.positionals)
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    project_root = resolve_invocation_roots().repository_root
 
     scoped_files = _resolve_quality_scope(project_root, files=files, run_all=run_all)
     if scoped_files == []:
@@ -60,7 +60,7 @@ def handle_test(args: list[str]) -> None:
         print("ERROR: telec code test does not accept file operands", file=sys.stderr)
         raise SystemExit(2)
     update_snapshots = parsed.has(F.FLAG_CODE_UPDATE_SNAPSHOTS)
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    project_root = resolve_invocation_roots().repository_root
     variables = {"SNAPSHOT_UPDATE": "1"} if update_snapshots else None
     exit_code = _run_make("test", project_root, variables=variables)
     if exit_code != 0:
@@ -75,7 +75,7 @@ def handle_format(args: list[str]) -> None:
     """
     parsed = parse_command_args(CODE_FORMAT, args)
     run_all = parsed.has(F.FLAG_CODE_ALL_FORMAT)
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    project_root = resolve_invocation_roots().repository_root
     files = list(parsed.positionals)
     scoped_files = None
     if files:

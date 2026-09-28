@@ -20,7 +20,7 @@ from teleclaude.core.integration.post_commit_maintenance import (
     maintenance_status,
     retry_failed_action,
 )
-from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_roots
 
 _USAGE = "Usage: telec code maintenance {status|drain|retry}"
 _RETRY_USAGE = "Usage: telec code maintenance retry --after-sha <sha> --action <id>"
@@ -81,7 +81,7 @@ def handle_code_maintenance(args: list[str]) -> None:
 
 def _invocation_root() -> Path:
     """Return the actual checkout root so worktrees fail drain eligibility."""
-    return resolve_git_root(resolve_invocation_cwd())
+    return resolve_invocation_roots().repository_root
 
 
 def _retry(args: list[str]) -> None:

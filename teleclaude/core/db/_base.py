@@ -20,7 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core.migrations.runner import baseline_migrations, run_pending_migrations
 from teleclaude.paths import EVENTS_DB_PATH
-from teleclaude.project_root import is_slug_worktree, resolve_git_root, resolve_invocation_cwd
+from teleclaude.project_root import is_slug_worktree, resolve_invocation_roots
 
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
@@ -94,7 +94,7 @@ def _invoked_from_slug_worktree() -> bool:
     rather than blocking it.
     """
     try:
-        return is_slug_worktree(resolve_git_root(resolve_invocation_cwd()))
+        return is_slug_worktree(resolve_invocation_roots().repository_root)
     except (OSError, FileNotFoundError, RuntimeError):
         return False
 

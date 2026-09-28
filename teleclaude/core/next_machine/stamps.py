@@ -80,7 +80,7 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
-from teleclaude.project_root import resolve_invocation_project_root, resolve_project_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -173,6 +173,7 @@ async def apply_todo_stamp(
     Agent-authored stamps are gated by the caller's slug binding and the todo's
     active runner claim before any mutation is applied.
     """
+    project_root = str(resolve_project_root(cwd))
     request_id = str(uuid.uuid4())
     if stamp_type == "verdict":
         _validate_and_log_verdict_stamp_request(
@@ -183,7 +184,7 @@ async def apply_todo_stamp(
             request_id=request_id,
         )
 
-    todos_db = await get_todos_db(cwd)
+    todos_db = await get_todos_db(project_root)
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         raise ValueError(f"no state found for slug '{slug}'")
@@ -198,10 +199,12 @@ async def apply_todo_stamp(
     _log_kickback_request_acceptance(stamp_type, slug=slug, caller_session_id=caller_session_id)
 
     if stamp_type == "verdict":
-        return await _apply_verdict_stamp(todos_db, cwd, slug, phase or "", value, caller_session_id or "", request_id)
+        return await _apply_verdict_stamp(
+            todos_db, project_root, slug, phase or "", value, caller_session_id or "", request_id
+        )
 
     if stamp_type == "finalize_ready":
-        return await asyncio.to_thread(stamp_finalize_ready, cwd, slug, caller_session_id or "")
+        return await asyncio.to_thread(stamp_finalize_ready, project_root, slug, caller_session_id or "")
 
     return await _apply_mutation_stamp(
         todos_db,
@@ -211,7 +214,7 @@ async def apply_todo_stamp(
         value=value,
         phase=phase,
         caller_session_id=caller_session_id,
-        cwd=cwd,
+        cwd=project_root,
     )
 
 
@@ -334,6 +337,7 @@ async def _apply_mutation_stamp(
             outcome=phase or "",
             reason=value,
             caller_session_id=caller_session_id,
+            project_root=cwd,
         )
     else:
         raise ValueError(f"unknown stamp type: {stamp_type}")
@@ -429,7 +433,7 @@ async def _apply_verdict_stamp(
             raise ValueError(f"no state found for slug '{slug}'")
         report_digest = await todos_db.artifact_digest_in_session(slug, binding.report_artifact_name, session)
         if binding.target_artifact_key is None:
-            worktree = resolve_project_root(cwd) / WORKTREE_DIR / slug
+            worktree = Path(cwd) / WORKTREE_DIR / slug
             target_digest = await asyncio.to_thread(get_head_commit, str(worktree))
         else:
             target_artifact = _STATE_KEY_TO_ARTIFACT_NAME[binding.target_artifact_key]
@@ -742,7 +746,7 @@ async def _apply_build_complete_stamp(
             "expected build_started or review_changes_requested"
         )
 
-    worktree_cwd = str(Path(resolve_project_root(cwd)) / WORKTREE_DIR / slug)
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not has_build_commits_beyond_main(worktree_cwd):
         raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
 
@@ -835,6 +839,7 @@ async def _apply_task_outcome_stamp(
     outcome: str,
     reason: str,
     caller_session_id: str | None,
+    project_root: str,
 ) -> dict[str, StateValue]:
     """Reconcile a task firing's outcome into the todo's terminal state.
 
@@ -869,11 +874,10 @@ async def _apply_task_outcome_stamp(
             writer.state.hold_audit = HoldAuditState()
         return await writer.commit(todos_db, slug)
 
-    project_root = resolve_invocation_project_root()
-    receipt = reconcile_lifecycle_markers(project_root, slug, MarkerMoment.DELIVER)
+    receipt = reconcile_lifecycle_markers(Path(project_root), slug, MarkerMoment.DELIVER)
     if not receipt.succeeded:
         raise StateMutationError(f"task_outcome success could not reconcile slug '{slug}': {receipt.reason}")
-    if not await todos_db.deliver(slug, reconciliation_receipt=receipt, reconciliation_root=project_root):
+    if not await todos_db.deliver(slug, reconciliation_receipt=receipt, reconciliation_root=Path(project_root)):
         raise StateMutationError(f"task_outcome success could not deliver slug '{slug}': no active row")
     delivered = await todos_db.read_state_delivered(slug)
     if delivered is None:

@@ -16,6 +16,7 @@ from teleclaude.cli.telec.handlers.auth_cmds import _requires_tui_login
 from teleclaude.cli.tui.processes import deregister_tui
 from teleclaude.config import config
 from teleclaude.constants import ENV_ENABLE
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.runtime.environment import filter_tui_tmux_environment
 
 __all__ = [
@@ -42,6 +43,7 @@ def start_tui() -> None:
 
 
 def _exec_tmux_tui() -> None:
+    invocation_dir = resolve_invocation_roots().invocation_dir
     terminal_email = read_current_session_email()
     if _requires_tui_login() and not terminal_email:
         print("Error: telec auth login is required before starting the TUI in multi-user mode.")
@@ -60,7 +62,8 @@ def _exec_tmux_tui() -> None:
     tui_env[TUI_ENV_KEY] = ENV_ENABLE
     if terminal_email:
         tui_env[TUI_CARRIED_IDENTITY_ENV_KEY] = terminal_email
-    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME]
+    # Start the pane where the next wrapper can recapture the caller's directory.
+    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME, "-c", str(invocation_dir)]
     for key, value in tui_env.items():
         tmux_args.extend(["-e", f"{key}={value}"])
     tmux_args.append("telec")
@@ -151,6 +154,8 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
         # Mark as reload so the new process skips re-applying pane layout.
         os.environ["TELEC_RELOAD"] = "1"  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         executable, argv = _resolve_reload_exec_argv()
+        # The wrapper recaptures its invocation directory from the process cwd.
+        os.chdir(resolve_invocation_roots().invocation_dir)
         os.execvp(executable, argv)
 
 

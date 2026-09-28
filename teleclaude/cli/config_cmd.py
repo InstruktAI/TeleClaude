@@ -78,7 +78,7 @@ from teleclaude.core.configuration_clearance import (
 )
 from teleclaude.core.organization import resolve_organization
 from teleclaude.invite import invite_person
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_roots
 
 _YAML = "yaml"
 _JSON = "json"
@@ -328,7 +328,9 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             request_id=request_id,
         )
         _run_init(
-            lambda: init_project_subject(resolve_invocation_cwd(), request_id=request_id), output_format, request_id
+            lambda: init_project_subject(resolve_invocation_roots().adoption_root(), request_id=request_id),
+            output_format,
+            request_id,
         )
         return
 

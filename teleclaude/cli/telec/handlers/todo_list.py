@@ -17,7 +17,7 @@ from teleclaude.constants import TodoStatus
 from teleclaude.core.todo import parse_since_to_cutoff
 from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.project_root import resolve_invocation_project_root
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.services.work import get_work_service
 
 __all__ = ["_handle_todo_list", "_resolve_project_root_or_exit"]
@@ -26,12 +26,12 @@ __all__ = ["_handle_todo_list", "_resolve_project_root_or_exit"]
 def _resolve_project_root_or_exit() -> Path:
     """Resolve the invocation project root, or exit with a clean CLI error.
 
-    ``resolve_invocation_project_root`` raises ``FileNotFoundError`` when the
+    ``require_project_root`` raises ``FileNotFoundError`` when the
     invocation cwd does not resolve to a project checkout; surfaced as a raw
     traceback otherwise, unlike the daemon API's equivalent clean 400.
     """
     try:
-        return resolve_invocation_project_root()
+        return resolve_invocation_roots().require_project_root()
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

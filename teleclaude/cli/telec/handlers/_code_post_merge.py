@@ -10,7 +10,7 @@ from teleclaude.core.integration.post_commit_maintenance import (
     resolve_post_merge_activation_range,
     start_drain_contender,
 )
-from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd, resolve_project_root
+from teleclaude.project_root import resolve_invocation_roots, resolve_project_root
 
 _POST_MERGE_USAGE = "Usage: telec code post-merge"
 
@@ -20,7 +20,7 @@ def handle_code_post_merge(args: list[str]) -> None:
     if args:
         print(_POST_MERGE_USAGE, file=sys.stderr)
         raise SystemExit(2)
-    checkout_root = resolve_git_root(resolve_invocation_cwd())
+    checkout_root = resolve_invocation_roots().repository_root
     effective_root = resolve_post_merge_root(checkout_root)
     canonical_root = resolve_project_root(effective_root)
     activation_range = resolve_post_merge_activation_range(effective_root)

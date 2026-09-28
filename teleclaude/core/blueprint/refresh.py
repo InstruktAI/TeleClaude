@@ -25,7 +25,7 @@ from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV
 from teleclaude.core.blueprint._paths import refresh_lock_path
 from teleclaude.core.blueprint.generate import blueprint_generation_lock, regenerate_blueprint
 from teleclaude.core.blueprint.post_merge import _rev_parse, resolve_post_merge_root
-from teleclaude.project_root import is_slug_worktree, resolve_invocation_cwd, resolve_workspace_root
+from teleclaude.project_root import is_slug_worktree, resolve_invocation_roots
 
 logger = get_logger(__name__)
 _ORIGIN_MAIN_REFERENCE = "origin/main"
@@ -40,7 +40,8 @@ def _dispatched_from_slug_worktree() -> bool:
     refresh from an indeterminate origin.
     """
     try:
-        return is_slug_worktree(resolve_workspace_root(resolve_invocation_cwd()))
+        context_root = resolve_invocation_roots().context_root
+        return context_root is None or is_slug_worktree(context_root)
     except FileNotFoundError:
         return True
 

@@ -16,7 +16,7 @@ from teleclaude.core.blueprint import (
 )
 from teleclaude.core.blueprint.affected import AffectedResult
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.project_root import resolve_invocation_project_root
+from teleclaude.project_root import resolve_invocation_roots
 
 __all__ = ["handle_code_blueprint"]
 
@@ -79,7 +79,7 @@ def _handle_blueprint_affected(args: list[str]) -> None:
         print(_AFFECTED_USAGE)
         raise SystemExit(1)
 
-    state_root = resolve_invocation_project_root()
+    state_root = resolve_invocation_roots().require_project_root()
     manifest = read_manifest(manifest_path(state_root))
     main_sha = _resolve_main_sha(str(state_root))
     freshness = evaluate_freshness(manifest, current_main_sha=main_sha)
