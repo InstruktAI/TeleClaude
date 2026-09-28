@@ -39,6 +39,8 @@ Then a new outbox entry is recorded with creation timestamp = next-attempt-at = 
 And the entry is committed before the subprocess exits
 ```
 
+<!-- planned-change:event-driven-agent-status -->
+
 #### UC-OB2: Coalesce overwrites prior unclaimed entry
 
 ```gherkin
@@ -52,6 +54,23 @@ And no new entry is recorded
 And no second entry is created
 ```
 
+<!-- change:event-driven-agent-status -->
+
+#### UC-OB2: Coalesce overwrites prior unclaimed entry
+
+```gherkin
+Given an unclaimed outbox entry exists for (session id, agent-stop) with creation timestamp within 1.0 second
+When the receiver enqueues for the same key with a 1.0s latest-wins window
+Then a guarded read inside the same transaction finds the prior entry
+And the existing entry's payload is overwritten with the new payload
+And creation timestamp and next-attempt-at are set to now
+And attempt count is reset to 0, last error to none
+And no new entry is recorded
+And no second entry is created
+```
+
+<!-- /planned-change:event-driven-agent-status -->
+
 #### UC-OB3: Coalesce skipped when prior entry is claimed
 
 ```gherkin
@@ -61,6 +80,19 @@ Then the "unclaimed only" filter excludes the in-flight entry
 And a NEW entry is recorded alongside the in-flight one
 And both will be processed by the integration service's worker
 ```
+
+<!-- planned:event-driven-agent-status -->
+
+#### UC-OB6: Tool events are never coalesced
+
+```gherkin
+Given the receiver enqueues a tool-use or tool-result event
+When an unclaimed entry of the same type exists for the session within any window
+Then a new entry is recorded alongside it
+And each tool call's start and end reach the integration service individually
+```
+
+<!-- /planned:event-driven-agent-status -->
 
 #### UC-OB4: Codex agent_stop uses a wider 10s coalesce window
 
@@ -116,9 +148,17 @@ And the receiver's parse-failure paths do NOT pass payload data,
 
 ## Known caveats
 
+<!-- planned-change:event-driven-agent-status -->
 - The outbox is locally persisted; concurrent receivers may experience
   contention during high-frequency tool-use bursts. Coalescing the
   bursty events into 1-second windows reduces contention.
+<!-- change:event-driven-agent-status -->
+- The outbox is locally persisted; concurrent receivers may experience
+  contention during high-frequency tool-use bursts. Tool events are not
+  coalesced, because each one opens or closes a tool call the session's
+  agent status tracks; the coalesce windows apply to the other bursty
+  events.
+<!-- /planned-change:event-driven-agent-status -->
 - The latest-wins window is enforced via a guarded read-then-write
   inside one transaction; there is a narrow race where two receivers
   running in parallel both see no prior entry and both insert. This is

@@ -68,6 +68,30 @@ Current raw-to-normalized lifecycle mapping:
 | DeepSeek    | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
 | DeepSeek    | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
 
+<!-- planned:event-driven-agent-status -->
+Tool-call closure mapping. Every tool event carries the provider's own
+identifier for the call — `tool_use_id` for Claude, Codex, and DeepSeek,
+`stepIdx` for Antigravity — normalized as one tool-call identifier, so
+parallel calls open and close individually:
+
+| Agent       | Raw event            | Normalized event | Closes                                   |
+| ----------- | -------------------- | ---------------- | ---------------------------------------- |
+| Claude      | `PostToolUse`        | `post_tool_use`  | the identified call (returned)           |
+| Claude      | `PostToolUseFailure` | `post_tool_use`  | the identified call (failed)             |
+| Claude      | `PostToolBatch`      | `post_tool_use`  | every open call (batch resolved)         |
+| Codex       | `PostToolUse`        | `post_tool_use`  | the identified call (any result)         |
+| DeepSeek    | `PostToolUse`        | `post_tool_use`  | the identified call (returned)           |
+| DeepSeek    | `PostToolUseFailure` | `post_tool_use`  | the identified call (failed)             |
+| DeepSeek    | `PostToolBatch`      | `post_tool_use`  | every open call (batch resolved)         |
+| Antigravity | `PostToolUse`        | `post_tool_use`  | the identified call (any result)         |
+| Antigravity | `PostInvocation`     | `post_tool_use`  | nothing; it carries no tool-call identifier |
+
+A `post_tool_use` without a tool-call identifier and without batch resolution
+is activity only. A runtime that reports a call's start but never its end
+leaves that call open until the turn ends; the tool events are therefore
+delivered losslessly by the hook outbox.
+<!-- /planned:event-driven-agent-status -->
+
 `agent_blocked` and `agent_turn_failed` are the distress vocabulary: a session
 waiting on an approval or input decision it cannot resolve itself, and a turn
 terminated by a runtime or provider failure. Coverage is whatever each provider

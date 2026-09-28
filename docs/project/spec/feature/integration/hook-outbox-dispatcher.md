@@ -55,6 +55,8 @@ And on success, the entry is removed from the outbox
 And the processed-count metric is incremented
 ```
 
+<!-- planned-change:event-driven-agent-status -->
+
 #### UC-D2: Stale non-lifecycle event evicted
 
 ```gherkin
@@ -66,6 +68,21 @@ And the stale-dropped metric is incremented
 And a summary log records the drop
 ```
 
+<!-- change:event-driven-agent-status -->
+
+#### UC-D2: Stale non-lifecycle event evicted
+
+```gherkin
+Given an outbox entry whose event type moves no session's agent status has creation timestamp older than the staleness TTL
+When the staleness check evaluates the entry during the polling tick
+And the event type is not in the staleness-exempt set, which holds every event that moves a session's agent status
+Then the entry is removed without dispatch
+And the stale-dropped metric is incremented
+And a summary log records the drop
+```
+
+<!-- /planned-change:event-driven-agent-status -->
+
 #### UC-D3: Critical event reserves capacity
 
 ```gherkin
@@ -74,6 +91,8 @@ And a critical event (agent-stop) arrives via claim
 Then it is accepted into pending despite being at capacity
 And future bursty events are rejected or coalesced because the critical-reserve slots are reserved
 ```
+
+<!-- planned-change:event-driven-agent-status -->
 
 #### UC-D4: Bursty same-type coalesce inside the dispatcher queue
 
@@ -86,6 +105,22 @@ And the new item replaces the old in pending (same slot)
 And the displaced entry id is added to the delete-on-coalesce list
 And the coalesced-count metric is incremented
 ```
+
+<!-- change:event-driven-agent-status -->
+
+#### UC-D4: Bursty same-type coalesce inside the dispatcher queue
+
+```gherkin
+Given the per-session pending queue has a bursty item not yet dispatched
+And no critical event sits after it in pending
+When another item of the same bursty type arrives via claim
+Then the bursty-coalesce probe locates the existing item
+And the new item replaces the old in pending (same slot)
+And the displaced entry id is added to the delete-on-coalesce list
+And the coalesced-count metric is incremented
+```
+
+<!-- /planned-change:event-driven-agent-status -->
 
 #### UC-D5: Watermark hysteresis pauses claims
 

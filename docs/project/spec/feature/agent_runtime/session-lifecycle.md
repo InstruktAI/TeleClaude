@@ -233,7 +233,8 @@ And the authoritative-idle, terminal-lifecycle, and no-activity rules remain unc
 
 ```
 Given a non-terminal session whose agent status is `active`
-And no tool call is open, meaning every `pre_tool_use` has its `post_tool_use`
+And no tool call is open: every tool call the runtime reported starting has since been reported returned, failed, or resolved with its batch, or the turn has ended
+And parallel tool calls are tracked individually, so one call returning leaves the others open
 And no normalized agent event has arrived for five minutes
 When the liveness watchdog evaluates the session
 Then the session's agent status becomes `stalled` with reason `no_signal`
