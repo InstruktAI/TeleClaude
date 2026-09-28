@@ -32,7 +32,10 @@ target through the project's remote.
 
 ## Canonical fields
 
-- **Reach:** admin only.
+- **Reach:** admin only — an admin at a terminal, or a session an admin started
+  without an agent role. A session carrying an agent role, or acting for the
+  platform's principal, is refused
+  (`project/design/cli-authorization-matrix`).
 - **Addressing:** a target is named by its computer name and reached as the
   user and host it announces in the cluster's peer registry, over key-based
   SSH. A target that is not online in the registry, or is the origin itself,
@@ -130,7 +133,15 @@ And no target's todo state is changed by the refused transfer
 #### UC-TST9: Only an admin can transfer todo state
 
 ```gherkin
-Given a caller who is not an admin
+Given a caller who is not an admin, or an agent session carrying an agent role, or a session acting for the platform's principal
 When the caller asks to transfer a project's todo state
 Then the command is refused before anything is sent
+```
+
+#### UC-TST10: An admin's own agent session can transfer todo state
+
+```gherkin
+Given an agent session an admin started without an agent role
+When the agent transfers a project's todo state to an online target that has the project
+Then the transfer is admitted and runs as it does for the admin at a terminal
 ```

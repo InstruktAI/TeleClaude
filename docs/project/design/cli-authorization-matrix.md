@@ -53,9 +53,17 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 - **Newcomer** — read-heavy, with very limited writes.
 - **Customer** — reaches only the allow-list in invariant 7.
 
+<!-- planned:todo-db-sync-to-computers -->
+A command may admit persons alone by declaring no agent roles. `todo sync` does so at the admin band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying an agent role and every session acting for the platform's principal is refused. Replacing another computer's todo state is an act only the system owner decides, so no lifecycle or standing role reaches it.
+<!-- /planned:todo-db-sync-to-computers -->
+
 ### Commands that do not depend on the caller
 
+<!-- planned-change:todo-db-sync-to-computers -->
 `version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `signals status`, `mcp list`, and the hidden git-hook commands `code pre-commit`, `code post-commit` and `code post-merge` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state — hook maintenance acts only on a canonical-main range and runs only main-only actions — so a caller role adds no protection.
+<!-- change:todo-db-sync-to-computers -->
+`version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `signals status`, `mcp list`, the hidden git-hook commands `code pre-commit`, `code post-commit` and `code post-merge`, and the hidden todo-state-transfer helper `todo sync-replica` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state — hook maintenance acts only on a canonical-main range and runs only main-only actions — so a caller role adds no protection. The transfer helper runs on a receiving computer inside a non-interactive SSH session, which carries no login or session identity; it only reports where that computer keeps a project's todo state and whether that state is intact, facts any account able to run it can already read from disk, and it changes nothing.
+<!-- /planned-change:todo-db-sync-to-computers -->
 
 ## Failure modes
 
