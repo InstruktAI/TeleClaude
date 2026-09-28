@@ -4,16 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException
+from starlette.requests import HTTPConnection
 
 from teleclaude.caller_identity import (
     CarriedIdentity,
     CliCaller,
     NoIdentityCliCaller,
     PersonCliCaller,
+    Platform,
+    RoleResolver,
+    SessionOf,
     SystemCliCaller,
+    caller_from_principal,
+    human_principal_for_email,
 )
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.config import config
@@ -23,6 +29,9 @@ from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import db
 from teleclaude.types.commands import CallerProvenance
 from teleclaude.types.creation_record import EntryPoint
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import Session
 
 _CLEARANCE_REFUSAL = "permission denied — role is not permitted to call {command_path}"
 
@@ -38,6 +47,44 @@ class CallerIdentity:
     principal: str | None = None
     entry_point: EntryPoint | None = None
     company: str | None = None
+
+
+def caller_role_for_session(identity: CallerIdentity, session: Session) -> str | None:
+    """Resolve a carried caller's effective role for a session's project."""
+    caller = caller_for_role_resolution(identity)
+    if isinstance(caller, PersonCliCaller):
+        if not caller.person_slug:
+            return "customer"
+        return RoleResolver().role_for(caller, SessionOf(session.project_path))
+    if isinstance(caller, SystemCliCaller):
+        return identity.system_role
+    if identity.email is not None:
+        return "customer"
+    return None
+
+
+def caller_role_at_platform(identity: CallerIdentity) -> str | None:
+    """Resolve a carried caller's role for a platform-wide target."""
+    caller = caller_for_role_resolution(identity)
+    if isinstance(caller, PersonCliCaller):
+        return RoleResolver().role_for(caller, Platform())
+    if isinstance(caller, SystemCliCaller):
+        return identity.system_role
+    if identity.email is not None:
+        return "customer"
+    return None
+
+
+def caller_for_role_resolution(identity: CallerIdentity) -> CliCaller:
+    """Hydrate a carried person identity with its roster slug for scoped role lookup."""
+    caller = caller_from_carried_identity(identity)
+    if not isinstance(caller, PersonCliCaller):
+        return caller
+    principal = identity.principal or (human_principal_for_email(identity.email) if identity.email else None)
+    resolved = caller_from_principal(principal)
+    if not isinstance(resolved, PersonCliCaller):
+        return caller
+    return PersonCliCaller(email=caller.email, person_slug=resolved.person_slug, human_role=caller.human_role)
 
 
 def caller_from_carried_identity(identity: CallerIdentity) -> CliCaller:
@@ -61,7 +108,7 @@ def principal_for_carried_caller(identity: CallerIdentity) -> str | None:
 
 
 def carried_caller(
-    request: Request,
+    request: HTTPConnection,
     x_teleclaude_daemon_token: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity:
     """Take the caller identity carried by a client; only the daemon token is verified."""

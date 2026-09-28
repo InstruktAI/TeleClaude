@@ -15,7 +15,7 @@ from pydantic import TypeAdapter
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
-from teleclaude.api.auth import CallerIdentity, caller_from_carried_identity
+from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, caller_from_carried_identity
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core import command_handlers
 from teleclaude.core.agent_status_projection import project_peer_agent_status
@@ -367,10 +367,19 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 if cmd_name == "get_operation":
                     requested_operation_id = str((parsed.origin_metadata or {}).get("operation_id") or "")
                     try:
+                        caller = caller_for_role_resolution(
+                            CallerIdentity(
+                                session_id=parsed.session_id or "",
+                                system_role=parsed.system_role,
+                                human_role=parsed.human_role,
+                                email=parsed.human_email,
+                                principal=parsed.caller_principal,
+                            )
+                        )
                         operation_receipt = await get_operations_service().get_operation_for_caller(
                             operation_id=requested_operation_id,
                             caller_session_id=parsed.session_id or "",
-                            human_role=parsed.human_role,
+                            caller=caller,
                         )
                         payload = dict(operation_receipt)
                     except HTTPException as exc:

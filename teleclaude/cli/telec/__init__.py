@@ -4,7 +4,10 @@ import importlib
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
+from teleclaude.caller_identity import Company, Person, Platform, Project, ProjectPath, RoleTarget
+from teleclaude.cli import CommandScope, ConfigSubjectType
 from teleclaude.cli.session_auth import require_cli_clearance
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
 from teleclaude.cli.telec.help import (
@@ -16,12 +19,11 @@ from teleclaude.cli.telec.help import (
 )
 from teleclaude.cli.telec.surface import (
     CLI_SURFACE,
-    SESSIONS_END,
-    SESSIONS_RESTART,
     CommandDef,
     TelecCommand,
 )
-from teleclaude.constants import MAIN_MODULE
+from teleclaude.constants import LOCAL_COMPUTER, MAIN_MODULE
+from teleclaude.paths import invocation_cwd
 
 from . import flags as F
 
@@ -67,6 +69,57 @@ def _resolve_and_enforce(cmd: str, args: list[str]) -> tuple[list[str], CommandD
     return path, node, remainder
 
 
+def _role_target_for_command(
+    path: list[str],
+    node: CommandDef,
+    remainder: list[str],
+) -> RoleTarget | None:
+    """Resolve the declared person-role object from the parsed command target."""
+    auth = node.auth
+    if auth is None or auth.caller_independent:
+        return None
+    parsed = parse_command_args(node, remainder)
+    computer_flags = [flag for flag in node.flags if flag.long == F.FLAG_COMPUTER.long]
+    if any(computer != LOCAL_COMPUTER for flag in computer_flags for computer in parsed.values(flag)):
+        return Platform()
+    if auth.scope is CommandScope.PLATFORM:
+        return Platform()
+    if auth.scope is CommandScope.CONFIG_SUBJECT:
+        if len(path) < 2 or not parsed.positionals:
+            return Platform()
+        try:
+            subject_type = ConfigSubjectType(path[1])
+        except ValueError:
+            return Platform()
+        subject = parsed.positionals[0]
+        if subject_type is ConfigSubjectType.PERSON:
+            return Person(subject)
+        if subject_type is ConfigSubjectType.COMPANY:
+            return Company(subject)
+        return Project(subject)
+    if auth.scope is CommandScope.TARGET_SESSION:
+        return None
+    if auth.scope is CommandScope.NAMED_TRUSTED_DIRECTORY:
+        if auth.scope_flag is None:
+            return Platform()
+        flag = next((candidate for candidate in node.flags if candidate.long == auth.scope_flag), None)
+        if flag is None:
+            return Platform()
+        if parsed.value(flag) is None:
+            return ProjectPath(invocation_cwd())
+        return None
+    if auth.scope is CommandScope.TARGET_PATH:
+        target_value: str | None = None
+        if auth.scope_flag is not None:
+            flag = next((candidate for candidate in node.flags if candidate.long == auth.scope_flag), None)
+            if flag is not None:
+                target_value = parsed.value(flag)
+        if target_value is None:
+            return ProjectPath(invocation_cwd())
+        return ProjectPath(Path(target_value).expanduser())
+    return ProjectPath(invocation_cwd())
+
+
 def _handle_cli_command(argv: list[str]) -> None:
     """Handle CLI shortcuts like /list, /claude, etc.
 
@@ -104,7 +157,13 @@ def _handle_cli_command(argv: list[str]) -> None:
 
     target_session_id = _session_action_target(node, remainder)
     command_path = " ".join(path)
-    require_cli_clearance(command_path, target_session_id, node.auth)
+    role_target = _role_target_for_command(path, node, remainder)
+    require_cli_clearance(
+        command_path,
+        target_session_id,
+        node.auth,
+        role_target=role_target,
+    )
 
     handler = _resolve_cli_handler(cmd_enum, args)
     if handler is None:
@@ -130,13 +189,12 @@ def _start_tui() -> None:
 
 
 def _session_action_target(node: CommandDef, args: list[str]) -> str | None:
-    if node is SESSIONS_END:
-        parsed = parse_command_args(node, args)
-        return parsed.positionals[0] if parsed.positionals else parsed.value(F.FLAG_SESSION)
-    if node is SESSIONS_RESTART:
-        parsed = parse_command_args(node, args)
-        return parsed.positionals[0] if parsed.positionals else None
-    return None
+    if node.auth is None or node.auth.scope is not CommandScope.TARGET_SESSION:
+        return None
+    parsed = parse_command_args(node, args)
+    if parsed.positionals:
+        return parsed.positionals[0]
+    return parsed.value(F.FLAG_SESSION)
 
 
 def _dispatch_handler(handler: Callable[[], None]) -> None:

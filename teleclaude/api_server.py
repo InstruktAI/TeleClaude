@@ -16,7 +16,6 @@ import time
 import traceback as _tb
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,7 +42,7 @@ from teleclaude.api import (
 )
 from teleclaude.api.auth import (
     CallerIdentity,
-    caller_from_carried_identity,
+    caller_for_role_resolution,
     carried_caller,
     principal_for_carried_caller,
 )
@@ -64,7 +63,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
-from teleclaude.caller_identity import PersonCliCaller, authorizing_role
+from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
 from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
@@ -87,7 +86,6 @@ from teleclaude.core.events import (
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.hooks.api_routes import router as hooks_router
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
@@ -197,6 +195,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._ws_clients: set[WebSocket] = set()
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
         self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
+        self._ws_viewers: dict[WebSocket, CliCaller] = {}
+        self._ws_sent_session_ids: dict[WebSocket, set[str]] = {}
         # Per-websocket sender state for serialized outbound writes.
         self._ws_client_states: dict[WebSocket, _WsClientState] = {}
         # Track previous interest to remove stale entries
@@ -289,24 +289,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             return
         self.cache.remove_session(context.session_id)
 
-        # Broadcast canonical closed status (R2) to WS clients — validated via contract
-        timestamp = datetime.now(UTC).isoformat()
-        canonical = serialize_status_event(
-            session_id=context.session_id,
-            status="closed",
-            reason="session_closed",
-            timestamp=timestamp,
-        )
-        if canonical is None:
-            return
-        dto = SessionLifecycleStatusEventDTO(
-            session_id=context.session_id,
-            status="closed",
-            reason="session_closed",
-            timestamp=timestamp,
-        )
-        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
-
     async def _handle_session_status_event(
         self,
         _event: str,
@@ -315,9 +297,16 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         """Broadcast canonical lifecycle status transition events to WS clients.
 
         Delivers the contract-defined status vocabulary (R2) directly to connected
-        clients without cache or DB re-read. Clients use this to render truthful
+        clients whose current role reaches the session. Clients use this to render truthful
         session status without adapter-local heuristics (R1, R3).
         """
+        session = await db.get_session(context.session_id)
+        if session is None:
+            return
+        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        targets = self._session_event_targets(snapshot)
+        if not targets:
+            return
         dto = SessionLifecycleStatusEventDTO(
             session_id=context.session_id,
             status=context.status,
@@ -327,7 +316,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             message_intent=context.message_intent,
             delivery_scope=context.delivery_scope,
         )
-        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
+        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True), targets=targets)
 
     async def _handle_agent_activity_event(
         self,
@@ -469,8 +458,13 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             identity: CallerIdentity = Depends(carried_caller),
         ) -> WhoAmIDTO:
             """Return the resolved identity, role, email, and session of the caller."""
-            caller = caller_from_carried_identity(identity)
-            role = authorizing_role(caller, identity.system_role)
+            caller = caller_for_role_resolution(identity)
+            target = Platform()
+            if identity.session_id:
+                session = await db.get_session(identity.session_id)
+                if session is not None and session.project_path:
+                    target = SessionOf(Path(session.project_path))
+            role = authorizing_role(caller, identity.system_role, target)
             email = caller.email if isinstance(caller, PersonCliCaller) else None
             return WhoAmIDTO(
                 principal=principal_for_carried_caller(identity),
@@ -484,7 +478,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             websocket: WebSocket,
         ) -> None:
             """WebSocket endpoint for push updates."""
-            await self._handle_websocket(websocket)
+            identity = carried_caller(websocket, websocket.headers.get("x-teleclaude-daemon-token"))
+            await self._handle_websocket(websocket, caller_for_role_resolution(identity))
 
     async def start(self) -> None:
         """Start the API server on Unix socket."""
@@ -514,6 +509,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 logger.warning("Error closing WebSocket: %s", e)
         self._ws_clients.clear()
         self._client_subscriptions.clear()
+        self._ws_viewers.clear()
+        self._ws_sent_session_ids.clear()
 
         # Interest is cleared when _client_subscriptions is cleared
         # No need to explicitly clear cache interest

@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_for_role_resolution,
+    caller_role_at_platform,
+    carried_caller,
+)
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
@@ -44,7 +49,7 @@ async def get_operation(
         target_computer = computer or ""
         metadata = MessageMetadata(
             origin_metadata=cast(SessionOriginMetadata, {"operation_id": operation_id}),
-            human_role=identity.human_role,
+            human_role=caller_role_at_platform(identity),
         )
         message_id = await _STATE.client.send_request(
             target_computer,
@@ -65,5 +70,5 @@ async def get_operation(
     return await operations.get_operation_for_caller(
         operation_id=operation_id,
         caller_session_id=identity.session_id,
-        human_role=identity.human_role,
+        caller=caller_for_role_resolution(identity),
     )

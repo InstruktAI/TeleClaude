@@ -112,6 +112,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     _check_source_patterns(repo_root, selected_paths)
     _check_runtime_path_bypasses(repo_root, selected_paths)
     _check_direct_environment_reads(repo_root, selected_paths)
+    _check_identity_role_imports(repo_root)
     _check_pre_dispatch_import_closure(repo_root)
 
     # Loose-dict typing guardrail
@@ -140,6 +141,7 @@ _PRE_DISPATCH_FIRST_PARTY_MODULES = frozenset(
         "teleclaude.core.session_identity_facts",
         "teleclaude.core.worktree_layout",
         "teleclaude.paths",
+        "teleclaude.project_manifest",
         "teleclaude.runtime",
         "teleclaude.runtime.binaries",
         "teleclaude.runtime.config",
@@ -164,6 +166,26 @@ _PRE_DISPATCH_THIRD_PARTY_ROOTS = frozenset(
     }
 )
 _PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS = frozenset({"_virtualenv"})
+_CALLER_IDENTITY_MODULE = "teleclaude.caller_identity"
+_IDENTITY_INTERNAL_ROLE_NAMES = frozenset(
+    {
+        "RoleScope",
+        "effective_role",
+        "scope_for_path",
+        "scope_for_project",
+        "scope_for_docs_tier",
+        "load_person_role_facts",
+        "_scope_for_target",
+    }
+)
+_IDENTITY_ROLE_IMPORT_RULE = "identity-role-internal-import"
+_IDENTITY_ROLE_IMPORT_MESSAGE = (
+    "role facts and scope construction are private to teleclaude.caller_identity; use RoleResolver.role_for"
+)
+_IDENTITY_ROLE_IMPORT_SEPARATOR = ", "
+_IDENTITY_ROLE_IMPORT_LOCATION_TEMPLATE = "{rel_path}:{line_number}: {names}"
+_IDENTITY_ROLE_IMPORT_LIST_TEMPLATE = "- {match}"
+_IDENTITY_ROLE_IMPORT_FAILURE_TEMPLATE = "{rule}: {message}{newline}{formatted}"
 _PRE_DISPATCH_BARE_PACKAGE_PROBE = """
 import sys
 import teleclaude
@@ -336,6 +358,74 @@ def _check_pre_dispatch_import_closure(repo_root: Path) -> None:
             failures.append(f"{label} failed: {detail}")
     if failures:
         _fail("\n".join(failures))
+
+
+def _check_identity_role_imports(repo_root: Path) -> None:
+    """Keep effective-role and scope mechanics inside caller identity."""
+    matches: list[str] = []
+    source_root = repo_root / DIRECT_ENV_READ_SCAN_PREFIX
+    identity_path = f"{DIRECT_ENV_READ_SCAN_PREFIX}caller_identity.py"
+
+    def dotted_name(node: ast.expr) -> str | None:
+        """Return the name represented by a simple Name/Attribute chain."""
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            parent = dotted_name(node.value)
+            return f"{parent}.{node.attr}" if parent is not None else None
+        return None
+
+    for path in source_root.rglob(PYTHON_GLOB):
+        if not path.is_file() or path.relative_to(repo_root).as_posix() == identity_path:
+            continue
+        try:
+            source = path.read_text(encoding=UTF8_ENCODING)
+            tree = ast.parse(source, filename=path.relative_to(repo_root).as_posix())
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        module_import_prefixes: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == _CALLER_IDENTITY_MODULE:
+                        module_import_prefixes.add(alias.asname or alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "teleclaude":
+                for alias in node.names:
+                    if alias.name == "caller_identity":
+                        module_import_prefixes.add(alias.asname or _CALLER_IDENTITY_MODULE)
+
+        for node in ast.walk(tree):
+            imported: list[str] = []
+            if isinstance(node, ast.ImportFrom) and node.module == _CALLER_IDENTITY_MODULE:
+                imported.extend(
+                    alias.name
+                    for alias in node.names
+                    if alias.name in _IDENTITY_INTERNAL_ROLE_NAMES or alias.name == "*"
+                )
+            elif isinstance(node, ast.Attribute) and node.attr in _IDENTITY_INTERNAL_ROLE_NAMES:
+                if dotted_name(node.value) in module_import_prefixes:
+                    imported.append(node.attr)
+            imported.sort()
+            if imported:
+                assert isinstance(node, (ast.ImportFrom, ast.Attribute))
+                rel_path = path.relative_to(repo_root).as_posix()
+                matches.append(
+                    _IDENTITY_ROLE_IMPORT_LOCATION_TEMPLATE.format(
+                        rel_path=rel_path,
+                        line_number=node.lineno,
+                        names=_IDENTITY_ROLE_IMPORT_SEPARATOR.join(imported),
+                    )
+                )
+    if matches:
+        formatted = NEWLINE.join(_IDENTITY_ROLE_IMPORT_LIST_TEMPLATE.format(match=match) for match in matches)
+        _fail(
+            _IDENTITY_ROLE_IMPORT_FAILURE_TEMPLATE.format(
+                rule=_IDENTITY_ROLE_IMPORT_RULE,
+                message=_IDENTITY_ROLE_IMPORT_MESSAGE,
+                newline=NEWLINE,
+                formatted=formatted,
+            )
+        )
 
 
 def _normalize_selected_paths(repo_root: Path, raw_paths: Sequence[str]) -> set[str] | None:

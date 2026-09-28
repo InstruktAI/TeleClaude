@@ -16,6 +16,7 @@ from teleclaude.core.command_handlers import get_session_data
 from teleclaude.core.command_handlers._utils import SessionDataPayload
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
+from teleclaude.core.identity import session_person_role
 from teleclaude.core.models import Session
 from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadItem, ReminderTransition
 from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
@@ -239,7 +240,7 @@ async def build_session_messages_dto(
         build_message_chain(session.transcript_files, session.native_log_file),
         active_agent=session.active_agent,
         recipient_email=recipient_email or session.human_email,
-        recipient_role=recipient_role or session.human_role,
+        recipient_role=recipient_role if recipient_role is not None else session_person_role(session),
         options=options,
         hidden_user_texts=hidden_user_texts,
     )

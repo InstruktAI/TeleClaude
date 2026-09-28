@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -9,10 +11,125 @@ import yaml
 from pydantic import Field, ValidationError, field_validator
 
 from teleclaude.closed_model import ClosedModel
-from teleclaude.paths import GLOBAL_CONFIG_PATH
-from teleclaude.slug import validate_slug
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, ConfigFileName
+from teleclaude.project_manifest import load_roots
+from teleclaude.slug import derive_project_slug, validate_slug
 
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
+_UTF8 = "utf-8"
+_MEMBERS_KEY = "members"
+_PROJECT_SLUG_KEY = "project_slug"
+_PROJECT_NAME_KEY = "project_name"
+_COMPANY_KEY = "company"
+
+
+class CompanyRole(StrEnum):
+    """The shared person-role vocabulary applied at company scope."""
+
+    ADMIN = "admin"
+    MEMBER = "member"
+    CONTRIBUTOR = "contributor"
+    NEWCOMER = "newcomer"
+
+
+class CompanyMember(ClosedModel):
+    """One person's role and explicit project assignments in a company roster."""
+
+    role: CompanyRole
+    projects: list[str] = Field(default_factory=list)
+
+    @field_validator("projects")
+    @classmethod
+    def validate_projects(cls, value: list[str]) -> list[str]:
+        """Validate and de-duplicate project assignments by slug."""
+        projects: list[str] = []
+        seen: set[str] = set()
+        for project_slug in value:
+            validate_slug(project_slug)
+            if project_slug not in seen:
+                seen.add(project_slug)
+                projects.append(project_slug)
+        return projects
+
+
+@dataclass(frozen=True)
+class ProjectOwnership:
+    """The registered project's canonical slug and declared company owner."""
+
+    project_slug: str
+    company: str | None
+
+
+def load_person_memberships(
+    person_slug: str,
+    companies_root: Path | None = None,
+) -> dict[str, CompanyMember]:
+    """Read the person's valid membership entries, ignoring unreadable companies."""
+    validate_slug(person_slug)
+    root = COMPANIES_ROOT if companies_root is None else companies_root
+    memberships: dict[str, CompanyMember] = {}
+    if not root.exists():
+        return memberships
+
+    for config_path in sorted(root.glob(f"*/{ConfigFileName.OVERLAY}")):
+        try:
+            raw: object = yaml.safe_load(config_path.read_text(encoding=_UTF8))
+        except (OSError, UnicodeError, yaml.YAMLError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        members = raw.get(_MEMBERS_KEY)
+        if not isinstance(members, dict) or person_slug not in members:
+            continue
+        try:
+            memberships[config_path.parent.name] = CompanyMember.model_validate(members[person_slug])
+        except ValidationError:
+            continue
+    return memberships
+
+
+def project_ownership_for_path(
+    path: Path,
+    projects_manifest_path: Path | None = None,
+) -> ProjectOwnership | None:
+    """Resolve the deepest registered project containing a path and its owner."""
+    resolved_path = path.expanduser().resolve()
+    roots = load_roots() if projects_manifest_path is None else load_roots(projects_manifest_path)
+    candidates = [root for root in roots if resolved_path == root or root in resolved_path.parents]
+    if not candidates:
+        return None
+    root = max(candidates, key=lambda candidate: len(candidate.parts))
+    return _project_ownership_for_root(root)
+
+
+def project_ownership_for_slug(
+    project_slug: str,
+    projects_manifest_path: Path | None = None,
+) -> ProjectOwnership | None:
+    """Resolve ownership for the registered project with this canonical slug."""
+    roots = load_roots() if projects_manifest_path is None else load_roots(projects_manifest_path)
+    for root in roots:
+        ownership = _project_ownership_for_root(root)
+        if ownership is not None and ownership.project_slug == project_slug:
+            return ownership
+    return None
+
+
+def _project_ownership_for_root(root: Path) -> ProjectOwnership | None:
+    config_path = root / ConfigFileName.OVERLAY
+    if not config_path.is_file():
+        return None
+    try:
+        raw: object = yaml.safe_load(config_path.read_text(encoding=_UTF8))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    project_slug = derive_project_slug(raw.get(_PROJECT_SLUG_KEY), raw.get(_PROJECT_NAME_KEY), root)
+    if project_slug is None:
+        return None
+    company = raw.get(_COMPANY_KEY)
+    return ProjectOwnership(project_slug, company if isinstance(company, str) and company.strip() else None)
 
 
 class PersonEntry(ClosedModel):
@@ -22,7 +139,7 @@ class PersonEntry(ClosedModel):
     email: str = Field(min_length=1)
     slug: str | None = None
     username: str | None = None
-    role: Literal["admin", "member", "contributor", "newcomer"] = "member"
+    role: Literal["admin", "member", "contributor", "newcomer"] | None = None
     preferences: str | None = None
     expertise: dict[str, ProficiencyLevel] | None = None
 

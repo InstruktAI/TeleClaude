@@ -17,8 +17,9 @@ from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
+from teleclaude.caller_identity import CliCaller, OperationOf, PersonCliCaller, RoleResolver
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, RUNNER_NOT_DISPATCHED
+from teleclaude.constants import RUNNER_NOT_DISPATCHED
 from teleclaude.core.command_dispatch import invoke_command_handler
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import Db
@@ -520,13 +521,16 @@ class OperationsService:
         *,
         operation_id: str,
         caller_session_id: str,
-        human_role: str | None,
+        caller: CliCaller,
     ) -> SerializedOperation:
-        """Return operation status if owned by the caller or an admin."""
+        """Return operation status if owned by the caller or an effective project admin."""
         operation = await self._db.get_operation(operation_id)
         if operation is None:
             raise HTTPException(status_code=404, detail="operation not found")
-        if human_role != HUMAN_ROLE_ADMIN and operation.caller_session_id != caller_session_id:
+        if operation.caller_session_id == caller_session_id:
+            return self._serialize_operation(operation)
+        target = OperationOf(Path(operation.cwd) if operation.cwd else None)
+        if not isinstance(caller, PersonCliCaller) or RoleResolver().role_for(caller, target) != "admin":
             raise HTTPException(status_code=404, detail="operation not found")
         return self._serialize_operation(operation)
 

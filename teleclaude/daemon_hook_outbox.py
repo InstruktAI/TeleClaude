@@ -41,7 +41,7 @@ from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.project_manifest import load_registered_entries
+from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 

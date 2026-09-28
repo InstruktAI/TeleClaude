@@ -6,7 +6,7 @@ import importlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from teleclaude.caller_identity import NoIdentityCliCaller, PersonCliCaller, authorizing_role
+from teleclaude.caller_identity import NoIdentityCliCaller, PersonCliCaller, ProjectPath, authorizing_role
 from teleclaude.cli.session_auth import (
     ResolvedCliIdentity,
     clear_current_session_email,
@@ -16,6 +16,7 @@ from teleclaude.cli.session_auth import (
     write_current_session_email,
 )
 from teleclaude.cli.telec.help import _usage
+from teleclaude.paths import invocation_cwd
 
 if TYPE_CHECKING:
     from teleclaude.config.schema import GlobalConfig
@@ -76,7 +77,7 @@ def _role_for_email(email: str) -> str | None:
         return None
     for person in global_cfg.people:
         if person.email.strip().lower() == normalized:
-            return str(person.role)
+            return person.role
     return None
 
 
@@ -147,7 +148,7 @@ def _handle_whoami(args: list[str]) -> None:
             raise SystemExit(1)
         if identity.principal:
             print(f"Principal: {identity.principal}")
-        role = authorizing_role(identity.caller, identity.system_role)
+        role = authorizing_role(identity.caller, identity.system_role, ProjectPath(invocation_cwd()))
         if role:
             print(f"Role: {role}")
         if identity.session_id:
@@ -166,7 +167,7 @@ def _handle_whoami(args: list[str]) -> None:
     caller = identity.caller
     email = caller.email if isinstance(caller, PersonCliCaller) else None
     print(f"Email: {email}")
-    print(f"Role: {authorizing_role(caller, identity.system_role) or _UNRESOLVED_ROLE}")
+    print(f"Role: {authorizing_role(caller, identity.system_role, ProjectPath(invocation_cwd())) or _UNRESOLVED_ROLE}")
     print(f"TTY: {context.tty}")
     print(f"Session auth file: {context.auth_path}")
 

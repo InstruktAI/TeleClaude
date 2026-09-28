@@ -13,7 +13,14 @@ from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.caller_identity import CliCallerKind, person_entries_for_email
+from teleclaude.caller_identity import (
+    CliCallerKind,
+    Company,
+    PersonCliCaller,
+    Project,
+    RoleResolver,
+    person_entries_for_email,
+)
 from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.config.subjects import ConfigSubjectKind
 
@@ -49,6 +56,7 @@ class RequiredStanding(StrEnum):
     NONE = "none"
     THE_PERSON = "the_person"
     PLATFORM_ADMINISTRATOR = "platform_administrator"
+    EFFECTIVE_ADMINISTRATOR = "effective_administrator"
     FORBIDDEN = "forbidden"
 
 
@@ -60,6 +68,7 @@ class ClearanceReason(StrEnum):
     PLATFORM_ADMINISTRATOR_REQUIRED = "platform_administrator_required"
     READ_ONLY_PROJECTION = "read_only_projection"
     NO_PERSON_STANDING = "no_person_standing"
+    EFFECTIVE_ADMINISTRATOR_REQUIRED = "effective_administrator_required"
 
 
 _ADMIN_ROLE = "admin"
@@ -72,6 +81,7 @@ class ConfigurationStanding:
     person_slug: str | None
     platform_role: str | None
     principal_kind: PrincipalKind
+    role_resolver: RoleResolver
 
 
 @dataclass(frozen=True)
@@ -102,17 +112,24 @@ def standing_for(identity: ResolvedCliIdentity) -> ConfigurationStanding:
     """
     caller = identity.caller
     if caller.kind is not CliCallerKind.PERSON:
-        return ConfigurationStanding(person_slug=None, platform_role=None, principal_kind=caller.kind)
+        return ConfigurationStanding(
+            person_slug=None, platform_role=None, principal_kind=caller.kind, role_resolver=RoleResolver()
+        )
     if caller.email is None:
-        return ConfigurationStanding(person_slug=None, platform_role=None, principal_kind=CliCallerKind.PERSON)
+        return ConfigurationStanding(
+            person_slug=None, platform_role=None, principal_kind=CliCallerKind.PERSON, role_resolver=RoleResolver()
+        )
     people = person_entries_for_email(caller.email)
     if len(people) != 1:
-        return ConfigurationStanding(person_slug=None, platform_role=None, principal_kind=CliCallerKind.PERSON)
+        return ConfigurationStanding(
+            person_slug=None, platform_role=None, principal_kind=CliCallerKind.PERSON, role_resolver=RoleResolver()
+        )
     person = people[0]
     return ConfigurationStanding(
         person_slug=person.slug,
         platform_role=person.role,
         principal_kind=CliCallerKind.PERSON,
+        role_resolver=RoleResolver(),
     )
 
 
@@ -152,17 +169,42 @@ def _decide_person(standing: ConfigurationStanding, target: ConfigurationTarget)
 def _decide_company(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
     if target.operation is ConfigurationOperation.INIT:
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
-    if is_administrator(standing):
-        return ClearanceDecision(True, RequiredStanding.PLATFORM_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
-    return _refuse_admin_required(standing)
+    if target.operation is ConfigurationOperation.LIST:
+        if is_administrator(standing):
+            return ClearanceDecision(True, RequiredStanding.PLATFORM_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
+        return _refuse_admin_required(standing)
+    if _effective_role(standing, Company(target.instance or "")) == _ADMIN_ROLE:
+        return ClearanceDecision(True, RequiredStanding.EFFECTIVE_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
+    return _refuse_effective_admin_required(standing)
+
+
+def _effective_role(standing: ConfigurationStanding, target: Company | Project) -> str:
+    if standing.person_slug is None:
+        return "customer"
+    caller = PersonCliCaller(person_slug=standing.person_slug, human_role=standing.platform_role)
+    return standing.role_resolver.role_for(caller, target)
+
+
+def _refuse_effective_admin_required(standing: ConfigurationStanding) -> ClearanceDecision:
+    if standing.principal_kind is not CliCallerKind.PERSON or standing.person_slug is None:
+        return ClearanceDecision(
+            False,
+            RequiredStanding.EFFECTIVE_ADMINISTRATOR,
+            ClearanceReason.NO_PERSON_STANDING,
+        )
+    return ClearanceDecision(
+        False,
+        RequiredStanding.EFFECTIVE_ADMINISTRATOR,
+        ClearanceReason.EFFECTIVE_ADMINISTRATOR_REQUIRED,
+    )
 
 
 def _decide_project(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
     if target.operation in (ConfigurationOperation.LIST, ConfigurationOperation.GET, ConfigurationOperation.INIT):
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
-    if is_administrator(standing):
-        return ClearanceDecision(True, RequiredStanding.PLATFORM_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
-    return _refuse_admin_required(standing)
+    if _effective_role(standing, Project(target.instance or "")) == _ADMIN_ROLE:
+        return ClearanceDecision(True, RequiredStanding.EFFECTIVE_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
+    return _refuse_effective_admin_required(standing)
 
 
 def _decide_singleton(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:

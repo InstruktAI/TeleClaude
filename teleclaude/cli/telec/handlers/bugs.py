@@ -9,12 +9,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from teleclaude.caller_identity import NoIdentityCliCaller, Platform, ProjectPath
+from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
+from teleclaude.cli.telec.surface_types import CommandAuth
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
@@ -49,6 +52,10 @@ __all__ = [
 # output, usage line, or generated docs. The literal appears exactly once,
 # here; every other reference in this module reads this constant.
 _FILING_ACK_FLAG = "--approved"
+_BUGS_REPORT_PATH = "bugs report"
+_BUGS_SUPPRESS_PATH = "bugs suppress"
+_BUGS_SUPPRESSIONS_PATH = "bugs suppressions"
+_BUGS_UNSUPPRESS_PATH = "bugs unsuppress"
 _UNKNOWN_PROJECT_MESSAGE = "Unknown project '{name}'. Must be one of:"
 _UNKNOWN_PROJECT_IDENTITY_ROW = "  - {identity}"
 _BUG_FILING_GATE = (
@@ -80,8 +87,8 @@ _BUG_FILING_GATE = (
 )
 
 
-def _resolve_project_by_name(name: str) -> Path:
-    """Resolve a project identity or display name to its registered root."""
+def _resolve_project_by_name(name: str, command_path: str) -> Path:
+    """Resolve a project identity/display name, then clear its exact root."""
     from teleclaude.services.project_catalog import (  # noqa: PLC0415 - project lookup belongs to bug filing.
         get_project_catalog_service,
     )
@@ -92,8 +99,14 @@ def _resolve_project_by_name(name: str) -> Path:
     requested = name.casefold()
     for project in projects:
         if requested in (project.slug.casefold(), project.name.casefold()):
+            require_cli_clearance(
+                command_path,
+                auth=_command_auth(command_path),
+                role_target=ProjectPath(project.root),
+            )
             return project.root
 
+    require_cli_clearance(command_path, auth=_command_auth(command_path), role_target=Platform())
     available = sorted({project.slug for project in projects})
     print(_UNKNOWN_PROJECT_MESSAGE.format(name=name))
     for identity in available:
@@ -101,7 +114,20 @@ def _resolve_project_by_name(name: str) -> Path:
     raise SystemExit(1)
 
 
-def _resolve_project_slug(project_name: str | None) -> str:
+def _command_auth(command_path: str) -> CommandAuth:
+    """Return the declared authorization for a bug command path."""
+    command = {
+        _BUGS_REPORT_PATH: BUGS_REPORT,
+        _BUGS_SUPPRESS_PATH: BUGS_SUPPRESS,
+        _BUGS_SUPPRESSIONS_PATH: BUGS_SUPPRESSIONS,
+        _BUGS_UNSUPPRESS_PATH: BUGS_UNSUPPRESS,
+    }.get(command_path)
+    if command is None or command.auth is None:
+        raise ValueError(f"Missing command authorization for {command_path}.")
+    return command.auth
+
+
+def _resolve_project_slug(project_name: str | None, command_path: str) -> str:
     """Resolve the project slug the suppression ledger is keyed on.
 
     Mirrors the service's slug derivation (``load_project_node``) so the CLI
@@ -112,7 +138,7 @@ def _resolve_project_slug(project_name: str | None) -> str:
     )
 
     if project_name:
-        root = _resolve_project_by_name(project_name)
+        root = _resolve_project_by_name(project_name, command_path)
     else:
         try:
             root = resolve_invocation_roots().require_project_root()
@@ -190,7 +216,7 @@ def _handle_bugs_report(args: list[str]) -> None:
         return
 
     if project_name:
-        project_root = _resolve_project_by_name(project_name)
+        project_root = _resolve_project_by_name(project_name, _BUGS_REPORT_PATH)
 
     if not description:
         print("Missing required description.")
@@ -271,12 +297,6 @@ def _parse_expires(raw: str) -> datetime:
 
 def _handle_bugs_suppress(args: list[str]) -> None:
     """Handle telec bugs suppress "<pattern>" --reason <r> [...]."""
-    from teleclaude.caller_identity import NoIdentityCliCaller  # noqa: PLC0415 - deferred command-local dependency.
-    from teleclaude.cli.session_auth import (  # noqa: PLC0415 - deferred command-local dependency.
-        no_identity_refusal,
-        resolve_cli_identity,
-    )
-
     parsed = parse_command_args(BUGS_SUPPRESS, args)
     positionals = parsed.positionals
     if len(positionals) > 1:
@@ -319,7 +339,7 @@ def _handle_bugs_suppress(args: list[str]) -> None:
             raise SystemExit(1) from None
 
     expires_at = _parse_expires(expires_raw) if expires_raw else None
-    slug = _resolve_project_slug(project_name)
+    slug = _resolve_project_slug(project_name, _BUGS_SUPPRESS_PATH)
     identity = resolve_cli_identity()
     principal = identity.principal
     if isinstance(identity.caller, NoIdentityCliCaller) or not principal:
@@ -350,7 +370,7 @@ def _handle_bugs_suppressions(args: list[str]) -> None:
         raise SystemExit(1)
     project_name = parsed.value(F.FLAG_PROJECT_TRUSTED)
 
-    slug = _resolve_project_slug(project_name)
+    slug = _resolve_project_slug(project_name, _BUGS_SUPPRESSIONS_PATH)
     ledger = load(suppressions_path_for(slug))
     entries = active(ledger, datetime.now(UTC))
     if not entries:
@@ -383,7 +403,7 @@ def _handle_bugs_unsuppress(args: list[str]) -> None:
         print(_usage("bugs", "unsuppress"))
         raise SystemExit(1)
 
-    slug = _resolve_project_slug(project_name)
+    slug = _resolve_project_slug(project_name, _BUGS_UNSUPPRESS_PATH)
     if remove(suppressions_path_for(slug), suppression_id):
         print(f"Removed suppression {suppression_id} from project '{slug}'.")
     else:

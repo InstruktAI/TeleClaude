@@ -12,7 +12,7 @@ import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.caller_identity import CliCaller, PersonCliCaller, SystemCliCaller
+from teleclaude.caller_identity import CliCaller, DocsTier, PersonCliCaller, RoleResolver, SystemCliCaller
 from teleclaude.config.schema import AppConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.core.organization import OrganizationalMembership, resolve_organization
@@ -601,20 +601,16 @@ class TierKey:
     owner: str | None = None
 
 
-def is_platform_administrator(caller: CliCaller | None) -> bool:
-    """Return whether ``caller`` carries the platform administrator role."""
-    return isinstance(caller, PersonCliCaller) and caller.human_role == HUMAN_ROLE_ADMIN
-
-
 def resolve_caller_read_depth(
     caller: CliCaller | None,
     tier: TierKey,
     *,
     organization: OrganizationalMembership | None = None,
+    role_resolver: RoleResolver | None = None,
 ) -> TierDepth:
     """Answer the depth ``caller`` reads ``tier`` at — full or public-only.
 
-    A platform administrator and a system principal read every tier at full,
+    An administrator at the global documentation scope and a system principal read every tier at full,
     preserving the live UC-DSP31 contract for the system caller. Otherwise
     depth follows the caller's own declared relationship to the named tier:
     their own person tier, a company they belong to, or a project they reach
@@ -628,10 +624,13 @@ def resolve_caller_read_depth(
     role — it consumes ``resolve_organization``'s answer as-is, including its
     exclusion of stale assignments from ``assignments``.
     """
-    if is_platform_administrator(caller) or isinstance(caller, SystemCliCaller):
+    if isinstance(caller, SystemCliCaller):
         return TierDepth.FULL
     if not isinstance(caller, PersonCliCaller) or not caller.person_slug:
         return TierDepth.PUBLIC_ONLY
+    resolver = role_resolver or RoleResolver()
+    if resolver.role_for(caller, DocsTier(tier.scope, tier.owner)) == HUMAN_ROLE_ADMIN:
+        return TierDepth.FULL
     if tier.scope is SnippetScope.GLOBAL:
         return TierDepth.PUBLIC_ONLY
     if tier.scope is SnippetScope.PERSON:
@@ -652,6 +651,7 @@ def resolve_default_read_set(
     *,
     current_project_slug: str | None,
     current_project_company: str | None,
+    role_resolver: RoleResolver | None = None,
 ) -> dict[TierKey, TierDepth]:
     """Answer the tiers assembled when no tier is named, each paired with its depth.
 
@@ -675,7 +675,10 @@ def resolve_default_read_set(
         keys.append(TierKey(SnippetScope.PROJECT, current_project_slug))
     if current_project_company is not None:
         keys.append(TierKey(SnippetScope.COMPANY, current_project_company))
-    return {key: resolve_caller_read_depth(caller, key, organization=organization) for key in keys}
+    resolver = role_resolver or RoleResolver()
+    return {
+        key: resolve_caller_read_depth(caller, key, organization=organization, role_resolver=resolver) for key in keys
+    }
 
 
 #: Scopes an entry's tier-depth answer gates, ahead of every other admit rule.
@@ -700,10 +703,14 @@ def _include_snippet_factory(
     project_scope_roots: set[Path],
     include_registered_projects: bool,
     registered_project_slugs: set[str],
+    role_resolver: RoleResolver,
 ) -> Callable[[SnippetMeta], bool]:
-    privileged = isinstance(caller, SystemCliCaller) or (
-        isinstance(caller, PersonCliCaller) and caller.human_role == HUMAN_ROLE_ADMIN
+    global_depth = resolve_caller_read_depth(
+        caller,
+        TierKey(SnippetScope.GLOBAL),
+        role_resolver=role_resolver,
     )
+    global_full = isinstance(caller, SystemCliCaller) or global_depth is TierDepth.FULL
 
     def _include(snippet: SnippetMeta) -> bool:
         if snippet.scope in _TIER_OWNER_SCOPE_VALUES:
@@ -714,7 +721,7 @@ def _include_snippet_factory(
             tier = _tier_key_for_snippet(snippet)
             depth = read_set.get(tier)
             if depth is None:
-                depth = resolve_caller_read_depth(caller, tier)
+                depth = resolve_caller_read_depth(caller, tier, role_resolver=role_resolver)
             return depth is TierDepth.FULL or snippet.visibility == "public"
         # A project tier reads at the depth the caller's relationship to that
         # exact project grants — the same mechanism as person/company, keyed by
@@ -727,9 +734,13 @@ def _include_snippet_factory(
             tier = TierKey(SnippetScope.PROJECT, source_project)
             depth = read_set.get(tier)
             if depth is None:
-                depth = resolve_caller_read_depth(caller, tier)
+                depth = resolve_caller_read_depth(caller, tier, role_resolver=role_resolver)
             project_full = depth is TierDepth.FULL
-        if not privileged and not project_full and snippet.visibility != "public":
+        if (
+            not (global_full and snippet.scope == SnippetScope.GLOBAL.value)
+            and not project_full
+            and snippet.visibility != "public"
+        ):
             return False
         if global_snippets_root in snippet.path.parents:
             # Every published domain is universally visible; there is no
@@ -1399,8 +1410,12 @@ def build_context_output(  # TODO: refactor to reduce complexity
     current_project_company = assembled.current_project_company
 
     requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
+    role_resolver = RoleResolver()
     read_set = resolve_default_read_set(
-        caller, current_project_slug=current_project_slug, current_project_company=current_project_company
+        caller,
+        current_project_slug=current_project_slug,
+        current_project_company=current_project_company,
+        role_resolver=role_resolver,
     )
     include_snippet = _include_snippet_factory(
         caller=caller,
@@ -1412,6 +1427,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
         project_scope_roots=project_scope_roots,
         include_registered_projects=include_registered_projects,
         registered_project_slugs=registered_project_slugs,
+        role_resolver=role_resolver,
     )
     snippets = [snippet for snippet in snippets if include_snippet(snippet)]
     snippets = _apply_baseline_filter(

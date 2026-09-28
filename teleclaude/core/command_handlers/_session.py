@@ -1,7 +1,6 @@
 """Session management command handlers."""
 
 import asyncio
-import os
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,8 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
-from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR, SlashCommand, is_standing_role
+from teleclaude.config import config
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -31,22 +29,15 @@ from teleclaude.core.agent_dispatch import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
-from teleclaude.core.command_input import (
-    WORKTREE_BOUND_WORKER_COMMANDS,
-    RefusedCommandInput,
-    ResolvedCommandInput,
-    admit_command_input,
-)
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
-from teleclaude.core.session_company import record_session_company_resolved, resolve_session_creation_company
+from teleclaude.core.session_company import record_session_company_resolved
 from teleclaude.core.session_listeners import register_listener
-from teleclaude.core.session_startup_message import prepare_startup_message, resolve_command_input
+from teleclaude.core.session_startup_message import prepare_startup_message
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
@@ -62,6 +53,7 @@ from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import TRANSCRIPT_READERS, parse_session_transcript
 
+from ._session_identity import resolve_session_creation_identity
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
 if TYPE_CHECKING:
@@ -73,26 +65,6 @@ _UNBOUND_TMUX_NAME = ""
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
-_WORKTREE_SUBDIR_TEMPLATE = "{worktree_dir}/{slug}"
-_WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
-
-
-def resolve_working_slug_from_subdir(subdir: str | None) -> str | None:
-    """Derive a todo slug from a ``<WORKTREE_DIR>/<slug>`` worktree subdir.
-
-    Git worktrees live at ``{project}/{WORKTREE_DIR}/{slug}``, so a session opened
-    on such a subdir is bound to ``<slug>``. Returns the slug, or ``None`` when the
-    subdir is absent or is not a direct worktree child. Keyed on ``WORKTREE_DIR``
-    so the single literal lives in ``constants``; both the create-session primitive
-    and the generic create-door guard share this one resolver.
-    """
-    if not subdir:
-        return None
-    prefix = f"{WORKTREE_DIR}/"
-    if not subdir.startswith(prefix):
-        return None
-    slug = subdir[len(prefix) :].strip("/")
-    return slug or None
 
 
 async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
@@ -261,35 +233,6 @@ async def _resolve_launch_intent(
     return decision
 
 
-def prepare_interactive_create_command(cmd: CreateSessionCommand, human_role: str | None) -> None:
-    """Resolve one target-local command input before session creation observes it."""
-    source_text = cmd.command_input_source_text or cmd.initial_input
-    result = resolve_command_input(cmd.initial_input, cmd.command_input_mode)
-    if isinstance(result, RefusedCommandInput):
-        raise ValueError(result.detail)
-    if not isinstance(result, ResolvedCommandInput):
-        return
-    metadata = admit_command_input(result.command, result.args, human_role)
-    try:
-        slash_command = SlashCommand(result.command)
-    except ValueError:
-        slash_command = None
-    if slash_command in WORKTREE_BOUND_WORKER_COMMANDS:
-        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(worktree_dir=WORKTREE_DIR, slug=metadata.working_slug)
-        worktree_dir = Path(resolve_working_dir(cmd.project_path, subdir))
-        if not worktree_dir.is_dir():
-            raise ValueError(_WORKTREE_DIRECTORY_MISSING_TEMPLATE.format(worktree_dir=worktree_dir))
-        cmd.subdir = subdir
-    cmd.initial_input = result.normalized_message
-    cmd.command = result.command
-    cmd.system_role = metadata.system_role
-    cmd.job = metadata.job
-    cmd.working_slug = metadata.working_slug
-    if cmd.launch_intent is not None and cmd.launch_intent.message is not None:
-        cmd.launch_intent.message = result.normalized_message
-        cmd.launch_intent.command_input_source_text = source_text
-
-
 async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     cmd: CreateSessionCommand,
     client: "AdapterClient",
@@ -324,93 +267,21 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
 
-    # Resolve identity from typed origin metadata when available.
-    # Sessions without origin_metadata (e.g. telegram before adapter conversion)
-    # proceed with no identity — parent inheritance or role-based access applies.
-    identity: IdentityContext | None = None
-    human_email: str | None = cmd.human_email
-    human_role: str | None = cmd.human_role
-    if cmd.origin_metadata:
-        identity = get_identity_resolver().resolve(origin, cmd.origin_metadata)
-        if not human_email:
-            human_email = identity.person_email
-        if not human_role:
-            human_role = identity.person_role
-
-    # Handle parent session identity inheritance
-    principal: str | None = None
-    if parent_session:
-        if not human_email and parent_session.human_email:
-            human_email = parent_session.human_email
-        if not human_role and parent_session.human_role:
-            human_role = parent_session.human_role
-        if not principal and parent_session.principal:
-            principal = parent_session.principal
-
-    parent_company = parent_session.company if parent_session else None
-    company, company_source = resolve_session_creation_company(cmd.request_id, cmd.company, human_email, parent_company)
-    prepare_interactive_create_command(cmd, human_role)
-
     computer_name = config.computer.name
     session_id = cmd.session_id or str(uuid.uuid4())
     tmux_name = "" if cmd.headless else host_pane_name(session_id)
-    subfolder = cmd.subdir
-    working_slug: str | None = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
-    initiator_session_id = cmd.initiator_session_id
-    initiator_computer = cmd.initiator_computer
-    cmd_system_role = cmd.system_role
-    cmd_job = cmd.job
-    # A standing role carries no commanding session, whatever door created it,
-    # and no human identity — it resolves to the daemon principal and bootstrap
-    # mints its own credential.
-    if is_standing_role(cmd_system_role, cmd_job):
-        if initiator_session_id:
-            logger.info(
-                _LISTENER_REGISTRATION_SKIPPED_EVENT,
-                caller_session_id=initiator_session_id,
-                target_session_id=session_id,
-                reason=_LISTENER_SKIP_REASON_STANDING_ROLE,
-            )
-        initiator_session_id = None
-        initiator_computer = None
-        human_email = None
-        human_role = None
-        principal = None
-
-    if not human_role and not cmd_system_role:
-        raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
-
-    # System-role sessions (workers, orchestrators, integrators) are trusted
-    # internal principals — they bypass help-desk routing entirely.
-    system_role = cmd_system_role
-    raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
-    configured_help_desk_path = (
-        raw_help_desk_path
-        if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
-        else os.path.join(WORKING_DIR, "help-desk")
-    )
-    if not system_role and human_role and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER):
-        logger.info(
-            "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
-            origin,
-            human_role,
-        )
-        project_path = configured_help_desk_path
-        Path(project_path).mkdir(parents=True, exist_ok=True)
-        subfolder = None
-        working_slug = None
-    else:
-        project_path = cmd.project_path
-        if not project_path:
-            logger.info(
-                "Session creation missing project_path from origin=%s; defaulting to help-desk.",
-                origin,
-            )
-            project_path = configured_help_desk_path
-            Path(project_path).mkdir(parents=True, exist_ok=True)
-            subfolder = None
-            working_slug = None
-    project_path = os.path.expanduser(os.path.expandvars(project_path))
+    resolved = await resolve_session_creation_identity(cmd, parent_session, session_id)
+    human_email = resolved.human_email
+    human_role = resolved.human_role
+    principal = resolved.principal
+    project_path = resolved.project_path
+    subfolder = resolved.subfolder
+    working_slug = resolved.working_slug
+    company = resolved.company
+    company_source = resolved.company_source
+    initiator_session_id = resolved.initiator_session_id
+    initiator_computer = resolved.initiator_computer
+    cmd_system_role, cmd_job = cmd.system_role, cmd.job
 
     decision = await _resolve_launch_intent(cmd, project_path, working_slug)
     launch = cmd.launch_intent

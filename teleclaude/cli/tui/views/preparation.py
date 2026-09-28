@@ -361,7 +361,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         for session_id, info in tuple(lookup.items()):
             if info.status == "live" and in_scope(info.computer) and session_id not in live_ids:
-                lookup[session_id] = SessionInfo(status="closed", computer=info.computer)
+                lookup.pop(session_id, None)
         for session in sessions:
             lookup[session.session_id] = SessionInfo(status="live", computer=session.computer)
 

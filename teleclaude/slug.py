@@ -7,6 +7,7 @@ from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_EMPTY_SLUG = ""
 
 
 def validate_slug(slug: str) -> None:
@@ -28,6 +29,16 @@ def normalize_slug(text: str) -> str:
     slugified = re.sub(r"[^a-z0-9]+", "-", lowered)
     slugified = re.sub(r"-+", "-", slugified).strip("-")
     return slugified
+
+
+def derive_project_slug(project_slug: object, project_name: object, root: Path) -> str | None:
+    """Resolve a project's effective slug from its declaration and registered root."""
+    declared_slug = project_slug.strip() if isinstance(project_slug, str) else _EMPTY_SLUG
+    if declared_slug:
+        return declared_slug
+    name = project_name if isinstance(project_name, str) and project_name else root.name
+    derived_slug = normalize_slug(name)
+    return derived_slug or None
 
 
 def ensure_unique_slug(

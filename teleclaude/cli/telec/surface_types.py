@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 
+from teleclaude.cli import CommandScope
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CONTRIBUTOR,
@@ -60,6 +61,8 @@ class CommandAuth:
     system: frozenset[str]  # allowed system roles
     human: frozenset[str]  # allowed human roles (admin must be explicit)
     caller_independent: bool = False
+    scope: CommandScope = CommandScope.INVOCATION
+    scope_flag: str | None = None
 
     def allows(self, system_role: str | None, human_role: str | None) -> bool:
         """Check whether a caller with the given roles is authorized.
@@ -70,7 +73,9 @@ class CommandAuth:
         if self.caller_independent:
             return True
         if system_role is not None:
-            return system_role in self.system
+            if system_role not in self.system:
+                return False
+            return human_role is None or human_role in self.human
         return human_role in self.human if human_role is not None else False
 
 

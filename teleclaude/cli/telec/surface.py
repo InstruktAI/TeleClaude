@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from teleclaude.cli import CommandScope
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
@@ -130,7 +131,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec sessions start --message "Implement feature X"',
                     "telec sessions start --direct",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.TARGET_PATH,
+                    scope_flag=F.FLAG_PATH.long,
+                ),
             ),
             "send": CommandDef(
                 desc="Send a message to a running session",
@@ -156,7 +162,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec sessions send sess-123 "Let\'s discuss the architecture" --direct',
                     "telec sessions send sess-123 --close-link",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
             ),
             "tail": CommandDef(
                 desc="Get recent messages from a session's transcript",
@@ -171,7 +181,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_TAIL_PANE,
                     F.FLAG_COMPUTER,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
             ),
             "run": CommandDef(
                 desc="Run a canonical command on a new agent session",
@@ -207,7 +221,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec sessions run --command build --args my-slug",
                     "telec sessions run --command review-plan --args my-slug",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.TARGET_PATH,
+                    scope_flag=F.FLAG_PATH.long,
+                ),
             ),
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",
@@ -226,7 +245,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Without --agent, session_id is a TeleClaude session ID.",
                     "With --agent, session_id is a native agent session ID resolved via the specified agent.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                auth=CommandAuth(
+                    system=_AGENT_REACH,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
             ),
             "end": CommandDef(
                 desc="End a session, or every direct child of the calling session when targetless",
@@ -240,19 +263,31 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "With no target, closes every live direct child of the calling session across computers.",
                     "Targetless cleanup is idempotent and rejects --computer so caller scope cannot be narrowed.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
                 args="<session_id>",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
             ),
             "restart": CommandDef(
                 desc="Restart an agent session ('self' to restart own session)",
                 args="<session_id> [--handoff [<agent>]]",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER, F.FLAG_HANDOFF],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                auth=CommandAuth(
+                    system=_AGENT_REACH,
+                    human=_HR_ADMIN,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
             ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",
@@ -322,7 +357,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List available computers (local + cached remote)",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
         },
     ),
@@ -333,7 +372,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List projects on local and remote computers",
                 args="[--computer <host>]",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
         },
     ),
@@ -343,7 +386,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "availability": CommandDef(
                 desc="Get current availability for all agents",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
             "status": CommandDef(
                 desc="Set dispatch status for a specific agent",
@@ -356,7 +403,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_AGENT_STATUS_UNTIL,
                     F.FLAG_AGENT_STATUS_CLEAR,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
             ),
         },
     ),
@@ -367,13 +414,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List active channels",
                 args="[--project <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_PROJECT_FILTER],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
             "publish": CommandDef(
                 desc="Publish a message to a channel",
                 args="<channel> [--data <json>]",
                 flags=[F.FLAG_HELP, F.FLAG_CHANNEL_DATA],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
         },
     ),
@@ -520,7 +575,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change "
                     "intents it cannot trace to a human decision.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB,
+                    scope=CommandScope.TARGET_PATH,
+                    scope_flag=F.FLAG_TODO_PROJECT_ROOT.long,
+                ),
             ),
             "list": CommandDef(
                 desc="List todo entries (source of truth for todo status)",
@@ -808,7 +868,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "what happened, what was expected, and what preceded it. A report with no trigger context is "
                     "unauditable later — this is the reporting invitation the schema alone cannot supply.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
+                    scope_flag=F.FLAG_BUG_PROJECT.long,
+                ),
             ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
@@ -832,19 +897,34 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Matching is literal (substring) or a compiled regex; a regex pattern is validated here and rejected if it does not compile.",
                     "Author the pattern to target the invariant signal (a stable reason token), never a volatile value like a millisecond figure.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB,
+                    scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
+                    scope_flag=F.FLAG_PROJECT_TRUSTED.long,
+                ),
             ),
             "suppressions": CommandDef(
                 desc="List the active known-issue suppressions for a project",
                 args="[--project <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
+                    scope_flag=F.FLAG_PROJECT_TRUSTED.long,
+                ),
             ),
             "unsuppress": CommandDef(
                 desc="Remove a known-issue suppression by id so its signal is eligible for filing again",
                 args="<id> [--project <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB,
+                    scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
+                    scope_flag=F.FLAG_PROJECT_TRUSTED.long,
+                ),
             ),
         },
     ),
@@ -982,7 +1062,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "wizard": CommandDef(
                 desc="Open the interactive configuration wizard",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=frozenset(), human=_HR_ADMIN),
+                auth=CommandAuth(system=frozenset(), human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                 hidden=True,
             ),
             "computer": CommandDef(
@@ -991,18 +1071,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List computer subjects (singleton)",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH | _WORKER_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.PLATFORM,
+                        ),
                     ),
                     "get": CommandDef(
                         desc="Get the machine configuration",
                         args="[paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH | _WORKER_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.PLATFORM,
+                        ),
                     ),
                     "init": CommandDef(
                         desc="Converge the machine configuration without overwriting existing values",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch the machine configuration",
@@ -1014,7 +1102,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FROM_FILE,
                             F.FLAG_CONFIG_FORMAT,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
@@ -1024,18 +1112,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List global subjects (singleton)",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH | _WORKER_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.PLATFORM,
+                        ),
                     ),
                     "get": CommandDef(
                         desc="Get the global configuration",
                         args="[paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH | _WORKER_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.PLATFORM,
+                        ),
                     ),
                     "init": CommandDef(
                         desc="Converge the global configuration without overwriting existing values",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch the global configuration",
@@ -1047,7 +1143,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FROM_FILE,
                             F.FLAG_CONFIG_FORMAT,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
@@ -1057,13 +1153,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List registered person slugs",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "get": CommandDef(
                         desc="Get one person's configuration",
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.CONFIG_SUBJECT,
+                        ),
                     ),
                     "init": CommandDef(
                         desc="Create or converge a person without overwriting existing values",
@@ -1075,7 +1175,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_PEOPLE_ROLE,
                             F.FLAG_PEOPLE_USERNAME,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch one person's configuration, or remove the person",
@@ -1089,19 +1189,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_PEOPLE_DELETE_DIR,
                             F.FLAG_CONFIG_FORMAT,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.CONFIG_SUBJECT,
+                        ),
                     ),
                     "invite": CommandDef(
                         desc="Generate (or rotate) invite links for a person",
                         args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "discord-voice-bot": CommandDef(
                         desc="Bind the active Discord bot credential to a person's voice configuration",
                         args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
                 notes=[
@@ -1114,19 +1218,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List registered company slugs",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "get": CommandDef(
                         desc="Get one company's configuration",
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH,
+                            human=_HR_ADMIN,
+                            scope=CommandScope.CONFIG_SUBJECT,
+                        ),
                     ),
                     "init": CommandDef(
                         desc="Scaffold a company without overwriting existing values",
                         args="<name> [--slug <slug>]",
                         flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch one company's roster or fields",
@@ -1138,7 +1246,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FROM_FILE,
                             F.FLAG_CONFIG_FORMAT,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH,
+                            human=_HR_ADMIN,
+                            scope=CommandScope.CONFIG_SUBJECT,
+                        ),
                     ),
                 },
             ),
@@ -1148,13 +1260,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List registered project slugs",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH | _WORKER_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.PLATFORM,
+                        ),
                     ),
                     "get": CommandDef(
                         desc="Get one project's configuration",
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH | _WORKER_REACH,
+                            human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                            scope=CommandScope.CONFIG_SUBJECT,
+                        ),
                     ),
                     "init": CommandDef(
                         desc="Initialize project plumbing for the caller's checkout",
@@ -1163,7 +1283,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Sets up git hooks, converges plumbing, and registers the project root.",
                             "Syncs no artifacts — documentation publication is commit-bound.",
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch one project's configuration",
@@ -1176,14 +1296,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FORMAT,
                         ],
                         notes=["Writes the project's teleclaude.yml only — never commits."],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(
+                            system=_AGENT_REACH,
+                            human=_HR_ADMIN,
+                            scope=CommandScope.CONFIG_SUBJECT,
+                        ),
                     ),
                 },
             ),
             "validate": CommandDef(
                 desc="Full validation",
                 flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
             "env": CommandDef(
                 desc="Manage environment variables",
@@ -1191,20 +1319,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List environment variables",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "set": CommandDef(
                         desc="Set environment variables",
                         args="<KEY=VALUE> ... [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
             "notify": CommandDef(
                 desc="Toggle notification settings",
                 flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
             ),
             "tts": CommandDef(
                 desc="Manage TTS dependency provisioning",
@@ -1219,7 +1347,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Bare invocation prints this guard and makes no daemon call.",
                             "Re-enabling TTS afterward lazily re-provisions the removed deps.",
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN),
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),

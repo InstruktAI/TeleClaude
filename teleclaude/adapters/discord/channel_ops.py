@@ -18,6 +18,7 @@ from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
+from teleclaude.core.identity import session_person_role
 from teleclaude.core.integration.discord_admin_state import session_launcher_key
 from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, Session
 from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
@@ -278,8 +279,8 @@ class ChannelOperationsMixin:
 
     @staticmethod
     def _is_customer_session(session: Session) -> bool:
-        """Check if session is customer-facing. Based solely on human_role."""
-        return session.human_role == "customer"
+        """Check if the session's current person role is customer."""
+        return session_person_role(session) == "customer"
 
     def _build_thread_topper(self, session: Session) -> str:
         """Build metadata header for the first message in a Discord thread."""

@@ -41,6 +41,7 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
+from teleclaude.core.identity import session_person_role
 from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedTextSourceFeature,
@@ -168,7 +169,7 @@ class _RestartStopAttempt:
 
 def _get_session_profile(session: Session) -> str:
     """Determine agent profile based on human role."""
-    if session.human_role == HUMAN_ROLE_ADMIN:
+    if session_person_role(session) == HUMAN_ROLE_ADMIN:
         return "default"
     return "restricted"
 

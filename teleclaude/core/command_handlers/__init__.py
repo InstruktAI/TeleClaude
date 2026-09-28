@@ -40,8 +40,8 @@ from ._session import (
     list_projects_with_todos,
     list_sessions,
     list_todos,
-    resolve_working_slug_from_subdir,
 )
+from ._session_identity import resolve_working_slug_from_subdir
 from ._utils import (
     EndSessionHandlerResult,
     SessionDataPayload,

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import sys
 
+from teleclaude.caller_identity import PersonCliCaller, ProjectPath, RoleResolver
 from teleclaude.cli.session_auth import resolve_cli_identity
+from teleclaude.paths import invocation_cwd
 
 
 def main() -> None:
@@ -17,7 +19,12 @@ def main() -> None:
         print(f"caller identity resolution failed: {exc}", file=sys.stderr)
         return
     print(f"system_role={identity.system_role or ''}")
-    print(f"person_role={identity.caller.human_role or ''}")
+    person_role = (
+        RoleResolver().role_for(identity.caller, ProjectPath(invocation_cwd()))
+        if isinstance(identity.caller, PersonCliCaller)
+        else None
+    )
+    print(f"person_role={person_role or ''}")
 
 
 if __name__ == "__main__":

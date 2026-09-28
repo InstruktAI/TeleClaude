@@ -8,18 +8,13 @@ The manifest stores just the list of absolute project root paths. All metadata
 from __future__ import annotations
 
 import stat
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
 
 import yaml
 
-from teleclaude.config._file_io import file_transaction
-from teleclaude.config._yaml import round_trip_yaml
-from teleclaude.config.schema import ConfigKind
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.paths import MACHINE_CONFIG_PATH, PROJECTS_MANIFEST_PATH, ConfigFileName
+from teleclaude.paths import PROJECTS_MANIFEST_PATH, ConfigFileName
 
 MANIFEST_PATH = PROJECTS_MANIFEST_PATH
 _UTF8 = "utf-8"
@@ -30,10 +25,16 @@ _DECLARATION_READ_ERROR = "Unable to read a registered folder's tier declaration
 _DECLARATION_SHAPE_ERROR = "Registered folder's tier declaration must be a YAML mapping: {path}"
 _DECLARATION_KIND_ERROR = "Registered folder's tier declaration has an invalid kind: {path}"
 _PROJECTS_FIELD = "projects"
-_ADOPTION_LOCK_SUFFIX = ".adoption"
 _KIND_FIELD = "kind"
-_TRANSIT_PATH_FIELD = "path"
-_TRANSIT_NAME_FIELD = "name"
+
+
+class ConfigKind(StrEnum):
+    """Tier identity declared by a registered configuration folder."""
+
+    GLOBAL = "global"
+    PROJECT = "project"
+    PERSON = "person"
+    COMPANY = "company"
 
 
 class RegisteredProjectRoot(NamedTuple):
@@ -65,15 +66,6 @@ def _manifest_path_exists(path: Path) -> bool:
     except OSError as exc:
         raise RuntimeError(_MANIFEST_READ_ERROR) from exc
     return True
-
-
-@contextmanager
-def project_adoption_lock(path: Path | None = None) -> Iterator[None]:
-    """Serialize identity checks and registration across local adoption calls."""
-    manifest_path = _normalize_manifest_path(path if path is not None else MANIFEST_PATH)
-    lock_path = manifest_path.with_suffix(f"{manifest_path.suffix}{_ADOPTION_LOCK_SUFFIX}")
-    with file_transaction(lock_path):
-        yield
 
 
 def _coerce_root(raw: object) -> Path | None:
@@ -152,7 +144,7 @@ def load_registered_roots(path: Path = MANIFEST_PATH, *, strict: bool = False) -
     """Load registered project roots only, retaining unavailable entries."""
     return [
         RegisteredProjectRoot(path=entry.path, is_present=entry.is_present)
-        for entry in load_registered_entries(path, strict=strict, include_in_transit=False)
+        for entry in load_registered_entries(path, strict=strict)
         if entry.kind is ConfigKind.PROJECT
     ]
 
@@ -161,9 +153,8 @@ def load_registered_entries(
     path: Path = MANIFEST_PATH,
     *,
     strict: bool = False,
-    include_in_transit: bool = True,
 ) -> list[RegisteredProjectEntry]:
-    """Load every registered folder in order, retaining availability and tier."""
+    """Load manifest entries in adoption order, retaining availability and tier."""
     manifest_path = _normalize_manifest_path(path)
     roots: list[Path] = []
     if _manifest_path_exists(manifest_path):
@@ -180,86 +171,8 @@ def load_registered_entries(
                 raise RuntimeError(_MANIFEST_READ_ERROR) from exc
             raise
     entries: list[RegisteredProjectEntry] = []
-    known_roots: set[Path] = set()
     for root in roots:
         is_present = root.is_dir()
         kind = _declared_kind(root) if is_present else ConfigKind.PROJECT
         entries.append(RegisteredProjectEntry(path=root, is_present=is_present, kind=kind))
-        known_roots.add(root)
-
-    if include_in_transit:
-        document = _stored_machine_document()
-        if document is not None:
-            for batch in _project_registry_transit(document):
-                if not isinstance(batch, tuple):
-                    continue
-                for row in batch:
-                    if not isinstance(row, Mapping):
-                        continue
-                    raw_path = row.get(_TRANSIT_PATH_FIELD)
-                    former_name = row.get(_TRANSIT_NAME_FIELD)
-                    if not isinstance(raw_path, str) or not raw_path.strip():
-                        continue
-                    root = Path(raw_path).expanduser().resolve()
-                    if root in known_roots or not root.is_dir():
-                        continue
-                    if not isinstance(former_name, str) or not former_name:
-                        continue
-                    entries.append(
-                        RegisteredProjectEntry(
-                            path=root,
-                            is_present=True,
-                            kind=ConfigKind.PROJECT,
-                            former_name=former_name,
-                        ),
-                    )
-                    known_roots.add(root)
     return entries
-
-
-def _stored_machine_document() -> Mapping[str, object] | None:
-    """Read the stored machine document without validating or rewriting it."""
-    with file_transaction(MACHINE_CONFIG_PATH) as transaction:
-        content = transaction.read_text(encoding=_UTF8)
-    if not content:
-        return {}
-    document: object = round_trip_yaml().load(content)
-    return document if isinstance(document, Mapping) else None
-
-
-def _project_registry_transit(document: Mapping[str, object]) -> tuple[object, ...]:
-    """Read entries still moving from the machine document into the registry."""
-    from teleclaude.config.migrations import (  # noqa: PLC0415 - avoids the migration-step import cycle.
-        Destination,
-        in_transit,
-    )
-
-    return in_transit(document, SubjectRef(ConfigSubjectKind.COMPUTER), Destination.PROJECT_REGISTRY)
-
-
-def register_root(*, path: Path | None = None, project_root: Path) -> bool:
-    """Append ``project_root`` when new and return whether the entry was added.
-
-    ``path`` defaults to the module-level ``MANIFEST_PATH`` when omitted. We
-    resolve the default at call time (not at function-definition time) so
-    tests that monkeypatch ``project_manifest.MANIFEST_PATH`` observe the
-    override without needing to reload the module.
-    """
-    manifest_path = _normalize_manifest_path(path if path is not None else MANIFEST_PATH)
-    normalized = project_root.expanduser().resolve()
-    with file_transaction(manifest_path) as transaction:
-        if _manifest_path_exists(manifest_path):
-            try:
-                existing_raw: object = yaml.safe_load(transaction.read_text(encoding=_UTF8))
-            except (yaml.YAMLError, OSError, UnicodeError) as exc:
-                raise RuntimeError(_MANIFEST_READ_ERROR) from exc
-            roots = _parse_manifest_data(existing_raw)
-        else:
-            roots = []
-
-        if normalized in roots:
-            return False
-        roots.append(normalized)
-        payload = {_PROJECTS_FIELD: [str(root) for root in roots]}
-        transaction.replace_text(yaml.safe_dump(payload, sort_keys=False), encoding=_UTF8)
-    return True

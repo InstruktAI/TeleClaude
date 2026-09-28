@@ -331,20 +331,28 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
     def update_session_catalog(self, sessions: list[SessionDTO]) -> None:
         """Update the session catalog used for layout lookup.
 
-        Sessions referenced by current sticky or active specs are retained when
-        absent from the snapshot — eviction happens only via `remove_session`,
-        which is driven by an explicit `SessionClosed` event.
+        Sessions omitted by a scoped snapshot leave the viewer's pane layout;
+        the attached tmux session itself remains alive.
         """
-        retained_ids: set[str] = {spec.session_id for spec in self._layout_state.sticky_specs}
-        active_spec = self._layout_state.active_spec
-        if active_spec is not None:
-            retained_ids.add(active_spec.session_id)
+        previous_cells = self._layout_state.cell_specs
         new_catalog = {session.session_id: session for session in sessions}
-        for session_id in retained_ids:
-            if session_id not in new_catalog and session_id in self._session_catalog:
-                new_catalog[session_id] = self._session_catalog[session_id]
+        prior_session_ids = set(self._session_catalog)
         self._session_catalog = new_catalog
+        visible_ids = set(new_catalog)
+        self._layout_state.sticky_specs = [
+            spec for spec in self._layout_state.sticky_specs if spec.session_id in visible_ids
+        ]
+        active_spec = self._layout_state.active_spec
+        if active_spec is not None and active_spec.session_id not in visible_ids:
+            self._layout_state.active_spec = None
+            self.state.active_session_id = None
         self._resolve_unresolved_panes()
+        if prior_session_ids - visible_ids:
+            cell_specs = self._build_session_specs()
+            self._reflow_layout(previous_cells, cell_specs)
+            self._layout_state.cell_specs = cell_specs
+            for session_id in prior_session_ids - visible_ids:
+                self.state.session_to_pane.pop(session_id, None)
 
     def _adopt_reload_doc_pane(self) -> None:
         """Keep the viewer a reload found, and let go of any beyond the first.

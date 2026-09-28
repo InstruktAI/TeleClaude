@@ -17,16 +17,22 @@ from teleclaude.caller_identity import (
     CliCaller,
     NoIdentityCliCaller,
     PersonCliCaller,
+    Platform,
+    ProjectPath,
+    RoleResolver,
+    RoleTarget,
     SessionAct,
+    SessionOf,
     human_principal_for_email,
     identity_for_session,
     person_entry_for_email,
     session_act_exception,
 )
+from teleclaude.cli import CommandScope
 from teleclaude.config_roster import load_people_roster
-from teleclaude.constants import LOGIN_REQUIRED_DETAIL, MarkerState
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOCAL_COMPUTER, LOGIN_REQUIRED_DETAIL, MarkerState
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
-from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.paths import MAIN_DB_PATH, invocation_cwd
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.types.creation_record import EntryPoint
@@ -89,6 +95,12 @@ class CommandAuthDeclaration(Protocol):
     @property
     def caller_independent(self) -> bool: ...
 
+    @property
+    def system(self) -> frozenset[str]: ...
+
+    @property
+    def scope(self) -> CommandScope: ...
+
     def allows(self, system_role: str | None, human_role: str | None) -> bool: ...
 
 
@@ -98,6 +110,7 @@ _INVOCATION_IDENTITY: ContextVar[ResolvedCliIdentity | None] = ContextVar(
     default=None,
 )
 _SELF_TARGET = "self"
+_UNAUTHORIZED_ROLE = "unauthorized"
 _SESSION_END_PATH = "sessions end"
 _SESSION_RESTART_PATH = "sessions restart"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
@@ -327,11 +340,35 @@ def no_identity_refusal(identity: ResolvedCliIdentity) -> str:
     return f"{LOGIN_REQUIRED_DETAIL}. Run: telec auth login <email>"
 
 
+def _fallback_role_target(
+    auth: CommandAuthDeclaration,
+    identity: ResolvedCliIdentity,
+    target_session_id: str | None,
+) -> RoleTarget:
+    """Fail closed when a target-scoped caller did not supply the object."""
+    if auth.scope is CommandScope.PLATFORM:
+        return Platform()
+    if auth.scope is CommandScope.TARGET_SESSION:
+        resolved_target = identity.session_id if target_session_id == _SELF_TARGET else target_session_id
+        if resolved_target is None:
+            return ProjectPath(invocation_cwd())
+        facts = _load_session_record(resolved_target)
+        if facts is not None and facts.project_path is not None:
+            return SessionOf(Path(facts.project_path))
+        return Platform()
+    if auth.scope is not CommandScope.INVOCATION:
+        return Platform()
+    return ProjectPath(invocation_cwd())
+
+
 def cli_clearance(
     command_path: str,
     identity: ResolvedCliIdentity | None,
     target_session_id: str | None = None,
     auth: CommandAuthDeclaration | None = None,
+    *,
+    role_target: RoleTarget | None = None,
+    target_computer: str | None = None,
 ) -> CliClearance:
     """Decide one command's clearance without printing or exiting."""
     if auth is None:
@@ -348,13 +385,13 @@ def cli_clearance(
         _SESSION_RESTART_PATH: SessionAct.RESTART,
     }.get(command_path)
     if action is not None:
-        resolved_target = identity.session_id if target_session_id == _SELF_TARGET else target_session_id
+        action_session_target = identity.session_id if target_session_id == _SELF_TARGET else target_session_id
         exception = session_act_exception(
             action,
             identity.session_id,
             identity.initiator_session_id,
             identity.system_role,
-            resolved_target,
+            action_session_target,
         )
         if exception is True:
             return CliClearance(identity=identity, refusal=None)
@@ -365,9 +402,36 @@ def cli_clearance(
                 refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
             )
 
-    if auth.allows(identity.system_role, identity.caller.human_role):
+    if auth.scope is CommandScope.NAMED_TRUSTED_DIRECTORY and role_target is None:
+        person_caller = isinstance(identity.caller, PersonCliCaller)
+        if (person_caller and identity.system_role is None) or (
+            identity.system_role is not None and identity.system_role in auth.system
+        ):
+            return CliClearance(identity=identity, refusal=None)
+        role = identity.system_role or _UNAUTHORIZED_ROLE
+        return CliClearance(
+            identity=identity,
+            refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
+        )
+
+    resolved_role_target = role_target or _fallback_role_target(auth, identity, target_session_id)
+    if target_computer is not None and target_computer != LOCAL_COMPUTER:
+        resolved_role_target = Platform()
+    person_role = (
+        RoleResolver().role_for(identity.caller, resolved_role_target)
+        if isinstance(identity.caller, PersonCliCaller)
+        else None
+    )
+    if auth.allows(identity.system_role, person_role):
         return CliClearance(identity=identity, refusal=None)
-    role = identity.system_role or identity.caller.human_role or "unauthorized"
+    if (
+        identity.system_role is not None
+        and identity.system_role in auth.system
+        and isinstance(identity.caller, PersonCliCaller)
+    ):
+        role = person_role or HUMAN_ROLE_CUSTOMER
+    else:
+        role = identity.system_role or person_role or _UNAUTHORIZED_ROLE
     return CliClearance(
         identity=identity,
         refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
@@ -378,10 +442,20 @@ def require_cli_clearance(
     command_path: str,
     target_session_id: str | None = None,
     auth: CommandAuthDeclaration | None = None,
+    *,
+    role_target: RoleTarget | None = None,
+    target_computer: str | None = None,
 ) -> ResolvedCliIdentity | None:
     """Resolve and enforce one local CLI command's declared authorization."""
     identity = None if auth is not None and auth.caller_independent else resolve_cli_identity()
-    clearance = cli_clearance(command_path, identity, target_session_id, auth)
+    clearance = cli_clearance(
+        command_path,
+        identity,
+        target_session_id,
+        auth,
+        role_target=role_target,
+        target_computer=target_computer,
+    )
     if clearance.refusal is not None:
         print(f"Error: {clearance.refusal}", file=sys.stderr)
         raise SystemExit(1)

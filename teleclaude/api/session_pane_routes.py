@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_role_at_platform,
+    carried_caller,
+)
 from teleclaude.api.session_pane_models import SessionPaneDTO
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
@@ -45,7 +49,7 @@ async def get_session_pane_endpoint(
             if _STATE.client is None:
                 raise HTTPException(status_code=503, detail="Remote session pane is unavailable")
             target_computer = computer or NO_REMOTE_COMPUTER
-            metadata = MessageMetadata(human_email=_identity.email, human_role=_identity.human_role)
+            metadata = MessageMetadata(human_email=_identity.email, human_role=caller_role_at_platform(_identity))
             message_id = await _STATE.client.send_request(
                 target_computer,
                 REMOTE_SESSION_PANE_COMMAND,

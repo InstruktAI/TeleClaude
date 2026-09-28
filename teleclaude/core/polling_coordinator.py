@@ -14,7 +14,7 @@ from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
-from teleclaude.core.identity import resolve_discord_author_alias
+from teleclaude.core.identity import resolve_discord_author_alias, session_person_role
 from teleclaude.core.injected_text import (
     TranscriptEntryKind,
     caller_occurrence_key,
@@ -117,7 +117,7 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
         return None
 
     policy = visibility_policy_for_person(
-        human_role=session.human_role,
+        human_role=session_person_role(session),
         person_email=session.human_email,
         surface=ProjectionSurface.MOBILE,
         include_thinking=True,

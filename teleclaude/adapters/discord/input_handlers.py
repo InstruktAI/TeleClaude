@@ -27,6 +27,7 @@ from teleclaude.adapters.discord.session_launcher import (
     LauncherOwnershipOutcome,
     LauncherOwnershipReason,
 )
+from teleclaude.caller_identity import PersonCliCaller, RoleResolver, SessionOf
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -254,7 +255,7 @@ class InputHandlersMixin:
             user_id = str(getattr(getattr(message, "author", None), "id", ""))
             identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
 
-            human_role = identity.person_role
+            human_role = None if identity.person_slug else identity.person_role
 
             project_path = context.project_path
             if not project_path:
@@ -487,8 +488,14 @@ class InputHandlersMixin:
         if session.human_role:
             return session
         identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
-        if identity and identity.person_role:
-            await db.update_session(session.session_id, human_role=identity.person_role)
+        if identity and identity.person_slug:
+            caller = PersonCliCaller(
+                email=identity.person_email,
+                person_slug=identity.person_slug,
+                human_role=identity.person_role,
+            )
+            role = RoleResolver().role_for(caller, SessionOf(session.project_path))
+            await db.update_session(session.session_id, human_role=role)
             return await db.get_session(session.session_id) or session
         return session
 

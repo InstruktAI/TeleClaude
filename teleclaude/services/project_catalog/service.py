@@ -6,7 +6,8 @@ from pathlib import Path
 
 from teleclaude.config.loader import load_global_config
 from teleclaude.paths import PROJECTS_MANIFEST_PATH
-from teleclaude.project_manifest import load_registered_entries, load_roots
+from teleclaude.project_manifest import load_roots
+from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.services.project_catalog.loaders import load_catalog_entry, load_project_node
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry, ProjectNode
 

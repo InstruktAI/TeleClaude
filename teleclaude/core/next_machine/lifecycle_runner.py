@@ -10,7 +10,8 @@ from typing import NamedTuple, Protocol, Unpack
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import CreateSessionResponseDTO
-from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
+from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config import WorkflowRunnerMode, config
 from teleclaude.constants import COMMAND_ROLE_MAP, JobRole, SlashCommand, TodoStatus
 from teleclaude.core.dates import task_schedule_due

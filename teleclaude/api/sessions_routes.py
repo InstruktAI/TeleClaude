@@ -22,7 +22,7 @@ from teleclaude.api.agent_dispatch_errors import (
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
-from teleclaude.api.auth import CallerIdentity, carried_caller, resolve_caller_provenance
+from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller, resolve_caller_provenance
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
 from teleclaude.api.session_authority import ACT_END, ACT_SEND_MESSAGE, refuse_act_on_ancestor
@@ -52,8 +52,15 @@ from teleclaude.api_models import (
     SendMessageResponseDTO,
     SessionDTO,
 )
+from teleclaude.caller_identity import (
+    PersonCliCaller,
+    Platform,
+    RoleResolver,
+    SessionOf,
+    SystemCliCaller,
+)
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, SlashCommand
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
 from teleclaude.core import command_handlers
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.command_dispatch import dispatch_command
@@ -112,6 +119,13 @@ if TYPE_CHECKING:
 from teleclaude.types.commands import OCCURRENCE_KEY, CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
+
+
+def _session_computer_name(session: object) -> str:
+    """Return the computer label from a local session or cached snapshot."""
+    value = getattr(session, "computer_name", None) or getattr(session, "computer", None)
+    return value if isinstance(value, str) else ""
+
 
 _UNIDENTIFIABLE_CALLER_EVENT = "unidentifiable_caller_refused"
 _SESSION_START_IGNITION_PATH = "session_start"
@@ -202,20 +216,6 @@ def _resolve_origin(
     return origin, caller_email, typed_origin
 
 
-def _resolve_effective_human_role(
-    requested_human_role: str | None,
-    authenticated_human_role: str | None,
-) -> str | None:
-    """Reject client role escalation unless the authenticated caller is already admin."""
-    if requested_human_role is None:
-        return authenticated_human_role
-    if requested_human_role == authenticated_human_role:
-        return authenticated_human_role
-    if authenticated_human_role == HUMAN_ROLE_ADMIN:
-        return requested_human_role
-    raise HTTPException(status_code=403, detail="human_role override requires admin identity")
-
-
 async def _link_direct_sessions(
     *,
     caller_session_id: str,
@@ -282,7 +282,6 @@ async def _prepare_create_session(
     initiator_session_id = _extract_initiator_session_id(request, identity)
 
     origin, caller_email, origin_meta = _resolve_origin(request, identity)
-    effective_human_role = _resolve_effective_human_role(request.human_role, identity.human_role)
 
     inferred_role, inferred_job, _ = infer_role_and_slug_from_message(request.message)
     req_system_role = inferred_role
@@ -293,7 +292,7 @@ async def _prepare_create_session(
         project_path=request.project_path,
         subdir=request.subdir,
         human_email=caller_email,
-        human_role=effective_human_role,
+        human_role=None,
         origin_metadata=origin_meta,
         system_role=req_system_role,
         job=req_job,
@@ -386,6 +385,28 @@ async def list_sessions(
             for s in cached_sessions:
                 by_id.setdefault(s.session_id, s)
             merged = list(by_id.values())
+
+        caller = caller_for_role_resolution(_identity)
+        resolver = RoleResolver()
+        system_caller = isinstance(caller, SystemCliCaller)
+        platform_role = resolver.role_for(caller, Platform())
+        platform_reaches = system_caller or platform_role != HUMAN_ROLE_CUSTOMER
+        if query.computer and query.computer not in ("local", config.computer.name):
+            merged = merged if platform_reaches else []
+        else:
+            merged = [
+                session
+                for session in merged
+                if (
+                    system_caller
+                    or (
+                        _session_computer_name(session) in ("", "local", config.computer.name)
+                        and isinstance(caller, PersonCliCaller)
+                        and resolver.role_for(caller, SessionOf(session.project_path)) != HUMAN_ROLE_CUSTOMER
+                    )
+                    or (_session_computer_name(session) not in ("", "local", config.computer.name) and platform_reaches)
+                )
+            ]
 
         # Telec tool default: show sessions spawned by current caller only.
         caller_session_id = request.headers.get("x-caller-session-id")

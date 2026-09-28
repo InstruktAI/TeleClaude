@@ -26,7 +26,7 @@ from teleclaude.core.reconciliation.template_installation import materialize_tem
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.git import Repo
 from teleclaude.paths import ConfigFileName
-from teleclaude.project_manifest import project_adoption_lock, register_root
+from teleclaude.project_manifest_runtime import project_adoption_lock, register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_repo import ensure_git_repo

@@ -103,7 +103,8 @@ class ConfigContentRenderMixin:
             self._row_click_map[row] = ("person_select", person_key)  # type: ignore[attr-defined]
 
             result.append(f"  {prefix} {person.name}", style=row_style)
-            result.append(f" ({person.role})", style=_DIM)
+            if person.role is not None:
+                result.append(f" ({person.role})", style=_DIM)
             if person.email:
                 result.append(f" <{person.email}>", style=_DIM)
             result.append("\n")

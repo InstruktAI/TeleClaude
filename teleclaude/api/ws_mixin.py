@@ -32,8 +32,9 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
+from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, RoleResolver, SessionOf, SystemCliCaller
 from teleclaude.config import config
-from teleclaude.constants import CacheEvent
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.delivery.message import format_notification_message
@@ -57,6 +58,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         _cache: DaemonCache | None
         _ws_clients: set[WebSocket]
         _client_subscriptions: dict[WebSocket, dict[str, set[str]]]
+        _ws_viewers: dict[WebSocket, CliCaller]
+        _ws_sent_session_ids: dict[WebSocket, set[str]]
         _ws_client_states: dict[WebSocket, _WsClientState]
         _previous_interest: dict[str, set[str]]
         _refresh_debounce_task: asyncio.Task[object] | None
@@ -75,6 +78,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
     async def _handle_websocket(
         self,
         websocket: WebSocket,
+        viewer: CliCaller,
     ) -> None:
         """Handle WebSocket connection for push updates.
 
@@ -84,6 +88,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         await websocket.accept()
         self._ws_clients.add(websocket)
         self._client_subscriptions[websocket] = {}
+        self._ws_viewers[websocket] = viewer
+        self._ws_sent_session_ids[websocket] = set()
         self._ensure_ws_client_state(websocket)
         logger.info("WebSocket client connected")
 
@@ -259,7 +265,15 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 # Send current sessions from cache for this computer
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
-                    sessions = [SessionDTO.from_core(s, computer=s.computer) for s in cached_sessions]
+                    viewer = self._ws_viewers.get(websocket)
+                    resolver = RoleResolver()
+                    visible = [
+                        session
+                        for session in cached_sessions
+                        if viewer is not None and self._viewer_can_read_session(viewer, session, resolver)
+                    ]
+                    self._ws_sent_session_ids[websocket].update(session.session_id for session in visible)
+                    sessions = [SessionDTO.from_core(s, computer=s.computer) for s in visible]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
             elif data_type in ("preparation", "projects"):
@@ -321,6 +335,33 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         except Exception as e:
             logger.error("Failed to send initial state for %s on %s: %s", data_type, computer, e, exc_info=True)
 
+    @staticmethod
+    def _viewer_can_read_session(viewer: CliCaller, session: SessionSnapshot, resolver: RoleResolver) -> bool:
+        if isinstance(viewer, SystemCliCaller):
+            return True
+        if not isinstance(viewer, PersonCliCaller):
+            return False
+        computer = session.computer or ""
+        if computer not in ("", "local", config.computer.name):
+            return resolver.role_for(viewer, Platform()) != HUMAN_ROLE_CUSTOMER
+        return resolver.role_for(viewer, SessionOf(session.project_path)) != HUMAN_ROLE_CUSTOMER
+
+    def _session_event_targets(self, session: SessionSnapshot) -> list[WebSocket]:
+        """Select subscribed viewers who can read this session at send time."""
+        computer = session.computer or config.computer.name
+        local = computer in ("", "local", config.computer.name)
+        targets: list[WebSocket] = []
+        for websocket, subscriptions in self._client_subscriptions.items():
+            subscribed_computers = ("local", config.computer.name) if local else (computer,)
+            if not any("sessions" in subscriptions.get(name, set()) for name in subscribed_computers):
+                continue
+            viewer = self._ws_viewers.get(websocket)
+            if viewer is None or not self._viewer_can_read_session(viewer, session, RoleResolver()):
+                continue
+            self._ws_sent_session_ids.setdefault(websocket, set()).add(session.session_id)
+            targets.append(websocket)
+        return targets
+
     def _on_cache_change(self, event: str, data: object) -> None:
         """Handle cache change notifications and push to WebSocket clients.
 
@@ -330,11 +371,24 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         """
         session_payload = self._build_session_cache_payload(event, data)
         if session_payload is not None:
-            self._broadcast_payload(event, session_payload)
+            session = self._extract_session_snapshot(data)
+            if session is not None:
+                targets = self._session_event_targets(session)
+                if targets:
+                    self._broadcast_payload(event, session_payload, targets=targets)
             return
 
         if event == "session_closed":
-            self._broadcast_payload(event, self._build_session_closed_payload(event, data))
+            session_id = str(data.get("session_id", "")) if isinstance(data, dict) else ""
+            targets = [
+                websocket
+                for websocket, sent_ids in self._ws_sent_session_ids.items()
+                if session_id and session_id in sent_ids
+            ]
+            for websocket in targets:
+                self._ws_sent_session_ids[websocket].discard(session_id)
+            if targets:
+                self._broadcast_payload(event, self._build_session_closed_payload(event, data), targets=targets)
             return
 
         refresh_payload = self._build_refresh_payload(event, data)
@@ -592,6 +646,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         state = self._ws_client_states.pop(websocket, None)
         self._ws_clients.discard(websocket)
         self._client_subscriptions.pop(websocket, None)
+        self._ws_viewers.pop(websocket, None)
+        self._ws_sent_session_ids.pop(websocket, None)
 
         sender_task = state.sender_task if state is not None else None
         current_task = asyncio.current_task()

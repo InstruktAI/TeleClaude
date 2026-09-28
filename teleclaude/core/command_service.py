@@ -90,6 +90,7 @@ from teleclaude.core.adapter_errors import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, VoiceFocusSetContext
+from teleclaude.core.identity import session_person_role
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.protocols import AdminReflectionAdapter
@@ -444,7 +445,7 @@ class CommandService:
         session = await db.get_session(cmd.session_id)
         if not session:
             raise ValueError(f"Session {cmd.session_id} not found")
-        if session.human_role != "customer":
+        if session_person_role(session) != "customer":
             raise ValueError("Escalation is only available in customer sessions")
 
         admin_adapter: AdminReflectionAdapter | None = None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict, cast
 from urllib.parse import quote
 
@@ -12,6 +13,7 @@ from instrukt_ai_logging import get_logger
 from textual import work
 
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.caller_identity import ProjectPath, RoleTarget
 from teleclaude.cli.clearance import ClearanceScope
 from teleclaude.cli.tool_client import ToolAPIError, ToolQueryParams, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest, StateChanged
@@ -259,6 +261,7 @@ class PreparationViewActionsMixin:
         path: str,
         todo_id: str,
         success_message: str,
+        role_target: RoleTarget,
         body: object | None = None,
         params: ToolQueryParams | None = None,
         relay_warnings: bool = False,
@@ -271,7 +274,10 @@ class PreparationViewActionsMixin:
                 json_body=body,
                 params=params,
                 timeout=10.0,
-                clearance_scope=ClearanceScope.verb(_ACTION_CLEARANCE_VERBS[action]),
+                clearance_scope=ClearanceScope.verb(
+                    _ACTION_CLEARANCE_VERBS[action],
+                    role_target=role_target,
+                ),
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
         except ToolAPIError as exc:
@@ -616,7 +622,10 @@ class PreparationViewActionsMixin:
                     "/todos/dump",
                     json_body=request.model_dump(mode="json"),
                     timeout=10.0,
-                    clearance_scope=ClearanceScope.verb("bugs report" if kind == TODO_KIND_BUG else "todo create"),
+                    clearance_scope=ClearanceScope.verb(
+                        "bugs report" if kind == TODO_KIND_BUG else "todo create",
+                        role_target=ProjectPath(Path(project_root)),
+                    ),
                     clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
                 )
             except Exception as exc:
@@ -712,6 +721,7 @@ class PreparationViewActionsMixin:
                     path=path,
                     todo_id=file_row.todo_id,
                     success_message=_REMOVE_ARTIFACT_SUCCESS_TEMPLATE.format(artifact_name=artifact_name, slug=slug),
+                    role_target=ProjectPath(Path(project_path)),
                     params={_CWD_BODY_KEY: project_path},
                 )
 
@@ -745,7 +755,10 @@ class PreparationViewActionsMixin:
                 path,
                 project_path,
                 _REMOVING_TODO_LABEL_TEMPLATE.format(slug=slug),
-                scope=ClearanceScope.verb("todo remove"),
+                scope=ClearanceScope.verb(
+                    "todo remove",
+                    role_target=ProjectPath(Path(project_path)),
+                ),
             )
 
         self.app.push_screen(  # type: ignore[attr-defined]
@@ -881,7 +894,10 @@ class PreparationViewActionsMixin:
         slug = context.slug
         if slug is None:
             self._submit_lifecycle_operation(
-                _TODO_PREPARE_PATH, project_path, "Preparing", scope=ClearanceScope.verb("todo prepare")
+                _TODO_PREPARE_PATH,
+                project_path,
+                "Preparing",
+                scope=ClearanceScope.verb("todo prepare", role_target=ProjectPath(Path(project_path))),
             )
             return
         row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
@@ -892,7 +908,10 @@ class PreparationViewActionsMixin:
             return
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.PREPARE.value)
         self._submit_lifecycle_operation(
-            path, project_path, _PREPARING_LABEL_TEMPLATE.format(slug=slug), scope=ClearanceScope.verb("todo prepare")
+            path,
+            project_path,
+            _PREPARING_LABEL_TEMPLATE.format(slug=slug),
+            scope=ClearanceScope.verb("todo prepare", role_target=ProjectPath(Path(project_path))),
         )
 
     def action_start_work(self) -> None:
@@ -929,14 +948,20 @@ class PreparationViewActionsMixin:
 
         if slug is None:
             self._submit_lifecycle_operation(
-                _TODO_WORK_PATH, project_path, "Starting work", scope=ClearanceScope.verb("todo work")
+                _TODO_WORK_PATH,
+                project_path,
+                "Starting work",
+                scope=ClearanceScope.verb("todo work", role_target=ProjectPath(Path(project_path))),
             )
             return
         if todo_id is None:
             return
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.WORK.value)
         self._submit_lifecycle_operation(
-            path, project_path, _STARTING_WORK_LABEL_TEMPLATE.format(slug=slug), scope=ClearanceScope.verb("todo work")
+            path,
+            project_path,
+            _STARTING_WORK_LABEL_TEMPLATE.format(slug=slug),
+            scope=ClearanceScope.verb("todo work", role_target=ProjectPath(Path(project_path))),
         )
 
     def action_freeze(self) -> None:
@@ -964,6 +989,7 @@ class PreparationViewActionsMixin:
                 path=path,
                 todo_id=todo_id,
                 success_message=_FREEZE_SUCCESS_TEMPLATE.format(slug=slug),
+                role_target=ProjectPath(Path(project_path)),
                 body={_CWD_BODY_KEY: project_path},
                 relay_warnings=True,
             )
@@ -1059,6 +1085,7 @@ class PreparationViewActionsMixin:
             path=path,
             todo_id=todo_id,
             success_message=_UNFREEZE_SUCCESS_TEMPLATE.format(slug=slug),
+            role_target=ProjectPath(Path(project_path)),
             body={_CWD_BODY_KEY: project_path},
             relay_warnings=True,
         )
@@ -1096,6 +1123,7 @@ class PreparationViewActionsMixin:
                     path=hold_path,
                     todo_id=todo_id,
                     success_message=_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug),
+                    role_target=ProjectPath(Path(project_path)),
                     body={_CWD_BODY_KEY: project_path, _REASON_BODY_KEY: reason.strip()},
                 )
 
@@ -1119,6 +1147,7 @@ class PreparationViewActionsMixin:
             path=release_path,
             todo_id=todo_id,
             success_message=_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug),
+            role_target=ProjectPath(Path(project_path)),
             body={_CWD_BODY_KEY: project_path},
         )
 
@@ -1148,6 +1177,7 @@ class PreparationViewActionsMixin:
             path=path,
             todo_id=todo_id,
             success_message=_APPROVE_SUCCESS_TEMPLATE.format(slug=slug),
+            role_target=ProjectPath(Path(project_path)),
             body={_CWD_BODY_KEY: project_path, _STAMP_TYPE_BODY_KEY: stamp_type},
         )
 
@@ -1207,7 +1237,10 @@ class PreparationViewActionsMixin:
                 f"/todos/by-id/{todo_id}/reactivate",
                 json_body={"cwd": project_path},
                 timeout=10.0,
-                clearance_scope=ClearanceScope.verb("todo reactivate"),
+                clearance_scope=ClearanceScope.verb(
+                    "todo reactivate",
+                    role_target=ProjectPath(Path(project_path)),
+                ),
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
             if isinstance(result, dict) and result.get("status") == "ok":

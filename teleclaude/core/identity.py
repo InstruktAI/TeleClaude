@@ -23,6 +23,11 @@ from teleclaude.caller_identity import (
     PersonCliCaller as PersonCliCaller,
 )
 from teleclaude.caller_identity import (
+    RoleResolver,
+    SessionOf,
+    identity_for_session,
+)
+from teleclaude.caller_identity import (
     SessionIdentity as SessionIdentity,
 )
 from teleclaude.caller_identity import (
@@ -39,9 +44,6 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.caller_identity import (
     human_principal_for_email as human_principal_for_email,
-)
-from teleclaude.caller_identity import (
-    identity_for_session,
 )
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor
@@ -129,6 +131,18 @@ def observe_discord_avatar_binding(
         binding_id=binding_id,
         avatar_present=avatar_present,
     )
+
+
+def session_person_role(session: Session) -> str | None:
+    """Resolve a session's current person's role for its project."""
+    resolved = identity_for_session(session)
+    if isinstance(resolved.caller, SystemCliCaller):
+        return None
+    if not isinstance(resolved.caller, PersonCliCaller):
+        return None
+    if not resolved.caller.person_slug:
+        return HUMAN_ROLE_CUSTOMER
+    return RoleResolver().role_for(resolved.caller, SessionOf(session.project_path))
 
 
 def derive_initials(person_name: str) -> str:
@@ -221,7 +235,7 @@ class IdentityResolver:
         return normalize_person_config_key(value)
 
     @staticmethod
-    def _normalize_role(role: str) -> str:
+    def _normalize_role(role: str | None) -> str:
         """Validate role against known roles, defaulting unknown to customer."""
         if role in HUMAN_ROLES:
             return role

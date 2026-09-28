@@ -35,7 +35,7 @@ def discover_job_recipients(
     global_cfg = load_global_config(global_cfg_path)
 
     # Build email -> PersonEntry lookup for role checks
-    people_by_email: dict[str, str] = {}  # email -> role
+    people_by_email: dict[str, str | None] = {}  # email -> declared platform role, absent means no platform grant
     for person in global_cfg.people:
         people_by_email[person.email] = person.role
 

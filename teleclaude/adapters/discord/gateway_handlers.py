@@ -22,7 +22,9 @@ from teleclaude.adapters.discord.session_launcher import (
     LauncherOwnershipReason,
     parse_launcher_custom_id,
 )
+from teleclaude.caller_identity import PersonCliCaller, RoleResolver, SessionOf
 from teleclaude.config import config
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -65,8 +67,10 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
     DiscordAvatarBindingReason,
+    IdentityContext,
     get_identity_resolver,
     observe_discord_avatar_binding,
+    session_person_role,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.invite import bind_discord_credentials, scaffold_personal_workspace
@@ -77,6 +81,19 @@ logger = get_logger(__name__)
 
 _DATA_FIELD = "data"
 _CUSTOM_ID_FIELD = "custom_id"
+
+
+def _sender_role_for_session(identity: IdentityContext | None, session: Session) -> str | None:
+    if identity is None:
+        return None
+    if not identity.person_slug:
+        return HUMAN_ROLE_CUSTOMER
+    caller = PersonCliCaller(
+        email=identity.person_email,
+        person_slug=identity.person_slug,
+        human_role=identity.person_role,
+    )
+    return RoleResolver().role_for(caller, SessionOf(session.project_path))
 
 
 class GatewayHandlersMixin:
@@ -592,7 +609,7 @@ class GatewayHandlersMixin:
                 source_message_id=message_id or None,
                 source_channel_id=channel_id_str,
                 command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-                sender_human_role=sender_identity.person_role if sender_identity else None,
+                sender_human_role=_sender_role_for_session(sender_identity, session),
             )
             metadata = self._metadata(  # type: ignore[attr-defined]
                 platform_message_id=message_id or None,
@@ -693,7 +710,7 @@ class GatewayHandlersMixin:
             logger.error(
                 "Blocking customer session %s from non-help-desk channel (human_role=%s)",
                 session.session_id,
-                session.human_role,
+                session_person_role(session),
             )
             return
 
@@ -734,7 +751,7 @@ class GatewayHandlersMixin:
             source_message_id=message_id or None,
             source_channel_id=channel_id_str,
             command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-            sender_human_role=sender_identity.person_role if sender_identity else None,
+            sender_human_role=_sender_role_for_session(sender_identity, session),
         )
         await self._dispatch_command(  # type: ignore[attr-defined]
             session,

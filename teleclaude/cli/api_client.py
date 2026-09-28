@@ -11,7 +11,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from http import HTTPMethod
-from typing import TYPE_CHECKING, Any, NotRequired, Required, TypedDict, Unpack
+from typing import TYPE_CHECKING, Any, Unpack
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -35,6 +35,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_session_actions_models import AgentRestartResponseDTO
 from teleclaude.caller_identity import CarriedIdentity
+from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
 from teleclaude.cli.session_auth import ResolvedCliIdentity
@@ -113,41 +114,6 @@ class _WebSocketState:
     callback: Callable[[WsEvent], None] | None = None
     on_connect: Callable[[], None] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
-
-
-class CreateSessionArgs(TypedDict, total=False):
-    """Accepted keyword arguments for session creation."""
-
-    computer: Required[str]
-    project_path: Required[str]
-    agent: NotRequired[str | None]
-    thinking_mode: NotRequired[str]
-    launch_kind: NotRequired[str]
-    native_session_id: NotRequired[str | None]
-    subdir: NotRequired[str | None]
-    title: NotRequired[str | None]
-    message: NotRequired[str | None]
-    human_role: NotRequired[str | None]
-    skip_listener_registration: NotRequired[bool]
-    metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
-    command_input_mode: NotRequired[CommandInputMode]
-    command_input_source_text: NotRequired[str | None]
-    company: NotRequired[str | None]
-
-
-class RunSessionArgs(TypedDict, total=False):
-    """Accepted keyword arguments for slash-command sessions."""
-
-    command: Required[str]
-    project_path: Required[str]
-    computer: NotRequired[str]
-    args: NotRequired[str]
-    agent: NotRequired[str]
-    thinking_mode: NotRequired[str]
-    detach: NotRequired[bool]
-    additional_context: NotRequired[str]
-    entry_point: NotRequired[str]
-    company: NotRequired[str | None]
 
 
 class APIError(Exception):
@@ -357,7 +323,8 @@ class _TelecConnectionClient:
     def _ws_connect_and_run(self) -> None:
         """Connect to WebSocket and process messages until disconnection."""
         logger.debug("Connecting to WebSocket at %s", self.socket_path)
-        ws = unix_connect(path=self.socket_path, uri=WS_URI)
+        identity_headers = {} if self._daemon_credential else self._http_state.identity_headers
+        ws = unix_connect(path=self.socket_path, uri=WS_URI, additional_headers=identity_headers)
 
         with self._ws_state.lock:
             self._ws_state.ws = ws
@@ -592,7 +559,9 @@ class _TelecSessionAPI:
         resp = await self._request(
             "GET",
             "/sessions",
-            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("sessions list")),
+            request_options=RequestOptions(
+                params=params, clearance_scope=ClearanceScope.verb("sessions list", target_computer=computer)
+            ),
         )
         return TypeAdapter(list[SessionDTO]).validate_json(resp.text)
 
@@ -630,7 +599,9 @@ class _TelecSessionAPI:
         resp = await self._request(
             "GET",
             "/history/search",
-            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("history search")),
+            request_options=RequestOptions(
+                params=params, clearance_scope=ClearanceScope.verb("history search", target_computer=computer)
+            ),
         )
         return TypeAdapter(HistorySearchPayload).validate_json(resp.text)
 
@@ -652,7 +623,7 @@ class _TelecSessionAPI:
                     _HISTORY_RAW_PARAM: str(raw).lower(),
                     _HISTORY_COMPUTER_PARAM: computer,
                 },
-                clearance_scope=ClearanceScope.verb("history show"),
+                clearance_scope=ClearanceScope.verb("history show", target_computer=computer),
             ),
         )
         return TypeAdapter(HistoryDetailPayload).validate_json(resp.text)
@@ -682,7 +653,6 @@ class _TelecSessionAPI:
             "launch_kind": kwargs.get("launch_kind", "agent"),
             "title": kwargs.get("title"),
             "message": kwargs.get("message"),
-            "human_role": kwargs.get("human_role"),
             "metadata": kwargs.get("metadata"),
             "command_input_mode": kwargs.get("command_input_mode", CommandInputMode.ORDINARY),
             "command_input_source_text": kwargs.get("command_input_source_text"),
@@ -704,11 +674,12 @@ class _TelecSessionAPI:
         company = kwargs.get("company")
         if company is not None:
             payload["company"] = company
+        clearance_scope = ClearanceScope.project_verb("sessions start", kwargs["project_path"], kwargs["computer"])
         resp = await self._request(
             "POST",
             "/sessions",
             timeout=30.0,
-            request_options=RequestOptions(json_body=payload, clearance_scope=ClearanceScope.verb("sessions start")),
+            request_options=RequestOptions(json_body=payload, clearance_scope=clearance_scope),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
@@ -730,12 +701,14 @@ class _TelecSessionAPI:
         request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})
+        clearance_scope = ClearanceScope.project_verb("sessions run", kwargs["project_path"], kwargs.get("computer"))
         resp = await self._request(
             "POST",
             "/sessions/run",
             timeout=30.0,
             request_options=RequestOptions(
-                json_body=request.model_dump(exclude_unset=True), clearance_scope=ClearanceScope.verb("sessions run")
+                json_body=request.model_dump(exclude_unset=True),
+                clearance_scope=clearance_scope,
             ),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
@@ -747,7 +720,7 @@ class _TelecSessionAPI:
             f"/sessions/{session_id}",
             request_options=RequestOptions(
                 params={"computer": computer},
-                clearance_scope=ClearanceScope.verb("sessions end", target_session_id=session_id),
+                clearance_scope=ClearanceScope.session_verb("sessions end", session_id, computer=computer),
             ),
         )
         return resp.status_code == 200
@@ -760,7 +733,7 @@ class _TelecSessionAPI:
             request_options=RequestOptions(
                 params={"computer": computer},
                 json_body={"message": message},
-                clearance_scope=ClearanceScope.verb("sessions send"),
+                clearance_scope=ClearanceScope.session_verb("sessions send", session_id, computer=computer),
             ),
         )
         return resp.status_code in {200, 202}
@@ -839,7 +812,7 @@ class _TelecSessionAPI:
             request_options=RequestOptions(
                 params=params,
                 json_body={"handoff": handoff, "agent": agent} if handoff else None,
-                clearance_scope=ClearanceScope.verb("sessions restart", target_session_id=session_id),
+                clearance_scope=ClearanceScope.session_verb("sessions restart", session_id, computer=computer),
             ),
         )
         return TypeAdapter(AgentRestartResponseDTO).validate_json(resp.text)
@@ -916,7 +889,10 @@ class _TelecRuntimeAPI:
             "POST",
             f"/sessions/{session_id}/revive",
             timeout=30.0,
-            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("sessions revive")),
+            request_options=RequestOptions(
+                params=params,
+                clearance_scope=ClearanceScope.session_verb("sessions revive", session_id, computer=computer),
+            ),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 

@@ -5,10 +5,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, Protocol
+from pathlib import Path
+from typing import Literal, Protocol, assert_never
 
-from teleclaude.config_roster import PersonEntry, load_people_roster
+from teleclaude.config_roster import (
+    CompanyMember,
+    CompanyRole,
+    PersonEntry,
+    load_people_roster,
+    load_person_memberships,
+    project_ownership_for_path,
+    project_ownership_for_slug,
+)
 from teleclaude.constants import (
+    HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,
     ROLE_INTEGRATOR,
@@ -21,6 +31,7 @@ from teleclaude.constants import (
     JobRole,
     SystemRole,
 )
+from teleclaude.snippet_scope import SnippetScope
 from teleclaude.types.creation_record import EntryPoint
 
 _HUMAN_PRINCIPAL_PREFIX = "human:"
@@ -79,6 +90,111 @@ class NoIdentityCliCaller:
 type CliCaller = PersonCliCaller | SystemCliCaller | NoIdentityCliCaller
 
 
+@dataclass(frozen=True)
+class PlatformScope:
+    """The platform registry scope containing every platform object."""
+
+
+@dataclass(frozen=True)
+class CompanyScope:
+    """One company's configuration and owned organizational lineage."""
+
+    company: str
+
+
+@dataclass(frozen=True)
+class ProjectScope:
+    """One registered project and its declared company owner, if any."""
+
+    project: str
+    owner: str | None
+
+
+@dataclass(frozen=True)
+class PersonScope:
+    """One person's private configuration and documentation scope."""
+
+    person: str
+
+
+@dataclass(frozen=True)
+class SharedDocsScope:
+    """The platform's shared documentation inherited by every company."""
+
+
+type RoleScope = PlatformScope | CompanyScope | ProjectScope | PersonScope | SharedDocsScope
+
+
+@dataclass(frozen=True)
+class PersonRoleFacts:
+    """The declared platform role and company memberships for one person."""
+
+    person_slug: str
+    platform_role: str | None
+    memberships: Mapping[str, CompanyMember]
+
+
+@dataclass(frozen=True)
+class ProjectPath:
+    """A filesystem path whose registered project determines its role scope."""
+
+    path: Path
+
+
+@dataclass(frozen=True)
+class Project:
+    """A registered project named by its canonical slug."""
+
+    project_slug: str
+
+
+@dataclass(frozen=True)
+class Company:
+    """A registered company named by its canonical slug."""
+
+    company: str
+
+
+@dataclass(frozen=True)
+class Person:
+    """A registered person named by their canonical slug."""
+
+    person_slug: str
+
+
+@dataclass(frozen=True)
+class SessionOf:
+    """A session whose project path is the object that determines its scope."""
+
+    project_path: str | Path | None
+
+
+@dataclass(frozen=True)
+class DocsTier:
+    """A documentation tier and, for qualified tiers, its owner slug."""
+
+    tier: SnippetScope
+    owner: str | None = None
+
+
+@dataclass(frozen=True)
+class OperationOf:
+    """An operation whose working directory determines its project scope."""
+
+    cwd: Path | None
+
+
+@dataclass(frozen=True)
+class Platform:
+    """A platform-wide object with no narrower registered scope."""
+
+
+type RoleTarget = ProjectPath | Project | Company | Person | SessionOf | DocsTier | OperationOf | Platform
+
+
+_UNKNOWN_ROLE_SCOPE_ERROR = "Unknown role scope: {scope}"
+
+
 class CliResolvedIdentityFields(Protocol):
     """Resolved identity facts the client serializes onto its daemon request."""
 
@@ -109,6 +225,111 @@ class SessionIdentity:
     principal_role: str | None
     system_role: str | None
     caller: CliCaller
+
+
+def load_person_role_facts(person_slug: str, platform_role: str | None) -> PersonRoleFacts:
+    """Load the role declarations identity uses to resolve one person's scope."""
+    return PersonRoleFacts(
+        person_slug=person_slug,
+        platform_role=platform_role,
+        memberships=load_person_memberships(person_slug),
+    )
+
+
+def scope_for_path(path: Path) -> RoleScope:
+    """Resolve a filesystem path to its registered project scope or platform scope."""
+    ownership = project_ownership_for_path(path)
+    if ownership is None:
+        return PlatformScope()
+    return ProjectScope(project=ownership.project_slug, owner=ownership.company)
+
+
+def scope_for_project(project_slug: str) -> RoleScope:
+    """Resolve a project slug to its registered project scope or platform scope."""
+    ownership = project_ownership_for_slug(project_slug)
+    if ownership is None:
+        return PlatformScope()
+    return ProjectScope(project=ownership.project_slug, owner=ownership.company)
+
+
+def scope_for_docs_tier(tier: DocsTier) -> RoleScope:
+    """Resolve a documentation tier's own scope and qualified owner."""
+    if tier.tier is SnippetScope.GLOBAL:
+        return SharedDocsScope()
+    if tier.tier is SnippetScope.COMPANY and tier.owner is not None:
+        return CompanyScope(tier.owner)
+    if tier.tier is SnippetScope.PROJECT and tier.owner is not None:
+        return scope_for_project(tier.owner)
+    if tier.tier is SnippetScope.PERSON and tier.owner is not None:
+        return PersonScope(tier.owner)
+    return PlatformScope()
+
+
+def effective_role(facts: PersonRoleFacts, scope: RoleScope) -> str:
+    """Return the highest declared role held at a scope containing the object."""
+    candidates: list[str] = []
+    if facts.platform_role is not None:
+        candidates.append(facts.platform_role)
+
+    if isinstance(scope, CompanyScope):
+        member = facts.memberships.get(scope.company)
+        if member is not None:
+            candidates.append(member.role.value)
+    elif isinstance(scope, ProjectScope) and scope.owner is not None:
+        member = facts.memberships.get(scope.owner)
+        if member is not None and (member.role is CompanyRole.ADMIN or scope.project in member.projects):
+            candidates.append(member.role.value)
+    elif isinstance(scope, SharedDocsScope):
+        candidates.extend(member.role.value for member in facts.memberships.values())
+    elif isinstance(scope, PersonScope) and scope.person == facts.person_slug:
+        candidates.append(HUMAN_ROLE_ADMIN)
+    elif not isinstance(scope, PlatformScope):
+        raise TypeError(_UNKNOWN_ROLE_SCOPE_ERROR.format(scope=scope))
+
+    recognized = [role for role in candidates if role in HUMAN_ROLES]
+    if not recognized:
+        return HUMAN_ROLE_CUSTOMER
+    return min(recognized, key=HUMAN_ROLES.index)
+
+
+def _scope_for_target(target: RoleTarget) -> RoleScope:
+    """Resolve an operation target to the object's own registered scope."""
+    match target:
+        case ProjectPath(path=path):
+            return scope_for_path(path)
+        case Project(project_slug=project_slug):
+            return scope_for_project(project_slug)
+        case Company(company=company):
+            return CompanyScope(company)
+        case Person(person_slug=person_slug):
+            return PersonScope(person_slug)
+        case SessionOf(project_path=project_path):
+            return PlatformScope() if project_path is None else scope_for_path(Path(project_path))
+        case DocsTier():
+            return scope_for_docs_tier(target)
+        case OperationOf(cwd=cwd):
+            return PlatformScope() if cwd is None else scope_for_path(cwd)
+        case Platform():
+            return PlatformScope()
+        case _:
+            return assert_never(target)
+
+
+class RoleResolver:
+    """Resolve object roles while reusing one caller's facts per request."""
+
+    def __init__(self) -> None:
+        self._facts_by_person: dict[str, PersonRoleFacts] = {}
+
+    def role_for(self, caller: CliCaller | None, target: RoleTarget) -> str:
+        """Resolve the caller's effective person role for the target object."""
+        if not isinstance(caller, PersonCliCaller) or not caller.person_slug:
+            return HUMAN_ROLE_CUSTOMER
+        facts = self._facts_by_person.get(caller.person_slug)
+        if facts is None:
+            facts = load_person_role_facts(caller.person_slug, caller.human_role)
+            self._facts_by_person[caller.person_slug] = facts
+        return effective_role(facts, _scope_for_target(target))
 
 
 _CARRIED_IDENTITY_HEADERS = (
@@ -195,6 +416,9 @@ class SessionIdentityFields(Protocol):
     def session_id(self) -> str: ...
 
     @property
+    def project_path(self) -> str | None: ...
+
+    @property
     def principal(self) -> str | None: ...
 
     @property
@@ -250,7 +474,7 @@ def caller_from_principal(principal: str | None) -> CliCaller:
     return NoIdentityCliCaller()
 
 
-def _normalize_human_role(role: str) -> str:
+def _normalize_human_role(role: str | None) -> str:
     """Normalize unknown configured human roles to the customer role."""
     return role if role in HUMAN_ROLES else HUMAN_ROLE_CUSTOMER
 
@@ -295,10 +519,10 @@ def identity_for_session(session: SessionIdentityFields) -> SessionIdentity:
     )
 
 
-def authorizing_role(caller: CliCaller, system_role: str | None) -> str | None:
-    """Return the role that authorizes a caller at a CLI or API edge."""
+def authorizing_role(caller: CliCaller, system_role: str | None, target: RoleTarget) -> str | None:
+    """Return the role that authorizes a caller at the target object."""
     if isinstance(caller, PersonCliCaller):
-        return caller.human_role
+        return RoleResolver().role_for(caller, target)
     if isinstance(caller, SystemCliCaller):
         return system_role
     return None

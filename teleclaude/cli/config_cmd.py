@@ -76,7 +76,7 @@ from teleclaude.core.configuration_clearance import (
     is_administrator,
     standing_for,
 )
-from teleclaude.core.organization import resolve_organization
+from teleclaude.core.organization import person_roles
 from teleclaude.invite import invite_person
 from teleclaude.project_root import resolve_invocation_roots
 
@@ -284,7 +284,7 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
         raise SystemExit(1) from error
     read_only = dict(view.read_only)
     if subject_kind is ConfigSubjectKind.PERSON and instance is not None:
-        read_only["organization"] = resolve_organization(instance)
+        read_only["roles"] = person_roles(instance)
     sections = dict(view.sections)
     if subject_kind is ConfigSubjectKind.COMPUTER and not is_administrator(standing_for(identity)):
         computer_section = sections.get(kind)

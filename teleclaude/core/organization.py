@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import resolve_session_principal
 from teleclaude.config.loader import find_company_config_path, list_company_configs
 from teleclaude.config.schema import CompanyRole
+from teleclaude.config_roster import load_people_roster
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
@@ -55,6 +56,15 @@ class OrganizationalMembership:
     assignments: tuple[ProjectRef, ...]
     covered: tuple[ProjectRef, ...]
     stale: tuple[StaleAssignment, ...]
+
+
+class PersonRoleEntry(TypedDict, total=False):
+    """One read-only platform or company role projection for a person."""
+
+    platform: str
+    company: str
+    role: str
+    projects: list[str]
 
 
 def resolve_organization(person_slug: str) -> OrganizationalMembership:
@@ -111,6 +121,34 @@ def resolve_organization(person_slug: str) -> OrganizationalMembership:
         stale=len(result.stale),
     )
     return result
+
+
+def company_role(person_slug: str, company_slug: str) -> str | None:
+    """Return a person's declared role in one company, if they belong to it."""
+    membership = next(
+        (item for item in resolve_organization(person_slug).memberships if item.company_slug == company_slug),
+        None,
+    )
+    return membership.role.value if membership is not None else None
+
+
+def person_roles(person_slug: str) -> list[PersonRoleEntry]:
+    """Project a person's declared platform and company roles for read-only config views."""
+    person = next((entry for entry in load_people_roster() if entry.slug == person_slug), None)
+    roles: list[PersonRoleEntry] = []
+    if person is not None and person.role is not None:
+        roles.append({"platform": person.role})
+
+    organization = resolve_organization(person_slug)
+    assignments: dict[str, list[str]] = {}
+    for assignment in organization.assignments:
+        assignments.setdefault(assignment.company_slug, []).append(assignment.project_slug)
+    for membership in organization.memberships:
+        entry: PersonRoleEntry = {"company": membership.company_slug, "role": membership.role.value}
+        if membership.role is not CompanyRole.ADMIN:
+            entry["projects"] = assignments.get(membership.company_slug, [])
+        roles.append(entry)
+    return roles
 
 
 class CompanySelectionOutcome(StrEnum):

@@ -19,7 +19,13 @@ from teleclaude.api.agent_dispatch_errors import (
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
-from teleclaude.api.auth import CallerIdentity, carried_caller, resolve_caller_provenance
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_role_at_platform,
+    caller_role_for_session,
+    carried_caller,
+    resolve_caller_provenance,
+)
 from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_procedure import normalize_procedure_activation_request
 from teleclaude.api.run_session_refusals import (
@@ -98,7 +104,7 @@ from teleclaude.core.session_startup_message import (
 from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
-from teleclaude.project_manifest import load_registered_entries
+from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
     CreateSessionCommand,
     HandoffAgentCommand,
@@ -676,6 +682,7 @@ async def get_session_messages(
             if _STATE.client is None:
                 raise HTTPException(status_code=503, detail="Remote session tail is unavailable")
             target_computer = query.computer or NO_REMOTE_COMPUTER
+            recipient_role = caller_role_at_platform(_identity)
             tail_origin_metadata = cast(
                 SessionOriginMetadata,
                 {
@@ -689,7 +696,7 @@ async def get_session_messages(
             metadata = MessageMetadata(
                 origin_metadata=tail_origin_metadata,
                 human_email=_identity.email,
-                human_role=_identity.human_role,
+                human_role=recipient_role,
             )
             message_id = await _STATE.client.send_request(
                 target_computer,
@@ -724,10 +731,14 @@ async def get_session_messages(
                 data[_AGENT_STATUS_EXACT_FIELD] = remote_status.value
             return SessionMessagesDTO.model_validate(data)
 
+        target_session = await db.get_session(session_id)
+        if target_session is None:
+            raise LookupError("Session not found")
+        recipient_role = caller_role_for_session(_identity, target_session)
         return await build_session_messages_dto(
             session_id,
             recipient_email=_identity.email,
-            recipient_role=_identity.human_role,
+            recipient_role=recipient_role,
             options=options,
             database=db,
             command_service=get_command_service(),

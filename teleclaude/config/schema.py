@@ -12,28 +12,15 @@ from pydantic import Field, field_validator, model_validator
 from teleclaude.agent_registry import AgentName
 from teleclaude.closed_model import ClosedModel
 from teleclaude.config.tiers import Tier
+from teleclaude.config_roster import CompanyMember as CompanyMember
+from teleclaude.config_roster import CompanyRole as CompanyRole
 from teleclaude.config_roster import PersonEntry as PersonEntry
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE
 from teleclaude.events.domain_config import DomainsConfig
+from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 
 CURRENT_SCHEMA_VERSION = 9
-
-
-class ConfigKind(StrEnum):
-    """Identity declared by each same-named configuration file."""
-
-    GLOBAL = "global"
-    PROJECT = "project"
-    PERSON = "person"
-    COMPANY = "company"
-
-
-class CompanyRole(StrEnum):
-    """The closed vocabulary for a person's relationship to one company."""
-
-    ADMIN = "admin"
-    MEMBER = "member"
 
 
 def normalize_env_allow_list(value: list[str]) -> list[str]:
@@ -754,26 +741,6 @@ class PersonConfig(ClosedModel):
         if present:
             raise ValueError(f"Keys not allowed at per-person level: {', '.join(present)}")
         return data
-
-
-class CompanyMember(ClosedModel):
-    """One person's role and explicit project assignments in a company roster."""
-
-    role: CompanyRole
-    projects: list[str] = Field(default_factory=list)
-
-    @field_validator("projects")
-    @classmethod
-    def validate_projects(cls, value: list[str]) -> list[str]:
-        """Validate and de-duplicate project assignments by slug."""
-        projects: list[str] = []
-        seen: set[str] = set()
-        for project_slug in value:
-            validate_slug(project_slug)
-            if project_slug not in seen:
-                seen.add(project_slug)
-                projects.append(project_slug)
-        return projects
 
 
 class CompanyConfig(ClosedModel):

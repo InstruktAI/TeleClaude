@@ -10,15 +10,14 @@ from teleclaude.config.schema import CompanyConfig, ConfigKind, PersonEntry
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import RegisteredProjectEntry
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry, ProjectNode
-from teleclaude.slug import normalize_slug
+from teleclaude.slug import derive_project_slug
 
 
 def load_project_node(root: Path) -> ProjectNode | None:
     """Build a ``ProjectNode`` from a registered project root.
 
     Returns ``None`` when the project directory exists but does not contain a
-    loadable ``teleclaude.yml``. Missing slugs are derived from ``project_name``
-    (falling back to the directory name) via :func:`normalize_slug`.
+    loadable ``teleclaude.yml`` or a derivable canonical slug.
     """
     resolved_root = root.expanduser().resolve()
     config_path = resolved_root / ConfigFileName.OVERLAY
@@ -30,10 +29,7 @@ def load_project_node(root: Path) -> ProjectNode | None:
     except (ValueError, OSError):
         return None
 
-    slug = (config.project_slug or "").strip()
-    if not slug:
-        source = config.project_name or resolved_root.name
-        slug = normalize_slug(source)
+    slug = derive_project_slug(config.project_slug, config.project_name, resolved_root)
     if not slug:
         return None
 

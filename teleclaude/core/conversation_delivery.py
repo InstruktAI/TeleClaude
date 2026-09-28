@@ -35,7 +35,7 @@ from teleclaude.core.conversation_segments import (
 )
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
-from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.identity import get_identity_resolver, session_person_role
 from teleclaude.core.injected_text import TranscriptEntryKind, is_peer_opening
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.session_links import (
@@ -387,7 +387,7 @@ async def _deliver_for_peer(
 
     target_session = await db.get_session(target_session_id)
     recipient_policy = visibility_policy_for_person(
-        human_role=target_session.human_role if target_session is not None else HUMAN_ROLE_ADMIN,
+        human_role=session_person_role(target_session) if target_session is not None else HUMAN_ROLE_ADMIN,
         person_email=target_session.human_email if target_session is not None else None,
         surface=ProjectionSurface.FULL,
     )

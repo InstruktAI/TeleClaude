@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from pathlib import Path
 
-from teleclaude.caller_identity import NoIdentityCliCaller, PersonCliCaller, person_entry_for_email
+from teleclaude.caller_identity import (
+    NoIdentityCliCaller,
+    PersonCliCaller,
+    ProjectPath,
+    RoleTarget,
+    person_entry_for_email,
+)
 from teleclaude.cli.session_auth import (
     ResolvedCliIdentity,
     cli_clearance,
@@ -31,18 +38,70 @@ class ClearanceScope:
     command_path: str | None = None
     target_session_id: str | None = None
     additional_command_paths: tuple[str, ...] = ()
+    role_target: RoleTarget | None = None
+    target_computer: str | None = None
 
     @classmethod
-    def verb(cls, command_path: str, *, target_session_id: str | None = None) -> ClearanceScope:
+    def verb(
+        cls,
+        command_path: str,
+        *,
+        target_session_id: str | None = None,
+        role_target: RoleTarget | None = None,
+        target_computer: str | None = None,
+    ) -> ClearanceScope:
         """Clear a request as one declared CLI verb."""
-        return cls(ClearanceKind.VERB, command_path, target_session_id)
+        return cls(
+            ClearanceKind.VERB,
+            command_path,
+            target_session_id,
+            role_target=role_target,
+            target_computer=target_computer,
+        )
 
     @classmethod
-    def verbs(cls, command_paths: list[str]) -> ClearanceScope:
+    def verbs(
+        cls,
+        command_paths: list[str],
+        *,
+        role_target: RoleTarget | None = None,
+        target_computer: str | None = None,
+    ) -> ClearanceScope:
         """Clear one request against every verb it performs."""
         if not command_paths:
             return cls.ungoverned()
-        return cls(ClearanceKind.VERB, command_paths[0], additional_command_paths=tuple(command_paths[1:]))
+        return cls(
+            ClearanceKind.VERB,
+            command_paths[0],
+            additional_command_paths=tuple(command_paths[1:]),
+            role_target=role_target,
+            target_computer=target_computer,
+        )
+
+    @classmethod
+    def project_verb(
+        cls,
+        command_path: str,
+        project_path: str,
+        computer: str | None = None,
+    ) -> ClearanceScope:
+        """Clear a project operation against that project's path."""
+        return cls.verb(
+            command_path,
+            role_target=ProjectPath(Path(project_path)),
+            target_computer=computer,
+        )
+
+    @classmethod
+    def session_verb(
+        cls,
+        command_path: str,
+        session_id: str,
+        *,
+        computer: str | None = None,
+    ) -> ClearanceScope:
+        """Clear a session operation against the target session's project."""
+        return cls.verb(command_path, target_session_id=session_id, target_computer=computer)
 
     @classmethod
     def identified_only(cls) -> ClearanceScope:
@@ -91,6 +150,8 @@ def clearance_scope_refusal(scope: ClearanceScope, identity: ResolvedCliIdentity
             resolved,
             scope.target_session_id,
             _resolve_command_auth(command_path),
+            role_target=scope.role_target,
+            target_computer=scope.target_computer,
         ).refusal
         if refusal is not None:
             return refusal

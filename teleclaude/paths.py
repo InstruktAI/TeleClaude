@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from enum import StrEnum
 from pathlib import Path
@@ -20,6 +21,18 @@ class ConfigFileName(StrEnum):
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
+
+
+def invocation_cwd() -> Path:
+    """Return the shell directory captured by the telec wrapper, with direct-call fallbacks."""
+    explicit = os.environ.get("TELEC_INVOCATION_CWD")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    if explicit:
+        return Path(explicit)
+    pwd = os.environ.get("PWD")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    if pwd:
+        return Path(pwd)
+    return Path.cwd()
+
 
 TELECLAUDE_HOME = get_runtime_config().home
 STATE_DIR = TELECLAUDE_HOME / "state"
