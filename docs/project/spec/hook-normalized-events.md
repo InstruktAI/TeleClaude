@@ -34,6 +34,7 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
+<!-- planned-change:event-driven-agent-status -->
 | Agent       | Raw event and condition                                                                                                                 | Normalized event     | Forwarding |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------- |
 | Claude      | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
@@ -67,29 +68,69 @@ Current raw-to-normalized lifecycle mapping:
 | DeepSeek    | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
 | DeepSeek    | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
 | DeepSeek    | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
+<!-- change:event-driven-agent-status -->
+| Agent       | Raw event and condition                                                                                                                 | Normalized event     | Forwarding |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------- |
+| Claude      | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
+| Claude      | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
+| Claude      | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| Claude      | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, `elicitation_url_dialog`, or `quota_auto_resume_stale` | `agent_blocked`      | forwarded  |
+| Claude      | `Notification` where `notification_type` is `quota_auto_resume_disabled`                                                                | `agent_turn_failed`  | forwarded  |
+| Claude      | `Notification` with any other `notification_type`, recognized or not                                                                    | (none)               | dropped    |
+| Claude      | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| Claude      | `PostToolUseFailure`                                                                                                                    | `post_tool_use`      | forwarded  |
+| Claude      | `PostToolBatch`                                                                                                                         | `post_tool_use`      | forwarded  |
+| Claude      | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
+| Claude      | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
+| Claude      | `PostCompact` where `trigger == manual`                                                                                                 | `agent_idle`         | forwarded  |
+| Claude      | `PostCompact` where `trigger == auto`                                                                                                   | (none)               | dropped    |
+| Antigravity | `PreInvocation` where `invocationNum == 0`                                                                                              | `session_start`      | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user`                                                          | `user_prompt_submit` | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present                                                             | (none)               | dropped    |
+| Antigravity | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| Antigravity | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| Antigravity | `PostInvocation`                                                                                                                        | `post_tool_use`      | forwarded  |
+| Antigravity | `Stop` where `error` is a non-empty string                                                                                              | `agent_turn_failed`  | forwarded  |
+| Antigravity | `Stop` where `error` is empty and `fullyIdle == false`                                                                                  | (none)               | dropped    |
+| Antigravity | `Stop` where `error` is empty and `fullyIdle == true`                                                                                   | `agent_stop`         | forwarded  |
+| Codex       | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
+| Codex       | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
+| Codex       | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| Codex       | `PermissionRequest`                                                                                                                     | `agent_blocked`      | forwarded  |
+| Codex       | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| Codex       | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
+| DeepSeek    | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
+| DeepSeek    | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
+| DeepSeek    | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| DeepSeek    | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| DeepSeek    | `PostToolUseFailure`                                                                                                                    | `post_tool_use`      | forwarded  |
+| DeepSeek    | `PostToolBatch`                                                                                                                         | `post_tool_use`      | forwarded  |
+| DeepSeek    | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
+| DeepSeek    | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
+<!-- /planned-change:event-driven-agent-status -->
 
 <!-- planned:event-driven-agent-status -->
-Tool-call closure mapping. Every tool event carries the provider's own
-identifier for the call — `tool_use_id` for Claude, Codex, and DeepSeek,
-`stepIdx` for Antigravity — normalized as one tool-call identifier, so
-parallel calls open and close individually:
+Tool-call closure. Every tool event carries the provider's own identifier for
+the call — `tool_use_id` for Claude, Codex, and DeepSeek, `stepIdx` for
+Antigravity — normalized as one tool-call identifier, so parallel calls open
+and close individually. Each `post_tool_use` source above closes as follows:
 
-| Agent       | Raw event            | Normalized event | Closes                                   |
-| ----------- | -------------------- | ---------------- | ---------------------------------------- |
-| Claude      | `PostToolUse`        | `post_tool_use`  | the identified call (returned)           |
-| Claude      | `PostToolUseFailure` | `post_tool_use`  | the identified call (failed)             |
-| Claude      | `PostToolBatch`      | `post_tool_use`  | every open call (batch resolved)         |
-| Codex       | `PostToolUse`        | `post_tool_use`  | the identified call (any result)         |
-| DeepSeek    | `PostToolUse`        | `post_tool_use`  | the identified call (returned)           |
-| DeepSeek    | `PostToolUseFailure` | `post_tool_use`  | the identified call (failed)             |
-| DeepSeek    | `PostToolBatch`      | `post_tool_use`  | every open call (batch resolved)         |
-| Antigravity | `PostToolUse`        | `post_tool_use`  | the identified call (any result)         |
-| Antigravity | `PostInvocation`     | `post_tool_use`  | nothing; it carries no tool-call identifier |
+| Agent       | Raw event            | Closes                                      |
+| ----------- | -------------------- | ------------------------------------------- |
+| Claude      | `PostToolUse`        | the identified call (returned)              |
+| Claude      | `PostToolUseFailure` | the identified call (failed)                |
+| Claude      | `PostToolBatch`      | every open call (batch resolved)            |
+| Codex       | `PostToolUse`        | the identified call (any result)            |
+| DeepSeek    | `PostToolUse`        | the identified call (returned)              |
+| DeepSeek    | `PostToolUseFailure` | the identified call (failed)                |
+| DeepSeek    | `PostToolBatch`      | every open call (batch resolved)            |
+| Antigravity | `PostToolUse`        | the identified call (any result)            |
+| Antigravity | `PostInvocation`     | nothing; it carries no tool-call identifier |
 
 A `post_tool_use` without a tool-call identifier and without batch resolution
 is activity only. A runtime that reports a call's start but never its end
-leaves that call open until the turn ends; the tool events are therefore
-delivered losslessly by the hook outbox.
+leaves that call open until the turn ends. The hook outbox delivers tool
+events losslessly.
 <!-- /planned:event-driven-agent-status -->
 
 `agent_blocked` and `agent_turn_failed` are the distress vocabulary: a session

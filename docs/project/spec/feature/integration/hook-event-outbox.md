@@ -81,19 +81,6 @@ And a NEW entry is recorded alongside the in-flight one
 And both will be processed by the integration service's worker
 ```
 
-<!-- planned:event-driven-agent-status -->
-
-#### UC-OB6: Tool events are never coalesced
-
-```gherkin
-Given the receiver enqueues a tool-use or tool-result event
-When an unclaimed entry of the same type exists for the session within any window
-Then a new entry is recorded alongside it
-And each tool call's start and end reach the integration service individually
-```
-
-<!-- /planned:event-driven-agent-status -->
-
 #### UC-OB4: Codex agent_stop uses a wider 10s coalesce window
 
 ```gherkin
@@ -137,6 +124,19 @@ And the receiver's parse-failure paths do NOT pass payload data,
     so unknown-session parse failures always take the log-only branch above
 ```
 
+<!-- planned:event-driven-agent-status -->
+
+#### UC-OB8: Every tool call's start and end are delivered
+
+```gherkin
+Given an agent runs several tool calls, in parallel or in quick succession
+When the receiver records the start and the end of each call
+Then each start and each end reaches the integration service as its own event, in the order recorded
+And none is merged into another or replaced by a later one
+```
+
+<!-- /planned:event-driven-agent-status -->
+
 ### Cross-context references
 
 - Producer side belongs (in v2) to `agent_runtime` along with the
@@ -154,10 +154,8 @@ And the receiver's parse-failure paths do NOT pass payload data,
   bursty events into 1-second windows reduces contention.
 <!-- change:event-driven-agent-status -->
 - The outbox is locally persisted; concurrent receivers may experience
-  contention during high-frequency tool-use bursts. Tool events are not
-  coalesced, because each one opens or closes a tool call the session's
-  agent status tracks; the coalesce windows apply to the other bursty
-  events.
+  contention during high-frequency tool-use bursts. Tool events are exempt
+  from coalescing; the coalesce windows apply to the other bursty events.
 <!-- /planned-change:event-driven-agent-status -->
 - The latest-wins window is enforced via a guarded read-then-write
   inside one transaction; there is a narrow race where two receivers
