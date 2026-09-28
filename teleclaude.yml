@@ -16,6 +16,9 @@ business:
       trigger: Work on a person's own mail, calendar and standing instructions.
         Only an agent started in that person's own workspace does this; asked
         elsewhere, an agent spawns one there rather than serving it.
+# TeleClaude's checkpoint maintenance uses this project's overlay. The
+# platform-wide base supplies sync for docs and agents and install for setup.
+# This overlay adds the runtime-specific actions below.
 checkpoint:
   maintenance:
     plumbing-convergence:
@@ -80,11 +83,16 @@ checkpoint:
   integrator_judgment:
     - log-check
   bindings:
+    # The integrator checks logs for all daemon source. There is deliberately no
+    # checkpoint `code` overlay: it would bind `test`, which this project's test
+    # moratorium forbids. A generic binding keeps log-check without test.
     - scope:
         include:
           - teleclaude/**/*.py
       actions:
         - log-check
+    # Daemon code needs a restart. The CLI modules imported during daemon
+    # startup are re-included despite the broad cli/** exclusion.
     - scope:
         include:
           - teleclaude/**/*.py
