@@ -19,6 +19,7 @@ _mlx_audio_import_attempted = False
 logger = get_logger(__name__)
 
 DEFAULT_VOICE_DESIGN_INSTRUCT = "A clear, natural conversational voice."
+_NON_STRING_KEY_ERROR = "keywords must be strings"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -265,7 +266,7 @@ class MLXTTSBackend:
     def _generate_local(self, text: str, voice: str, model_type: str, out_dir: Path) -> Path | None:
         """Generate a WAV file via in-process mlx_audio into ``out_dir``, without playing it."""
         prefix = str(out_dir / "tts_output")
-        generate_kwargs: dict[object, object] = {  # guard: loose-dict - mlx_audio kwargs are dynamic.
+        generate_kwargs: dict[str, object] = {  # guard: loose-dict - mlx_audio kwargs are dynamic.
             "model": self._model,
             "text": text,
             "voice": voice,
@@ -285,9 +286,14 @@ class MLXTTSBackend:
         _protected = frozenset(
             {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
         )
-        generate_kwargs.update({k: v for k, v in self._params.items() if k not in _protected})
+        for key, value in self._params.items():
+            if key in _protected:
+                continue
+            if not isinstance(key, str):
+                raise TypeError(_NON_STRING_KEY_ERROR)
+            generate_kwargs[key] = value
 
-        generate_audio(**generate_kwargs)  # pyright: ignore[reportCallIssue] - Preserve arbitrary config keys until Python validates keyword expansion.
+        generate_audio(**generate_kwargs)
 
         audio_file = Path(f"{prefix}.wav")
         if not audio_file.exists() or not audio_file.stat().st_size:
