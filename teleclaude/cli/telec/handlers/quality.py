@@ -17,6 +17,11 @@ from teleclaude.quality.scope import (
     validate_scoped_paths,
 )
 
+_DECLARED_NOTHING_ERROR = (
+    "ERROR: nothing declared, and the workspace holds dirty paths. Declare what you are "
+    "working on with `telec code add <path>...`, or pass files explicitly."
+)
+
 
 def handle_lint(args: list[str]) -> None:
     """Handle the ``telec code lint`` command.
@@ -70,20 +75,17 @@ def handle_test(args: list[str]) -> None:
 def handle_format(args: list[str]) -> None:
     """Handle the ``telec code format`` command.
 
-    No args → project-native make format.
-    Positional args → make format scoped via FILES_FROM.
+    Scoped like ``telec code lint``: explicit files, else the workspace scope
+    (the session's declared dirty files on a shared branch); ``--all``, CI, or a
+    no-session shared branch runs the full project-native make format.
     """
     parsed = parse_command_args(CODE_FORMAT, args)
     run_all = parsed.has(F.FLAG_CODE_ALL_FORMAT)
     project_root = resolve_invocation_roots().repository_root
     files = list(parsed.positionals)
-    scoped_files = None
-    if files:
-        scoped_files = _validate_or_exit(files, project_root)
-        if not scoped_files:
-            return
-    elif run_all:
-        scoped_files = None
+    scoped_files = _resolve_quality_scope(project_root, files=files, run_all=run_all)
+    if scoped_files == []:
+        return
 
     exit_code = _run_make("format", project_root, files=scoped_files)
     if exit_code != 0:
@@ -99,6 +101,9 @@ def _resolve_quality_scope(project_root: Path, *, files: list[str], run_all: boo
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     if scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH and not scope_resolution.has_session_identity:
         return None
+    if scope_resolution.declared_nothing_over_dirty_tree:
+        print(_DECLARED_NOTHING_ERROR, file=sys.stderr)
+        raise SystemExit(1)
 
     scoped = _validate_or_exit(list(scope_resolution.scoped_existing_paths), project_root)
     if not scoped:
