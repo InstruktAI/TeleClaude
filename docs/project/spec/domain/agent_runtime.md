@@ -107,8 +107,10 @@ TeleClaudeNext repository.
   answers), under the system principal, with the session's company set only for
   a company scope. The triggering event reaches a new agent as its first input
   through the same session-input delivery that wakes an existing one, never as
-  additional startup context. Nothing restricts starting such a session by
-  hand, and nothing coordinates computers. Each activation is a durable
+  additional startup context. A company-scoped standing agent may also be
+  started by hand, and nothing restricts that; a person- or project-scoped one
+  is started only by an activation. Nothing coordinates computers. Each
+  activation is a durable
   operation of its own kind, whose outcome events
   `agent_runtime.procedure_activation.completed` and
   `agent_runtime.procedure_activation.failed` this context owns and registers;
