@@ -104,20 +104,11 @@ status vocabulary:
   declaration; the config override selects and orders model identifiers from the
   agent's declared model-identifier set, validated at startup by the config
   context. The resolver never invents a model and never substitutes an agent.
-<!-- planned-change:event-driven-agent-status -->
-- **Session-status truth is a read-time derivation.** The stalled state (in a
-  turn, observed activity still beyond the platform's stall threshold) is
-  computed where agent status is already derived, from existing timestamps plus
-  the current time; nothing is persisted, and any new activity self-heals the
-  derivation back to active. The threshold is one internal configuration
-  constant.
-<!-- change:event-driven-agent-status -->
 - **Session-status truth is the stored agent status.** The stalled state and
   its reason are members of the agent status the agent_runtime context
   persists on each transition
   (`project/spec/feature/agent_runtime/session-lifecycle`). This design reads
   that status and never recomputes it from timestamps.
-<!-- /planned-change:event-driven-agent-status -->
 
 ## Primary flows
 

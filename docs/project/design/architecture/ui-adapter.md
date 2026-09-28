@@ -220,16 +220,6 @@ sequenceDiagram
 
 UI adapters fire platform typing indicators in response to lifecycle status events. This provides immediate user feedback that the agent is working.
 
-<!-- planned-change:event-driven-agent-status -->
-| Status          | Trigger                                                   | Adapter Action                   |
-| --------------- | --------------------------------------------------------- | -------------------------------- |
-| `accepted`      | `user_prompt_submit` hook or UI input acceptance boundary | Request a throttled typing pulse |
-| `active`        | `session_start` hook                                      | Request a throttled typing pulse |
-| `active_output` | `pre_tool_use` hook                                       | Request a throttled typing pulse |
-| `completed`     | `agent_stop` hook                                         | Footer/badge decoration only     |
-
-Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` is the status-derived activity pulse for ongoing agent work and must not render visible message content.
-<!-- change:event-driven-agent-status -->
 | Status                                  | Trigger                                                   | Adapter Action                   |
 | --------------------------------------- | --------------------------------------------------------- | -------------------------------- |
 | `accepted`                              | `user_prompt_submit` hook or UI input acceptance boundary | Request a throttled typing pulse |
@@ -237,7 +227,6 @@ Typing is naturally replaced by output from the polling cadence (`send_output_up
 | `idle`, `blocked`, `stalled`, `unknown` | the session's agent status enters that value              | No typing pulse                  |
 
 Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. The agent-status values in this stream are the session's own agent status, published once per change by its owner in the agent_runtime context, and never render visible message content.
-<!-- /planned-change:event-driven-agent-status -->
 
 For UI-origin input, Core emits `accepted` at the input acceptance boundary
 (`deliver_inbound`) so presence starts before any agent hook fires. The pulse

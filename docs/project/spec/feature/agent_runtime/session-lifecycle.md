@@ -180,22 +180,6 @@ And the rest of that entry is unchanged
 ```
 
 
-<!-- planned-change:event-driven-agent-status -->
-
-#### UC-SL23: Only the declared runtime-start boundary establishes liveness
-
-```gherkin
-Given an orchestrating agent has started a non-headless child session
-And the child runtime has not announced its declared start boundary
-When the orchestrating agent reads the child session
-Then the child is reported as initializing with unknown agent activity
-And session creation, launch delivery, host-pane readiness, host-pane changes, generic timestamps, and other runtime activity do not report it live
-When the child runtime announces its declared start boundary
-Then the child is reported live and remains supervised
-And headless or terminal sessions are not reactivated
-```
-
-<!-- change:event-driven-agent-status -->
 
 #### UC-SL23: Only the declared runtime-start boundary establishes liveness
 
@@ -211,23 +195,7 @@ Then the child is reported live and remains supervised
 And headless or terminal sessions are not reactivated
 ```
 
-<!-- /planned-change:event-driven-agent-status -->
 
-<!-- planned-change:event-driven-agent-status -->
-
-#### UC-SL29: A silent in-turn session derives stalled
-
-```
-Given a non-terminal session whose latest input arrived after its latest authoritative idle boundary
-And the session's observed activity has not advanced for longer than the platform's stall threshold
-When a projection derives the session's `agent_status`
-Then it reports `stalled` instead of `active`
-And any subsequent observed activity makes the same derivation report `active` again
-And a session within the stall threshold continues to report `active`
-And the authoritative-idle, terminal-lifecycle, and no-activity rules remain unchanged
-```
-
-<!-- change:event-driven-agent-status -->
 
 #### UC-SL29: A silent in-turn session becomes stalled
 
@@ -243,9 +211,7 @@ And a session with an open tool call stays `active` however long that tool runs
 And a session whose status is `idle`, `blocked`, or `unknown` is never evaluated by this watchdog
 ```
 
-<!-- /planned-change:event-driven-agent-status -->
 
-<!-- planned:event-driven-agent-status -->
 
 #### UC-SL41: Agent status follows the normalized agent events
 
@@ -295,7 +261,6 @@ Then it carries the session's agent status, the reason for that status, and the 
 And the vocabulary is `unknown`, `active`, `idle`, `blocked`, `stalled`
 ```
 
-<!-- /planned:event-driven-agent-status -->
 
 
 <!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->

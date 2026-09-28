@@ -25,11 +25,7 @@ visibility: 'public'
 - **Output**: The `OutputPoller` reads from `tmux`, uses normalized pane text for generic change detection, and wakes transcript projection.
 - **Summarization**: Periodic AI-summarization updates the Telegram topic.
 - **Clutter Control**: User inputs and feedback are cleaned up based on session state.
-<!-- planned-change:event-driven-agent-status -->
-- **Lifecycle Status**: Turn-level status transitions (`accepted` → `active` → `active_output` → `completed`) are emitted by the agent coordinator and propagated to observers via the event bus. UI adapters may derive throttled typing pulses from `accepted`, `active`, and `active_output`; `active_output` remains a control signal and must not render visible message content.
-<!-- change:event-driven-agent-status -->
 - **Lifecycle Status**: The status stream carries input acceptance (`accepted`) and every change of the session's agent status, published once per change by the agent-status owner and propagated to observers via the event bus. UI adapters may derive throttled typing pulses from `accepted` and `active`; status controls must not render visible message content.
-<!-- /planned-change:event-driven-agent-status -->
 - **Title ownership**: Session title updates are projection-owned, but finalized only at completed-turn boundaries. Transcript truth remains the input, and `agent_stop` is only the finalize signal. A title may change at most once per user turn, using the last user input plus the assistant output that followed it; live streaming output must not retitle the session.
 - **Title delivery**: Core emits `SESSION_TITLE_CHANGED(session_id, title)` only after persisting a finalized raw semantic title. `UiAdapter` consumes that lifecycle event directly, and each UI adapter owns its own latest-only title delivery and platform pacing.
 

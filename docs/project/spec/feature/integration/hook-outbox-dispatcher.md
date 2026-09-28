@@ -55,20 +55,6 @@ And on success, the entry is removed from the outbox
 And the processed-count metric is incremented
 ```
 
-<!-- planned-change:event-driven-agent-status -->
-
-#### UC-D2: Stale non-lifecycle event evicted
-
-```gherkin
-Given an outbox entry with event type tool-use has creation timestamp older than the staleness TTL (300 seconds)
-When the staleness check evaluates the entry during the polling tick
-And the event type is not in the staleness-exempt set (agent-session-start, agent-stop, agent-error)
-Then the entry is removed without dispatch
-And the stale-dropped metric is incremented
-And a summary log records the drop
-```
-
-<!-- change:event-driven-agent-status -->
 
 #### UC-D2: Stale non-lifecycle event evicted
 
@@ -81,7 +67,6 @@ And the stale-dropped metric is incremented
 And a summary log records the drop
 ```
 
-<!-- /planned-change:event-driven-agent-status -->
 
 #### UC-D3: Critical event reserves capacity
 
@@ -92,21 +77,6 @@ Then it is accepted into pending despite being at capacity
 And future bursty events are rejected or coalesced because the critical-reserve slots are reserved
 ```
 
-<!-- planned-change:event-driven-agent-status -->
-
-#### UC-D4: Bursty same-type coalesce inside the dispatcher queue
-
-```gherkin
-Given the per-session pending queue has a bursty tool-use item not yet dispatched
-And no critical event sits after it in pending
-When another tool-use arrives via claim
-Then the bursty-coalesce probe locates the existing tool-use
-And the new item replaces the old in pending (same slot)
-And the displaced entry id is added to the delete-on-coalesce list
-And the coalesced-count metric is incremented
-```
-
-<!-- change:event-driven-agent-status -->
 
 #### UC-D4: Bursty same-type coalesce inside the dispatcher queue
 
@@ -120,7 +90,6 @@ And the displaced entry id is added to the delete-on-coalesce list
 And the coalesced-count metric is incremented
 ```
 
-<!-- /planned-change:event-driven-agent-status -->
 
 #### UC-D5: Watermark hysteresis pauses claims
 

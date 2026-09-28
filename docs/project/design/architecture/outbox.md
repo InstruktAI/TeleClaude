@@ -120,17 +120,10 @@ sequenceDiagram
 
 ### 3a. Backpressure classification
 
-<!-- planned-change:event-driven-agent-status -->
-| Class    | Event types                                                                  | Queue policy                                             |
-| -------- | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
-| critical | `session_start`, `user_prompt_submit`, `agent_stop`, `notification`, `error` | Never dropped; strict ordering preserved.                |
-| bursty   | `pre_tool_use` (and non-critical unknowns by default)                        | Coalesced latest-wins; oldest bursty rows evicted first. |
-<!-- change:event-driven-agent-status -->
 | Class    | Event types                                                                                                                         | Queue policy                                                             |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | critical | every event that moves a session's agent status (`session_start`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `agent_blocked`, `agent_stop`, `agent_idle`, `agent_turn_failed`), plus `error` | Never dropped, never coalesced in the queue, never evicted as stale; strict ordering preserved. |
 | bursty   | non-critical unknowns by default                                                                                                    | Coalesced latest-wins; oldest bursty rows evicted first.                 |
-<!-- /planned-change:event-driven-agent-status -->
 
 ### 3b. Per-session claim watermarks
 

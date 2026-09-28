@@ -86,16 +86,6 @@ live-pane observations are separate evidence:
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
 
-<!-- planned-change:event-driven-agent-status -->
-
-Status semantics:
-
-- `active`: the session is in a turn and its observed activity is advancing.
-- `stalled`: the session is in a turn but its observed activity has been still beyond the platform's stall threshold. Treat this as a signal to inspect, not as completion — see Agent Degradation Handling.
-- `idle`: the latest turn ended with an agent stop and no later input arrived.
-- `unknown`: no activity has been recorded yet.
-
-<!-- change:event-driven-agent-status -->
 
 Respond by `agent_status`:
 
@@ -104,7 +94,6 @@ Respond by `agent_status`:
 - `blocked`: handle it under When Worker Needs Help; the same turn continues once the wait is resolved.
 - `stalled`: handle it under Agent Degradation Handling; the turn does not continue on its own.
 
-<!-- /planned-change:event-driven-agent-status -->
 
 ### When Notification Arrives
 
@@ -113,11 +102,7 @@ Respond by `agent_status`:
 3. Tail for conversational context as needed (first time: default latest-turn window; subsequent tails: `--since <marker>`). Update the marker only when new timestamped messages appear.
 4. For a reported permission/input wait, failure, or an obstruction established by current evidence, follow When Worker Needs Help and Agent Degradation Handling as applicable. Neither `active` nor an empty tail is a reason to ignore the observation. A reported wait carries the provider's own cause and message text as evidence; assess from that before inspecting the emitting session.
 5. For a completion, assess the produced result under the existing role contract. If continuation is due, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop) and execute its returned script verbatim. A failed or blocked turn is not promoted to successful completion by this step.
-<!-- planned-change:event-driven-agent-status -->
-6. If assessment establishes valid waiting, maintain the applicable watch under the reminder policy. An `unknown` status with a readiness-investigation pointer still requires Agent Degradation Handling rather than further waiting.
-<!-- change:event-driven-agent-status -->
 6. If assessment establishes valid waiting, maintain the applicable watch under the reminder policy.
-<!-- /planned-change:event-driven-agent-status -->
 7. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 
 ### When `orchestration-watch` Fires
@@ -133,12 +118,8 @@ below. This does not change the watch's cadence or the recovery owner's powers.
 3. Update the marker to the latest message timestamp when new messages appear.
 4. If `agent_status` is `active`, keep `orchestration-watch` live and continue waiting.
 5. If `agent_status` is `idle`, invoke the state machine again and execute its returned script verbatim.
-<!-- planned-change:event-driven-agent-status -->
-6. If `agent_status` is `unknown`, continue waiting for the next event — unless the tail carries a readiness-investigation pointer, which means the session has not become live within its readiness budget. Then inspect, classify and adapt under Agent Degradation Handling instead of waiting further.
-<!-- change:event-driven-agent-status -->
 6. If `agent_status` is `unknown`, continue waiting for the next event. A session that does not start within its startup window becomes `stalled` and notifies you.
 7. If `agent_status` is `blocked` or `stalled`, handle it under When Worker Needs Help or Agent Degradation Handling.
-<!-- /planned-change:event-driven-agent-status -->
 
 ### When Worker Needs Help
 
@@ -193,15 +174,6 @@ For a startup failure that produced no native transcript:
    unavailable — perform no further model-quota retry. Keep the work pending for
    normal failure handling.
 
-<!-- planned-change:event-driven-agent-status -->
-For a worker whose session derives `stalled` mid-turn (in a turn, activity still
-beyond the stall threshold):
-
-1. Capture the still-live pane with exactly:
-   `tmux capture-pane -p -J -S - -t '<tmux_session_name>'`. Do not end the session.
-2. Read the captured prose and classify. Only intelligence decides; silence alone
-   establishes nothing.
-<!-- change:event-driven-agent-status -->
 For a worker whose session is `stalled`:
 
 1. Read the notification's evidence first. A runtime-reported failure carries the
@@ -210,7 +182,6 @@ For a worker whose session is `stalled`:
    `tmux capture-pane -p -J -S - -t '<tmux_session_name>'`. Do not end the session.
 2. Read the evidence and classify. Only intelligence decides; silence alone
    establishes nothing.
-<!-- /planned-change:event-driven-agent-status -->
 3. When model-specific exhaustion is established, record the model the session's
    launch resolved to as unavailable with
    `telec agents status <agent> --model <model> --status unavailable --reason <reason> --until <iso8601>`,

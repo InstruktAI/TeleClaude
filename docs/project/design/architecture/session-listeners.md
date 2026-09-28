@@ -33,11 +33,9 @@ audience is empty.
 - Session stop events from `AgentCoordinator`
 - Session distress events from `AgentCoordinator` — `agent_blocked` and
   `agent_turn_failed`, normalized per `hook-normalized-events`
-<!-- planned:event-driven-agent-status -->
 - Inferred stall transitions from the agent-status watchdogs — `stalled` with
   reason `no_signal` or `no_start` — delivered as the turn-failure kind with the
   daemon's own evidence in place of a native payload
-<!-- /planned:event-driven-agent-status -->
 - Forwarded distress from another computer, naming the target, its computer,
   the distress kind, and the initiator session to deliver to
 - Unsubscribe requests via `POST /sessions/{id}/unsubscribe`
@@ -82,7 +80,6 @@ audience is empty.
   terminal signal per turn, so the slot never chooses between two accounts. It
   bounds a runtime that violated that guarantee to one notice plus a
   diagnostic, and claims no power to retract a notification already delivered.
-<!-- planned:event-driven-agent-status -->
 - **Distress follows the agent-status transition.** Every entry into `blocked`
   or `stalled` produces one notification of the matching kind for that turn,
   whether the runtime reported it or a watchdog inferred it, under the same
@@ -90,7 +87,6 @@ audience is empty.
   gate, never the terminal-outcome slot, so the turn's own end or
   runtime-reported failure still notifies when it arrives. A `no_start` stall
   happens before any turn and is gated once per start.
-<!-- /planned:event-driven-agent-status -->
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither reads, delivers to, nor removes a
   one-shot row, so its turn-end semantics above are untouched.
@@ -218,7 +214,6 @@ sequenceDiagram
 | Blocked | `Session {id} [on {computer}] "{title}" is waiting on an approval it cannot resolve itself. Use: telec sessions tail {id}` |
 | Turn failed | `Session {id} [on {computer}] "{title}" ended its turn on a runtime or provider failure. Use: telec sessions tail {id}` |
 
-<!-- planned:event-driven-agent-status -->
 
 An inferred stall renders the turn-failure kind with the daemon's evidence:
 
@@ -229,7 +224,6 @@ An inferred stall renders the turn-failure kind with the daemon's evidence:
 
 `{timeout}` states the configured watchdog window, not the measured elapsed time.
 
-<!-- /planned:event-driven-agent-status -->
 
 Every kind names the target session and states which of the three it is, so a
 caller can decide its next move without first tailing the target. The computer
