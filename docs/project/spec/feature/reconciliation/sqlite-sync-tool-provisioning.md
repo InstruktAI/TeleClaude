@@ -1,7 +1,8 @@
 ---
-description: "The installer provisions SQLite's database sync tool on macOS and Linux at one pinned version, in the user tool location a non-interactive SSH session can address: idempotent presence handling, integrity-verified fetches, and loud actionable failure."
-delivered_by:
-  - todo-db-sync-to-computers
+description: 'The installer provisions SQLite''s database sync tool on macOS and Linux
+  at one pinned version, in the user tool location a non-interactive SSH session can
+  address: idempotent presence handling, integrity-verified fetches, and loud actionable
+  failure.'
 ---
 
 # SQLite Sync Tool Provisioning — Spec

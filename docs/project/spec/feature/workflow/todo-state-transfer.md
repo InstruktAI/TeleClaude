@@ -1,7 +1,7 @@
 ---
-description: An admin copies the todo state of one or more projects from the computer they are on to the same projects' checkouts on other computers with one command that needs no running daemon, so another computer can continue the work.
-delivered_by:
-  - todo-db-sync-to-computers
+description: An admin copies the todo state of one or more projects from the computer
+  they are on to the same projects' checkouts on other computers with one command
+  that needs no running daemon, so another computer can continue the work.
 ---
 
 # Todo State Transfer — Spec
