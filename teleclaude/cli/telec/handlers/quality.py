@@ -101,12 +101,12 @@ def _resolve_quality_scope(project_root: Path, *, files: list[str], run_all: boo
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     if scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH and not scope_resolution.has_session_identity:
         return None
-    scoped = _validate_or_exit(list(scope_resolution.scoped_existing_paths), project_root)
-    if not scoped and scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH:
-        # Reads only this session's own declared-and-dirty set, never other sessions' dirt:
-        # an empty scoped run must not read as a pass.
+    if scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH and not scope_resolution.scoped_dirty_paths:
+        # Reads only this session's own declared-and-dirty set (deletions included), never
+        # other sessions' dirt: an empty scoped run must not read as a pass.
         print(_EMPTY_SCOPE_ERROR, file=sys.stderr)
         raise SystemExit(1)
+    scoped = _validate_or_exit(list(scope_resolution.scoped_existing_paths), project_root)
     if not scoped:
         return []
     return scoped
