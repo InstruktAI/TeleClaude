@@ -16,7 +16,7 @@ visibility: 'public'
 <!-- planned-change:worktree-commits-push-to-remote -->
 Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`, branched from the latest `origin/main`. The worktree is created on demand the first time the work state machine asks for it, and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
 <!-- change:worktree-commits-push-to-remote -->
-Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: a Todo whose build has started resumes from its own branch on `origin` — the branch that contains the commit recorded when its build started — so work continues from its last published commit on whichever computer holds the Todo; a Todo whose build has not started is branched from the latest `origin/main`, after any branch `origin` still holds under its name — left there by an earlier Todo whose delivery or removal cleanup did not complete — has been removed. Because no same-named branch survives a Todo's first worktree, a branch under the Todo's name that contains its build-start commit carries that Todo's own work. and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
+Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: a Todo whose build has not started is branched from the latest `origin/main`, after any branch `origin` still holds under its name — left there by an earlier Todo whose delivery or removal cleanup did not complete — has been removed, and its branch opens with an empty commit of its own. Every later commit of the Todo descends from that opening commit, so the commit recorded when its build starts belongs to this Todo alone. A Todo whose build has started resumes from its branch on `origin` when that branch contains its build-start commit and the commit is not on `origin/main`, so work continues from its last published commit on whichever computer holds the Todo. and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
 <!-- /planned-change:worktree-commits-push-to-remote -->
 
 ## Canonical fields
@@ -133,6 +133,7 @@ And no worktree-tracked file is edited
 Given a computer holds a Todo whose build has started
 And no worktree exists for it at "trees/<slug>/" and no local branch carries its name
 And the Todo's branch on origin contains the commit recorded when the Todo's build started
+And that commit is not on origin/main
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then the worktree is created on a local branch that starts at the Todo's branch on origin
 And the work continues from the last commit published on that branch
@@ -145,6 +146,7 @@ And the prep policy reports "worktree_created" and runs preparation
 Given a Todo whose build has started has no worktree at "trees/<slug>/"
 And a local branch carries the Todo's name
 And the Todo's branch on origin contains the commit recorded when the Todo's build started and every commit on the local branch
+And the build-start commit is not on origin/main
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then the local branch is advanced to the Todo's branch on origin
 And the worktree is created on it
@@ -171,6 +173,26 @@ Then the branch under the Todo's name is removed from origin
 And the worktree is branched from origin/main
 ```
 
+#### UC-WPL8: A Todo's first worktree opens its branch with a commit of its own
+
+```
+Given a Todo whose build has not started has no worktree at "trees/<slug>/"
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the worktree's branch starts with an empty commit that is neither on origin/main nor on any other Todo's branch
+And the commit recorded when the Todo's build starts descends from it
+```
+
+#### UC-WPL9: A started Todo whose build-start commit is on origin/main never adopts a remote branch
+
+```
+Given a Todo whose build has started has no worktree at "trees/<slug>/"
+And the commit recorded when the Todo's build started is on origin/main
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then no branch on origin is adopted as the Todo's work
+And a local branch carrying the Todo's name is attached when one exists
+And otherwise no worktree is created and the work state machine reports that the Todo's work cannot be located
+```
+
 #### UC-WPL7: A leftover remote branch that cannot be removed stops the ensure
 
 ```
@@ -186,7 +208,7 @@ And the work state machine reports a worktree setup failure naming the branch le
 
 ```
 Given a Todo whose build has started has no worktree at "trees/<slug>/" and no local branch carries its name
-And no branch on origin under the Todo's name contains the commit recorded when the Todo's build started
+And no branch on origin under the Todo's name contains the commit recorded when the Todo's build started, or that commit is on origin/main
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then no worktree is created
 And the work state machine reports a worktree setup failure stating that the Todo's work is not on origin
@@ -208,7 +230,7 @@ And the work state machine reports a worktree setup failure stating that the Tod
 <!-- planned-change:worktree-commits-push-to-remote -->
 - The worktree branch is created from `origin/main`, not local main. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on origin/main before the worktree is created; otherwise the branch is missing it until a manual merge.
 <!-- change:worktree-commits-push-to-remote -->
-- A new worktree branch is created from the Todo's own branch on `origin` when its build has started, otherwise from `origin/main` — never from local main. A branch on `origin` counts as the Todo's own only when it contains the commit recorded at the Todo's build start. That test identifies the Todo's work only because a Todo's first worktree removes any same-named branch an earlier Todo left on `origin`; the build-start commit is often a shared `origin/main` commit and does not identify a Todo on its own. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on one of those before the worktree is created; otherwise the branch is missing it until a manual merge. Commits that exist only on another computer's local branch are invisible here.
+- A new worktree branch is created from the Todo's own branch on `origin` when its build has started, otherwise from `origin/main` — never from local main. A branch on `origin` counts as the Todo's own only when it contains the commit recorded at the Todo's build start and that commit is not on `origin/main`: only then is the commit unique to the Todo, through the opening commit its first worktree made. A build-start commit that is on `origin/main` is shared with every branch cut from it — including a same-named branch an earlier Todo left on `origin` — so such a Todo never adopts a remote branch. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on one of those before the worktree is created; otherwise the branch is missing it until a manual merge. Commits that exist only on another computer's local branch are invisible here.
 <!-- /planned-change:worktree-commits-push-to-remote -->
 - The peer convention is `trees/<slug>` for per-todo worktrees and `trees/_integration/` for the integration worktree. Scanners skip subdirectories whose names start with `_`.
 - The inputs digest hashes input file _existence_, _executable bit_, and _contents_ — so adding a previously absent dependency manifest (e.g., introducing `pyproject.toml`) triggers re-prep on the next entry even if the worktree itself is unchanged.
