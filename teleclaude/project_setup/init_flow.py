@@ -20,13 +20,12 @@ from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
-from teleclaude.config.resource_catalog import list_subjects
 from teleclaude.config.schema import ConfigKind, ProjectConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.git import Repo
-from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName
+from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import project_adoption_lock, register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
@@ -206,15 +205,6 @@ def _identity_holder(identity: str, root: Path, *, include_in_transit: bool) -> 
         if entry.identity == identity and entry.root != root:
             return entry.root
 
-    home_roots = {
-        ConfigSubjectKind.PERSON: PEOPLE_DIR,
-        ConfigSubjectKind.COMPANY: COMPANIES_ROOT,
-    }
-    for kind, home_root in home_roots.items():
-        if any(ref.instance == identity for ref in list_subjects(kind)):
-            holding_root = (home_root / identity).resolve()
-            if holding_root != root:
-                return holding_root
     return None
 
 
