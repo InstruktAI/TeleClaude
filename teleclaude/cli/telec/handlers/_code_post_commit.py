@@ -9,7 +9,7 @@ from teleclaude.core.integration.post_commit_maintenance import (
     resolve_post_commit_activation_range,
     start_drain_contender,
 )
-from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd, resolve_project_root
+from teleclaude.project_root import resolve_invocation_roots
 
 _POST_COMMIT_USAGE = "Usage: telec code post-commit"
 
@@ -19,8 +19,9 @@ def handle_code_post_commit(args: list[str]) -> None:
     if args:
         print(_POST_COMMIT_USAGE, file=sys.stderr)
         raise SystemExit(2)
-    checkout_root = resolve_git_root(resolve_invocation_cwd())
-    canonical_root = resolve_project_root(checkout_root)
+    roots = resolve_invocation_roots()
+    checkout_root = roots.repository_root
+    canonical_root = roots.require_project_root()
     activation_range = resolve_post_commit_activation_range(checkout_root)
     maintenance_root = checkout_root if checkout_root != canonical_root else canonical_root
     if record_activation(maintenance_root, activation_range):

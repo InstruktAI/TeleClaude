@@ -6,7 +6,7 @@ import sys
 
 from teleclaude.cli.telec.handlers._code_git_state import working_tree_snapshot
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_roots
 
 _CACHED = "--cached"
 _DIFF_FILTER_ACMR = "--diff-filter=ACMR"
@@ -26,7 +26,7 @@ def handle_code_pre_commit(args: list[str]) -> None:
     if args:
         print(_PRE_COMMIT_USAGE, file=sys.stderr)
         raise SystemExit(2)
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    project_root = resolve_invocation_roots().repository_root
     try:
         repo = Repo(str(project_root))
         snapshot = working_tree_snapshot(project_root)

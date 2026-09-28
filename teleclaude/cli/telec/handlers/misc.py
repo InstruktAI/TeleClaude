@@ -16,9 +16,8 @@ from teleclaude.cli.telec.surface import SESSIONS_REVIVE
 from teleclaude.config import config
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.project_root import (
-    resolve_invocation_cwd,
-)
+from teleclaude.paths import REPO_ROOT
+from teleclaude.project_root import resolve_invocation_cwd
 
 if TYPE_CHECKING:
     from teleclaude.api_models import CreateSessionResponseDTO
@@ -51,7 +50,7 @@ def _handle_tool_command(name: str, args: list[str]) -> None:
 def _git_short_commit_hash() -> str:
     """Return HEAD short hash, or 'unknown' when unavailable."""
     try:
-        repo = Repo(resolve_invocation_cwd(), search_parent_directories=True)
+        repo = Repo(REPO_ROOT, search_parent_directories=True)
         short_hash = repo.head.commit.hexsha[:7]
         return short_hash if short_hash else "unknown"
     except (InvalidGitRepositoryError, NoSuchPathError, ValueError, OSError):

@@ -14,7 +14,7 @@ from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import JOBS_REPORT
 from teleclaude.config.jobs import load_effective_jobs
 from teleclaude.paths import JOBS_DIR
-from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.session_identity import get_session_id
 
@@ -133,7 +133,7 @@ def _load_known_job_names(project_root: Path) -> set[str]:
 
 
 def _report_project_root() -> Path:
-    return resolve_project_root(resolve_invocation_cwd())
+    return resolve_invocation_roots().require_project_root()
 
 
 def _current_project_slug(project_root: Path) -> str:

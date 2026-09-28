@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from collections.abc import Callable
 from enum import StrEnum
@@ -37,6 +36,7 @@ from teleclaude.core.next_machine.lifecycle import (
     pending_approval_gate,
 )
 from teleclaude.core.operations.service import TERMINAL_OPERATION_STATES
+from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.types.todo_kind import (
     ALL_DUMP_KINDS,
     TODO_KIND_BUG,
@@ -592,7 +592,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if context:
             return context.project_path
-        return os.getcwd()
+        return str(resolve_invocation_roots().invocation_dir)
 
     def _create_item(self, slug: str, *, kind: str | None) -> None:
         """Create a todo or bug via the daemon API after content modal confirmation."""

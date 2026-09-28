@@ -15,7 +15,6 @@ from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import MCP_CALL, MCP_LIST, MCP_LIST_TOOLS
 from teleclaude.cli.tool_client import print_json, tool_api_call
-from teleclaude.config.context_root import resolve_context_root
 from teleclaude.mcp.registry import (
     TELECLAUDE_MCP_CONFIG_FILE,
     RegistryError,
@@ -27,7 +26,7 @@ from teleclaude.mcp.timeouts import (
     MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
 )
 from teleclaude.paths import REPO_ROOT
-from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
+from teleclaude.project_root import resolve_invocation_roots, resolve_project_root
 
 __all__ = ["_handle_mcp"]
 
@@ -91,9 +90,9 @@ def _handle_list(args: list[str]) -> None:
     invocation_project: str | None = None
     project_scope = False
     try:
-        context = resolve_context_root(resolve_invocation_cwd())
-        invocation_project = context.path.name if context is not None else None
-        project_root = project_mcp_root(context.path) if context is not None else None
+        context_root = resolve_invocation_roots().context_root
+        invocation_project = context_root.name if context_root is not None else None
+        project_root = project_mcp_root(context_root) if context_root is not None else None
         project_scope = project_root is not None
         registry = load_effective_registry(resolve_project_root(REPO_ROOT), project_root=project_root)
     except (FileNotFoundError, RegistryError) as exc:
@@ -193,5 +192,5 @@ def _fail_usage(command: str) -> NoReturn:
 
 def _tool_project_root() -> Path | None:
     """Return the eligible canonical project root for tool API requests."""
-    context = resolve_context_root(resolve_invocation_cwd())
-    return project_mcp_root(context.path) if context is not None else None
+    context_root = resolve_invocation_roots().context_root
+    return project_mcp_root(context_root) if context_root is not None else None

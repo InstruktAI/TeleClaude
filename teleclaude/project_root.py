@@ -1,4 +1,4 @@
-"""Canonical TeleClaude path-root resolution."""
+"""Resolve command roots by the rules in project/design/architecture/command-scope."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from teleclaude.config.context_root import resolve_context_root
+from teleclaude.config.schema import ConfigKind
 from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS
-from teleclaude.core.project_state import resolve_project_state_root
+from teleclaude.core.project_state import resolve_owning_checkout, resolve_project_state_root
 from teleclaude.core.worktree_layout import (
     is_integration_worktree as _is_integration_worktree,
 )
@@ -34,20 +35,31 @@ __all__ = [
     "is_slug_worktree",
     "resolve_git_root",
     "resolve_invocation_cwd",
-    "resolve_invocation_project_root",
     "resolve_invocation_roots",
+    "resolve_owning_checkout",
     "resolve_project_root",
-    "resolve_workspace_root",
     "worktree_home_root",
 ]
 
 
 @dataclass(frozen=True)
 class InvocationRoots:
-    """The acting context and containing repository for one invocation."""
+    """Roots selected from the invocation directory and its declared context."""
 
     context_root: Path | None
     repository_root: Path
+    invocation_dir: Path
+    context_kind: ConfigKind | None
+
+    def adoption_root(self) -> Path:
+        """Return the owning checkout, or let project init adopt a fresh directory before it has a Git checkout."""
+        return resolve_owning_checkout(self.invocation_dir) or self.invocation_dir
+
+    def require_project_root(self) -> Path:
+        """Return shared project state for project contexts, otherwise fail with the invocation path."""
+        if self.context_kind is not ConfigKind.PROJECT or self.context_root is None:
+            raise FileNotFoundError(f"cwd does not resolve to a project checkout: {self.invocation_dir}")
+        return resolve_project_state_root(self.context_root)
 
 
 def resolve_invocation_cwd() -> Path:
@@ -81,30 +93,6 @@ def resolve_invocation_cwd() -> Path:
     return Path.cwd()
 
 
-def resolve_invocation_project_root() -> Path:
-    """Return the canonical main project root for the current invocation.
-
-    Normalizes the invocation cwd — which may be a todo worktree or a subdir —
-    back to the owning main checkout via :func:`resolve_project_root`. Doc and
-    other shared-state lookups resolve against main's artifacts, which are the
-    only place those artifacts live; a worktree never carries a generated index.
-    """
-    return resolve_project_root(resolve_invocation_cwd())
-
-
-def resolve_workspace_root(start: str | Path) -> Path:
-    """Return the checkout/worktree root where commands should execute.
-
-    Walks up from ``start`` to find the nearest TeleClaude project checkout by
-    locating ``teleclaude.yml``. In todo worktrees this returns the worktree
-    root, not the main checkout.
-    """
-    context = resolve_context_root(Path(start))
-    if context is None:
-        raise FileNotFoundError("No anchoring configuration declaration found in directory hierarchy")
-    return context.path
-
-
 def resolve_git_root(start: str | Path) -> Path:
     """Return the active Git checkout root where file operations should run.
 
@@ -127,12 +115,14 @@ def resolve_git_root(start: str | Path) -> Path:
 
 
 def resolve_invocation_roots(start: str | Path | None = None) -> InvocationRoots:
-    """Resolve the invocation context separately from its containing repository."""
+    """Resolve the invocation directory, declared context, and containing repository."""
     invocation_path = resolve_invocation_cwd() if start is None else Path(start)
     context = resolve_context_root(invocation_path)
     return InvocationRoots(
         context_root=context.path if context is not None else None,
         repository_root=resolve_git_root(invocation_path),
+        invocation_dir=invocation_path,
+        context_kind=context.kind if context is not None else None,
     )
 
 

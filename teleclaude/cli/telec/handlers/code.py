@@ -225,7 +225,7 @@ def handle_code_add(args: list[str]) -> None:
         raise SystemExit(2)
 
     state = resolve_invocation_state()
-    project_root = state.project_root
+    project_root = state.repository_root
     validated_positionals = validate_context_paths(positionals, project_root, state.context_root)
     if len(validated_positionals) != len(positionals):
         print("ERROR: one or more paths were rejected outside the invocation context", file=sys.stderr)
@@ -359,7 +359,7 @@ def handle_code_commit(args: list[str]) -> None:
     message = positionals[0] if positionals else None
     caller_identity = resolve_cli_identity()
     state = resolve_invocation_state()
-    project_root = state.project_root
+    project_root = state.repository_root
     includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
     only = _resolve_context_payload_paths(only, project_root, state.context_root)
 
