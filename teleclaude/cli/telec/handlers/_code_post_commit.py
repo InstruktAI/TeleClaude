@@ -21,7 +21,7 @@ def handle_code_post_commit(args: list[str]) -> None:
         raise SystemExit(2)
     roots = resolve_invocation_roots()
     checkout_root = roots.repository_root
-    canonical_root = roots.require_project_root()
+    canonical_root = roots.require_commit_boundary_root()
     activation_range = resolve_post_commit_activation_range(checkout_root)
     maintenance_root = checkout_root if checkout_root != canonical_root else canonical_root
     if record_activation(maintenance_root, activation_range):

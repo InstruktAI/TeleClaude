@@ -21,8 +21,10 @@ from teleclaude.core.worktree_layout import (
 from teleclaude.core.worktree_layout import (
     worktree_home_for_checkout,
 )
+from teleclaude.paths import TELECLAUDE_HOME
 
 DOC_LAYER_PATTERN = "docs/**"
+_PROJECT_ROOT_ERROR = "cwd does not resolve to a project checkout: {invocation_dir}"
 
 __all__ = [
     "AGENT_ARTIFACT_SOURCE_GLOBS",
@@ -58,8 +60,20 @@ class InvocationRoots:
     def require_project_root(self) -> Path:
         """Return shared project state for project contexts, otherwise fail with the invocation path."""
         if self.context_kind is not ConfigKind.PROJECT or self.context_root is None:
-            raise FileNotFoundError(f"cwd does not resolve to a project checkout: {self.invocation_dir}")
+            raise FileNotFoundError(_PROJECT_ROOT_ERROR.format(invocation_dir=self.invocation_dir))
         return resolve_project_state_root(self.context_root)
+
+    def require_commit_boundary_root(self) -> Path:
+        """Return project shared state or the platform home for commit-boundary maintenance."""
+        if self.context_kind is ConfigKind.PROJECT:
+            return self.require_project_root()
+        if (
+            self.context_kind is ConfigKind.GLOBAL
+            and self.context_root is not None
+            and self.context_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+        ):
+            return self.context_root
+        raise FileNotFoundError(_PROJECT_ROOT_ERROR.format(invocation_dir=self.invocation_dir))
 
 
 def resolve_invocation_cwd() -> Path:
