@@ -60,6 +60,41 @@ class ProjectOwnership:
     company: str | None
 
 
+@dataclass(frozen=True)
+class ProjectOwnershipIndex:
+    """Snapshot of registered roots and their declared ownership facts."""
+
+    _ownership_by_root: tuple[tuple[Path, ProjectOwnership | None], ...]
+
+    def for_path(self, path: Path) -> ProjectOwnership | None:
+        """Resolve the deepest registered root containing a path."""
+        resolved_path = path.expanduser().resolve()
+        candidates = [
+            (root, ownership)
+            for root, ownership in self._ownership_by_root
+            if resolved_path == root or root in resolved_path.parents
+        ]
+        if not candidates:
+            return None
+        _, ownership = max(candidates, key=lambda item: len(item[0].parts))
+        return ownership
+
+    def for_slug(self, project_slug: str) -> ProjectOwnership | None:
+        """Resolve the first registered project with this canonical slug."""
+        for _, ownership in self._ownership_by_root:
+            if ownership is not None and ownership.project_slug == project_slug:
+                return ownership
+        return None
+
+
+def load_project_ownership_index(
+    projects_manifest_path: Path | None = None,
+) -> ProjectOwnershipIndex:
+    """Load registered roots and their ownership declarations as one snapshot."""
+    roots = load_roots() if projects_manifest_path is None else load_roots(projects_manifest_path)
+    return ProjectOwnershipIndex(tuple((root, _project_ownership_for_root(root)) for root in roots))
+
+
 def load_person_memberships(
     person_slug: str,
     companies_root: Path | None = None,
@@ -86,33 +121,6 @@ def load_person_memberships(
         except ValidationError:
             continue
     return memberships
-
-
-def project_ownership_for_path(
-    path: Path,
-    projects_manifest_path: Path | None = None,
-) -> ProjectOwnership | None:
-    """Resolve the deepest registered project containing a path and its owner."""
-    resolved_path = path.expanduser().resolve()
-    roots = load_roots() if projects_manifest_path is None else load_roots(projects_manifest_path)
-    candidates = [root for root in roots if resolved_path == root or root in resolved_path.parents]
-    if not candidates:
-        return None
-    root = max(candidates, key=lambda candidate: len(candidate.parts))
-    return _project_ownership_for_root(root)
-
-
-def project_ownership_for_slug(
-    project_slug: str,
-    projects_manifest_path: Path | None = None,
-) -> ProjectOwnership | None:
-    """Resolve ownership for the registered project with this canonical slug."""
-    roots = load_roots() if projects_manifest_path is None else load_roots(projects_manifest_path)
-    for root in roots:
-        ownership = _project_ownership_for_root(root)
-        if ownership is not None and ownership.project_slug == project_slug:
-            return ownership
-    return None
 
 
 def _project_ownership_for_root(root: Path) -> ProjectOwnership | None:
