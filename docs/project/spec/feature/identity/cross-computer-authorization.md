@@ -105,6 +105,7 @@ When the person runs any command naming another computer
 Then the command is admitted and that computer serves it
 ```
 
+<!-- planned-change:session-listing-selection -->
 #### UC-XCA7: Another computer answers a listing or history read of its own objects
 
 ```
@@ -115,6 +116,19 @@ And no session running there in a project owned by another company, or in no reg
 And a history search or a history show naming that computer is answered by that computer, within its own history scope
 And a person holding no role on that computer is refused the listing and the history reads there
 ```
+<!-- change:session-listing-selection -->
+#### UC-XCA7: Another computer answers a listing or history read of its own objects
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person lists sessions naming another computer
+Then that computer returns its sessions whose recorded configuration subject is a project that company owns there, that company's home, or the person's own home
+And no session there whose configuration subject belongs to another company or another person, or that recorded no configuration subject, is returned
+And a history search or a history show naming that computer is answered by that computer, within its own history scope
+And a person holding no role on that computer is refused the listing and the history reads there
+```
+<!-- /planned-change:session-listing-selection -->
+
 
 #### UC-XCA8: An operation is read on the computer that owns it
 

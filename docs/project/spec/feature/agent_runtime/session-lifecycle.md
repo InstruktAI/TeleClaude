@@ -251,9 +251,9 @@ And the vocabulary is `unknown`, `active`, `idle`, `blocked`, `stalled`
 ```
 Given a session is created for a working folder
 When the session record is written
-Then it records the configuration subject governing that folder: the kind (`project`, `person` or `company`) and the declared slug of the nearest TeleClaude configuration, resolved through invocation-root resolution
+Then it records the configuration subject governing that folder: the kind (`project`, `person` or `company`) of the nearest TeleClaude configuration declaration on the folder's ancestor chain, and that subject's slug
 And a folder inside a slug worktree records the subject of the owning checkout's declaration
-And a folder under no TeleClaude configuration records no configuration subject
+And a folder whose nearest declaration is the global configuration, or that lies under no TeleClaude configuration, records no configuration subject
 And the recorded subject does not change for the life of the session
 ```
 
