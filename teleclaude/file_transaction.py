@@ -14,6 +14,7 @@ from uuid import uuid4
 LOCK_SUFFIX: Final = ".lock"
 _TEMPORARY_PREFIX: Final = "."
 _TEMPORARY_SUFFIX: Final = ".tmp"
+_TEMPORARY_SEPARATOR: Final = "."
 _READ_WRITE_MODE: Final = "r+"
 _LOCK_MODE: Final = "a+"
 _UTF8: Final = "utf-8"
@@ -28,10 +29,17 @@ class FileTransaction:
         self._lock_file: object | None = None
 
     def read_text(self, *, encoding: str = "utf-8") -> str:
+        """Return the file's content, or empty text when it does not exist yet.
+
+        A transaction may create its file, so absence reads as empty content;
+        a caller that requires an existing file checks ``self.path.exists()``.
+        """
         return self.path.read_text(encoding=encoding) if self.path.exists() else ""
 
     def replace_text(self, content: str, *, encoding: str = "utf-8", creation_mode: int | None = None) -> None:
-        temporary = self.path.with_name(f"{_TEMPORARY_PREFIX}{self.path.name}.{uuid4().hex}{_TEMPORARY_SUFFIX}")
+        temporary = self.path.with_name(
+            f"{_TEMPORARY_PREFIX}{self.path.name}{_TEMPORARY_SEPARATOR}{uuid4().hex}{_TEMPORARY_SUFFIX}"
+        )
         try:
             temporary.write_text(content, encoding=encoding)
             target_mode = stat.S_IMODE(self.path.stat().st_mode) if self.path.exists() else creation_mode
