@@ -13,12 +13,17 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:worktree-commits-push-to-remote -->
 Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`, branched from the latest `origin/main`. The worktree is created on demand the first time the work state machine asks for it, and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
+<!-- change:worktree-commits-push-to-remote -->
+Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: from the Todo's branch on `origin` when one exists, so work continues from its last published commit on whichever computer holds the Todo, and otherwise branched from the latest `origin/main`. and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
+<!-- /planned-change:worktree-commits-push-to-remote -->
 
 ## Canonical fields
 
 ### Use cases
 
+<!-- planned-change:worktree-commits-push-to-remote -->
 ```
 Given no worktree exists at "trees/<slug>/"
 When the work state machine asks the workflow service to ensure the worktree is ready
@@ -26,6 +31,16 @@ Then the workflow service fetches origin main and creates the worktree branched 
 And the prep policy reports "worktree_created" and runs preparation
 And after prep succeeds, the prep marker is written with the computed inputs digest
 ```
+<!-- change:worktree-commits-push-to-remote -->
+```
+Given no worktree exists at "trees/<slug>/"
+And the Todo has no branch on origin
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the workflow service fetches origin main and creates the worktree branched from origin/main
+And the prep policy reports "worktree_created" and runs preparation
+And after prep succeeds, the prep marker is written with the computed inputs digest
+```
+<!-- /planned-change:worktree-commits-push-to-remote -->
 
 ```
 Given a worktree exists with a valid prep marker matching the current inputs digest
@@ -111,6 +126,41 @@ And the link does not appear among the worktree's untracked files
 And no worktree-tracked file is edited
 ```
 
+<!-- planned:worktree-commits-push-to-remote -->
+#### UC-WPL2: A missing worktree resumes from the Todo's published branch
+
+```
+Given a computer holds a Todo whose work is in progress
+And no worktree exists for it at "trees/<slug>/" and no local branch carries its name
+And the Todo's branch exists on origin
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the worktree is created on a local branch that starts at the Todo's branch on origin
+And the work continues from the last commit published on that branch
+And the prep policy reports "worktree_created" and runs preparation
+```
+
+#### UC-WPL3: A local branch behind the published branch is brought up to it
+
+```
+Given no worktree exists for a Todo at "trees/<slug>/"
+And a local branch carries the Todo's name and every commit on it is also on the Todo's branch on origin
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the local branch is advanced to the Todo's branch on origin
+And the worktree is created on it
+```
+
+#### UC-WPL4: A local branch that diverged from the published branch stops the ensure
+
+```
+Given no worktree exists for a Todo at "trees/<slug>/"
+And a local branch carries the Todo's name
+And the local branch and the Todo's branch on origin each hold commits the other does not
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then no worktree is created and neither branch changes
+And the work state machine reports a worktree setup failure naming both branch tips
+```
+<!-- /planned:worktree-commits-push-to-remote -->
+
 ### Cross-context references
 
 - `git` (system tool, not a bounded context) — worktree add/remove, branch create/delete, fetch, push --delete.
@@ -123,7 +173,11 @@ And no worktree-tracked file is edited
 - A worktree owns no Python environment of its own. Preparation creates `.venv` as a symlink to the project root's, clearing anything already at that path first (`tools/worktree-prepare.sh`), and symlinks `.env` from the root the same way; only `config.yml` is generated per worktree, giving it an isolated database. So dependencies resolve to the root environment, and installing from a worktree installs into the root's.
 - A worktree-local `.venv` is a symlink to a directory, which means `test -d` and a bare `ls` of the path both report it as an ordinary directory. `ls -l` on the worktree, `ls -ld`, or `readlink` show what it is. An existence probe answers whether something is there, never what it is — read this section rather than inferring the shape from a probe.
 - A future prep marker schema bump must reject older marker files and force re-prep with reason `prep_state_missing`.
+<!-- planned-change:worktree-commits-push-to-remote -->
 - The worktree branch is created from `origin/main`, not local main. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on origin/main before the worktree is created; otherwise the branch is missing it until a manual merge.
+<!-- change:worktree-commits-push-to-remote -->
+- A new worktree branch is created from the Todo's branch on `origin` when one exists, otherwise from `origin/main` — never from local main. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on one of those before the worktree is created; otherwise the branch is missing it until a manual merge. Commits that exist only on another computer's local branch are invisible here.
+<!-- /planned-change:worktree-commits-push-to-remote -->
 - The peer convention is `trees/<slug>` for per-todo worktrees and `trees/_integration/` for the integration worktree. Scanners skip subdirectories whose names start with `_`.
 - The inputs digest hashes input file _existence_, _executable bit_, and _contents_ — so adding a previously absent dependency manifest (e.g., introducing `pyproject.toml`) triggers re-prep on the next entry even if the worktree itself is unchanged.
 - The fallback installer policy is intentional: when `tools/worktree-prepare.sh` is absent, the script-less path tries `make install`, then pnpm, then npm. A repo with none of these gets a silent no-op prep — and the marker is still written, so the policy never re-runs unless inputs change.

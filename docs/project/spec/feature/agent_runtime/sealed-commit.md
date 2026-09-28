@@ -966,6 +966,67 @@ But a file the session changed only through a shell command is not committed unt
 ```
 <!-- /planned:declared-ownership-capture -->
 
+<!-- planned:worktree-commits-push-to-remote -->
+### Branch publication
+
+A successful sealed commit in a todo worktree publishes that todo's branch to the project's `origin` remote, so every task commit exists off the computer that made it. Publication follows the commit and never decides it: the commit is recorded before any push is attempted, and no publication outcome changes the commit or the command's success.
+
+#### UC-CGIP-50 — A commit in a todo worktree publishes the todo's branch
+
+```
+Given an agent session working in a todo worktree of a project with an origin remote
+When the session's sealed commit succeeds
+Then the todo's branch on origin points at the commit just made
+```
+
+#### UC-CGIP-51 — A failed publication leaves the commit in place
+
+```
+Given an agent session working in a todo worktree of a project with an origin remote
+And origin cannot be reached or does not accept the branch
+When the session's sealed commit succeeds
+Then the commit remains on the todo's local branch
+And the command reports success
+And the agent is told that publishing the branch failed, with git's reason
+And the agent is told that its next commit publishes the branch again
+```
+
+#### UC-CGIP-52 — Rewritten branch history replaces the published branch
+
+```
+Given a todo's branch was published and its history was then rewritten in the worktree
+And origin holds nothing on that branch the worktree has not seen
+When the session's sealed commit succeeds
+Then the todo's branch on origin is replaced by the worktree's branch
+```
+
+#### UC-CGIP-53 — Remote work the worktree has never seen is not overwritten
+
+```
+Given the todo's branch on origin holds commits the worktree has never integrated
+When the session's sealed commit succeeds
+Then the branch on origin keeps those commits
+And the agent is told that publication was refused, with git's reason
+```
+
+#### UC-CGIP-54 — Main and the integration worktree publish nothing
+
+```
+Given a sealed commit on the repository root's main branch, or in the integration worktree
+When the commit succeeds
+Then the commit pushes nothing to origin
+```
+
+#### UC-CGIP-55 — A project without an origin remote commits as before
+
+```
+Given an agent session working in a todo worktree of a project with no origin remote
+When the session's sealed commit succeeds
+Then nothing is pushed
+And the command reports nothing about publication
+```
+<!-- /planned:worktree-commits-push-to-remote -->
+
 ## See also
 
 - docs/project/design/code-commit.md
