@@ -46,7 +46,7 @@ class MLXTTSBackend:
         self,
         service_name: str,
         model_ref: str,
-        params: dict[str, object] | None = None,  # guard: loose-dict - Backend kwargs vary by model.
+        params: dict[object, object] | None = None,  # guard: loose-dict - Backend kwargs vary by model.
         cli_bin: str | None = None,
         instruct: str = DEFAULT_VOICE_DESIGN_INSTRUCT,
     ) -> None:
@@ -265,7 +265,7 @@ class MLXTTSBackend:
     def _generate_local(self, text: str, voice: str, model_type: str, out_dir: Path) -> Path | None:
         """Generate a WAV file via in-process mlx_audio into ``out_dir``, without playing it."""
         prefix = str(out_dir / "tts_output")
-        generate_kwargs: dict[str, object] = {  # guard: loose-dict - mlx_audio kwargs are dynamic.
+        generate_kwargs: dict[object, object] = {  # guard: loose-dict - mlx_audio kwargs are dynamic.
             "model": self._model,
             "text": text,
             "voice": voice,
@@ -287,7 +287,7 @@ class MLXTTSBackend:
         )
         generate_kwargs.update({k: v for k, v in self._params.items() if k not in _protected})
 
-        generate_audio(**generate_kwargs)
+        generate_audio(**generate_kwargs)  # pyright: ignore[reportCallIssue] - Preserve arbitrary config keys until Python validates keyword expansion.
 
         audio_file = Path(f"{prefix}.wav")
         if not audio_file.exists() or not audio_file.stat().st_size:
