@@ -12,10 +12,10 @@ from teleclaude.config_roster import (
     CompanyMember,
     CompanyRole,
     PersonEntry,
+    ProjectOwnershipIndex,
     load_people_roster,
     load_person_memberships,
-    project_ownership_for_path,
-    project_ownership_for_slug,
+    load_project_ownership_index,
 )
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
@@ -233,30 +233,34 @@ def load_person_role_facts(person_slug: str, platform_role: str | None) -> Perso
     )
 
 
-def scope_for_path(path: Path) -> RoleScope:
+def scope_for_path(path: Path, ownership_index: ProjectOwnershipIndex) -> RoleScope:
     """Resolve a filesystem path to its registered project scope or platform scope."""
-    ownership = project_ownership_for_path(path)
+    ownership = ownership_index.for_path(path)
     if ownership is None:
         return PlatformScope()
     return ProjectScope(project=ownership.project_slug, owner=ownership.company)
 
 
-def scope_for_project(project_slug: str) -> RoleScope:
+def scope_for_project(project_slug: str, ownership_index: ProjectOwnershipIndex) -> RoleScope:
     """Resolve a project slug to its registered project scope or platform scope."""
-    ownership = project_ownership_for_slug(project_slug)
+    ownership = ownership_index.for_slug(project_slug)
     if ownership is None:
         return PlatformScope()
     return ProjectScope(project=ownership.project_slug, owner=ownership.company)
 
 
-def scope_for_docs_tier(tier: DocsTier) -> RoleScope:
+def scope_for_docs_tier(
+    tier: DocsTier,
+    ownership_index: ProjectOwnershipIndex | None,
+) -> RoleScope:
     """Resolve a documentation tier's own scope and qualified owner."""
     if tier.tier is SnippetScope.GLOBAL:
         return SharedDocsScope()
     if tier.tier is SnippetScope.COMPANY and tier.owner is not None:
         return CompanyScope(tier.owner)
     if tier.tier is SnippetScope.PROJECT and tier.owner is not None:
-        return scope_for_project(tier.owner)
+        assert ownership_index is not None
+        return scope_for_project(tier.owner, ownership_index)
     if tier.tier is SnippetScope.PERSON and tier.owner is not None:
         return PersonScope(tier.owner)
     return PlatformScope()
@@ -294,23 +298,31 @@ def effective_role(facts: PersonRoleFacts, scope: RoleScope) -> str:
     return min(recognized, key=HUMAN_ROLES.index)
 
 
-def _scope_for_target(target: RoleTarget) -> RoleScope:
+def _scope_for_target(target: RoleTarget, ownership_index: ProjectOwnershipIndex | None) -> RoleScope:
     """Resolve an operation target to the object's own registered scope."""
     match target:
         case ProjectPath(path=path):
-            return scope_for_path(path)
+            assert ownership_index is not None
+            return scope_for_path(path, ownership_index)
         case Project(project_slug=project_slug):
-            return scope_for_project(project_slug)
+            assert ownership_index is not None
+            return scope_for_project(project_slug, ownership_index)
         case Company(company=company):
             return CompanyScope(company)
         case Person(person_slug=person_slug):
             return PersonScope(person_slug)
         case SessionOf(project_path=project_path):
-            return PlatformScope() if project_path is None else scope_for_path(Path(project_path))
+            if project_path is None:
+                return PlatformScope()
+            assert ownership_index is not None
+            return scope_for_path(Path(project_path), ownership_index)
         case DocsTier():
-            return scope_for_docs_tier(target)
+            return scope_for_docs_tier(target, ownership_index)
         case OperationOf(cwd=cwd):
-            return PlatformScope() if cwd is None else scope_for_path(cwd)
+            if cwd is None:
+                return PlatformScope()
+            assert ownership_index is not None
+            return scope_for_path(cwd, ownership_index)
         case Platform():
             return PlatformScope()
         case _:
@@ -318,10 +330,12 @@ def _scope_for_target(target: RoleTarget) -> RoleScope:
 
 
 class RoleResolver:
-    """Resolve object roles while reusing one caller's facts per request."""
+    """Resolve object roles while reusing caller facts and target scopes per request."""
 
     def __init__(self) -> None:
         self._facts_by_person: dict[str, PersonRoleFacts] = {}
+        self._project_ownership_index: ProjectOwnershipIndex | None = None
+        self._scopes_by_target: dict[RoleTarget, RoleScope] = {}
 
     def role_for(self, caller: CliCaller | None, target: RoleTarget) -> str:
         """Resolve the caller's effective person role for the target object."""
@@ -331,7 +345,28 @@ class RoleResolver:
         if facts is None:
             facts = load_person_role_facts(caller.person_slug, caller.human_role)
             self._facts_by_person[caller.person_slug] = facts
-        return effective_role(facts, _scope_for_target(target))
+        scope = self._scopes_by_target.get(target)
+        if scope is None:
+            if self._project_ownership_index is None and _target_uses_project_ownership(target):
+                self._project_ownership_index = load_project_ownership_index()
+            scope = _scope_for_target(target, self._project_ownership_index)
+            self._scopes_by_target[target] = scope
+        return effective_role(facts, scope)
+
+
+def _target_uses_project_ownership(target: RoleTarget) -> bool:
+    """Identify targets whose scope comes from the registered project roots."""
+    match target:
+        case ProjectPath() | Project():
+            return True
+        case SessionOf(project_path=project_path):
+            return project_path is not None
+        case DocsTier(tier=SnippetScope.PROJECT, owner=owner):
+            return owner is not None
+        case OperationOf(cwd=cwd):
+            return cwd is not None
+        case _:
+            return False
 
 
 _CARRIED_IDENTITY_HEADERS = (
