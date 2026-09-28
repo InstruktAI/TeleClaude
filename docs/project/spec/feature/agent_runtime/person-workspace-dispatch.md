@@ -1,5 +1,5 @@
 ---
-description: A person's workspace is reachable only through a launch call that derives its target from the authenticated caller, and the general session verbs refuse to reach one at all.
+description: Any agent that recognises personal work starts that person's assistant with a brief alone; the destination is derived from the authenticated caller, and the launched assistant has no parent and ends itself.
 delivered_by:
   - personal-assistant-launch
 ---
@@ -8,31 +8,31 @@ delivered_by:
 
 ## What it is
 
-Person workspace dispatch is the single door through which an agent session
-reaches a person's own workspace. Any session that recognises work belonging to
-a person invokes `telec sessions run-pa "<brief>"` — a sibling of `run` and
-`start` — and the session it starts lands in that person's workspace carrying
-the brief.
+Person workspace dispatch is how an agent session that recognises work belonging
+to a person starts that person's assistant without working out where to point
+it. The session invokes `telec sessions run-pa "<brief>"` — a sibling of `run`
+and `start` — and the session it starts lands in that person's own workspace
+carrying the brief.
 
 The caller supplies a brief and nothing else. The person, the workspace, and the
 computer are derived from the authenticated caller, and the surface exposes no
-parameter naming a person in any form. Work that a schedule already owns stays
-with that schedule; an ad-hoc launch does not perform it. A platform admin's invocation takes the
+parameter naming a person in any form. A platform admin's invocation takes the
 same single form and reaches that admin's own workspace. A caller that resolves
 to no person is refused rather than defaulted.
 
-The general session verbs, which each carry a target path, refuse a destination
-resolving inside a person workspace. That refusal holds whether or not the
-destination belongs to the caller's own person.
+The launch is a convenience route, not the only one. The general session verbs
+start a session in a person's workspace exactly as they do in any other folder.
 
 The session the launch starts has no parent. Nothing waits on it and nothing
-decides its ending but itself; it reports by sending a message and then ends.
+decides its ending but itself; it tells the person what it did by sending a
+message and then ends. It receives the brief as a request made in the moment, so
+work a schedule owns stays with that schedule.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-PWD1: An agent reaches a person's workspace with only a brief
+#### UC-PWD1: An agent starts a person's assistant with only a brief
 
 ```gherkin
 Given an agent session is authenticated and resolves to a person
@@ -49,7 +49,7 @@ Given an agent inspects the personal-assistant launch command
 When the agent reads its accepted arguments
 Then the brief is the only value the command accepts
 And no argument, flag, or alternate form names a person
-And an invocation that attempts to name a person is rejected rather than honored
+And an invocation that attempts to name a person is rejected rather than honored or ignored
 ```
 
 #### UC-PWD3: Platform authority does not widen the call
@@ -59,7 +59,7 @@ Given an authenticated agent session whose caller holds the platform administrat
 When that agent invokes the personal-assistant launch command
 Then the session starts in the administrator's own person workspace
 And the command behaves identically to any other caller's invocation
-And no other person's workspace becomes reachable by virtue of that role
+And no other person's workspace becomes reachable through the launch by virtue of that role
 ```
 
 #### UC-PWD4: A caller that resolves to no person is refused
@@ -72,14 +72,13 @@ And the refusal states that no person could be resolved for the caller
 And no session is started in any person's workspace
 ```
 
-#### UC-PWD5: The general session verbs cannot reach a person workspace
+#### UC-PWD5: The general session verbs still reach a person workspace
 
 ```gherkin
 Given an agent or operator invokes a general session-start or session-run command
-When the requested destination resolves inside any person's workspace
-Then the request is refused and no session is started there
-And the refusal names the personal-assistant launch command as the route
-And the refusal applies whether or not the destination belongs to the caller's own person
+When the requested destination is a folder inside a person's workspace
+Then a session starts at that destination exactly as it would in any other folder
+And nothing refuses the request because of whose workspace it is
 ```
 
 #### UC-PWD6: The launch names no procedure
@@ -101,17 +100,17 @@ And the session ends itself rather than waiting to be ended
 And anything the person needs to see was delivered as a message rather than as a result a caller collects
 ```
 
-#### UC-PWD8: A schedule's work is not reachable by asking
+#### UC-PWD8: The brief arrives as an in-the-moment request
 
 ```gherkin
 Given a person's recurring work is owned by a schedule
 When an agent invokes the personal-assistant launch command with a brief that would touch that work
-Then the launched session treats the brief as a request made in the moment
+Then the launched session receives the brief together with the statement that it is an in-the-moment request
 And it does not perform the recurring work the schedule owns
-And the schedule remains the only thing that causes that work to run
+And it says that the work belongs to the schedule rather than silently omitting it
 ```
 
 ## See Also
 
-- ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the conduct gates this dispatch surface enforces, including why location is the gate and why a validated person argument would be a different guarantee.
+- ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the conduct an assistant follows once it has arrived, including the location gate, the ending rule, and the schedule rule the launch's framing invokes.
 - docs/project/design/architecture/ai-to-ai-dispatch.md — the dispatch flow this launch joins, and its invariants.
