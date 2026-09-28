@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from teleclaude.config._file_io import file_transaction
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import INVITATIONS_PATH
 
 

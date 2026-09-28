@@ -25,7 +25,6 @@ from teleclaude.config._environment import (
     find_environment_references,
     read_environment_file,
 )
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
@@ -70,6 +69,7 @@ from teleclaude.config.roster import (
 from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.docs_index import get_project_slug
+from teleclaude.file_transaction import file_transaction
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.project_setup.init_flow import ProjectInitializationResult, ProjectInitializationTrigger, init_project

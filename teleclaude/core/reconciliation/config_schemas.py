@@ -11,7 +11,6 @@ from typing import Final, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config._file_io import _LOCK_SUFFIX
 from teleclaude.config.declaration import (
     HOME_SCHEMA_DIRECTORY,
     PROJECT_SCHEMA_LINK_DIRECTORY,
@@ -20,6 +19,7 @@ from teleclaude.config.declaration import (
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.schema_export import export_tier_schemas
 from teleclaude.core.models import JsonDict
+from teleclaude.file_transaction import LOCK_SUFFIX
 from teleclaude.git import Repo
 from teleclaude.mcp.registry import MCP_SCHEMA_FILENAME, MCP_SCHEMA_SOURCE_PATH
 from teleclaude.paths import TELECLAUDE_HOME
@@ -34,7 +34,7 @@ _LOCAL_EXCLUDE_FILENAME: Final = "exclude"
 _PROJECT_CONFIG_FILENAME: Final = "teleclaude.yml"
 _PROJECT_CONFIG_PATH: Final = Path(_PROJECT_CONFIG_FILENAME)
 _PROJECT_CONFIG_LOCK_PATH: Final = _PROJECT_CONFIG_PATH.with_suffix(
-    f"{_PROJECT_CONFIG_PATH.suffix}{_LOCK_SUFFIX}",
+    f"{_PROJECT_CONFIG_PATH.suffix}{LOCK_SUFFIX}",
 )
 _LOCAL_EXCLUDE_PATTERNS: Final = (
     "/.teleclaude/",

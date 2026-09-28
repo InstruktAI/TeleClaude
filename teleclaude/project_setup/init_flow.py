@@ -14,7 +14,6 @@ from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
 from teleclaude.config import config
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
@@ -24,6 +23,7 @@ from teleclaude.config.schema import ConfigKind, ProjectConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config, get_project_slug
+from teleclaude.file_transaction import file_transaction
 from teleclaude.git import Repo
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest_runtime import project_adoption_lock, register_root

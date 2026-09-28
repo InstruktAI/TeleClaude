@@ -18,7 +18,6 @@ from teleclaude.config._environment import (
     reconcile_environment_references,
     write_environment_values,
 )
-from teleclaude.config._file_io import FileTransaction, file_transaction
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
@@ -42,6 +41,7 @@ from teleclaude.config.schema import (
     ProjectConfig,
 )
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
 

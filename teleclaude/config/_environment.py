@@ -12,7 +12,7 @@ from typing import Final
 
 from dotenv import dotenv_values
 
-from teleclaude.config._file_io import file_transaction
+from teleclaude.file_transaction import file_transaction
 
 _ENV_REFERENCE_PREFIX: Final = "${"
 _ENV_REFERENCE_SUFFIX: Final = "}"

@@ -8,10 +8,10 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.migrations import Destination, in_transit
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 from teleclaude.project_manifest import (
     _PROJECTS_FIELD,

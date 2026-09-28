@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
-from teleclaude.config._file_io import file_transaction
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import DECLARATION_VIEWS_DIR
 
 _EPOCH_NAME = "epoch"

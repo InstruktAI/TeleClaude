@@ -7,8 +7,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict, cast
 
-from teleclaude.config._file_io import FileTransaction, file_transaction
 from teleclaude.core.agents import AgentName
+from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import session_tmp_dir
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.quality import scope as quality_scope

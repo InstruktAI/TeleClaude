@@ -10,10 +10,10 @@ import yaml
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.config._defaults import DEFAULT_CONFIG
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import in_public_sample
+from teleclaude.file_transaction import file_transaction
 
 _AGENTS_KEY = "agents"
 _KIND_KEY = "kind"

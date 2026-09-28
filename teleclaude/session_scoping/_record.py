@@ -9,7 +9,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config._file_io import FileTransaction, file_transaction
+from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import (
     LEGACY_DECLARATIONS_DIR,
     SESSION_DECLARATIONS_FILENAME,

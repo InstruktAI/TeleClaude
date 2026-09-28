@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.legacy_discord_handoff import (
     LegacyDiscordProviderId,
@@ -19,6 +18,7 @@ from teleclaude.config.legacy_discord_handoff import (
 )
 from teleclaude.config.migrations import Destination, MigrationTrigger, in_transit, migrate_document
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 
 _COMPUTER_SUBJECT = SubjectRef(ConfigSubjectKind.COMPUTER)

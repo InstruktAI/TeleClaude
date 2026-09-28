@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.loader import list_company_config_paths
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import GLOBAL_CONFIG_PATH
 from teleclaude.services.project_catalog import get_project_catalog_service
 

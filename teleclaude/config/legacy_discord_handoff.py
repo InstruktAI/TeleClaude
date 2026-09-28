@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from teleclaude.config._file_io import file_transaction
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import LEGACY_DISCORD_HANDOFF_PATH
 
 _SOURCE = "source"

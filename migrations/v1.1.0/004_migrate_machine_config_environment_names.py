@@ -5,10 +5,10 @@ from __future__ import annotations
 import yaml
 
 from teleclaude.config._environment import reconcile_environment_values
-from teleclaude.config._file_io import file_transaction
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH, PROJECT_ENV_PATH
 
-_PLACEHOLDER_RENAMES = {
+_PLACEHOLDER_RENAMES: dict[tuple[str, ...], tuple[str, str]] = {
     ("summarizer", "local", "base_url"): ("SUMMARIZER_LLM_BASE_URL", "SUMMARIZER_LOCAL_BASE_URL"),
     ("summarizer", "local", "model"): ("SUMMARIZER_LLM_MODEL", "SUMMARIZER_LOCAL_MODEL"),
     ("summarizer", "openai", "api_key"): ("OPENAI_API_KEY", "SUMMARIZER_OPENAI_API_KEY"),

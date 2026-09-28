@@ -10,8 +10,8 @@ from typing import Any, Final
 
 from ruamel.yaml import YAML
 
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, ConfigKind
+from teleclaude.file_transaction import file_transaction
 
 HOME_SCHEMA_DIRECTORY: Final = "schemas"
 PROJECT_SCHEMA_LINK_DIRECTORY: Final = ".teleclaude/schemas"

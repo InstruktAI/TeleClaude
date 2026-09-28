@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import cast
 
 from teleclaude.config._environment import expand_environment_references, read_environment_file
-from teleclaude.config._file_io import file_transaction
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.migrations import Destination, carry_pending, upcast
@@ -21,6 +20,7 @@ from teleclaude.config.person_secrets import (
 from teleclaude.config.schema import ConfigKind, PersonConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.models import JsonDict
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
 
