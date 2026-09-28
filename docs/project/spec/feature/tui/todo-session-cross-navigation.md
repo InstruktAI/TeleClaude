@@ -381,6 +381,20 @@ And no other column of the row shifts: every line reads the same with and withou
 And the rendered line reads: • [N] ▶ claude/med <chip> /work config-public-surface-contract
 ```
 
+<!-- planned:session-listing-selection -->
+
+#### UC-XNAV-31: Provenance session state is resolved by id, independent of any listing window
+
+```
+Given an expanded todo renders "created in: <session_id>" or "prepped in: <session_id>"
+And that session closed before `CLOSED_SESSION_LISTING_WINDOW` but is still retained
+When the detail row is rendered
+Then the row offers revive as for any retained closed session
+And the TUI resolves the provenance sessions of its rendered todos by their session ids, never by reading the closed-session listing
+```
+
+<!-- /planned:session-listing-selection -->
+
 ## Known caveats
 
 - **Legacy todos show no chip.** Todos created before `created_by_principal`

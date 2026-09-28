@@ -385,6 +385,15 @@ Then the live todo changes exactly as it does when the action is addressed to it
 And the removed and delivered todos do not change
 ```
 
+#### UC-WM35: The TUI's todo data carries recent deliveries and every iced todo
+
+```
+Given a project with delivered todos, some delivered within `RECENTLY_DELIVERED_HOURS` and some before it, and iced todos of any age
+When the TUI reads that project's todo data
+Then it carries the todos delivered within `RECENTLY_DELIVERED_HOURS` and no earlier delivery
+And it carries every iced todo, whatever its age
+```
+
 ### Cross-context references
 
 - `integration` — delivered-slug cleanup retires the delivered slug's worktree/branch/workspace after delivery bookkeeping.

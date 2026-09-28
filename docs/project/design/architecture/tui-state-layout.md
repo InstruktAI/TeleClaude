@@ -269,7 +269,7 @@ a **non-sticky** session sets/swaps the preview.
 The todo-list pane assembles entries into per-project sections that mirror the persisted roadmap `status` enum (workflow domain spec, Roadmap entry term). Each non-active section is opt-in via a per-project toggle persisted alongside `expanded_todos`. The four sections, in display order:
 
 - **Active** (always rendered) — `status=active` entries plus their derived display states (`pending`/`ready`/`in_progress`).
-- **Delivered** (toggle `d`) — `status=delivered` entries (recent window); shown under `DeliveredSeparator`.
+- **Delivered** (toggle `d`) — `status=delivered` entries delivered within `RECENTLY_DELIVERED_HOURS`; shown under `DeliveredSeparator`.
 - **Icebox** (toggle `i`) — `status=icebox` entries; shown under `IceboxSeparator`.
 - **Trashed** (toggle `x`) — `status=removed` entries within the retention window; shown under `TrashedSeparator`. Renders each row with its `removed_at` age. Visually distinct from delivered/icebox so the operator never confuses recoverable-but-removed with archived.
 
