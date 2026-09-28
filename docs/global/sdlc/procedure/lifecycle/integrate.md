@@ -75,14 +75,17 @@ each decision point until the queue is drained.
    After each activation, read that delivery's log window with knowledge of
    the change. Investigate anomalies, handle bounded recovery, and route
    remaining breakage for a forward fix through the normal bug process.
-   For a direct commit on canonical local main, judge that log window before
-   publishing the commit. If the activated change is sound, run the pre-push
-   checks in step 5, push the checked local main HEAD to origin/main from the
-   project root, and verify origin/main contains that exact commit. A material
-   failure leaves the commit local until recovery and a new log judgment. A
-   successful log command alone is not a soundness verdict. A direct commit
-   with no live-runtime log judgment follows the same publication step after
-   its owed maintenance succeeds.
+   For direct commits on canonical local main, judge any owed log window before
+   publication. If the activated change is sound, push the current committed
+   main head to origin/main from the project root with `git push origin main:main`
+   and verify origin/main contains that exact head. A material activation failure leaves it local until recovery
+   and a new log judgment; a successful log command alone is not a soundness
+   verdict. A direct commit with no live-runtime log judgment is published after
+   its owed maintenance succeeds. The committer owns review and remediation under
+   `sdlc/policy/commits`; the integrator does not inspect or wait for other
+   sessions' review verdicts. Uncommitted repo-root paths are not part of the
+   push and do not block it. The candidate pre-push checks in step 5 do not gate
+   direct-main publication.
    `telec code maintenance status` reports the checkout's outstanding actions,
    terminal failures, and integrator judgment, each with its recovery command.
    After the cause of a terminal failure is addressed, `telec code maintenance
@@ -90,7 +93,7 @@ each decision point until the queue is drained.
  maintenance drain` resumes interrupted work and records maintenance
    readiness when no owed action remains.
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
-5. Before any push, run repo-wide verification:
+5. Before a candidate push from the integration worktree, run repo-wide verification:
    - `telec code lint --all`
    - `telec code test --all`
      If either command fails, fix the failures, rerun both, then resume the state machine.
@@ -382,9 +385,11 @@ logs `integration.candidate.already_merged` and moves on.
 All candidates have been processed. The queue-empty result does not publish
 ordinary direct commits on repository-root main. Inspect local main against
 origin/main before parking. If local main is ahead, complete its owed maintenance
-and any live-runtime log judgment, run the pre-push checks in step 5, push the
-checked head from the project root, and verify origin/main contains it. Resolve
-split history or dirty work under REPO ROOT SYNC REQUIRED before publication.
+and any live-runtime log judgment, push the committed head from the project
+root, and verify origin/main contains it. Other sessions' review state and
+unrelated uncommitted repo-root paths are not publication gates. A rejected push
+or split history follows REPO ROOT SYNC REQUIRED; only paths that block that
+reconciliation enter its dirty-path procedure.
 
 Park after bookkeeping completes. Hold `integrator-queue-watch` while awaiting
 the next candidates, and end only when directed.

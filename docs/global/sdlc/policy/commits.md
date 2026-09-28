@@ -122,6 +122,10 @@ All Committizen types are allowed.
   review gate applies to every committed non-documentation path; runtime path
   classification does not infer a weaker review obligation from whether a file
   appears to be bookkeeping.
+  The authoring session owns its review verdict and remediation. The standing
+  integrator publishes committed canonical main after its own maintenance and
+  any owed log judgment; it does not inspect or wait for other sessions' review
+  verdicts, and their review state is not a direct-main publication gate.
 
 ## Rationale
 

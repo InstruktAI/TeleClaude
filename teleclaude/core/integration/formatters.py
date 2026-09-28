@@ -26,10 +26,10 @@ _QUEUE_EMPTY_WARNING_INSTRUCTION = "NEXT: Resolve the issues above before ending
 _QUEUE_EMPTY_PUBLICATION_INSTRUCTION = (
     "Before parking, inspect canonical local main against origin/main. If it is ahead, "
     "complete its owed maintenance and any live-runtime log judgment first. If the "
-    "checked changes are sound, run `telec code lint --all` and `telec code test --all`, "
-    "push the checked local main HEAD to origin/main from the project root, and verify "
-    "origin/main contains it. A material failure keeps the commits local until recovery "
-    "and a new judgment where owed.\n\n"
+    "activated changes are sound, run `git push origin main:main` from the canonical "
+    "project root and verify origin/main contains the committed head. Other sessions' review "
+    "verdicts and unrelated uncommitted paths do not block this push. A material "
+    "failure keeps the commits local until recovery and a new judgment where owed.\n\n"
 )
 _QUEUE_EMPTY_WATCH_INSTRUCTION = (
     "NEXT: Hold the prescribed recurring queue watcher with "

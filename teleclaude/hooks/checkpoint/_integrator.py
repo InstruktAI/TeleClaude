@@ -35,9 +35,10 @@ _INTEGRATOR_MAIN_PUBLICATION_ACTION = (
     "{index}. Judge the logs against the activated changes. If they show a material failure, "
     "leave canonical local main unpushed, recover or fix forward, and repeat the log check. "
     "If the change is sound and local main is ahead of origin/main, run "
-    "`telec code lint --all` and `telec code test --all`, push the checked local main HEAD "
-    "to origin/main, and verify origin/main contains it. If main is already synchronized, "
-    "no push is owed."
+    "`git push origin main:main` from the canonical project root and verify origin/main "
+    "contains the committed head. The committer owns review; do not inspect or wait for other sessions' review "
+    "verdicts. Unrelated uncommitted paths are not part of the push and do not block it. "
+    "If main is already synchronized, no push is owed."
 )
 _INTEGRATOR_ROLE = "integrator"
 _INTEGRATOR_JUDGMENT_NOT_READY_EVENT = "integrator_judgment_not_ready"
@@ -114,8 +115,8 @@ def _build_integrator_log_judgment_checkpoint(
     """Build a checkpoint message from outstanding post-activation log actions.
 
     Surfaces only main-only judgment actions recorded by integration. The prose
-    also directs publication after judgment, including existing pre-push checks;
-    those checks are not additional modeled checkpoint actions.
+    also directs publication after judgment; that instruction is not another
+    modeled checkpoint action.
     """
     judgment_actions = [
         model.actions[action_id]

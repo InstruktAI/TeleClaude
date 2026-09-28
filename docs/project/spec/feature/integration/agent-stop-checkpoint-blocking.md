@@ -277,8 +277,8 @@ And every action owed by that marker has succeeded with a maintenance-ready time
 When the heuristic engine evaluates the turn window
 Then the checkpoint force-fires despite no turn-local Edit or Write change
 And it surfaces the log-check action for the accumulated activations
-And it instructs the integrator to publish any ahead canonical local main head
-only after judging the logs sound and completing the pre-push checks
+And it instructs the integrator to publish any ahead canonical local main head after judging the owed logs sound
+And other sessions' review state and unrelated uncommitted paths do not delay that push
 And a material failure keeps that head local for recovery and a new log judgment
 And no mechanical maintenance or unrelated judgment action is surfaced from that marker
 
