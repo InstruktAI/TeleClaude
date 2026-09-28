@@ -126,15 +126,6 @@ flowchart LR
 
 ### Commands that act on both
 
-<!-- planned-change:home-activation-commit-fails-post-commit-hook -->
-
-| Command                                     | Worktree part                                          | Project part                                    |
-| ------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
-| `telec code commit`                         | The commit and its quality gate                        | Checkpoint markers and maintenance records      |
-| `telec code blueprint affected`             | The changed files it is asked about                    | The dependency graph, built on the project root |
-| `telec code post-commit`, `code post-merge` | The checkout whose commit or merge activated the range | The maintenance drain on the project root       |
-
-<!-- change:home-activation-commit-fails-post-commit-hook -->
 
 | Command                                     | Worktree part                                          | Project part                                                                      |
 | ------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
@@ -148,7 +139,6 @@ hooks drain maintenance on the home itself
 `project/spec/feature/integration/post-commit-maintenance`, UC-PCM10), so the
 project-root refusal under Failure modes does not apply to them there.
 
-<!-- /planned-change:home-activation-commit-fails-post-commit-hook -->
 
 ## Failure modes
 
