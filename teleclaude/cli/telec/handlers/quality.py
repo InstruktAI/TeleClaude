@@ -17,9 +17,9 @@ from teleclaude.quality.scope import (
     validate_scoped_paths,
 )
 
-_DECLARED_NOTHING_ERROR = (
-    "ERROR: nothing declared, and the workspace holds dirty paths. Declare what you are "
-    "working on with `telec code add <path>...`, or pass files explicitly."
+_EMPTY_SCOPE_ERROR = (
+    "ERROR: none of your declared paths are dirty, so there is nothing in your scope. "
+    "Declare what you are working on with `telec code add <path>...`, or pass files explicitly."
 )
 
 
@@ -101,11 +101,12 @@ def _resolve_quality_scope(project_root: Path, *, files: list[str], run_all: boo
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     if scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH and not scope_resolution.has_session_identity:
         return None
-    if scope_resolution.declared_nothing_over_dirty_tree:
-        print(_DECLARED_NOTHING_ERROR, file=sys.stderr)
-        raise SystemExit(1)
-
     scoped = _validate_or_exit(list(scope_resolution.scoped_existing_paths), project_root)
+    if not scoped and scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH:
+        # Reads only this session's own declared-and-dirty set, never other sessions' dirt:
+        # an empty scoped run must not read as a pass.
+        print(_EMPTY_SCOPE_ERROR, file=sys.stderr)
+        raise SystemExit(1)
     if not scoped:
         return []
     return scoped
