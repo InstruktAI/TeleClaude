@@ -10,7 +10,7 @@ from typing import Annotated, Any, Final, Literal, Self
 from pydantic import Field, field_validator, model_validator
 
 from teleclaude.agent_registry import AgentName
-from teleclaude.closed_model import ClosedModel
+from teleclaude.closed_model import SENSITIVE, ClosedModel
 from teleclaude.config.tiers import Tier
 from teleclaude.config_roster import CompanyMember as CompanyMember
 from teleclaude.config_roster import CompanyRole as CompanyRole
@@ -298,7 +298,7 @@ class DiscordCreds(ClosedModel):
     user_id: str  # Discord user IDs are snowflakes (strings)
     nick: str | None = None
     avatar_url: str | None = None
-    voice_bot_token: str | None = None
+    voice_bot_token: Annotated[str | None, SENSITIVE] = None
 
 
 class WhatsAppCreds(ClosedModel):
@@ -355,8 +355,8 @@ class InboundSourceConfig(ClosedModel):
     """Inbound webhook source configuration."""
 
     path: str | None = None
-    verify_token: str | None = None
-    secret: str | None = None
+    verify_token: Annotated[str | None, SENSITIVE] = None
+    secret: Annotated[str | None, SENSITIVE] = None
     normalizer: str | None = None
     company: str | None = None
 
@@ -386,7 +386,7 @@ class SubscriptionTargetConfig(ClosedModel):
 
     handler: str | None = None
     url: str | None = None
-    secret: str | None = None
+    secret: Annotated[str | None, SENSITIVE] = None
 
 
 class SubscriptionConfig(ClosedModel):

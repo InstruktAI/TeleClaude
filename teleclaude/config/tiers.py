@@ -60,12 +60,6 @@ def dataclass_field_is_sensitive(field: dataclasses.Field[object]) -> bool:
     return bool(field.metadata.get(SENSITIVE_METADATA_KEY)) if field.metadata else False
 
 
-def pydantic_field_is_sensitive(field_info: FieldInfo) -> bool:
-    """Whether a Pydantic field declares environment-backed secret handling."""
-    extra = field_info.json_schema_extra
-    return bool(extra.get(SENSITIVE_METADATA_KEY)) if isinstance(extra, dict) else False
-
-
 def effective_tier(explicit: Tier | None, inherited: Tier) -> Tier:
     """Resolve a leaf's effective tier: its own when declared, else the inherited."""
     return explicit if explicit is not None else inherited
