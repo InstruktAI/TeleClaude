@@ -59,7 +59,8 @@ from teleclaude.history.service import (
     build_history_search_payload,
     parse_history_agents,
 )
-from teleclaude.mirrors.store import MirrorAccess, history_access_for_caller
+from teleclaude.mirrors.access import history_access_for_caller
+from teleclaude.mirrors.store import MirrorAccess
 from teleclaude.types.commands import command_from_dict
 from teleclaude.utils.transcript_discovery import SessionId
 
@@ -104,7 +105,7 @@ _TAIL_CHARS_FIELD = "tail_chars"
 _DEFAULT_TAIL_CHARS = 10000
 
 
-def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAccess:
+async def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAccess:
     caller = caller_from_carried_identity(
         CallerIdentity(
             session_id=parsed.session_id or "",
@@ -114,7 +115,7 @@ def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAcc
             principal=parsed.caller_principal,
         )
     )
-    access = history_access_for_caller(caller)
+    access = await asyncio.to_thread(history_access_for_caller, caller)
     if access is None:
         raise PermissionError(LOGIN_REQUIRED_DETAIL)
     return access
@@ -419,7 +420,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     limit = limit_value if isinstance(limit_value, int) else 20
                     include_workers_value = search_data.get("include_workers")
                     include_workers = include_workers_value if isinstance(include_workers_value, bool) else False
-                    access = _history_access_for_relayed_caller(parsed)
+                    access = await _history_access_for_relayed_caller(parsed)
                     payload = await asyncio.to_thread(
                         build_history_search_payload,
                         computer=self.computer_name,
@@ -435,7 +436,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     show_data = _HISTORY_SHOW_REQUEST_ADAPTER.validate_python(parsed.origin_metadata or {})
                     session_id = str(SessionId(show_data["session_id"]))
                     agents = parse_history_agents(show_data["agent"])
-                    access = _history_access_for_relayed_caller(parsed)
+                    access = await _history_access_for_relayed_caller(parsed)
                     payload = await asyncio.to_thread(
                         build_history_detail_payload,
                         session_id,

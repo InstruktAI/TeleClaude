@@ -14,7 +14,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
 from teleclaude.history.service import build_history_search_payload
-from teleclaude.mirrors.store import history_access_for_caller
+from teleclaude.mirrors.access import history_access_for_caller
 
 
 def _print_results(

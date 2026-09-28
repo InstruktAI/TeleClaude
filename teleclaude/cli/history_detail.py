@@ -15,7 +15,8 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.history.service import HistoryDetailPayload, build_history_detail_payload
-from teleclaude.mirrors.store import MirrorCoverageState, history_access_for_caller
+from teleclaude.mirrors.access import history_access_for_caller
+from teleclaude.mirrors.store import MirrorCoverageState
 
 __all__ = ["show_transcript"]
 

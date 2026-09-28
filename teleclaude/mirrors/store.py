@@ -17,11 +17,9 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
-from teleclaude.core.identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.mirrors._attribution import (
     MirrorSessionAttribution,
     backfill_session_attributions,
@@ -42,26 +40,16 @@ class AllMirrorAccess:
 
 @dataclass(frozen=True)
 class PersonMirrorAccess:
-    """Access scope limited to mirrors recorded against one person."""
+    """Access scope limited to a person's principal and reached projects."""
 
     email: str
+    principal: str
+    projects: frozenset[str]
 
 
 type MirrorAccess = AllMirrorAccess | PersonMirrorAccess
 
 ALL_MIRROR_ACCESS = AllMirrorAccess()
-
-
-def history_access_for_caller(caller: CliCaller) -> MirrorAccess | None:
-    """Resolve the mirror scope granted by a verified identity caller."""
-    if isinstance(caller, SystemCliCaller):
-        return ALL_MIRROR_ACCESS
-    if isinstance(caller, PersonCliCaller):
-        if caller.human_role == HUMAN_ROLE_ADMIN:
-            return ALL_MIRROR_ACCESS
-        if caller.email:
-            return PersonMirrorAccess(caller.email)
-    return None
 
 
 # Search shows only the sessions worth auditing; dispatched workers are the noise.
@@ -90,9 +78,24 @@ _SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
 _IDENTITY_PARAM = "identity"
 _PROJECT_PARAM = "project"
 _CALLER_EMAIL_PARAM = "caller_email"
+_CALLER_PRINCIPAL_PARAM = "caller_principal"
 _SOURCE_IDENTITY_PARAM = "source_identity"
 _METADATA_PARAM = "metadata"
-_CALLER_EMAIL_SCOPE_CLAUSE = "mirrors.human_email = :caller_email"
+_SCOPE_PROJECT_PARAM_TEMPLATE = "scope_project_{index}"
+_SCOPE_SESSION_ALIAS = "scope_session"
+_EMPTY_SQL_FRAGMENT = ""
+_SQL_PARAMETER_PREFIX = ":"
+_SQL_PARAMETER_SEPARATOR = ", "
+_SQL_OR_SEPARATOR = " OR "
+_SESSION_PROJECT_SCOPE_CLAUSE_TEMPLATE = "{alias}.project IN ({parameters})"
+_PERSON_MIRROR_SESSION_SCOPE_CLAUSE_TEMPLATE = (
+    "EXISTS (SELECT 1 FROM mirror_sessions AS {alias} "
+    "WHERE {alias}.id = mirrors.session "
+    "AND ({alias}.principal = :caller_principal{project_clause}))"
+)
+# Email identifies ownership only when the mirror has no session attribution.
+_UNATTRIBUTED_PERSON_EMAIL_SCOPE_CLAUSE = "mirrors.session IS NULL AND mirrors.human_email = :caller_email"
+_PERSON_MIRROR_ACCESS_CLAUSE_TEMPLATE = "({session_scope_clause} OR ({unattributed_email_clause}))"
 _SQL_AND_SEPARATOR = " AND "
 _BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
 _SELECT_EXISTING_MIRROR_METADATA_SQL = "SELECT metadata FROM mirrors WHERE source_identity = :source_identity"
@@ -851,8 +854,29 @@ def _apply_access_filter(
     """Apply the already-resolved mirror access scope to a query."""
     if isinstance(access, AllMirrorAccess):
         return
-    clauses.append(_CALLER_EMAIL_SCOPE_CLAUSE)
+    project_clause = _EMPTY_SQL_FRAGMENT
+    if access.projects:
+        project_parameters: list[str] = []
+        for index, project in enumerate(sorted(access.projects)):
+            parameter = _SCOPE_PROJECT_PARAM_TEMPLATE.format(index=index)
+            project_parameters.append(f"{_SQL_PARAMETER_PREFIX}{parameter}")
+            params[parameter] = project
+        project_clause = _SQL_OR_SEPARATOR + _SESSION_PROJECT_SCOPE_CLAUSE_TEMPLATE.format(
+            alias=_SCOPE_SESSION_ALIAS,
+            parameters=_SQL_PARAMETER_SEPARATOR.join(project_parameters),
+        )
+    session_scope_clause = _PERSON_MIRROR_SESSION_SCOPE_CLAUSE_TEMPLATE.format(
+        alias=_SCOPE_SESSION_ALIAS,
+        project_clause=project_clause,
+    )
+    clauses.append(
+        _PERSON_MIRROR_ACCESS_CLAUSE_TEMPLATE.format(
+            session_scope_clause=session_scope_clause,
+            unattributed_email_clause=_UNATTRIBUTED_PERSON_EMAIL_SCOPE_CLAUSE,
+        )
+    )
     params[_CALLER_EMAIL_PARAM] = access.email
+    params[_CALLER_PRINCIPAL_PARAM] = access.principal
 
 
 @dataclass(frozen=True)

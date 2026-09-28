@@ -32,7 +32,7 @@ from teleclaude.history.service import (
     build_history_search_payload,
     parse_history_agents,
 )
-from teleclaude.mirrors.store import history_access_for_caller
+from teleclaude.mirrors.access import history_access_for_caller
 from teleclaude.utils.transcript_discovery import SessionId
 
 if TYPE_CHECKING:
@@ -141,7 +141,7 @@ async def search_history(
 ) -> HistorySearchPayload:
     """Search local or peer mirrors through the authenticated daemon boundary."""
     resolved_caller = caller_from_carried_identity(caller)
-    access = history_access_for_caller(resolved_caller)
+    access = await asyncio.to_thread(history_access_for_caller, resolved_caller)
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
 
@@ -205,7 +205,8 @@ async def show_history(
     caller: CallerIdentity = Depends(carried_caller),
 ) -> HistoryDetailPayload:
     """Resolve and return one local or peer-scoped history detail."""
-    access = history_access_for_caller(caller_from_carried_identity(caller))
+    resolved_caller = caller_from_carried_identity(caller)
+    access = await asyncio.to_thread(history_access_for_caller, resolved_caller)
     if access is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     try:
