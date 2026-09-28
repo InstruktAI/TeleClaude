@@ -25,8 +25,9 @@ own. `telec code lint` composes **two decoupled legs**:
 guardrails lane is never plumbed into any `Makefile`. The native Makefile shape
 is identical for TeleClaude's own repo and any adopting project, while the
 current guardrails lane remains TeleClaude-repo-rooted.
-`telec code test|format|install` are pure delegations to
-`make test|format|install`.
+`telec code format` resolves the same workspace scope as `telec code lint` and
+passes it to `make format` as `FILES_FROM`; `--all` is the explicit full sweep.
+`telec code test|install` are pure delegations to `make test|install`.
 
 Three execution contexts drive file resolution:
 
@@ -267,8 +268,9 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 
 ### A scoped operation runs with nothing declared
 
-A session invokes `telec code commit` or a scoped `telec code lint` while holding
-no live declarations of its own.
+A session invokes `telec code commit` while holding no live declarations of its
+own, or a scoped `telec code lint` or `telec code format` while none of its own
+declared paths is dirty.
 
 **Response:** Report it rather than succeeding silently. A scoped run over an
 empty set that reads as a pass, and a commit that records nothing, are the two
