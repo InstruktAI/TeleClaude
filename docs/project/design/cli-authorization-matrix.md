@@ -7,7 +7,11 @@ visibility: 'public'
 
 ## Purpose
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 Who may run which `telec` command. Every command declares, in the CLI surface schema (`CLI_SURFACE`), the agent roles and the person roles it admits; the schema owns each command's exact declaration. This design owns how those declarations group roles, so an agent role's reach reads in one place instead of being scattered across per-command lists. The gate that enforces a declaration before the command's handler runs is `project/design/architecture/cli-invocation-boundary`; the clearance rule it applies is `project/spec/feature/identity/command-clearance`.
+<!-- change:authorize-person-roles-at-scope -->
+Who may run which `telec` command. Every command declares, in the CLI surface schema (`CLI_SURFACE`), the agent roles and the person roles it admits; the schema owns each command's exact declaration. This design owns how those declarations group roles, so an agent role's reach reads in one place instead of being scattered across per-command lists. The clearance boundary, including a named-target decision that completes inside its handler, is `project/design/architecture/cli-invocation-boundary`; its role rule is `project/spec/feature/identity/command-clearance`.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Inputs/Outputs
 
@@ -16,7 +20,11 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 <!-- change:authorize-person-roles-at-scope -->
 - **Input:** the caller the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6) — a session's system role derived from its record, or a person's effective role for the object the command acts on (`project/design/architecture/scoped-roles`) — and the command's declaration.
 <!-- /planned-change:authorize-person-roles-at-scope -->
+<!-- planned-change:authorize-person-roles-at-scope -->
 - **Output:** admit or refuse, decided in the process that runs the command, before its handler runs and before any request reaches the daemon. The TUI applies the declaration of the command each of its actions performs.
+<!-- change:authorize-person-roles-at-scope -->
+- **Output:** admit or refuse, decided in the process that runs the command before any project operation or daemon request. The pre-dispatch gate completes commands whose target is known; a trusted-directory-named command completes its person band when its handler resolves the directory. The TUI applies the declaration of the command each of its actions performs.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Invariants
 

@@ -36,9 +36,18 @@ design owns only the path that connects them.
 
 **Outputs**
 
+<!-- planned-change:authorize-person-roles-at-scope -->
 - The command's handler runs with a resolved, authorized caller, or
 - a refusal before the handler runs: an unidentified caller, or a role the command
   does not admit.
+<!-- change:authorize-person-roles-at-scope -->
+- The pre-dispatch gate refuses an unidentified caller or a role outside a band
+  it can decide before dispatch.
+- A handler whose target is already known runs with full command clearance.
+- A handler that resolves a trusted-directory name runs with caller and agent
+  admission, then either completes person-band clearance on the selected
+  directory or refuses before any project operation or daemon request.
+<!-- /planned-change:authorize-person-roles-at-scope -->
 
 ## Invariants
 
@@ -159,8 +168,17 @@ flowchart TD
     Installed --> Interp[interpreter]
     Interp --> Surface[read command surface]
     Surface --> Gate[auth gate: marker, session row, roster]
+<!-- planned-change:authorize-person-roles-at-scope -->
     Gate -->|admitted| Handler[handler loads its own dependencies]
     Gate -->|not admitted| Deny[refused before the handler]
+<!-- change:authorize-person-roles-at-scope -->
+    Gate -->|target known and cleared| Handler[handler loads its own dependencies]
+    Gate -->|trusted-directory name; caller and agent admitted| NamedHandler[handler resolves name through typed config]
+    NamedHandler --> TargetCheck[person band at selected directory]
+    TargetCheck -->|admitted| Act[project operation or daemon request]
+    TargetCheck -->|refused| Deny[refused before action]
+    Gate -->|refused| Deny
+<!-- /planned-change:authorize-person-roles-at-scope -->
 ```
 
 ### Exercising one's own change from a worktree
