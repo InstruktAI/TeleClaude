@@ -28,9 +28,11 @@ subject: tier-wide shape changes still apply, while a step whose result
 depends on registration or an instance waits only when the resulting view is
 valid under the current model. A declared unregistered project therefore
 loads with recognized retired fields removed and omitted capabilities
-unsubscribed; it receives no registered project's grandfathered values. A
-document with neither a registry subject nor a valid tier declaration fails
-loading. An unsupported key in the resulting view fails the load. A document
+unsubscribed; it receives no registered project's grandfathered values. An
+older overlay that no registry names and that declares no tier loads the same
+way as a declared unregistered project, because project is the only tier not
+located by a registry. Any other document with neither a registry subject nor
+a valid tier declaration fails loading. An unsupported key in the resulting view fails the load. A document
 stating a version newer than the installation knows fails the load naming both
 versions.
 

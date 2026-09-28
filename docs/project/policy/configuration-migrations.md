@@ -54,13 +54,18 @@ description: How a configuration migration is written — one numbered step in o
   that subject has no registry standing or inferred instance. A step that
   requires either skips that read only for a registry-specific outcome whose
   absence remains valid under the current model. Tier-wide shape changes
-  still run, and a migration never derives a document's kind or instance from
-  its path.
+  still run, and a migration never derives a document's instance from its
+  path.
+- **An older overlay that declares no tier and no registry names is a
+  project.** Every other tier is located by its registry, so project is the
+  only kind such a document can hold. The read gives it the same read-only
+  subject a declaration would, with no registry standing.
 - **A read never grants registry standing from a declaration.** The read runs
   the ordered migrations that apply to its subject in memory. A document with
-  neither a registry subject nor a valid declaration still fails at its tier
-  boundary. Persistence takes only a registry subject; registration supplies
-  that subject before a project document is migrated or changed.
+  neither a registry subject nor a valid declaration, and that is not an older
+  undeclared overlay, still fails at its tier boundary. Persistence takes only
+  a registry subject; registration supplies that subject before a project
+  document is migrated or changed.
 - **A shape change ships with its migration.** A change to what a configuration
   document may carry changes the owning model, the platform's generation of new
   documents, and the migration list together. A new document is written at the
