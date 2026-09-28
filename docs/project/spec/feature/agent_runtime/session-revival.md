@@ -93,18 +93,6 @@ Then the new session row's project path is P and its subdir is S
 And the project path is P rather than Q or the caller's invocation directory
 ```
 
-<!-- planned-change:single-project-registry -->
-#### UC-SR2: Fresh adoption with no prior row recovers the project from the Claude transcript
-
-```
-Given a caller invokes revive with `--agent claude` for a <native_id> that no prior session row records
-And the located Claude transcript for <native_id> records working directory D
-When the service resolves the revive request
-Then it splits D against trusted directories and stores the result on the new row
-And the caller's invocation directory is not stored as the project
-```
-
-<!-- change:single-project-registry -->
 #### UC-SR2: Fresh adoption with no prior row recovers the project from the Claude transcript
 
 ```
@@ -115,19 +103,6 @@ Then it splits D against the project registry's entries and stores the result on
 And the caller's invocation directory is not stored as the project
 ```
 
-<!-- /planned-change:single-project-registry -->
-<!-- planned-change:single-project-registry -->
-#### UC-SR3: Fresh adoption recovers the project from a Codex rollout's session metadata
-
-```
-Given a caller invokes revive with `--agent codex` for a <native_id> that no prior session row records
-And the located Codex rollout for <native_id> records working directory D in its session metadata
-When the service resolves the revive request
-Then it splits D against trusted directories and stores the result on the new row
-And the caller's invocation directory is not stored as the project
-```
-
-<!-- change:single-project-registry -->
 #### UC-SR3: Fresh adoption recovers the project from a Codex rollout's session metadata
 
 ```
@@ -138,19 +113,6 @@ Then it splits D against the project registry's entries and stores the result on
 And the caller's invocation directory is not stored as the project
 ```
 
-<!-- /planned-change:single-project-registry -->
-<!-- planned-change:single-project-registry -->
-#### UC-SR4: Fresh adoption confirms a Gemini legacy project by hash
-
-```
-Given a caller invokes revive with `--agent gemini` for a <native_id> that no prior session row records
-And the native transcript records no project path but its legacy storage is keyed by a hash of the project path
-And the caller's invocation directory hashes to that project hash
-When the service resolves the revive request
-Then it splits the caller's invocation directory against trusted directories and stores the result on the new row
-```
-
-<!-- change:single-project-registry -->
 #### UC-SR4: Fresh adoption confirms a Gemini legacy project by hash
 
 ```
@@ -161,7 +123,6 @@ When the service resolves the revive request
 Then it splits the caller's invocation directory against the project registry's entries and stores the result on the new row
 ```
 
-<!-- /planned-change:single-project-registry -->
 #### UC-SR5: Fresh adoption fails loud when the native project cannot be located
 
 ```
@@ -250,11 +211,7 @@ And the resumed agent receives the resulting turn in the restored conversation
 ### Cross-context references
 
 - **identity** — the client clears the revive before sending it (`feature/identity/command-clearance`) and the request carries the caller it resolved; the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.
-<!-- planned-change:single-project-registry -->
-- **config** — per-agent enablement (invoked transitively by the restart-agent flow) is checked against configuration; trusted-directory configuration gates the project-path argument so revival cannot drop a session into an arbitrary directory.
-<!-- change:single-project-registry -->
 - **config** — per-agent enablement (invoked transitively by the restart-agent flow) is checked against configuration; the project registry's entries (`project/spec/feature/config/project-registry`) are what a recovered working directory is split against.
-<!-- /planned-change:single-project-registry -->
 - **session_mirrors** — revival via the native form creates a new TeleClaude session id, but the native session id is the join key the mirror layer uses to thread transcript continuity; mirror processing therefore sees both the prior and the new session rows as records sharing one native chain.
 
 ## Known caveats

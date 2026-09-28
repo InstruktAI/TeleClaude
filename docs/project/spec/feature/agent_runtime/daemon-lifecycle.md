@@ -266,17 +266,6 @@ Then it keeps running
 And daemon restart gaps inside the lease window are tolerated
 ```
 
-<!-- planned-change:single-project-registry -->
-#### UC-DL1: Projects listing tolerates a trusted directory that is not a project checkout
-
-```
-Given a configured trusted directory exists on disk and is not a TeleClaude project checkout
-When the projects-with-todos listing runs
-Then the listing succeeds and returns every existing trusted directory
-And the non-checkout directory carries an empty todo list
-And no todo store is resolved, opened, or created for the non-checkout directory
-```
-<!-- change:single-project-registry -->
 #### UC-DL1: Projects listing tolerates a registry entry that is not a project checkout
 
 ```
@@ -286,9 +275,7 @@ Then the listing succeeds and returns every existing registry entry in registry 
 And the non-checkout entry carries an empty todo list
 And no todo store is resolved, opened, or created for the non-checkout entry
 ```
-<!-- /planned-change:single-project-registry -->
 
-<!-- planned:single-project-registry -->
 #### UC-DL7: A registry change the daemon did not make reaches connected clients without a restart
 
 ```
@@ -309,7 +296,6 @@ And every connected client receives a project list that includes it
 But when adoption fails the response carries the reason and a folder the request created is removed again
 ```
 
-<!-- /planned:single-project-registry -->
 #### UC-DL3: Startup work added to a stage neither extends nor reorders the boot prefix
 
 ```

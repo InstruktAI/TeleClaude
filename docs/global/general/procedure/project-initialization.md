@@ -24,14 +24,9 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ### 1. Ensure git repository
 
-<!-- planned-change:single-project-registry -->
-Initializes a git repo if the project is not already inside one. Uses `git init` as
-a fallback.
-<!-- change:single-project-registry -->
 Initializes a git repository on the `main` branch when the folder is not already
 inside one. A folder that is already inside a repository keeps its repository and
 branches as they are.
-<!-- /planned-change:single-project-registry -->
 
 Source: `teleclaude/project_setup/git_repo.py:ensure_git_repo()`
 
@@ -85,13 +80,11 @@ such project receives the same set. A hook that already matches its template is 
 untouched, and a hook the project authored itself is preserved. A project whose
 declaration resolves no executable action receives no TeleClaude-owned hook.
 
-<!-- planned:single-project-registry -->
 Whatever the project subscribes, the repository's local exclude list names
 TeleClaude's machine-local state — the project's `.teleclaude/` directory and the
 configuration writer's lock files — and that state is never offered for commit
 (`project/spec/feature/reconciliation/project-plumbing-convergence`).
 
-<!-- /planned:single-project-registry -->
 A root carrying no project declaration is not adopted by this act: it is left
 byte-for-byte unchanged, with no hook and no filter written or read for it.
 
@@ -130,12 +123,6 @@ idempotently. The registered path is always that canonical checkout: invoked
 from a linked worktree, initialization resolves back to the owning checkout, so
 an ephemeral worktree path never enters the registry.
 
-<!-- planned-change:single-project-registry -->
-`telec config project init` is the **sole** writer of the project registry. Publication
-must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
-is visible to `ProjectCatalogService` and every consumer that iterates
-projects (docs cross-project namespace, job orchestration, etc.).
-<!-- change:single-project-registry -->
 Adoption is the only writer of the project registry, and this procedure is how
 a project is adopted, whether `telec config project init` or the daemon's
 add-project request invokes it. A folder whose identity another registry entry
@@ -145,7 +132,6 @@ or company tier is recorded without these steps
 `~/.teleclaude/projects.yaml`. Once registered, the project is visible to
 `ProjectCatalogService` and every consumer that iterates projects (docs
 cross-project namespace, job orchestration, etc.).
-<!-- /planned-change:single-project-registry -->
 
 Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
 and `teleclaude/project_manifest.py:register_root()`

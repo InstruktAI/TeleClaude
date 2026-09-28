@@ -22,13 +22,6 @@ that TeleClaude creates or adopts to reflect its operational structure: admin
 categories, shared channels, help-desk forums, per-machine project forums, team
 channels, and session-launcher forum threads/messages.
 
-<!-- planned-change:single-project-registry -->
-The desired operational shape comes from configuration and project discovery:
-machine identity, master/non-master role, enabled agents, registered project
-roots, project display names, and configured people. Discord provider IDs are
-not desired-state configuration. They are observed external state returned by
-the Discord adapter boundary, and the database stores them as reflection records.
-<!-- change:single-project-registry -->
 The desired operational shape comes from configuration and the project
 registry: machine identity, master/non-master role, enabled agents, every entry
 on the machine's project registry — projects and person or company homes alike —
@@ -38,7 +31,6 @@ entry's identity, and the forums in a machine's project category follow registry
 order. Discord provider IDs are not desired-state configuration. They are
 observed external state returned by the Discord adapter boundary, and the
 database stores them as reflection records.
-<!-- /planned-change:single-project-registry -->
 
 Startup and restart reconcile Discord toward the desired shape through one
 DB-backed reflection-state seam. A reconciler first reads any stored provider
@@ -145,17 +137,6 @@ And the reconciler logs the inconclusive state for retry on a later pass
 
 #### UC-DARS-6: Missing reflection record creates or adopts exactly one project forum
 
-<!-- planned-change:single-project-registry -->
-```gherkin
-Given a registered project has no database reflection record for its project forum
-When the Discord reconciler evaluates the project's desired forum
-Then it searches the machine's "Projects - <computer>" category for the project's stable forum name
-And if exactly one matching forum exists, it adopts that forum and stores the provider_id
-And if no matching forum exists, it creates the forum and stores the returned provider_id
-And if lookup is inconclusive, it does not create or adopt a forum
-And config.yml is not updated with a discord_forum field
-```
-<!-- change:single-project-registry -->
 ```gherkin
 Given a registered project has no recorded forum
 When Discord reconciliation examines forums with the project's display name in the machine's project category
@@ -165,7 +146,6 @@ And if more than one unclaimed match remains, no forum is created or assigned
 And a session started from an assigned forum is placed in that project's folder
 And the machine configuration is not updated with a Discord forum field
 ```
-<!-- /planned-change:single-project-registry -->
 
 #### UC-DARS-7: Launcher state is governed by its forum's reflection record
 
@@ -250,7 +230,6 @@ When Discord admin reconciliation starts
 Then reconciliation does not create, delete, or mutate Discord provider artifacts
 And startup surfaces an operator-visible failure or degraded state
 ```
-<!-- planned:single-project-registry -->
 
 #### UC-DARS-14: A forum keyed by a retired trusted-directory name moves to its entry's identity
 
@@ -280,7 +259,6 @@ And each entry has a reflected forum in the machine's project category
 When the Discord reconciler runs at startup or after the registry changes
 Then an operator reading Discord sees those forums in registry order
 ```
-<!-- /planned:single-project-registry -->
 
 
 ### Cross-context references

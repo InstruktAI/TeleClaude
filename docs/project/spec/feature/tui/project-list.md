@@ -1,8 +1,8 @@
 ---
-description: The projects the TUI shows per computer — the daemon's project listing, redrawn whenever it changes — and adding a project from the TUI by naming only its folder.
+description: The projects the TUI shows per computer — the daemon's project listing,
+  redrawn whenever it changes — and adding a project from the TUI by naming only its
+  folder.
 visibility: internal
-delivered_by:
-  - single-project-registry
 ---
 
 # Project List — Spec

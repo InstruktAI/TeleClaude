@@ -29,11 +29,7 @@ authoritative model definitions.
 
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 
-<!-- planned-change:single-project-registry -->
-| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `creds`, `subscriptions`, `interests`, `settings` |
-<!-- change:single-project-registry -->
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings` |
-<!-- /planned-change:single-project-registry -->
 
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members` (folder-discovered; composed alongside `project`) |
 
@@ -251,7 +247,6 @@ for repository-specific names.
 
 Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 
-<!-- planned:single-project-registry -->
 Optional `name` and `description` describe the person home as a place for
 sessions. They are independent of the global person record's name and are
 carried from the former trusted-directory entry where the corresponding
@@ -259,7 +254,6 @@ field is absent.
 The home name takes precedence for session placement; without it, the global
 person name remains the display name, falling back to the slug. The home's
 description is shown when present.
-<!-- /planned:single-project-registry -->
 
 ```yaml
 creds:
@@ -523,10 +517,6 @@ computer:
   default_working_dir: string
   timezone: string
   host: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
-<!-- planned-change:single-project-registry -->
-  trusted_dirs: list[TrustedDir]
-<!-- change:single-project-registry -->
-<!-- /planned-change:single-project-registry -->
 remote_computers:
   <name>:
     user: string | null # remote attach identity; must match [A-Za-z0-9._-]+ when set
@@ -691,17 +681,6 @@ watermark's omitted-value derivation subtracts the literal value eight and is
 independent of a configured critical reserve.
 
 
-<!-- planned-change:single-project-registry -->
-Discord provider IDs are not config. `config.yml` carries only the desired setup
-inputs a machine declares — `computer.name`, `computer.is_master`, the registered
-`trusted_dirs` entries, `discord.enabled`, and `discord.guild_id` (the operator's
-own guild identifier, never provider-returned reflection state). Category,
-channel, forum, thread, and message IDs the Discord provider returns are durable
-reflection records in the runtime database, and the daemon never writes them back
-to `config.yml`. Project forum bindings, launcher threads, and launcher starter
-messages are read from and written to that reflection state; see
-`project/spec/feature/integration/discord-admin-reflection-state`.
-<!-- change:single-project-registry -->
 Discord provider IDs are not config. `config.yml` carries only the desired setup
 inputs a machine declares — `computer.name`, `computer.is_master`,
 `discord.enabled`, and `discord.guild_id` (the operator's own guild identifier,
@@ -712,7 +691,6 @@ reflection records in the runtime database, and the daemon never writes them bac
 to `config.yml`. Project forum bindings, launcher threads, and launcher starter
 messages are read from and written to that reflection state; see
 `project/spec/feature/integration/discord-admin-reflection-state`.
-<!-- /planned-change:single-project-registry -->
 
 
 ### Maintenance
@@ -725,14 +703,9 @@ Daemon-only structural keys in `config.yml` must also be documented here, but th
 
 ### Project registry
 
-<!-- planned-change:single-project-registry -->
-Registered project roots live in `~/.teleclaude/projects.yaml`, a root-only
-registry — it stores only absolute project paths:
-<!-- change:single-project-registry -->
 Registered project roots and session homes live in `~/.teleclaude/projects.yaml`,
 a root-only registry — it stores only absolute folder paths, and each folder's
 own `teleclaude.yml` declares its tier:
-<!-- /planned-change:single-project-registry -->
 
 ```yaml
 projects:
@@ -742,14 +715,9 @@ projects:
 
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
-<!-- planned-change:single-project-registry -->
-through `ProjectCatalogService`. `telec config project init` is the sole writer of the
-registry; publication never registers projects. `project_slug` is the
-<!-- change:single-project-registry -->
 through `ProjectCatalogService`. Adoption is the sole writer of the registry
 (`project/spec/feature/config/project-registry`); publication never registers
 projects. `project_slug` is the
-<!-- /planned-change:single-project-registry -->
 canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and
 service-level project lookup. `project_name` remains display-only.
