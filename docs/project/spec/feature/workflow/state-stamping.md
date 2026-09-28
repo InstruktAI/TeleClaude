@@ -174,19 +174,6 @@ And the substantive stamp does not need lazy expiry — re-derivation produces a
 
 #### UC-WSS4: Build-complete accepts the owning worker or work orchestrator
 
-<!-- planned-change:worktree-commits-push-to-remote -->
-```gherkin
-Given a worker session whose durable working_slug matches the Todo, or a work-orchestrator session whose durable system_role is "orchestrator"
-And the Todo lifecycle_phase is build_started
-When the trusted session runs "telec todo stamp my-slug --build-complete"
-Then the build-complete ownership check accepts the caller because working_slug == my-slug or system_role == orchestrator
-And a missing session id, a plain operator shell, or a foreign worker session is refused before any write
-And the build-complete handler confirms the current phase is build_started or review_changes_requested (refused otherwise)
-And the worktree-commits check confirms the worktree has commits beyond main (refused otherwise)
-And build_gate_claim_at is set to the current timestamp and persisted through the state-write boundary
-And the work machine runs the build-complete gates on its next dispatch
-```
-<!-- change:worktree-commits-push-to-remote -->
 ```gherkin
 Given a worker session whose durable working_slug matches the Todo, or a work-orchestrator session whose durable system_role is "orchestrator"
 And the Todo lifecycle_phase is build_started
@@ -198,7 +185,6 @@ And the worktree-commits check confirms the worktree has commits beyond main tha
 And build_gate_claim_at is set to the current timestamp and persisted through the state-write boundary
 And the work machine runs the build-complete gates on its next dispatch
 ```
-<!-- /planned-change:worktree-commits-push-to-remote -->
 
 #### UC-WSS11: Work orchestrator kicks an unbuildable todo back to plan drafting, preserving all working state
 

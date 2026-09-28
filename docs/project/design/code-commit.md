@@ -222,14 +222,10 @@ Nothing is forwarded to git: no `-m`, no `-F`, no `--`, no bare pathspecs.
 The pathspec commit is built internally from `workspace scope plus
 --include paths`.
 
-<!-- planned-change:worktree-commits-push-to-remote -->
-**Outputs:** committed changeset, or failure with actionable diagnostics.
-<!-- change:worktree-commits-push-to-remote -->
 **Outputs:** committed changeset, or failure with actionable diagnostics. In a
 todo worktree, a successful commit also publishes the todo's branch to
 `origin` and reports a publication failure alongside the recorded commit
 (Invariant 13).
-<!-- /planned-change:worktree-commits-push-to-remote -->
 
 ## Invariants
 
@@ -285,7 +281,7 @@ todo worktree, a successful commit also publishes the todo's branch to
    run the selected checks in its own code, or a slug worktree whose home is
    missing, is refused rather than graded by installed rules
    (`project/design/architecture/cli-invocation-boundary`).
-Deletion-only commits
+   Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
    not re-run format or lint.
@@ -365,7 +361,6 @@ Deletion-only commits
     the two answer alike for every declared tier, and a root whose declaration
     carries no readable tier is refused rather than resolved to any tier.
 
-<!-- planned:worktree-commits-push-to-remote -->
 13. **A todo worktree's commit publishes its branch after the commit is
     recorded.** In a slug worktree (`trees/<slug>`, never `trees/_integration`)
     of a repository with an `origin` remote, a successful commit is followed by
@@ -383,7 +378,6 @@ Deletion-only commits
     with git's own reason, and the next commit publishes again. Main, the
     integration worktree, and a repository without `origin` publish nothing,
     and the last says nothing about it.
-<!-- /planned:worktree-commits-push-to-remote -->
 
 ## Primary flows
 
@@ -391,26 +385,6 @@ Every walkthrough below traces an acting context whose declared tier carries pro
 
 ### Agent commit (worktree)
 
-<!-- planned-change:worktree-commits-push-to-remote -->
-```
-telec code commit --approved "feat(scope): subject"
-  → commit gate satisfied (--approved present)
-  → lock acquired
-  → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
-  → workspace scope = WORKTREE → all dirty paths
-  → pathspec = scope (no includes)
-  → drop untracked-new files from pathspec (require explicit declaration)
-  → stage ONLY untracked-or-unmerged files that are in pathspec
-    (modified-tracked files are NOT staged — they ride the pathspec)
-  → partial-staging guard: block if any pathspec file has both staged
-    and unstaged changes
-  → quality_paths = pathspec filtered to existing files
-  → handle_format(quality_paths)                     (in-process, no stash)
-  → handle_lint(quality_paths)                       (in-process, no stash)
-  → real git commit --no-verify -F <msg> -- <pathspec>
-  → lock released
-```
-<!-- change:worktree-commits-push-to-remote -->
 ```
 telec code commit --approved "feat(scope): subject"
   → commit gate satisfied (--approved present)
@@ -432,7 +406,6 @@ telec code commit --approved "feat(scope): subject"
     → success: done
     → failure: report git's reason; the commit stands; exit status unchanged
 ```
-<!-- /planned-change:worktree-commits-push-to-remote -->
 
 ### Agent commit on main
 
@@ -536,7 +509,6 @@ or more paths are still unmerged (not yet `telec code add`-ed). Exit code 1
 listing the unresolved paths; no commit is produced. The agent resolves and
 stages the remaining conflicts, then reruns `telec code commit`.
 
-<!-- planned:worktree-commits-push-to-remote -->
 **Branch publication fails.** The commit is already recorded when the push of
 Invariant 13 is rejected, fails in transport, or times out. `telec code commit`
 exits with the commit's own status, prints that publishing the branch to
@@ -544,7 +516,6 @@ exits with the commit's own status, prints that publishing the branch to
 next commit publishes again. A refusal because `origin` holds commits the
 worktree never integrated repeats on every commit until the branch
 integrates them; the report names that reason each time.
-<!-- /planned:worktree-commits-push-to-remote -->
 
 ## See also
 

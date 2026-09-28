@@ -14,9 +14,7 @@ visibility: 'public'
 
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
 
-
 The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
-
 
 The contract resolves four classes of file state at commit time:
 
@@ -25,19 +23,17 @@ The contract resolves four classes of file state at commit time:
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec code add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
-
 On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. Two acts declare a path: a successful `telec code add <path>...` writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and a successful edit-tool call whose input names the file it writes is declared the same way when the runtime reports that call (`sdlc/design/workspace-scoping`). The entry stays live until the commit that carries it lands. A path named only by shell-command text contributes no evidence, and no transcript is read to establish a declaration.
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
-The two halves answer different failures and neither substitutes for the other. Containment under the acting root separates sessions working under *different* context roots of one repository, so a path outside the acting root is absent from the scope whatever the transcript claims. Subtraction of foreign-owned roots excludes what sits *inside* the acting root, which containment alone cannot reach.
+The two halves answer different failures and neither substitutes for the other. Containment under the acting root separates sessions working under _different_ context roots of one repository, so a path outside the acting root is absent from the scope whatever the transcript claims. Subtraction of foreign-owned roots excludes what sits _inside_ the acting root, which containment alone cannot reach.
 
 The retained set is the fourth term and its membership is not this contract's to compute: where a repository's owner publishes a membership answer, that owner answers for any path with exactly one of `retained`, `not-retained`, or `outside`, and attaches no instruction to it. What the answer means here is this contract's decision: only `retained` is eligible. `not-retained` and `outside` are alike ineligible however the path is reached — the first because the owner excludes it, the second because the owner has no standing over it — and neither is ever read as permission. A repository whose owner publishes no such answer carries no such term: there is nothing to consume, this surface neither invents nor substitutes one, and the first three terms carry the bound alone. Publication and its absence are both the owner's facts, read from the owner's contract.
 
 Containment bounds every path that reaches inspection, staging, or commit — not only the computed scope. A path named through an explicit declaration or subset channel is subject to the same bound: naming a path does not admit material outside the acting context root's own material, and such a path is refused rather than carried.
 
 Within a single context root, and outside any nested root, the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
-
 
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
@@ -65,7 +61,6 @@ And exits non-zero without staging anything
 And inspection commands (`git diff`, `git status`, `git log`) remain available
 ```
 
-
 #### UC-NCR-13 — Wrapper passes through transparently in an undeclared repository
 
 ```
@@ -77,7 +72,6 @@ And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
 
-
 #### UC-GWR-1 — The integrator rows follow the role the caller's session record resolves to
 
 ```
@@ -86,7 +80,6 @@ When it pushes to `origin main`, or runs a merge, rebase or cherry-pick that pro
 Then the wrapper admits it only when the session's record resolves to the integrator system role
 And any other role is refused with the integrator-only message
 ```
-
 
 #### UC-LMR-1 — A slug worktree cannot reference local main
 
@@ -100,7 +93,6 @@ And no `--confirmed` form and no environment variable lifts the refusal
 And the same invocation with `origin/main` in place of the local ref passes through unchanged
 And a pathspec after `--` that happens to be named main is not a ref and is unaffected
 ```
-
 
 #### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
 
@@ -141,7 +133,6 @@ Then the instruction names that reviewer's session id, so reuse requires no look
 But with no such reviewer open the gate prints only the form that starts one
 ```
 
-
 #### Approved commit produces a pathspec commit on the resolved scope
 
 ```
@@ -154,7 +145,6 @@ And the final commit runs with pathspec = (scope minus untracked-not-staged)
 And anything else in the index (foreign-staged, crash residue) is left untouched
 And the mandated TeleClaude trailer is appended to the message if absent (idempotent)
 ```
-
 
 #### Modified-tracked files ride the pathspec without staging
 
@@ -359,7 +349,6 @@ And no shell operator, redirection target, or neighbouring command name is a dec
 And the session's effective scope is the same as for a bare invocation of the same paths
 ```
 
-
 ### Use cases
 
 - **Routine agent edit-and-commit:** modify tracked files; run `telec code commit --approved "<msg>"`; pathspec ride takes them via working tree; no `git add` ever invoked by the agent.
@@ -369,7 +358,6 @@ And the session's effective scope is the same as for a bare invocation of the sa
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
 ### Commit-time gates — in-process, no framework stash
-
 
 `telec code commit` runs the gates the acting invocation context root's declared
 tier carries, read from that tier's published answers
@@ -388,7 +376,6 @@ occurs; files outside the pathspec are not touched. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
 
-
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
 ```
@@ -396,7 +383,6 @@ Given message does not match type(scope): subject or type: subject
 When agent invokes telec code commit --approved "<bad-message>"
 Then SystemExit(1) before format/lint/git-commit invoked
 ```
-
 
 #### UC-CGIP-2 — Gates run format-before-lint against quality_paths
 
@@ -407,7 +393,6 @@ When agent invokes telec code commit --approved "<msg>"
 Then quality_paths = pathspec filtered to existing files only
 And handle_format(quality_paths) is called before handle_lint(quality_paths)
 ```
-
 
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
 
@@ -492,7 +477,6 @@ And a resolved scope holding no change says so instead of printing an empty stat
 And a scope that cannot be resolved says so and directs the agent to read the diff itself
 ```
 
-
 #### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec in a single-owner tree
 
 ```
@@ -505,7 +489,6 @@ And the gates the acting tier carries run over the full merge diff, and a tier c
 And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
 And the resulting commit records origin/main as a merge parent
 ```
-
 
 #### UC-CGIP-11 — Unresolved conflict during merge commit is rejected
 
@@ -571,7 +554,6 @@ And the sync returns an error naming each offending agents/** path
 And the error reports the paths as agent-artifact sources rather than as doc-layer paths
 And the error directs the agent to author the artifacts on main in the session where their intent was decided
 ```
-
 
 #### UC-CGIP-14 — An unresolvable transcript neither errors nor withdraws the session's declarations
 
@@ -741,8 +723,6 @@ And the message carries Human-Involved: false, since no agent declares involveme
 And the message carries no Co-Authored-By line
 ```
 
-
-
 #### UC-CGIP-32 — A declared path the repository cannot match is refused before git runs
 
 ```gherkin
@@ -754,7 +734,6 @@ And the diagnostic names each unmatchable declared path
 And the refusal is attributed to the declaration rather than reported as a raw git pathspec error
 And no commit is created
 ```
-
 
 #### UC-NCR-1 — Change inspection from a context root below the repository root
 
@@ -896,7 +875,6 @@ Then the wrapper refuses rather than passing through to the real git binary
 And the repository's history is not mutated by that invocation
 ```
 
-
 ### Thin hook backstop
 
 #### UC-TH-1 — Thin hook partial-staging backstop
@@ -938,7 +916,6 @@ Then the file is committed as part of the session's declared set
 But a file the session changed only through a shell command is not committed until the session declares it
 ```
 
-<!-- planned:worktree-commits-push-to-remote -->
 ### Branch publication
 
 A successful sealed commit in a todo worktree whose checked-out branch is that todo's branch publishes it to the project's `origin` remote, so every task commit exists off the computer that made it. Publication follows the commit and never decides it: the commit is recorded before any push is attempted, and no publication outcome changes the commit or the command's success.
@@ -1006,7 +983,6 @@ When the session's sealed commit succeeds
 Then nothing is pushed to origin
 And the agent is told the branch was not published because it is not the todo's branch
 ```
-<!-- /planned:worktree-commits-push-to-remote -->
 
 ## See also
 
