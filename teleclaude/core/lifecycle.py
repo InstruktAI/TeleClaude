@@ -18,12 +18,16 @@ from teleclaude.core.conversation_delivery import reconcile_outstanding_conversa
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import ProjectRefreshTrigger, ProjectsChangedContext, TeleClaudeEvents
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.next_machine.delivery import remove_legacy_worktree_trash
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
+from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.config.runtime_settings import RuntimeSettings
@@ -123,6 +127,7 @@ class DaemonLifecycle:
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
             reminder_service=self.reminder_service,
+            refresh_local_projects=self.refresh_local_projects,
         )
 
         adapter_start_started_at = time.perf_counter()
@@ -157,7 +162,7 @@ class DaemonLifecycle:
 
         project_warm_started_at = time.perf_counter()
         logger.info("[STARTUP] Warming local project cache (usually 2-5s)")
-        await self._warm_local_projects_cache()
+        await self.refresh_local_projects(ProjectRefreshTrigger.STARTUP)
         logger.info("Local project cache warm completed in %.3fs", time.perf_counter() - project_warm_started_at)
 
         self._started = True
@@ -310,31 +315,34 @@ class DaemonLifecycle:
             )
         logger.info("Seeded cache with %d local sessions", len(sessions))
 
-    async def _warm_local_projects_cache(self) -> None:
-        """Seed cache with current local projects AND todos for instant UI."""
+    async def refresh_local_projects(self, trigger: ProjectRefreshTrigger) -> None:
+        """Refresh local project and todo snapshots from the project registry."""
+        get_project_catalog_service().refresh()
         try:
             projects = await command_handlers.list_projects_with_todos()
         except Exception as exc:
-            logger.warning("Failed to warm projects cache: %s", exc, exc_info=True)
-            return
-
-        if not projects:
-            logger.debug("No local projects to seed in cache")
-            return
+            logger.warning("Failed to refresh local projects (trigger=%s): %s", trigger, exc, exc_info=True)
+            raise
 
         computer_name = config.computer.name
         updated = self.cache.apply_projects_snapshot(computer_name, projects)
         if updated:
-            logger.info("Seeded cache with %d local projects", len(projects))
+            logger.info("Refreshed cache with %d local projects (trigger=%s)", len(projects), trigger)
 
-        # Warm todo cache alongside projects
+        # Apply empty snapshots too so removals clear the cached rows.
         todos_by_project: dict[str, list[TodoDTO]] = {}
         for p in projects:
             if p.path and p.todos:
                 todos_by_project[p.path] = p.todos
-        if todos_by_project:
-            self.cache.apply_todos_snapshot(computer_name, todos_by_project)
+        todos_updated = self.cache.apply_todos_snapshot(computer_name, todos_by_project)
+        if todos_updated:
             logger.info("Seeded cache with todos for %d projects", len(todos_by_project))
+        if updated:
+            await event_bus.emit(
+                TeleClaudeEvents.PROJECTS_CHANGED,
+                ProjectsChangedContext(trigger=trigger),
+                visibility=EventVisibility.LOCAL,
+            )
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""

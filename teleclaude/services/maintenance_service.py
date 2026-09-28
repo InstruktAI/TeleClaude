@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -16,7 +15,6 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import config
 from teleclaude.constants import REMOVED_TODO_RETENTION_WINDOW, RESTART_CONTINUATION_STIMULUS, TodoStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
@@ -51,6 +49,7 @@ from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
+from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import is_project_checkout
 from teleclaude.resource_validation._todo_status import build_todo_status_map
 
@@ -584,17 +583,14 @@ class MaintenanceService:
     async def _cleanup_removed_todos(self) -> None:
         """Finalize soft-removed todos past the retention window across every project DB.
 
-        Discovers project todo stores via the same trusted-dirs pattern that
-        powers ``list_projects`` (the per-project ``.teleclaude/todos.db``
-        location is the canonical workflow store; the daemon's operational DB
-        knows nothing about per-project todos). For each expired removed row,
-        reconcile snippet lifecycle frontmatter before hard-delete and commit
-        the documentation change with verification.
+        Discovers project todo stores through the project registry. Each
+        project's ``.teleclaude/todos.db`` is the canonical workflow store; the
+        daemon's operational DB knows nothing about these todos. For each
+        expired removed row, reconcile snippet lifecycle frontmatter before
+        hard-delete and commit the documentation change with verification.
         """
         cutoff_iso = (datetime.now(UTC) - REMOVED_TODO_RETENTION_WINDOW).isoformat()
-        for trusted_dir in config.computer.get_all_trusted_dirs():
-            expanded_path = os.path.expanduser(os.path.expandvars(trusted_dir.path))
-            project_root = Path(expanded_path)
+        for project_root in load_roots():
             if not project_root.exists():
                 continue
             if not (project_root / ".teleclaude" / "todos.db").exists():

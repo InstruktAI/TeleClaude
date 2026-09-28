@@ -35,9 +35,11 @@ from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.event_bus import EventHandler, event_bus
 from teleclaude.core.events import (
     AgentEventContext,
+    ProjectsChangedContext,
     SessionStatusContext,
     SystemCommand,
     SystemCommandContext,
+    TeleClaudeEvents,
     VoiceFocusSetContext,
 )
 from teleclaude.core.identity import get_identity_resolver
@@ -308,6 +310,9 @@ class DiscordAdapter(
         self._voice_agent_event_handler: EventHandler | None = None
         self._voice_system_command_handler: EventHandler | None = None
         self._voice_session_status_handler: EventHandler | None = None
+        self._projects_changed_handler: EventHandler | None = None
+        self._project_reconcile_lock = asyncio.Lock()
+        self._project_reconcile_pending = False
         self._registered_listen_message_ids: set[int] = set()
         # project_path -> discord_forum_id mapping, built at startup
         self._project_forum_map: dict[str, int] = {}
@@ -352,6 +357,9 @@ class DiscordAdapter(
         self._voice_agent_event_handler = event_bus.subscribe("agent_event", self._handle_voice_agent_event)
         self._voice_system_command_handler = event_bus.subscribe("system_command", self._handle_voice_system_command)
         self._voice_session_status_handler = event_bus.subscribe("session_status", self._handle_voice_session_status)
+        self._projects_changed_handler = event_bus.subscribe(
+            TeleClaudeEvents.PROJECTS_CHANGED, self._handle_projects_changed
+        )
         self._register_cancel_slash_command()
         self._register_gateway_handlers()
         self._ready_event.clear()
@@ -391,6 +399,9 @@ class DiscordAdapter(
         if self._voice_session_status_handler is not None:
             event_bus.unsubscribe("session_status", self._voice_session_status_handler)
             self._voice_session_status_handler = None
+        if self._projects_changed_handler is not None:
+            event_bus.unsubscribe(TeleClaudeEvents.PROJECTS_CHANGED, self._projects_changed_handler)
+            self._projects_changed_handler = None
         if self._voice_room is not None:
             await self._voice_room.close()
             self._voice_room = None
@@ -421,6 +432,20 @@ class DiscordAdapter(
     async def _handle_voice_session_status(self, _event: str, context: SessionStatusContext) -> None:
         if self._voice_room is not None and context.status == "accepted" and context.reason == "user_prompt_accepted":
             await self._voice_room.input_accepted(context.session_id, context.timestamp)
+
+    async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None:
+        """Serialize live forum reconciliation, coalescing changes during a pass."""
+        _ = context
+        self._project_reconcile_pending = True
+        if not self._infrastructure_provisioned:
+            return
+
+        async with self._project_reconcile_lock:
+            while self._project_reconcile_pending:
+                self._project_reconcile_pending = False
+                await self._reconcile_project_forums()
+                if self._multi_agent:
+                    await self._post_project_forum_launchers()
 
     async def send_output_update(
         self,

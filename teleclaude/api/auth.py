@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Header, Request
+from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.caller_identity import (
     CarriedIdentity,
@@ -14,6 +15,7 @@ from teleclaude.caller_identity import (
     PersonCliCaller,
     SystemCliCaller,
 )
+from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.config import config
 from teleclaude.constants import ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.conversation_messages import resolve_session_event_author
@@ -21,6 +23,8 @@ from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import db
 from teleclaude.types.commands import CallerProvenance
 from teleclaude.types.creation_record import EntryPoint
+
+_CLEARANCE_REFUSAL = "permission denied — role is not permitted to call {command_path}"
 
 
 @dataclass(frozen=True)
@@ -88,6 +92,17 @@ def carried_caller(
     )
 
 
+def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
+    """Return a route dependency enforcing the CLI verb's declared caller clearance."""
+
+    def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+        if not is_command_allowed(command_path, identity.system_role, identity.human_role):
+            raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))
+        return identity
+
+    return _require
+
+
 async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
     """Build session provenance from the caller's session record when present."""
     if not identity.session_id:
@@ -118,5 +133,6 @@ __all__ = [
     "caller_from_carried_identity",
     "carried_caller",
     "principal_for_carried_caller",
+    "require_clearance",
     "resolve_caller_provenance",
 ]

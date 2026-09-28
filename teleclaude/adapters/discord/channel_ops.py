@@ -22,6 +22,7 @@ from teleclaude.core.integration.discord_admin_state import session_launcher_key
 from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, Session
 from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
 from teleclaude.core.session_utils import get_short_project_name
+from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.types.commands import DiscordThreadClaimKind, DiscordThreadClaimLifecycle
 
 if TYPE_CHECKING:
@@ -239,8 +240,8 @@ class ChannelOperationsMixin:
             return "help_desk", teleclaude_config.config.computer.help_desk_dir
 
         if parent_id is not None and parent_id == self._all_sessions_channel_id:
-            trusted = teleclaude_config.config.computer.get_all_trusted_dirs()
-            project_path = trusted[0].path if trusted else teleclaude_config.config.computer.help_desk_dir
+            entries = get_project_catalog_service().list_entries()
+            project_path = str(entries[0].root) if entries else teleclaude_config.config.computer.help_desk_dir
             return "all_sessions", project_path
 
         for path, forum_id in self._project_forum_map.items():

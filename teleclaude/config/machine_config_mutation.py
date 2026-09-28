@@ -24,10 +24,6 @@ _MISSING_CONFIG_ERROR = "Machine configuration does not exist."
 _MISSING_FIELD_ERROR = "Machine configuration field does not exist."
 _INVALID_FIELD_PATH_ERROR = "Machine configuration field path is invalid."
 _COMPUTER = "computer"
-_TRUSTED_DIRS = "trusted_dirs"
-_NAME = "name"
-_DESC = "desc"
-_PATH = "path"
 _DEPLOYMENT = "deployment"
 _CHANNEL = "channel"
 _PINNED_MINOR = "pinned_minor"
@@ -51,7 +47,6 @@ class MachineConfigOperation(StrEnum):
     PATCH = "patch"
     REMOVE = "remove"
     FIELD = "field"
-    TRUSTED_DIRECTORY = "trusted_directory"
     DEPLOYMENT = "deployment"
     AGENTS = "agents"
 
@@ -122,14 +117,6 @@ def set_machine_field(field_path: tuple[str, ...], value: object) -> MachineConf
     if field_path and field_path[0] == _SCHEMA_VERSION:
         raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
     return _mutate(MachineConfigOperation.FIELD, lambda raw: _set_sparse_field(raw, field_path, value))
-
-
-def add_trusted_directory(name: str, path: str, description: str = "") -> MachineConfigMutationResult:
-    """Register one trusted directory without exposing backing-document ownership."""
-    return _mutate(
-        MachineConfigOperation.TRUSTED_DIRECTORY,
-        lambda raw: _add_trusted_directory(raw, name, path, description),
-    )
 
 
 def set_deployment(channel: ReleaseChannel, pinned_minor: str) -> MachineConfigMutationResult:
@@ -292,25 +279,6 @@ def _remove_field_if_present(raw: dict[object, object], field_path: tuple[str, .
         nested = parent.get(segment)
         if isinstance(nested, dict) and not nested:
             parent.pop(segment)
-
-
-def _add_trusted_directory(raw: dict[object, object], name: str, path: str, description: str) -> dict[object, object]:
-    """Add or replace a trusted directory by its stable path identity."""
-    computer = raw.setdefault(_COMPUTER, {})
-    if not isinstance(computer, dict):
-        raise ValueError(_INVALID_FIELD_PATH_ERROR)
-    directories = computer.setdefault(_TRUSTED_DIRS, [])
-    if not isinstance(directories, list):
-        raise ValueError(_INVALID_FIELD_PATH_ERROR)
-    entry: dict[object, object] = {_NAME: name, _PATH: path}
-    if description:
-        entry[_DESC] = description
-    for index, existing in enumerate(directories):
-        if isinstance(existing, dict) and existing.get(_PATH) == path:
-            directories[index] = entry
-            return raw
-    directories.append(entry)
-    return raw
 
 
 def _configure_agents(

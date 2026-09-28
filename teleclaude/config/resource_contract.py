@@ -115,6 +115,7 @@ class TargetDocument(StrEnum):
 _DESTINATION_DOCUMENTS: Final[dict[Destination, TargetDocument]] = {
     Destination.INVITATIONS: TargetDocument.INVITATIONS,
     Destination.HANDOFF: TargetDocument.HANDOFF,
+    Destination.PROJECT_REGISTRY: TargetDocument.REGISTRY,
 }
 
 

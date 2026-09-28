@@ -276,6 +276,14 @@ class ProjectDTO(BaseModel):
     description: str | None = None
 
 
+class AddProjectRequest(BaseModel):
+    """Request to adopt one folder as a local registry entry."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = Field(..., min_length=1)
+
+
 class TodoDTO(BaseModel):
     """DTO for todo info."""
 

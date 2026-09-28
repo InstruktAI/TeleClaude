@@ -65,7 +65,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "default_working_dir": "",
         "is_master": False,
         "is_ingress_node": False,
-        "trusted_dirs": [],
         "host": None,
     },
     "remote_computers": {},

@@ -38,8 +38,6 @@ WIDGET_TYPE = TypeVar("WIDGET_TYPE", bound=Widget)
 class NewProjectResult:
     """Result returned by NewProjectModal on success."""
 
-    name: str
-    description: str
     path: str
 
 
@@ -601,11 +599,11 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest
 
 
 class NewProjectModal(ModalScreen[NewProjectResult | None]):
-    """New project modal with name, description, and path fields.
+    """New project modal requesting only the folder path.
 
     Validates:
-    - Path resolves to an absolute directory path; missing directories are created when saved.
-    - Name and path must not duplicate an existing project on this computer.
+    - Path resolves to an absolute directory path.
+    - Path must not duplicate an existing project on this computer.
     """
 
     BINDINGS = [
@@ -614,12 +612,10 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
 
     def __init__(
         self,
-        existing_names: set[str] | None = None,
         existing_paths: set[str] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self._existing_names = existing_names or set()
         self._existing_paths = {
             str(Path(os.path.expandvars(path)).expanduser().resolve(strict=False)) for path in (existing_paths or set())
         }
@@ -627,15 +623,8 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-box") as box:
             box.border_title = "New Project"
-            with Vertical(id="name-group") as ng:
-                ng.border_title = "Name"
-                yield Input(placeholder="my-project", id="name-input")
-                yield Label("", id="name-error")
-            with Vertical(id="desc-group") as dg:
-                dg.border_title = "Description (optional)"
-                yield Input(placeholder="Short description", id="desc-input")
             with Vertical(id="path-group") as pg:
-                pg.border_title = "Path (created if missing)"
+                pg.border_title = "Folder"
                 yield Input(placeholder="~/path/to/project", id="path-input")
                 yield Label("", id="path-error")
             with Horizontal(id="modal-actions"):
@@ -643,7 +632,7 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
                 yield Button("[Esc] Cancel", id="cancel-btn")
 
     def on_mount(self) -> None:
-        self.query_one("#name-input", Input).focus()
+        self.query_one("#path-input", Input).focus()
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
@@ -659,24 +648,10 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
             self._do_create()
 
     def _do_create(self) -> None:
-        name_input = self.query_one("#name-input", Input)
-        name_error = self.query_one("#name-error", Label)
         path_input = self.query_one("#path-input", Input)
         path_error = self.query_one("#path-error", Label)
-        desc_input = self.query_one("#desc-input", Input)
 
-        name = name_input.value.strip()
         raw_path = path_input.value.strip()
-        description = desc_input.value.strip()
-
-        # Validate name
-        if not name:
-            name_error.update("Name is required")
-            return
-        if name in self._existing_names:
-            name_error.update(f"A project named '{name}' already exists")
-            return
-        name_error.update("")
 
         # Validate path
         if not raw_path:
@@ -691,7 +666,7 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
             return
         path_error.update("")
 
-        self.dismiss(NewProjectResult(name=name, description=description, path=resolved))
+        self.dismiss(NewProjectResult(path=resolved))
 
 
 class CreateSlugModal(ModalScreen[str | None]):

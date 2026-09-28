@@ -50,6 +50,8 @@ from teleclaude.core.events import (
     MessageEventContext,
     OperationFailedContext,
     OperationSucceededContext,
+    ProjectRefreshTrigger,
+    ProjectsChangedContext,
     SessionEscalatedPayload,
     SessionLifecycleContext,
     SessionStatusContext,
@@ -191,6 +193,11 @@ def _build_agent_event_context(payload: Mapping[str, JsonValue]) -> AgentEventCo
     )
 
 
+def _build_projects_changed_context(payload: Mapping[str, JsonValue]) -> ProjectsChangedContext:
+    trigger = _required_str(payload, "trigger")
+    return ProjectsChangedContext(trigger=ProjectRefreshTrigger(trigger))
+
+
 def _agent_event_payload(event_type: AgentHookEventType, payload: Mapping[str, JsonValue]) -> AgentEventPayload:
     if event_type == "session_start":
         return AgentSessionStartPayload(
@@ -272,6 +279,7 @@ _CONTEXT_BUILDERS: Mapping[str, ContextBuilder] = {
     "MessageEventContext": lambda payload: _build_dataclass_context(MessageEventContext, payload),
     "OperationFailedContext": lambda payload: _build_dataclass_context(OperationFailedContext, payload),
     "OperationSucceededContext": lambda payload: _build_dataclass_context(OperationSucceededContext, payload),
+    "ProjectsChangedContext": _build_projects_changed_context,
     "SessionEscalatedPayload": lambda payload: _build_dataclass_context(SessionEscalatedPayload, payload),
     "SessionLifecycleContext": lambda payload: _build_dataclass_context(SessionLifecycleContext, payload),
     "SessionStatusContext": lambda payload: _build_dataclass_context(SessionStatusContext, payload),

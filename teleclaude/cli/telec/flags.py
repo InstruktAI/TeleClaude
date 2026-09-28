@@ -49,7 +49,7 @@ FLAG_DETACH = Flag(
 FLAG_PATH = Flag("--path", desc="Path to the project directory (optional; defaults to cwd)", arity=VALUE)
 FLAG_COMPANY = Flag("--company", desc="Company this session operates the business of", arity=VALUE)
 FLAG_PROJECT_FILTER = Flag("--project", desc="Filter by project name", arity=VALUE)
-FLAG_PROJECT_TRUSTED = Flag("--project", desc="Project name (from trusted_dirs)", arity=VALUE)
+FLAG_PROJECT_TRUSTED = Flag("--project", desc="Project name or slug from the project registry", arity=VALUE)
 FLAG_SESSION = Flag("--session", "-s", "Session ID", arity=VALUE)
 FLAG_THINKING = Flag("--thinking", desc="Include thinking blocks", arity=SWITCH)
 FLAG_LIMIT_20 = Flag("--limit", desc="Max results (default: 20)", arity=VALUE)
@@ -411,7 +411,7 @@ FLAG_BUG_BODY = Flag("--body", desc="Detailed description body for bug.md", arit
 FLAG_BUG_PROJECT = Flag(
     "--project",
     desc=(
-        "Project that owns the defective code (from trusted_dirs). Defaults to the "
+        "Project that owns the defective code (registry name or slug). Defaults to the "
         "invoking cwd — where the symptom was OBSERVED, which is often not where the "
         "code lives. Set it whenever the two differ."
     ),

@@ -37,21 +37,6 @@ from teleclaude.config.tiers import SENSITIVE_METADATA_KEY, Tier
 
 
 @dataclass
-class TrustedDir:
-    """Represents a trusted directory with metadata for AI understanding.
-
-    Attributes:
-        name: Human-readable identifier (e.g., "development", "documents", "projects")
-        desc: Purpose description for AI context (e.g., "dev projects", "personal docs"). Can be empty.
-        path: Absolute file system path to the directory
-    """
-
-    name: str
-    desc: str
-    path: str
-
-
-@dataclass
 class PollingConfig:
     """Agent output polling intervals."""
 
@@ -68,27 +53,10 @@ class ComputerConfig:
     default_working_dir: str = field(metadata={"tier": Tier.INTERNAL})
     help_desk_dir: str = field(metadata={"tier": Tier.INTERNAL})
     is_master: bool = field(metadata={"tier": Tier.TUI})
-    # In the sample but not the wizard: editing the trusted-dir list is a file-level task.
-    trusted_dirs: list[TrustedDir] = field(
-        metadata={
-            "tier": Tier.PUBLIC,
-            "ungoverned_body": "config-authored list; entries are positional instances, not schema fields",
-        }
-    )
     # Optional LAN address override; auto-detected when unset.
     host: str | None = field(default=None, metadata={"tier": Tier.TUI})
     tmux_binary: str = field(default="tmux", metadata={"tier": Tier.INTERNAL})
     is_ingress_node: bool = field(default=False, metadata={"tier": Tier.TUI})
-
-    def get_all_trusted_dirs(self) -> list[TrustedDir]:
-        """Get all trusted directories from config, deduplicated by path."""
-        seen_paths: set[str] = set()
-        all_dirs: list[TrustedDir] = []
-        for trusted_dir in self.trusted_dirs:
-            if trusted_dir.path not in seen_paths:
-                all_dirs.append(trusted_dir)
-                seen_paths.add(trusted_dir.path)
-        return all_dirs
 
 
 @dataclass

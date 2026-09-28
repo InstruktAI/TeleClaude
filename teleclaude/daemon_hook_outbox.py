@@ -41,6 +41,7 @@ from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.project_manifest import load_registered_entries
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -425,11 +426,11 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         return session
 
     def _resolve_headless_project_context(self, workdir: str | None) -> tuple[str | None, str | None]:
-        """Map a hook workdir onto TeleClaude project/subdir metadata."""
+        """Map a hook workdir onto registry-folder and subdir metadata."""
         if not workdir:
             return None, None
-        trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
-        return split_project_path_and_subdir(workdir, trusted_dirs)
+        registry_roots = [str(entry.path) for entry in load_registered_entries() if entry.is_present]
+        return split_project_path_and_subdir(workdir, registry_roots)
 
     async def _handle_session_state_mutation_event(
         self,

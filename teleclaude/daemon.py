@@ -121,7 +121,7 @@ from teleclaude.core.event_bus import event_bus
 _record_import_timing("teleclaude.core.event_bus", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.events import ProjectRefreshTrigger, TeleClaudeEvents
 
 _record_import_timing("teleclaude.core.events", _t)
 
@@ -205,7 +205,7 @@ from teleclaude.mirrors.processors import register_default_processors
 _record_import_timing("teleclaude.mirrors.processors", _t)
 
 _t = time.perf_counter()
-from teleclaude.paths import MAIN_DB_PATH, PROJECT_ENV_PATH, RUNTIME_SETTINGS_PATH
+from teleclaude.paths import MAIN_DB_PATH, PROJECT_ENV_PATH, PROJECTS_MANIFEST_PATH, RUNTIME_SETTINGS_PATH
 
 _record_import_timing("teleclaude.paths", _t)
 
@@ -425,6 +425,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.process_janitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self.config_watch_task: asyncio.Task[object] | None = None
+        self.projects_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
@@ -856,6 +857,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.config_watch_task.add_done_callback(self._log_background_task_exception("config_watch"))
             logger.info("Config watcher started (config.yml + .env)")
 
+            self.projects_watch_task = asyncio.create_task(
+                ConfigWatcher([PROJECTS_MANIFEST_PATH], self._on_projects_registry_changed).run(),
+                name="projects-watch",
+            )
+            self.projects_watch_task.add_done_callback(self._log_background_task_exception("projects_watch"))
+            logger.info("Project registry watcher started (%s)", PROJECTS_MANIFEST_PATH)
+
             self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker(), name="hook-outbox-worker")
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
@@ -974,6 +982,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         for attr_name, log_message in (
             ("config_watch_task", "Config watcher stopped"),
+            ("projects_watch_task", "Project registry watcher stopped"),
             ("resource_monitor_task", "Resource monitor stopped"),
             ("process_janitor_task", "Process janitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
@@ -1089,6 +1098,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         loop.call_soon_threadsafe(self.shutdown_event.set)
         loop.call_soon_threadsafe(self.monitoring_service.log_resource_snapshot, f"shutdown:{reason}")
+
+    async def _on_projects_registry_changed(self) -> None:
+        """Refresh the local project cache after an external registry edit."""
+        await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
 
     async def _on_config_files_changed(self) -> None:
         """Apply a config.yml/.env change: hot-reload live sections, restart for the rest.

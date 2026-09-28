@@ -54,6 +54,13 @@ _UTF8 = "utf-8"
 _KIND_FIELD = "kind"
 _SCHEMA_VERSION_FIELD = "schema_version"
 _PROJECT_SAVE_REGISTRY_ERROR = "Project configuration saves require a registered project root"
+_ADOPTED_METADATA_SUBJECT_ERROR = "Adopted metadata requires a registered overlay of the declared tier: {path}"
+_ADOPTED_METADATA_NAME_FIELDS: dict[ConfigKind, str] = {
+    ConfigKind.PROJECT: "project_name",
+    ConfigKind.PERSON: "name",
+    ConfigKind.COMPANY: "name",
+}
+_DESCRIPTION_FIELD = "description"
 
 
 @dataclass(frozen=True)
@@ -409,6 +416,42 @@ def _write_overlay_config(
         stored = _read_locked_overlay(transaction, path)
         current = dict(upcast(stored, subject))
         reconciled, environment_updates = _reconcile_overlay_document(path, kind, document, existing_document=current)
+        _validate_overlay_candidate(kind, reconciled, subject)
+        carry_pending(stored, subject, delivered=_ignore_migration_delivery)
+        transaction.replace_text(render_declared_config(kind, reconciled))
+    _write_overlay_environment(path, kind, environment_updates)
+
+
+def carry_adopted_metadata(
+    path: Path,
+    kind: ConfigKind,
+    *,
+    name: str | None,
+    description: str | None,
+) -> None:
+    """Fill missing adopted-folder metadata under its tier-owned overlay lock."""
+    name_field = _ADOPTED_METADATA_NAME_FIELDS.get(kind)
+    subject = registered_subject(path)
+    if name_field is None or subject is None or subject.kind.value != kind.value:
+        raise RegistrySubjectRequired(_ADOPTED_METADATA_SUBJECT_ERROR.format(path=path))
+
+    environment_updates: dict[str, str] = {}
+    with file_transaction(path) as transaction:
+        stored = _read_locked_overlay(transaction, path)
+        current = dict(upcast(stored, subject))
+        candidate = dict(current)
+        if name is not None and candidate.get(name_field) is None:
+            candidate[name_field] = name
+        if description is not None and candidate.get(_DESCRIPTION_FIELD) is None:
+            candidate[_DESCRIPTION_FIELD] = description
+        if candidate == current:
+            return
+        reconciled, environment_updates = _reconcile_overlay_document(
+            path,
+            kind,
+            candidate,
+            existing_document=current,
+        )
         _validate_overlay_candidate(kind, reconciled, subject)
         carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         transaction.replace_text(render_declared_config(kind, reconciled))

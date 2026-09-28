@@ -26,6 +26,7 @@ from teleclaude.config._environment import (
     read_environment_file,
 )
 from teleclaude.config._file_io import file_transaction
+from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
 from teleclaude.config.loader import list_company_config_paths
@@ -68,9 +69,10 @@ from teleclaude.config.roster import (
 )
 from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.docs_index import get_project_slug
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
-from teleclaude.project_setup.init_flow import init_project
+from teleclaude.project_setup.init_flow import ProjectInitializationResult, ProjectInitializationTrigger, init_project
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
@@ -921,46 +923,67 @@ def _remove_person_subject(slug: str, evidence: OwnEvidence, *, delete_dir: bool
     return outcome
 
 
-def init_project_subject(root: Path, *, request_id: str | None = None) -> SubjectView:
-    """Initialize the caller's checkout as a project subject.
+def init_project_subject(
+    root: Path,
+    *,
+    request_id: str | None = None,
+    trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
+) -> SubjectView:
+    """Adopt the caller's folder and return its declared subject view.
 
-    Not reachable through `init_subject`: project init addresses "this
-    checkout", a filesystem context no `SubjectRef` carries (it has no
-    instance slug until `init_project` derives and registers one). The CLI
-    edge (Task 8) calls this directly for the project kind.
+    Not reachable through `init_subject`: folder adoption addresses a
+    filesystem context no `SubjectRef` carries before its identity is derived.
 
-    `init_project` is idempotent, but detecting a true no-op re-init would
-    need a registry lookup before running it purely to compare revisions;
-    every successful call reports `committed`, which is always an honest
-    description of the state it leaves behind even when nothing changed.
+    The setup operation determines the declared tier. Project folders return
+    their catalog view; person and company homes return their corresponding
+    configuration subject view.
     """
+    config_path = root.expanduser().resolve() / ConfigFileName.OVERLAY
+    kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
+    subject_kind = ConfigSubjectKind(kind.value)
+    if kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
+        identity = root.name
+    elif kind is ConfigKind.PROJECT:
+        identity = get_project_slug(root)
+    else:
+        identity = None
+    revision_before = _try_revision_before(subject_kind, identity)
+
+    result: ProjectInitializationResult | None = None
 
     def _compute(evidence: OwnEvidence) -> SubjectView:
+        nonlocal result
         evidence.enter_unobserved()
-        init_project(root)
-        evidence.mark(target_id(ConfigSubjectKind.PROJECT, None, TargetDocument.PLUMBING))
-        catalog = get_project_catalog_service()
-        catalog.refresh()
-        node = catalog.get_by_root(root)
-        if node is None:
-            raise SubjectNotFound(f"project at {root} did not register after init")
-        return _read_project(SubjectRef(ConfigSubjectKind.PROJECT, node.slug))
+        result = init_project(root, trigger=trigger)
+        ref = SubjectRef(ConfigSubjectKind(result.kind.value), result.identity)
+        evidence.mark(target_id(ref.kind, ref.instance, TargetDocument.REGISTRY))
+        if result.kind is ConfigKind.PROJECT:
+            evidence.mark(target_id(ref.kind, ref.instance, TargetDocument.PLUMBING))
+            catalog = get_project_catalog_service()
+            catalog.refresh()
+            node = catalog.get_by_slug(result.identity)
+            if node is None:
+                raise SubjectNotFound(f"project at {root} did not register after init")
+            ref = SubjectRef(ConfigSubjectKind.PROJECT, node.slug)
+        return read_subject(ref)
 
     view = run_observed(
         _compute,
         request_id=request_id,
-        kind=ConfigSubjectKind.PROJECT,
-        instance=None,
+        kind=subject_kind,
+        instance=identity,
         operation=ResourceOperation.INIT,
-        revision_before=None,
+        revision_before=revision_before,
     )
     emit_resource_change(
         request_id=request_id,
-        kind=ConfigSubjectKind.PROJECT,
+        kind=view.ref.kind,
         instance=view.ref.instance,
         operation=ResourceOperation.INIT,
-        outcome=ResourceChangeOutcome.COMMITTED,
-        revision_before=None,
+        outcome=ResourceChangeOutcome.UNCHANGED
+        if result is not None and result.already_registered and revision_before == view.revision
+        else ResourceChangeOutcome.COMMITTED,
+        revision_before=revision_before,
         revision_after=view.revision,
     )
     return view

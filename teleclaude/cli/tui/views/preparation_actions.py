@@ -17,7 +17,7 @@ from teleclaude.cli.tool_client import ToolAPIError, ToolQueryParams, tool_api_r
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest, StateChanged
 from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
-from teleclaude.cli.tui.views._project_actions import save_new_project
+from teleclaude.cli.tui.views._project_actions import start_new_project_save
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.modals import (
     ConfirmModal,
@@ -113,6 +113,7 @@ _NO_HOLD_CONTROL_MESSAGE = "No hold control is available for this todo"
 _HOLD_SUCCESS_MESSAGE_TEMPLATE = "Held '{slug}'"
 _RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE = "Released hold on '{slug}'"
 _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE = "Unexpected response: {response}"
+_REMOTE_PROJECT_NOTICE = "Add a project on its own computer."
 
 
 class PreparationAction(StrEnum):
@@ -640,20 +641,24 @@ class PreparationViewActionsMixin:
         if not isinstance(item, ComputerHeader):
             return
 
-        comp_name = item.data.computer.name
+        computer = item.data.computer
+        if not computer.is_local:
+            self.app.notify_text(_REMOTE_PROJECT_NOTICE)  # type: ignore[attr-defined]
+            return
+
+        comp_name = computer.name
         existing_projects = [  # type: ignore[attr-defined]
             p for p in self._projects_with_todos if (p.computer or "local") == comp_name
         ]
-        existing_names = {p.name for p in existing_projects}
         existing_paths = {p.path for p in existing_projects}
 
         def on_result(result: NewProjectResult | None) -> None:
             if not result:
                 return
-            save_new_project(self.app, result)  # type: ignore[attr-defined]
+            start_new_project_save(self.app, result)  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
-            NewProjectModal(existing_names=existing_names, existing_paths=existing_paths),
+            NewProjectModal(existing_paths=existing_paths),
             on_result,
         )
 

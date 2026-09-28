@@ -48,7 +48,6 @@ from teleclaude.config._models import TelegramConfig as TelegramConfig
 from teleclaude.config._models import TelegramCredsConfig as TelegramCredsConfig
 from teleclaude.config._models import TelegramQoSConfig as TelegramQoSConfig
 from teleclaude.config._models import TerminalConfig as TerminalConfig
-from teleclaude.config._models import TrustedDir as TrustedDir
 from teleclaude.config._models import TTSConfig as TTSConfig
 from teleclaude.config._models import TTSEventConfig as TTSEventConfig
 from teleclaude.config._models import TTSServiceConfig as TTSServiceConfig
@@ -220,36 +219,6 @@ def prune_defaults(
         elif value != default:
             pruned[key] = value
     return pruned
-
-
-def _parse_trusted_dirs(
-    raw_dirs: list[object],
-) -> list[TrustedDir]:
-    """Parse trusted_dirs from config.
-
-    Expects list[dict] entries with name/desc/path.
-
-    Args:
-        raw_dirs: List of dicts with trusted dir metadata
-
-    Returns:
-        List of TrustedDir objects
-    """
-    trusted_dirs = []
-    for item in raw_dirs:
-        if isinstance(item, dict):
-            # Current format: dict with name, desc, and path.
-            trusted_dirs.append(
-                TrustedDir(
-                    name=str(item["name"]),
-                    desc=str(item.get("desc", "")),
-                    path=str(item["path"]),
-                )
-            )
-        else:
-            raise ValueError(f"Invalid trusted_dirs entry type: {type(item)}")
-
-    return trusted_dirs
 
 
 def parse_tts_config(
@@ -587,9 +556,6 @@ def _build_config(
             default_working_dir=str(comp_raw["default_working_dir"] or WORKING_DIR),  # type: ignore[index]
             help_desk_dir=str(Path.home() / HELP_DESK_SUBDIR),
             is_master=bool(comp_raw["is_master"]),  # type: ignore[index]
-            trusted_dirs=_parse_trusted_dirs(
-                list(comp_raw["trusted_dirs"]),  # type: ignore[index]
-            ),
             host=str(comp_raw["host"] or detect_lan_ip()),  # type: ignore[index]
             tmux_binary=resolve_tmux_binary(),
             is_ingress_node=bool(comp_raw["is_ingress_node"]),  # type: ignore[index]

@@ -25,7 +25,12 @@ from teleclaude.adapters.discord.session_launcher import (
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.events import (
+    ProjectRefreshTrigger,
+    ProjectsChangedContext,
+    SessionLifecycleContext,
+    TeleClaudeEvents,
+)
 from teleclaude.core.inbound import (
     InboundSessionPolicy,
     handle_inbound_message,
@@ -151,6 +156,8 @@ class GatewayHandlersMixin:
         async def _restore_listen_controls(self) -> None: ...
 
         async def _ensure_discord_infrastructure(self) -> None: ...
+
+        async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None: ...
 
         async def _post_or_update_launcher(self, forum_id: int) -> None: ...
 
@@ -370,12 +377,7 @@ class GatewayHandlersMixin:
                     logger.warning("Failed to sync Discord slash commands: %s", exc)
 
         if self._multi_agent:
-            for forum_id in set(self._project_forum_map.values()):
-                try:
-                    await self._post_or_update_launcher(forum_id)
-                except Exception as exc:
-                    logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
-
+            await self._post_project_forum_launchers()
             cleanup_forum_ids: set[int] = set()
             if self._help_desk_channel_id is not None:
                 cleanup_forum_ids.add(self._help_desk_channel_id)
@@ -388,6 +390,19 @@ class GatewayHandlersMixin:
                     logger.warning("Failed to remove obsolete launcher for forum %s: %s", forum_id, exc)
 
         self._infrastructure_provisioned = True
+        if getattr(self, "_project_reconcile_pending", False):
+            await self._handle_projects_changed(
+                TeleClaudeEvents.PROJECTS_CHANGED,
+                ProjectsChangedContext(trigger=ProjectRefreshTrigger.REGISTRY_CHANGE),
+            )
+
+    async def _post_project_forum_launchers(self) -> None:
+        """Ensure launchers exist in every currently mapped project forum."""
+        for forum_id in set(self._project_forum_map.values()):
+            try:
+                await self._post_or_update_launcher(forum_id)
+            except Exception as exc:
+                logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
 
     # =========================================================================
     # on_message

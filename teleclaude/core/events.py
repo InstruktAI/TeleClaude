@@ -42,6 +42,7 @@ EventType = Literal[
     "operation.task_run.failed",
     "agent_runtime.procedure_activation.completed",
     "agent_runtime.procedure_activation.failed",
+    "projects_changed",
     "session.close.completed",
     "session.close.failed",
     "session_close_requested",
@@ -338,6 +339,7 @@ class TeleClaudeEvents:
     AGENT_ACTIVITY: Literal["agent_activity"] = (
         "agent_activity"  # Agent activity events (pre_tool_use, agent_stop, etc.)
     )
+    PROJECTS_CHANGED: Literal["projects_changed"] = "projects_changed"
     ERROR: Literal["error"] = "error"
 
     # Intents (commands)
@@ -433,6 +435,21 @@ class SessionLifecycleContext:
     """Context for session lifecycle events."""
 
     session_id: str
+
+
+class ProjectRefreshTrigger(StrEnum):
+    """Closed vocabulary for the cause of a local project refresh."""
+
+    STARTUP = "startup"
+    REGISTRY_CHANGE = "registry_change"
+    ADOPTION = "adoption"
+
+
+@dataclass(frozen=True)
+class ProjectsChangedContext:
+    """Local fact emitted after the cached project snapshot changes."""
+
+    trigger: ProjectRefreshTrigger
 
 
 class SystemCommand(StrEnum):
@@ -662,6 +679,7 @@ EventContext = (
     | MessageEventContext
     | OperationFailedContext
     | OperationSucceededContext
+    | ProjectsChangedContext
     | SessionEscalatedPayload
     | SessionLifecycleContext
     | SessionStatusContext

@@ -7,6 +7,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
+PROJECT_FORUM_KEY_PREFIX = "project_forum:"
+
 
 class DiscordProvider(StrEnum):
     """Supported provider identity for this reflection repository."""
@@ -221,9 +223,9 @@ def shared_key(name: str) -> str:
     return f"shared:{name}"
 
 
-def project_forum_key(project_path: str) -> str:
-    """Build the stable logical key for one project forum."""
-    return f"project_forum:{project_path}"
+def project_forum_key(identity: str) -> str:
+    """Build the stable logical key for one registry identity's forum."""
+    return f"{PROJECT_FORUM_KEY_PREFIX}{identity}"
 
 
 def session_launcher_key(forum_id: int) -> str:

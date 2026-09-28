@@ -49,6 +49,8 @@ __all__ = [
 # output, usage line, or generated docs. The literal appears exactly once,
 # here; every other reference in this module reads this constant.
 _FILING_ACK_FLAG = "--approved"
+_UNKNOWN_PROJECT_MESSAGE = "Unknown project '{name}'. Must be one of:"
+_UNKNOWN_PROJECT_IDENTITY_ROW = "  - {identity}"
 _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
     "todos autostart their prepare lane, so filing is pipeline entry):\n"
@@ -79,18 +81,23 @@ _BUG_FILING_GATE = (
 
 
 def _resolve_project_by_name(name: str) -> Path:
-    """Resolve a project name to its path using trusted_dirs config."""
-    from teleclaude.config import config  # noqa: PLC0415 - deferred command-local dependency.
+    """Resolve a project identity or display name to its registered root."""
+    from teleclaude.services.project_catalog import (  # noqa: PLC0415 - project lookup belongs to bug filing.
+        get_project_catalog_service,
+    )
 
-    trusted = config.computer.get_all_trusted_dirs()
-    for td in trusted:
-        if td.name.lower() == name.lower():
-            return Path(td.path).expanduser()
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    projects = catalog.list_projects()
+    requested = name.casefold()
+    for project in projects:
+        if requested in (project.slug.casefold(), project.name.casefold()):
+            return project.root
 
-    available = sorted({td.name for td in trusted})
-    print(f"Unknown project '{name}'. Must be one of:")
-    for n in available:
-        print(f"  - {n}")
+    available = sorted({project.slug for project in projects})
+    print(_UNKNOWN_PROJECT_MESSAGE.format(name=name))
+    for identity in available:
+        print(_UNKNOWN_PROJECT_IDENTITY_ROW.format(identity=identity))
     raise SystemExit(1)
 
 

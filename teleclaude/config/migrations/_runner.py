@@ -32,6 +32,7 @@ from teleclaude.config.migrations._chain import (
 from teleclaude.config.migrations._registry import registered_documents, resolve_read_subject
 from teleclaude.config.migrations.v003_relocate_person_invite_token import DestinationConflict as InvitationConflict
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
+from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -204,7 +205,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 )
             text = _render(migrated, subject)
             transaction.replace_text(text)
-        except (InvitationConflict, HandoffConflict):
+        except (InvitationConflict, HandoffConflict, RegistryConflict):
             return _record(
                 key,
                 subject,

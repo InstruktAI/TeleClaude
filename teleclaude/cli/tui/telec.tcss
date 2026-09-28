@@ -384,7 +384,7 @@ ConfirmModal #confirm-message {
 
 NewProjectModal #modal-box {
     width: 60;
-    max-height: 20;
+    max-height: 14;
 }
 
 /* ── StartSessionModal ────────────────────────────────── */

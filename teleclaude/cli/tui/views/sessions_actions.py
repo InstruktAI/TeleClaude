@@ -19,7 +19,7 @@ from teleclaude.cli.tui.messages import (
 from teleclaude.cli.tui.session_attachability import is_attachable_session
 from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
-from teleclaude.cli.tui.views._project_actions import save_new_project
+from teleclaude.cli.tui.views._project_actions import start_new_project_save
 from teleclaude.cli.tui.views.interaction import TreeInteractionAction
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.modals import ConfirmModal, NewProjectModal, NewProjectResult, StartSessionModal
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 # Double-press detection threshold (seconds)
 DOUBLE_PRESS_THRESHOLD = 0.65
 MAX_STICKY = 5
+_REMOTE_PROJECT_NOTICE = "Add a project on its own computer."
 
 
 class SessionsViewActionsMixin:
@@ -486,20 +487,20 @@ class SessionsViewActionsMixin:
             return
 
         computer = item.data.computer
+        if not computer.is_local:
+            self.app.notify_text(_REMOTE_PROJECT_NOTICE)  # type: ignore[attr-defined]
+            return
 
         def on_result(result: NewProjectResult | None) -> None:
             if not result:
                 return
-            save_new_project(self.app, result)  # type: ignore[attr-defined]
+            start_new_project_save(self.app, result)  # type: ignore[attr-defined]
 
-        existing_names = {  # type: ignore[attr-defined]
-            p.name for p in self._projects if (p.computer or "local") == computer.name
-        }
         existing_paths = {  # type: ignore[attr-defined]
             p.path for p in self._projects if (p.computer or "local") == computer.name
         }
         self.app.push_screen(  # type: ignore[attr-defined]
-            NewProjectModal(existing_names=existing_names, existing_paths=existing_paths),
+            NewProjectModal(existing_paths=existing_paths),
             on_result,
         )
 

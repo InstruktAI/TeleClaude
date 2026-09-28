@@ -61,6 +61,11 @@ _HISTORY_AGENT_PARAM = "agent"
 _HISTORY_THINKING_PARAM = "thinking"
 _HISTORY_RAW_PARAM = "raw"
 _HISTORY_COMPUTER_PARAM = "computer"
+_PROJECTS_ROUTE = "/projects"
+_PROJECT_PATH_FIELD = "path"
+_PROJECT_INIT_COMMAND = "telec config project init"
+_PROJECT_INIT_CLEARANCE = ClearanceScope.verb(_PROJECT_INIT_COMMAND)
+_HTTP_POST = HTTPMethod.POST
 
 # Reconnection settings
 WS_INITIAL_BACKOFF = 0.5  # Initial reconnect delay in seconds
@@ -661,6 +666,12 @@ class _TelecSessionAPI:
             request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("projects list")),
         )
         return TypeAdapter(list[ProjectDTO]).validate_json(resp.text)
+
+    async def add_project(self, path: str) -> ProjectDTO:
+        """Adopt a local project folder through the daemon API."""
+        options = RequestOptions(json_body={_PROJECT_PATH_FIELD: path}, clearance_scope=_PROJECT_INIT_CLEARANCE)
+        response = await self._request(_HTTP_POST, _PROJECTS_ROUTE, request_options=options)
+        return ProjectDTO.model_validate_json(response.text)
 
     async def create_session(self, **kwargs: Unpack[CreateSessionArgs]) -> CreateSessionResponseDTO:
         """Create a new session."""

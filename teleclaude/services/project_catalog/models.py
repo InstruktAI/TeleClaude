@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from teleclaude.config.schema import ProjectConfig
+from teleclaude.config.schema import ConfigKind, ProjectConfig
 
 
 @dataclass(frozen=True)
@@ -25,3 +25,14 @@ class ProjectNode:
     def docs_index_path(self) -> Path:
         """Canonical docs index location for this project."""
         return self.root / "docs" / "project" / "index.yaml"
+
+
+@dataclass(frozen=True)
+class ProjectCatalogEntry:
+    """One session-placement entry from the machine's project registry."""
+
+    root: Path
+    identity: str | None
+    display_name: str
+    description: str | None
+    kind: ConfigKind

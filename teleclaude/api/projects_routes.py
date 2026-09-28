@@ -2,30 +2,52 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, carried_caller
-from teleclaude.api_models import ProjectDTO, TodoDTO
+from teleclaude.api.auth import CallerIdentity, carried_caller, require_clearance
+from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
 from teleclaude.config import config
+from teleclaude.config.resources import init_project_subject
 from teleclaude.core import command_handlers
+from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.models import ProjectInfo
+from teleclaude.project_setup.init_flow import ProjectIdentityConflict, ProjectInitializationTrigger
+from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
 
+_PROJECT_INIT_COMMAND = "telec config project init"
+_PROJECT_PATH_REQUIRED = "project path must be an absolute path"
+_PROJECT_PATH_FILE = "project path names a file"
+_PROJECT_PATH_CREATE_FAILED = "project folder could not be created"
+_PROJECT_REFRESH_UNAVAILABLE = "project refresh is not configured"
+_PROJECT_ADOPTION_FAILED = "project adoption failed: {reason}"
+_PROJECT_ADOPTION_INTERNAL_FAILED = "project adoption failed"
+_PROJECT_ENTRY_MISSING = "adopted project is missing from the refreshed registry"
+_PROJECT_CREATE_LOG = "Unable to remove request-created project folders after adoption failure"
+_PROJECT_ADOPTION_LOG = "Project adoption failed"
+
 _CACHE: dict[str, DaemonCache | None] = {"value": None}
+ProjectRefresh = Callable[[ProjectRefreshTrigger], Awaitable[None]]
+_REFRESH: dict[str, ProjectRefresh | None] = {"value": None}
 
 router = APIRouter()
 
 
-def configure(cache: DaemonCache | None) -> None:
+def configure(cache: DaemonCache | None, refresh_local_projects: ProjectRefresh | None = None) -> None:
     """Wire cache; called from APIServer."""
     _CACHE["value"] = cache
+    if refresh_local_projects is not None:
+        _REFRESH["value"] = refresh_local_projects
 
 
 def _dto_from_project(project: ProjectInfo, computer_name: str) -> ProjectDTO:
@@ -98,3 +120,81 @@ async def list_projects(
     except (OSError, RuntimeError, ValueError) as exc:
         logger.error("list_projects failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list projects: {exc}") from exc
+
+
+def _remove_created_directories(directories: list[Path]) -> None:
+    """Remove directories created for a failed request, but only while empty."""
+    for directory in reversed(directories):
+        try:
+            directory.rmdir()
+        except OSError as exc:
+            logger.info(_PROJECT_CREATE_LOG, path=str(directory), error=str(exc))
+
+
+@router.post("/projects", response_model=ProjectDTO)
+async def add_project(
+    request: AddProjectRequest,
+    _identity: CallerIdentity = Depends(require_clearance(_PROJECT_INIT_COMMAND)),
+) -> ProjectDTO:
+    """Adopt one folder through the same published operation as the CLI."""
+    requested_path = Path(request.path).expanduser()
+    if not requested_path.is_absolute():
+        raise HTTPException(status_code=400, detail=_PROJECT_PATH_REQUIRED)
+    try:
+        project_root = requested_path.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=_PROJECT_PATH_REQUIRED) from exc
+
+    if project_root.exists() and not project_root.is_dir():
+        raise HTTPException(status_code=400, detail=_PROJECT_PATH_FILE)
+
+    created_directories: list[Path] = []
+    if not project_root.exists():
+        ancestor = project_root
+        while not ancestor.exists():
+            created_directories.append(ancestor)
+            if ancestor.parent == ancestor:
+                break
+            ancestor = ancestor.parent
+        try:
+            project_root.mkdir(parents=True)
+        except FileExistsError as exc:
+            if project_root.is_dir():
+                created_directories.clear()
+            else:
+                raise HTTPException(status_code=400, detail=_PROJECT_PATH_FILE) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=_PROJECT_PATH_CREATE_FAILED) from exc
+
+    try:
+        await asyncio.to_thread(
+            init_project_subject,
+            project_root,
+            trigger=ProjectInitializationTrigger.DAEMON,
+        )
+    except ProjectIdentityConflict as exc:
+        _remove_created_directories(created_directories)
+        raise HTTPException(status_code=409, detail=_PROJECT_ADOPTION_FAILED.format(reason=str(exc))) from exc
+    except (OSError, ValueError) as exc:
+        _remove_created_directories(created_directories)
+        raise HTTPException(status_code=400, detail=_PROJECT_ADOPTION_FAILED.format(reason=str(exc))) from exc
+    except Exception as exc:
+        _remove_created_directories(created_directories)
+        logger.error(_PROJECT_ADOPTION_LOG, error=str(exc), exc_info=True)
+        raise HTTPException(status_code=500, detail=_PROJECT_ADOPTION_INTERNAL_FAILED) from exc
+
+    refresh_local_projects = _REFRESH["value"]
+    if refresh_local_projects is None:
+        raise HTTPException(status_code=503, detail=_PROJECT_REFRESH_UNAVAILABLE)
+    await refresh_local_projects(ProjectRefreshTrigger.ADOPTION)
+
+    catalog = get_project_catalog_service()
+    entry = next((candidate for candidate in catalog.list_entries() if candidate.root == project_root), None)
+    if entry is None:
+        raise HTTPException(status_code=500, detail=_PROJECT_ENTRY_MISSING)
+    return ProjectDTO(
+        computer=config.computer.name,
+        name=entry.display_name,
+        path=str(entry.root),
+        description=entry.description,
+    )

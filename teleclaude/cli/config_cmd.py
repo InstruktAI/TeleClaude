@@ -100,6 +100,7 @@ _INVALID_MESSAGE = "Error: {message}{request}"
 _PARTIAL_COMMIT_MESSAGE = (
     "Error: {message}{request}\nThe affected files may be in a mixed state — read them back before retrying."
 )
+_PROJECT_INIT_COMPLETE = "telec config project init complete."
 _REDACTED_VALUE = "<redacted: platform administrator required>"
 
 _KIND_TO_SUBJECT: dict[str, ConfigSubjectKind] = {
@@ -297,7 +298,13 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
 # --- init ---
 
 
-def _run_init(compute: Callable[[], SubjectView], output_format: str, request_id: str) -> None:
+def _run_init(
+    compute: Callable[[], SubjectView],
+    output_format: str,
+    request_id: str,
+    *,
+    completion_line: str | None = None,
+) -> None:
     """Run one init call, rendering its view or a clean error for every typed refusal."""
     try:
         view = compute()
@@ -310,6 +317,8 @@ def _run_init(compute: Callable[[], SubjectView], output_format: str, request_id
     except (InvalidCandidate, ValueError) as error:
         print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
         raise SystemExit(1) from error
+    if completion_line is not None:
+        print(completion_line)
     _render({**view.sections, "revision": view.revision, "request_id": request_id}, output_format)
 
 
@@ -331,6 +340,7 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             lambda: init_project_subject(resolve_invocation_roots().adoption_root(), request_id=request_id),
             output_format,
             request_id,
+            completion_line=_PROJECT_INIT_COMPLETE,
         )
         return
 

@@ -124,9 +124,6 @@ class TelegramAdapter(
             raise ValueError("telegram.bot_token is required in config.yml")
         self.bot_token: str = bot_token
 
-        # Extract from config singleton
-        self.trusted_dirs = config.computer.get_all_trusted_dirs()
-
         self.computer_name = config.computer.name
         if not self.computer_name:
             raise ValueError("computer.name is required in config.yml")

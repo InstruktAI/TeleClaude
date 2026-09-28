@@ -187,6 +187,8 @@ class SessionsView(
         new_ids = {s.session_id for s in visible_sessions}
         old_computer_order = tuple(c.name for c in self._computers)
         new_computer_order = tuple(c.name for c in computers)
+        old_projects = tuple((project.computer, project.path, project.name) for project in self._projects)
+        new_projects = tuple((project.computer, project.path, project.name) for project in projects)
         self._computers = computers
         self._projects = projects
         self._sessions = visible_sessions
@@ -199,8 +201,13 @@ class SessionsView(
             self._prune_stale_session_state(new_ids)
             self._session_state_pruned = True
 
-        if old_ids != new_ids or old_computer_order != new_computer_order or not self._nav_items:
-            # Session list or computer set/order changed — full rebuild. The
+        if (
+            old_ids != new_ids
+            or old_computer_order != new_computer_order
+            or old_projects != new_projects
+            or not self._nav_items
+        ):
+            # Session list, computer order, or project listing changed — full rebuild. The
             # authoritative local-first computer list can arrive after a
             # partial-state render with the session set unchanged; rebuilding on
             # computer-sequence change lets the deterministic order take effect.

@@ -23,6 +23,7 @@ class Destination(StrEnum):
 
     INVITATIONS = "invitations"
     HANDOFF = "handoff"
+    PROJECT_REGISTRY = "project_registry"
 
 
 class MigrationTrigger(StrEnum):

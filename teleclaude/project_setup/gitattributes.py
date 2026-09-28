@@ -2,6 +2,12 @@
 
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
+
+_GITATTRIBUTES_UPDATED_EVENT = "project_gitattributes_updated"
+
 FILTER_PATTERNS = [
     "docs/**/*.md filter=teleclaude-docs",
     "agents/docs/**/*.md filter=teleclaude-docs",
@@ -27,4 +33,4 @@ def update_gitattributes(project_root: Path) -> None:
             if existing_content and not existing_content.endswith("\n"):
                 f.write("\n")
             f.write("\n".join(lines_to_add) + "\n")
-        print("telec config project init: .gitattributes updated.")
+        logger.info(_GITATTRIBUTES_UPDATED_EVENT, project_root=str(project_root))

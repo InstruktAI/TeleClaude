@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import os
 import shutil
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -14,17 +16,18 @@ from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabi
 from teleclaude.config import config
 from teleclaude.config._file_io import file_transaction
 from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
-from teleclaude.config.machine_config_mutation import add_trusted_directory
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
+from teleclaude.config.resource_catalog import list_subjects
 from teleclaude.config.schema import ConfigKind, ProjectConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.git import Repo
-from teleclaude.paths import ConfigFileName
-from teleclaude.project_manifest import register_root
+from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName
+from teleclaude.project_manifest import project_adoption_lock, register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_repo import ensure_git_repo
@@ -32,6 +35,7 @@ from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.quality.scope import get_project_languages
 from teleclaude.runtime.config import get_runtime_config, require_own_checkout
+from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug, validate_slug
 from teleclaude.utils import resolve_project_config_path
 
@@ -46,6 +50,31 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
+_GLOBAL_TIER_REFUSAL = "A global configuration cannot be adopted as a project."
+_IDENTITY_CONFLICT = "Project identity '{identity}' is already held by {holding_root}."
+_PROJECT_INITIALIZED_EVENT = "project_initialization_completed"
+
+
+@dataclass(frozen=True)
+class ProjectInitializationResult:
+    """The declared identity and tier of one folder after adoption."""
+
+    identity: str
+    display_name: str
+    kind: ConfigKind
+    already_registered: bool
+
+
+class ProjectInitializationTrigger(StrEnum):
+    """The entry point that requested the shared adoption operation."""
+
+    CLI = "cli"
+    DAEMON = "daemon"
+    FOLD = "fold"
+
+
+class ProjectIdentityConflict(ValueError):
+    """A different registered folder already owns the identity being adopted."""
 
 
 def _ignore_migration_delivery(_destination: Destination) -> None:
@@ -169,27 +198,50 @@ def _ensure_project_slug(project_root: Path) -> None:
     config_path.write_text(buffer.getvalue(), encoding="utf-8")
 
 
-def _ensure_trusted_directory(project_root: Path) -> None:
-    """List a registered project among the machine's trusted directories.
+def _identity_holder(identity: str, root: Path, *, include_in_transit: bool) -> Path | None:
+    """Return the registered folder that already owns an identity, if any."""
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    for entry in catalog.list_entries(include_in_transit=include_in_transit):
+        if entry.identity == identity and entry.root != root:
+            return entry.root
 
-    The trusted directories are the projects the operator's TUI shows. An entry
-    that already names this root is left as it is, so a name or description the
-    operator chose survives re-initialization.
-    """
-    resolved_root = project_root.resolve()
-    for trusted_dir in config.computer.get_all_trusted_dirs():
-        if Path(trusted_dir.path).expanduser().resolve() == resolved_root:
-            return
-    add_trusted_directory(get_project_slug(project_root), str(resolved_root))
+    home_roots = {
+        ConfigSubjectKind.PERSON: PEOPLE_DIR,
+        ConfigSubjectKind.COMPANY: COMPANIES_ROOT,
+    }
+    for kind, home_root in home_roots.items():
+        if any(ref.instance == identity for ref in list_subjects(kind)):
+            holding_root = (home_root / identity).resolve()
+            if holding_root != root:
+                return holding_root
+    return None
 
 
-def init_project(project_root: Path) -> None:
-    """Initialize a project for TeleClaude — configuration and plumbing only.
+def _declared_display_name(project_root: Path, kind: ConfigKind, identity: str) -> str:
+    """Read the display name associated with a declared folder tier."""
+    path = project_root / ConfigFileName.OVERLAY
+    if not path.is_file():
+        return identity
+    document = round_trip_yaml().load(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        return identity
+    name_field = "project_name" if kind is ConfigKind.PROJECT else "name"
+    name = document.get(name_field)
+    return name.strip() if isinstance(name, str) and name.strip() else identity
 
-    Configures git filters and project-owned hooks, converges plumbing,
-    and registers the project root. Asks nothing: machine-wide settings such as
-    the release channel belong to the machine configuration, not to a project.
-    Idempotent and CI-safe; spawns no agent sessions and syncs no artifacts.
+
+def init_project(
+    project_root: Path,
+    *,
+    trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
+) -> ProjectInitializationResult:
+    """Adopt a folder through its declared configuration tier.
+
+    Project folders receive repository setup and plumbing convergence before
+    registration. Person and company homes are registered in their declared
+    tier without project setup. This operation asks nothing and is idempotent.
+    It spawns no agent sessions and syncs no artifacts.
 
     Mother-aware: when invoked inside the TeleClaude repo itself, skeleton
     deployment is skipped — it only makes sense for downstream projects.
@@ -199,7 +251,58 @@ def init_project(project_root: Path) -> None:
     /projects-analyze`` and ``telec sessions run --command
     /projects-assess-config`` — never a side effect of this function.
     """
+    with project_adoption_lock():
+        return _init_project_locked(project_root, trigger)
+
+
+def _init_project_locked(project_root: Path, trigger: ProjectInitializationTrigger) -> ProjectInitializationResult:
+    project_root = project_root.expanduser().resolve()
+    config_path = project_root / ConfigFileName.OVERLAY
+    kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
+    if kind is ConfigKind.GLOBAL:
+        raise ValueError(_GLOBAL_TIER_REFUSAL)
+
+    if kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
+        identity = project_root.name
+        holding_root = _identity_holder(
+            identity,
+            project_root,
+            include_in_transit=trigger is not ProjectInitializationTrigger.FOLD,
+        )
+        if holding_root is not None:
+            raise ProjectIdentityConflict(_IDENTITY_CONFLICT.format(identity=identity, holding_root=holding_root))
+        registered_root = project_root
+        already_registered = not register_root(project_root=registered_root)
+        result = ProjectInitializationResult(
+            identity=identity,
+            display_name=_declared_display_name(project_root, kind, identity),
+            kind=kind,
+            already_registered=already_registered,
+        )
+        logger.info(
+            _PROJECT_INITIALIZED_EVENT,
+            project_root=str(registered_root),
+            identity=result.identity,
+            kind=result.kind.value,
+            already_registered=result.already_registered,
+            trigger=trigger.value,
+        )
+        return result
+
     require_own_checkout(project_root)
+    registered_root = (
+        resolve_project_root(project_root)
+        if config_path.is_file() and (project_root / ".git").exists()
+        else project_root
+    )
+    identity = get_project_slug(registered_root)
+    holding_root = _identity_holder(
+        identity,
+        registered_root,
+        include_in_transit=trigger is not ProjectInitializationTrigger.FOLD,
+    )
+    if holding_root is not None:
+        raise ProjectIdentityConflict(_IDENTITY_CONFLICT.format(identity=identity, holding_root=holding_root))
     is_mother = _is_teleclaude_project(project_root)
 
     ensure_git_repo(project_root)
@@ -212,7 +315,7 @@ def init_project(project_root: Path) -> None:
         capability for capability in CapabilityName if capability.value not in invocation_document
     )
     registered_root = resolve_project_root(project_root)
-    register_root(project_root=registered_root)
+    already_registered = not register_root(project_root=registered_root)
     migration_root = project_root if get_runtime_config().worktree_checkout is not None else registered_root
     require_own_checkout(migration_root)
     migrate_document(
@@ -229,10 +332,22 @@ def init_project(project_root: Path) -> None:
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
     _ensure_project_slug(project_root)
-    _ensure_trusted_directory(registered_root)
     seed_event_domains(project_root)
-
-    print("telec config project init complete.")
+    result = ProjectInitializationResult(
+        identity=get_project_slug(registered_root),
+        display_name=_declared_display_name(registered_root, ConfigKind.PROJECT, identity),
+        kind=ConfigKind.PROJECT,
+        already_registered=already_registered,
+    )
+    logger.info(
+        _PROJECT_INITIALIZED_EVENT,
+        project_root=str(registered_root),
+        identity=result.identity,
+        kind=result.kind.value,
+        already_registered=result.already_registered,
+        trigger=trigger.value,
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------

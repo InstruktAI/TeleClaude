@@ -2,12 +2,13 @@
 
 Public exports:
     ProjectNode                  — single registered project (root + slug + config)
+    ProjectCatalogEntry          — one session-placement registry entry
     ProjectCatalogService        — lazy, cached view of all registered projects
     get_project_catalog_service  — process-wide singleton factory
     reset_project_catalog_service — clear singleton (test-only helper)
 """
 
-from teleclaude.services.project_catalog.models import ProjectNode
+from teleclaude.services.project_catalog.models import ProjectCatalogEntry, ProjectNode
 from teleclaude.services.project_catalog.service import (
     ProjectCatalogService,
     get_project_catalog_service,
@@ -15,6 +16,7 @@ from teleclaude.services.project_catalog.service import (
 )
 
 __all__ = [
+    "ProjectCatalogEntry",
     "ProjectCatalogService",
     "ProjectNode",
     "get_project_catalog_service",

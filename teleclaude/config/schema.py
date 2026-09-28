@@ -17,7 +17,7 @@ from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTE
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 
 
 class ConfigKind(StrEnum):
@@ -717,6 +717,8 @@ class PersonConfig(ClosedModel):
     kind: Literal[ConfigKind.PERSON] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     schema_version: int = Field(default=CURRENT_SCHEMA_VERSION, ge=0, json_schema_extra={"tier": Tier.INTERNAL})
     slug: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    name: str | None = None
+    description: str | None = None
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     mail_accounts: list[MailAccount] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})

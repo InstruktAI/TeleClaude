@@ -624,13 +624,9 @@ class DaemonCache:
         if self._projects_digest.get(computer) == digest:
             return False
 
-        # Remove existing projects for this computer that aren't in the snapshot
-        snapshot_paths = {project.path for project in projects}
+        # Reinsert the computer's rows in snapshot order so registry reorders reach readers.
         for key in list(self._projects.keys()):
-            if not key.startswith(f"{computer}:"):
-                continue
-            path = key.split(":", 1)[1]
-            if path not in snapshot_paths:
+            if key.startswith(f"{computer}:"):
                 self._projects.pop(key, None)
 
         # Upsert snapshot projects
@@ -674,11 +670,8 @@ class DaemonCache:
         return True
 
     def _projects_fingerprint(self, projects: list[ProjectInfo]) -> str:
-        def _project_key(project: ProjectInfo) -> str:
-            return project.path
-
         parts: list[str] = []
-        for project in sorted(projects, key=_project_key):
+        for project in projects:
             parts.append(
                 "|".join(
                     [

@@ -15,7 +15,7 @@ import tempfile
 import time
 import traceback as _tb
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -78,6 +78,7 @@ from teleclaude.core.events import (
     ErrorEventContext,
     OperationFailedContext,
     OperationSucceededContext,
+    ProjectRefreshTrigger,
     SessionLifecycleContext,
     SessionStatusContext,
     SessionUpdatedContext,
@@ -125,6 +126,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         socket_path: str | None = None,
         runtime_settings: RuntimeSettings | None = None,
         reminder_service: ReminderService | None = None,
+        refresh_local_projects: Callable[[ProjectRefreshTrigger], Awaitable[None]] | None = None,
     ) -> None:
         self.client = client
         self._cache: DaemonCache | None = None  # Initialize private variable
@@ -146,7 +148,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         history_routes.configure(client=client)
         readiness_routes.configure(client=client)
         computers_routes.configure(cache=cache)
-        projects_routes.configure(cache=cache)
+        projects_routes.configure(cache=cache, refresh_local_projects=refresh_local_projects)
         tui_routes.configure(cache=cache)
         settings_routes.configure(runtime_settings=runtime_settings)
         mcp_routes.configure(runtime=self.mcp_runtimes)

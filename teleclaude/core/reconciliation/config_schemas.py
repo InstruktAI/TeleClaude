@@ -11,6 +11,7 @@ from typing import Final, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config._file_io import _LOCK_SUFFIX
 from teleclaude.config.declaration import (
     HOME_SCHEMA_DIRECTORY,
     PROJECT_SCHEMA_LINK_DIRECTORY,
@@ -30,7 +31,15 @@ _NEWLINE: Final = "\n"
 _PROJECT_SCHEMA_DIRECTORY: Final = "schemas"
 _LOCAL_EXCLUDE_DIRECTORY: Final = "info"
 _LOCAL_EXCLUDE_FILENAME: Final = "exclude"
-_LOCAL_EXCLUDE_PATTERN: Final = "/.teleclaude/schemas"
+_PROJECT_CONFIG_FILENAME: Final = "teleclaude.yml"
+_PROJECT_CONFIG_PATH: Final = Path(_PROJECT_CONFIG_FILENAME)
+_PROJECT_CONFIG_LOCK_PATH: Final = _PROJECT_CONFIG_PATH.with_suffix(
+    f"{_PROJECT_CONFIG_PATH.suffix}{_LOCK_SUFFIX}",
+)
+_LOCAL_EXCLUDE_PATTERNS: Final = (
+    "/.teleclaude/",
+    f"/{_PROJECT_CONFIG_LOCK_PATH.as_posix()}",
+)
 _MCP_SCHEMA_INVALID: Final = "MCP registry schema source must contain a JSON object."
 _PUBLICATION_EVENT: Final = "config_schema_publication"
 _PUBLICATION_CONFLICT_EVENT: Final = "config_schema_publication_conflict"
@@ -188,10 +197,12 @@ def _ensure_local_exclude(root: Path) -> None:
     common_directory = Path(repo.common_dir).resolve()
     exclude_path = common_directory / _LOCAL_EXCLUDE_DIRECTORY / _LOCAL_EXCLUDE_FILENAME
     content = exclude_path.read_text(encoding=_UTF8) if exclude_path.exists() else ""
-    if _LOCAL_EXCLUDE_PATTERN in content.splitlines():
+    existing_patterns = set(content.splitlines())
+    missing_patterns = tuple(pattern for pattern in _LOCAL_EXCLUDE_PATTERNS if pattern not in existing_patterns)
+    if not missing_patterns:
         return
     prefix = content if not content or content.endswith(_NEWLINE) else content + _NEWLINE
-    exclude_path.write_text(prefix + _LOCAL_EXCLUDE_PATTERN + _NEWLINE, encoding=_UTF8)
+    exclude_path.write_text(prefix + _NEWLINE.join(missing_patterns) + _NEWLINE, encoding=_UTF8)
 
 
 def _record_link(result: ProjectSchemaLink) -> None:

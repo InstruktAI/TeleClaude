@@ -1,8 +1,4 @@
-"""Infrastructure provisioning mixin for Discord adapter.
-
-Handles auto-provisioning of Discord channels, categories, forums, launcher
-messages, project forum mapping, team channels, and config persistence.
-"""
+"""Discord infrastructure provisioning, forum routing, launchers, and teams."""
 
 from __future__ import annotations
 
@@ -24,6 +20,7 @@ from teleclaude.config.legacy_discord import (
     legacy_discord_provider_ids,
 )
 from teleclaude.core.integration.discord_admin_state import (
+    PROJECT_FORUM_KEY_PREFIX,
     DiscordArtifactKind,
     DiscordProvider,
     DiscordReflectionRecord,
@@ -31,6 +28,7 @@ from teleclaude.core.integration.discord_admin_state import (
     DiscordScopeKind,
     session_launcher_key,
 )
+from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -56,7 +54,6 @@ _REGISTRATION_UNAVAILABLE_LOG = "Discord launcher exact-message registration is 
 _REGISTRATION_FAILED_LOG = "Failed to register persistent Discord launcher view for forum %s message %s: %s"
 _CATEGORY_SOURCE_SEGMENT = ".categories."
 _FORUM_SOURCE_SEGMENT = "discord_forum"
-_PROJECT_FORUM_KEY_PREFIX = "project_forum:"
 _DISCORD_SOURCE_PREFIX = "discord."
 _CATEGORIES_SOURCE_PREFIX = "discord.categories."
 _REFLECTED_ID_ATTRIBUTES = {
@@ -73,7 +70,7 @@ def _legacy_artifact_kind(source: str) -> DiscordArtifactKind:
     """Classify one retained config provider ID for its first durable reflection row."""
     if _CATEGORY_SOURCE_SEGMENT in source:
         return DiscordArtifactKind.CATEGORY
-    if source.startswith(_PROJECT_FORUM_KEY_PREFIX) or source.endswith(_FORUM_SOURCE_SEGMENT):
+    if source.startswith(PROJECT_FORUM_KEY_PREFIX) or source.endswith(_FORUM_SOURCE_SEGMENT):
         return DiscordArtifactKind.FORUM
     return DiscordArtifactKind.TEXT_CHANNEL
 
@@ -190,7 +187,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         never create them, so a shared Discord app cannot accrue duplicates.
 
         The per-computer category — Projects - {computer} (#unknown catch-all
-        forum plus per-project forums ordered by trusted_dirs) — is always
+        forum plus per-entry forums ordered by the project registry) — is always
         provisioned by every computer; its name is unique per machine.
 
         Idempotent: validates stored IDs before trusting them, then resolves by
@@ -200,6 +197,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         config.yml.
         """
         await self._migrate_legacy_discord_provider_ids()
+        await self._migrate_legacy_project_forum_bindings()
         existing_cats = await self._load_reflected_discord_ids()
         if self._client is None or self._guild_id is None:
             return
@@ -459,17 +457,28 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             return None, False
 
     async def _build_project_forum_map(self) -> None:
-        """Build project_path -> forum_id mapping from trusted dirs.
+        """Build registry-root -> forum_id mapping from session-placement entries.
 
         Sorted by path length descending so most-specific paths match first
         during prefix lookup (e.g. ~/Workspace/InstruktAI before ~).
         """
         records = {record.logical_key: record.provider_id for record in await db.list_discord_reflections()}
         entries: list[tuple[str, int]] = []
-        for trusted_dir in config.computer.get_all_trusted_dirs():
-            provider_id = records.get(f"project_forum:{trusted_dir.name}")
-            if trusted_dir.path and provider_id is not None:
-                entries.append((trusted_dir.path, provider_id))
+        seen_forum_ids: dict[int, tuple[str, str | None]] = {}
+        legacy_keys_by_root = self._legacy_project_forum_keys_by_root()
+        for entry in get_project_catalog_service().list_entries():
+            forum_key = self._project_forum_key(entry, legacy_keys_by_root)
+            if forum_key is None:
+                continue
+            provider_id = records.get(forum_key)
+            if provider_id is None:
+                continue
+            current_owner = seen_forum_ids.get(provider_id)
+            if current_owner is None:
+                entries.append((str(entry.root), provider_id))
+                seen_forum_ids[provider_id] = (forum_key, entry.identity)
+            elif entry.identity is None and current_owner == (forum_key, None):
+                entries.append((str(entry.root), provider_id))
         entries.sort(key=lambda e: len(e[0]), reverse=True)
         self._project_forum_map = dict(entries)
         self._forum_project_map = {forum_id: project_path for project_path, forum_id in entries}
@@ -909,11 +918,11 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         """Return a stored project forum ID only when it belongs to this computer's category."""
         if forum_id is None:
             return None
-        if await self._trusted_dir_forum_is_current(forum_id, category):
+        if await self._project_forum_is_current(forum_id, category):
             return forum_id
         return None
 
-    async def _trusted_dir_forum_is_current(self, forum_id: int, category: object) -> bool:
+    async def _project_forum_is_current(self, forum_id: int, category: object) -> bool:
         """Validate that a stored forum ID still points at this computer's project category."""
         channel = await self._get_channel(forum_id)
         return (
@@ -922,33 +931,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             and self._channel_matches_category(channel, category)
         )
 
-    async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
-        """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
-        if category is None:
-            logger.warning("Skipping project forum provisioning: Projects category is unavailable")
-            return
-
-        trusted_dirs = config.computer.get_all_trusted_dirs()
-        project_changes: list[tuple[str, int | None]] = []
-
-        for td in trusted_dirs:
-            current = await db.get_discord_reflection(f"project_forum:{td.name}")
-            stale_cleared = False
-            if current is not None:
-                if await self._trusted_dir_forum_is_current(current.provider_id, category):
-                    continue
-                stale_cleared = True
-            forum_id = await self._find_or_create_forum(guild, category, td.name, td.desc or f"Sessions for {td.name}")
-            if forum_id is not None:
-                project_changes.append((td.name, forum_id))
-            elif stale_cleared:
-                project_changes.append((td.name, None))
-
-        if project_changes:
-            await self._persist_project_forum_ids(project_changes)
-
     async def _sync_project_forum_positions(self, category: object | None) -> None:
-        """Reorder project forums within this computer's category to match trusted_dirs.
+        """Reorder project forums within this computer's category to match registry order.
 
         Touches only forums that already live in our category. Foreign-category
         forums are skipped — placement is owned exclusively by ``_ensure_project_forums``.
@@ -960,10 +944,18 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if category_id is None:
             return
 
-        trusted_dirs = config.computer.get_all_trusted_dirs()
+        entries = get_project_catalog_service().list_entries()
+        legacy_keys_by_root = self._legacy_project_forum_keys_by_root()
         position = 0
-        for td in trusted_dirs:
-            record = await db.get_discord_reflection(f"project_forum:{td.name}")
+        seen_forum_keys: set[str] = set()
+        for entry in entries:
+            forum_key = self._project_forum_key(entry, legacy_keys_by_root)
+            if forum_key is None:
+                continue
+            if forum_key in seen_forum_keys:
+                continue
+            seen_forum_keys.add(forum_key)
+            record = await db.get_discord_reflection(forum_key)
             if record is None:
                 continue
             channel = await self._get_channel(record.provider_id)
@@ -983,7 +975,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             if current_pos != position:
                 try:
                     await self._require_async_callable(edit_fn, label="forum sync")(position=position)
-                    logger.debug("Reordered forum '%s' to position %d", td.name, position)
+                    logger.debug("Reordered forum '%s' to position %d", entry.display_name, position)
                 except Exception as exc:
-                    logger.debug("Failed to reorder forum '%s': %s", td.name, exc)
+                    logger.debug("Failed to reorder forum '%s': %s", entry.display_name, exc)
             position += 1

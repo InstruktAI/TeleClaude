@@ -5,23 +5,34 @@ Handles guild resolution, channel/category/forum creation, and config persistenc
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
+from teleclaude.config import config
+from teleclaude.config.legacy_discord import (
+    clear_legacy_project_forum_bindings,
+    legacy_project_forum_bindings,
+)
 from teleclaude.core.db import db
 from teleclaude.core.integration.discord_admin_state import (
+    PROJECT_FORUM_KEY_PREFIX,
     DiscordArtifactKind,
     DiscordProvider,
     DiscordReflectionRecord,
     DiscordReflectionScope,
     DiscordScopeKind,
+    project_forum_key,
 )
+from teleclaude.services.project_catalog import get_project_catalog_service
+from teleclaude.services.project_catalog.models import ProjectCatalogEntry
 
 logger = get_logger(__name__)
 
+_PROJECT_FORUM_TOPIC = "Sessions for {name}"
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
 discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
@@ -61,6 +72,31 @@ class ProvisioningMixin:
         @staticmethod
         def _is_forum_channel(channel: object) -> bool: ...
 
+        async def _load_reflected_discord_ids(self) -> dict[str, int]: ...
+
+        async def _migrate_legacy_discord_provider_ids(self) -> None: ...
+
+        async def _ensure_category(
+            self,
+            guild: object,
+            name: str,
+            existing: dict[str, int],
+            cat_changes: dict[str, int],
+            *,
+            key: str | None = None,
+            create: bool = True,
+        ) -> object | None: ...
+
+        async def _persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None: ...
+
+        async def _project_forum_is_current(self, forum_id: int, category: object) -> bool: ...
+
+        async def _sync_project_forum_positions(self, category: object | None) -> None: ...
+
+        async def _build_project_forum_map(self) -> None: ...
+
+        _project_category_id: int | None
+
     async def resolve_guild(self) -> object | None:
         """Public wrapper for guild resolution used by infrastructure callers."""
         return await self._resolve_guild()
@@ -68,6 +104,142 @@ class ProvisioningMixin:
     async def persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None:
         """Public wrapper for reflection persistence used by infrastructure callers."""
         await self._persist_discord_channel_ids(changes)
+
+    @staticmethod
+    def _legacy_project_forum_keys_by_root() -> dict[str, str]:
+        """Return the still-valid name-based forum key for each bound folder."""
+        keys_by_root: dict[str, str] = {}
+        for binding in legacy_project_forum_bindings().entries:
+            keys_by_root.setdefault(str(binding.folder.expanduser().resolve()), binding.logical_key)
+        return keys_by_root
+
+    @staticmethod
+    def _project_forum_key(entry: ProjectCatalogEntry, legacy_keys_by_root: Mapping[str, str]) -> str | None:
+        """Use identity when adopted and the former display name while still in transit."""
+        if entry.identity is not None:
+            return project_forum_key(entry.identity)
+        return legacy_keys_by_root.get(str(entry.root)) or project_forum_key(entry.display_name)
+
+    async def _migrate_legacy_project_forum_bindings(self) -> None:
+        """Move resolved name-keyed forum records to their registry identities."""
+        bindings = legacy_project_forum_bindings().entries
+        if not bindings:
+            return
+
+        entries_by_root = {str(entry.root): entry for entry in get_project_catalog_service().list_entries()}
+        imported_keys: set[str] = set()
+        for binding in bindings:
+            entry = entries_by_root.get(str(binding.folder.expanduser().resolve()))
+            if entry is None or entry.identity is None:
+                continue
+
+            identity_key = project_forum_key(entry.identity)
+            if binding.logical_key != identity_key:
+                old_record = await db.get_discord_reflection(binding.logical_key)
+                current_record = await db.get_discord_reflection(identity_key)
+                if old_record is not None and current_record is None:
+                    await db.upsert_discord_reflection(replace(old_record, logical_key=identity_key))
+                    await db.delete_discord_reflection(binding.logical_key)
+                elif old_record is not None and current_record is not None:
+                    if old_record.provider_id != current_record.provider_id:
+                        logger.warning(
+                            "Keeping legacy Discord forum binding %s: identity key already points to another forum",
+                            binding.logical_key,
+                        )
+                        continue
+                    await db.delete_discord_reflection(binding.logical_key)
+            imported_keys.add(binding.logical_key)
+
+        if imported_keys:
+            clear_legacy_project_forum_bindings(frozenset(imported_keys))
+
+    async def _reconcile_project_forums(self) -> None:
+        """Reconcile local forum channels and routing against the current registry."""
+        if self._client is None or self._guild_id is None:
+            return
+        guild = await self._resolve_guild()
+        if guild is None:
+            logger.warning("Cannot reconcile project forums: guild %s not found", self._guild_id)
+            return
+
+        await self._migrate_legacy_discord_provider_ids()
+        await self._migrate_legacy_project_forum_bindings()
+        computer_name_slug = config.computer.name.lower().replace("-", "_").replace(" ", "_")
+        category_key = f"projects_{computer_name_slug}"
+        category_changes: dict[str, int] = {}
+        existing_categories = await self._load_reflected_discord_ids()
+        category = await self._ensure_category(
+            guild,
+            f"Projects - {config.computer.name}",
+            existing_categories,
+            category_changes,
+            key=category_key,
+        )
+        if category is None:
+            logger.warning("Cannot reconcile project forums: project category is unavailable")
+            return
+
+        self._project_category_id = self._parse_optional_int(getattr(category, "id", None))
+        if category_changes:
+            await self._persist_discord_channel_ids({"categories": category_changes})
+        await self._ensure_project_forums(guild, category)
+        await self._sync_project_forum_positions(category)
+        await self._build_project_forum_map()
+
+    async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
+        """Ensure every resolved registry identity has its own forum reflection."""
+        if category is None:
+            logger.warning("Skipping project forum provisioning: Projects category is unavailable")
+            return
+
+        entries = get_project_catalog_service().list_entries()
+        legacy_keys_by_root = self._legacy_project_forum_keys_by_root()
+        project_changes: list[tuple[str, int | None]] = []
+        current_records: dict[str, DiscordReflectionRecord] = {}
+        claimed_forum_ids: set[int] = set()
+        checked_forum_keys: set[str] = set()
+
+        for entry in entries:
+            forum_key = self._project_forum_key(entry, legacy_keys_by_root)
+            if forum_key is None:
+                continue
+            if forum_key in checked_forum_keys:
+                continue
+            checked_forum_keys.add(forum_key)
+            record = await db.get_discord_reflection(forum_key)
+            if record is None or not await self._project_forum_is_current(record.provider_id, category):
+                continue
+            if record.provider_id in claimed_forum_ids:
+                await db.delete_discord_reflection(forum_key)
+                logger.warning("Discord forum %s is already assigned to another registry identity", forum_key)
+                continue
+            current_records[forum_key] = record
+            claimed_forum_ids.add(record.provider_id)
+
+        provisioned_forum_ids: dict[str, int] = {}
+        for entry in entries:
+            forum_key = self._project_forum_key(entry, legacy_keys_by_root)
+            if forum_key is None:
+                continue
+            if current_records.get(forum_key) is not None or forum_key in provisioned_forum_ids:
+                continue
+            stale_cleared = await db.get_discord_reflection(forum_key) is not None
+            forum_id = await self._find_or_create_forum(
+                guild,
+                category,
+                entry.display_name,
+                entry.description or _PROJECT_FORUM_TOPIC.format(name=entry.display_name),
+                excluded_ids=frozenset(claimed_forum_ids),
+            )
+            if forum_id is not None:
+                claimed_forum_ids.add(forum_id)
+                provisioned_forum_ids[forum_key] = forum_id
+                project_changes.append((forum_key.removeprefix(PROJECT_FORUM_KEY_PREFIX), forum_id))
+            elif stale_cleared:
+                project_changes.append((forum_key.removeprefix(PROJECT_FORUM_KEY_PREFIX), None))
+
+        if project_changes:
+            await self._persist_project_forum_ids(project_changes)
 
     async def _resolve_guild(self) -> object | None:
         """Resolve the configured guild by ID."""
@@ -122,7 +294,14 @@ class ProvisioningMixin:
             return None
 
     async def _find_or_create_forum(
-        self, guild: object, category: object | None, name: str, topic: str, *, create: bool = True
+        self,
+        guild: object,
+        category: object | None,
+        name: str,
+        topic: str,
+        *,
+        create: bool = True,
+        excluded_ids: frozenset[int] | None = None,
     ) -> int | None:
         """Find an existing forum by name within the category, or create one under it.
 
@@ -145,6 +324,7 @@ class ProvisioningMixin:
             return None
 
         category_scoped_read = category_channels is not None
+        excluded_forum_ids = excluded_ids or frozenset()
         for ch in self._candidate_channels_for_category(guild, category):
             ch_name = getattr(ch, "name", None)
             if (
@@ -154,7 +334,7 @@ class ProvisioningMixin:
                 and (category_scoped_read or self._channel_matches_category(ch, category))
             ):
                 found_id = self._parse_optional_int(getattr(ch, "id", None))
-                if found_id is not None:
+                if found_id is not None and found_id not in excluded_forum_ids:
                     logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
                     return found_id
 
@@ -240,10 +420,10 @@ class ProvisioningMixin:
 
     async def _persist_project_forum_ids(self, project_changes: list[tuple[str, int | None]]) -> None:
         """Persist project forum observations without returning provider state to config."""
-        for project_name, forum_id in project_changes:
+        for identity, forum_id in project_changes:
             if forum_id is None:
                 continue
-            await self._upsert_reflection_id(f"project_forum:{project_name}", forum_id, DiscordArtifactKind.FORUM)
+            await self._upsert_reflection_id(project_forum_key(identity), forum_id, DiscordArtifactKind.FORUM)
 
     async def _persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None:
         """Persist newly observed shared provider identifiers through reflection state."""

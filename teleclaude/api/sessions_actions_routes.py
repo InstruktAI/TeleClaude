@@ -97,6 +97,7 @@ from teleclaude.core.session_startup_message import (
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
+from teleclaude.project_manifest import load_registered_entries
 from teleclaude.types.commands import (
     CreateSessionCommand,
     HandoffAgentCommand,
@@ -222,8 +223,8 @@ async def _resolve_revive_session_id(
                 status_code=422,
                 detail="Cannot locate the native session's project; re-run revive from that project directory",
             )
-        trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
-        project_path, subdir = split_project_path_and_subdir(recovered_project, trusted_dirs)
+        registry_roots = [str(entry.path) for entry in load_registered_entries() if entry.is_present]
+        project_path, subdir = split_project_path_and_subdir(recovered_project, registry_roots)
 
     cmd = CreateSessionCommand(
         session_id=new_session_id,

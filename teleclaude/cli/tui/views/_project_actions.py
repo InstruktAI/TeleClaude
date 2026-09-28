@@ -1,70 +1,67 @@
-"""Shared helpers for project-related view actions."""
+"""Shared daemon-backed project actions for TUI views."""
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
+from collections.abc import Awaitable
 from typing import Protocol
 
-from teleclaude.config.machine_config_mutation import add_trusted_directory
+from teleclaude.api_models import ProjectDTO
+from teleclaude.cli.api_client import APIError
+
+_PROJECT_ADD_WORKER_GROUP = "project-add"
+_PROJECT_ADD_SUCCESS_TEMPLATE = "Project '{name}' added"
+_ERROR_SEVERITY = "error"
 
 
 class NewProjectResultLike(Protocol):
-    """Duck-typed project modal result used by the view helpers."""
+    """Path returned by the new-project modal."""
 
-    name: str
     path: str
-    description: str | None
+
+
+class ProjectAPI(Protocol):
+    """Daemon operation exposed to the project views."""
+
+    async def add_project(self, path: str) -> ProjectDTO: ...
 
 
 class ProjectNotifier(Protocol):
-    """Minimal notification protocol needed by project action helpers."""
+    """Minimal application surface needed by project actions."""
 
-    def notify(self, message: str, *, severity: str = "information") -> None:
-        """Notify the user of a project action result."""
+    api: ProjectAPI
 
-    def notify_text(self, message: str, *, severity: str = "information") -> None:
-        """Notify the user with text the caller did not author, rendered as data."""
+    def notify(self, message: str, *, severity: str = "information") -> None: ...
 
+    def notify_text(self, message: str, *, severity: str = "information") -> None: ...
 
-def _normalize_project_path(raw_path: str) -> Path:
-    """Normalize user input into a stable absolute path."""
-    return Path(os.path.expandvars(raw_path)).expanduser().resolve(strict=False)
-
-
-def _ensure_project_directory(raw_path: str) -> tuple[Path, bool]:
-    """Ensure the project path exists as a directory."""
-    project_path = _normalize_project_path(raw_path)
-    if project_path.exists():
-        if not project_path.is_dir():
-            raise ValueError(f"Path exists and is not a directory: {project_path}")
-        return project_path, False
-
-    project_path.mkdir(parents=True, exist_ok=True)
-    return project_path, True
+    def run_worker(
+        self,
+        work: Awaitable[object],
+        *,
+        group: str,
+        exclusive: bool,
+    ) -> object: ...
 
 
-def _rollback_created_directory(project_path: Path | None, created_project_dir: bool) -> None:
-    """Best-effort cleanup for a freshly created empty project directory."""
-    if not created_project_dir or project_path is None:
-        return
+async def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool:
+    """Adopt the selected folder through the daemon and report its outcome."""
     try:
-        project_path.rmdir()
-    except OSError:
-        pass
-
-
-def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool:
-    """Persist a new trusted project and notify the user about the outcome."""
-    project_path: Path | None = None
-    created_project_dir = False
-    try:
-        project_path, created_project_dir = _ensure_project_directory(result.path)
-        add_trusted_directory(result.name, str(project_path), result.description or "")
+        project = await app.api.add_project(result.path)
+    except APIError as exc:
+        app.notify_text(exc.detail, severity=_ERROR_SEVERITY)
+        return False
     except Exception as exc:
-        _rollback_created_directory(project_path, created_project_dir)
-        app.notify_text(f"Failed to save project: {str(exc)[:80]}", severity="error")
+        app.notify_text(str(exc), severity=_ERROR_SEVERITY)
         return False
 
-    app.notify_text(f"Project '{result.name}' added")
+    app.notify(_PROJECT_ADD_SUCCESS_TEMPLATE.format(name=project.name))
     return True
+
+
+def start_new_project_save(app: ProjectNotifier, result: NewProjectResultLike) -> None:
+    """Schedule adoption without blocking the Textual event loop."""
+    app.run_worker(
+        save_new_project(app, result),
+        group=_PROJECT_ADD_WORKER_GROUP,
+        exclusive=True,
+    )

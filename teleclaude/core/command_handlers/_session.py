@@ -54,6 +54,7 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.project_root import is_project_checkout
+from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 from teleclaude.types.creation_record import Lineage
@@ -592,31 +593,23 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
 
 
 async def list_projects() -> list[ProjectInfo]:
-    """List trusted project directories.
+    """List every present session-placement entry in registry order.
 
     Ephemeral request/response - no DB session required.
 
     Returns:
         List of project info objects.
     """
-    # Get all trusted dirs (includes default_working_dir merged in)
-    all_trusted_dirs = config.computer.get_all_trusted_dirs()
-
-    # Build structured response with name, desc, path
-    # Filter to only existing directories
-    dirs_data = []
-    for trusted_dir in all_trusted_dirs:
-        expanded_path = os.path.expanduser(os.path.expandvars(trusted_dir.path))
-        if Path(expanded_path).exists():
-            dirs_data.append(
-                ProjectInfo(
-                    name=trusted_dir.name,
-                    description=trusted_dir.desc,
-                    path=expanded_path,
-                )
-            )
-
-    return dirs_data
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    return [
+        ProjectInfo(
+            name=entry.display_name,
+            description=entry.description,
+            path=str(entry.root),
+        )
+        for entry in catalog.list_entries()
+    ]
 
 
 async def list_projects_with_todos() -> list[ProjectInfo]:

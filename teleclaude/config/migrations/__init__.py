@@ -19,6 +19,7 @@ from teleclaude.config.migrations._runner import (
 )
 from teleclaude.config.migrations.v003_relocate_person_invite_token import DestinationConflict
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
+from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
 
 __all__ = [
     "CURRENT_VERSION",
@@ -29,6 +30,7 @@ __all__ = [
     "MigrationFailureReason",
     "MigrationOutcome",
     "MigrationTrigger",
+    "RegistryConflict",
     "RegistrySubjectRequired",
     "carry_pending",
     "in_transit",

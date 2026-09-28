@@ -21,7 +21,6 @@ _TELEGRAM_QOS_INPUT = ClosedMapping(
         "rounding_ms": SCALAR,
     }
 )
-_TRUSTED_DIRECTORY_INPUT = ClosedMapping({"name": SCALAR, "desc": SCALAR, "path": SCALAR})
 _TTS_VOICE_INPUT = ClosedMapping({"name": SCALAR, "voice_id": SCALAR, "params": OPEN})
 _TTS_SERVICE_INPUT = ClosedMapping(
     {
@@ -84,7 +83,6 @@ MACHINE_CONFIG_INPUT = ClosedMapping(
                 "default_working_dir": SCALAR,
                 "help_desk_dir": SCALAR,
                 "is_master": SCALAR,
-                "trusted_dirs": InputList(_TRUSTED_DIRECTORY_INPUT),
                 "host": SCALAR,
                 "is_ingress_node": SCALAR,
             }
