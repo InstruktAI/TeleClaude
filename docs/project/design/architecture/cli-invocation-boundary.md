@@ -21,14 +21,9 @@ design owns only the path that connects them.
 **Inputs**
 
 - The wrapper that was invoked: the global `telec`, or a checkout's own `bin/telec`.
-<!-- planned-change:worktree-code-uses-its-home -->
-- The home the process runs against (`TELECLAUDE_HOME`, fixed before the interpreter
-  starts; the default is the live home).
-<!-- change:worktree-code-uses-its-home -->
 - The home the process runs against: for code loaded from a slug worktree,
   that worktree's home; otherwise `TELECLAUDE_HOME`, read once when the
   process starts, defaulting to the live home.
-<!-- /planned-change:worktree-code-uses-its-home -->
 - The command line.
 - The caller's identity evidence: the session identity marker and the session row it
   names, or the terminal login outside a session; and the people roster that maps a
@@ -55,20 +50,6 @@ design owns only the path that connects them.
    canonical checkout from any working directory. A checkout's own `bin/telec` runs
    that checkout. The caller's working directory never selects code; handlers still
    receive it as the directory the command acts on.
-<!-- planned-change:worktree-code-uses-its-home -->
-2. **Worktree code never runs against the live home.** A slug worktree's `bin/telec`
-   runs the worktree's code against a home other than the live one. When the caller
-   names no home, or names the live home, the wrapper creates a temporary home, runs
-   against it, and removes it when the command ends, all within that one process, so a
-   caller needs no home of its own for isolation. A caller-named home other than the
-   live one is honored; agents never name one (`project/policy/test-moratorium`).
-   An unset or empty home is the live home. Any other named home is compared with the
-   live home by filesystem identity, so no spelling, symlink, `..` or letter case
-   reaches it, and the interpreter receives exactly the location that was checked. A
-   home that holds no machine configuration receives a copy of the live one before the
-   worktree's code starts; nothing else is copied. The integration worktree is not a
-   slug worktree.
-<!-- change:worktree-code-uses-its-home -->
 2. **Worktree code never runs against the live home.** Code loaded from a
    slug worktree runs against the worktree's home — a clone of the home
    repository the platform provisions with the worktree
@@ -76,18 +57,6 @@ design owns only the path that connects them.
    `TELECLAUDE_HOME` says, and refuses at startup, naming that home, when it
    is missing. The worktree's `bin/telec` creates no home. The integration
    worktree is not a slug worktree.
-<!-- /planned-change:worktree-code-uses-its-home -->
-<!-- planned-change:worktree-code-uses-its-home -->
-3. **`telec code` grades a change with the change's own code.** Lint lanes, guardrail
-   allowlists, schemas and the rendered command surface that judge a worktree's change
-   come from that worktree, while `telec code` itself runs installed code. The
-   worktree's grading code runs against a fresh scratch home seeded the same way and
-   discarded when grading ends, never against the live home. It runs exactly the checks
-   the acting invocation context selects (`project/design/code-commit`), no more and no
-   fewer. A worktree that cannot run the selected checks in its own code is refused,
-   never graded by installed rules instead. Bookkeeping commands run installed code and
-   read and write the live home as usual.
-<!-- change:worktree-code-uses-its-home -->
 3. **`telec code` grades a change with the change's own code.** Lint lanes, guardrail
    allowlists, schemas and the rendered command surface that judge a worktree's change
    come from that worktree, while `telec code` itself runs installed code. A slug
@@ -99,7 +68,6 @@ design owns only the path that connects them.
    A worktree that cannot run the selected checks in its own code is refused,
    never graded by installed rules instead. Bookkeeping commands run installed
    code and read and write the live home as usual.
-<!-- /planned-change:worktree-code-uses-its-home -->
 4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
    command surface to identify the command and passes the caller through one gate.
    Nothing else runs, loads, or validates first.
@@ -155,16 +123,9 @@ flowchart TD
     Which -->|checkout bin/telec| Own[that checkout]
     Own --> Slug{slug worktree?}
     Slug -->|no| Interp
-<!-- planned-change:worktree-code-uses-its-home -->
-    Slug -->|yes| Home{home is the live home?}
-    Home -->|yes| Temp[temporary home the wrapper creates and removes]
-    Temp --> Interp
-    Home -->|no| Interp
-<!-- change:worktree-code-uses-its-home -->
     Slug -->|yes| WHome{worktree home exists?}
     WHome -->|yes| Interp
     WHome -->|no| Refuse[refused at startup, naming the missing home]
-<!-- /planned-change:worktree-code-uses-its-home -->
     Installed --> Interp[interpreter]
     Interp --> Surface[read command surface]
     Surface --> Gate[auth gate: marker, session row, roster]
@@ -186,15 +147,6 @@ flowchart TD
 An agent in a slug worktree runs its bookkeeping with the global `telec` exactly as
 anywhere else. To drive its own change by hand — a help path, a probe of a command it
 changed — it calls the worktree's `bin/telec` and nothing more. That process runs the
-<!-- planned-change:worktree-code-uses-its-home -->
-worktree's code against a temporary home the wrapper creates and removes:
-configuration, database and state rooted in the home follow it. The temporary home
-starts with a copy of the live machine configuration and nothing else; a probe that
-needs more state than that is verified after delivery. State rooted in the project — a checkout's todo store — and the
-daemon do not move with the home. A command that writes project state or acts through
-the daemon reaches the live one, whose code is delivered code; that behavior is
-verified after delivery (`project/policy/test-moratorium`).
-<!-- change:worktree-code-uses-its-home -->
 worktree's code against the worktree's home, a Git clone of the home repository
 the platform provisions with the worktree
 (`project/spec/feature/agent_runtime/isolated-home`): configuration, database
@@ -205,7 +157,6 @@ project — a checkout's todo store — and the daemon do not move with the home
 A command that writes project state or acts through the daemon reaches the live
 one, whose code is delivered code; that behavior is verified after delivery
 (`project/policy/test-moratorium`).
-<!-- /planned-change:worktree-code-uses-its-home -->
 
 ## Failure modes
 
@@ -214,24 +165,15 @@ one, whose code is delivered code; that behavior is verified after delivery
 | Machine configuration is invalid                          | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
 | People roster cannot be read                              | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
 | Session marker names no admissible row                    | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
-<!-- planned-change:worktree-code-uses-its-home -->
-| Worktree `bin/telec` called with no home or the live home | Runs against a temporary home the wrapper creates and removes in that process; live home untouched.                                  |
-| Named home holds no machine configuration                 | A copy of the live one is placed there before worktree code runs; the live home is only read.                                        |
-<!-- change:worktree-code-uses-its-home -->
 | Worktree code started | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched. |
 | The worktree's home is missing | Refused at startup, naming the home; nothing is created. |
-<!-- /planned-change:worktree-code-uses-its-home -->
 | Daemon unreachable                                        | Only commands that act through the daemon fail; everything else runs.                                                                |
 | A change imports a new module on the pre-dispatch path    | The guardrail rejects it before it lands.                                                                                            |
 
 ## See Also
 
 - docs/project/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to.md — why the wrapper's location, not the caller's directory, selects the code.
-<!-- planned-change:worktree-code-uses-its-home -->
-- docs/project/spec/feature/agent_runtime/checkout-code-selection.md — the agent-facing use cases for code selection, the wrapper-owned temporary home, and self-grading.
-<!-- change:worktree-code-uses-its-home -->
 - docs/project/spec/feature/agent_runtime/checkout-code-selection.md — the agent-facing use cases for code selection, the worktree's home, and self-grading.
-<!-- /planned-change:worktree-code-uses-its-home -->
 - docs/project/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why the caller is authorized in the CLI process.
 - ~/.teleclaude/docs/general/principle/trust-and-guardrails.md — why a write to shared state that others have read cannot be repaired by restoring it, and why a refusal names its door.
 - docs/project/policy/test-moratorium.md — how changes are verified without tests, and why daemon behavior is verified after delivery.
