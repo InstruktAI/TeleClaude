@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:unify-config-models-on-pydantic -->
 The runtime configuration surface (`config.yml`) is the single per-machine
 file that tells the runtime and the CLI surface who the computer is, which
 agents are installed, where Redis is, which Discord/Telegram credentials
@@ -25,6 +26,23 @@ dynamic named mappings, lists, and explicitly open parameter bags remain
 valid. This is the machine-level inventory layer; it is distinct from the
 `teleclaude.yml` layered-overlay system that resolves per-workspace
 global/project/person settings.
+<!-- change:unify-config-models-on-pydantic -->
+The runtime configuration surface (`config.yml`) is the single per-machine
+file that tells the runtime and the CLI surface who the computer is, which
+agents are installed, where Redis is, which Discord/Telegram credentials
+apply, and which remote computers are reachable. The config bounded context
+loads this file once at process start, expands `${ENV_VAR}` references using
+the shell environment (after `.env` is sourced), optionally merges a sibling
+`experiments.yml` for feature-flag entries, merges the result over the built-in
+defaults, and validates it through the closed Pydantic models of the typed
+runtime configuration aggregate it exposes to consumers. Undeclared keys fail
+with dotted paths; section-declared aliases, dynamic named mappings, lists, and
+explicitly open parameter bags remain valid. A rejected machine configuration
+fails in the same validation-error form as the file-backed `teleclaude.yml`
+overlays. This is the machine-level inventory layer; it is distinct from the
+`teleclaude.yml` layered-overlay system that resolves per-workspace
+global/project/person settings.
+<!-- /planned-change:unify-config-models-on-pydantic -->
 
 A machine configuration may declare `kind: computer`. The declaration is an
 address, not a setting: the loader accepts it, removes it before typed
@@ -195,6 +213,19 @@ Then the next behavior governed by that setting uses the changed value
 And the daemon process remains running without a restart
 ```
 
+<!-- planned:unify-config-models-on-pydantic -->
+#### UC-CFG-LOAD-17: A rejected machine configuration shows what to fix without exposing secrets
+
+```gherkin
+Given an operator-authored machine configuration holds values its sections reject
+When an operator or agent loads or validates the machine configuration
+Then the failure names the configuration file and the dotted path of every rejected value
+And it reads in the same validation-error form as a rejected teleclaude.yml overlay
+And a rejected value of a field the schema declares sensitive is masked
+And the value held by an undeclared key is masked
+And every other rejected value is shown as written
+```
+<!-- /planned:unify-config-models-on-pydantic -->
 
 ### Cross-context references
 
@@ -248,11 +279,20 @@ And the daemon process remains running without a restart
   request; the process supervisor relaunches the runtime, which reads the
   fresh config at startup. The supervisor's file-watch entry is gone; the
   in-process watcher owns the decision.
+<!-- planned-change:unify-config-models-on-pydantic -->
 - **Accepted keys are parser-owned.** The machine loader rejects undeclared
   keys before default merge. Each parser declares its accepted aliases,
   dynamic named mappings, list-entry shapes, and intentionally open parameter
   bags; runtime aggregate fields, defaults, templates, and existing fleet files
   do not expand the accepted input vocabulary.
+<!-- change:unify-config-models-on-pydantic -->
+- **Accepted keys are section-owned.** The closed section models reject
+  undeclared keys, including a key whose value is an unresolved environment
+  reference. Each section declares its accepted aliases, dynamic named
+  mappings, list-entry shapes, and intentionally open parameter bags; runtime
+  aggregate fields the platform derives, defaults, templates, and existing
+  fleet files do not expand the accepted input vocabulary.
+<!-- /planned-change:unify-config-models-on-pydantic -->
 
 - **`experiments.yml` is positional, not declared.** The side-file is read
   from the same directory as the resolved `config.yml`. Neither file has an
