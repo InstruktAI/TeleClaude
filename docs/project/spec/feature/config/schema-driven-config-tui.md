@@ -171,11 +171,7 @@ And no separate advanced section is introduced to hold it
 #### UC-CFG-TUI-SCHEMA-10: Nested structures render recursively to their leaves
 
 ```
-<!-- planned-change:unify-config-models-on-pydantic -->
-Given a configuration field holds a nested structure — a nested model, a dataclass, or a dict whose values are models or dataclasses
-<!-- change:unify-config-models-on-pydantic -->
 Given a configuration field holds a nested structure — a nested model, or a dict whose values are models
-<!-- /planned-change:unify-config-models-on-pydantic -->
 When the config TUI renders the owning section
 Then each leaf of the nested structure renders as its own editable field keyed by its full dotted path
 And no nested structure renders as a serialized dict or JSON blob
@@ -329,15 +325,9 @@ blacklist is retired as the authority.
 - Current implementation has reflection helpers, but not a full schema-driven
   config tree. The rework should reuse the useful renderer pieces where they
   fit, while replacing TUI-local config models and path maps as authority.
-<!-- planned-change:unify-config-models-on-pydantic -->
-- Some runtime config is still dataclass-backed rather than Pydantic-backed.
-  The renderer may support both dataclasses and Pydantic models, but the source
-  of truth remains the canonical runtime aggregate, not a TUI-only projection.
-<!-- change:unify-config-models-on-pydantic -->
 - Every configuration model the renderer walks is a closed Pydantic model, and
   the source of truth remains the canonical runtime aggregate, not a TUI-only
   projection.
-<!-- /planned-change:unify-config-models-on-pydantic -->
 - Overlay models reject undeclared keys at their file-backed load boundary. The
   TUI edits only schema-declared fields and never preserves arbitrary unknown
   subtrees.

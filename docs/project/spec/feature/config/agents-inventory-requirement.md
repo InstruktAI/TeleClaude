@@ -11,20 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:unify-config-models-on-pydantic -->
-`config.yml` MUST declare an `agents` section describing which AI agents the
-machine knows how to launch. v1 enforces a tight contract: the section is
-required, every agent key must be one the runtime recognises (`claude`,
-`gemini`, `codex`, `deepseek` — the platform's known agent keys), there
-must be a `default` entry naming one of those known agents, the default must
-be enabled, and at least one agent in total must be enabled. Binary paths and
-`tmux_binary` are runtime policy — the user cannot configure them. Undeclared
-runtime-policy fields are rejected by the machine config's parser-owned input
-shape rather than by a bespoke disallow list. The resulting agent registry
-holds a typed entry for each known agent key, populated from the protocol
-definitions and then overlaid with the operator's YAML for exactly those
-settings the `AgentConfig` field tiers declare as an operator surface.
-<!-- change:unify-config-models-on-pydantic -->
 `config.yml` MUST declare an `agents` section describing which AI agents the
 machine knows how to launch. v1 enforces a tight contract: the section is
 required, every agent key must be one the runtime recognises (`claude`,
@@ -37,7 +23,6 @@ models rather than by a bespoke disallow list. The resulting agent registry
 holds a typed entry for each known agent key, populated from the protocol
 definitions and then overlaid with the operator's YAML for exactly those
 settings the `AgentConfig` field tiers declare as an operator surface.
-<!-- /planned-change:unify-config-models-on-pydantic -->
 
 Those tier markers are the single authority for that surface: a leaf marked
 `public` or `tui` is operator-editable, every other leaf is runtime policy, and

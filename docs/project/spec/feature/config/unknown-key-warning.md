@@ -14,15 +14,6 @@ visibility: public
 Every file-backed configuration surface rejects undeclared keys at the boundary
 that owns its schema. User-facing `teleclaude.yml` overlays are validated by
 closed Pydantic models, so an unknown key prevents that overlay from loading.
-<!-- planned-change:unify-config-models-on-pydantic -->
-The machine `config.yml` is validated against the accepted input shape declared
-by each section parser before the runtime aggregate is built.
-
-The machine-config contract is parser-shaped rather than dataclass-field-shaped.
-A parser may intentionally accept aliases, compact mappings, or other input keys
-that do not mirror the resulting runtime object. Those declared inputs remain
-valid; only keys outside the parser's accepted vocabulary are rejected.
-<!-- change:unify-config-models-on-pydantic -->
 The machine `config.yml` is validated by the closed Pydantic models of the
 typed runtime configuration aggregate, so the accepted vocabulary of every
 configuration file is declared by its closed models.
@@ -32,7 +23,6 @@ mirror its runtime object — an alias folded into another field, a mapping form
 of a list, a key it accepts and supplies itself. It does not accept a runtime
 field the platform derives. Only keys outside a section's declared vocabulary
 are rejected.
-<!-- /planned-change:unify-config-models-on-pydantic -->
 
 Rejection is immediate and actionable. The validation failure identifies the
 configuration file and the dotted path of every offending key so an operator can
@@ -108,17 +98,6 @@ Then validation fails before the runtime configuration becomes available
 And the failure identifies the configuration file and dotted offending key path
 ```
 
-<!-- planned-change:unify-config-models-on-pydantic -->
-#### UC-CFG-UNKNOWN-7: Parser-declared machine-config inputs remain valid
-
-```gherkin
-Given an operator-authored config.yml uses an input key explicitly accepted by its owning section parser
-And that key does not mirror a field name on the resulting runtime object
-When the machine configuration is loaded
-Then the input is accepted
-And the parser maps it into the typed runtime configuration aggregate
-```
-<!-- change:unify-config-models-on-pydantic -->
 #### UC-CFG-UNKNOWN-7: Section-declared machine-config inputs remain valid
 
 ```gherkin
@@ -128,7 +107,6 @@ When the machine configuration is loaded
 Then the input is accepted
 And it is mapped into the typed runtime configuration aggregate
 ```
-<!-- /planned-change:unify-config-models-on-pydantic -->
 
 #### UC-CFG-UNKNOWN-8: Recognized stored configuration migrates before consumption
 
@@ -156,24 +134,14 @@ And the operator reads that guidance rather than the generic undeclared-key fail
   validation failure for every configuration surface.
 - Runtime and adapter consumers receive only configuration that has passed its
   owning load boundary; they do not implement secondary unknown-key handling.
-<!-- planned-change:unify-config-models-on-pydantic -->
-- Parser-declared machine-config input shapes are part of the machine-load
-  contract in `project/spec/feature/config/machine-config-load`.
-<!-- change:unify-config-models-on-pydantic -->
 - Section-declared machine-config inputs are part of the machine-load contract
   in `project/spec/feature/config/machine-config-load`.
-<!-- /planned-change:unify-config-models-on-pydantic -->
 
 ## Allowed values
 
 - Overlay keys declared by the owning Pydantic schema are accepted.
-<!-- planned-change:unify-config-models-on-pydantic -->
-- Machine-config keys declared by the owning section parser are accepted,
-  including deliberate aliases and dynamic mapping members.
-<!-- change:unify-config-models-on-pydantic -->
 - Machine-config keys declared by the owning section model are accepted,
   including deliberate aliases and dynamic mapping members.
-<!-- /planned-change:unify-config-models-on-pydantic -->
 - Any other key is rejected; there is no warn-and-continue or silent-drop path.
 
 ## Known caveats
@@ -181,15 +149,9 @@ And the operator reads that guidance rather than the generic undeclared-key fail
 - Configuration migration and strict validation apply to each installation's
   own files. Loading on one installation does not depend on the version,
   reachability, or migration state of another installation.
-<!-- planned-change:unify-config-models-on-pydantic -->
-- Dynamic mappings remain open only where their parser explicitly declares that
-  input shape. An open mapping is not a general escape from unknown-key
-  validation.
-<!-- change:unify-config-models-on-pydantic -->
 - Dynamic mappings remain open only where their section model explicitly
   declares that input shape. An open mapping is not a general escape from
   unknown-key validation.
-<!-- /planned-change:unify-config-models-on-pydantic -->
 - A key whose value is an unresolved environment reference is still subject to
   the section vocabulary: an undeclared key is rejected whether or not its
   reference resolves.
