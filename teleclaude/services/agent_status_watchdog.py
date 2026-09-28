@@ -4,22 +4,27 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core import tmux_bridge
-from teleclaude.core.agent_status import apply_inferred_stall, evaluate_watchdogs
+from teleclaude.core.agent_status import (
+    INFERRED_STALL_RULES,
+    AgentStatusIntegrityError,
+    InferredStallVerdict,
+    transition_agent_status,
+)
 from teleclaude.core.db import db
-from teleclaude.core.db._agent_status import TURN_NOTIFICATION_SEPARATOR, TurnNotificationRecord
 from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.session_listeners import (
     InferredStallEvidence,
     NotificationKind,
     build_inferred_stall_evidence,
 )
-from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
+from teleclaude.core.session_status import AgentStatusReason, TurnNotificationRecord
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -29,6 +34,16 @@ logger = get_logger(__name__)
 AGENT_STATUS_WATCHDOG_INTERVAL_S = 10.0
 AGENT_STATUS_PANE_CAPTURE_LINES = 40
 _AGENT_STATUS_WATCHDOG_TASK_NAME = "agent-status-watchdog"
+_CATCH_UP_ROW_LABEL = "catch_up_notification"
+_WATCHDOG_ROW_FAILED_EVENT = "agent_status_watchdog_row_failed"
+_WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT = "agent_status_watchdog_notification_not_delivered"
+
+
+class WatchdogScanPhase(StrEnum):
+    """One isolated phase of an agent-status watchdog scan."""
+
+    CATCH_UP = "catch_up"
+    VERDICT = "verdict"
 
 
 class AgentStatusNotifier(Protocol):
@@ -63,64 +78,89 @@ async def _capture_pane_tail(session: Session) -> str | None:
     return pane_tail or None
 
 
+async def _notify_inferred_stall(
+    coordinator: AgentStatusNotifier,
+    session: Session,
+    reason: AgentStatusReason,
+    pane_tail: str | None,
+) -> None:
+    evidence = build_inferred_stall_evidence(reason, pane_tail)
+    delivered = await coordinator._notify_session_distress(
+        session.session_id,
+        NotificationKind.TURN_FAILED,
+        source_computer=config.computer.name,
+        inferred_stall_evidence=evidence,
+    )
+    if not delivered:
+        logger.warning(
+            _WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT,
+            session_id=session.session_id,
+            reason=reason.value,
+        )
+
+
+async def _deliver_unclaimed_stall_notifications(coordinator: AgentStatusNotifier) -> None:
+    for session_id in await db.list_inferred_stall_ids():
+        try:
+            session = await db.get_session(session_id)
+            if session is None:
+                raise AgentStatusIntegrityError(session_id, _CATCH_UP_ROW_LABEL, 0)
+            reason = session.agent_status_reason
+            if reason not in {rule.reason for rule in INFERRED_STALL_RULES}:
+                continue
+            if reason is None:
+                continue
+            if TurnNotificationRecord.INFERRED_STALL in session.turn_notifications_sent:
+                continue
+            pane_tail = await _capture_pane_tail(session) if reason is AgentStatusReason.NO_START else None
+            await _notify_inferred_stall(coordinator, session, reason, pane_tail)
+        except Exception as exc:
+            logger.exception(
+                _WATCHDOG_ROW_FAILED_EVENT,
+                session_id=session_id,
+                phase=WatchdogScanPhase.CATCH_UP.value,
+                reason=str(exc),
+            )
+
+
+async def _apply_inferred_stall_verdicts(coordinator: AgentStatusNotifier, *, at: datetime) -> int:
+    applied_count = 0
+    for rule in INFERRED_STALL_RULES:
+        for session_id in await db.list_inferred_stall_candidates(rule, at=at):
+            try:
+                transition = await transition_agent_status(
+                    db,
+                    session_id,
+                    InferredStallVerdict(rule),
+                    at=at,
+                )
+                if transition is None:
+                    continue
+                applied_count += 1
+                session = await db.get_session(session_id)
+                if session is None:
+                    raise AgentStatusIntegrityError(session_id, rule.reason.value, 0)
+                pane_tail = await _capture_pane_tail(session) if rule.reason is AgentStatusReason.NO_START else None
+                await _notify_inferred_stall(coordinator, session, rule.reason, pane_tail)
+            except Exception as exc:
+                logger.exception(
+                    _WATCHDOG_ROW_FAILED_EVENT,
+                    session_id=session_id,
+                    phase=WatchdogScanPhase.VERDICT.value,
+                    reason=str(exc),
+                )
+    return applied_count
+
+
 async def scan_agent_status_once(
     coordinator: AgentStatusNotifier,
     *,
     now: datetime | None = None,
 ) -> int:
-    """Apply current watchdog verdicts and notify the audience with observed evidence."""
+    """Catch up old notifications, then apply current stall verdicts per row."""
     observed_at = now or datetime.now(UTC)
-    sessions = await db.list_sessions(all_open=True)
-    transitions = 0
-    for session in sessions:
-        reason = evaluate_watchdogs(session, observed_at)
-        pane_tail: str | None = None
-        if reason is not None:
-            pane_tail = await _capture_pane_tail(session) if reason is AgentStatusReason.NO_START else None
-            transition = await apply_inferred_stall(db, session.session_id, reason, at=observed_at)
-            if transition is not None:
-                transitions += 1
-            else:
-                reason = None
-
-        if reason is None and session.agent_status is AgentStatusValue.STALLED:
-            if session.agent_status_reason not in {AgentStatusReason.NO_SIGNAL, AgentStatusReason.NO_START}:
-                continue
-            recorded = {
-                TurnNotificationRecord(value)
-                for value in session.turn_notifications_sent.split(TURN_NOTIFICATION_SEPARATOR)
-                if value
-            }
-            if TurnNotificationRecord.INFERRED_STALL in recorded:
-                continue
-            reason = session.agent_status_reason
-            pane_tail = await _capture_pane_tail(session) if reason is AgentStatusReason.NO_START else None
-        elif reason is None:
-            continue
-
-        if reason is None:
-            continue
-        evidence = build_inferred_stall_evidence(reason, pane_tail)
-        try:
-            delivered = await coordinator._notify_session_distress(
-                session.session_id,
-                NotificationKind.TURN_FAILED,
-                source_computer=config.computer.name,
-                inferred_stall_evidence=evidence,
-            )
-            if not delivered:
-                logger.warning(
-                    "agent_status_watchdog_notification_not_delivered",
-                    session_id=session.session_id,
-                    reason=reason.value,
-                )
-        except Exception:
-            logger.exception(
-                "agent_status_watchdog_notification_failed",
-                session_id=session.session_id,
-                reason=reason.value,
-            )
-    return transitions
+    await _deliver_unclaimed_stall_notifications(coordinator)
+    return await _apply_inferred_stall_verdicts(coordinator, at=observed_at)
 
 
 async def run_agent_status_watchdog(

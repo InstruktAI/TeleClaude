@@ -12,7 +12,6 @@ from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
-from teleclaude.core.db._agent_status import TurnNotificationRecord
 from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.models import MessageMetadata, Session, SessionOriginMetadata
 from teleclaude.core.session_listeners import (
@@ -28,6 +27,7 @@ from teleclaude.core.session_listeners import (
 )
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
+from teleclaude.core.session_status import TurnNotificationRecord
 from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils.transcript import extract_stop_agent_message

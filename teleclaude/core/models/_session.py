@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.core.injected_text import TranscriptEntryKind
-from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, TurnNotificationRecord
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
 from ._types import JsonDict, SessionOriginMetadata, to_json_dict, to_json_value
@@ -232,7 +232,9 @@ class SessionField(Enum):
     AGENT_STATUS = "agent_status"
     AGENT_STATUS_REASON = "agent_status_reason"
     AGENT_STATUS_SINCE = "agent_status_since"
+    AGENT_STATUS_VERSION = "agent_status_version"
     OPEN_TOOL_CALLS = "open_tool_calls"
+    TURN_NOTIFICATIONS_SENT = "turn_notifications_sent"
     LIFECYCLE_TRANSITIONED_AT = "lifecycle_transitioned_at"
     TURN_ANCHOR_SHA = "turn_anchor_sha"
 
@@ -268,7 +270,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     initiator_computer: str | None = None
     detached: bool = False
     output_message_id: str | None = None
-    turn_notifications_sent: str = ""
+    turn_notifications_sent: frozenset[TurnNotificationRecord] = field(default_factory=frozenset)
     native_session_id: str | None = None
     native_log_file: str | None = None
     active_agent: str | None = None
@@ -284,7 +286,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     agent_status: AgentStatusValue = AgentStatusValue.UNKNOWN
     agent_status_reason: AgentStatusReason | None = None
     agent_status_since: datetime | None = None
-    open_tool_calls: set[str] = field(default_factory=set)
+    agent_status_version: int = 0
+    open_tool_calls: frozenset[str] = field(default_factory=frozenset)
     lifecycle_transitioned_at: datetime | None = None
     lifecycle_transition_reason: str | None = None
     last_memory_extraction_at: datetime | None = None
@@ -320,6 +323,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             self.agent_status_reason.value if self.agent_status_reason else None
         )
         data[SessionField.OPEN_TOOL_CALLS.value] = to_json_value(sorted(self.open_tool_calls))
+        data[SessionField.TURN_NOTIFICATIONS_SENT.value] = to_json_value(
+            sorted(record.value for record in self.turn_notifications_sent)
+        )
         if self.lifecycle_transitioned_at:
             data["lifecycle_transitioned_at"] = self.lifecycle_transitioned_at.isoformat()
         if self.last_message_sent_at:
@@ -443,7 +449,11 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             value = data.get(key)
             return str(value) if value is not None else None
 
-        turn_notifications_sent = _get_optional_str("turn_notifications_sent") or ""
+        turn_notifications_raw = data.get(SessionField.TURN_NOTIFICATIONS_SENT.value, [])
+        turn_notifications_sent = frozenset(
+            TurnNotificationRecord(record) for record in cast(list[str], turn_notifications_raw)
+        )
+        raw_agent_status_version = data.get(SessionField.AGENT_STATUS_VERSION.value)
 
         return cls(
             session_id=_get_optional_str("session_id") or "",
@@ -514,7 +524,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             agent_status_since=parse_iso_datetime(data[SessionField.AGENT_STATUS_SINCE.value])
             if isinstance(data.get(SessionField.AGENT_STATUS_SINCE.value), str)
             else None,
-            open_tool_calls=set(cast(list[str], data.get(SessionField.OPEN_TOOL_CALLS.value, []))),
+            agent_status_version=raw_agent_status_version if isinstance(raw_agent_status_version, int) else 0,
+            open_tool_calls=frozenset(cast(list[str], data.get(SessionField.OPEN_TOOL_CALLS.value, []))),
             lifecycle_transitioned_at=parse_iso_datetime(data["lifecycle_transitioned_at"])
             if isinstance(data.get("lifecycle_transitioned_at"), str)
             else None,

@@ -13,8 +13,9 @@ from teleclaude.config import config
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agent_status import (
+    AgentEventCause,
     AgentStatusTransition,
-    apply_agent_event,
+    transition_agent_status,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
@@ -278,14 +279,16 @@ class AgentCoordinator(
     ) -> AgentStatusTransition | None:
         """Apply one normalized event using the receiver's observation time."""
         received_at = parse_iso_datetime(payload.raw.get(_RECEIVED_AT_FIELD)) or datetime.now(UTC)
-        return await apply_agent_event(
+        return await transition_agent_status(
             db,
             context.session_id,
-            context.event_type,
-            received_at=received_at,
-            tool_call_id=tool_call_id,
-            tool_batch_resolved=tool_batch_resolved,
-            blocked_reason=blocked_reason,
+            AgentEventCause(
+                event=context.event_type,
+                tool_call_id=tool_call_id,
+                tool_batch_resolved=tool_batch_resolved,
+                blocked_reason=blocked_reason,
+            ),
+            at=received_at,
         )
 
     def _emit_accepted_status_event(self, session_id: str) -> bool:

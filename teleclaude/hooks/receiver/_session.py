@@ -515,16 +515,20 @@ def prune_session_map() -> int:
             if not data:
                 return 0
 
-            sqlmodel_module = _get_sqlmodel_module()
             kept: dict[str, str] = {}
-            with sqlmodel_module.Session(_create_sync_engine()) as session:
-                for key, session_id in data.items():
-                    agent, separator, native_session_id = key.partition(":")
-                    if not separator or not agent or not native_session_id:
-                        continue
-                    row = session.get(db_models.Session, session_id)
-                    if _session_map_row_matches(row, agent=agent, native_session_id=native_session_id):
-                        kept[key] = session_id
+            for key, session_id in data.items():
+                agent, separator, native_session_id = key.partition(":")
+                if not separator or not agent or not native_session_id:
+                    continue
+                row = _load_projected_session_row(
+                    session_id,
+                    cast(QueryableAttribute[Any], db_models.Session.closed_at),
+                    cast(QueryableAttribute[Any], db_models.Session.lifecycle_status),
+                    cast(QueryableAttribute[Any], db_models.Session.active_agent),
+                    cast(QueryableAttribute[Any], db_models.Session.native_session_id),
+                )
+                if _session_map_row_matches(row, agent=agent, native_session_id=native_session_id):
+                    kept[key] = session_id
 
             removed = len(data) - len(kept)
             if removed:

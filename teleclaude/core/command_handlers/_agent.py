@@ -31,7 +31,7 @@ from teleclaude.core.agent_dispatch import (
     resolve_launch_model,
 )
 from teleclaude.core.agent_readiness import await_agent_readiness
-from teleclaude.core.agent_status import begin_agent_run
+from teleclaude.core.agent_status import AgentRunStart, transition_agent_status
 from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
@@ -370,7 +370,7 @@ async def start_agent(
     await db.update_session(session.session_id, **updates)
 
     run_started_at = datetime.now(UTC)
-    await begin_agent_run(db, session.session_id, at=run_started_at)
+    await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
     await execute_terminal_command(session.session_id, command_str, None, True)
     emit_agent_launch_started(session_id=session.session_id, agent=agent_name)
 
@@ -453,7 +453,7 @@ async def resume_agent(
         await db.update_session(session.session_id, active_agent=agent_name)
 
     run_started_at = datetime.now(UTC)
-    await begin_agent_run(db, session.session_id, at=run_started_at)
+    await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
     await execute_terminal_command(session.session_id, command_str, None, True)
 
 
@@ -833,7 +833,7 @@ async def _restart_agent(
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
 
         run_started_at = datetime.now(UTC)
-        await begin_agent_run(db, session.session_id, at=run_started_at)
+        await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
         logger.info(
             _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT,
@@ -914,7 +914,7 @@ async def _restart_agent(
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")
     else:
         run_started_at = datetime.now(UTC)
-        await begin_agent_run(db, session.session_id, at=run_started_at)
+        await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
     return True, None
