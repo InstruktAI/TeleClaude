@@ -5,9 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
-
-ScopeMode = Literal["turn_delta", "session_dirty"]
 
 
 class WorkspaceKind(StrEnum):
@@ -25,17 +22,6 @@ class ResolvedWorkspace:
 
     root: str | None
     kind: WorkspaceKind
-
-
-@dataclass(frozen=True)
-class ScopedPathsResult:
-    """Result returned by the shared session-scoping API."""
-
-    paths: tuple[str, ...]
-    scope_mode: ScopeMode
-    workspace_kind: WorkspaceKind
-    strategy: str
-    ledger_updated: bool
 
 
 @dataclass(frozen=True)

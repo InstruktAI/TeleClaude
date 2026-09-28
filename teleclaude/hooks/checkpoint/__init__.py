@@ -46,12 +46,10 @@ from teleclaude.hooks.checkpoint._models import (
     CheckpointResult,
     TranscriptObservability,
 )
-from teleclaude.session_scoping import ScopedPathsResult
 
 __all__ = [
     "CheckpointContext",
     "CheckpointResult",
-    "ScopedPathsResult",
     "TranscriptObservability",
     "_canonical_tool_name",
     "_check_blast_radius",

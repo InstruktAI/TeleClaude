@@ -5,13 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Protocol
 
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import TurnTimeline
 from teleclaude.utils.transcript._tool_calls import ToolCallRecord
-
-from .._types import ScopeMode
 
 _PATH_FIELDS = ("file_path", "path", "filepath", "target_file", "notebook_path", "TargetFile")
 _PATH_LIST_FIELDS = ("file_paths", "paths")
@@ -27,21 +24,7 @@ CERTAIN_EDIT_TOOLS: Mapping[AgentName, frozenset[str]] = MappingProxyType(
 )
 
 
-class ExtractorFunction(Protocol):
-    """Typed contract for agent-native path extractors."""
-
-    def __call__(
-        self,
-        *,
-        transcript_path: str | None,
-        native_session_id: str | None,
-        workspace_root: str | None,
-        scope_mode: ScopeMode,
-    ) -> tuple[set[str], str]: ...
-
-
 __all__ = [
-    "ExtractorFunction",
     "extract_structured_paths_from_timeline",
 ]
 
