@@ -208,22 +208,20 @@ sequenceDiagram
 
 ### 5. Notification Message Templates
 
-| Event Type | Message Format |
-| ---------- | -------------- |
-| Stop | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}` |
-| Blocked | `Session {id} [on {computer}] "{title}" is waiting on an approval it cannot resolve itself. Use: telec sessions tail {id}` |
-| Turn failed | `Session {id} [on {computer}] "{title}" ended its turn on a runtime or provider failure. Use: telec sessions tail {id}` |
-
+| Event Type  | Message Format                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Stop        | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}`                                  |
+| Blocked     | `Session {id} [on {computer}] "{title}" is waiting on an approval it cannot resolve itself. Use: telec sessions tail {id}` |
+| Turn failed | `Session {id} [on {computer}] "{title}" ended its turn on a runtime or provider failure. Use: telec sessions tail {id}`    |
 
 An inferred stall renders the turn-failure kind with the daemon's evidence:
 
-| Stall reason | Message Format |
-| ------------ | -------------- |
+| Stall reason | Message Format                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
 | `no_signal`  | `Session {id} [on {computer}] "{title}" gave no agent activity for {timeout}. Use: telec sessions tail {id}` |
-| `no_start`   | `Session {id} [on {computer}] "{title}" did not start within {timeout}. Pane: {last pane lines}` |
+| `no_start`   | `Session {id} [on {computer}] "{title}" did not start within {timeout}. Pane: {last pane lines}`             |
 
 `{timeout}` states the configured watchdog window, not the measured elapsed time.
-
 
 Every kind names the target session and states which of the three it is, so a
 caller can decide its next move without first tailing the target. The computer
@@ -255,6 +253,7 @@ sequenceDiagram
     alt Already emitted
         Note over Gate: drop — one notice per kind per turn
     else First this turn
+        Coord->>Gate: mark kind emitted for this turn
         Coord->>Registry: audience = persistent listeners + declared remote initiator
         loop For each audience member
             Note over Registry: direct-link suppression does NOT apply
@@ -265,7 +264,6 @@ sequenceDiagram
         else None accepted
             Registry->>Channel: deliver distress message
         end
-        Coord->>Gate: mark kind emitted for this turn
     end
 ```
 
