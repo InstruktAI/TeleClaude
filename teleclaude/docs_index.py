@@ -476,7 +476,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             )
             continue
 
-        post = frontmatter.load(file_path)
+        post = frontmatter.load(str(file_path))
         metadata: Mapping[str, object] = post.metadata or {}
         snippet_cache.append((file_path, metadata))
 
@@ -536,7 +536,7 @@ def _build_tier_index_payload(
 
     snippets: list[SnippetEntry] = []
     for file_path in _eligible_snippet_files(tier_docs_root, include_baseline=False):
-        post = frontmatter.load(file_path)
+        post = frontmatter.load(str(file_path))
         metadata: Mapping[str, object] = post.metadata or {}
         authored = [key for key in _TIER_AUTHORED_CLASSIFICATION_KEYS if key in metadata]
         if authored:

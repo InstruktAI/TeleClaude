@@ -161,7 +161,7 @@ _MODEL_DUMP_MODE = "json"
 
 
 def _enrich_headless_bootstrap(
-    data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    data: JsonDict,
     event_type: AgentHookEventType,
     source_kind: HookSourceKind,
 ) -> None:
@@ -1438,6 +1438,8 @@ def main() -> None:
             native_session_id=raw_native_session_id,
         )
         return
+
+    event_type = AgentHookEvents(event_type)
 
     outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
     execution_kind = adapter.classify_execution_kind(data)

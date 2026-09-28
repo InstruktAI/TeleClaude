@@ -156,6 +156,8 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     async def _call_pre_handler(self, session: "Session", event: str, source_adapter: str | None = None) -> None:
         """Call source adapter's pre-handler for UI cleanup."""
         adapter_type = source_adapter or session.last_input_origin
+        if adapter_type is None:
+            return
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -172,6 +174,8 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     ) -> None:
         """Call source adapter's post-handler for UI state tracking."""
         adapter_type = source_adapter or session.last_input_origin
+        if adapter_type is None:
+            return
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return

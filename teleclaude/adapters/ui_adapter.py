@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -22,8 +22,9 @@ from teleclaude.adapters.ui.delivery_mixin import OutputDeliveryMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models._types import JsonValue
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
@@ -180,7 +181,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Read a field from this adapter's origin_metadata section."""
         return session.get_origin_section(self.ADAPTER_KEY).get(field, default)
 
-    async def _set_origin_field(self, session: Session, **fields: object) -> None:
+    async def _set_origin_field(self, session: Session, **fields: JsonValue) -> None:
         """Write fields to this adapter's origin_metadata section (merge-write).
 
         Only ``fields`` are submitted. Sending the whole in-memory section would
@@ -202,7 +203,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             )
         await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, dict(fields))
         # Keep in-memory session consistent for subsequent reads within the same request
-        cast(Any, session.origin_metadata)[self.ADAPTER_KEY] = section
+        session.origin_metadata[self.ADAPTER_KEY] = section
 
     def _get_char_offset(self, session: Session) -> int:
         """Get adapter-specific char offset."""
@@ -213,7 +214,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Set adapter-specific char offset."""
         await self._set_origin_field(session, char_offset=value)
 
-    async def _write_cleared_turn_state(self, session: Session, **extra_fields: object) -> None:
+    async def _write_cleared_turn_state(self, session: Session, **extra_fields: JsonValue) -> None:
         await self._set_origin_field(
             session,
             char_offset=0,
@@ -426,7 +427,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         try:
             result = await handler()
         except SessionMessageRejectedError as exc:
-            if exc.reason == "admission_refused":
+            if exc.reason is SessionMessageRejectionReason.ADMISSION_REFUSED:
                 await self.send_error_feedback(session.session_id, str(exc))
             raise
 

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from enum import StrEnum
 
-SessionMessageRejectionReason = Literal[
-    "not_found",
-    "closed",
-    "unavailable",
-    "caller_identity_compatibility",
-    "admission_refused",
-]
+
+class SessionMessageRejectionReason(StrEnum):
+    """Closed reasons for rejecting inbound session messages."""
+
+    NOT_FOUND = "not_found"
+    CLOSED = "closed"
+    UNAVAILABLE = "unavailable"
+    CALLER_IDENTITY_COMPATIBILITY = "caller_identity_compatibility"
+    ADMISSION_REFUSED = "admission_refused"
+    PEER_OCCURRENCE_REQUIRED = "peer_occurrence_required"
 
 
 class SessionMessageRejectedError(RuntimeError):
@@ -26,13 +29,13 @@ class SessionMessageRejectedError(RuntimeError):
         self.session_id = session_id
         self.reason = reason
         self.detail = detail
-        if reason == "not_found":
+        if reason is SessionMessageRejectionReason.NOT_FOUND:
             message = f"Session {session_id} not found"
-        elif reason == "unavailable":
+        elif reason is SessionMessageRejectionReason.UNAVAILABLE:
             message = f"Session {session_id} is unavailable"
-        elif reason == "caller_identity_compatibility":
+        elif reason is SessionMessageRejectionReason.CALLER_IDENTITY_COMPATIBILITY:
             message = f"Session {session_id} received caller identity content that cannot be safely canonicalized"
-        elif reason == "admission_refused":
+        elif reason is SessionMessageRejectionReason.ADMISSION_REFUSED:
             message = detail or f"Session {session_id} rejected the input"
         else:
             message = f"Session {session_id} is closed"

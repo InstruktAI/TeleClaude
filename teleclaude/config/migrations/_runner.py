@@ -257,6 +257,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 None,
                 None,
             )
+        assert relative_path is not None
         try:
             message = _MIGRATION_SUBJECT.format(path=relative_path, version=CURRENT_VERSION)
             commit = _commit_migration_document(repository, relative_path, message, migrated)

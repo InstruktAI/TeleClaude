@@ -24,7 +24,7 @@ from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import FileEventContext, SessionLifecycleContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.injected_text import (
     EnvelopeName,
@@ -71,9 +71,7 @@ _CALLER_SEND_DELIVERY_FAILURE_NOTICE_TEMPLATE = (
 )
 _CALLER_SEND_CONTROL_SOURCE_KEY_TEMPLATE = "caller-send-delivery-exhausted:{inbound_row_id}"
 _PEER_ATTENTION_HANDOFF_DECIDED_EVENT = "peer_attention_handoff_decided"
-_PEER_ATTENTION_MISSING_OCCURRENCE_REASON = "peer_occurrence_required"
 _PEER_ATTENTION_CONTROL_SOURCE_KEY_TEMPLATE = "peer-attention:{source_occurrence_id}"
-_CALLER_IDENTITY_COMPATIBILITY_REASON = "caller_identity_compatibility"
 _PEER_ATTENTION_NOTIFICATION = (
     "Peer input is pending. If unfinished work needs to resume, preserve continuation through the existing "
     "reminder mechanism, then yield voluntarily so the peer input becomes your next conversational input."
@@ -188,7 +186,7 @@ def _capture_peer_attention_snapshot(
     if not cmd.occurrence_key:
         raise SessionMessageRejectedError(
             session_id=cmd.session_id,
-            reason=_PEER_ATTENTION_MISSING_OCCURRENCE_REASON,
+            reason=SessionMessageRejectionReason.PEER_OCCURRENCE_REQUIRED,
         )
     return {
         "source_occurrence_id": cmd.occurrence_key,
@@ -606,9 +604,9 @@ async def deliver_inbound(
 
     session = await db.get_session(session_id)
     if not session:
-        raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
-        raise SessionMessageRejectedError(session_id=session_id, reason="closed")
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
 
     # Gate: wait for the provider-selected first-input authority before tmux injection.
     if session.lifecycle_status == "initializing":
@@ -617,7 +615,7 @@ async def deliver_inbound(
             raise RuntimeError(f"Startup gate timeout for session {session_id}")
 
     if not await _session_message_delivery_available(session):
-        raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.UNAVAILABLE)
 
     await _ensure_inbound_acceptance_metadata(session, row, origin_metadata, command_input)
 
@@ -847,10 +845,14 @@ def _canonical_caller_content(cmd: ProcessMessageCommand) -> tuple[str, int | No
         return cmd.text, cmd.caller_origin_prefix_len, cmd.caller_origin_suffix_len
     envelopes = scan_injected_envelopes(cmd.text)
     if len(envelopes) != 1 or envelopes[0].kind is not TranscriptEntryKind.IDENTITY_CONTENT:
-        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=_CALLER_IDENTITY_COMPATIBILITY_REASON)
+        raise SessionMessageRejectedError(
+            session_id=cmd.session_id, reason=SessionMessageRejectionReason.CALLER_IDENTITY_COMPATIBILITY
+        )
     envelope = envelopes[0]
     if envelope.envelope_span != (0, len(cmd.text)):
-        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=_CALLER_IDENTITY_COMPATIBILITY_REASON)
+        raise SessionMessageRejectedError(
+            session_id=cmd.session_id, reason=SessionMessageRejectionReason.CALLER_IDENTITY_COMPATIBILITY
+        )
     if caller_occurrence_key(envelope.opening) is not None:
         return cmd.text, envelope.body_span[0], len(cmd.text) - envelope.body_span[1]
     if (
@@ -860,7 +862,9 @@ def _canonical_caller_content(cmd: ProcessMessageCommand) -> tuple[str, int | No
         or cmd.caller_origin_prefix_len != envelope.body_span[0]
         or cmd.caller_origin_suffix_len != len(cmd.text) - envelope.body_span[1]
     ):
-        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=_CALLER_IDENTITY_COMPATIBILITY_REASON)
+        raise SessionMessageRejectedError(
+            session_id=cmd.session_id, reason=SessionMessageRejectionReason.CALLER_IDENTITY_COMPATIBILITY
+        )
     body = cmd.text[envelope.body_span[0] : envelope.body_span[1]]
     canonical = identity_content_envelope(envelope.opening, body, cmd.occurrence_key).rendered
     canonical_envelope = scan_injected_envelopes(canonical)[0]
@@ -884,11 +888,11 @@ async def process_message(
 
     session = await db.get_session(session_id)
     if not session:
-        raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
-        raise SessionMessageRejectedError(session_id=session_id, reason="closed")
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
     if not await _session_message_delivery_available(session):
-        raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.UNAVAILABLE)
 
     peer_attention_snapshot = _capture_peer_attention_snapshot(cmd, session)
 
@@ -899,7 +903,7 @@ async def process_message(
     if isinstance(resolved_input, RefusedCommandInput):
         raise SessionMessageRejectedError(
             session_id=session_id,
-            reason="admission_refused",
+            reason=SessionMessageRejectionReason.ADMISSION_REFUSED,
             detail=resolved_input.detail,
         )
     if isinstance(resolved_input, ResolvedCommandInput):
@@ -908,7 +912,7 @@ async def process_message(
         except CommandInputError as exc:
             raise SessionMessageRejectedError(
                 session_id=session_id,
-                reason="admission_refused",
+                reason=SessionMessageRejectionReason.ADMISSION_REFUSED,
                 detail=str(exc),
             ) from exc
         content = compose_command_loader(resolved_input.command, resolved_input.args)

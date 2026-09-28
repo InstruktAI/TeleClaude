@@ -23,6 +23,7 @@ from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.models import MessageMetadata, PeerInfo, Session, TelegramAdapterMetadata
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
+    MarkdownV2State,
     continuation_prefix_for_markdown_v2_state,
     escape_markdown_v2_preformatted,
     leading_balanced_markdown_v2_entity_span,
@@ -59,16 +60,16 @@ class TelegramAdapter(
     # Markdown strategy — MarkdownV2
     # -------------------------------------------------------------------------
 
-    def _markdown_initial_state(self) -> object:
+    def _markdown_initial_state(self) -> MarkdownV2State:
         return MARKDOWN_V2_INITIAL_STATE
 
-    def _continuation_prefix_for_state(self, state: object) -> str:
+    def _continuation_prefix_for_state(self, state: MarkdownV2State) -> str:
         return continuation_prefix_for_markdown_v2_state(state)
 
     def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
         return truncate_markdown_v2_with_consumed(body_text, max_chars=max_chars, suffix="")
 
-    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+    def _scan_markdown_state(self, consumed: str, state: MarkdownV2State) -> MarkdownV2State:
         return scan_markdown_v2_state(consumed, initial_state=state)
 
     def _finalize_overflow_split(

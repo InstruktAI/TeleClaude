@@ -42,7 +42,7 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
     try:
         with SqlSession(_create_sync_engine()) as db_session:
             row = db_session.exec(  # type: ignore[call-overload]
-                text(
+                text(  # pyright: ignore[reportArgumentType]  # SQLModel runtime accepts Executable TextClause through execute
                     "SELECT active_agent, native_log_file, native_session_id, transcript_files "  # guard: raw-sql
                     "FROM sessions WHERE session_id = :session_id"
                 ).bindparams(session_id=session_id)

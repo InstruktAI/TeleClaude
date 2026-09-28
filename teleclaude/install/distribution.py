@@ -18,7 +18,7 @@ from uuid import uuid4
 import frontmatter
 import yaml
 from frontmatter import Post
-from frontmatter.default_handlers import YAMLHandler
+from frontmatter.default_handlers import BaseHandler, YAMLHandler
 from instrukt_ai_logging import get_logger
 from typing_extensions import TypedDict
 
@@ -76,6 +76,9 @@ _NEWLINE = "\n"
 _SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
 _SKILL_KIND = "skill"
 _SKILL_NAME_FIELD = "name"
+_POST_HANDLER_FIELD = "handler"
+_FRONTMATTER_PARAMETERS_NOT_LIST_ERROR = "validated frontmatter parameters must be a list"
+_FRONTMATTER_PARAMETER_NOT_MAPPING_ERROR = "validated frontmatter parameter must be a mapping"
 _MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
 _SKILL_NAME_MISMATCH_MESSAGE = "Skill name '{name}' must match folder '{dirname}'"
 _ARTIFACT_PROCESSING_ERROR = "Error processing {kind} item {item} for agent {agent}: {error}"
@@ -182,7 +185,7 @@ def dump_frontmatter(post: Post) -> str:
     """
     parameters = post.metadata.pop("parameters", None)
     if parameters:
-        post.content = _inject_parameter_preamble(post.content, parameters)
+        post.content = _inject_parameter_preamble(post.content, _parameter_definitions(parameters))
     return str(frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER))
 
 
@@ -196,22 +199,6 @@ def _format_markdown(paths: list[str]) -> None:
         subprocess.run([prettier, "--write", *md_files], check=False)
         return
     subprocess.run(["npx", "--yes", "prettier", "--write", *md_files], check=False)
-
-
-ArtifactFrontmatter = TypedDict(
-    "ArtifactFrontmatter",
-    {
-        "description": str,
-        "name": str,
-        "argument-hint": str,
-        "domain": str,
-        "hooks": object,
-        "parameters": list[
-            dict[str, object]  # guard: loose-dict - TOML parsed data — pyproject config
-        ],  # guard: loose-dict - Parameter dicts have variable schema per artifact type
-    },
-    total=False,
-)
 
 
 class SnippetIndexEntry(TypedDict, total=False):
@@ -323,7 +310,7 @@ def transform_to_gemini(post: Post) -> str:
     content = post.content.replace("$ARGUMENTS", "{{args}}").strip()
 
     if parameters:
-        content = _inject_parameter_preamble(content, parameters)
+        content = _inject_parameter_preamble(content, _parameter_definitions(parameters))
 
     return f"description = {description_str}\nprompt = '''\n{content}\n'''\n"
 
@@ -340,7 +327,7 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
     metadata = dict(post.metadata)
     metadata["name"] = name
     metadata["description"] = metadata.get("description", "")
-    transformed_post = Post(post.content, **metadata)
+    transformed_post = _post_with_metadata(post.content, metadata)
     content = dump_frontmatter(transformed_post)
     return content
 
@@ -355,7 +342,7 @@ def transform_skill_to_gemini(post: Post, name: str) -> str:
     for key, value in post.metadata.items():
         if key not in ("name", "description", "hooks"):
             metadata[key] = value
-    transformed_post = Post(post.content, **metadata)
+    transformed_post = _post_with_metadata(post.content, metadata)
     return dump_frontmatter(transformed_post)
 
 
@@ -368,6 +355,19 @@ def transform_skill_to_deepseek(post: Post, name: str) -> str:
 
 def _should_expand_inline(agent_name: str) -> bool:
     return agent_name in {"claude", "codex", "gemini", "deepseek"}
+
+
+# guard: loose-dict-func - Validated frontmatter parameters have artifact-specific fields
+def _parameter_definitions(value: object) -> list[dict[str, object]]:
+    """Narrow validated open frontmatter parameters to the keys the renderer reads."""
+    if not isinstance(value, list):
+        raise TypeError(_FRONTMATTER_PARAMETERS_NOT_LIST_ERROR)
+    definitions: list[dict[str, object]] = []  # guard: loose-dict - Parameter fields vary by artifact
+    for parameter in value:
+        if not isinstance(parameter, dict):
+            raise TypeError(_FRONTMATTER_PARAMETER_NOT_MAPPING_ERROR)
+        definitions.append({key: item for key, item in parameter.items() if isinstance(key, str)})
+    return definitions
 
 
 # guard: loose-dict-func - Parameter dicts have variable schema per artifact type
@@ -402,11 +402,21 @@ def _inject_parameter_preamble(content: str, parameters: list[dict[str, object]]
     return f"{preamble}\n\n{content}"
 
 
-def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> ArtifactFrontmatter:
-    filtered = cast(ArtifactFrontmatter, dict(metadata))
+# guard: loose-dict-func - Open frontmatter keys vary by artifact kind
+def _filter_frontmatter(metadata: Mapping[str, object], agent_name: str) -> dict[str, object]:
+    filtered = dict(metadata)
     if agent_name != "claude":
         filtered.pop("hooks", None)
     return filtered
+
+
+def _post_with_metadata(content: str, metadata: Mapping[str, object]) -> Post:
+    """Preserve open artifact fields without treating metadata as Post's handler argument."""
+    copied_metadata = dict(metadata)
+    handler = copied_metadata.pop(_POST_HANDLER_FIELD, None)
+    post = Post(content, handler=handler if isinstance(handler, BaseHandler) else None)
+    post.metadata.update(copied_metadata)
+    return post
 
 
 def _is_pending(metadata: Mapping[str, object]) -> bool:
@@ -504,7 +514,7 @@ def _prepare_post(
             observation=observation,
         )
     metadata = _filter_frontmatter(post.metadata, agent_name)
-    return Post(content, **metadata)
+    return _post_with_metadata(content, metadata)
 
 
 def resolve_skill_name(post: Post, dirname: str) -> str:
@@ -1351,13 +1361,13 @@ def _materialize_committed_owner(
         for entry in existing_entries
         if not isinstance(entry, dict) or entry.get(_SOURCE_PROJECT_KEY) != current.slug
     ]
-    owned_domains = {
-        entry.get(_INDEX_DOMAIN_KEY)
-        for entry in existing_entries
-        if isinstance(entry, dict)
-        and entry.get(_SOURCE_PROJECT_KEY) == current.slug
-        and isinstance(entry.get(_INDEX_DOMAIN_KEY), str)
-    }
+    owned_domains: set[str] = set()
+    for entry in existing_entries:
+        if not isinstance(entry, dict) or entry.get(_SOURCE_PROJECT_KEY) != current.slug:
+            continue
+        domain = entry.get(_INDEX_DOMAIN_KEY)
+        if isinstance(domain, str):
+            owned_domains.add(domain)
     owned_domains.update(current.publishes)
     for domain in sorted(owned_domains):
         staged_domain = staged_root / domain
@@ -2013,7 +2023,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
                 warn_only=args.warn_only,
                 observation=observation,
             )
-            prepared = Post(content, **_filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
+            prepared = _post_with_metadata(content, _filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
             command_output_path = commands_dist_dir / Path(relative_path).with_suffix(commands_config["ext"])
             command_output_path.parent.mkdir(parents=True, exist_ok=True)
             command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=_UTF8)

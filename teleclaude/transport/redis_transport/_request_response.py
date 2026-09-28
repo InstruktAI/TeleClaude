@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -218,9 +218,9 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{computer}:{message_id})
         redis_client = await self._get_redis()
-        message_id_bytes: bytes = await redis_client.xadd(  # pyright: ignore[reportArgumentType]
+        message_id_bytes: bytes = await redis_client.xadd(
             message_stream,
-            data,
+            data,  # pyright: ignore[reportArgumentType]  # redis-py accepts this byte-keyed field dictionary
             maxlen=self.message_stream_maxlen,
         )
         message_id = message_id_bytes.decode("utf-8")
@@ -365,7 +365,9 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
                     return chunk
         return None
 
-    async def send_system_command(self, computer_name: str, command: str, args: JsonDict | None = None) -> str:
+    async def send_system_command(
+        self, computer_name: str, command: str, args: Mapping[str, object] | None = None
+    ) -> str:
         """Send system command to remote computer (not session-specific).
 
         System commands are handled by the daemon itself, not routed to tmux.
@@ -392,14 +394,14 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
 
         # Add args as JSON if provided
         if args:
-            data[b"args"] = json.dumps(args).encode("utf-8")
+            data[b"args"] = json.dumps(dict(args)).encode("utf-8")
 
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
         redis_client = await self._get_redis()
-        message_id_bytes: bytes = await redis_client.xadd(  # pyright: ignore[reportArgumentType]
+        message_id_bytes: bytes = await redis_client.xadd(
             message_stream,
-            data,
+            data,  # pyright: ignore[reportArgumentType]  # redis-py accepts this byte-keyed field dictionary
             maxlen=self.message_stream_maxlen,
         )
 

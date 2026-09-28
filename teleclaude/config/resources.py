@@ -404,6 +404,7 @@ def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence
         existing = _find_person_raw(people_raw, lookup_key) if lookup_key else None
 
         if existing is not None:
+            assert lookup_key is not None
             slug = lookup_key
         else:
             name = fields.get("name")

@@ -196,6 +196,7 @@ class OutputDeliveryMixin:
             else:
                 thread_metadata.content_format = ContentFormat.MARKDOWN
             converted_text, thread_metadata = self._format_standalone_text(text, thread_metadata)
+            assert thread_metadata is not None
             logger.debug(
                 "[THREADED] Rendering: adapter=%s session=%s text_len=%d converted_len=%d",
                 self.ADAPTER_KEY,

@@ -35,7 +35,7 @@ class SignalAIClient(Protocol):
         """Extract normalized tags from a title and summary."""
         raise NotImplementedError
 
-    async def embed(self, text: str) -> list[float] | None:
+    async def embed(self, text: str, /) -> list[float] | None:
         """Return an embedding for text, or `None` when unavailable."""
         raise NotImplementedError
 

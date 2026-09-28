@@ -113,7 +113,7 @@ class CommandMapper:
                     subdir=metadata.subdir,
                     human_email=metadata.human_email,
                     human_role=metadata.human_role,
-                    origin=metadata.origin,
+                    origin=metadata.origin or _require_origin(),
                     origin_metadata=metadata.origin_metadata,
                     launch_intent=metadata.launch_intent,
                     system_role=metadata.system_role,

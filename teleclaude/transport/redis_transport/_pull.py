@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -305,7 +306,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             logger.warning("Failed to pull projects-with-todos from %s: %s", computer, e)
             return False
 
-    def _extract_todos_for_project(self, data: list[object], computer: str, project_path: str) -> list[TodoDTO] | None:
+    def _extract_todos_for_project(
+        self, data: Sequence[object], computer: str, project_path: str
+    ) -> list[TodoDTO] | None:
         """Extract todos for one project from a projects-with-todos payload."""
         todos: list[TodoDTO] = []
         for project_obj in data:

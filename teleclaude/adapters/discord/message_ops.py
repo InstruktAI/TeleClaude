@@ -168,7 +168,7 @@ class MessageOperationsMixin:
         session_id: str,
         metadata: MessageMetadata | None = None,
     ) -> str:
-        if self._is_reflection_intended(metadata):
+        if metadata is not None and self._is_reflection_intended(metadata):
             return await self._send_reflection_via_webhook(channel, text, metadata, session_id=session_id)
 
         send_fn = cast_async_callable(

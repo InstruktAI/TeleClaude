@@ -53,6 +53,7 @@ from teleclaude.types.commands import (
 )
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
+    GfmMarkdownState,
     _gfm_closers,
     continuation_prefix_for_gfm_state,
     discordify_markdown,
@@ -106,16 +107,16 @@ class DiscordAdapter(
     # Markdown strategy — GFM
     # -------------------------------------------------------------------------
 
-    def _markdown_initial_state(self) -> object:
+    def _markdown_initial_state(self) -> GfmMarkdownState:
         return GFM_MARKDOWN_INITIAL_STATE
 
-    def _continuation_prefix_for_state(self, state: object) -> str:
+    def _continuation_prefix_for_state(self, state: GfmMarkdownState) -> str:
         return continuation_prefix_for_gfm_state(state)
 
     def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
         return truncate_gfm_with_consumed(body_text, max_chars=max_chars, suffix="")
 
-    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+    def _scan_markdown_state(self, consumed: str, state: GfmMarkdownState) -> GfmMarkdownState:
         return scan_gfm_state(consumed, initial_state=state)
 
     def _balance_intermediate_chunk(self, text: str) -> str:
