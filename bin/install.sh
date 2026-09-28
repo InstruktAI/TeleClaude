@@ -501,7 +501,7 @@ corepack_meets_minimum() {
     [ -n "$version" ] && [ "$(printf '%s\n' "$COREPACK_MIN_VERSION" "$version" | sort -V | head -n1)" = "$COREPACK_MIN_VERSION" ]
 }
 
-# Ensure a corepack new enough for the pnpm it resolves is present and enabled.
+# Ensure a new-enough corepack is present and attempt to enable its package-manager shims.
 # Corepack ships bundled-but-disabled with most Node builds, is being unbundled
 # in newer Node, and is split out by some distros — and a bundled copy can be
 # too old — so we install it from npm rather than assume a usable one exists.
@@ -528,8 +528,11 @@ setup_corepack() {
             exit 1
         fi
     fi
-    corepack enable >> "$LOG_FILE" 2>&1 || print_warning "corepack enable failed (continuing)"
-    print_success "corepack ready"
+    if corepack enable >> "$LOG_FILE" 2>&1; then
+        print_success "corepack ready"
+    else
+        print_warning "Corepack could not install package-manager shims in its default location; see $LOG_FILE for the error"
+    fi
 }
 
 # Pinned together from gogcli's release checksums.txt.
@@ -943,8 +946,8 @@ install_voice_bridge() {
             set -e
             cd "$VOICE_BRIDGE_DIR"
             ulimit -n 4096
-            pnpm install --frozen-lockfile
-            pnpm build
+            corepack pnpm install --frozen-lockfile
+            corepack pnpm build
         ) >> "$LOG_FILE" 2>&1; then
             print_success "Discord voice bridge installed and built"
         else
