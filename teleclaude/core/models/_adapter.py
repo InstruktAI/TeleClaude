@@ -14,7 +14,10 @@ from enum import Enum, StrEnum
 
 from teleclaude.types import SystemStats
 
-from ._types import JsonValue, asdict_exclude_none
+from ._types import JsonDict, JsonValue, asdict_exclude_none, json_int
+
+_CHAR_OFFSET_FIELD = "char_offset"
+_CHAR_OFFSET_DEFAULT = 0
 
 
 class AdapterType(str, Enum):
@@ -138,7 +141,7 @@ class TelegramAdapterMetadata:
     badge_sent: bool = False
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "TelegramAdapterMetadata":  # guard: loose-dict
+    def from_dict(cls, raw: Mapping[str, object]) -> "TelegramAdapterMetadata":
         """Deserialize from a dict with type coercion."""
         footer = raw.get("footer_message_id") or raw.get("threaded_footer_message_id")
         return cls(
@@ -147,12 +150,12 @@ class TelegramAdapterMetadata:
             footer_message_id=_str_or_none(footer),
             output_suppressed=bool(raw.get("output_suppressed", False)),
             parse_mode=str(raw["parse_mode"]) if raw.get("parse_mode") else None,
-            char_offset=int(raw.get("char_offset", 0)),
+            char_offset=json_int(raw.get(_CHAR_OFFSET_FIELD, _CHAR_OFFSET_DEFAULT)),
             user_id=_int_or_none(raw.get("user_id")),
             badge_sent=bool(raw.get("badge_sent", False)),
         )
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+    def to_dict(self) -> JsonDict:
         """Serialize to dict, excluding None fields."""
         return dict(asdict_exclude_none(self))
 
@@ -173,7 +176,7 @@ class DiscordAdapterMetadata:
     char_offset: int = 0
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "DiscordAdapterMetadata":  # guard: loose-dict
+    def from_dict(cls, raw: Mapping[str, object]) -> "DiscordAdapterMetadata":
         """Deserialize from a dict with type coercion."""
         return cls(
             user_id=_str_or_none(raw.get("user_id")),
@@ -185,10 +188,10 @@ class DiscordAdapterMetadata:
             thread_topper_message_id=_str_or_none(raw.get("thread_topper_message_id")),
             status_message_id=_str_or_none(raw.get("status_message_id")),
             badge_sent=bool(raw.get("badge_sent", False)),
-            char_offset=int(raw.get("char_offset", 0)),
+            char_offset=json_int(raw.get(_CHAR_OFFSET_FIELD, _CHAR_OFFSET_DEFAULT)),
         )
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+    def to_dict(self) -> JsonDict:
         """Serialize to dict, excluding None fields."""
         return dict(asdict_exclude_none(self))
 
@@ -207,20 +210,20 @@ class WhatsAppAdapterMetadata:
     closed: bool = False
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "WhatsAppAdapterMetadata":  # guard: loose-dict
+    def from_dict(cls, raw: Mapping[str, object]) -> "WhatsAppAdapterMetadata":
         """Deserialize from a dict with type coercion."""
         return cls(
             phone_number=_str_or_none(raw.get("phone_number")),
             conversation_id=_str_or_none(raw.get("conversation_id")),
             output_message_id=_str_or_none(raw.get("output_message_id")),
             badge_sent=bool(raw.get("badge_sent", False)),
-            char_offset=int(raw.get("char_offset", 0)),
+            char_offset=json_int(raw.get(_CHAR_OFFSET_FIELD, _CHAR_OFFSET_DEFAULT)),
             last_customer_message_at=_str_or_none(raw.get("last_customer_message_at")),
             last_received_message_id=_str_or_none(raw.get("last_received_message_id")),
             closed=bool(raw.get("closed", False)),
         )
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+    def to_dict(self) -> JsonDict:
         """Serialize to dict, excluding None fields."""
         return dict(asdict_exclude_none(self))
 
@@ -237,7 +240,7 @@ class RedisTransportMetadata:
     title: str | None = None
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "RedisTransportMetadata":  # guard: loose-dict
+    def from_dict(cls, raw: Mapping[str, object]) -> "RedisTransportMetadata":
         """Deserialize from a dict with type coercion."""
         return cls(
             channel_id=_str_or_none(raw.get("channel_id")),
@@ -248,7 +251,7 @@ class RedisTransportMetadata:
             title=_str_or_none(raw.get("title")),
         )
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+    def to_dict(self) -> JsonDict:
         """Serialize to dict, excluding None fields."""
         return dict(asdict_exclude_none(self))
 
@@ -260,7 +263,7 @@ class TerminalOriginMetadata(Mapping[str, object]):
     email: str | None = None
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "TerminalOriginMetadata":  # guard: loose-dict
+    def from_dict(cls, raw: Mapping[str, object]) -> "TerminalOriginMetadata":
         """Deserialize from a dict."""
         return cls(email=_str_or_none(raw.get("email")))
 

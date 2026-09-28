@@ -967,7 +967,7 @@ def _snippet_meta_from_file(
     classification: SnippetClassification,
     project_root: Path,
 ) -> SnippetMeta:
-    post = frontmatter.load(path)
+    post = frontmatter.load(str(path))
     metadata: Mapping[str, object] = post.metadata or {}
     description = metadata.get("description")
     activation_trigger = metadata.get("activation_trigger")

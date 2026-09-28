@@ -1,5 +1,6 @@
 """Session model and related types for TeleClaude."""
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
@@ -9,7 +10,7 @@ from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
-from ._types import JsonDict, SessionOriginMetadata
+from ._types import JsonDict, SessionOriginMetadata, to_json_dict
 
 if TYPE_CHECKING:
     from ._context import InlineKeyboardMarkup
@@ -248,7 +249,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     tmux_session_name: str
     title: str
     last_input_origin: str | None = None
-    origin_metadata: SessionOriginMetadata = field(default_factory=lambda: cast(SessionOriginMetadata, {}))
+    origin_metadata: JsonDict = field(default_factory=dict)
     system_role: str | None = None
     job: str | None = None
     company: str | None = None
@@ -287,7 +288,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     char_offset: int = 0
     visibility: str | None = "private"
 
-    def get_origin_section(self, key: str) -> dict[str, object]:  # guard: loose-dict - JSON section
+    def get_origin_section(self, key: str) -> JsonDict:
         """Get a platform section from origin_metadata."""
         section = self.origin_metadata.get(key)
         if isinstance(section, dict):
@@ -297,6 +298,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
         data = cast(JsonDict, asdict(self))
+        data["origin_metadata"] = to_json_dict(self.origin_metadata)
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
@@ -334,13 +336,12 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
         if self.relay_started_at:
             data["relay_started_at"] = self.relay_started_at.isoformat()
         data["lifecycle_status"] = self.lifecycle_status
-        data["origin_metadata"] = self.origin_metadata
         return data
 
     @classmethod
     def from_dict(
         cls,
-        data: dict[str, object],  # guard: loose-dict - JSON deserialization
+        data: Mapping[str, object],  # guard: loose-dict - JSON deserialization
     ) -> "Session":
         """Create session from dictionary (from database/JSON)."""
 
@@ -410,9 +411,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
 
         # Parse origin_metadata from dict or keep empty
         origin_raw = data.get("origin_metadata")
-        origin_metadata: dict[str, object] = {}  # guard: loose-dict - JSON blob
+        origin_metadata: JsonDict = {}
         if isinstance(origin_raw, dict):
-            origin_metadata = dict(origin_raw)
+            origin_metadata = to_json_dict(origin_raw)
 
         ia_val = data.get("initiated_by_ai")
         initiated_by_ai = bool(ia_val) if ia_val is not None else False

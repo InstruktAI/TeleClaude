@@ -29,6 +29,16 @@ _REQUEST_ID_UNKNOWN = "the supplied request id"
 _UNADDRESSED_TODO_OPERATION = "slug-addressed operation"
 _ADDRESSLESS_TODO_OPERATION = "an operation without a todo identity"
 _ADDRESSED_OPERATION_TODO_REQUIRED = "identity-addressed operation requires a slug and checkout"
+_TODO_OPERATION_CONTEXT_REQUIRED = "todo operation requires persisted checkout and caller context"
+
+
+def todo_operation_context(operation: Operation) -> tuple[str, str]:
+    """Narrow the persisted context shared by every receipt-backed todo operation."""
+    cwd = operation.cwd
+    caller_session_id = operation.caller_session_id
+    if cwd is None or caller_session_id is None:
+        raise RuntimeError(_TODO_OPERATION_CONTEXT_REQUIRED)
+    return cwd, caller_session_id
 
 
 class TodoOperationPayload(TypedDict, total=False):

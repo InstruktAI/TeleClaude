@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
@@ -23,7 +23,6 @@ from teleclaude.core.models import (
     MessageAuthor,
     MessageMetadata,
     Session,
-    SessionOriginMetadata,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
@@ -116,7 +115,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 tmux_session_name=snapshot.tmux_session_name or "",
                 title=snapshot.title,
                 last_input_origin=snapshot.last_input_origin,
-                origin_metadata=cast(SessionOriginMetadata, dict(snapshot.origin_metadata)),
+                origin_metadata=dict(snapshot.origin_metadata),
                 system_role=snapshot.system_role,
                 job=snapshot.job,
                 project_path=snapshot.project_path,

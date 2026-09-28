@@ -5,6 +5,44 @@ from typing import ClassVar, NotRequired, Protocol, TypedDict, cast
 type JsonPrimitive = str | int | float | bool | None
 type JsonValue = JsonPrimitive | list[JsonValue] | dict[str, JsonValue]
 type JsonDict = dict[str, JsonValue]
+_JSON_OBJECT_KEY_ERROR = "JSON object keys must be strings"
+_JSON_VALUE_ERROR = "Value is not JSON-compatible"
+_INT_COERCION_ERROR_FORMAT = "int() argument must be a string, a bytes-like object or a real number, not '{}'"
+
+
+def to_json_value(value: object) -> JsonValue:
+    """Copy a Python value into the recursively JSON-compatible type."""
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, list):
+        return [to_json_value(item) for item in value]
+    if isinstance(value, dict):
+        result: JsonDict = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(_JSON_OBJECT_KEY_ERROR)
+            result[key] = to_json_value(item)
+        return result
+    raise TypeError(_JSON_VALUE_ERROR)
+
+
+def to_json_dict(value: object) -> JsonDict:
+    """Copy a Python object into a recursively JSON-compatible dictionary."""
+    if not isinstance(value, dict):
+        raise TypeError(_JSON_VALUE_ERROR)
+    result: JsonDict = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError(_JSON_OBJECT_KEY_ERROR)
+        result[key] = to_json_value(item)
+    return result
+
+
+def json_int(value: object) -> int:
+    """Convert a JSON scalar with the same coercion accepted by ``int``."""
+    if isinstance(value, (str, int, float)):
+        return int(value)
+    raise TypeError(_INT_COERCION_ERROR_FORMAT.format(type(value).__name__))
 
 
 class TelegramOriginSection(TypedDict):
@@ -83,5 +121,5 @@ def asdict_exclude_none(obj: object) -> JsonDict:
     # asdict needs a dataclass instance
     if not hasattr(obj, "__dataclass_fields__"):
         raise TypeError("asdict_exclude_none expects a dataclass instance or dict")
-    result = cast(JsonDict, asdict(cast(_DataclassInstance, obj)))
+    result = cast(JsonDict, asdict(cast(_DataclassInstance, obj)))  # pyright: ignore[reportArgumentType]  # typeshed requires invariant Field[Any] metadata after the dataclass check above
     return cast(JsonDict, _exclude_none(result))

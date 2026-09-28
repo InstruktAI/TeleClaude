@@ -25,6 +25,7 @@ from teleclaude.project_root import is_slug_worktree, resolve_invocation_roots
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
 from ..models import Session
+from ..models._types import JsonDict, to_json_dict
 from .connection_factory import create_async_db_engine, get_outbox_db_path
 
 if TYPE_CHECKING:
@@ -133,12 +134,12 @@ class DbBase:
 
     @staticmethod
     def _to_core_session(row: db_models.Session) -> Session:
-        origin_metadata: dict[str, object] = {}  # guard: loose-dict - JSON blob from DB
+        origin_metadata: JsonDict = {}
         if hasattr(row, "origin_metadata") and row.origin_metadata:
             try:
-                parsed = json.loads(row.origin_metadata)
+                parsed: object = json.loads(row.origin_metadata)
                 if isinstance(parsed, dict):
-                    origin_metadata = parsed
+                    origin_metadata = to_json_dict(parsed)
             except json.JSONDecodeError:
                 pass
 

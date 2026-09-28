@@ -161,7 +161,7 @@ def _integrator_judgment_checkpoint(
             _INTEGRATOR_JUDGMENT_NOT_READY_EVENT,
             activation_ids=[activation.after_sha for activation in marker.activations],
         )
-    elif marker is not None:
+    elif marker is not None and marker.ready_at is not None:
         action_ids = [
             action_id
             for action_id in marker.action_ids

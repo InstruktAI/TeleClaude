@@ -76,6 +76,7 @@ class WebhookDeliveryWorker:
                 for row in rows:
                     if shutdown_event.is_set():
                         break
+                    assert row.id is not None
                     claimed = await db.claim_webhook(row.id, now_iso)
                     if not claimed:
                         continue

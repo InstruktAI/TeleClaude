@@ -47,8 +47,8 @@ async def send_whatsapp_message(
     phone_number: str,
     content: str,
     *,
-    phone_number_id: str,
-    access_token: str,
+    phone_number_id: str | None,
+    access_token: str | None,
     api_version: str = "v21.0",
     timeout_s: float = 10.0,
 ) -> str:

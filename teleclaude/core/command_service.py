@@ -98,6 +98,11 @@ from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
 
+_UNSUBSCRIBE_CALLER_SESSION_REQUIRED = "unsubscribe always carries a verified caller identity"
+_DELIVER_RESULT_SESSION_REQUIRED = "deliver_result always carries the caller's session id"
+_DELIVER_FILE_SESSION_REQUIRED = "deliver_file always carries the caller's session id"
+_ESCALATE_SESSION_ID_REQUIRED = "escalate_session always carries the caller's session id"
+
 
 class UnsubscribeSessionPayload(TypedDict):
     """Payload returned when a caller stops following a session."""
@@ -242,6 +247,7 @@ class CommandService:
         return await get_session_data(cmd)
 
     async def unsubscribe(self, cmd: UnsubscribeSessionCommand) -> UnsubscribeSessionPayload:
+        assert cmd.caller_session_id is not None, _UNSUBSCRIBE_CALLER_SESSION_REQUIRED
         listener_removed = await unregister_listener(
             target_session_id=cmd.session_id,
             caller_session_id=cmd.caller_session_id,
@@ -370,6 +376,7 @@ class CommandService:
         Rendering and platform limits belong to the adapters: core states what the
         content is (markdown or html) and never escapes, converts, or truncates it.
         """
+        assert cmd.session_id is not None, _DELIVER_RESULT_SESSION_REQUIRED
         data = cmd.data or {}
         content = str(data.get(_DATA_KEY_CONTENT, ""))
         content_format = _content_format_from_request(data.get(_DATA_KEY_OUTPUT_FORMAT))
@@ -414,6 +421,7 @@ class CommandService:
         if not file_path:
             raise ValueError("file_path is required")
 
+        assert cmd.session_id is not None, _DELIVER_FILE_SESSION_REQUIRED
         session = await db.get_session(cmd.session_id)
         if not session:
             raise ValueError(f"Session {cmd.session_id} not found")
@@ -431,6 +439,7 @@ class CommandService:
 
     async def _handle_escalate_session(self, cmd: SystemCommand) -> object:
         """Escalate a customer session to an admin via Discord."""
+        assert cmd.session_id is not None, _ESCALATE_SESSION_ID_REQUIRED
         session = await db.get_session(cmd.session_id)
         if not session:
             raise ValueError(f"Session {cmd.session_id} not found")

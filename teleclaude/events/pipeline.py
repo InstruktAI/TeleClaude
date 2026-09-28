@@ -53,7 +53,7 @@ class Cartridge(Protocol):
 
     name: str
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, context: PipelineContext, /) -> EventEnvelope | None:
         """Transform an event or return `None` to stop processing."""
 
     def describe(self) -> str:

@@ -1,5 +1,6 @@
 """Session snapshot, args, and info models for TeleClaude."""
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import cast
@@ -20,7 +21,9 @@ from teleclaude.types import SystemStats
 # re-export for spec test access (tests import MessageMetadata from _snapshot)
 from ._session import MessageMetadata as MessageMetadata
 from ._session import Session
-from ._types import JsonDict
+from ._types import JsonDict, json_int, to_json_dict
+
+_INITIALIZING_FOR_SECONDS_FIELD = "initializing_for_seconds"
 
 
 @dataclass
@@ -67,8 +70,8 @@ class RedisInboundMessage:
     project_path: str | None = None
     title: str | None = None
     origin: str | None = None
-    origin_metadata: dict[str, object] | None = None  # guard: loose-dict
-    launch_intent: dict[str, object] | None = None  # guard: loose-dict
+    origin_metadata: JsonDict | None = None
+    launch_intent: JsonDict | None = None
     reply_stream: str | None = None
     human_email: str | None = None
     human_role: str | None = None
@@ -90,7 +93,7 @@ class SessionSnapshot(
     thinking_mode: str | None
     active_agent: str | None
     status: str
-    origin_metadata: dict[str, object] = field(default_factory=dict)  # guard: loose-dict
+    origin_metadata: JsonDict = field(default_factory=dict)
     project_path: str | None = None
     subdir: str | None = None
     command: str | None = None
@@ -242,7 +245,7 @@ class SessionSnapshot(
         )
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "SessionSnapshot":  # guard: loose-dict
+    def from_dict(cls, data: Mapping[str, object]) -> "SessionSnapshot":  # guard: loose-dict
         """Create from dict."""
         return cls(
             session_id=str(data["session_id"]),
@@ -255,7 +258,7 @@ class SessionSnapshot(
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
             active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
             status=str(data["status"]),
-            origin_metadata=(dict(_om) if isinstance((_om := data.get("origin_metadata")), dict) else {}),
+            origin_metadata=(to_json_dict(_om) if isinstance((_om := data.get("origin_metadata")), dict) else {}),
             created_at=str(data.get("created_at")) if data.get("created_at") else None,
             last_activity=str(data.get("last_activity")) if data.get("last_activity") else None,
             last_input=str(data.get("last_input")) if data.get("last_input") else None,
@@ -299,7 +302,9 @@ class SessionSnapshot(
                 str(data.get("lifecycle_transition_reason")) if data.get("lifecycle_transition_reason") else None
             ),
             initializing_for_seconds=(
-                int(data["initializing_for_seconds"]) if data.get("initializing_for_seconds") is not None else None
+                json_int(data[_INITIALIZING_FOR_SECONDS_FIELD])
+                if data.get(_INITIALIZING_FOR_SECONDS_FIELD) is not None
+                else None
             ),
             attention=str(data.get("attention")) if data.get("attention") else None,
             procedure=str(data.get("procedure")) if data.get("procedure") else None,
@@ -379,7 +384,7 @@ class ProjectInfo:
     todos: list[TodoDTO] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "ProjectInfo":  # guard: loose-dict
+    def from_dict(cls, data: Mapping[str, object]) -> "ProjectInfo":  # guard: loose-dict
         """Create from dict with field mapping."""
         raw_todos = data.get("todos") or []
         todo_list = list(raw_todos) if isinstance(raw_todos, list) else []

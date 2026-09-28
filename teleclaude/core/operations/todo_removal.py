@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.next_machine.remove import execute_todo_remove
+from teleclaude.core.operations.todo_identity import todo_operation_context
 
 _REMOVE_PAYLOAD_INVALID_JSON = "todo remove operation payload is invalid JSON"
 _REMOVE_PAYLOAD_FORCE_REQUIRED = "todo remove operation payload must include force"
@@ -38,10 +39,11 @@ def _todo_remove_payload(operation: Operation) -> TodoRemovePayload:
 async def run_todo_remove_operation(db: Db, operation: Operation) -> str:
     """Execute one persisted todo-remove request through the workflow owner."""
     payload = _todo_remove_payload(operation)
+    cwd, _caller_session_id = todo_operation_context(operation)
     return await execute_todo_remove(
         db,
         operation.slug,
-        operation.cwd,
+        cwd,
         force=payload.force,
         current_operation_id=operation.operation_id,
     )

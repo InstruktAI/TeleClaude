@@ -66,6 +66,7 @@ from teleclaude.core.operations._kinds import (
 from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
+    todo_operation_context,
     todo_operation_submission,
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
@@ -551,9 +552,9 @@ class OperationsService:
             OPERATION_KIND_TODO_WORK: self._run_todo_work,
             OPERATION_KIND_TASK_RUN: self._run_task_run,
             OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(
-                self._db, op.slug, op.cwd, abandon=_operation_payload_abandon(op)
+                self._db, op.slug, todo_operation_context(op)[0], abandon=_operation_payload_abandon(op)
             ),
-            OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, todo_operation_context(op)[0]),
             OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
             OPERATION_KIND_TODO_RENAME: self._run_todo_rename,
             OPERATION_KIND_TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
@@ -725,21 +726,21 @@ class OperationsService:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.PREPARE,
-            state_machine=lambda op: next_prepare(self._db, op.slug, op.cwd),
+            state_machine=lambda op, cwd: next_prepare(self._db, op.slug, cwd),
         )
 
     async def _run_todo_work(self, operation: Operation) -> str:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.WORK,
-            state_machine=lambda op: next_work(self._db, op.slug, op.cwd),
+            state_machine=lambda op, cwd: next_work(self._db, op.slug, cwd),
         )
 
     async def _run_task_run(self, operation: Operation) -> str:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.TASK_RUN,
-            state_machine=self._continue_task_run_in_place,
+            state_machine=lambda op, _cwd: self._continue_task_run_in_place(op),
         )
 
     @staticmethod
@@ -764,27 +765,28 @@ class OperationsService:
         operation: Operation,
         *,
         lane: RunnerLane,
-        state_machine: Callable[[Operation], Awaitable[str]],
+        state_machine: Callable[[Operation, str], Awaitable[str]],
     ) -> str:
+        cwd, caller_session_id = todo_operation_context(operation)
         if operation.slug is None:
-            return await state_machine(operation)
+            return await state_machine(operation, cwd)
 
         slug = operation.slug
-        project_root = self._require_resolved_checkout(operation.cwd)
+        project_root = self._require_resolved_checkout(cwd)
         todos_db = await get_todos_db(project_root)
 
         if lane in _HOLDER_AWARE_LANES and await resolve_holder_children_db(todos_db, slug):
-            return await state_machine(operation)
+            return await state_machine(operation, cwd)
 
         adoption = await adopt_manual_lifecycle_session(
-            operation.cwd,
+            cwd,
             slug,
-            operation.caller_session_id,
+            caller_session_id,
             db=self._db,
             requested_lane=lane,
         )
         if adoption.status in {ManualLifecycleStatus.ADOPTED, ManualLifecycleStatus.ALREADY_ACTIVE}:
-            return await state_machine(operation)
+            return await state_machine(operation, cwd)
         if adoption.status is ManualLifecycleStatus.ALREADY_DRIVEN:
             raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:

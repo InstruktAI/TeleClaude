@@ -18,6 +18,7 @@ from teleclaude.core.delivery import Destination
 from teleclaude.core.models import MessageMetadata, WhatsAppAdapterMetadata
 from teleclaude.utils.markdown import (
     WA_MARKDOWN_INITIAL_STATE,
+    WhatsAppMarkdownState,
     continuation_prefix_for_wa_state,
     scan_wa_state,
     truncate_wa_with_consumed,
@@ -45,16 +46,16 @@ class WhatsAppAdapter(UiAdapter):
     # Markdown strategy — WhatsApp dialect (*bold*, _italic_, ~strike~, ```mono```)
     # -------------------------------------------------------------------------
 
-    def _markdown_initial_state(self) -> object:
+    def _markdown_initial_state(self) -> WhatsAppMarkdownState:
         return WA_MARKDOWN_INITIAL_STATE
 
-    def _continuation_prefix_for_state(self, state: object) -> str:
+    def _continuation_prefix_for_state(self, state: WhatsAppMarkdownState) -> str:
         return continuation_prefix_for_wa_state(state)
 
     def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
         return truncate_wa_with_consumed(body_text, max_chars=max_chars, suffix="")
 
-    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+    def _scan_markdown_state(self, consumed: str, state: WhatsAppMarkdownState) -> WhatsAppMarkdownState:
         return scan_wa_state(consumed, initial_state=state)
 
     # -------------------------------------------------------------------------

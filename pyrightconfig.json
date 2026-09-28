@@ -32,6 +32,21 @@
       "reportUnusedClass": "none",
       "reportUnusedVariable": "none",
       "reportCallIssue": "none"
+    },
+    {
+      "root": "teleclaude/cli",
+      "extraPaths": ["."],
+      "reportArgumentType": "none"
+    },
+    {
+      "root": "teleclaude/api",
+      "extraPaths": ["."],
+      "reportArgumentType": "none"
+    },
+    {
+      "root": "teleclaude/api_server.py",
+      "extraPaths": ["."],
+      "reportArgumentType": "none"
     }
   ],
   "reportOptionalSubscript": "none",
@@ -40,7 +55,7 @@
   "reportOptionalIterable": "none",
   "reportOptionalContextManager": "none",
   "reportOptionalOperand": "none",
-  "reportArgumentType": "none",
+  "reportArgumentType": "error",
   "reportMissingTypeStubs": "none",
   "reportUnknownArgumentType": "none",
   "reportUnknownMemberType": "none",

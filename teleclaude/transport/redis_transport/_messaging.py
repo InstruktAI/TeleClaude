@@ -30,6 +30,7 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.models import JsonDict, RedisInboundMessage
+from teleclaude.core.models._types import json_int
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.session_listeners import (
@@ -89,6 +90,8 @@ _INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE: JsonDict = {
     "error": _INVALID_STOP_NOTIFICATION_VARIANT_ERROR,
 }
 _HISTORY_SHOW_REQUEST_ADAPTER: TypeAdapter[HistoryShowRequest] = TypeAdapter(HistoryShowRequest)
+_TAIL_CHARS_FIELD = "tail_chars"
+_DEFAULT_TAIL_CHARS = 10000
 
 
 def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAccess:
@@ -113,7 +116,7 @@ def _session_message_projection_options(data: JsonDict) -> SessionMessageProject
         since=str(data["since"]) if data.get("since") is not None else None,
         include_tools=include_tools_raw if isinstance(include_tools_raw, bool) else None,
         include_thinking=bool(data.get("include_thinking")),
-        tail_chars=int(data.get("tail_chars") or 10000),
+        tail_chars=json_int(data.get(_TAIL_CHARS_FIELD) or _DEFAULT_TAIL_CHARS),
         tail_scope=str(data.get("tail_scope") or "all"),
     )
 

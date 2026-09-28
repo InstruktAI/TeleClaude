@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     from teleclaude.core.lifecycle import DaemonLifecycle
 
 logger = get_logger(__name__)
+_EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
 
 type ClusterWebhookPayload = dict[str, object]  # guard: loose-dict - HookEvent JSON payload for cluster envelope
 
@@ -324,6 +325,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         event_producer: EventProducer,
     ) -> PipelineContext:
         """Create the shared pipeline context."""
+        assert self._event_db is not None, _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT
         return PipelineContext(
             catalog=event_catalog,  # type: ignore[arg-type]
             db=self._event_db,

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core import voice_focus
 from teleclaude.core.db import db
 from teleclaude.core.models import PeerCapabilityMissing
@@ -64,7 +65,7 @@ class VoicePlayback:
             return
         text: str | None = None
         version: str | None = None
-        if snapshot.computer in {None, "", "local", config.computer.name}:
+        if not snapshot.computer or snapshot.computer in {LOCAL_COMPUTER, config.computer.name}:
             session = await db.get_session(session_id)
             if session is not None:
                 text = session.last_output_raw
@@ -108,7 +109,7 @@ class VoicePlayback:
         if cache is None or not self._active():
             return
         snapshot = next((item for item in cache.get_sessions() if item.session_id == session_id), None)
-        if snapshot is None or snapshot.computer in {None, "", "local", config.computer.name}:
+        if snapshot is None or not snapshot.computer or snapshot.computer in {LOCAL_COMPUTER, config.computer.name}:
             await self._stop_observation()
             return
         peer = next(
