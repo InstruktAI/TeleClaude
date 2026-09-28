@@ -18,7 +18,7 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 
 1. An agent caller is judged by the agent roles a declaration admits, and a person caller by the command's person band at the person's effective role for the command's scope; neither falls through to the other. A session acting for a person must also pass the person band with that person's effective role — its agent role narrows and never widens the person's reach.
 2. The worker is the one focused agent role: it reaches the commands its briefs run and nothing that reads or acts across the fleet.
-3. Every other agent role reaches every agent command, starting sessions included, except the reservations in invariant 4. No agent role carries a band of its own beyond them.
+3. Every other agent role reaches every agent command, starting sessions included, except the reservations in invariant 4. No agent role carries a band of its own beyond them. An agent command is one whose declaration admits agent roles at all; a person-only command declares none and is reached by no agent role, as `config wizard` is.
 4. Only an orchestrator drives a todo state machine. The integrator alone holds integration and maintenance.
 5. The daemon's own `system` credential admits no command a session can run.
 6. A command that does not depend on its caller admits a caller with no identity.
@@ -54,7 +54,7 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 - **Customer** — reaches only the allow-list in invariant 7.
 
 <!-- planned:todo-db-sync-to-computers -->
-A command may admit persons alone by declaring no agent roles. `todo sync` does so at the admin band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying an agent role and every session acting for the platform's principal is refused. Replacing another computer's todo state is an act only the system owner decides, so no lifecycle or standing role reaches it.
+`todo sync` is a person-only command (invariant 3) at the admin band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying an agent role and every session acting for the platform's principal is refused. Replacing another computer's todo state is an act only the system owner decides, so no lifecycle or standing role reaches it.
 <!-- /planned:todo-db-sync-to-computers -->
 
 ### Commands that do not depend on the caller
