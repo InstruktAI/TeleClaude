@@ -22,8 +22,7 @@ The installer places the tool in the user tool location the installer already
 provisions for the platform's own commands. A transfer invokes the remote end
 through that location rather than through the remote login PATH, which differs
 between hosts and does not always include it. Every computer runs the same
-pinned release, because the tool's two ends negotiate a protocol and mismatched
-releases can stall a transfer.
+pinned release, so both ends of a transfer run identical tool code.
 
 **Business value:** no operator installs the tool by hand on each computer, and
 no transfer discovers its absence, or a version mismatch, on the far end at the
