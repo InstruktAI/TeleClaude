@@ -49,6 +49,7 @@ implementation remain the current appliance contract.
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
 
+<!-- planned-change:procedure-activation-gated-on-company -->
 - **Owns (procedure subscription routing):** stamping a verified event, at the
   ingress and before it is relayed, with the company `config` declares for its
   source; turning each published procedure subscription into a contract in the
@@ -71,6 +72,34 @@ implementation remain the current appliance contract.
   a restart or a separate trigger. Editing a procedure's subscriptions changes
   its event membership and never the procedure-and-company identity of its
   agent.
+<!-- change:procedure-activation-gated-on-company -->
+- **Owns (procedure subscription routing):** stamping a verified event, at the
+  ingress and before it is relayed, with the one activation scope — company,
+  person, or project — `config` declares for its source, replacing every scope
+  value the payload supplies; turning each published procedure subscription into
+  a contract in the existing contract-routing model that carries the procedure's
+  canonical ID and the scope of the tier it is published in; selecting the
+  event's scope as its company, otherwise its person, otherwise its project;
+  and, on each computer, activating only when `config` answers that the event's
+  scope is configured on that computer and, for a tier-published procedure, the
+  selected scope is that tier's scope, producing one activation per match: the
+  procedure, the scope, the event's context, and the platform's system principal
+  as its origin. A computer that does not host the scope, and any computer
+  receiving an event with no scope, produces no activation and records no
+  failure; its routing decision names why. The event names no consumer; each
+  computer decides for itself and nothing coordinates them.
+  Procedure-subscription contracts are derived state: held only in the
+  registry's memory, never persisted or restored from storage, and rebuilt from
+  the publication index `context` publishes. They are derived when the
+  activation handler registers, keyed to the digest of the index they came
+  from; before matching an event, the router compares that digest with the
+  currently published index and re-derives when they differ. A procedure
+  contract therefore never exists without the handler that serves it, and an
+  added, edited, or removed subscription takes effect at the next event without
+  a restart or a separate trigger. Editing a procedure's subscriptions changes
+  its event membership and never the procedure-and-scope identity of its
+  agent.
+<!-- /planned-change:procedure-activation-gated-on-company -->
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
