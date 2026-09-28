@@ -63,6 +63,9 @@ _GIT_OUTPUT_LINE_SEPARATOR = "\n"
 _GIT_SUCCESS_STATUS = 0
 _GIT_MERGE_CONFLICT_STATUS = 1
 _EMPTY_SHA = ""
+_GIT_LOG_ALL_PATHS = "."
+_GIT_PATHSPEC_SEPARATOR = "--"
+_GIT_HEAD_RANGE_TEMPLATE = "{base}..HEAD"
 _TODO_CHANGE_UNDETERMINED_MESSAGE = "todo_change_since_undetermined"
 _WORKTREE_REPOSITORY_UNAVAILABLE_MESSAGE = "Worktree repository is unavailable."
 _WORKTREE_FETCH_UNAVAILABLE_MESSAGE = "Unable to fetch origin/main."
@@ -184,11 +187,16 @@ def get_remote_branch_head(cwd: str, branch: str) -> str:
 
 
 def has_build_commits_beyond_main(worktree_cwd: str) -> bool:
-    """Return True when the worktree branch has commits ahead of main."""
+    """Return True when the worktree has a file-changing commit ahead of main."""
     try:
         repo = Repo(worktree_cwd)
         base = repo.git.merge_base("HEAD", "origin/main").strip()
-        log_output = repo.git.log("--oneline", f"{base}..HEAD")
+        log_output = repo.git.log(
+            "--oneline",
+            _GIT_HEAD_RANGE_TEMPLATE.format(base=base),
+            _GIT_PATHSPEC_SEPARATOR,
+            _GIT_LOG_ALL_PATHS,
+        )
         return bool(log_output.strip())
     except (GitCommandError, OSError) as exc:
         logger.warning(

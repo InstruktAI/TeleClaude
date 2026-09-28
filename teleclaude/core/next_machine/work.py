@@ -100,6 +100,10 @@ _RESOURCE_ACTION_PRESERVE = "preserve"
 _EMPTY_TEXT = ""
 _WORK_ENTRY_MERGE_DECIDED_EVENT = "todo_work_entry_merge_decided"
 _WORK_ENTRY_MERGE_DECIDED_MESSAGE = "todo work entry merge decided"
+_WORKTREE_STATE_MISSING_CODE = "NO_STATE"
+_BUILD_START_BASE_SHA_FIELD = "build_start_base_sha"
+_WORKTREE_STATE_MISSING_MESSAGE_TEMPLATE = "No state record for {slug}; cannot resolve its build-start commit."
+_WORKTREE_STATE_MISSING_NEXT_CALL_TEMPLATE = "Inspect todo state for {slug}, then retry work."
 _GIT_STATUS_PORCELAIN = "--porcelain"
 _GIT_STATUS_NUL_TERMINATED = "-z"
 _GIT_STATUS_UNTRACKED_ALL = "--untracked-files=all"
@@ -245,7 +249,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if drift_error is not None:
         return drift_error
 
-    worktree_cwd, ensure_error = await _ensure_worktree_ready(cwd, resolved_slug, phase_slug)
+    worktree_cwd, ensure_error = await _ensure_worktree_ready(cwd, resolved_slug, phase_slug, todos_db)
     if ensure_error is not None:
         return ensure_error
 
@@ -746,9 +750,20 @@ async def _validate_work_preconditions(cwd: str, resolved_slug: str) -> str | No
     return None
 
 
-async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) -> tuple[str, str | None]:
+async def _ensure_worktree_ready(
+    cwd: str, resolved_slug: str, phase_slug: str, todos_db: TodosDb
+) -> tuple[str, str | None]:
     """Ensure the worktree exists and is prepared under the slug single-flight lock."""
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
+    todo_state = await todos_db.read_state(resolved_slug)
+    if todo_state is None:
+        return worktree_cwd, format_error(
+            _WORKTREE_STATE_MISSING_CODE,
+            _WORKTREE_STATE_MISSING_MESSAGE_TEMPLATE.format(slug=resolved_slug),
+            next_call=_WORKTREE_STATE_MISSING_NEXT_CALL_TEMPLATE.format(slug=resolved_slug),
+        )
+    build_start_sha_raw = todo_state.get(_BUILD_START_BASE_SHA_FIELD, _EMPTY_TEXT)
+    build_start_sha = build_start_sha_raw if isinstance(build_start_sha_raw, str) else _EMPTY_TEXT
     ensure_started = perf_counter()
     slug_lock = await _get_slug_single_flight_lock(cwd, resolved_slug)
     if slug_lock.locked():
@@ -763,7 +778,7 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
             logger.info(
                 "next_work entering ensure boundary slug=%s cwd=%s worktree_path=%s", resolved_slug, cwd, worktree_cwd
             )
-            ensure_result = await ensure_worktree_with_policy_async(cwd, resolved_slug)
+            ensure_result = await ensure_worktree_with_policy_async(cwd, resolved_slug, build_start_sha=build_start_sha)
             if ensure_result.created:
                 logger.info("Created new worktree for %s", resolved_slug)
             ensure_decision = "run" if ensure_result.prepared else "skip"

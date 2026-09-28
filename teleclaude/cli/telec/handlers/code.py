@@ -9,7 +9,6 @@ import re
 import sys
 import tempfile
 from enum import StrEnum
-from fnmatch import fnmatch
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -18,11 +17,12 @@ from sqlalchemy.exc import OperationalError
 from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
+from teleclaude.cli.telec.handlers._code_branch_publish import publish_todo_branch
 from teleclaude.cli.telec.handlers._code_commit_guidance import (
-    _NON_CODE_DOCUMENTATION_PATTERNS,
     _commit_stage_paths,
     _print_commit_review_guidance,
 )
+from teleclaude.cli.telec.handlers._code_commit_success import record_commit_success
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
     get_unmerged_files,
@@ -46,7 +46,6 @@ from teleclaude.core.db import get_db
 from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import (
     forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
@@ -336,6 +335,10 @@ def handle_code_commit(args: list[str]) -> None:
       not in the picture.
     - Inside tmux: this command is the only sanctioned commit path.
 
+    After a successful commit, a todo slug worktree publishes its branch to
+    origin outside the project-wide commit lock. Publication failures are
+    reported without changing the recorded commit's success.
+
     Safety primitives:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
@@ -430,6 +433,8 @@ def handle_code_commit(args: list[str]) -> None:
             only=only or None,
             human_involved=human_involved,
         )
+
+    publish_todo_branch(project_root)
 
 
 def _resolve_human_involvement_declaration(reason: str | None) -> bool:
@@ -622,12 +627,7 @@ def _commit_under_lock(
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
-    # Use actual committed paths: pathspecs can be dirs or unexpanded globs.
-    try:
-        committed_files = [p for p in repo.git.show("--name-only", "--format=", "HEAD").splitlines() if p]
-    except GitCommandError:
-        committed_files = list(pathspec)
-    _record_commit_checkpoint_markers(project_root, committed_files)
+    committed_files = record_commit_success(repo, project_root, pathspec)
     _clear_landed_commit_declarations(committed_files, only=only)
 
 
@@ -731,11 +731,7 @@ def _commit_active_merge(
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
-    try:
-        committed_files = [p for p in repo.git.show("--name-only", "--format=", "HEAD").splitlines() if p]
-    except GitCommandError:
-        committed_files = quality_paths
-    _record_commit_checkpoint_markers(project_root, committed_files)
+    record_commit_success(repo, project_root, quality_paths)
 
 
 def _run_commit_quality_gate(
@@ -816,17 +812,6 @@ def _merge_quality_paths(repo: Repo, project_root: Path) -> list[str]:
     output = repo.git.diff("--name-only", f"{merge_base}..MERGE_HEAD")
     paths = [line.strip() for line in output.splitlines() if line.strip()]
     return [path for path in paths if (project_root / path).exists()]
-
-
-def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
-    """Record checkpoint markers derived from the sealed commit."""
-    session_id = get_session_id()
-    current_branch = resolve_current_branch(project_root)
-    committed_includes_code = any(
-        not any(fnmatch(path, pattern) for pattern in _NON_CODE_DOCUMENTATION_PATTERNS) for path in committed_files
-    )
-    if current_branch == "main" and committed_includes_code and session_id:
-        record_authored_main_commit(session_id)
 
 
 def _refuse_frozen_paths_in_slug_worktree(

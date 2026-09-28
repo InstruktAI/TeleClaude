@@ -11,8 +11,9 @@ from types import MappingProxyType
 from teleclaude.cli.session_auth import ResolvedCliIdentity, read_current_session_email
 from teleclaude.core.agents import AgentName
 from teleclaude.core.identity import NoIdentityCliCaller, PersonCliCaller, human_principal_for_email
+from teleclaude.core.session_identity_facts import read_session_active_agent
+from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.session_identity import get_session_id
-from teleclaude.todo_scaffold import get_session_active_agent
 
 # Mandated commit trailer (repo Commits policy). Owned here — the module that
 # composes the footer owns the string it composes with.
@@ -71,7 +72,7 @@ def resolve_commit_identity() -> tuple[str | None, str | None]:
 
 def _resolve_agent_session_commit_identity(session_id: str) -> tuple[str, str]:
     """Resolve an agent session to its bot author identity."""
-    active_agent = get_session_active_agent(session_id)
+    active_agent = read_session_active_agent(str(MAIN_DB_PATH), session_id)
     if active_agent is None:
         raise CommitIdentityUnresolvable(_ERR_ACTIVE_AGENT_UNRESOLVED.format(session_id=session_id))
     try:

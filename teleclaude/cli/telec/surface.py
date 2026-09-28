@@ -1599,6 +1599,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Without --approved on main: prints commit-first and review-routing guidance and exits.",
                     "Pathspec = workspace scope plus --include paths, or exactly --only paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.",
                     "The commit author is stamped as the resolved agent's bot identity (git --author); the message gains the branding line, Session:, and Human-Involved: — no Co-Authored-By trailer is ever added.",
+                    "In a todo worktree, a successful commit also publishes the branch to origin; a failed publish leaves the commit in place.",
                 ],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
             ),

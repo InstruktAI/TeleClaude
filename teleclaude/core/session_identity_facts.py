@@ -13,6 +13,7 @@ _LEGACY_IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_e
 system_role, working_slug, job, initiator_session_id, closed_at, project_path
 FROM sessions WHERE session_id = ?"""  # guard: raw-sql
 _COMPANY_COLUMN_MISSING = "no such column: company"
+_ACTIVE_AGENT_QUERY = "SELECT active_agent FROM sessions WHERE session_id = ?"  # guard: raw-sql
 
 
 @dataclass(frozen=True)
@@ -68,3 +69,17 @@ def read_session_identity_facts(db_path: str, session_id: str) -> SessionIdentit
         closed_at=str(closed_at) if closed_at is not None else None,
         project_path=str(project_path) if project_path is not None else None,
     )
+
+
+def read_session_active_agent(db_path: str, session_id: str) -> str | None:
+    """Return the recorded active agent through a dependency-light session read."""
+    if not Path(db_path).is_file():
+        return None
+    try:
+        with sqlite3.connect(db_path, timeout=0.2) as connection:
+            row = connection.execute(_ACTIVE_AGENT_QUERY, (session_id,)).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None or not row[0]:
+        return None
+    return str(row[0])
