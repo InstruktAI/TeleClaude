@@ -376,8 +376,16 @@ def move_worktree_home(project_root: Path, old_slug: str, new_slug: str) -> bool
         return True
 
 
+def _directory_entries(root: Path) -> tuple[Path, ...]:
+    """List a root's children, treating an absent root as an empty inventory."""
+    try:
+        return tuple(root.iterdir())
+    except FileNotFoundError:
+        return ()
+
+
 def _slug_directories(root: Path, *, include_symlinks: bool = False) -> dict[str, Path]:
-    children = tuple(root.iterdir())
+    children = _directory_entries(root)
     slugs: dict[str, Path] = {}
     for child in children:
         try:
@@ -419,7 +427,7 @@ def reconcile_worktree_homes(project_root: Path, *, at_startup: bool) -> None:
     try:
         worktrees = _slug_directories(worktrees_root)
         homes = _slug_directories(homes_root, include_symlinks=True)
-        record_paths = tuple(path for path in homes_root.iterdir() if path.name.endswith(_STATE_SUFFIX))
+        record_paths = tuple(path for path in _directory_entries(homes_root) if path.name.endswith(_STATE_SUFFIX))
         records: dict[str, Path] = {}
         for path in record_paths:
             slug = path.name[: -len(_STATE_SUFFIX)]
