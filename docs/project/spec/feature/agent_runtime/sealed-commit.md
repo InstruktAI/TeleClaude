@@ -372,28 +372,6 @@ And the session's effective scope is the same as for a bare invocation of the sa
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
-#### UC-CGIP-36 — A session can disclaim a dirty path it did not write
-
-```gherkin
-Given a repository path is dirty and is not registered to the calling session
-When the session disclaims that path through the sealed disclaim surface
-Then the path is recorded as disclaimed for that session alone
-And no other session's scope, declarations, or ownership answer changes
-And the path is still reported to every other session that has not accounted for it
-And disclaiming attributes the path to no one
-```
-
-#### UC-CGIP-37 — A disclaimer remains valid while the dirty path state is unchanged
-
-```gherkin
-Given a session has disclaimed a dirty path in its current worktree state
-When later turns observe the same dirty path with unchanged worktree state
-Then the disclaimer remains effective across user-input and agent-stop turns
-But when the path leaves the dirty set or its worktree state changes, the disclaimer is discarded
-And changed dirty state with no known owner is reported for declaration or disclaimer again
-```
-
-
 ### Commit-time gates — in-process, no framework stash
 
 
