@@ -14,7 +14,7 @@ from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agent_startup_delivery import AgentStartupDeliveryMode, deliver_startup_message
-from teleclaude.core.agent_status import begin_agent_run
+from teleclaude.core.agent_status import AgentRunStart, transition_agent_status
 from teleclaude.core.agents import _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -111,7 +111,7 @@ async def execute_handoff(
         handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, on_ready)
         try:
             run_started_at = datetime.now(UTC)
-            await begin_agent_run(db, current.session_id, at=run_started_at)
+            await transition_agent_status(db, current.session_id, AgentRunStart(), at=run_started_at)
             if not await execute_terminal_command(current.session_id, successor_command, None, True):
                 raise RuntimeError(f"Handoff launch failed for session {current.session_id}")
             await await_agent_readiness(

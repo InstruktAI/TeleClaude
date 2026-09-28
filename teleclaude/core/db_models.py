@@ -45,7 +45,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     initiator_computer: str | None = None
     detached: bool | None = False
     output_message_id: str | None = None
-    turn_notifications_sent: str | None = ""
+    turn_notifications_sent: str = "[]"
     native_session_id: str | None = None
     native_log_file: str | None = None
     active_agent: str | None = None
@@ -58,6 +58,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     agent_status: str = "unknown"
     agent_status_reason: str = ""
     agent_status_since: datetime | None = None
+    agent_status_version: int = 0
     open_tool_calls: str = "[]"
     lifecycle_transitioned_at: datetime | None = None
     lifecycle_transition_reason: str | None = None

@@ -27,6 +27,7 @@ from ..dates import ensure_utc, parse_iso_datetime
 from ..models import Session
 from ..models._types import JsonDict, to_json_dict
 from ..session_status import AgentStatusReason, AgentStatusValue
+from ._agent_status import decode_open_tool_calls, decode_turn_notifications
 from .connection_factory import create_async_db_engine, get_outbox_db_path
 
 if TYPE_CHECKING:
@@ -35,9 +36,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 DB_NOT_INITIALIZED_ERROR = "Database not initialized - call initialize() first"
-EMPTY_OPEN_TOOL_CALLS_JSON = "[]"
-INVALID_OPEN_TOOL_CALLS_ERROR = "Invalid open_tool_calls for session %s"
-
 _USER_TABLE_COUNT_SQL = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
 
 RUNTIME_COMPACTION_MIN_FREELIST_RATIO = 0.20
@@ -146,12 +144,6 @@ class DbBase:
             except json.JSONDecodeError:
                 pass
 
-        raw_open_tool_calls = json.loads(row.open_tool_calls or EMPTY_OPEN_TOOL_CALLS_JSON)
-        if not isinstance(raw_open_tool_calls, list) or not all(
-            isinstance(call_id, str) for call_id in raw_open_tool_calls
-        ):
-            raise ValueError(INVALID_OPEN_TOOL_CALLS_ERROR % row.session_id)
-
         return Session(
             session_id=row.session_id,
             computer_name=row.computer_name,
@@ -169,7 +161,8 @@ class DbBase:
             agent_status=AgentStatusValue(row.agent_status),
             agent_status_reason=AgentStatusReason(row.agent_status_reason) if row.agent_status_reason else None,
             agent_status_since=DbBase._coerce_datetime(row.agent_status_since),
-            open_tool_calls=set(raw_open_tool_calls),
+            open_tool_calls=decode_open_tool_calls(row.open_tool_calls, session_id=row.session_id),
+            agent_status_version=row.agent_status_version,
             lifecycle_transitioned_at=DbBase._coerce_datetime(getattr(row, "lifecycle_transitioned_at", None)),
             lifecycle_transition_reason=getattr(row, "lifecycle_transition_reason", None),
             closed_at=DbBase._coerce_datetime(row.closed_at),
@@ -181,7 +174,7 @@ class DbBase:
             initiator_computer=row.initiator_computer if hasattr(row, "initiator_computer") else None,
             detached=bool(row.detached) if hasattr(row, "detached") and row.detached is not None else False,
             output_message_id=row.output_message_id,
-            turn_notifications_sent=row.turn_notifications_sent or "",
+            turn_notifications_sent=decode_turn_notifications(row.turn_notifications_sent, session_id=row.session_id),
             native_session_id=row.native_session_id,
             native_log_file=row.native_log_file,
             active_agent=row.active_agent,

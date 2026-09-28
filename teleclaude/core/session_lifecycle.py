@@ -37,7 +37,6 @@ class LifecycleTransition:
     target: SessionLifecycleStatus
     reason: LifecycleTransitionReason
     runtime_start_observed: bool | None = None
-    runtime_activity_at: datetime | None = None
     closed_at: datetime | None = None
 
 
@@ -54,7 +53,6 @@ class LifecycleStore(Protocol):
         reason: str,
         transitioned_at: datetime,
         runtime_start_observed: bool | None = None,
-        runtime_activity_at: datetime | None = None,
         closed_at: datetime | None = None,
     ) -> None: ...
 
@@ -116,6 +114,5 @@ async def transition_session(store: LifecycleStore, session_id: str, transition:
         reason=transition.reason.value,
         transitioned_at=datetime.now(UTC),
         runtime_start_observed=transition.runtime_start_observed,
-        runtime_activity_at=transition.runtime_activity_at,
         closed_at=transition.closed_at,
     )

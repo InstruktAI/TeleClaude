@@ -48,6 +48,20 @@ class AgentStatusReason(StrEnum):
     NO_START = "no_start"
 
 
+class TurnNotificationRecord(StrEnum):
+    """Notification outcomes recorded for the current session turn."""
+
+    TERMINAL_TURN_END = "terminal_turn_end"
+    TERMINAL_TURN_FAILED = "terminal_turn_failed"
+    BLOCKED = "blocked"
+    INFERRED_STALL = "inferred_stall"
+
+
+TERMINAL_NOTIFICATION_RECORDS: frozenset[TurnNotificationRecord] = frozenset(
+    {TurnNotificationRecord.TERMINAL_TURN_END, TurnNotificationRecord.TERMINAL_TURN_FAILED}
+)
+
+
 def is_session_open(*, closed_at: datetime | None) -> bool:
     """Return whether a session remains part of the open-session set.
 

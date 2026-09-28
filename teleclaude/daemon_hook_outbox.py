@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HeadlessBootstrapField
 from teleclaude.core import polling_coordinator
+from teleclaude.core.agent_status import AgentStatusIntegrityError
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.command_registry import get_command_service
@@ -369,6 +370,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
 
     def _is_retryable_hook_error(self, exc: Exception) -> bool:
         """Return True if hook dispatch errors should be retried."""
+        if isinstance(exc, AgentStatusIntegrityError):
+            return False
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
         if isinstance(exc, json.JSONDecodeError) and "Extra data" in str(exc):
