@@ -164,6 +164,19 @@ Then the adoption is refused, naming the entry that holds the identity
 And the registry is unchanged
 ```
 
+<!-- planned:registry-fold-tier-identity-collision -->
+#### UC-CFG-REG9: A home that is not on the registry holds no identity
+
+```gherkin
+Given a company home whose configuration exists on the machine but which is not on the registry
+And a machine configuration that lists a project folder deriving the same identity as that home's slug
+When a migration run reaches that machine configuration
+Then the registry lists that project folder
+And an agent reading the machine configuration finds no trusted-directory list
+And the company home is still not on the registry
+```
+<!-- /planned:registry-fold-tier-identity-collision -->
+
 ## Known caveats
 
 - A project cloned onto a machine and never adopted there is absent from the
