@@ -26,7 +26,8 @@ guardrails lane is never plumbed into any `Makefile`. The native Makefile shape
 is identical for TeleClaude's own repo and any adopting project, while the
 current guardrails lane remains TeleClaude-repo-rooted.
 `telec code format` resolves the same workspace scope as `telec code lint` and
-passes it to `make format` as `FILES_FROM`; `--all` is the explicit full sweep.
+hands it to `make format` the same way; the explicit full-run option sweeps
+everything.
 `telec code test|install` are pure delegations to `make test|install`.
 
 Three execution contexts drive file resolution:
