@@ -145,6 +145,7 @@ And the reconciler logs the inconclusive state for retry on a later pass
 
 #### UC-DARS-6: Missing reflection record creates or adopts exactly one project forum
 
+<!-- planned-change:single-project-registry -->
 ```gherkin
 Given a registered project has no database reflection record for its project forum
 When the Discord reconciler evaluates the project's desired forum
@@ -154,6 +155,17 @@ And if no matching forum exists, it creates the forum and stores the returned pr
 And if lookup is inconclusive, it does not create or adopt a forum
 And config.yml is not updated with a discord_forum field
 ```
+<!-- change:single-project-registry -->
+```gherkin
+Given a registered project has no recorded forum
+When Discord reconciliation examines forums with the project's display name in the machine's project category
+Then if exactly one matching forum is unclaimed by another registry identity, that forum is assigned to the project
+And if no unclaimed matching forum exists, a distinct forum is created for that identity, even when another forum has the same name
+And if more than one unclaimed match remains, no forum is created or assigned
+And a session started from an assigned forum is placed in that project's folder
+And the machine configuration is not updated with a Discord forum field
+```
+<!-- /planned-change:single-project-registry -->
 
 #### UC-DARS-7: Launcher state is governed by its forum's reflection record
 
