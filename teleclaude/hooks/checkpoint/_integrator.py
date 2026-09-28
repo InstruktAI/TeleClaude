@@ -111,10 +111,11 @@ def _build_integrator_log_judgment_checkpoint(
     model: CheckpointModel,
     window: str,
 ) -> str | None:
-    """Build a checkpoint message from outstanding post-merge log actions.
+    """Build a checkpoint message from outstanding post-activation log actions.
 
-    Surfaces only main-only judgment actions recorded by integration. No review,
-    commit reminder, test, or maintenance action appears here.
+    Surfaces only main-only judgment actions recorded by integration. The prose
+    also directs publication after judgment, including existing pre-push checks;
+    those checks are not additional modeled checkpoint actions.
     """
     judgment_actions = [
         model.actions[action_id]
