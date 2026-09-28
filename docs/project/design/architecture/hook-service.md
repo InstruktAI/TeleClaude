@@ -311,9 +311,19 @@ hooks:
 **Config schema classes:**
 
 - `HooksConfig`: top-level container with `inbound` and `subscriptions`
+<!-- planned-change:procedure-activation-gated-on-company -->
 - `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`, and
   `company` — the registered company the source's events belong to, validated
   against registered companies and stamped onto each normalized event
+<!-- change:procedure-activation-gated-on-company -->
+- `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`, and
+  at most one activation scope — `company`, `person`, or `project` — the
+  registered company, person, or project the source's events belong to,
+  validated against its registry and stamped onto each normalized event in
+  place of any scope the payload supplies. A source declaring more than one
+  scope is refused by configuration validation, so no event carries an
+  ambiguous scope.
+<!-- /planned-change:procedure-activation-gated-on-company -->
 - `SubscriptionConfig`: `id`, `contract` (dict), `target` (dict)
 
 ### REST API

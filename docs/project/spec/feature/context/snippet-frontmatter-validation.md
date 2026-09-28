@@ -210,7 +210,11 @@ Then no activation-mode finding is reported
 #### UC-SFV4: Only a procedure published where subscriptions are routed may declare them
 
 ```
+<!-- planned-change:procedure-activation-gated-on-company -->
 Given a procedure snippet published in the global tier or in a company's tier declares the events that activate it
+<!-- change:procedure-activation-gated-on-company -->
+Given a procedure snippet published in the global tier, in a company's tier, or in a person's tier declares the events that activate it
+<!-- /planned-change:procedure-activation-gated-on-company -->
 When snippet validation runs
 Then no subscription-tier finding is reported
 Given a procedure snippet published in any other tier declares the events that activate it
