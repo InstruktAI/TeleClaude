@@ -521,6 +521,25 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "todo": CommandDef(
         desc="Manage work items",
         subcommands={
+            "sync": CommandDef(
+                desc="Copy todo state to other computers",
+                args="--project <slug>[,<slug>] --to <computer>[,<computer>]",
+                flags=[F.FLAG_HELP, F.FLAG_TODO_SYNC_PROJECT, F.FLAG_TODO_SYNC_TO],
+                notes=[
+                    "The origin's todo state replaces each target checkout's todo state; todo state is not merged.",
+                    "The origin daemon does not need to run. The admin is responsible for stopping work on the origin before syncing.",
+                    "The target database is checked for integrity after each copy; each project and target pair reports its own outcome.",
+                    "The installer provisions sqlite3_rsync on every computer; run make install on both sides before syncing.",
+                ],
+                auth=CommandAuth(system=frozenset(), human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+            ),
+            "sync-replica": CommandDef(
+                desc="Read the local todo database for a remote transfer",
+                args="<locate|check> <slug>",
+                flags=[F.FLAG_HELP],
+                hidden=True,
+                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+            ),
             "create": CommandDef(
                 desc="Create a todo with substantive content",
                 args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved <reason>]",
@@ -1676,6 +1695,8 @@ TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
 TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
 TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]
 TODO_LIST = CLI_SURFACE["todo"].subcommands["list"]
+TODO_SYNC = CLI_SURFACE["todo"].subcommands["sync"]
+TODO_SYNC_REPLICA = CLI_SURFACE["todo"].subcommands["sync-replica"]
 TODO_UPDATE = CLI_SURFACE["todo"].subcommands["update"]
 TODO_SHOW = CLI_SURFACE["todo"].subcommands["show"]
 

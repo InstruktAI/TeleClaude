@@ -14,6 +14,7 @@ from teleclaude.core.models import JsonDict, MessageMetadata, PeerInfo
 from teleclaude.core.reconciliation import decode_capability_set
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
+from teleclaude.transport.peer_heartbeat import decode_heartbeat_payload, heartbeat_scan_pattern
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
@@ -86,7 +87,7 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
 
         try:
             # Find all heartbeat keys using non-blocking SCAN
-            keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
+            keys: object = await scan_keys(redis_client, heartbeat_scan_pattern())
             logger.debug("Found %d heartbeat keys", len(keys))  # pyright: ignore[reportArgumentType]
 
             computers = []
@@ -94,12 +95,10 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
                 # Get data
                 data_bytes: object = await redis_client.get(key)
                 if data_bytes:
-                    # Redis returns bytes - decode to str for json.loads
-                    data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-                    info_obj: object = json.loads(data_str)
-                    if not isinstance(info_obj, dict):
+                    info_obj = decode_heartbeat_payload(data_bytes)  # pyright: ignore[reportArgumentType]
+                    if info_obj is None:
                         continue
-                    info: JsonDict = info_obj
+                    info = cast(JsonDict, info_obj)
 
                     computer_name: str = str(info["computer_name"])
 
@@ -140,7 +139,7 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
 
         try:
             # Find all heartbeat keys using non-blocking SCAN
-            keys: list[bytes] = await scan_keys(redis_client, b"computer:*:heartbeat")
+            keys: list[bytes] = await scan_keys(redis_client, heartbeat_scan_pattern())
             logger.trace(
                 "Redis heartbeat keys discovered",
                 count=len(keys),
@@ -177,12 +176,11 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
         if not data_bytes:
             return None
 
-        data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-        info_obj: object = json.loads(data_str)
-        if not isinstance(info_obj, dict):
+        info_obj = decode_heartbeat_payload(data_bytes)  # pyright: ignore[reportArgumentType]
+        if info_obj is None:
             return None
 
-        info: JsonDict = info_obj
+        info = cast(JsonDict, info_obj)
         computer_name = str(info["computer_name"])
         last_seen_str = info.get("last_seen", "")
         last_seen_dt = parse_iso_datetime(str(last_seen_str))

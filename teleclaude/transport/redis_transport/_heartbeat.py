@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.core import command_handlers
+from teleclaude.transport.peer_heartbeat import heartbeat_key
 
 logger = get_logger(__name__)
 
@@ -63,7 +64,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         peers read it directly and never need a separate ``get_computer_info``
         round-trip. ``last_seen`` + TTL still drive presence detection.
         """
-        key = f"computer:{self.computer_name}:heartbeat"
+        key = heartbeat_key(self.computer_name)
 
         info = await command_handlers.get_computer_info()
         payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload

@@ -540,6 +540,166 @@ GOG_VERSION="0.38.1"
 GOG_LINUX_AMD64_SHA256="6576828ed6852949ba424b967c3ff4268b3d9c90e201f90fe3d539fe3a151ebb"
 GOG_LINUX_ARM64_SHA256="462342542472dcf361744cfe5e15a3540364b4c5120577e4519fffbd1afc6596"
 
+# The tool reports SQLite's canonical source ID through --version.
+SQLITE3_RSYNC_VERSION="3.53.4"
+SQLITE3_RSYNC_RELEASE="3530400"
+SQLITE3_RSYNC_YEAR="2026"
+SQLITE3_RSYNC_SOURCE_ID="2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc"
+SQLITE3_RSYNC_OSX_ARM64_SHA3="58d53e0eb69c17cabebed2754bf399e4d44939be42dcf194769c00078bfd776d"
+SQLITE3_RSYNC_OSX_ARM64_SHA256="e56768d61017ab3dbd9ff5690b5551846d9945830fdc0b8a9610df722f05e33b"
+SQLITE3_RSYNC_OSX_X64_SHA3="3353bb4e5ac54f85c5b82012d30476d20539a9495abdd11a1707df578cff2d7e"
+SQLITE3_RSYNC_OSX_X64_SHA256="76c187f19990c4a6fe9a4f8d01de038a63fc339aaf9d491202c9c56d058cb110"
+SQLITE3_RSYNC_LINUX_X64_SHA3="6eeb57e8f2aef7687f9f016a980992cf2799c8c07a87c5e21495530f91915047"
+SQLITE3_RSYNC_LINUX_X64_SHA256="7a6f4d1720e4bc13faa3d934bfce37b816a496c0a2480deacd64cfd8be6cf224"
+SQLITE3_RSYNC_SOURCE_SHA3="b834d474b9b393d85a9e3ee4cc11f1329e007e9376a424ee740796f5c4bda3a8"
+SQLITE3_RSYNC_SOURCE_SHA256="d18fa15aec74d8c17e1463f861095adc01b5ad190256acb4f91d22f0368d232b"
+
+install_sqlite3_rsync() {
+    local installed_tool="$TELEC_BIN_DIR/sqlite3_rsync"
+    local installed_source_id=""
+    if [ -x "$installed_tool" ] && installed_source_id=$("$installed_tool" --version 2>&1); then
+        if [ "$installed_source_id" = "$SQLITE3_RSYNC_SOURCE_ID" ]; then
+            print_info "sqlite3_rsync $SQLITE3_RSYNC_VERSION already installed"
+            _ensure_local_bin_on_path
+            return 0
+        fi
+    fi
+
+    local artifact_name expected_sha archive_path temp_dir source_dir build_dir actual_sha
+    case "$OS:$(uname -m)" in
+        macos:arm64|macos:aarch64)
+            artifact_name="sqlite-tools-osx-arm64-$SQLITE3_RSYNC_RELEASE.zip"
+            expected_sha="$SQLITE3_RSYNC_OSX_ARM64_SHA256"
+            ;;
+        macos:x86_64|macos:amd64)
+            artifact_name="sqlite-tools-osx-x64-$SQLITE3_RSYNC_RELEASE.zip"
+            expected_sha="$SQLITE3_RSYNC_OSX_X64_SHA256"
+            ;;
+        linux:x86_64|linux:amd64)
+            artifact_name="sqlite-tools-linux-x64-$SQLITE3_RSYNC_RELEASE.zip"
+            expected_sha="$SQLITE3_RSYNC_LINUX_X64_SHA256"
+            ;;
+        linux:aarch64|linux:arm64)
+            artifact_name="sqlite-src-$SQLITE3_RSYNC_RELEASE.zip"
+            expected_sha="$SQLITE3_RSYNC_SOURCE_SHA256"
+            ;;
+        *)
+            print_error "sqlite3_rsync provisioning is unsupported on $OS/$(uname -m). See $LOG_FILE"
+            exit 1
+            ;;
+    esac
+
+    local artifact_url="https://www.sqlite.org/$SQLITE3_RSYNC_YEAR/$artifact_name"
+    if ! temp_dir=$(mktemp -d); then
+        print_error "Failed to create a temporary directory for sqlite3_rsync provisioning. See $LOG_FILE"
+        exit 1
+    fi
+    trap 'rm -rf "$temp_dir"' EXIT
+
+    archive_path="$temp_dir/$artifact_name"
+    if ! curl -fsSL "$artifact_url" -o "$archive_path" >> "$LOG_FILE" 2>&1; then
+        print_error "Failed to download sqlite3_rsync release $artifact_url. See $LOG_FILE"
+        exit 1
+    fi
+
+    if command -v sha256sum &> /dev/null; then
+        if ! actual_sha=$(sha256sum "$archive_path" | awk '{print $1}'); then
+            print_error "Failed to calculate sqlite3_rsync release SHA-256. See $LOG_FILE"
+            exit 1
+        fi
+    elif command -v shasum &> /dev/null; then
+        if ! actual_sha=$(shasum -a 256 "$archive_path" | awk '{print $1}'); then
+            print_error "Failed to calculate sqlite3_rsync release SHA-256. See $LOG_FILE"
+            exit 1
+        fi
+    else
+        print_error "Cannot verify sqlite3_rsync integrity: sha256sum or shasum is required. See $LOG_FILE"
+        exit 1
+    fi
+    if [ "$actual_sha" != "$expected_sha" ]; then
+        print_error "sqlite3_rsync release verification failed: expected $expected_sha, got $actual_sha. See $LOG_FILE"
+        exit 1
+    fi
+
+    local staged_tool="$temp_dir/sqlite3_rsync"
+    if [ "$OS" = "linux" ] && { [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; }; then
+        source_dir="$temp_dir/sqlite-src-$SQLITE3_RSYNC_RELEASE"
+        build_dir="$temp_dir/build"
+        if ! python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$archive_path" "$temp_dir" >> "$LOG_FILE" 2>&1; then
+            print_error "Failed to extract verified SQLite source archive. See $LOG_FILE"
+            exit 1
+        fi
+        if [ ! -f "$source_dir/configure" ] || [ ! -d "$source_dir/autosetup" ]; then
+            print_error "Verified SQLite source archive is missing its configure build files. See $LOG_FILE"
+            exit 1
+        fi
+        if ! chmod +x "$source_dir/configure" "$source_dir"/autosetup/autosetup-*; then
+            print_error "Failed to prepare SQLite source build scripts. See $LOG_FILE"
+            exit 1
+        fi
+        if ! command -v gcc &> /dev/null; then
+            print_error "Cannot build sqlite3_rsync on Linux aarch64: gcc is required. See $LOG_FILE"
+            exit 1
+        fi
+        if ! command -v make &> /dev/null; then
+            print_error "Cannot build sqlite3_rsync on Linux aarch64: make is required. See $LOG_FILE"
+            exit 1
+        fi
+        if ! mkdir -p "$build_dir"; then
+            print_error "Failed to create the temporary SQLite build directory. See $LOG_FILE"
+            exit 1
+        fi
+        if ! (cd "$build_dir" && "$source_dir/configure" && make sqlite3_rsync) >> "$LOG_FILE" 2>&1; then
+            print_error "Failed to build sqlite3_rsync from the verified source archive. See $LOG_FILE"
+            exit 1
+        fi
+        if [ ! -f "$build_dir/sqlite3_rsync" ] || ! cp "$build_dir/sqlite3_rsync" "$staged_tool"; then
+            print_error "SQLite source build did not produce sqlite3_rsync. See $LOG_FILE"
+            exit 1
+        fi
+    else
+        if ! python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("sqlite3_rsync", sys.argv[2])' "$archive_path" "$temp_dir" >> "$LOG_FILE" 2>&1; then
+            print_error "Failed to extract sqlite3_rsync from the verified tools archive. See $LOG_FILE"
+            exit 1
+        fi
+    fi
+
+    if [ ! -f "$staged_tool" ] || ! chmod +x "$staged_tool"; then
+        print_error "Verified SQLite artifact did not produce an executable sqlite3_rsync. See $LOG_FILE"
+        exit 1
+    fi
+    local staged_source_id=""
+    if ! staged_source_id=$("$staged_tool" --version 2>&1); then
+        print_error "New sqlite3_rsync could not report its SQLite source ID. See $LOG_FILE"
+        exit 1
+    fi
+    if [ "$staged_source_id" != "$SQLITE3_RSYNC_SOURCE_ID" ]; then
+        print_error "New sqlite3_rsync source ID mismatch: expected $SQLITE3_RSYNC_SOURCE_ID, got $staged_source_id. See $LOG_FILE"
+        exit 1
+    fi
+
+    if ! mkdir -p "$TELEC_BIN_DIR"; then
+        print_error "Failed to create $TELEC_BIN_DIR for sqlite3_rsync. See $LOG_FILE"
+        exit 1
+    fi
+    if ! mv "$staged_tool" "$installed_tool"; then
+        print_error "Failed to place sqlite3_rsync in $TELEC_BIN_DIR. See $LOG_FILE"
+        exit 1
+    fi
+    if ! chmod +x "$installed_tool"; then
+        print_error "Failed to make sqlite3_rsync executable in $TELEC_BIN_DIR. See $LOG_FILE"
+        exit 1
+    fi
+    _ensure_local_bin_on_path
+    print_success "Installed sqlite3_rsync $SQLITE3_RSYNC_VERSION"
+
+    if ! rm -rf "$temp_dir"; then
+        print_error "Failed to clean up sqlite3_rsync provisioning files. See $LOG_FILE"
+        exit 1
+    fi
+    trap - EXIT
+}
+
 install_gog() {
     local installed_version
     if command -v gog &> /dev/null; then
@@ -721,6 +881,7 @@ install_system_deps() {
         fi
 
         install_gog
+        install_sqlite3_rsync
 
         # Redis (conditional native install) — skip when a remote Redis is already
         # configured in .env. A local server is only needed when no REDIS_URL is set

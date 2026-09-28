@@ -97,6 +97,8 @@ class _TodoSubcommand(StrEnum):
     REMOVE = "remove"
     SHOW = "show"
     STAMP = "stamp"
+    SYNC = "sync"
+    SYNC_REPLICA = "sync-replica"
     UNFREEZE = "unfreeze"
     UPDATE = "update"
     WORK = "work"
@@ -113,9 +115,29 @@ __all__ = [
     "_handle_todo_remove",
     "_handle_todo_show",
     "_handle_todo_stamp",
+    "_handle_todo_sync",
+    "_handle_todo_sync_replica",
     "_handle_todo_unfreeze",
     "_handle_todo_update",
 ]
+
+
+def _handle_todo_sync(args: list[str]) -> None:
+    """Handle the public todo-state transfer command."""
+    from teleclaude.cli.telec.handlers.todo_sync import (  # noqa: PLC0415 - keep transfer dependencies command-local.
+        handle_todo_sync,
+    )
+
+    handle_todo_sync(args)
+
+
+def _handle_todo_sync_replica(args: list[str]) -> None:
+    """Handle the hidden target-side transfer helper."""
+    from teleclaude.cli.telec.handlers.todo_sync import (  # noqa: PLC0415 - keep transfer dependencies command-local.
+        handle_todo_sync_replica,
+    )
+
+    handle_todo_sync_replica(args)
 
 
 def _handle_todo(args: list[str]) -> None:
@@ -855,6 +877,8 @@ _TODO_SUBCOMMAND_HANDLERS: dict[_TodoSubcommand, Callable[[list[str]], None]] = 
     _TodoSubcommand.REMOVE: _handle_todo_remove,
     _TodoSubcommand.SHOW: _handle_todo_show,
     _TodoSubcommand.STAMP: _handle_todo_stamp,
+    _TodoSubcommand.SYNC: _handle_todo_sync,
+    _TodoSubcommand.SYNC_REPLICA: _handle_todo_sync_replica,
     _TodoSubcommand.UNFREEZE: _handle_todo_unfreeze,
     _TodoSubcommand.UPDATE: _handle_todo_update,
     _TodoSubcommand.WORK: _handle_todo_work,

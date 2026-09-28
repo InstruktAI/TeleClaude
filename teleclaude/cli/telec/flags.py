@@ -241,6 +241,16 @@ FLAG_TODO_CREATE_REASON = Flag(
     hidden=True,
     arity=VALUE,
 )
+FLAG_TODO_SYNC_PROJECT = Flag(
+    "--project",
+    desc="Comma-separated project slugs whose todo state is copied",
+    arity=VALUE,
+)
+FLAG_TODO_SYNC_TO = Flag(
+    "--to",
+    desc="Comma-separated target computer names",
+    arity=VALUE,
+)
 
 # =============================================================================
 # todo list
