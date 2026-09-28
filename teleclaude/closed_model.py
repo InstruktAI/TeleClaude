@@ -37,7 +37,7 @@ class ClosedModel(BaseModel):
     """A model that rejects undeclared keys instead of silently accepting them.
 
     Validation errors keep every rejected input value except those of fields
-    annotated :data:`SENSITIVE`, which are masked.
+    annotated :data:`SENSITIVE` and of undeclared keys, which are masked.
     """
 
     model_config = ConfigDict(extra="forbid")
