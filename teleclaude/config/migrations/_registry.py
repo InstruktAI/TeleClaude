@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
+from teleclaude.config.migrations import v001_declare_tier_kind
 from teleclaude.config.migrations._chain import CURRENT_VERSION, MigrationTrigger, document_version
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 from teleclaude.core.project_state import resolve_project_state_root
@@ -49,15 +50,15 @@ def registered_subject(path: Path) -> SubjectRef | None:
 def resolve_read_subject(path: Path, document: Mapping[str, object]) -> SubjectRef | None:
     """Use a registry subject when available, otherwise the document's tier declaration.
 
-    Every tier but project is located by its registry, so an older overlay that
-    no registry names and that declares no tier is read as a project.
+    Every tier but project is located by its registry, so an overlay from before
+    the declaring migration that no registry names is read as a project.
     """
     version = document_version(document)
     if version < CURRENT_VERSION:
         subject = registered_subject(path)
         if subject is not None:
             return subject
-        if _KIND_FIELD not in document and path.name == _CONFIG_NAME:
+        if version < v001_declare_tier_kind.VERSION and _KIND_FIELD not in document and path.name == _CONFIG_NAME:
             return SubjectRef(kind=ConfigSubjectKind.PROJECT, source=SubjectSource.DECLARATION)
     declared_kind = document.get(_KIND_FIELD)
     if not isinstance(declared_kind, str):
