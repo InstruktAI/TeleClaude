@@ -11,6 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from teleclaude.paths import MACHINE_CONFIG_PATH, REPO_ROOT, ConfigFileName
+from teleclaude.project_root import worktree_home_root
 from teleclaude.runtime.command_runner import run_process_group_command
 
 _TELECLAUDE_PACKAGE_MARKER = Path("teleclaude") / "__init__.py"
@@ -92,12 +93,17 @@ def resolve_checkout_grading_decision(execution_root: Path) -> CheckoutGradingDe
 @contextmanager
 def subject_checkout_grading_environment(execution_root: Path) -> Iterator[dict[str, str]]:
     """Yield the isolated child environment used for grading a subject checkout."""
+    child_env = dict(os.environ)  # guard: direct-env-read - allowed: child-process environment construction
+    child_env[_ENV_TELEC_INVOCATION_CWD] = str(execution_root)
+    child_env[_ENV_UV_NO_SYNC] = _ENV_UV_NO_SYNC_VALUE
+    if worktree_home_root(execution_root) is not None:
+        child_env.pop(_ENV_TELECLAUDE_HOME, None)
+        yield child_env
+        return
+
     with tempfile.TemporaryDirectory() as scratch_home:
         shutil.copy2(MACHINE_CONFIG_PATH, Path(scratch_home) / ConfigFileName.MACHINE)
-        child_env = dict(os.environ)  # guard: direct-env-read - allowed: child-process environment construction
         child_env[_ENV_TELECLAUDE_HOME] = scratch_home
-        child_env[_ENV_TELEC_INVOCATION_CWD] = str(execution_root)
-        child_env[_ENV_UV_NO_SYNC] = _ENV_UV_NO_SYNC_VALUE
         yield child_env
 
 

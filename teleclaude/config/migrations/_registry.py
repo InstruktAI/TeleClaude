@@ -10,6 +10,7 @@ from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef, SubjectSou
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, MACHINE_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.project_manifest import load_roots
+from teleclaude.runtime.config import require_own_checkout
 
 _SCHEMA_VERSION = "schema_version"
 _KIND_FIELD = "kind"
@@ -89,6 +90,7 @@ def registered_documents(trigger: MigrationTrigger) -> Iterator[tuple[Path, Subj
     for instance in _directory_instances(COMPANIES_ROOT):
         yield COMPANIES_ROOT / instance / _CONFIG_NAME, SubjectRef(ConfigSubjectKind.COMPANY, instance)
     for root in load_roots():
+        require_own_checkout(root)
         yield root / _CONFIG_NAME, SubjectRef(ConfigSubjectKind.PROJECT)
 
 

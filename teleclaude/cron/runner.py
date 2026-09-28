@@ -50,6 +50,7 @@ from teleclaude.events.producer import ensure_event_producer
 from teleclaude.events.schemas.jobs import JobRunEventType
 from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_root import resolve_project_root
+from teleclaude.runtime.config import require_own_checkout
 from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNode, get_project_catalog_service
 
 logger = get_logger(__name__)
@@ -708,6 +709,7 @@ def run_due_jobs(
     project_jobs: list[tuple[ProjectNode, EffectiveJob]] = []
     schedules: dict[str, JobScheduleConfig] = {}
     for project in catalog.list_projects():
+        require_own_checkout(project.root)
         try:
             effective = load_effective_jobs(project.root)
         except (OSError, ValueError) as exc:
