@@ -2,11 +2,8 @@
 kind: project
 project_name: TeleClaude
 project_slug: teleclaude
-# Owning company. The association is stated here by the project itself and is
-# never inferred from where the checkout sits.
 company: instrukt-ai
 env_allow_list: []
-
 business:
   publishes:
     - slug: sdlc
@@ -19,58 +16,78 @@ business:
       trigger: Work on a person's own mail, calendar and standing instructions.
         Only an agent started in that person's own workspace does this; asked
         elsewhere, an agent spawns one there rather than serving it.
-
-# TeleClaude's own checkpoint maintenance, dogfooded through the same project
-# overlay it hands every onboarded project. The platform-universal base (docs →
-# sync, agents → sync, Makefile/hooks → install) is inherited.
-# `test` and `log-check` are NOT in the base — they attach only to a
-# project-declared `code` scope, so each project chooses them for itself.
-# This overlay adds TeleClaude's runtime-specific actions.
 checkpoint:
   maintenance:
     plumbing-convergence:
       main_only: true
       precedence: 15
-      command: ['{interpreter}', -m, teleclaude.project_setup.plumbing]
+      command:
+        - '{interpreter}'
+        - -m
+        - teleclaude.project_setup.plumbing
     restart:
       main_only: true
       precedence: 100
-      command: [make, restart]
+      command:
+        - make
+        - restart
     deps:
       main_only: true
       precedence: 20
-      command: [uv, sync]
+      command:
+        - uv
+        - sync
     config-migrate:
       main_only: true
       precedence: 25
-      command: [uv, run, --quiet, python, -m, teleclaude.config.migrations]
+      command:
+        - uv
+        - run
+        - --quiet
+        - python
+        - -m
+        - teleclaude.config.migrations
     declaration-views-discard:
       main_only: true
       precedence: 35
-      command: [uv, run, --quiet, python, -m, teleclaude.entrypoints.declaration_view, discard, --trigger, maintenance]
+      command:
+        - uv
+        - run
+        - --quiet
+        - python
+        - -m
+        - teleclaude.entrypoints.declaration_view
+        - discard
+        - --trigger
+        - maintenance
     config-schemas:
       main_only: true
       precedence: 30
-      command: [uv, run, --quiet, python, -m, teleclaude.core.reconciliation.config_schemas]
+      command:
+        - uv
+        - run
+        - --quiet
+        - python
+        - -m
+        - teleclaude.core.reconciliation.config_schemas
     tui-reload:
       main_only: true
       precedence: 40
-      command: ['{interpreter}', -m, teleclaude.cli.tui.processes]
+      command:
+        - '{interpreter}'
+        - -m
+        - teleclaude.cli.tui.processes
   integrator_judgment:
     - log-check
   bindings:
-    # The integrator owns log-check for all daemon source. The `code` overlay block is deliberately
-    # absent: declaring it would bind `test`, which docs/project/policy/test-moratorium.md
-    # forbids in this repository. Declaring the scope generically keeps log-check
-    # without it.
     - scope:
-        include: [teleclaude/**/*.py]
+        include:
+          - teleclaude/**/*.py
       actions:
-        [log-check]
-        # Daemon code requires a restart. CLI modules the daemon imports at startup
-        # are re-included via override despite the broad cli/** exclusion.
+        - log-check
     - scope:
-        include: [teleclaude/**/*.py]
+        include:
+          - teleclaude/**/*.py
         exclude:
           - teleclaude/hooks/**
           - teleclaude/cli/**
@@ -94,69 +111,75 @@ checkpoint:
           - teleclaude/cli/telec/_run_tui.py
           - teleclaude/cli/tool_client.py
           - teleclaude/cli/session_auth.py
-      actions: [restart]
+      actions:
+        - restart
     - scope:
-        include: [config.yml]
-      actions: [restart]
+        include:
+          - config.yml
+      actions:
+        - restart
     - scope:
-        include: [pyproject.toml, requirements*.txt]
-      actions: [deps]
+        include:
+          - pyproject.toml
+          - requirements*.txt
+      actions:
+        - deps
     - scope:
-        include: [teleclaude/install/**, teleclaude/project_setup/**, teleclaude/hooks/adapters/**, templates/**]
-      actions: [install]
+        include:
+          - teleclaude/install/**
+          - teleclaude/project_setup/**
+          - teleclaude/hooks/adapters/**
+          - templates/**
+      actions:
+        - install
     - scope:
-        include: [templates/quality/githooks/**]
-      actions: [plumbing-convergence]
+        include:
+          - templates/quality/githooks/**
+      actions:
+        - plumbing-convergence
     - scope:
-        include: [teleclaude/cli/tui/**]
-      actions: [tui-reload]
+        include:
+          - teleclaude/cli/tui/**
+      actions:
+        - tui-reload
     - scope:
-        include: [teleclaude/config/**]
-      actions: [config-migrate]
+        include:
+          - teleclaude/config/**
+      actions:
+        - config-migrate
     - scope:
-        include: [teleclaude/**, pyproject.toml, uv.lock]
-      actions: [declaration-views-discard]
+        include:
+          - teleclaude/**
+          - pyproject.toml
+          - uv.lock
+      actions:
+        - declaration-views-discard
     - scope:
-        include: [teleclaude/**/*.py, teleclaude/mcp/teleclaude-mcp.schema.json]
-      actions: [config-schemas]
-
+        include:
+          - teleclaude/**/*.py
+          - teleclaude/mcp/teleclaude-mcp.schema.json
+      actions:
+        - config-schemas
 jobs:
-  # help_desk_intelligence:
-  #   category: system
-  #   when:
-  #     at: '06:00'
-  #   script: jobs/help_desk_intelligence.py
-
-  # youtube_scraper:
-  #   category: system
-  #   when:
-  #     at: '06:00'
-  #   script: jobs/youtube_scraper.py
-
-  # youtube_sync_subscriptions:
-  #   category: system
-  #   when:
-  #     at: '06:00'
-  #   script: jobs/youtube_sync_subscriptions.py
-
   - category: system
     name: temp-reaper
     when:
       every: 60m
     script: jobs/temp_reaper.py
-
   - category: system
     name: project-backup
     when:
       at: 05:00
     script: jobs/project_backup.py
-
   - category: system
     name: log-bug-hunter
     when:
       at: 03:00
     job: sdlc/procedure/maintenance/log-bug-hunter
-    agent: [codex, claude, gemini]
+    agent:
+      - codex
+      - claude
+      - gemini
     thinking_mode: med
 code:
   enabled: true
@@ -164,4 +187,5 @@ docs:
   enabled: true
 agents:
   enabled: true
-schema_version: 8
+schema_version: 9
+description: AI-powered multi-agent orchestration platform
