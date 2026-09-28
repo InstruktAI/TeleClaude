@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -789,7 +790,7 @@ async def close_session(
             )
             command = CloseSessionCommand(session_id=session.session_id)
             command.computer = session.computer_name
-            await forward_command_to_peer(client, command)
+            await forward_command_to_peer(client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
             return
 
     # closed_at is the sole "finalized" signal. A session marked only

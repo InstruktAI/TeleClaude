@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.auth import CallerIdentity, principal_for_carried_caller
+from teleclaude.config import config
+from teleclaude.core.command_dispatch import RelayFailure, RemoteDispatchReason, dispatch_command, is_remote_target
 from teleclaude.core.db import db
-from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata
 from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.types.commands import InternalCommand
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 
 def build_metadata(*, origin: str = "terminal", **kwargs: object) -> MessageMetadata:
@@ -23,6 +32,32 @@ def close_accepted(receipt: SerializedOperation) -> JSONResponse:
     so no separate location label is needed here.
     """
     return JSONResponse(status_code=202, content=dict(receipt))
+
+
+def http_exception_for_relay_failure(error: RelayFailure) -> HTTPException:
+    """Translate a typed relay failure at the API boundary."""
+    if error.reason is RemoteDispatchReason.NOT_FOUND:
+        status_code = 404
+    elif error.reason is RemoteDispatchReason.UNREACHABLE:
+        status_code = 504
+    elif error.reason is RemoteDispatchReason.REFUSED_BY_TARGET:
+        status_code = 403
+    else:
+        status_code = 502
+    return HTTPException(status_code=status_code, detail=str(error))
+
+
+async def dispatch_caller_command(
+    client: AdapterClient | None,
+    command: InternalCommand,
+    identity: CallerIdentity,
+) -> JsonValue | None:
+    """Dispatch a caller's command with the verified principal required by remote targets."""
+    principal = principal_for_carried_caller(
+        identity,
+        required=is_remote_target(command.computer, config.computer.name),
+    )
+    return await dispatch_command(client, command, principal=principal)
 
 
 async def resolve_created_session_transport(data: JsonDict) -> tuple[str, str]:

@@ -10,14 +10,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import (
     CallerIdentity,
-    caller_role_at_platform,
     carried_caller,
+    principal_for_carried_caller,
 )
 from teleclaude.api.session_pane_models import SessionPaneDTO
 from teleclaude.api.session_remote import is_remote_target
+from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
 from teleclaude.config import config
-from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnosed
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.session_pane import get_session_pane
 
 if TYPE_CHECKING:
@@ -48,20 +48,14 @@ async def get_session_pane_endpoint(
         if is_remote_target(computer, config.computer.name):
             if _STATE.client is None:
                 raise HTTPException(status_code=503, detail="Remote session pane is unavailable")
+            principal = principal_for_carried_caller(_identity, required=True)
             target_computer = computer or NO_REMOTE_COMPUTER
-            metadata = MessageMetadata(human_email=_identity.email, human_role=caller_role_at_platform(_identity))
-            message_id = await _STATE.client.send_request(
+            data = await relay_caller_read(
+                _STATE.client,
                 target_computer,
                 REMOTE_SESSION_PANE_COMMAND,
-                metadata,
+                principal=principal,
                 session_id=session_id,
-            )
-            response_text = await _STATE.client.read_response(message_id, target_computer=target_computer)
-            data = await parse_remote_dispatch_data_diagnosed(
-                _STATE.client,
-                response_text,
-                target_computer=target_computer,
-                command=REMOTE_SESSION_PANE_COMMAND,
             )
             return SessionPaneDTO.model_validate(data)
 
@@ -75,6 +69,8 @@ async def get_session_pane_endpoint(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Session not found") from exc
+    except RelayFailure as exc:
+        raise http_exception_for_relay_failure(exc) from exc
     except HTTPException:
         raise
     except Exception as exc:

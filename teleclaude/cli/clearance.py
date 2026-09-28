@@ -40,6 +40,7 @@ class ClearanceScope:
     additional_command_paths: tuple[str, ...] = ()
     role_target: RoleTarget | None = None
     target_computer: str | None = None
+    direct_conversation: bool = False
 
     @classmethod
     def verb(
@@ -49,6 +50,7 @@ class ClearanceScope:
         target_session_id: str | None = None,
         role_target: RoleTarget | None = None,
         target_computer: str | None = None,
+        direct_conversation: bool = False,
     ) -> ClearanceScope:
         """Clear a request as one declared CLI verb."""
         return cls(
@@ -57,6 +59,7 @@ class ClearanceScope:
             target_session_id,
             role_target=role_target,
             target_computer=target_computer,
+            direct_conversation=direct_conversation,
         )
 
     @classmethod
@@ -66,6 +69,7 @@ class ClearanceScope:
         *,
         role_target: RoleTarget | None = None,
         target_computer: str | None = None,
+        direct_conversation: bool = False,
     ) -> ClearanceScope:
         """Clear one request against every verb it performs."""
         if not command_paths:
@@ -76,6 +80,7 @@ class ClearanceScope:
             additional_command_paths=tuple(command_paths[1:]),
             role_target=role_target,
             target_computer=target_computer,
+            direct_conversation=direct_conversation,
         )
 
     @classmethod
@@ -99,9 +104,15 @@ class ClearanceScope:
         session_id: str,
         *,
         computer: str | None = None,
+        direct_conversation: bool = False,
     ) -> ClearanceScope:
         """Clear a session operation against the target session's project."""
-        return cls.verb(command_path, target_session_id=session_id, target_computer=computer)
+        return cls.verb(
+            command_path,
+            target_session_id=session_id,
+            target_computer=computer,
+            direct_conversation=direct_conversation,
+        )
 
     @classmethod
     def identified_only(cls) -> ClearanceScope:
@@ -152,6 +163,7 @@ def clearance_scope_refusal(scope: ClearanceScope, identity: ResolvedCliIdentity
             _resolve_command_auth(command_path),
             role_target=scope.role_target,
             target_computer=scope.target_computer,
+            direct_conversation=scope.direct_conversation,
         ).refusal
         if refusal is not None:
             return refusal

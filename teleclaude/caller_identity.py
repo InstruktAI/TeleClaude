@@ -57,6 +57,23 @@ class SessionAct(StrEnum):
     RESTART = "restart"
 
 
+class RelayedAct(StrEnum):
+    """Caller-facing CLI verbs whose target computer makes the person decision."""
+
+    START = "telec sessions start"
+    RUN = "telec sessions run"
+    SEND = "telec sessions send"
+    TAIL = "telec sessions tail"
+    END = "telec sessions end"
+    REVIVE = "telec sessions revive"
+    RESTART = "telec sessions restart"
+    UNSUBSCRIBE = "telec sessions unsubscribe"
+    LIST = "telec sessions list"
+    OPERATIONS_GET = "telec operations get"
+    HISTORY_SEARCH = "telec history search"
+    HISTORY_SHOW = "telec history show"
+
+
 @dataclass(frozen=True)
 class PersonCliCaller:
     """A caller acting with a person's carried or terminal identity."""
@@ -122,7 +139,12 @@ class SharedDocsScope:
     """The platform's shared documentation inherited by every company."""
 
 
-type RoleScope = PlatformScope | CompanyScope | ProjectScope | PersonScope | SharedDocsScope
+@dataclass(frozen=True)
+class ThisComputerScope:
+    """Objects held by this computer whose roles are resolved from its own registries."""
+
+
+type RoleScope = PlatformScope | CompanyScope | ProjectScope | PersonScope | SharedDocsScope | ThisComputerScope
 
 
 @dataclass(frozen=True)
@@ -189,7 +211,14 @@ class Platform:
     """A platform-wide object with no narrower registered scope."""
 
 
-type RoleTarget = ProjectPath | Project | Company | Person | SessionOf | DocsTier | OperationOf | Platform
+@dataclass(frozen=True)
+class ThisComputer:
+    """Objects held by the computer making the current role decision."""
+
+
+type RoleTarget = (
+    ProjectPath | Project | Company | Person | SessionOf | DocsTier | OperationOf | Platform | ThisComputer
+)
 
 
 class CliResolvedIdentityFields(Protocol):
@@ -284,14 +313,27 @@ def effective_role(facts: PersonRoleFacts, scope: RoleScope) -> str:
                 member = facts.memberships.get(owner)
                 if member is not None and (member.role is CompanyRole.ADMIN or project in member.projects):
                     candidates.append(member.role.value)
-        case SharedDocsScope():
-            candidates.extend(member.role.value for member in facts.memberships.values())
+        case SharedDocsScope() | ThisComputerScope():
+            return _effective_platform_and_company_role(facts)
         case PersonScope(person=person):
             if person == facts.person_slug:
                 candidates.append(HUMAN_ROLE_ADMIN)
         case _:
             return assert_never(scope)
 
+    return _highest_ranked_role(candidates)
+
+
+def _effective_platform_and_company_role(facts: PersonRoleFacts) -> str:
+    """Resolve the highest role this computer can establish for a person."""
+    candidates = [member.role.value for member in facts.memberships.values()]
+    if facts.platform_role is not None:
+        candidates.append(facts.platform_role)
+    return _highest_ranked_role(candidates)
+
+
+def _highest_ranked_role(candidates: list[str]) -> str:
+    """Return the highest recognized role among the declared candidates."""
     recognized = [role for role in candidates if role in HUMAN_ROLES]
     if not recognized:
         return HUMAN_ROLE_CUSTOMER
@@ -325,6 +367,8 @@ def _scope_for_target(target: RoleTarget, ownership_index: ProjectOwnershipIndex
             return scope_for_path(cwd, ownership_index)
         case Platform():
             return PlatformScope()
+        case ThisComputer():
+            return ThisComputerScope()
         case _:
             return assert_never(target)
 

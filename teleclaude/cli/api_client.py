@@ -64,6 +64,10 @@ _HISTORY_RAW_PARAM = "raw"
 _HISTORY_COMPUTER_PARAM = "computer"
 _PROJECTS_ROUTE = "/projects"
 _PROJECT_PATH_FIELD = "path"
+_MESSAGE_FIELD = "message"
+_DIRECT_FIELD = "direct"
+_CLOSE_LINK_FIELD = "close_link"
+_SESSIONS_SEND_COMMAND = "sessions send"
 _PROJECT_INIT_COMMAND = "telec config project init"
 _PROJECT_INIT_CLEARANCE = ClearanceScope.verb(_PROJECT_INIT_COMMAND)
 _HTTP_POST = HTTPMethod.POST
@@ -725,15 +729,33 @@ class _TelecSessionAPI:
         )
         return resp.status_code == 200
 
-    async def send_message(self, session_id: str, computer: str, message: str) -> bool:
+    async def send_message(
+        self,
+        session_id: str,
+        computer: str,
+        message: str,
+        *,
+        direct: bool = False,
+        close_link: bool = False,
+    ) -> bool:
         """Send a message to a session."""
+        body: JsonBody = {_MESSAGE_FIELD: message}
+        if direct:
+            body[_DIRECT_FIELD] = True
+        if close_link:
+            body[_CLOSE_LINK_FIELD] = True
         resp = await self._request(
             "POST",
             f"/sessions/{session_id}/message",
             request_options=RequestOptions(
                 params={"computer": computer},
-                json_body={"message": message},
-                clearance_scope=ClearanceScope.session_verb("sessions send", session_id, computer=computer),
+                json_body=body,
+                clearance_scope=ClearanceScope.session_verb(
+                    _SESSIONS_SEND_COMMAND,
+                    session_id,
+                    computer=computer,
+                    direct_conversation=direct or close_link,
+                ),
             ),
         )
         return resp.status_code in {200, 202}

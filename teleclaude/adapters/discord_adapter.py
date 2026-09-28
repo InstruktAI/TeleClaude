@@ -29,6 +29,7 @@ from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
@@ -194,7 +195,7 @@ class DiscordAdapter(
             protocol_generation=1,
         )
         command.computer = master
-        await dispatch_command(self.client, command)
+        await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
 
     async def _claim_discord_shared_thread(
         self,
@@ -219,7 +220,7 @@ class DiscordAdapter(
             protocol_generation=1,
         )
         command.computer = master
-        result = await dispatch_command(self.client, command)
+        result = await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
         return isinstance(result, dict) and result.get("outcome") == "claimed"
 
     async def _complete_discord_shared_thread_inventory(self, *, epoch: int) -> bool:
@@ -266,7 +267,7 @@ class DiscordAdapter(
             inventory_items=inventory_items,
         )
         command.computer = master
-        result = await dispatch_command(self.client, command)
+        result = await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
         return isinstance(result, dict) and result.get("outcome") == "completed"
 
     async def _open_discord_shared_thread_epoch(self) -> int | None:
@@ -284,7 +285,7 @@ class DiscordAdapter(
             protocol_generation=1,
         )
         command.computer = master
-        result = await dispatch_command(self.client, command)
+        result = await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
         value = result.get("owner_computer") if isinstance(result, dict) else None
         return int(value) if isinstance(value, str) and value.isdigit() else None
 
@@ -546,7 +547,7 @@ class DiscordAdapter(
             return
         command = SetVoiceFocusCommand(person_slug=identity.person_slug, session_id=session_id)
         command.computer = target
-        await dispatch_command(self.client, command)
+        await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
         logger.info("discord.listen.ownership_decided", owned=True, reason="master_routed")
 
     async def _restore_listen_controls(self) -> None:

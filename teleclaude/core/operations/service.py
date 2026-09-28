@@ -64,6 +64,7 @@ from teleclaude.core.operations._kinds import (
     OPERATION_KIND_TODO_RENAME,
     OPERATION_KIND_TODO_WORK,
 )
+from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
@@ -409,12 +410,22 @@ class OperationsService:
         kind = _COMMAND_TYPE_TO_OPERATION_KIND.get(command.command_type)
         if kind is None:
             raise ValueError(f"unsupported command-backed operation kind: {command.command_type.value}")
+        session_project_path = None
+        session_id = getattr(command, "session_id", None)
+        if isinstance(session_id, str) and kind in {
+            OPERATION_KIND_SESSION_CLOSE,
+            OPERATION_KIND_AGENT_RESTART,
+            OPERATION_KIND_AGENT_HANDOFF,
+        }:
+            session = await self._db.get_session(session_id)
+            session_project_path = session.project_path if session is not None else None
         payload_json = json.dumps(command.to_dict(), sort_keys=True)
         caller_provenance_json = json.dumps(caller.to_dict(), sort_keys=True) if caller is not None else None
         return await self._submit_operation(
             kind=kind,
             caller_session_id=caller.session_id if caller is not None else None,
             cwd=None,
+            session_project_path=session_project_path,
             slug=None,
             client_request_id=client_request_id,
             payload_json=payload_json,
@@ -434,6 +445,7 @@ class OperationsService:
         abandon: bool = False,
         caller_computer: str | None = None,
         caller_provenance_json: str | None = None,
+        session_project_path: str | None = None,
         existing_match_ok: Callable[[Operation], bool] | None = None,
         on_existing: Callable[[Operation], None] | None = None,
     ) -> SerializedOperation:
@@ -498,6 +510,7 @@ class OperationsService:
                     state="queued",
                     caller_computer=caller_computer,
                     caller_provenance_json=caller_provenance_json,
+                    session_project_path=session_project_path,
                 )
             except IntegrityError:
                 if not client_request_id:
@@ -520,16 +533,21 @@ class OperationsService:
         self,
         *,
         operation_id: str,
-        caller_session_id: str,
+        caller_session_id: str | None,
         caller: CliCaller,
+        relayed_principal: str | None = None,
     ) -> SerializedOperation:
         """Return operation status if owned by the caller or an effective project admin."""
         operation = await self._db.get_operation(operation_id)
         if operation is None:
             raise HTTPException(status_code=404, detail="operation not found")
-        if operation.caller_session_id == caller_session_id:
+        if relayed_principal is not None:
+            if was_started_by_principal(operation, relayed_principal):
+                return self._serialize_operation(operation)
+        elif caller_session_id is not None and operation.caller_session_id == caller_session_id:
             return self._serialize_operation(operation)
-        target = OperationOf(Path(operation.cwd) if operation.cwd else None)
+        operation_project_path = operation.cwd or operation.session_project_path
+        target = OperationOf(Path(operation_project_path) if operation_project_path else None)
         if not isinstance(caller, PersonCliCaller) or RoleResolver().role_for(caller, target) != "admin":
             raise HTTPException(status_code=404, detail="operation not found")
         return self._serialize_operation(operation)
@@ -701,25 +719,19 @@ class OperationsService:
         return await rename_func(self._db, payload["old_slug"], payload["new_slug"], payload["cwd"])
 
     async def _run_command_backed_operation(self, operation: Operation) -> str:
-        """Reconstruct the operation's carried command and run it through its handler.
+        """Reconstruct the command, recheck relayed receipts, and run its handler.
 
-        One factory for all three command-backed kinds: they differ only in
-        which command they carry, and the command's own type resolves the
-        handler — three bespoke factories would be three copies of one
-        dispatch. ``invoke_command_handler`` is the execution entry: it runs
-        the handler unconditionally, never re-submitting through the response-
-        mode branch that already ran when this operation was created.
-
-        Some handlers (restart's ``(ok, error)`` tuple) report failure as a
-        returned value rather than a raised exception. Since the terminal
-        transition reads only whether this coroutine raised, an ``ok=False``
-        result is translated into a raised exception here — otherwise a failed
-        restart would be recorded as a completed operation.
+        Restart reports failure as an ``(ok, error)`` tuple rather than raising;
+        convert ``ok=False`` into an exception so the row records failure.
         """
         payload = json.loads(operation.payload_json)
         if not isinstance(payload, dict):
             raise ValueError("command-backed operation payload must be a JSON object")
         command = command_from_dict(cast(JsonDict, payload))
+        if command.relayed_principal is not None:
+            from teleclaude.core.relayed_intake import redecide_deferred  # noqa: PLC0415 - deferred cycle
+
+            await redecide_deferred(command)
         result = await invoke_command_handler(command)
         ok, error = command_result_outcome(result)
         if ok is False:

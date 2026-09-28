@@ -22,7 +22,13 @@ from teleclaude.api.agent_dispatch_errors import (
     run_dispatch_refusal_reason,
     run_refusal_outcome,
 )
-from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller, resolve_caller_provenance
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_for_role_resolution,
+    carried_caller,
+    principal_for_carried_caller,
+    resolve_caller_provenance,
+)
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
 from teleclaude.api.session_authority import ACT_END, ACT_SEND_MESSAGE, refuse_act_on_ancestor
@@ -42,6 +48,7 @@ from teleclaude.api.session_reminder_summary import attach_next_reminders, obser
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
 from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
+from teleclaude.api.session_route_helpers import dispatch_caller_command, http_exception_for_relay_failure
 from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
 from teleclaude.api.session_view_models import enrich_human_names
 from teleclaude.api.sessions_actions_routes import guard_generic_create_session
@@ -52,18 +59,12 @@ from teleclaude.api_models import (
     SendMessageResponseDTO,
     SessionDTO,
 )
-from teleclaude.caller_identity import (
-    PersonCliCaller,
-    Platform,
-    RoleResolver,
-    SessionOf,
-    SystemCliCaller,
-)
+from teleclaude.caller_identity import RoleResolver
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
+from teleclaude.constants import SlashCommand
 from teleclaude.core import command_handlers
 from teleclaude.core.agent_dispatch import AgentDispatchReason
-from teleclaude.core.command_dispatch import dispatch_command
+from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.command_input import (
     WORKTREE_BOUND_WORKER_COMMANDS,
     CommandInputMode,
@@ -89,10 +90,12 @@ from teleclaude.core.inbound_errors import (
 from teleclaude.core.injected_text import MachineRoleLabel
 from teleclaude.core.models import (
     AgentDispatchMode,
+    JsonDict,
     MessageAuthor,
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
+    parse_peer_session_snapshots,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
@@ -107,6 +110,7 @@ from teleclaude.core.session_links import (
 from teleclaude.core.session_listeners import (
     register_listener,
 )
+from teleclaude.core.session_listing import sessions_reached_by
 from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal
 from teleclaude.core.session_utils import resolve_working_dir
@@ -119,12 +123,6 @@ if TYPE_CHECKING:
 from teleclaude.types.commands import OCCURRENCE_KEY, CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
-
-
-def _session_computer_name(session: object) -> str:
-    """Return the computer label from a local session or cached snapshot."""
-    value = getattr(session, "computer_name", None) or getattr(session, "computer", None)
-    return value if isinstance(value, str) else ""
 
 
 _UNIDENTIFIABLE_CALLER_EVENT = "unidentifiable_caller_refused"
@@ -149,6 +147,12 @@ class ResolvedSessionEventIdentity:
 
 
 _CONFIG_UNSET = object()
+_LIST_SESSIONS_READ = "list_sessions"
+_INCLUDE_CLOSED_FIELD = "include_closed"
+_NO_REMOTE_COMPUTER = ""
+_REMOTE_SESSION_LISTING_UNAVAILABLE_DETAIL = "Remote session listing is unavailable"
+_REMOTE_SESSION_LISTING_INVALID_DETAIL = "Remote session listing returned invalid data"
+_REMOTE_SESSION_LISTING_FAILURE_EVENT = "list_sessions.remote_failure"
 
 _STATE = SimpleNamespace(client=None, cache=None, reminder_service=None)
 _SESSION_EVENT_IDENTITY_RESOLVED_EVENT = "session_event_identity_resolved"
@@ -362,6 +366,44 @@ async def list_sessions(
         List of session summaries (merged local + cached remote)
     """
     try:
+        if is_remote_target(query.computer, config.computer.name):
+            if _STATE.client is None:
+                raise HTTPException(status_code=503, detail=_REMOTE_SESSION_LISTING_UNAVAILABLE_DETAIL)
+            principal = principal_for_carried_caller(_identity, required=True)
+            target_computer = query.computer or _NO_REMOTE_COMPUTER
+            request_data: JsonDict = {_INCLUDE_CLOSED_FIELD: query.include_closed}
+            try:
+                remote_data = await relay_caller_read(
+                    _STATE.client,
+                    target_computer,
+                    _LIST_SESSIONS_READ,
+                    principal=principal,
+                    request=request_data,
+                )
+            except RelayFailure as exc:
+                logger.error(_REMOTE_SESSION_LISTING_FAILURE_EVENT, computer=target_computer, exc_info=True)
+                raise http_exception_for_relay_failure(exc) from exc
+            if not isinstance(remote_data, list):
+                raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
+            if any(not isinstance(item, dict) for item in remote_data):
+                raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
+            peer_data = cast(list[JsonDict], remote_data)
+            remote_sessions = parse_peer_session_snapshots(peer_data, target_computer)
+            if len(remote_sessions) != len(peer_data):
+                raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
+            for session in remote_sessions:
+                session.computer = target_computer
+            caller_session_id = request.headers.get("x-caller-session-id")
+            if caller_session_id and not query.all_sessions:
+                remote_sessions = [
+                    session for session in remote_sessions if session.initiator_session_id == caller_session_id
+                ]
+            if query.job:
+                remote_sessions = [session for session in remote_sessions if session.job == query.job]
+            dtos = [SessionDTO.from_core(session, computer=session.computer) for session in remote_sessions]
+            observe_session_reminder_summaries(dtos)
+            return enrich_human_names(dtos)
+
         local_sessions = await command_handlers.list_sessions(include_closed=query.include_closed)
 
         # No cache: serve local sessions only (respect computer filter)
@@ -386,30 +428,14 @@ async def list_sessions(
                 by_id.setdefault(s.session_id, s)
             merged = list(by_id.values())
 
-        caller = caller_for_role_resolution(_identity)
-        resolver = RoleResolver()
-        system_caller = isinstance(caller, SystemCliCaller)
-        platform_role = resolver.role_for(caller, Platform())
-        platform_reaches = system_caller or platform_role != HUMAN_ROLE_CUSTOMER
-        if query.computer and query.computer not in ("local", config.computer.name):
-            merged = merged if platform_reaches else []
-        else:
-            merged = [
-                session
-                for session in merged
-                if (
-                    system_caller
-                    or (
-                        _session_computer_name(session) in ("", "local", config.computer.name)
-                        and isinstance(caller, PersonCliCaller)
-                        and resolver.role_for(caller, SessionOf(session.project_path)) != HUMAN_ROLE_CUSTOMER
-                    )
-                    or (_session_computer_name(session) not in ("", "local", config.computer.name) and platform_reaches)
-                )
-            ]
-
         # Telec tool default: show sessions spawned by current caller only.
         caller_session_id = request.headers.get("x-caller-session-id")
+        merged = sessions_reached_by(
+            caller_for_role_resolution(_identity),
+            merged,
+            resolver=RoleResolver(),
+            caller_session=caller_session_id,
+        )
         if caller_session_id and not query.all_sessions:
             merged = [s for s in merged if s.initiator_session_id == caller_session_id]
 
@@ -425,6 +451,8 @@ async def list_sessions(
         )
         observe_session_reminder_summaries(dtos)
         return enrich_human_names(dtos)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("list_sessions failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
@@ -518,7 +546,7 @@ async def _create_session_response(
                 ),
             )
     try:
-        result = await dispatch_command(_STATE.client, cmd)
+        result = await dispatch_caller_command(_STATE.client, cmd, identity)
         if not isinstance(result, dict):
             raise HTTPException(status_code=500, detail="Failed to create session")
         data = result
@@ -650,7 +678,7 @@ async def end_session(
             cmd = CloseSessionCommand(session_id=session_id)
             cmd.computer = target_computer
             cmd.caller = caller
-            result = await dispatch_command(_STATE.client, cmd)
+            result = await dispatch_caller_command(_STATE.client, cmd, identity)
             if not isinstance(result, dict):
                 raise RuntimeError("Remote receipt submission returned no result")
             return _close_accepted(cast(SerializedOperation, result))  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
@@ -758,6 +786,7 @@ async def _process_api_message(
     session_id: str,
     message_text: str,
     metadata: MessageMetadata,
+    identity: CallerIdentity,
     occurrence_key: str | None = None,
     computer: str | None = None,
 ) -> None:
@@ -766,7 +795,7 @@ async def _process_api_message(
     if occurrence_key is not None:
         payload[OCCURRENCE_KEY] = occurrence_key
     cmd = CommandMapper.map_api_input("message", payload, metadata, computer=computer)
-    await dispatch_command(_STATE.client, cmd)
+    await dispatch_caller_command(_STATE.client, cmd, identity)
 
 
 async def _load_target_session_for_message(
@@ -801,7 +830,7 @@ async def _handle_close_link_request(
         return SendMessageResponseDTO(status="error", message="no active direct link found")
 
     if request.message:
-        await _process_api_message(session_id, request.message, _build_metadata())
+        await _process_api_message(session_id, request.message, _build_metadata(), identity)
 
     closed_link_id = await close_link_for_member(
         caller_session_id=identity.session_id,
@@ -954,7 +983,7 @@ async def send_message_endpoint(
         if caller_resolution is not None:
             metadata.caller_origin_prefix_len = caller_prefix_len
             metadata.caller_origin_suffix_len = caller_suffix_len
-        await _process_api_message(session_id, message_text, metadata, occurrence_key, computer=computer)
+        await _process_api_message(session_id, message_text, metadata, identity, occurrence_key, computer=computer)
         return SendMessageResponseDTO(status="success", mode="work")
     except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:
         if isinstance(exc, UnidentifiableCallerError):

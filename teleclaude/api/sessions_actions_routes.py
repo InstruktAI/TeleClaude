@@ -21,9 +21,9 @@ from teleclaude.api.agent_dispatch_errors import (
 )
 from teleclaude.api.auth import (
     CallerIdentity,
-    caller_role_at_platform,
     caller_role_for_session,
     carried_caller,
+    principal_for_carried_caller,
     resolve_caller_provenance,
 )
 from teleclaude.api.run_session_job import normalize_job_run_request
@@ -40,6 +40,7 @@ from teleclaude.api.session_pane_routes import configure as configure_session_pa
 from teleclaude.api.session_pane_routes import router as session_pane_router
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_result_routes import router as session_result_router
+from teleclaude.api.session_route_helpers import dispatch_caller_command, http_exception_for_relay_failure
 from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -70,10 +71,7 @@ from teleclaude.core.agent_dispatch import (
 )
 from teleclaude.core.agents import get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
-from teleclaude.core.command_dispatch import (
-    dispatch_command,
-    parse_remote_dispatch_data_diagnosed,
-)
+from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir, select_handoff_successor
 from teleclaude.core.command_input import REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
@@ -82,13 +80,13 @@ from teleclaude.core.command_service import DISPATCH_ALLOWED, classify_driver_la
 from teleclaude.core.db import db
 from teleclaude.core.models import (
     AgentDispatchMode,
+    JsonDict,
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
     SessionLaunchKind,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
-from teleclaude.core.models._types import SessionOriginMetadata
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.origins import InputOrigin
@@ -121,6 +119,11 @@ from teleclaude.types.commands import SystemCommand
 logger = get_logger(__name__)
 _AGENT_STATUS_FIELD = "agent_status"
 _AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
+_SINCE_FIELD = "since"
+_INCLUDE_TOOLS_FIELD = "include_tools"
+_INCLUDE_THINKING_FIELD = "include_thinking"
+_TAIL_CHARS_FIELD = "tail_chars"
+_TAIL_SCOPE_FIELD = "tail_scope"
 _REMOTE_AGENT_STATUS_INVALID_DETAIL = "Remote session returned an invalid agent status"
 
 WORKER_LIFECYCLE_COMMANDS = {
@@ -497,7 +500,7 @@ async def send_keys_endpoint(
     session_id: str,
     request: KeysRequest,
     computer: str | None = Query(None),
-    _identity: CallerIdentity = Depends(carried_caller),
+    identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
     try:
@@ -513,7 +516,7 @@ async def send_keys_endpoint(
             metadata,
             computer=computer,
         )
-        await dispatch_command(_STATE.client, cmd)
+        await dispatch_caller_command(_STATE.client, cmd, identity)
         return {"status": "success"}
     except HTTPException:
         raise
@@ -600,7 +603,7 @@ async def agent_restart(
         cmd.caller = caller
 
         if is_remote_target(computer, config.computer.name):
-            result = await dispatch_command(_STATE.client, cmd)
+            result = await dispatch_caller_command(_STATE.client, cmd, identity)
             if not isinstance(result, dict):
                 raise RuntimeError("Remote receipt submission returned no result")
             receipt = cast(SerializedOperation, result)
@@ -637,7 +640,7 @@ async def revive_session(
         cmd = ReviveAgentCommand(session_id=session_id)
         cmd.computer = computer
         cmd.caller = await resolve_caller_provenance(identity)
-        result = await dispatch_command(_STATE.client, cmd)
+        result = await dispatch_caller_command(_STATE.client, cmd, identity)
         if isinstance(result, tuple | list) and len(result) >= 2:
             success = bool(result[0])
             error = str(result[1]) if result[1] else None
@@ -681,35 +684,22 @@ async def get_session_messages(
         if is_remote_target(query.computer, config.computer.name):
             if _STATE.client is None:
                 raise HTTPException(status_code=503, detail="Remote session tail is unavailable")
+            principal = principal_for_carried_caller(_identity, required=True)
             target_computer = query.computer or NO_REMOTE_COMPUTER
-            recipient_role = caller_role_at_platform(_identity)
-            tail_origin_metadata = cast(
-                SessionOriginMetadata,
-                {
-                    "since": query.since,
-                    "include_tools": query.include_tools,
-                    "include_thinking": query.include_thinking,
-                    "tail_chars": query.tail_chars,
-                    "tail_scope": query.tail_scope,
-                },
-            )
-            metadata = MessageMetadata(
-                origin_metadata=tail_origin_metadata,
-                human_email=_identity.email,
-                human_role=recipient_role,
-            )
-            message_id = await _STATE.client.send_request(
+            request: JsonDict = {
+                _SINCE_FIELD: query.since,
+                _INCLUDE_TOOLS_FIELD: query.include_tools,
+                _INCLUDE_THINKING_FIELD: query.include_thinking,
+                _TAIL_CHARS_FIELD: query.tail_chars,
+                _TAIL_SCOPE_FIELD: query.tail_scope,
+            }
+            data = await relay_caller_read(
+                _STATE.client,
                 target_computer,
                 REMOTE_SESSION_MESSAGES_COMMAND,
-                metadata,
+                principal=principal,
                 session_id=session_id,
-            )
-            response_text = await _STATE.client.read_response(message_id, target_computer=target_computer)
-            data = await parse_remote_dispatch_data_diagnosed(
-                _STATE.client,
-                response_text,
-                target_computer=target_computer,
-                command=REMOTE_SESSION_MESSAGES_COMMAND,
+                request=request,
             )
             if not isinstance(data, dict):
                 raise HTTPException(status_code=502, detail=_REMOTE_AGENT_STATUS_INVALID_DETAIL)
@@ -745,6 +735,9 @@ async def get_session_messages(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Session not found") from exc
+    except RelayFailure as exc:
+        logger.error("get_session_messages remote read failed", session_id=session_id, exc_info=True)
+        raise http_exception_for_relay_failure(exc) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -883,7 +876,7 @@ async def _run_session(
         else None
     )
     try:
-        data = await dispatch_command(_STATE.client, cmd)
+        data = await dispatch_caller_command(_STATE.client, cmd, identity)
         if not isinstance(data, dict):
             raise HTTPException(status_code=500, detail="Failed to create session")
         session_id = data.get("session_id")
@@ -959,7 +952,7 @@ async def unsubscribe_session(
     await refuse_act_on_ancestor(identity, session_id, ACT_UNSUBSCRIBE)
     cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)
     cmd.computer = computer
-    result = await dispatch_command(_STATE.client, cmd)
+    result = await dispatch_caller_command(_STATE.client, cmd, identity)
     if isinstance(result, dict):
         return {"status": "success", **result}
     return {"status": "success", "listener_removed": False, "link_closed": False, "link_id": None}

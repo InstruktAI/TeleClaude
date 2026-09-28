@@ -58,11 +58,13 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             computer_name: str,
             command: str,
             metadata: MessageMetadata,
+            *,
+            principal: str,
             session_id: str | None = None,
             command_payload: JsonDict | None = None,
         ) -> str:
             """Send a request to a remote computer."""
-            _ = (computer_name, command, metadata, session_id, command_payload)
+            _ = (computer_name, command, metadata, principal, session_id, command_payload)
             raise NotImplementedError
 
     async def get_online_computers(self) -> list[str]:

@@ -673,6 +673,7 @@ class Operation(SQLModel, table=True):
     caller_provenance_json: str | None = None
     client_request_id: str | None = None
     cwd: str | None = None
+    session_project_path: str | None = None
     slug: str | None = None
     payload_json: str
     state: str

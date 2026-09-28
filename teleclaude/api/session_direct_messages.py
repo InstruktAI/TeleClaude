@@ -20,6 +20,7 @@ from teleclaude.api.sessions_responses import active_direct_link_response as _ac
 from teleclaude.api.sessions_responses import exclusive_direct_link_response as _exclusive_direct_link_response
 from teleclaude.api_models import SendMessageResponseDTO
 from teleclaude.config import config
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.conversation_bundle_delivery import direct_ignition_occurrence_key
 from teleclaude.core.conversation_messages import format_peer_message
@@ -156,6 +157,7 @@ async def _deliver_direct_message(  # pyright: ignore[reportUnusedFunction]
                 caller_machine_role=caller_author.machine_role,
                 caller_job_role=caller_job_role,
             ),
+            principal=SYSTEM_DAEMON_PRINCIPAL,
         )
         delivered_to += 1
     return delivered_to

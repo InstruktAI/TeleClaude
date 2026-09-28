@@ -23,7 +23,7 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.config import config
-from teleclaude.constants import ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import LOGIN_REQUIRED_DETAIL, ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import db
@@ -102,9 +102,12 @@ def caller_from_carried_identity(identity: CallerIdentity) -> CliCaller:
     return NoIdentityCliCaller()
 
 
-def principal_for_carried_caller(identity: CallerIdentity) -> str | None:
+def principal_for_carried_caller(identity: CallerIdentity, *, required: bool = False) -> str | None:
     """Return the principal the client carried, without a daemon lookup."""
-    return identity.principal
+    principal = identity.principal
+    if required and not principal:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
+    return principal
 
 
 def carried_caller(

@@ -65,6 +65,7 @@ from ._snapshot import (
     StartSessionArgs,
     SystemCommandArgs,
     ThinkingMode,
+    parse_peer_session_snapshots,
 )
 from ._types import (
     JsonDict,
@@ -140,4 +141,5 @@ __all__ = [
     "VoiceContext",
     "WhatsAppAdapterMetadata",
     "asdict_exclude_none",
+    "parse_peer_session_snapshots",
 ]

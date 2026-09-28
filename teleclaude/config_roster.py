@@ -11,7 +11,7 @@ import yaml
 from pydantic import Field, ValidationError, field_validator
 
 from teleclaude.closed_model import ClosedModel
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, ConfigFileName
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, MACHINE_CONFIG_PATH, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import derive_project_slug, validate_slug
 
@@ -21,6 +21,9 @@ _MEMBERS_KEY = "members"
 _PROJECT_SLUG_KEY = "project_slug"
 _PROJECT_NAME_KEY = "project_name"
 _COMPANY_KEY = "company"
+_COMPUTER_KEY = "computer"
+_NAME_KEY = "name"
+_ENV_REFERENCE_PREFIX = "${"
 
 
 class CompanyRole(StrEnum):
@@ -58,6 +61,31 @@ class ProjectOwnership:
 
     project_slug: str
     company: str | None
+
+
+@dataclass(frozen=True)
+class ConfiguredComputerName:
+    """Validated configured name for this machine."""
+
+    value: str
+
+
+def read_local_computer_name(path: Path | None = None) -> ConfiguredComputerName | None:
+    """Read the machine name as a lightweight validated identity fact."""
+    source = MACHINE_CONFIG_PATH if path is None else path
+    try:
+        raw: object = yaml.safe_load(source.read_text(encoding=_UTF8))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    computer = raw.get(_COMPUTER_KEY)
+    if not isinstance(computer, dict):
+        return None
+    name = computer.get(_NAME_KEY)
+    if not isinstance(name, str) or not name or name.strip() != name or _ENV_REFERENCE_PREFIX in name:
+        return None
+    return ConfiguredComputerName(name)
 
 
 @dataclass(frozen=True)

@@ -10,15 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from teleclaude.api.auth import (
     CallerIdentity,
     caller_for_role_resolution,
-    caller_role_at_platform,
     carried_caller,
+    principal_for_carried_caller,
 )
 from teleclaude.api.session_remote import is_remote_target
+from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
-from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnosed
-from teleclaude.core.models import MessageMetadata
-from teleclaude.core.models._types import SessionOriginMetadata
+from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
+from teleclaude.core.models import JsonDict
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 
@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/operations", tags=["operations"])
 
 _STATE = SimpleNamespace(client=None)
+_OPERATION_ID_FIELD = "operation_id"
+_GET_OPERATION_COMMAND = "get_operation"
 
 
 def configure(client: AdapterClient | None = None) -> None:
@@ -46,24 +48,19 @@ async def get_operation(
     if is_remote_target(computer, config.computer.name):
         if _STATE.client is None:
             raise HTTPException(status_code=503, detail="Remote operation read is unavailable")
+        principal = principal_for_carried_caller(identity, required=True)
         target_computer = computer or ""
-        metadata = MessageMetadata(
-            origin_metadata=cast(SessionOriginMetadata, {"operation_id": operation_id}),
-            human_role=caller_role_at_platform(identity),
-        )
-        message_id = await _STATE.client.send_request(
-            target_computer,
-            "get_operation",
-            metadata,
-            session_id=identity.session_id,
-        )
-        response_text = await _STATE.client.read_response(message_id, target_computer=target_computer)
-        data = await parse_remote_dispatch_data_diagnosed(
-            _STATE.client,
-            response_text,
-            target_computer=target_computer,
-            command="get_operation",
-        )
+        request: JsonDict = {_OPERATION_ID_FIELD: operation_id}
+        try:
+            data = await relay_caller_read(
+                _STATE.client,
+                target_computer,
+                _GET_OPERATION_COMMAND,
+                principal=principal,
+                request=request,
+            )
+        except RelayFailure as exc:
+            raise http_exception_for_relay_failure(exc) from exc
         return cast(SerializedOperation, data)
 
     operations = get_operations_service()

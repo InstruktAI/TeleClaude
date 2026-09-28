@@ -6,10 +6,14 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from teleclaude.caller_identity import Company, Person, Platform, Project, ProjectPath, RoleTarget
+from teleclaude.caller_identity import Company, Person, Platform, Project, ProjectPath, RelayedAct, RoleTarget
 from teleclaude.cli import CommandScope, ConfigSubjectType
-from teleclaude.cli.session_auth import require_cli_clearance
-from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
+from teleclaude.cli.session_auth import (
+    ComputerTargetDisposition,
+    classify_computer_target,
+    require_cli_clearance,
+)
+from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, ParsedArgs, parse_command_args
 from teleclaude.cli.telec.help import (
     _handle_completion,
     _maybe_show_help,
@@ -22,12 +26,14 @@ from teleclaude.cli.telec.surface import (
     CommandDef,
     TelecCommand,
 )
-from teleclaude.constants import LOCAL_COMPUTER, MAIN_MODULE
+from teleclaude.constants import MAIN_MODULE
 from teleclaude.paths import invocation_cwd
 
 from . import flags as F
 
 _INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
+_RELAYED_ACT_PATHS = frozenset(act.value.removeprefix("telec ") for act in RelayedAct)
+_DIRECT_CONVERSATION_FLAGS = (F.FLAG_DIRECT_SEND, F.FLAG_CLOSE_LINK, F.FLAG_CLOSE_LINK_ALIAS)
 
 __all__ = ["main"]
 
@@ -72,15 +78,17 @@ def _resolve_and_enforce(cmd: str, args: list[str]) -> tuple[list[str], CommandD
 def _role_target_for_command(
     path: list[str],
     node: CommandDef,
-    remainder: list[str],
+    parsed: ParsedArgs,
+    target_computer: str | None,
+    direct_conversation: bool,
 ) -> RoleTarget | None:
     """Resolve the declared person-role object from the parsed command target."""
     auth = node.auth
     if auth is None or auth.caller_independent:
         return None
-    parsed = parse_command_args(node, remainder)
-    computer_flags = [flag for flag in node.flags if flag.long == F.FLAG_COMPUTER.long]
-    if any(computer != LOCAL_COMPUTER for flag in computer_flags for computer in parsed.values(flag)):
+    if classify_computer_target(target_computer) is ComputerTargetDisposition.REMOTE:
+        if " ".join(path) in _RELAYED_ACT_PATHS:
+            return Platform() if direct_conversation else None
         return Platform()
     if auth.scope is CommandScope.PLATFORM:
         return Platform()
@@ -157,12 +165,17 @@ def _handle_cli_command(argv: list[str]) -> None:
 
     target_session_id = _session_action_target(node, remainder)
     command_path = " ".join(path)
-    role_target = _role_target_for_command(path, node, remainder)
+    parsed = parse_command_args(node, remainder)
+    target_computer = parsed.value(F.FLAG_COMPUTER) if F.FLAG_COMPUTER in node.flags else None
+    direct_conversation = any(flag in node.flags and parsed.has(flag) for flag in _DIRECT_CONVERSATION_FLAGS)
+    role_target = _role_target_for_command(path, node, parsed, target_computer, direct_conversation)
     require_cli_clearance(
         command_path,
         target_session_id,
         node.auth,
         role_target=role_target,
+        target_computer=target_computer,
+        direct_conversation=direct_conversation,
     )
 
     handler = _resolve_cli_handler(cmd_enum, args)

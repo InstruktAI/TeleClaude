@@ -6,6 +6,8 @@ import json
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
+from redis.exceptions import RedisError
+
 from teleclaude.config import config
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
@@ -17,6 +19,7 @@ from teleclaude.core.agent_dispatch import (
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import AgentDispatchMode, JsonDict, JsonValue, MessageMetadata
+from teleclaude.core.models._types import SessionOriginMetadata
 from teleclaude.core.reconciliation import (
     DEFAULT_FEATURE_ID_REGISTRY,
     DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
@@ -68,6 +71,13 @@ PEER_VERSION_SKEW_DIAGNOSTIC_TEMPLATE = (
     "an outdated TeleClaude build{version_context}; update it. Original peer error: {error}"
 )
 NO_VERSION_CONTEXT = ""
+_RELAY_FAILURE_DETAIL_TEMPLATE = "Remote {command} on {computer} failed: {detail}"
+_ERROR_KIND_FIELD = "kind"
+_ERROR_DETAIL_FIELD = "detail"
+_NOT_FOUND_ERROR_KIND = "not_found"
+_REFUSED_ERROR_KIND = "refused_by_target"
+_READ_TIMEOUT_DETAIL = "target did not answer before the read timed out"
+_PEER_REQUEST_DETAIL = "peer request failed"
 
 
 class RemoteDispatchReason(StrEnum):
@@ -79,6 +89,10 @@ class RemoteDispatchReason(StrEnum):
     INVALID_REMOTE_STATUS = "invalid_remote_status"
     PEER_REPORTED_ERROR = "peer_reported_error"
     REMOTE_DISPATCH_FAILED = "remote_dispatch_failed"
+    UNREACHABLE = "unreachable"
+    NOT_FOUND = "not_found"
+    REFUSED_BY_TARGET = "refused_by_target"
+    PEER_ERROR = "peer_error"
 
 
 class RemoteDispatchError(RuntimeError):
@@ -99,6 +113,25 @@ class PeerReportedError(RemoteDispatchError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message, reason=RemoteDispatchReason.PEER_REPORTED_ERROR)
+
+
+class RelayFailure(RemoteDispatchError):
+    """A caller read failed on its named target computer."""
+
+    def __init__(
+        self,
+        *,
+        computer: str,
+        command: str,
+        reason: RemoteDispatchReason,
+        detail: str,
+    ) -> None:
+        self.computer = computer
+        self.command = command
+        super().__init__(
+            _RELAY_FAILURE_DETAIL_TEMPLATE.format(command=command, computer=computer, detail=detail),
+            reason=reason,
+        )
 
 
 def is_remote_target(computer: str | None, local_computer: str) -> bool:
@@ -130,6 +163,18 @@ def parse_remote_dispatch_data(
     status = envelope.get("status")
     if status == "error":
         error = envelope.get("error")
+        if isinstance(error, dict) and error.get(_ERROR_KIND_FIELD) in {
+            _NOT_FOUND_ERROR_KIND,
+            _REFUSED_ERROR_KIND,
+        }:
+            relay_reason = (
+                RemoteDispatchReason.NOT_FOUND
+                if error.get(_ERROR_KIND_FIELD) == _NOT_FOUND_ERROR_KIND
+                else RemoteDispatchReason.REFUSED_BY_TARGET
+            )
+            detail_raw = error.get(_ERROR_DETAIL_FIELD)
+            detail = detail_raw if isinstance(detail_raw, str) else str(error)
+            raise RelayFailure(computer=target_computer, command=command, reason=relay_reason, detail=detail)
         if isinstance(error, dict) and error.get("kind") == "agent_dispatch_failure":
             try:
                 reason = AgentDispatchReason(str(error.get("reason")))
@@ -204,6 +249,63 @@ async def parse_remote_dispatch_data_diagnosed(
         if diagnosed_error is error:
             raise
         raise diagnosed_error from error
+
+
+async def relay_caller_read(
+    client: AdapterClient,
+    target: str,
+    read: str,
+    *,
+    principal: str,
+    session_id: str | None = None,
+    request: JsonDict | None = None,
+) -> JsonValue:
+    """Send one caller read through the relay and normalize its typed failures."""
+    try:
+        message_id = await client.send_request(
+            target,
+            read,
+            MessageMetadata(origin_metadata=cast(SessionOriginMetadata | None, request)),
+            principal=principal,
+            session_id=session_id,
+        )
+        response_text = await client.read_response(message_id, target_computer=target)
+    except TimeoutError as exc:
+        raise RelayFailure(
+            computer=target,
+            command=read,
+            reason=RemoteDispatchReason.UNREACHABLE,
+            detail=str(exc) or _READ_TIMEOUT_DETAIL,
+        ) from exc
+    except (OSError, RedisError) as exc:
+        raise RelayFailure(
+            computer=target,
+            command=read,
+            reason=RemoteDispatchReason.PEER_ERROR,
+            detail=str(exc) or _PEER_REQUEST_DETAIL,
+        ) from exc
+
+    try:
+        return await parse_remote_dispatch_data_diagnosed(
+            client,
+            response_text,
+            target_computer=target,
+            command=read,
+        )
+    except AgentDispatchFailure as exc:
+        raise RelayFailure(
+            computer=target,
+            command=read,
+            reason=RemoteDispatchReason.REFUSED_BY_TARGET,
+            detail=str(exc),
+        ) from exc
+    except PeerReportedError as exc:
+        raise RelayFailure(
+            computer=target,
+            command=read,
+            reason=RemoteDispatchReason.PEER_ERROR,
+            detail=str(exc),
+        ) from exc
 
 
 async def invoke_command_handler(command: InternalCommand, *, source_computer: str | None = None) -> JsonValue | None:
@@ -283,8 +385,14 @@ def required_command_capabilities(command: InternalCommand) -> frozenset[str]:
     return frozenset(required)
 
 
-async def forward_command_to_peer(client: AdapterClient, command: InternalCommand) -> JsonValue | None:
-    """Forward a serialized command to the peer named by ``command.computer``."""
+async def forward_command_to_peer(
+    client: AdapterClient, command: InternalCommand, *, principal: str
+) -> JsonValue | None:
+    """Forward a serialized command and its required principal to its owning peer.
+
+    The receiving computer resolves the principal and makes the person decision
+    from its own session and project records.
+    """
     target_computer = command.computer
     if not target_computer:
         raise ValueError("command.computer is required for peer forwarding")
@@ -336,6 +444,7 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
         target_computer,
         command.command_type.value,
         MessageMetadata(),
+        principal=principal,
         session_id=getattr(command, "session_id", None),
         command_payload=command.to_dict(),
     )
@@ -347,11 +456,26 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
         # Submission is a persist-and-return on the owning computer — not the
         # command's own work — so it needs less room than an IMMEDIATE round trip.
         timeout = 2.0
-    response_text = await client.read_response(
-        message_id,
-        timeout=timeout,
-        target_computer=target_computer,
-    )
+    try:
+        response_text = await client.read_response(
+            message_id,
+            timeout=timeout,
+            target_computer=target_computer,
+        )
+    except TimeoutError as exc:
+        raise RelayFailure(
+            computer=target_computer,
+            command=command.command_type.value,
+            reason=RemoteDispatchReason.UNREACHABLE,
+            detail=_READ_TIMEOUT_DETAIL,
+        ) from exc
+    except (OSError, RedisError) as exc:
+        raise RelayFailure(
+            computer=target_computer,
+            command=command.command_type.value,
+            reason=RemoteDispatchReason.PEER_ERROR,
+            detail=str(exc) or _PEER_REQUEST_DETAIL,
+        ) from exc
     return await parse_remote_dispatch_data_diagnosed(
         client,
         response_text,
@@ -360,10 +484,17 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
     )
 
 
-async def dispatch_command(client: AdapterClient | None, command: InternalCommand) -> JsonValue | None:
+async def dispatch_command(
+    client: AdapterClient | None,
+    command: InternalCommand,
+    *,
+    principal: str | None,
+) -> JsonValue | None:
     """Dispatch locally or forward once based on ``command.computer``."""
     if is_remote_target(command.computer, config.computer.name):
         if client is None:
             raise RuntimeError("No transport adapter available for remote execution")
-        return await forward_command_to_peer(client, command)
+        if principal is None:
+            raise ValueError("A principal is required for a relayed command")
+        return await forward_command_to_peer(client, command, principal=principal)
     return await run_local_command(command)

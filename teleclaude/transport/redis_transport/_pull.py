@@ -10,13 +10,14 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.models import (
     JsonDict,
     MessageMetadata,
     PeerCapabilityMissing,
     ProjectInfo,
     SessionFinalOutput,
-    SessionSnapshot,
+    parse_peer_session_snapshots,
 )
 
 _GET_SESSION_FINAL_OUTPUT_REQUEST = "get_session_final_output"
@@ -47,11 +48,13 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             computer_name: str,
             command: str,
             metadata: MessageMetadata,
+            *,
+            principal: str,
             session_id: str | None = None,
             command_payload: JsonDict | None = None,
         ) -> str:
             """Send a request to a remote computer."""
-            _ = (computer_name, command, metadata, session_id, command_payload)
+            _ = (computer_name, command, metadata, principal, session_id, command_payload)
             raise NotImplementedError
 
     def _parse_envelope(self, computer: str, response_data: str, label: str) -> JsonDict | None:
@@ -81,21 +84,6 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
                 return None
             items.append(item)
         return items
-
-    @staticmethod
-    def _parse_session_snapshots(data: list[JsonDict], computer: str) -> list[SessionSnapshot]:
-        """Decode tolerant peer snapshots and discard malformed exact-status claims."""
-        snapshots: list[SessionSnapshot] = []
-        for session_obj in data:
-            try:
-                snapshots.append(SessionSnapshot.from_dict(session_obj))
-            except ValueError as exc:
-                logger.warning(
-                    "Discarding malformed session snapshot",
-                    computer=computer,
-                    error=str(exc),
-                )
-        return snapshots
 
     async def _handle_error_status(
         self,
@@ -138,7 +126,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
                 continue
             try:
                 # Request sessions via Redis (calls list_sessions handler on remote)
-                message_id = await self.send_request(computer_name, "list_sessions", MessageMetadata())
+                message_id = await self.send_request(
+                    computer_name, "list_sessions", MessageMetadata(), principal=SYSTEM_DAEMON_PRINCIPAL
+                )
 
                 # Wait for response with short timeout
                 response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer_name)
@@ -165,7 +155,7 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
 
                 # Populate cache with sessions
                 session_data = [item for item in data if isinstance(item, dict)]
-                snapshots = self._parse_session_snapshots(session_data, computer_name)
+                snapshots = parse_peer_session_snapshots(session_data, computer_name)
                 for snapshot in snapshots:
                     snapshot.computer = computer_name
                     self.cache.update_session(snapshot)
@@ -204,7 +194,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug("Pulling sessions from %s", computer)
 
         try:
-            message_id = await self.send_request(computer, "list_sessions", MessageMetadata())
+            message_id = await self.send_request(
+                computer, "list_sessions", MessageMetadata(), principal=SYSTEM_DAEMON_PRINCIPAL
+            )
             response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "sessions")
             if envelope is None:
@@ -218,7 +210,7 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             if data is None:
                 return False
 
-            snapshots = self._parse_session_snapshots(data, computer)
+            snapshots = parse_peer_session_snapshots(data, computer)
             self.cache.apply_sessions_snapshot(computer, snapshots, from_cluster=True)
             logger.info("Pulled %d sessions from %s", len(snapshots), computer)
             return True
@@ -240,7 +232,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug("Pulling projects from remote computer: %s", computer)
 
         try:
-            message_id = await self.send_request(computer, "list_projects", MessageMetadata())
+            message_id = await self.send_request(
+                computer, "list_projects", MessageMetadata(), principal=SYSTEM_DAEMON_PRINCIPAL
+            )
             response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "projects")
             if envelope is None:
@@ -280,7 +274,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug("Pulling projects-with-todos from %s", computer)
 
         try:
-            message_id = await self.send_request(computer, "list_projects_with_todos", MessageMetadata())
+            message_id = await self.send_request(
+                computer, "list_projects_with_todos", MessageMetadata(), principal=SYSTEM_DAEMON_PRINCIPAL
+            )
             response_data = await self.client.read_response(message_id, timeout=5.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "projects-with-todos")
             if envelope is None:
@@ -356,7 +352,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         logger.debug("Pulling todos from %s:%s", computer, project_path)
 
         try:
-            message_id = await self.send_request(computer, "list_projects_with_todos", MessageMetadata())
+            message_id = await self.send_request(
+                computer, "list_projects_with_todos", MessageMetadata(), principal=SYSTEM_DAEMON_PRINCIPAL
+            )
             response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "projects-with-todos")
             if envelope is None:
@@ -395,7 +393,11 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         missing = PeerCapabilityMissing(computer=computer, request=_GET_SESSION_FINAL_OUTPUT_REQUEST)
         try:
             message_id = await self.send_request(
-                computer, _GET_SESSION_FINAL_OUTPUT_REQUEST, MessageMetadata(), session_id=session_id
+                computer,
+                _GET_SESSION_FINAL_OUTPUT_REQUEST,
+                MessageMetadata(),
+                principal=SYSTEM_DAEMON_PRINCIPAL,
+                session_id=session_id,
             )
             response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
             envelope = self._parse_envelope(computer, response_data, "session-final-output")

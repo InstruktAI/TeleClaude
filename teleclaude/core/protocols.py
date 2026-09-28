@@ -50,6 +50,8 @@ class RemoteExecutionProtocol(Protocol):
         computer_name: str,
         command: str,
         metadata: MessageMetadata,
+        *,
+        principal: str,
         session_id: str | None = None,
         command_payload: JsonDict | None = None,
     ) -> str:

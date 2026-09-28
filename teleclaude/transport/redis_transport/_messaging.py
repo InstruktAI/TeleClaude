@@ -1,4 +1,10 @@
-"""Message polling, parsing, and handling for RedisTransport."""
+"""Message polling, principal validation, and intake dispatch for RedisTransport.
+
+Caller-facing commands and reads go to relayed intake, where the owning
+computer resolves the principal and applies its object-scoped role decision.
+The transport validates that a principal exists before decoding the rest of
+each relayed entry.
+"""
 
 from __future__ import annotations
 
@@ -9,17 +15,12 @@ import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
-from pydantic import TypeAdapter
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
-from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, caller_from_carried_identity
-from teleclaude.constants import LOGIN_REQUIRED_DETAIL
+from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
 from teleclaude.core import command_handlers
-from teleclaude.core.agent_status_projection import project_peer_agent_status
-from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -31,9 +32,13 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.models import JsonDict, RedisInboundMessage
-from teleclaude.core.models._types import json_int
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
-from teleclaude.core.operations import get_operations_service
+from teleclaude.core.relayed_intake import (
+    RelayedReadNotFound,
+    RelayRead,
+    dispatch_relayed_command,
+    execute_relayed_read,
+)
 from teleclaude.core.session_listeners import (
     INFERRED_STALL_EVIDENCE_METADATA_KEY,
     INFERRED_STALL_PANE_TAIL_FIELD,
@@ -45,24 +50,9 @@ from teleclaude.core.session_listeners import (
     deliver_remote_distress_notification,
     deliver_remote_stop_notification,
 )
-from teleclaude.core.session_message_projection import (
-    SessionMessageProjectionOptions,
-    build_session_messages_dto,
-)
-from teleclaude.core.session_pane import get_session_pane
-from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
+from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.history.service import (
-    HistoryRelayCommand,
-    HistoryShowRequest,
-    build_history_detail_payload,
-    build_history_search_payload,
-    parse_history_agents,
-)
-from teleclaude.mirrors.access import history_access_for_caller
-from teleclaude.mirrors.store import MirrorAccess
-from teleclaude.types.commands import command_from_dict
-from teleclaude.utils.transcript_discovery import SessionId
+from teleclaude.history.service import HistoryRelayCommand
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -71,8 +61,30 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_AGENT_STATUS_FIELD = "agent_status"
-_AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
+_NOT_FOUND_KIND = "not_found"
+_REFUSED_BY_TARGET_KIND = "refused_by_target"
+_KIND_FIELD = "kind"
+_DETAIL_FIELD = "detail"
+_STATUS_FIELD = "status"
+_ERROR_FIELD = "error"
+_DATA_FIELD = "data"
+_SUCCESS_STATUS = "success"
+_LIST_PROJECTS_COMMAND = "list_projects"
+_LIST_PROJECTS_WITH_TODOS_COMMAND = "list_projects_with_todos"
+_GET_SESSION_FINAL_OUTPUT_COMMAND = "get_session_final_output"
+_LAST_OUTPUT_RAW_FIELD = "last_output_raw"
+_LAST_OUTPUT_STOP_AT_FIELD = "last_output_stop_at"
+_SESSION_ID_FIELD = "session_id"
+_RELAYED_READ_COMMANDS = frozenset(
+    {
+        RelayRead.SESSION_MESSAGES.value,
+        RelayRead.SESSION_PANE.value,
+        RelayRead.OPERATION.value,
+        RelayRead.SESSIONS.value,
+        HistoryRelayCommand.SEARCH.value,
+        HistoryRelayCommand.SHOW.value,
+    }
+)
 
 _DB_EXCEPTIONS = (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError)
 _MESSAGE_EXCEPTIONS = (
@@ -100,36 +112,6 @@ _INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE: JsonDict = {
     "status": "error",
     "error": _INVALID_STOP_NOTIFICATION_VARIANT_ERROR,
 }
-_HISTORY_SHOW_REQUEST_ADAPTER: TypeAdapter[HistoryShowRequest] = TypeAdapter(HistoryShowRequest)
-_TAIL_CHARS_FIELD = "tail_chars"
-_DEFAULT_TAIL_CHARS = 10000
-
-
-async def _history_access_for_relayed_caller(parsed: RedisInboundMessage) -> MirrorAccess:
-    caller = caller_from_carried_identity(
-        CallerIdentity(
-            session_id=parsed.session_id or "",
-            system_role=parsed.system_role,
-            human_role=parsed.human_role,
-            email=parsed.human_email,
-            principal=parsed.caller_principal,
-        )
-    )
-    access = await asyncio.to_thread(history_access_for_caller, caller)
-    if access is None:
-        raise PermissionError(LOGIN_REQUIRED_DETAIL)
-    return access
-
-
-def _session_message_projection_options(data: JsonDict) -> SessionMessageProjectionOptions:
-    include_tools_raw = data.get("include_tools")
-    return SessionMessageProjectionOptions(
-        since=str(data["since"]) if data.get("since") is not None else None,
-        include_tools=include_tools_raw if isinstance(include_tools_raw, bool) else None,
-        include_thinking=bool(data.get("include_thinking")),
-        tail_chars=json_int(data.get(_TAIL_CHARS_FIELD) or _DEFAULT_TAIL_CHARS),
-        tail_scope=str(data.get("tail_scope") or "all"),
-    )
 
 
 def _decode_redis_text(data: dict[bytes, bytes], key: bytes) -> str | None:
@@ -329,14 +311,17 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return await self._handle_system_message(data)
 
             if parsed.command_payload is not None:
-                command = command_from_dict(parsed.command_payload)
-                command.request_id = message_id
-                result = await execute_command_envelope(command, source_computer=parsed.initiator)
+                result = await dispatch_relayed_command(
+                    parsed.command_payload,
+                    parsed.caller_principal,
+                    request_id=message_id,
+                    source_computer=parsed.initiator,
+                )
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 logger.debug(
                     "Handled redis command payload",
-                    command_type=str(command.command_type),
+                    command_type=str(parsed.command_payload.get("command_type")),
                     message_id=message_id,
                     response_len=len(response_json),
                 )
@@ -352,105 +337,41 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 return
+            if cmd_name in _RELAYED_READ_COMMANDS:
+                try:
+                    payload = await execute_relayed_read(cmd_name, parsed)
+                    response_envelope: JsonDict = {
+                        _STATUS_FIELD: _SUCCESS_STATUS,
+                        _DATA_FIELD: payload,
+                    }
+                except RelayedReadNotFound as exc:
+                    response_envelope = {
+                        _STATUS_FIELD: "error",
+                        _ERROR_FIELD: {_KIND_FIELD: _NOT_FOUND_KIND, _DETAIL_FIELD: str(exc)},
+                    }
+                except PermissionError as exc:
+                    response_envelope = {
+                        _STATUS_FIELD: "error",
+                        _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: str(exc)},
+                    }
+                await self.send_response(message_id, json.dumps(response_envelope))
+                return
+
             if cmd_name in {
-                "list_sessions",
-                "list_projects",
-                "list_projects_with_todos",
-                "get_session_messages",
-                "get_session_pane",
-                HistoryRelayCommand.SEARCH.value,
-                HistoryRelayCommand.SHOW.value,
-                "get_session_final_output",
-                "get_operation",
+                _LIST_PROJECTS_COMMAND,
+                _LIST_PROJECTS_WITH_TODOS_COMMAND,
+                _GET_SESSION_FINAL_OUTPUT_COMMAND,
             }:
                 # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
                 # payload (see ``_heartbeat.py``); peers read it directly in ``discover_peers``.
-                if cmd_name == "get_operation":
-                    requested_operation_id = str((parsed.origin_metadata or {}).get("operation_id") or "")
-                    try:
-                        caller = caller_for_role_resolution(
-                            CallerIdentity(
-                                session_id=parsed.session_id or "",
-                                system_role=parsed.system_role,
-                                human_role=parsed.human_role,
-                                email=parsed.human_email,
-                                principal=parsed.caller_principal,
-                            )
-                        )
-                        operation_receipt = await get_operations_service().get_operation_for_caller(
-                            operation_id=requested_operation_id,
-                            caller_session_id=parsed.session_id or "",
-                            caller=caller,
-                        )
-                        payload = dict(operation_receipt)
-                    except HTTPException as exc:
-                        response_json = json.dumps({"status": "error", "error": str(exc.detail)})
-                        await self.send_response(message_id, response_json)
-                        return
-                elif cmd_name == "list_sessions":
-                    payload = [s.to_peer_dict() for s in await command_handlers.list_sessions()]
-                elif cmd_name == "list_projects":
+                if cmd_name == _LIST_PROJECTS_COMMAND:
                     payload = [project.to_dict() for project in await command_handlers.list_projects()]
-                elif cmd_name == "get_session_messages":
-                    options = _session_message_projection_options(parsed.origin_metadata or {})
-                    dto = await build_session_messages_dto(
-                        parsed.session_id or "",
-                        recipient_email=parsed.human_email,
-                        recipient_role=parsed.human_role,
-                        options=options,
-                    )
-                    payload = dto.model_dump(mode="json")
-                    exact_status = dto.agent_status or AgentStatusValue.UNKNOWN
-                    payload[_AGENT_STATUS_FIELD] = project_peer_agent_status(exact_status).value
-                    payload[_AGENT_STATUS_EXACT_FIELD] = exact_status.value
-                elif cmd_name == "get_session_pane":
-                    pane = await get_session_pane(parsed.session_id or "")
-                    payload = {
-                        "session_id": pane.session_id,
-                        "runtime": pane.runtime,
-                        "captured_at": pane.captured_at.isoformat(),
-                        "available": pane.available,
-                        "text": pane.text,
-                    }
-                elif cmd_name == HistoryRelayCommand.SEARCH.value:
-                    search_data = parsed.origin_metadata or {}
-                    agent_filter = str(search_data.get("agent") or "all")
-                    agents = parse_history_agents(agent_filter)
-                    limit_value = search_data.get("limit")
-                    limit = limit_value if isinstance(limit_value, int) else 20
-                    include_workers_value = search_data.get("include_workers")
-                    include_workers = include_workers_value if isinstance(include_workers_value, bool) else False
-                    access = await _history_access_for_relayed_caller(parsed)
-                    payload = await asyncio.to_thread(
-                        build_history_search_payload,
-                        computer=self.computer_name,
-                        query=str(search_data.get("q") or ""),
-                        agents=agents,
-                        limit=limit,
-                        access=access,
-                        include_workers=include_workers,
-                        identity=(str(search_data["identity"]) if search_data.get("identity") is not None else None),
-                        project=(str(search_data["project"]) if search_data.get("project") is not None else None),
-                    )
-                elif cmd_name == HistoryRelayCommand.SHOW.value:
-                    show_data = _HISTORY_SHOW_REQUEST_ADAPTER.validate_python(parsed.origin_metadata or {})
-                    session_id = str(SessionId(show_data["session_id"]))
-                    agents = parse_history_agents(show_data["agent"])
-                    access = await _history_access_for_relayed_caller(parsed)
-                    payload = await asyncio.to_thread(
-                        build_history_detail_payload,
-                        session_id,
-                        access=access,
-                        agents=agents,
-                        include_thinking=show_data["thinking"],
-                        raw=show_data["raw"],
-                    )
-                elif cmd_name == "get_session_final_output":
+                elif cmd_name == _GET_SESSION_FINAL_OUTPUT_COMMAND:
                     final_output_session = await db.get_session(parsed.session_id or "")
                     payload = {
-                        "session_id": parsed.session_id or "",
-                        "last_output_raw": final_output_session.last_output_raw if final_output_session else None,
-                        "last_output_stop_at": (
+                        _SESSION_ID_FIELD: parsed.session_id or "",
+                        _LAST_OUTPUT_RAW_FIELD: final_output_session.last_output_raw if final_output_session else None,
+                        _LAST_OUTPUT_STOP_AT_FIELD: (
                             final_output_session.last_output_stop_at.isoformat()
                             if final_output_session and final_output_session.last_output_stop_at
                             else None
@@ -459,7 +380,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 
-                response_json = json.dumps({"status": "success", "data": payload})
+                response_json = json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: payload})
                 await self.send_response(message_id, response_json)
                 return
 
@@ -574,6 +495,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""
+        caller_principal = _decode_redis_text(data, b"caller_principal")
+        if caller_principal is None or isinstance(caller_from_principal(caller_principal), NoIdentityCliCaller):
+            raise ValueError("Malformed Redis stream entry: missing or invalid caller principal")
         msg_type = _decode_redis_text(data, b"type") or ""
         session_id = _decode_redis_text(data, b"session_id")
         command = _decode_redis_text(data, b"command") or ""
@@ -622,11 +546,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             origin=origin_raw,
             origin_metadata=origin_metadata,
             launch_intent=launch_intent,
-            human_email=_decode_redis_text(data, b"human_email"),
-            human_role=_decode_redis_text(data, b"human_role"),
-            caller_principal=_decode_redis_text(data, b"caller_principal"),
-            system_role=_decode_redis_text(data, b"system_role"),
-            job=_decode_redis_text(data, b"job"),
+            caller_principal=caller_principal,
         )
 
     async def _handle_system_message(self, data: dict[bytes, bytes]) -> None:

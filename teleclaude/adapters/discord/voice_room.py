@@ -24,6 +24,7 @@ from teleclaude.adapters.discord.voice_playback import VoicePlayback
 from teleclaude.adapters.discord.voice_protocol import VoiceProtocol
 from teleclaude.cli.config_handlers import get_global_config, get_person_config
 from teleclaude.config import config
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import voice_focus
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.identity import get_identity_resolver
@@ -412,7 +413,7 @@ class VoiceRoom:
                 origin_metadata={"user_id": latched.user_id, "discord_user_id": latched.user_id},
             )
             command.computer = latched.target_computer
-            await dispatch_command(self._client, command)
+            await dispatch_command(self._client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
             logger.info(
                 "voice_input_delivered", utterance_id=message.utteranceId, target_computer=latched.target_computer
             )

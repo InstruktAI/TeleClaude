@@ -9,7 +9,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import LOCAL_COMPUTER
+from teleclaude.constants import LOCAL_COMPUTER, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.db._agent_status import TurnNotificationRecord
@@ -303,6 +303,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                     occurrence=occurrence_key,
                 ),
                 metadata,
+                principal=SYSTEM_DAEMON_PRINCIPAL,
             )
             response = json.loads(await self.client.read_response(request_id, target_computer=destination))
             data = response.get("data") if isinstance(response, dict) else None
@@ -368,6 +369,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                     variant=variant.value,
                 ),
                 metadata=MessageMetadata(),
+                principal=SYSTEM_DAEMON_PRINCIPAL,
             )
             logger.info("Forwarded stop to %s", initiator_computer)
         except Exception as exc:

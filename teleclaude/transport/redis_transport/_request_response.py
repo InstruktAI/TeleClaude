@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.events import SessionOutputStoppedPayload, SystemCommand
 from teleclaude.core.models import JsonDict, MessageMetadata, ObservedStopPublication
 
@@ -150,6 +152,8 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         computer_name: str,
         command: str,
         metadata: MessageMetadata,
+        *,
+        principal: str,
         session_id: str | None = None,
         command_payload: JsonDict | None = None,
     ) -> str:
@@ -160,11 +164,15 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         Args:
             computer_name: Target computer name
             command: Command to send
+            principal: Required caller or daemon principal resolved by the target
             session_id: Optional TeleClaude session ID (for session commands)
-            metadata: Optional metadata (title, project_path for session creation)
+            metadata: Session and input metadata; it never carries caller authority
         Returns:
             Redis stream entry ID (used for response correlation)
         """
+
+        if isinstance(caller_from_principal(principal), NoIdentityCliCaller):
+            raise ValueError("A valid caller principal is required for relayed messages")
 
         message_stream = f"messages:{computer_name}"
 
@@ -198,17 +206,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
         if metadata.origin_metadata:
             data[b"origin_metadata"] = json.dumps(metadata.origin_metadata).encode("utf-8")
-        # Relay the verified caller identity so the peer can resolve its own scope.
-        if metadata.human_email:
-            data[b"human_email"] = metadata.human_email.encode("utf-8")
-        if metadata.human_role:
-            data[b"human_role"] = metadata.human_role.encode("utf-8")
-        if metadata.caller_principal:
-            data[b"caller_principal"] = metadata.caller_principal.encode("utf-8")
-        if metadata.system_role:
-            data[b"system_role"] = metadata.system_role.encode("utf-8")
-        if metadata.job:
-            data[b"job"] = metadata.job.encode("utf-8")
+        data[b"caller_principal"] = principal.encode("utf-8")
         # origin is a client-stamped session concept (InputOrigin), not a transport
         # field. Carry it only when a client set it; system RPCs and internal ops
         # (pulls, fanout) legitimately have none. Computer identity travels as `initiator`.
@@ -390,6 +388,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"from_computer": self.computer_name.encode("utf-8"),
+            b"caller_principal": SYSTEM_DAEMON_PRINCIPAL.encode("utf-8"),
         }
 
         # Add args as JSON if provided

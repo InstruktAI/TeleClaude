@@ -139,6 +139,7 @@ class InternalCommand:
     success_event: str | None = None
     failure_event: str | None = None
     caller: CallerProvenance | None = None
+    relayed_principal: str | None = None
 
     def __post_init__(self) -> None:
         declares_events = self.success_event is not None or self.failure_event is not None
@@ -973,6 +974,10 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
     command.failure_event = cast(str | None, data.get("failure_event"))
     raw_caller = data.get("caller")
     command.caller = CallerProvenance.from_dict(raw_caller) if isinstance(raw_caller, dict) else None
+    raw_relayed_principal = data.get("relayed_principal")
+    if raw_relayed_principal is not None and not isinstance(raw_relayed_principal, str):
+        raise ValueError("relayed_principal must be a string when present")
+    command.relayed_principal = raw_relayed_principal
     # A subclass whose hand-written __init__ hardcodes response_mode/events (or,
     # like ProcessMessageCommand, derives `caller` from its own flat kwargs) never
     # installed these post-construction assignments through the biconditional.

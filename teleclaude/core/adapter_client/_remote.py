@@ -122,6 +122,8 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         computer_name: str,
         command: str,
         metadata: MessageMetadata,
+        *,
+        principal: str,
         session_id: str | None = None,
         command_payload: JsonDict | None = None,
     ) -> str:
@@ -142,7 +144,14 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
             RuntimeError: If no transport adapter available
         """
         transport = self._get_transport_adapter()
-        return await transport.send_request(computer_name, command, metadata, session_id, command_payload)
+        return await transport.send_request(
+            computer_name,
+            command,
+            metadata,
+            principal=principal,
+            session_id=session_id,
+            command_payload=command_payload,
+        )
 
     async def send_response(self, message_id: str, data: str) -> str:
         """Send response for an ephemeral request.

@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.agent_status_projection import (
     project_peer_agent_status,
@@ -33,6 +35,7 @@ _AGENT_STATUS_FIELD = "agent_status"
 _AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
 _AGENT_STATUS_REASON_FIELD = "agent_status_reason"
 _AGENT_STATUS_SINCE_FIELD = "agent_status_since"
+logger = get_logger(__name__)
 
 
 def _parse_peer_agent_status(data: Mapping[str, object]) -> tuple[AgentStatusValue, AgentStatusReason | None]:
@@ -80,6 +83,7 @@ class RedisInboundMessage:
     msg_type: str
     session_id: str | None
     command: str
+    caller_principal: str
     command_payload: JsonDict | None = None
     actor_id: str | None = None
     actor_name: str | None = None
@@ -92,11 +96,6 @@ class RedisInboundMessage:
     origin_metadata: JsonDict | None = None
     launch_intent: JsonDict | None = None
     reply_stream: str | None = None
-    human_email: str | None = None
-    human_role: str | None = None
-    caller_principal: str | None = None
-    system_role: str | None = None
-    job: str | None = None
 
 
 @dataclass
@@ -334,6 +333,21 @@ class SessionSnapshot(
             procedure=str(data.get("procedure")) if data.get("procedure") else None,
             last_output_stop_at=(str(data.get("last_output_stop_at")) if data.get("last_output_stop_at") else None),
         )
+
+
+def parse_peer_session_snapshots(data: list[JsonDict], computer: str) -> list[SessionSnapshot]:
+    """Decode tolerant peer snapshots and discard malformed status claims."""
+    snapshots: list[SessionSnapshot] = []
+    for session_data in data:
+        try:
+            snapshots.append(SessionSnapshot.from_dict(session_data))
+        except ValueError as exc:
+            logger.warning(
+                "Discarding malformed session snapshot",
+                computer=computer,
+                error=str(exc),
+            )
+    return snapshots
 
 
 @dataclass

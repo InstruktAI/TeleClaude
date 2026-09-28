@@ -8,6 +8,7 @@ import sys
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
@@ -19,6 +20,7 @@ from teleclaude.caller_identity import (
     PersonCliCaller,
     Platform,
     ProjectPath,
+    RelayedAct,
     RoleResolver,
     RoleTarget,
     SessionAct,
@@ -29,7 +31,7 @@ from teleclaude.caller_identity import (
     session_act_exception,
 )
 from teleclaude.cli import CommandScope
-from teleclaude.config_roster import load_people_roster
+from teleclaude.config_roster import load_people_roster, read_local_computer_name
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOCAL_COMPUTER, LOGIN_REQUIRED_DETAIL, MarkerState
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.paths import MAIN_DB_PATH, invocation_cwd
@@ -45,6 +47,29 @@ _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
 _INODE_ALLOCATION_PREFIX = "ino:"
 _CTIME_ALLOCATION_PREFIX = "ctime:"
+_LOCAL_COMPUTER_UNRESOLVED_TEMPLATE = (
+    "Cannot authorize computer target {computer}: local computer identity is unavailable."
+)
+
+
+class ComputerTargetDisposition(StrEnum):
+    """Identity-owned classification for an optional explicit computer target."""
+
+    LOCAL = "local"
+    REMOTE = "remote"
+    UNRESOLVED = "unresolved"
+
+
+def classify_computer_target(target_computer: str | None) -> ComputerTargetDisposition:
+    """Classify an explicit target against the local sentinel and validated machine identity."""
+    if not target_computer or target_computer == LOCAL_COMPUTER:
+        return ComputerTargetDisposition.LOCAL
+    local_computer = read_local_computer_name()
+    if local_computer is None:
+        return ComputerTargetDisposition.UNRESOLVED
+    if target_computer == local_computer.value:
+        return ComputerTargetDisposition.LOCAL
+    return ComputerTargetDisposition.REMOTE
 
 
 @dataclass(frozen=True)
@@ -115,6 +140,8 @@ _SESSION_END_PATH = "sessions end"
 _SESSION_RESTART_PATH = "sessions restart"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
 _PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
+_TELEC_COMMAND_PREFIX = "telec "
+_RELAYED_ACT_PATHS = frozenset(act.value.removeprefix(_TELEC_COMMAND_PREFIX) for act in RelayedAct)
 
 
 def _detect_ancestor_tty() -> str | None:
@@ -369,6 +396,7 @@ def cli_clearance(
     *,
     role_target: RoleTarget | None = None,
     target_computer: str | None = None,
+    direct_conversation: bool = False,
 ) -> CliClearance:
     """Decide one command's clearance without printing or exiting."""
     if auth is None:
@@ -379,6 +407,13 @@ def cli_clearance(
         identity = _no_identity(False)
     if isinstance(identity.caller, NoIdentityCliCaller):
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
+
+    target_disposition = classify_computer_target(target_computer)
+    if target_disposition is ComputerTargetDisposition.UNRESOLVED:
+        return CliClearance(
+            identity=identity,
+            refusal=_LOCAL_COMPUTER_UNRESOLVED_TEMPLATE.format(computer=target_computer),
+        )
 
     action = {
         _SESSION_END_PATH: SessionAct.END,
@@ -414,8 +449,20 @@ def cli_clearance(
             refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
         )
 
+    remote_target = target_disposition is ComputerTargetDisposition.REMOTE
+    if remote_target and command_path in _RELAYED_ACT_PATHS and not direct_conversation:
+        if isinstance(identity.caller, PersonCliCaller) and not identity.in_session:
+            return CliClearance(identity=identity, refusal=None)
+        if auth.allows(identity.system_role, None):
+            return CliClearance(identity=identity, refusal=None)
+        role = identity.system_role or _UNAUTHORIZED_ROLE
+        return CliClearance(
+            identity=identity,
+            refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
+        )
+
     resolved_role_target = role_target or _fallback_role_target(auth, identity, target_session_id)
-    if target_computer is not None and target_computer != LOCAL_COMPUTER:
+    if remote_target:
         resolved_role_target = Platform()
     person_role = (
         RoleResolver().role_for(identity.caller, resolved_role_target)
@@ -445,6 +492,7 @@ def require_cli_clearance(
     *,
     role_target: RoleTarget | None = None,
     target_computer: str | None = None,
+    direct_conversation: bool = False,
 ) -> ResolvedCliIdentity | None:
     """Resolve and enforce one local CLI command's declared authorization."""
     identity = None if auth is not None and auth.caller_independent else resolve_cli_identity()
@@ -455,6 +503,7 @@ def require_cli_clearance(
         auth,
         role_target=role_target,
         target_computer=target_computer,
+        direct_conversation=direct_conversation,
     )
     if clearance.refusal is not None:
         print(f"Error: {clearance.refusal}", file=sys.stderr)

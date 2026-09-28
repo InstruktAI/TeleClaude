@@ -5,6 +5,7 @@ from __future__ import annotations
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db_models import Operation
 from teleclaude.core.models import MessageMetadata
@@ -30,6 +31,7 @@ async def forward_outcome_to_caller_computer(operation: Operation, *, outcome: s
             f"/operation_outcome {operation.operation_id} {config.computer.name} "
             f"{operation.caller_session_id} {operation.kind} {outcome} {slug_arg}",
             MessageMetadata(),
+            principal=SYSTEM_DAEMON_PRINCIPAL,
         )
     except Exception:
         logger.warning(
