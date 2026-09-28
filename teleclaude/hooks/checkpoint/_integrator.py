@@ -27,9 +27,17 @@ logger = get_logger("teleclaude.hooks.checkpoint")  # Preserve the package's rec
 
 _INTEGRATOR_MAINTENANCE_ACTION_LINE = "{index}. {action}"
 _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL = "Outstanding actions: {actions}"
-_INTEGRATOR_LOG_JUDGMENT_TITLE = "Integrator post-merge log judgment"
+_INTEGRATOR_LOG_JUDGMENT_TITLE = "Integrator post-activation log judgment"
 _INTEGRATOR_LOG_JUDGMENT_REQUIRED_ACTIONS = (
-    "Required actions (log judgment after delivery — complete before next integration):"
+    "Required actions (complete before direct-main publication or next integration):"
+)
+_INTEGRATOR_MAIN_PUBLICATION_ACTION = (
+    "{index}. Judge the logs against the activated changes. If they show a material failure, "
+    "leave canonical local main unpushed, recover or fix forward, and repeat the log check. "
+    "If the change is sound and local main is ahead of origin/main, run "
+    "`telec code lint --all` and `telec code test --all`, push the checked local main HEAD "
+    "to origin/main, and verify origin/main contains it. If main is already synchronized, "
+    "no push is owed."
 )
 _INTEGRATOR_ROLE = "integrator"
 _INTEGRATOR_JUDGMENT_NOT_READY_EVENT = "integrator_judgment_not_ready"
@@ -131,6 +139,8 @@ def _build_integrator_log_judgment_checkpoint(
                 action=_surface_run(action, window),
             )
         )
+    if LOG_CHECK_ACTION_ID in category_names:
+        lines.append(_INTEGRATOR_MAIN_PUBLICATION_ACTION.format(index=len(judgment_actions) + 1))
     lines.extend(
         [
             "",

@@ -75,6 +75,14 @@ each decision point until the queue is drained.
    After each activation, read that delivery's log window with knowledge of
    the change. Investigate anomalies, handle bounded recovery, and route
    remaining breakage for a forward fix through the normal bug process.
+   For a direct commit on canonical local main, judge that log window before
+   publishing the commit. If the activated change is sound, run the pre-push
+   checks in step 5, push the checked local main HEAD to origin/main from the
+   project root, and verify origin/main contains that exact commit. A material
+   failure leaves the commit local until recovery and a new log judgment. A
+   successful log command alone is not a soundness verdict. A direct commit
+   with no live-runtime log judgment follows the same publication step after
+   its owed maintenance succeeds.
    `telec code maintenance status` reports the checkout's outstanding actions,
    terminal failures, and integrator judgment, each with its recovery command.
    After the cause of a terminal failure is addressed, `telec code maintenance
@@ -325,8 +333,9 @@ claimed; a set of paths is never treated as one unit.
   window beginning no later than the earliest activation recorded on the
   marker; an earlier or narrower read does not discharge it. Retain unresolved
   judgment across reminder beats and route terminal failures through bounded
-  recovery. Apply the standing post-activation log judgment in step 3a. Then
-  invoke the integration state machine once. If it dequeues a candidate,
+  recovery. Apply the standing post-activation log judgment and direct-main
+  publication in step 3a before invoking the integration state machine once.
+  If it dequeues a candidate,
   cancel this watcher before continuing; if the queue remains empty, leave it
   live and execute the returned instruction verbatim.
 - **Cancellation:** cancel when a candidate is dequeued, the integrator cedes
@@ -370,11 +379,12 @@ logs `integration.candidate.already_merged` and moves on.
 
 ### INTEGRATION COMPLETE
 
-All candidates have been processed. The state machine automatically pushes any
-accumulated repo root bookkeeping commits (orchestrator dumps, `[skip ci]`
-housekeeping) to origin/main after syncing local main via pull. If the pull
-failed and the agent resolved it manually, push repo root using the explicit
-project root path emitted by the engine.
+All candidates have been processed. The queue-empty result does not publish
+ordinary direct commits on repository-root main. Inspect local main against
+origin/main before parking. If local main is ahead, complete its owed maintenance
+and any live-runtime log judgment, run the pre-push checks in step 5, push the
+checked head from the project root, and verify origin/main contains it. Resolve
+split history or dirty work under REPO ROOT SYNC REQUIRED before publication.
 
 Park after bookkeeping completes. Hold `integrator-queue-watch` while awaiting
 the next candidates, and end only when directed.
@@ -395,7 +405,8 @@ The integrator's terminal behavior has three shapes — do not collapse them:
 ## Outputs
 
 - Merged candidates on canonical main (pushed from integration worktree).
-- Repo root bookkeeping pushed to origin/main (automatic after successful pull sync).
+- Direct commits on repository-root main published after their maintenance and
+  any owed log judgment, with the checked head confirmed on origin/main.
 - Cleaned worktrees and branches.
 - `integration.*` lifecycle events at each state transition.
 

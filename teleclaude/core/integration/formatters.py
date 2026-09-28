@@ -22,6 +22,20 @@ _PARKED_CANDIDATE_LINE = "- {slug}: {reason}"
 _PARKED_CANDIDATE_SEPARATOR = "\n"
 _PARKED_CANDIDATES_SECTION = "\n\nParked candidates:\n{items}"
 _NO_PARKED_CANDIDATES = ""
+_QUEUE_EMPTY_WARNING_INSTRUCTION = "NEXT: Resolve the issues above before ending this session."
+_QUEUE_EMPTY_PUBLICATION_INSTRUCTION = (
+    "Before parking, inspect canonical local main against origin/main. If it is ahead, "
+    "complete its owed maintenance and any live-runtime log judgment first. If the "
+    "checked changes are sound, run `telec code lint --all` and `telec code test --all`, "
+    "push the checked local main HEAD to origin/main from the project root, and verify "
+    "origin/main contains it. A material failure keeps the commits local until recovery "
+    "and a new judgment where owed.\n\n"
+)
+_QUEUE_EMPTY_WATCH_INSTRUCTION = (
+    "NEXT: Hold the prescribed recurring queue watcher with "
+    "`telec reminders set integrator-queue-watch` and await the next candidates. "
+    "End only when directed."
+)
 _REPO_ROOT_PATH_LINE_SEPARATOR = "\n"
 _REPO_ROOT_NO_PATHS = "  (none)"
 _REPO_ROOT_PATH_INDENT = "  - "
@@ -285,13 +299,9 @@ def _format_queue_empty(
         else _NO_PARKED_CANDIDATES
     )
     next_line = (
-        "NEXT: Resolve the issues above before ending this session."
+        _QUEUE_EMPTY_WARNING_INSTRUCTION
         if has_warnings
-        else (
-            "NEXT: Hold the prescribed recurring queue watcher with "
-            "`telec reminders set integrator-queue-watch` and await the next candidates. "
-            "End only when directed."
-        )
+        else _QUEUE_EMPTY_PUBLICATION_INSTRUCTION + _QUEUE_EMPTY_WATCH_INSTRUCTION
     )
     return f"""INTEGRATION COMPLETE: Queue empty
 

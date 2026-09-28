@@ -276,7 +276,10 @@ And a canonical-main advancement has a checkout-scoped marker for live-runtime j
 And every action owed by that marker has succeeded with a maintenance-ready time recorded
 When the heuristic engine evaluates the turn window
 Then the checkpoint force-fires despite no turn-local Edit or Write change
-And it surfaces only the log-check action for the accumulated activations
+And it surfaces the log-check action for the accumulated activations
+And it instructs the integrator to publish any ahead canonical local main head
+only after judging the logs sound and completing the pre-push checks
+And a material failure keeps that head local for recovery and a new log judgment
 And no mechanical maintenance or unrelated judgment action is surfaced from that marker
 
 Given an owed action is pending, failed, or interrupted, or no maintenance-ready time is recorded

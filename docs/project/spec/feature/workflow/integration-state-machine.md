@@ -468,7 +468,10 @@ And the owner is never sent the same path again
 ```gherkin
 Given the singleton integrator completes a drain with no eligible candidate remaining
 When the state machine returns its queue-empty outcome
-Then the outcome instructs the integrator to arm recurring `integrator-queue-watch`
+Then the outcome instructs the integrator to inspect canonical local main for direct commits ahead of origin/main
+And any such head is published only after its owed maintenance, any live-runtime log judgment, and the pre-push checks are complete
+And the integrator verifies origin/main contains the checked head before parking
+And the outcome instructs the integrator to arm recurring `integrator-queue-watch`
 And the profile checks the queue every 15 minutes by default while parked
 And it does not reuse dirty-main clearance or candidate-settledness for that wait
 And a firing that finds a candidate cancels the queue watcher before continuing the drain
