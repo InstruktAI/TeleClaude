@@ -168,8 +168,8 @@ the current checkpoint cycle and that the session has not declared, and asks the
 session to declare the ones that are its own. A path matches when a successful
 shell command that writes files carries that exact path in its text; read-only
 commands and read-only tools match nothing. The question is advice: it adds
-nothing to scope, writes no declaration, and blocks nothing. The session remains
-the only party that knows whether it wrote the file.
+nothing to scope, writes no declaration, and gates no commit. The session
+remains the only party that knows whether it wrote the file.
 
 ### Ownership query
 
