@@ -1,8 +1,8 @@
 ---
-description: A command acting on an object another computer holds is decided by that computer from the caller's relayed principal; the caller's computer applies only what it alone knows about its own caller.
+description: A command acting on an object another computer holds is decided by that
+  computer from the caller's relayed principal; the caller's computer applies only
+  what it alone knows about its own caller.
 visibility: internal
-delivered_by:
-  - relay-scoped-role-decisions
 ---
 
 # Cross-Computer Authorization — Spec

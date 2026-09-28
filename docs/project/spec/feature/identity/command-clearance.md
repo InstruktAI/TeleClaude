@@ -119,17 +119,6 @@ Then the command is refused with the not-permitted failure naming `customer` and
 And the machine configuration and the person registry are unchanged and unread
 ```
 
-<!-- planned-change:relay-scoped-role-decisions -->
-#### UC-CCS7: A command naming another computer needs a platform role
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person, from a checkout of a project that company owns, runs `telec sessions tail` naming a session on another computer
-Then the command is refused with the not-permitted failure naming `customer` and `telec sessions tail`
-And no request reaches that computer
-And a platform administrator running the same command is admitted and reaches that computer
-```
-<!-- change:relay-scoped-role-decisions -->
 #### UC-CCS7: A command naming another computer is decided by that computer
 
 ```
@@ -139,7 +128,6 @@ Then the command is sent to that computer carrying no role
 And that computer admits or refuses it by the person's role for the project the session runs in there
 But a command naming another computer that acts on nothing held there, such as listing its projects, is refused naming `customer` and sends no request
 ```
-<!-- /planned-change:relay-scoped-role-decisions -->
 
 #### UC-CCS8: A trusted-directory name reaches its selected project
 
@@ -423,15 +411,9 @@ And no content is printed
 
 ### Clearance of commands that ask the daemon to act
 
-<!-- planned-change:relay-scoped-role-decisions -->
-Every `telec` command is cleared once, in the CLI process, by the gate that precedes its handler (`project/design/architecture/cli-invocation-boundary`), so every request it sends to the daemon has been cleared as that command before the first one leaves: against the command's own verb allowlist, with the caller the shared caller resolution yields (`project/spec/identity-and-auth` §6). No request leaves uncleared, whichever handler sends it and however many requests the command makes — a receipt poll or a listing inside a command is part of that command. The same holds when the command names another computer: the command is cleared here, and the request that reaches the peer carries the caller the local clearance resolved. A caller that resolves to no person and no system principal is refused before any request is sent. A role outside the verb's band is refused with the not-permitted failure naming the role and the verb. The request that follows carries the resolved identity, and the daemon applies no verb band of its own. A command that sends no request to the daemon is cleared by the same gate.
-
-The TUI clears each action it performs before sending it, against the verb of the command that action performs, with the identity it was launched with. An action that performs no `telec` command, or one whose command no gate clears, is not cleared.
-<!-- change:relay-scoped-role-decisions -->
 Every `telec` command is cleared once, in the CLI process, by the gate that precedes its handler (`project/design/architecture/cli-invocation-boundary`), so every request it sends to the daemon has been cleared as that command before the first one leaves: against the command's own verb allowlist, with the caller the shared caller resolution yields (`project/spec/identity-and-auth` §6). No request leaves uncleared, whichever handler sends it and however many requests the command makes — a receipt poll or a listing inside a command is part of that command. A command that acts on an object another computer holds, as the command scopes below name them, is cleared here for what this computer alone knows of its caller: that the caller is identified and, for a session caller, that the command's agent band admits the session's system role. The computer holding the object decides the command's person band from the caller's principal, which is all the request carries across (`project/spec/feature/identity/cross-computer-authorization`). A caller that resolves to no person and no system principal is refused before any request is sent. A role outside the band this computer applies is refused with the not-permitted failure naming the role and the verb. The request that follows carries the resolved identity, and the daemon applies no verb band of its own to it; a daemon deciding an act another computer relays to it applies that act's person band. A command that sends no request to the daemon is cleared by the same gate.
 
 The TUI clears each action it performs before sending it, against the verb of the command that action performs, with the identity it was launched with; an action on an object another computer holds is cleared as that command is. An action that performs no `telec` command, or one whose command no gate clears, is not cleared.
-<!-- /planned-change:relay-scoped-role-decisions -->
 
 The preceding pre-handler clearance rule has one named-target exception:
 `telec bugs --project` naming a trusted directory completes person-band
@@ -506,16 +488,11 @@ supplies.
 - A `telec bugs` command whose `--project` value names a trusted directory is
   judged at the project containing the directory that name resolves to
   (`project/design/architecture/cli-invocation-boundary` invariant 5).
-<!-- planned-change:relay-scoped-role-decisions -->
-- A command that names another computer is judged at platform scope
-  (`project/design/architecture/scoped-roles`).
-<!-- change:relay-scoped-role-decisions -->
 - A command that acts on an object another computer holds — a session there, a session to start there,
   an operation it owns, its session listing, or its history search or show — is decided by that computer
   (`project/spec/feature/identity/cross-computer-authorization`). Here it needs an identified caller and,
   for a session caller, the command's agent band. A `telec sessions send` that opens or closes a direct
   conversation, and any other command that names another computer, is judged at platform scope.
-<!-- /planned-change:relay-scoped-role-decisions -->
 - Every other command is judged at the project the invocation runs in — the project
   of its working directory's checkout — and at platform scope where it runs in no
   registered project.

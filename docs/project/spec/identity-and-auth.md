@@ -152,17 +152,6 @@ the client sends any request:
   company rosters when the command runs, so a changed role applies from the
   session's next command, and a gate grants a session no role its principal does
   not resolve to; a session acting for a person is also bounded by that role,
-<!-- planned-change:relay-scoped-role-decisions -->
-- every request a `telec` command sends to the daemon is cleared as that command,
-  against its verb band (`project/design/cli-authorization-matrix`), once, before
-  the first request leaves the process that runs it; the TUI clears each action
-  against the verb of the command that action performs,
-- a caller that resolves to no person and no system principal is refused before
-  any request is sent; a role outside the band is refused with the not-permitted
-  failure naming the role and the verb,
-- the client carries the identity it resolved on every request (§2); the daemon
-  verifies no caller and applies no verb band of its own,
-<!-- change:relay-scoped-role-decisions -->
 - every request a `telec` command sends to the daemon is cleared as that command,
   against its verb band (`project/design/cli-authorization-matrix`), once, before
   the first request leaves the process that runs it; the TUI clears each action
@@ -179,7 +168,6 @@ the client sends any request:
   own clients; a daemon deciding an act another computer relays to it resolves
   the relayed principal against its own registries and applies that act's person
   band (`project/spec/feature/identity/cross-computer-authorization`),
-<!-- /planned-change:relay-scoped-role-decisions -->
 - the daemon applies the rules that scope an act to its objects — a session acts
   on no session above it, a reminder belongs to its session, a session's result,
   file, and escalation act for that session, a claimed todo is written only by its
