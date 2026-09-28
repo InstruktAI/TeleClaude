@@ -113,8 +113,8 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _content_width(self) -> int:
-        """Available line width (widget width minus right padding), gutter included."""
-        return max(self.size.width - 1, 40)
+        """Available content width (widget width minus horizontal padding)."""
+        return max(self.size.width - 2, 40)
 
     @property
     def _detail_text_limit(self) -> int:
@@ -378,7 +378,7 @@ class SessionRow(TelecMixin, Widget):
         """
         connector_pad = " " * self._connector_col
         connector_style = Style(color=CONNECTOR_COLOR)
-        run_len = max(self.size.width - self._connector_col - 1, 20)
+        run_len = max(self.size.width - _ATTENTION_GUTTER_WIDTH - self._connector_col - 1, 20)
         char = "\u2514" if self.is_last_child else "\u251c"
         line = Text(no_wrap=True)
         line.append(_ATTENTION_GUTTER_BLANK)
