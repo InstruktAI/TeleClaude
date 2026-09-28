@@ -13,4 +13,4 @@ from pydantic import BaseModel, ConfigDict
 class ClosedModel(BaseModel):
     """A model that rejects undeclared keys instead of silently accepting them."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
