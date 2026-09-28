@@ -30,7 +30,11 @@ failure.
 A published subscription is live for the reach its publication tier gives it:
 a procedure published at global tier answers every scope, one published in a
 company's tier answers that company only, and one published in a person's tier
-answers that person only. Publication is the registration: nothing stands
+answers that person only. The event's scope decides reach: a procedure
+published in a company's or a person's tier is activated only when the event's
+scope is that company or person, so an event carrying more than one scope field
+never activates a tier procedure for a scope the event does not select.
+Publication is the registration: nothing stands
 between an author declaring the events a procedure answers to and those events
 reaching it.
 
@@ -127,6 +131,17 @@ Given a procedure published in a person's tier declares an event type as activat
 When verified events of that type arrive, one carrying that person and one carrying another scope
 Then an agent inspecting the activation record sees an activation for that person
 And sees none for the event carrying the other scope
+```
+
+#### UC-PSR10: A tier procedure answers only the event's selected scope
+
+```gherkin
+Given a procedure published in a person's tier declares an event type as activating it
+And a verified event of that type carries both a company and that person
+When the event is matched against the published procedure subscriptions
+Then an agent inspecting the activation record sees no activation for that person's procedure
+And sees a routing decision naming the event's selected scope as one the procedure is not published for
+And sees no failure recorded for it
 ```
 
 ### Cross-context references
