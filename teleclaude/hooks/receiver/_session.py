@@ -13,6 +13,8 @@ import sqlmodel
 from instrukt_ai_logging import get_logger
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import load_only
+from sqlalchemy.orm.attributes import QueryableAttribute
 from sqlmodel import Session as SqlSession
 
 from teleclaude import paths as tc_paths
@@ -90,6 +92,20 @@ def _create_sync_engine() -> Engine:
 
     _sync_engine = create_sync_db_engine(tc_paths.MAIN_DB_PATH)
     return _sync_engine
+
+
+def _load_projected_session_row(session_id: str, *columns: QueryableAttribute[Any]) -> db_models.Session | None:
+    """Load only the session columns consumed by a checkout-run receiver path.
+
+    Hook code can run before the daemon applies a new session-schema migration,
+    so each read must stay compatible with the columns its caller actually uses.
+    """
+    with SqlSession(_create_sync_engine()) as session:
+        return session.get(
+            db_models.Session,
+            session_id,
+            options=[load_only(*columns, raiseload=True)],
+        )
 
 
 def _get_outbox_engine(outbox_db_path: str | Path) -> Engine:
@@ -188,8 +204,12 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
         return True
 
     try:
-        with SqlSession(_create_sync_engine()) as session:
-            row = session.get(db_models.Session, session_id)
+        row = _load_projected_session_row(
+            session_id,
+            cast(QueryableAttribute[Any], db_models.Session.closed_at),
+            cast(QueryableAttribute[Any], db_models.Session.native_session_id),
+            cast(QueryableAttribute[Any], db_models.Session.active_agent),
+        )
     except SQLAlchemyError as exc:
         logger.error(
             "TMUX contract DB lookup failed; treating session as compatible",
@@ -296,35 +316,37 @@ def _resolve_or_refresh_session_id(
         return candidate_session_id
 
     try:
-        sqlmodel_module = _get_sqlmodel_module()
-        with sqlmodel_module.Session(_create_sync_engine()) as session:
-            row = cast(db_models.Session | None, session.get(db_models.Session, candidate_session_id))
-            if not row:
-                logger.debug(
-                    "Invalidating cached session mapping: session row not found",
-                    agent=agent,
-                    session_id=candidate_session_id,
-                    native_session_id=raw_native_session_id,
-                )
-                return None
+        row = _load_projected_session_row(
+            candidate_session_id,
+            cast(QueryableAttribute[Any], db_models.Session.closed_at),
+            cast(QueryableAttribute[Any], db_models.Session.native_session_id),
+        )
+        if not row:
+            logger.debug(
+                "Invalidating cached session mapping: session row not found",
+                agent=agent,
+                session_id=candidate_session_id,
+                native_session_id=raw_native_session_id,
+            )
+            return None
 
-            if row.closed_at:
-                logger.debug(
-                    "Invalidating cached session mapping: session closed",
-                    agent=agent,
-                    session_id=candidate_session_id,
-                    native_session_id=raw_native_session_id,
-                )
-                return None
+        if row.closed_at:
+            logger.debug(
+                "Invalidating cached session mapping: session closed",
+                agent=agent,
+                session_id=candidate_session_id,
+                native_session_id=raw_native_session_id,
+            )
+            return None
 
-            if row.native_session_id and row.native_session_id != raw_native_session_id:
-                logger.info(
-                    "Detected stale native_session_id mapping",
-                    agent=agent,
-                    session_id=candidate_session_id,
-                    previous_native_session_id=(row.native_session_id or ""),
-                    new_native_session_id=raw_native_session_id,
-                )
+        if row.native_session_id and row.native_session_id != raw_native_session_id:
+            logger.info(
+                "Detected stale native_session_id mapping",
+                agent=agent,
+                session_id=candidate_session_id,
+                previous_native_session_id=(row.native_session_id or ""),
+                new_native_session_id=raw_native_session_id,
+            )
 
     except SQLAlchemyError as exc:
         logger.error(
@@ -350,6 +372,12 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
                 statement.where(db_models.Session.native_session_id == native_session_id)
                 .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
                 .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
+                .options(
+                    load_only(
+                        cast(QueryableAttribute[Any], db_models.Session.session_id),
+                        raiseload=True,
+                    )
+                )
                 .limit(1)
             )
             row = session.exec(statement).first()
@@ -388,6 +416,14 @@ def _find_live_session_id_by_native(native_session_id: str | None) -> str | None
                 statement.where(db_models.Session.native_session_id == native_session_id)
                 .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
                 .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
+                .options(
+                    load_only(
+                        cast(QueryableAttribute[Any], db_models.Session.session_id),
+                        cast(QueryableAttribute[Any], db_models.Session.lifecycle_status),
+                        cast(QueryableAttribute[Any], db_models.Session.closed_at),
+                        raiseload=True,
+                    )
+                )
                 .limit(1)
             )
             row = session.exec(statement).first()
@@ -410,8 +446,12 @@ def _find_live_session_id(session_id: str | None) -> str | None:
     if not session_id:
         return None
     try:
-        with SqlSession(_create_sync_engine()) as session:
-            row = session.get(db_models.Session, session_id)
+        row = _load_projected_session_row(
+            session_id,
+            cast(QueryableAttribute[Any], db_models.Session.session_id),
+            cast(QueryableAttribute[Any], db_models.Session.lifecycle_status),
+            cast(QueryableAttribute[Any], db_models.Session.closed_at),
+        )
     except SQLAlchemyError as exc:
         logger.error(
             _LIVE_SESSION_LOOKUP_FAILED,

@@ -19,6 +19,7 @@ import yaml
 from instrukt_ai_logging import configure_logging, get_logger
 from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm.attributes import QueryableAttribute
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
@@ -70,6 +71,7 @@ from teleclaude.hooks.receiver._session import (
     _get_tmux_contract_tmpdir,
     _in_own_tmux_pane,
     _is_tmux_contract_session_compatible,
+    _load_projected_session_row,
     _load_session_map,
     _persist_session_map,
     _resolve_hook_session_id,
@@ -270,10 +272,12 @@ def _get_default_outbox_db() -> str:
     return str(get_outbox_db_path(tc_paths.TELECLAUDE_HOME))
 
 
-def _load_session_row(session_id: str) -> db_models.Session | None:
-    """Load a session row synchronously for hook processing."""
-    with SqlSession(_create_sync_engine()) as db_session:
-        return db_session.get(db_models.Session, session_id)
+def _load_session_row(
+    session_id: str,
+    *columns: QueryableAttribute[Any],
+) -> db_models.Session | None:
+    """Load only the session columns consumed by this hook-processing path."""
+    return _load_projected_session_row(session_id, *columns)
 
 
 def _resolve_checkpoint_project_path(row: db_models.Session) -> str:
@@ -313,7 +317,18 @@ def _resolve_turn_start(row: db_models.Session) -> datetime | None:
 def _load_checkpoint_row(session_id: str) -> db_models.Session | None:
     """Load the session row for checkpoint evaluation."""
     try:
-        return _load_session_row(session_id)
+        return _load_session_row(
+            session_id,
+            cast(QueryableAttribute[Any], db_models.Session.last_message_sent_at),
+            cast(QueryableAttribute[Any], db_models.Session.last_checkpoint_at),
+            cast(QueryableAttribute[Any], db_models.Session.native_session_id),
+            cast(QueryableAttribute[Any], db_models.Session.native_log_file),
+            cast(QueryableAttribute[Any], db_models.Session.working_slug),
+            cast(QueryableAttribute[Any], db_models.Session.project_path),
+            cast(QueryableAttribute[Any], db_models.Session.subdir),
+            cast(QueryableAttribute[Any], db_models.Session.system_role),
+            cast(QueryableAttribute[Any], db_models.Session.job),
+        )
     except SQLAlchemyError as exc:
         logger.debug("Checkpoint eval skipped (db error)", error=str(exc))
         return None
@@ -325,7 +340,11 @@ def _resolve_identity_context(
     receiver_ingress_id: str = _EMPTY_LOG_VALUE,
 ) -> tuple[str | None, str | None, bool]:
     """Return identity-key, person header, and whether memberships were listed."""
-    row = _load_session_row(session_id)
+    row = _load_session_row(
+        session_id,
+        cast(QueryableAttribute[Any], db_models.Session.origin_metadata),
+        cast(QueryableAttribute[Any], db_models.Session.human_email),
+    )
     if not row:
         return None, None, False
     identity_key: str | None = None
@@ -525,7 +544,10 @@ def _resolve_company_header(session_id: str) -> tuple[str | None, str | None]:
     header; an unknown company cannot reach the row at all, because the
     create door validates it before the row ever exists.
     """
-    row = _load_session_row(session_id)
+    row = _load_session_row(
+        session_id,
+        cast(QueryableAttribute[Any], db_models.Session.company),
+    )
     if not row:
         return None, None
     company_slug = getattr(row, "company", None)
@@ -1035,7 +1057,10 @@ def _persist_native_metadata(
     if not raw_native_session_id and not raw_native_log_file:
         return
 
-    row = _load_session_row(session_id)
+    row = _load_session_row(
+        session_id,
+        cast(QueryableAttribute[Any], db_models.Session.native_session_id),
+    )
     if (
         row
         and raw_native_session_id is not None
