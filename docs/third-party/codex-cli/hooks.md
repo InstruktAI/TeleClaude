@@ -187,6 +187,14 @@ every event except `SessionStart` and `SessionEnd`.
 }
 ```
 
+In Codex 0.157.1, `PostToolUse` fires only for a tool call that succeeded: the
+tool registry runs post-tool hooks behind the call's success result, so a failed
+call emits no `PostToolUse` and there is no failure variant of the event. The
+schema of `tool_response` is tool-specific and not published; the event's
+presence is the success signal. `apply_patch` is reported with `tool_name`
+`apply_patch` (matcher aliases `Write` and `Edit`) and
+`tool_input: {"command": "<patch text>"}`.
+
 `Stop`:
 
 ```json
@@ -382,3 +390,6 @@ normalized hook identity. Codex's algorithm
 
 - https://learn.chatgpt.com/docs/hooks
 - https://github.com/openai/codex/pull/20321
+- https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/registry.rs
+- https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/handlers/apply_patch.rs
+- https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/hook_names.rs
