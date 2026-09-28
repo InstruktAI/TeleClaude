@@ -20,7 +20,6 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 - Existing local-import exceptions outside this allowlist are transitional debt and must not expand.
 - Test files do not carry `# guard: no-companion`. Temporary orphan-test exceptions live centrally in `[tool.test-mapping].orphan-exclude` and only shrink.
 
-<!-- planned:enable-pyright-argument-type-checking -->
 
 ### Argument-type checking
 
@@ -51,13 +50,11 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
   value at runtime, the narrow same-line suppression form with its stated reason
   applies, as it does for every other suppression here.
 
-<!-- /planned:enable-pyright-argument-type-checking -->
 
 ## Rationale
 
 These exceptions name TeleClaude modules and guardrail configuration, so they cannot be universal Python rules. Keeping them in project scope prevents adopting repositories from inheriting mothership paths or exception mechanics while retaining one explicit owner for the exceptions here.
 
-<!-- planned:enable-pyright-argument-type-checking -->
 
 An invariant belongs in the strongest layer that can express it, and for
 argument compatibility that layer is the type system
@@ -77,7 +74,6 @@ and widening follows from what the configuration is: the wall the work is
 measured against. A session blocked by that wall has every reason to move it and
 none to move it correctly, so moving it outward is the one direction that needs
 an author with no stake in the result.
-<!-- /planned:enable-pyright-argument-type-checking -->
 
 ## Scope
 
@@ -89,13 +85,11 @@ an author with no stake in the result.
 - Python lint reports local imports outside the declared exception surface.
 - Guardrail review rejects test-local companion suppression and expansion of centralized orphan exclusions.
 
-<!-- planned:enable-pyright-argument-type-checking -->
 - Reviewers reject a new or broadened argument-type exemption that carries no
   record of independent deep review, and treat maintenance framing of such a
   diff as the signature of erosion rather than as mitigation.
 - Reviewers reject a call-site correction that widens a parameter, introduces
   `Any`, or suppresses the diagnostic where the annotation was the defect.
-<!-- /planned:enable-pyright-argument-type-checking -->
 
 ## Exceptions
 
