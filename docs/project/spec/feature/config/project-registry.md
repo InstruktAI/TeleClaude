@@ -164,7 +164,6 @@ Then the adoption is refused, naming the entry that holds the identity
 And the registry is unchanged
 ```
 
-<!-- planned:registry-fold-tier-identity-collision -->
 #### UC-CFG-REG9: A home that is not on the registry holds no identity
 
 ```gherkin
@@ -175,7 +174,6 @@ Then the registry lists that project folder
 And an agent reading the machine configuration finds no trusted-directory list
 And the company home is still not on the registry
 ```
-<!-- /planned:registry-fold-tier-identity-collision -->
 
 ## Known caveats
 
