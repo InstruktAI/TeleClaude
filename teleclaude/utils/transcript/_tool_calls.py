@@ -32,7 +32,12 @@ from ._codex_custom_exec import (
     extract_nested_custom_exec_calls,
     extract_payload_text,
 )
-from ._iterators import _get_checkpoint_entries_for_agent, _get_entries_for_agent
+from ._iterators import (
+    AGY_STEP_STATUS_FIELD,
+    AntigravityStepStatus,
+    _get_checkpoint_entries_for_agent,
+    _get_entries_for_agent,
+)
 from ._parsers import normalize_transcript_entry_message
 from ._user_turns import find_turn_start_idx
 from ._user_turns import is_user_tool_result_only_message as _is_user_tool_result_only_message
@@ -446,12 +451,45 @@ def _complete_pending_tool_result(
     )
 
 
+def _complete_antigravity_step_result(
+    entry: Mapping[str, object],
+    state: _ToolCallExtractionState,
+) -> None:
+    """Complete the one preceding Antigravity tool call when its step reports an outcome."""
+    status = entry.get(AGY_STEP_STATUS_FIELD)
+    if not isinstance(status, str) or status == AntigravityStepStatus.RUNNING or state.pending_record is None:
+        return
+    if status not in (AntigravityStepStatus.DONE, AntigravityStepStatus.ERROR):
+        return
+
+    matched = state.pending_record
+    state.pending_record = None
+    message = normalize_transcript_entry_message(entry)
+    content = message.get("content") if isinstance(message, dict) else None
+    result_text = ""
+    if isinstance(content, list):
+        result_text = "".join(
+            block.get("text", "") for block in content if isinstance(block, dict) and isinstance(block.get("text"), str)
+        )
+    state.records.append(
+        ToolCallRecord(
+            tool_name=matched.tool_name,
+            input_data=matched.input_data,
+            had_error=status == AntigravityStepStatus.ERROR,
+            result_snippet=result_text[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS],
+            timestamp=matched.timestamp,
+            result_observed=True,
+        )
+    )
+
+
 def _process_entry_message_blocks(
     entry: Mapping[str, object],
     entry_dt: datetime | None,
     state: _ToolCallExtractionState,
 ) -> None:
     """Extract tool-use state transitions from normalized message blocks."""
+    _complete_antigravity_step_result(entry, state)
     message = normalize_transcript_entry_message(entry)
     if not isinstance(message, dict):
         return

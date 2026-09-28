@@ -63,11 +63,10 @@ from teleclaude.core.session_runtime_gate import (
 )
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_slash_command
 from teleclaude.core.session_status import SessionLifecycleStatus
-from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
-from teleclaude.paths import TMP_SESSIONS_DIR
+from teleclaude.paths import session_tmp_dir
 from teleclaude.types.commands import (
     HandoffAgentCommand,
     RestartAgentCommand,
@@ -317,7 +316,7 @@ async def start_agent(
     if agent_cfg.model_via_launch_patch:
         entries = _launch_patch_entries(agent_cfg, start_args.thinking_mode.value, _get_session_profile(session))
         if entries:
-            patch_dir = TMP_SESSIONS_DIR / safe_session_tmp_component(session.session_id)
+            patch_dir = session_tmp_dir(session.session_id)
             patch_dir.mkdir(parents=True, exist_ok=True)
             patch_path = patch_dir / "launch.patch.yml"
             patch_path.write_text(_render_launch_patch(entries))

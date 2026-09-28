@@ -13,10 +13,11 @@ from teleclaude.config import config
 from teleclaude.paths import (
     BIN_DIR,
     DEFAULT_TELECLAUDE_HOME,
+    SESSION_DECLARATIONS_FILENAME,
     SHELL_DIR,
     TELECLAUDE_HOME,
     TMP_SESSIONS_DIR,
-    safe_path_component,
+    session_tmp_dir,
 )
 from teleclaude.runtime.environment import (
     filter_platform_session_environment,
@@ -126,29 +127,29 @@ def get_session_tmpdir_base() -> Path:
     return TMP_SESSIONS_DIR
 
 
-def safe_session_tmp_component(session_id: str) -> str:
-    """Return the path component used for a session TMPDIR."""
-    return safe_path_component(session_id)
-
-
 def _prepare_session_tmp_dir(session_id: str) -> Path:
-    """Create an empty per-session temp directory.
+    """Prepare a per-session temp directory, retaining its live declaration record.
 
     Claude Code (and other tools) may attempt to fs.watch() everything under TMPDIR.
     If TMPDIR contains unix sockets (e.g. docker_cli_*), Node-based watchers can crash.
-    Using a dedicated, freshly created TMPDIR per tmux session avoids stray sockets.
+    Clearing prior temporary entries avoids stray sockets without losing declarations.
     """
-    safe_id = safe_path_component(session_id)
     base_dir = TMP_SESSIONS_DIR
-    session_tmp = base_dir / safe_id
+    session_tmp = session_tmp_dir(session_id)
 
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    # Ensure TMPDIR is empty: remove any previous contents (including unix sockets).
+    # Remove prior temporary entries, including sockets, while preserving declarations.
     if session_tmp.exists():
         try:
             if session_tmp.is_dir() and not session_tmp.is_symlink():
-                shutil.rmtree(session_tmp)
+                for child in session_tmp.iterdir():
+                    if child.name == SESSION_DECLARATIONS_FILENAME:
+                        continue
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
             else:
                 session_tmp.unlink()
         except OSError:
@@ -165,8 +166,7 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
 
 def get_session_tmpdir(session_id: str) -> Path | None:
     """Return the TMPDIR path for an existing session, or None if it doesn't exist."""
-    safe_id = safe_path_component(session_id)
-    path = TMP_SESSIONS_DIR / safe_id
+    path = session_tmp_dir(session_id)
     return path if path.is_dir() else None
 
 

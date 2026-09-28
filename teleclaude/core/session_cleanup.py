@@ -32,7 +32,7 @@ from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_list
 from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.session_scoping import discard as discard_session_declarations
+from teleclaude.paths import session_tmp_dir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -108,8 +108,7 @@ def _path_is_under_base(path: Path, base: Path) -> bool:
 
 
 def _session_tmpdir_path(session_id: str) -> Path:
-    safe_id = tmux_bridge.safe_session_tmp_component(session_id)
-    return tmux_bridge.get_session_tmpdir_base() / safe_id
+    return session_tmp_dir(session_id)
 
 
 def _rmtree_ignore_vanished(func: object, path: str, exc: BaseException) -> None:
@@ -376,16 +375,6 @@ async def _terminate_session_inner(
         except Exception as exc:
             logger.error(
                 "session_close_tmpdir_cleanup_failed",
-                session_id=session.session_id,
-                error=str(exc),
-                exc_info=True,
-            )
-
-        try:
-            discard_session_declarations(session.session_id)
-        except Exception as exc:
-            logger.error(
-                "session_close_declaration_cleanup_failed",
                 session_id=session.session_id,
                 error=str(exc),
                 exc_info=True,

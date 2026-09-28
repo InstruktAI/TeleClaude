@@ -72,5 +72,6 @@ class CheckpointResult:
     on_main: bool = False
     authored_main_commit: bool = False
     post_commit_review_action_required: bool = False
+    undeclared_candidates: tuple[str, ...] = ()
     owed_actions: tuple[CheckpointOwedAction, ...] = ()
     action_decisions: tuple[CheckpointActionDecision, ...] = ()

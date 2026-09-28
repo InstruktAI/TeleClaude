@@ -67,7 +67,8 @@ MIGRATION_STATE_PATH = STATE_DIR / "migration_state.json"
 INVITATIONS_PATH = STATE_DIR / "invitations.json"
 LEGACY_DISCORD_HANDOFF_PATH = STATE_DIR / "legacy_discord_provider_ids.json"
 DEPLOYED_COMMANDS_MANIFEST_PATH = STATE_DIR / "deployed_commands.json"
-DECLARATIONS_DIR = STATE_DIR / "declarations"
+LEGACY_DECLARATIONS_DIR = STATE_DIR / "declarations"
+SESSION_DECLARATIONS_FILENAME = "declarations.json"
 DECLARATION_VIEWS_DIR = STATE_DIR / "declaration-views"
 CHIPTUNES_WORKER_LOG_PATH = LOGS_DIR / "chiptunes_worker.log"
 MAIN_DB_PATH = TELECLAUDE_HOME / "teleclaude.db"
@@ -95,3 +96,8 @@ def safe_path_component(value: str) -> str:
     if _SAFE_PATH_COMPONENT_PATTERN.fullmatch(value):
         return value
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:_SAFE_PATH_COMPONENT_HASH_LENGTH]
+
+
+def session_tmp_dir(session_id: str) -> Path:
+    """Return the temporary directory path owned by a session."""
+    return TMP_SESSIONS_DIR / safe_path_component(session_id)

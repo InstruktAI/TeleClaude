@@ -10,6 +10,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import cast
@@ -436,6 +437,20 @@ def _build_gemini_assistant_blocks(
 # Antigravity CLI (agy) transcript records are tagged by an uppercase ``source``
 # enum rather than the legacy ``type: user|gemini`` discriminator.
 _AGY_SOURCES: frozenset[str] = frozenset({"USER_EXPLICIT", "MODEL", "SYSTEM"})
+_AGY_STEP_TYPE_FIELD = "type"
+_AGY_GENERIC_STEP_TYPE = "GENERIC"
+AGY_STEP_STATUS_FIELD = "agy_step_status"
+
+
+class AntigravityStepStatus(StrEnum):
+    """Closed result vocabulary carried by Antigravity generic steps."""
+
+    DONE = "DONE"
+    ERROR = "ERROR"
+    RUNNING = "RUNNING"
+
+
+_AGY_STEP_STATUS_VALUES = frozenset(status.value for status in AntigravityStepStatus)
 _AGY_USER_REQUEST_RE = re.compile(r"<USER_REQUEST>(.*?)</USER_REQUEST>", re.DOTALL)
 
 
@@ -514,7 +529,7 @@ def _normalize_agy_entry(message: JsonDict) -> JsonDict | None:
         blocks = _build_agy_assistant_blocks(message)
         if not blocks:
             return None
-        return cast(
+        entry = cast(
             JsonDict,
             {
                 "type": "assistant",
@@ -522,6 +537,11 @@ def _normalize_agy_entry(message: JsonDict) -> JsonDict | None:
                 "message": {"role": "assistant", "content": blocks},
             },
         )
+        if message.get(_AGY_STEP_TYPE_FIELD) == _AGY_GENERIC_STEP_TYPE:
+            status = message.get("status")
+            if isinstance(status, str) and status in _AGY_STEP_STATUS_VALUES:
+                entry[AGY_STEP_STATUS_FIELD] = status
+        return entry
 
     return None
 

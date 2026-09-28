@@ -6,12 +6,14 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from teleclaude.core.agents import AgentName
+
 from .._types import ScopeMode
-from ._common import _normalize_workspace_path
+from ._common import CERTAIN_EDIT_TOOLS, _normalize_workspace_path
 
 __all__ = ["collect_gemini_paths"]
 
-_GEMINI_MUTATORS = {"edit", "writefile"}
+_GEMINI_PATH_FIELDS = ("file_path", "TargetFile")
 
 
 def _normalize_gemini_tool_name(tool_call: Mapping[str, object]) -> str:
@@ -37,7 +39,7 @@ def _extract_gemini_tool_paths(
         if not isinstance(tool_call, dict):
             continue
         tool_name = _normalize_gemini_tool_name(tool_call)
-        if tool_name not in _GEMINI_MUTATORS:
+        if tool_name not in CERTAIN_EDIT_TOOLS[AgentName.GEMINI]:
             continue
         status = str(tool_call.get("status", "")).strip().lower()
         if status != "success":
@@ -45,11 +47,12 @@ def _extract_gemini_tool_paths(
         args = tool_call.get("args")
         if not isinstance(args, dict):
             continue
-        file_path = args.get("file_path")
-        if isinstance(file_path, str) and file_path.strip():
-            normalized = _normalize_workspace_path(file_path, workspace_root)
-            if normalized:
-                paths.add(normalized)
+        for key in _GEMINI_PATH_FIELDS:
+            file_path = args.get(key)
+            if isinstance(file_path, str) and file_path.strip():
+                normalized = _normalize_workspace_path(file_path, workspace_root)
+                if normalized:
+                    paths.add(normalized)
     return paths
 
 

@@ -43,7 +43,6 @@ from teleclaude.core.tmux_bridge._session import (
     ensure_tmux_session,
     get_session_tmpdir,
     get_session_tmpdir_base,
-    safe_session_tmp_component,
     update_tmux_session,
 )
 from teleclaude.core.tmux_bridge._subprocess import (
@@ -84,7 +83,6 @@ __all__ = [
     "list_tmux_sessions",
     "paste_text_existing_tmux",
     "pid_is_alive",
-    "safe_session_tmp_component",
     "send_arrow_key",
     "send_backspace",
     "send_ctrl_key",

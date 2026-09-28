@@ -9,7 +9,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.paths import TMP_SESSIONS_DIR, safe_path_component
+from teleclaude.paths import TMP_SESSIONS_DIR, session_tmp_dir
 
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
@@ -25,7 +25,7 @@ def session_tmp_base_dir() -> Path:
 
 def checkpoint_flag_path(session_id: str, flag_name: str) -> Path:
     """Return the path for a specific session-scoped checkpoint flag."""
-    session_dir = session_tmp_base_dir() / safe_path_component(session_id)
+    session_dir = session_tmp_base_dir() / session_tmp_dir(session_id).name
     return session_dir / flag_name
 
 
