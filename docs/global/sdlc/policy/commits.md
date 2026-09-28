@@ -71,15 +71,6 @@ All Committizen types are allowed.
   conversation into a finished change. Where the human has not released the
   tracked change for commit, report what remains uncommitted and offer to
   commit; do not commit it, revert it, or suppress the automation.
-<!-- planned-change:declared-ownership-capture -->
-- **Stranded paths on main are committed by the integrator.** A dirty path that
-  blocks repo-root synchronization is put to every live session that can have
-  written it, and a session whose change is not released for commit claims the
-  path instead of committing it. A path no session claims, and that stays unwritten
-  past the next clearance beat, has no owner left to release it; the integrator
-  commits it as-is under `sdlc/procedure/lifecycle/integrate`. This is the only
-  commit made of another session's uncommitted work.
-<!-- change:declared-ownership-capture -->
 - **Stranded paths on main are committed by the integrator.** A dirty path that
   blocks repo-root synchronization goes to the session that declared it, or, when
   none did, to the live sessions whose history shows they wrote it; a session whose
@@ -88,18 +79,10 @@ All Committizen types are allowed.
   has no owner left to release it; the integrator commits it as-is under
   `sdlc/procedure/lifecycle/integrate`. This is the only commit made of another
   session's uncommitted work.
-<!-- /planned-change:declared-ownership-capture -->
 - Before committing on shared `main`, run bare `telec code commit` to surface
   the gate card, then commit with `telec code commit --approved "<message>"`,
   which commits the set the session declared. Pass `--only <path>...` to split
   that set across more than one commit.
-<!-- planned-change:declared-ownership-capture -->
-- Declare every file you change with `telec code add <path>...`. Do it as you
-  start on a file, or the moment you notice one isn't declared — late is fine,
-  never is not. The declared set is what `telec code commit` commits, so an
-  undeclared change does not ship. Declaring is free and repeats safely; when in
-  doubt, declare.
-<!-- change:declared-ownership-capture -->
 - A file you write with an edit tool is declared for you when the call succeeds.
   Declare every file you change any other way — a shell command, a script, a
   generator — with `telec code add <path>...`, as you start on it or the moment
@@ -108,7 +91,6 @@ All Committizen types are allowed.
   declared. The declared set is what `telec code commit` commits, so an
   undeclared change does not ship. Declaring is free and repeats safely; when in
   doubt, declare.
-<!-- /planned-change:declared-ownership-capture -->
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. When the post-commit
   gate determines that independent review is required, the authoring session

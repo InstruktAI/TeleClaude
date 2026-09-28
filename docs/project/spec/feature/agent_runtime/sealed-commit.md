@@ -26,11 +26,7 @@ The contract resolves four classes of file state at commit time:
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
 
-<!-- planned-change:declared-ownership-capture -->
-On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. `telec code add <path>...` is the declaration surface: a successful invocation writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and the entry stays live until the commit that carries it lands. A path named only by arbitrary shell-command text contributes no evidence, and no transcript is read to establish a declaration.
-<!-- change:declared-ownership-capture -->
 On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. Two acts declare a path: a successful `telec code add <path>...` writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and a successful edit-tool call whose input names the file it writes is declared the same way when the runtime reports that call (`sdlc/design/workspace-scoping`). The entry stays live until the commit that carries it lands. A path named only by shell-command text contributes no evidence, and no transcript is read to establish a declaration.
-<!-- /planned-change:declared-ownership-capture -->
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
@@ -932,7 +928,6 @@ And the commit is aborted
 And the partial-staging check is NOT silently bypassed
 ```
 
-<!-- planned:declared-ownership-capture -->
 #### UC-CGIP-49 — A file written through an edit tool is committed without an explicit declaration
 
 ```gherkin
@@ -942,7 +937,6 @@ When the session runs `telec code commit --approved '<message>'` without declari
 Then the file is committed as part of the session's declared set
 But a file the session changed only through a shell command is not committed until the session declares it
 ```
-<!-- /planned:declared-ownership-capture -->
 
 <!-- planned:worktree-commits-push-to-remote -->
 ### Branch publication

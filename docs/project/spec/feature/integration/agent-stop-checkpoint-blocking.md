@@ -70,7 +70,6 @@ other sessions in that todo worktree owe no commit action for those paths. The
 checkpoint retains worktree-wide scope outside todo worktrees. The sealed
 commit command's worktree scope remains task-wide.
 
-<!-- planned:declared-ownership-capture -->
 On a shared branch, a session whose shell activity in the current checkpoint
 cycle wrote a dirty path it has not declared is asked, by name, to declare that
 path if it is its own. The question is advisory: it creates no obligation, no
@@ -79,7 +78,6 @@ checkpoint still produces a decision carrying it; the next checkpoint cycle
 starts after that decision, so the same question is not repeated without new
 shell activity naming the path. Paths the session wrote through its edit tools
 need no question; they are declared when the call succeeds.
-<!-- /planned:declared-ownership-capture -->
 
 ## Canonical fields
 
@@ -488,17 +486,6 @@ And the decision names those paths
 And its required action instructs the agent to commit them
 ```
 
-<!-- planned-change:declared-ownership-capture -->
-#### UC-CP33: Dirty paths the session never declared raise no obligation
-
-```gherkin
-Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
-And the working tree holds dirty paths that session has not declared
-When checkpoint evaluation completes
-Then no obligation is raised for those paths
-And any decision produced for another reason names none of them
-```
-<!-- change:declared-ownership-capture -->
 #### UC-CP33: Dirty paths the session never declared raise no obligation
 
 ```gherkin
@@ -509,7 +496,6 @@ When checkpoint evaluation completes
 Then no obligation is raised for those paths
 And any decision produced for another reason names none of them
 ```
-<!-- /planned-change:declared-ownership-capture -->
 
 #### UC-CP34: A todo worktree writer owes its dirty tree
 
@@ -531,7 +517,6 @@ Then no checkpoint decision directs the reviewer to commit those paths
 And a later reviewer agent-stop over the same uncommitted changes directs none either
 ```
 
-<!-- planned:declared-ownership-capture -->
 #### UC-CP36: A shell write the session has not declared is put to it as a question
 
 ```gherkin
@@ -555,7 +540,6 @@ When the session reaches an agent-stop checkpoint boundary with that file dirty
 Then the file is among the session's declared paths
 And the checkpoint treats it as the session's own undelivered work rather than asking about it
 ```
-<!-- /planned:declared-ownership-capture -->
 
 ### Cross-context references
 

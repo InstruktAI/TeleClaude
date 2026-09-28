@@ -383,22 +383,6 @@ And a dirty state or conflict that prevents safe synchronization blocks delivery
 And no marker fold or final push runs until repository-root synchronization is complete
 ```
 
-<!-- planned-change:declared-ownership-capture -->
-#### UC-WISM36: The integrator asks once about a quiet dirty path, then commits it when nobody claims it
-
-```gherkin
-Given repo-root synchronization is blocked by a dirty path on main
-And the path was not modified within the current clearance interval
-And its uncommitted diff names no todo slug in a pending-doc marker
-When the integrator's clearance beat resolves that path
-Then it sends one message listing the path to every live session of the project on the same computer that is an orchestrator in a prepare phase or carries no system role
-And the message tells each recipient to arm halt-to-respond first when it was in the middle of work, then to commit a path of its own that is ready and released for commit or reply that it is still working on it, and otherwise to end its turn with NOOP
-And no worker, tasker, integrator, coordinator, work orchestrator, create orchestrator, job runner, or system session receives it
-And the path is never sent again to the same recipient
-And when the path is still dirty, still unmodified within the interval, and claimed by no recipient on a later beat, the integrator commits it as-is under a message naming it as stranded work
-And the integrator never stashes, overwrites, rebases across, or discards the path
-```
-<!-- change:declared-ownership-capture -->
 #### UC-WISM36: The integrator asks only a quiet path's writers, then commits it when nobody claims it
 
 ```gherkin
@@ -416,7 +400,6 @@ And when the path is still dirty, still unmodified within the interval, and clai
 And it reverts the path instead only when session history clearly shows the work was abandoned
 And the integrator never stashes, overwrites, or rebases across the path
 ```
-<!-- /planned-change:declared-ownership-capture -->
 
 #### UC-WISM37: A dirty path carrying a pending-doc marker is resolved through its todo's prepare orchestrator
 
@@ -424,11 +407,7 @@ And the integrator never stashes, overwrites, or rebases across the path
 Given a dirty path on main whose uncommitted diff adds a pending-doc marker naming a todo slug
 When the integrator's clearance beat resolves that path
 Then it identifies the todo's prepare orchestrator from the todo's state
-<!-- planned-change:declared-ownership-capture -->
-And when that session is live it receives the path under the same message as every asked session
-<!-- change:declared-ownership-capture -->
 And when that session is live it receives the path under the same message as every asked writer
-<!-- /planned-change:declared-ownership-capture -->
 And when that session is gone the integrator reads its transcript and the todo's state and resolves the path from that evidence
 And it commits the path as-is unless the named todo is removed or delivered and the transcript shows the work was abandoned, in which case it reverts the path
 ```
@@ -437,11 +416,7 @@ And it commits the path as-is unless the named todo is removed or delivered and 
 
 ```gherkin
 Given a dirty path on main that blocks synchronization
-<!-- planned-change:declared-ownership-capture -->
-When a recipient has claimed the path and it stays uncommitted for three consecutive clearance beats after the claim
-<!-- change:declared-ownership-capture -->
 When an owner or claimant leaves the path uncommitted for three consecutive clearance beats after it was messaged or claimed
-<!-- /planned-change:declared-ownership-capture -->
 Or the path's diff cannot be interpreted
 Then the integrator escalates that path to the human once
 And it leaves the path untouched and holds as its blocker beacon
@@ -449,7 +424,6 @@ And other dirty paths continue through their own resolution
 And the clearance reminder is cancelled only when every remaining dirty path has been escalated
 ```
 
-<!-- planned:declared-ownership-capture -->
 #### UC-WISM40: A declared dirty path is routed to its owner alone
 
 ```gherkin
@@ -461,7 +435,6 @@ And it sends that owner one message listing all of its blocking paths
 And no other session receives a message about the path
 And the owner is never sent the same path again
 ```
-<!-- /planned:declared-ownership-capture -->
 
 #### UC-WISM29: A drained singleton parks on its queue watcher
 

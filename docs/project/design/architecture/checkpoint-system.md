@@ -124,7 +124,6 @@ the last matching record for the attributed files, or across the cycle when
 there is no matching record. The post-commit review latch is eligible when
 the resulting evaluation owes no commit action.
 
-<!-- planned:declared-ownership-capture -->
 ### Invariant 28 — Undeclared-write question
 
 On a shared branch, the engine derives advisory candidates from the same
@@ -138,7 +137,6 @@ candidates: the hook receiver declares them when the call succeeds
 candidates exist, the engine still produces a decision carrying the question.
 Classifying a shell command as one that writes files and matching a known path
 in its text is structural; the engine never extracts paths from command text.
-<!-- /planned:declared-ownership-capture -->
 
 ## Primary flows
 

@@ -45,14 +45,6 @@ each decision point until the queue is drained.
   without ceremony. The `--confirmed` friction is the integrator's deliberate
   ratification that the working-tree mutation has been inspected and will not
   silently overwrite intentional state before the next bookkeeping commit.
-<!-- planned-change:declared-ownership-capture -->
-- **When repo-root sync is blocked by dirty files**, the integrator never stashes,
-  overwrites, rebases across, or discards them. It waits on `integrator-main-clearance`
-  and resolves each dirty path on its own: it asks the sessions that can have written
-  the path, and commits the path as-is once it is quiet and unclaimed (see **REPO ROOT
-  SYNC REQUIRED** below). The state machine emits this guidance when it observes the
-  divergence.
-<!-- change:declared-ownership-capture -->
 - **When repo-root sync is blocked by dirty files**, the integrator never stashes,
   overwrites, or rebases across them, and discards one only by an evidenced revert.
   It waits on `integrator-main-clearance` and resolves each dirty path on its own:
@@ -60,7 +52,6 @@ each decision point until the queue is drained.
   they wrote an undeclared path, and commits the path as-is once it is quiet and
   unclaimed (see **REPO ROOT SYNC REQUIRED** below). The state machine emits this
   guidance when it observes the divergence.
-<!-- /planned-change:declared-ownership-capture -->
 
 ## Steps
 
@@ -222,38 +213,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
 
 #### Resolving a dirty path
 
-<!-- planned-change:declared-ownership-capture -->
-On each `integrator-main-clearance` beat, take each dirty path on its own. Each path
-keeps its own history of what was sent and claimed; a set of paths is never treated as
-one unit.
-
-1. **Recently written.** A path last modified within the current reminder interval is
-   being worked on. Leave it for a later beat.
-2. **Named by a pending-doc marker.** When the path's uncommitted diff adds a pending
-   marker naming a todo slug — a `planned:<slug>` or `planned-change:<slug>` block, a
-   `<stem>.<slug>.md` companion, or a `delivered_by` entry — that todo's prepare
-   orchestrator wrote it. Find that session from the todo's state
-   (`telec todo show <slug>`). If it is live, send it the path under step 3's message.
-   If it is gone, read its transcript (`telec history show <session-id>`) together
-   with the todo's state and resolve the path from that evidence under step 5.
-3. **Ask once.** Every other quiet path is put, once, to the live sessions of this
-   project on this computer that can write files on main: orchestrators whose job is
-   `prepare-orchestrator`, `intaker`, `architect`, or `planner`, and sessions carrying
-   no system role (`telec sessions list --all`). Each recipient receives one message
-   listing the paths:
-   `These paths are dirty on main and block integration: <paths>. If you were in the middle of work, arm halt-to-respond first. Then: for each path that is yours, commit it now if it is ready and released for commit, otherwise reply that you are still working on it; if none are yours, end your turn with NOOP.`
-4. **Claimed.** A recipient that replies that a path is its own and still in progress
-   owns that path. Keep waiting for its commit.
-5. **Quiet and unclaimed on a later beat.** A path still dirty, not recently written,
-   and claimed by no one after its message was sent is committed as-is with a
-   pathspec-scoped `telec code commit --approved --only <path>` under a message
-   that names it as stranded work. The one exception is a path whose pending-doc
-   markers name a todo that is removed or delivered while its prepare orchestrator's
-   transcript shows the work was abandoned: revert that path instead.
-6. **Escalate** to the human, once per path, only when a claimed path stays
-   uncommitted for three consecutive beats after its claim, or when a path's diff is
-   unintelligible. Leave an escalated path untouched and hold as its blocker beacon.
-<!-- change:declared-ownership-capture -->
 On each `integrator-main-clearance` beat, run `telec code owners` once, then take
 each blocking path on its own. Each path keeps its own history of what was sent and
 claimed; a set of paths is never treated as one unit.
@@ -292,7 +251,6 @@ claimed; a set of paths is never treated as one unit.
    path uncommitted for three consecutive beats after it was messaged or claimed, or
    when a path's diff is unintelligible. Leave an escalated path untouched and hold as
    its blocker beacon.
-<!-- /planned-change:declared-ownership-capture -->
 
 #### Reminder: integrator-main-clearance
 
