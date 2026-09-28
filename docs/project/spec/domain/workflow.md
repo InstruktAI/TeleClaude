@@ -29,12 +29,28 @@ feature specs remain the current contract.
   identity, or domain behavior delivered by a todo.
 - **Published contracts:** todo and artifact commands, queries, lifecycle
   events, and explicit dispatch requests to agent runtime.
+<!-- planned-change:home-activation-commit-fails-post-commit-hook -->
+
 - **Also published:** where a project's shared state lives, given a project
   root. A primary checkout owns its own state and a linked worktree's state
   lives at the owning checkout — the relation this context creates and defines,
   which is why the answer is published from here rather than from the context
   that owns the project's configuration file. Consumers read it through this
   contract and never interpret git metadata themselves.
+
+<!-- change:home-activation-commit-fails-post-commit-hook -->
+
+- **Also published:** where shared state lives, given a project root or the
+  platform home. A primary checkout owns its own state and a linked worktree's
+  state lives at the owning checkout — the relation this context creates and
+  defines, which is why the answer is published from here rather than from the
+  context that owns the configuration file. The platform home is a primary
+  checkout whose commit-boundary maintenance acts on the home itself
+  (`project/spec/feature/integration/post-commit-maintenance`, UC-PCM10).
+  Consumers read it through this contract and never interpret git metadata
+  themselves.
+
+<!-- /planned-change:home-activation-commit-fails-post-commit-hook -->
 - **Also published:** which checkouts are slug worktrees and where a slug
   worktree's home lives, given the worktree root
   (`project/spec/feature/agent_runtime/isolated-home`). The contract loads no
