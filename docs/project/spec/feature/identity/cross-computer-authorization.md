@@ -23,9 +23,9 @@ and project registry, reads the object's scope from its own records, and applies
 command's person band and the object's rules as one decision
 (`project/spec/feature/identity/command-clearance`).
 
-The caller's computer establishes who is calling and carries only that across: the
-verified principal and, for a session caller, that session's identity. It never
-carries a role or a scope. What it decides itself is what only it knows about its own
+The caller's computer establishes who is calling and carries only the caller's
+principal across. It never carries a role or a scope, and a session identity is a
+handle local to the computer that holds that session, never authority on another. What it decides itself is what only it knows about its own
 caller: that the caller is identified, that a session caller's agent role is admitted
 by the command's agent band, and that the caller's dispatch chain permits the act
 (`project/spec/feature/agent_runtime/session-authority`). Each of these narrows; none
@@ -37,20 +37,11 @@ computer admits it when the command's person band admits the highest role the
 caller holds on that computer, and returns each object only when its owner's rule
 admits the caller for that object.
 
-Deciding relayed commands is a capability computers advertise to each other
-(`project/spec/feature/reconciliation/fleet-cross-version-interop`). Toward a computer
-that does not advertise it, the caller's computer relays nothing it cannot have
-decided: it judges the command at platform scope itself, relays it unmarked, in
-the form a computer without the capability reads, for a caller holding a platform
-role on the caller's computer, and refuses any other caller with a failure that
-names that computer. A caller's command or read that reaches a computer carrying
-no principal is refused there, whatever build sent it; the refusal names its way
-out: update the calling computer, or run the command on the computer that holds
-the object. A command of a kind a caller can send that arrives with no principal
-and without the sending computer's mark of its own forwarding is refused the same
-way, whether a caller or that computer's daemon sent it: the holding computer cannot
-tell them apart, and it executes no such command without a principal. The sender
-receives the refusal as a failed command.
+Every command and read relayed to another computer carries its principal: the
+caller's for a caller's command, and the sending daemon's system principal for a
+command the daemon forwards on its own account. A relayed message without a
+principal violates the relay contract and is rejected at the transport boundary as
+malformed; no role or other fact it carries is read.
 
 ## Canonical fields
 
@@ -88,16 +79,13 @@ Then the new session's person role is the one that computer resolves for that pe
 And no role carried with the request raises or lowers it
 ```
 
-#### UC-XCA4: A relayed command without a principal is refused
+#### UC-XCA4: Every relayed message carries its principal
 
 ```
-Given a caller's command or read relayed to a computer, from a computer on any build
-When it carries no principal
-Then that computer refuses it before acting, and reads no role it carries
-And the refusal is reported to the caller for that computer
-And the refusal says to update the calling computer or run the command on the computer that holds the object
-And a command of a kind a caller can send, carrying no principal and not marked by the sending computer as its own forward, is refused the same way
-And the sending computer's daemon receives that refusal as a failed command, whether a person's request or its own forwarding sent it
+Given a caller's command or read relayed to another computer
+Then it carries the caller's principal
+And a command the sending daemon forwards on its own account carries that daemon's system principal
+And a relayed message carrying no principal is rejected at that computer's transport boundary as malformed, reading no role it carries
 ```
 
 #### UC-XCA5: An unreachable computer fails the command for that computer
@@ -113,10 +101,8 @@ And the caller's computer does not decide the command in its place
 
 ```
 Given a person holding the platform admin role on every computer
-And both the person's computer and the named computer decide relayed commands
-When the person runs any command naming the other computer
+When the person runs any command naming another computer
 Then the command is admitted and that computer serves it
-But a read sent by a computer that does not decide relayed commands carries no principal and is refused as UC-XCA4 states
 ```
 
 #### UC-XCA7: Another computer answers a listing or history read of its own objects
@@ -140,16 +126,7 @@ Then that computer returns it
 And an operation there for a session in a project owned by another company is answered as not found
 ```
 
-#### UC-XCA9: A computer that does not decide relayed commands receives none it cannot decide
-
-```
-Given a computer that does not advertise that it decides relayed commands
-When a person holding no platform role runs a command naming that computer
-Then the command is refused on the caller's computer, and the refusal names that computer
-And a person holding a platform role on the caller's computer is served by that computer
-```
-
 ## Known caveats
 
-- A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, closing a session another computer runs, peer synchronization — is not a caller's command and carries no principal. When the sending computer marks it as its own forward, or it is of a kind no caller sends, it keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other. An unmarked forward of a kind a caller can send is refused as UC-XCA4 states, so a computer that does not mark its forwards has its session closes and direct-conversation deliveries toward this computer refused, as failures naming the way out, until it is updated.
+- A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, closing a session another computer runs, peer synchronization — carries the daemon's system principal and keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other.
 - Sessions another computer shares with this one are listed here under `project/spec/feature/agent_runtime/session-lifecycle`, not by this contract.

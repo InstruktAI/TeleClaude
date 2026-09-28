@@ -83,9 +83,9 @@ session's role and its help-desk confinement in
    there, an operation it owns — is authorized on that computer, the person band
    and the object's rules together as one decision; the caller's computer does
    not clear the person band for it. The caller's computer establishes who is
-   calling and carries only that over the daemon relay — the verified principal
-   and, for a session caller, that session's identity — as remote history search
-   already does
+   calling and carries only the caller's principal over the daemon relay — a
+   command the daemon forwards on its own account carries the daemon's system
+   principal — as remote history search already does
    (`project/spec/feature/session_mirrors/cross-computer-history-federation`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
@@ -154,10 +154,9 @@ company scope.
 | A caller supplies a scope or role                                          | The scope is read from the object and the role from the registry and roster. A supplied role only lowers where a new session is placed — a door that offers a narrower experience, such as a help-desk forum, confines a person below their effective role — and never raises it; later decisions about that session still read the person's effective role. |
 | A person holds roles at several scopes containing one object               | The highest-ranked one applies.                                                                                                                                                                                                                                                                                                                              |
 | A role is withdrawn or a membership removed                                | The change applies from that person's next decision.                                                                                                                                                                                                                                                                                                         |
-| A relayed act reaches another computer carrying no principal               | The target refuses it.                                                                                                                                                                                                                                                                                                                                       |
+| A relayed message carries no principal                                     | It violates the relay contract and is rejected at the transport boundary as malformed.                                                                                                                                                                                                                                                                       |
 | The target holds no role for the relayed principal that reaches the object | The effective role there is `customer`; the act proceeds only if the command admits `customer`.                                                                                                                                                                                                                                                              |
 | The target computer is unreachable or cannot resolve its facts             | The act fails and is reported for that computer; the caller's computer decides nothing in its place.                                                                                                                                                                                                                                                         |
-| The target computer does not advertise that it decides relayed acts        | The caller's computer judges the act at platform scope and relays it unmarked, in the form a computer without the capability reads, only for a caller holding a platform role there; any other caller is refused, and the refusal names that computer.                                                                                                                                                                      |
 <!-- /planned-change:relay-scoped-role-decisions -->
 
 ## See Also
