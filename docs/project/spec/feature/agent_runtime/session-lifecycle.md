@@ -71,7 +71,12 @@ Then the session's project_path is confined to the computer's help-desk director
 Given the request specifies `computer = <remote>`
 When the local agent_runtime service receives the create-session request
 Then it dispatches a new-session request to the target computer over the inter-computer transport
+<!-- planned-change:relay-scoped-role-decisions -->
 And the dispatch forwards the initiating client's resolved origin and identity (human_email, human_role, system_role, job) in the command payload so the target's identity gate passes; the originating computer travels separately as the transport initiator, never as origin
+<!-- change:relay-scoped-role-decisions -->
+And the dispatch forwards the initiating client's origin and session creation context in the command payload; the relay separately carries the caller's principal for authorization on the target, which resolves the new session's person role from its own registry and project scope
+And the originating computer travels as the transport initiator, never as origin
+<!-- /planned-change:relay-scoped-role-decisions -->
 And the target agent_runtime service creates the session on its own host-pane layer
 And the response carries the remote session id, host-pane reference, computer reference, and resolved agent
 And if the target returns an error envelope, an upstream error is surfaced
@@ -408,7 +413,12 @@ Given a person holding no platform role and the admin role in one company
 When the person lists this computer's sessions, including with --all
 Then every listed session runs in a project that company owns
 And no session running in a project owned by another company, or in no registered project, is listed
+<!-- planned-change:relay-scoped-role-decisions -->
 And sessions other computers share with this one, or a listing that names another computer, are available only to a person holding a platform role here
+<!-- change:relay-scoped-role-decisions -->
+And sessions other computers share with this one are available only to a person holding a platform role here
+And a listing that names another computer is answered by that computer with the sessions the person's role reaches there
+<!-- /planned-change:relay-scoped-role-decisions -->
 And a platform administrator's listing is unchanged
 ```
 
@@ -431,7 +441,11 @@ And a platform administrator's listing is unchanged
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
+<!-- planned-change:relay-scoped-role-decisions -->
 - **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project is listed only for a platform role. Another computer's sessions, whether named or shared between computers, are judged at platform scope (`project/design/architecture/scoped-roles`), so they are listed only for a platform role held here. The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
+<!-- change:relay-scoped-role-decisions -->
+- **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions running in a project where that person's effective role is above customer (`project/design/architecture/scoped-roles`), so a session in no registered project is listed only for a platform role. Sessions other computers share with this one are listed only for a platform role held here, except that a session sees its own direct children wherever they run; a listing that names another computer is answered by that computer (`project/spec/feature/identity/cross-computer-authorization`). The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
+<!-- /planned-change:relay-scoped-role-decisions -->
 - **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 

@@ -119,6 +119,7 @@ Then the command is refused with the not-permitted failure naming `customer` and
 And the machine configuration and the person registry are unchanged and unread
 ```
 
+<!-- planned-change:relay-scoped-role-decisions -->
 #### UC-CCS7: A command naming another computer needs a platform role
 
 ```
@@ -128,6 +129,17 @@ Then the command is refused with the not-permitted failure naming `customer` and
 And no request reaches that computer
 And a platform administrator running the same command is admitted and reaches that computer
 ```
+<!-- change:relay-scoped-role-decisions -->
+#### UC-CCS7: A command naming another computer is decided by that computer
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person runs `telec sessions tail` naming a session on another computer
+Then the command is sent to that computer carrying no role
+And that computer admits or refuses it by the person's role for the project the session runs in there
+But a command naming another computer that acts on nothing held there, such as listing its projects, is refused naming `customer` and sends no request
+```
+<!-- /planned-change:relay-scoped-role-decisions -->
 
 #### UC-CCS8: A trusted-directory name reaches its selected project
 
@@ -494,8 +506,16 @@ supplies.
 - A `telec bugs` command whose `--project` value names a trusted directory is
   judged at the project containing the directory that name resolves to
   (`project/design/architecture/cli-invocation-boundary` invariant 5).
+<!-- planned-change:relay-scoped-role-decisions -->
 - A command that names another computer is judged at platform scope
   (`project/design/architecture/scoped-roles`).
+<!-- change:relay-scoped-role-decisions -->
+- A command that acts on an object another computer holds — a session there, a session to start there,
+  an operation it owns, its session listing, or its history search or show — is decided by that computer
+  (`project/spec/feature/identity/cross-computer-authorization`). Here it needs an identified caller and,
+  for a session caller, the command's agent band. A `telec sessions send` that opens or closes a direct
+  conversation, and any other command that names another computer, is judged at platform scope.
+<!-- /planned-change:relay-scoped-role-decisions -->
 - Every other command is judged at the project the invocation runs in — the project
   of its working directory's checkout — and at platform scope where it runs in no
   registered project.
