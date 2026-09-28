@@ -428,12 +428,10 @@ The TUI clears each action it performs before sending it, against the verb of th
 <!-- /planned-change:relay-scoped-role-decisions -->
 
 <!-- planned:authorize-person-roles-at-scope -->
-The preceding pre-handler clearance rule has one named-target exception: when
-`telec bugs --project` names a trusted directory, the gate admits the caller and
-any agent band, and the same command's person band completes under
-`project/design/architecture/cli-invocation-boundary` invariant 5 after the
-handler selects the directory. Full clearance still precedes the project
-operation or daemon request.
+The preceding pre-handler clearance rule has one named-target exception:
+`telec bugs --project` naming a trusted directory completes person-band
+clearance inside its handler (`project/design/architecture/cli-invocation-boundary`
+invariant 5).
 <!-- /planned:authorize-person-roles-at-scope -->
 
 `telec sessions end` and `telec sessions restart` each admit one act outside their band, decided in the same clearance from the caller's own session record and the command's target: a session may end itself when its record names no orchestrating parent (`feature/identity/self-end-authorization-bypass`), and a session may restart itself (`feature/identity/self-restart-authorization-bypass`). A worker is refused a restart of any session other than its own, whatever the band says.
