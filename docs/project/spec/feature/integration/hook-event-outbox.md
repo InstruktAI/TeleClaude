@@ -154,8 +154,8 @@ And none is merged into another or replaced by a later one
   bursty events into 1-second windows reduces contention.
 <!-- change:event-driven-agent-status -->
 - The outbox is locally persisted; concurrent receivers may experience
-  contention during high-frequency tool-use bursts. Tool events are exempt
-  from coalescing; the coalesce windows apply to the other bursty events.
+  contention during high-frequency tool-use bursts. Coalescing the
+  remaining bursty events into 1-second windows reduces contention.
 <!-- /planned-change:event-driven-agent-status -->
 - The latest-wins window is enforced via a guarded read-then-write
   inside one transaction; there is a narrow race where two receivers
