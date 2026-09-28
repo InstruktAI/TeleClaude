@@ -22,6 +22,7 @@ from teleclaude.git import GitCommandError
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.project_setup.git_filters import GitFilterDisposition, ensure_git_filters
 from teleclaude.project_setup.hooks import HookConvergenceOutcome, install_code_hooks
+from teleclaude.runtime.config import require_own_checkout
 
 logger = get_logger(__name__)
 
@@ -118,6 +119,7 @@ def _record_root_result(
 
 def converge_plumbing(project_root: Path, *, run_id: str | None = None) -> PlumbingConvergenceResult:
     """Converge one adopted root's hooks and docs filter driver."""
+    require_own_checkout(project_root)
     try:
         capabilities = resolve_capabilities(project_root)
     except ValueError:
@@ -260,6 +262,7 @@ def converge_registered_roots() -> PlumbingConvergenceRunResult:
         if not registered_root.is_present:
             results.append(_unavailable_root_result(registered_root.path, run_id=run_id))
             continue
+        require_own_checkout(registered_root.path)
         try:
             results.append(converge_plumbing(registered_root.path, run_id=run_id))
         except PlumbingOperationalFailure:

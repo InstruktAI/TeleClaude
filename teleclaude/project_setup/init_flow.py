@@ -31,6 +31,7 @@ from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.quality.scope import get_project_languages
+from teleclaude.runtime.config import get_runtime_config, require_own_checkout
 from teleclaude.slug import normalize_slug, validate_slug
 from teleclaude.utils import resolve_project_config_path
 
@@ -198,6 +199,7 @@ def init_project(project_root: Path) -> None:
     /projects-analyze`` and ``telec sessions run --command
     /projects-assess-config`` — never a side effect of this function.
     """
+    require_own_checkout(project_root)
     is_mother = _is_teleclaude_project(project_root)
 
     ensure_git_repo(project_root)
@@ -211,8 +213,10 @@ def init_project(project_root: Path) -> None:
     )
     registered_root = resolve_project_root(project_root)
     register_root(project_root=registered_root)
+    migration_root = project_root if get_runtime_config().worktree_checkout is not None else registered_root
+    require_own_checkout(migration_root)
     migrate_document(
-        registered_root / ConfigFileName.OVERLAY,
+        migration_root / ConfigFileName.OVERLAY,
         SubjectRef(ConfigSubjectKind.PROJECT),
         MigrationTrigger.REGISTRATION,
     )

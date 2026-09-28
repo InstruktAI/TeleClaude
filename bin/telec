@@ -6,9 +6,8 @@
 # pyproject.toml. The wrapper's location selects the code that runs, never the
 # caller's working directory
 # (docs/project/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to.md).
-# From a slug worktree, this wrapper never runs against the live TeleClaude
-# home: unless the caller names another home, it creates a temporary home,
-# runs against it, and removes it on exit
+# Code loaded from a slug worktree resolves its provisioned home in
+# teleclaude/runtime/config.py; this wrapper creates no home
 # (docs/project/design/architecture/cli-invocation-boundary.md).
 set -euo pipefail
 
@@ -36,71 +35,4 @@ export TELEC_INVOCATION_CWD="$PWD"
 # `uv sync` (install.sh, dependency_upgrade job) still works.
 export UV_NO_SYNC=1
 
-LIVE_TELECLAUDE_HOME="$HOME/.teleclaude"
-WRAPPER_OWNED_HOME=""
-
-_telec_remove_wrapper_owned_home() {
-  # Removes only the directory this process created, and never the live home.
-  if [ -n "$WRAPPER_OWNED_HOME" ] && [ -d "$WRAPPER_OWNED_HOME" ] &&
-    ! [ "$WRAPPER_OWNED_HOME" -ef "$LIVE_TELECLAUDE_HOME" ]; then
-    rm -rf -- "$WRAPPER_OWNED_HOME"
-  fi
-}
-
-INSTALL_PARENT_NAME="$(basename "$(dirname "$INSTALL_DIR")")"
-INSTALL_DIR_NAME="$(basename "$INSTALL_DIR")"
-
-if [ "$INSTALL_PARENT_NAME" = "trees" ] && [ "$INSTALL_DIR_NAME" != "_integration" ]; then
-  # This wrapper belongs to a slug worktree. Its code never runs against the
-  # live home. The wrapper owns the temporary home it runs against, creating
-  # and removing it in this one process, so no caller ever manages a home
-  # variable across separate commands.
-
-  # Match the literal, unexpanded "~/..." spelling a caller can pass inside a
-  # quoted assignment (TELECLAUDE_HOME="~/.teleclaude"); the shell never
-  # expands it in that position, so this wrapper expands it itself.
-  CANDIDATE_HOME="${TELECLAUDE_HOME:-}"
-  # shellcheck disable=SC2088 # intentional: matching the literal unexpanded tilde spelling, not expanding one
-  case "$CANDIDATE_HOME" in
-  "~")
-    CANDIDATE_HOME="$HOME"
-    ;;
-  "~/"*)
-    CANDIDATE_HOME="$HOME/${CANDIDATE_HOME#"~/"}"
-    ;;
-  esac
-  case "$CANDIDATE_HOME" in
-  "" | /*)
-    ;;
-  *)
-    CANDIDATE_HOME="$PWD/$CANDIDATE_HOME"
-    ;;
-  esac
-
-  # An unset or empty home is the live home, and any other spelling is compared
-  # with the live home by filesystem identity. Either way the live home is
-  # replaced by a temporary home this process owns.
-  if [ -z "$CANDIDATE_HOME" ] ||
-    { [ -e "$CANDIDATE_HOME" ] && [ "$CANDIDATE_HOME" -ef "$LIVE_TELECLAUDE_HOME" ]; }; then
-    WRAPPER_OWNED_HOME="$(mktemp -d "${TMPDIR:-/tmp}/telec-worktree-home.XXXXXX")"
-    trap _telec_remove_wrapper_owned_home EXIT
-    trap 'exit 129' HUP
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-    CANDIDATE_HOME="$WRAPPER_OWNED_HOME"
-  fi
-
-  export TELECLAUDE_HOME="$CANDIDATE_HOME"
-  mkdir -p "$TELECLAUDE_HOME"
-  if [ ! -f "$TELECLAUDE_HOME/config.yml" ]; then
-    cp -p "$LIVE_TELECLAUDE_HOME/config.yml" "$TELECLAUDE_HOME/config.yml"
-  fi
-fi
-
-if [ -n "$WRAPPER_OWNED_HOME" ]; then
-  # Not exec'd: this shell must outlive the command so its EXIT trap removes
-  # the temporary home. The command's exit status is the wrapper's.
-  uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.cli.telec "$@"
-else
-  exec uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.cli.telec "$@"
-fi
+exec uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.cli.telec "$@"
