@@ -12,7 +12,7 @@ from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
-from teleclaude.core.db._agent_status import TURN_NOTIFICATION_SEPARATOR, TurnNotificationRecord
+from teleclaude.core.db._agent_status import TurnNotificationRecord
 from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.models import MessageMetadata, Session, SessionOriginMetadata
 from teleclaude.core.session_listeners import (
@@ -202,16 +202,13 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                     outcome="claimed",
                 )
         else:
-            existing_session = await db.get_session(target_session_id)
-            if existing_session is None:
-                return False
-            recorded = {
-                TurnNotificationRecord(value)
-                for value in existing_session.turn_notifications_sent.split(TURN_NOTIFICATION_SEPARATOR)
-                if value
-            }
-            if TurnNotificationRecord.INFERRED_STALL in recorded:
-                return True
+            # Claimed before delivery, like every other kind: an inferred stall is
+            # attempted once, and an undeliverable one is logged and dropped.
+            stall_claimed, records = await db.claim_turn_notification(
+                target_session_id, TurnNotificationRecord.INFERRED_STALL
+            )
+            if not stall_claimed:
+                return TurnNotificationRecord.INFERRED_STALL in records
         session = await db.get_session(target_session_id)
         title = session.title if session else None
         computer = source_computer or LOCAL_COMPUTER
@@ -248,8 +245,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                 inferred_stall_evidence,
             )
         delivered = bool(reached or remote_reached or fallback_delivered)
-        if inferred_stall_evidence is not None and delivered:
-            await db.claim_turn_notification(target_session_id, TurnNotificationRecord.INFERRED_STALL)
         outcome = (
             _DISTRESS_OUTCOME_SUBSCRIBER_DELIVERY if reached or remote_reached else _DISTRESS_OUTCOME_HUMAN_FALLBACK
         )
