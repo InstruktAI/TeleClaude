@@ -155,7 +155,8 @@ And none is merged into another or replaced by a later one
 <!-- change:event-driven-agent-status -->
 - The outbox is locally persisted; concurrent receivers may experience
   contention during high-frequency tool-use bursts. Coalescing the
-  remaining bursty events into 1-second windows reduces contention.
+  remaining bursty events within their configured windows reduces
+  contention.
 <!-- /planned-change:event-driven-agent-status -->
 - The latest-wins window is enforced via a guarded read-then-write
   inside one transaction; there is a narrow race where two receivers
