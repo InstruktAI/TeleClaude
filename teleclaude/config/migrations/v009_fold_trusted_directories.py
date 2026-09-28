@@ -68,6 +68,7 @@ def _pending_entries(document: Mapping[str, object]) -> tuple[PendingTrustedDire
             raise ValueError(_INVALID_TRUSTED_DIRECTORY)
         raw_path = row.get(_PATH_FIELD)
         name = row.get(_NAME_FIELD)
+        # The retired parser treated an omitted desc as empty; preserve startup for existing configs.
         description = row.get(_LEGACY_DESCRIPTION_FIELD, _EMPTY_DESCRIPTION)
         if (
             not isinstance(raw_path, str)
