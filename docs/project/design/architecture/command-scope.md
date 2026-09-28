@@ -1,8 +1,8 @@
 ---
-description: Which root a telec command acts on when it runs inside a slug worktree — the worktree for work on the change itself, the shared project for anything that exists once — resolved for every command by one resolver.
+description: Which root a telec command acts on when it runs inside a slug worktree
+  — the worktree for work on the change itself, the shared project for anything that
+  exists once — resolved for every command by one resolver.
 visibility: internal
-delivered_by:
-  - worktree-or-project-scope
 ---
 
 # Command Scope — Design

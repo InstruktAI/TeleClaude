@@ -126,7 +126,6 @@ Then no entry is listed
 And the refusal says why the caller is not identified
 ```
 
-<!-- planned:worktree-or-project-scope -->
 #### UC-KIS10: The ledger is the project's from anywhere inside it
 
 ```
@@ -135,7 +134,6 @@ When they register, list, or remove a suppression without naming a project
 Then the command acts on that project's ledger, the one the log bug hunter reads for the project
 And no ledger keyed on a worktree's copy of the project declaration is read or written
 ```
-<!-- /planned:worktree-or-project-scope -->
 
 ### Cross-context references
 

@@ -271,7 +271,6 @@ And the held todo is not auto-re-dispatched to another diagnosis peer
 And an unresolved stamp with an empty or missing reason is refused before any write
 ```
 
-<!-- planned:worktree-or-project-scope -->
 #### UC-WSS23: Task success delivers within the todo's own project
 
 ```gherkin
@@ -280,7 +279,6 @@ When its run session runs "telec todo stamp my-slug --task-outcome success" from
 Then the delivery reconciles the lifecycle markers in that project's documentation
 And no other project's documentation is read or changed by the delivery
 ```
-<!-- /planned:worktree-or-project-scope -->
 
 ### Cross-context references
 

@@ -703,7 +703,6 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
   And later lifecycle runner passes do not dispatch it to the prepare lane again until one of the dependency's intent or prepared artifacts moves again
 ```
 
-<!-- planned:worktree-or-project-scope -->
 #### UC-WDD18: Provenance recorded from a slug worktree reads the owning project's snippets
 
 ```gherkin
@@ -713,7 +712,6 @@ Scenario: an artifact written or a stamp applied from a slug worktree records th
   Then the recorded snippet digests are those of the owning checkout's snippets
   And drift derived later from the owning checkout reports no drift for that unchanged snippet
 ```
-<!-- /planned:worktree-or-project-scope -->
 
 ### Cross-context references
 

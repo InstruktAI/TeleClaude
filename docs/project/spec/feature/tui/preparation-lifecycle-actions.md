@@ -134,7 +134,6 @@ Then the action is refused and the new todo is left unchanged
 And the operator is notified at error severity with a refusal that names the removed state and reactivation as the way forward
 ```
 
-<!-- planned:worktree-or-project-scope -->
 #### UC-PLA-8: A todo created where nothing names a project belongs to the project the TUI was started from
 
 ```gherkin
@@ -144,7 +143,6 @@ When the operator creates a new todo or bug
 Then the new item is created in the project the TUI was started from
 And no item is created in any other project
 ```
-<!-- /planned:worktree-or-project-scope -->
 
 ## See Also
 

@@ -87,7 +87,6 @@ And the grading leaves the live home unchanged
 
 #### UC-CCS6
 
-<!-- planned:worktree-or-project-scope -->
 #### UC-CCS7: A worktree's telec code commands answer to the worktree's own declaration
 
 ```gherkin
@@ -104,7 +103,6 @@ Given an agent standing in a slug worktree whose HEAD differs from the installed
 When the agent runs telec version
 Then the reported version and commit both describe the checkout whose code runs
 ```
-<!-- /planned:worktree-or-project-scope -->
 
 #### UC-CCS9: Authorized worktree grading reaches its checks
 

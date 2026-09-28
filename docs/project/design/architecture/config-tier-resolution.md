@@ -142,21 +142,6 @@ answer:
   integration checkpoints, the sync deploy root, checkpoint flags, and the todo
   API routes.
 
-<!-- planned-change:worktree-or-project-scope -->
-A linked worktree is never authoritative for daemon-facing configuration. The
-tier and subscription gates — the `telec code` capability gate and the
-checkpoint's project-support gate — read the declaration of the checkout that
-owns the worktree, never the branch copy the worktree carries. The context walk
-still answers where the invocation acts, so path scoping stays worktree-local;
-only the declaration those gates read resolves to the owning checkout. A branch
-that edits its own declaration therefore cannot change the gate applied to it,
-and a declaration whose shape the installed daemon cannot yet parse cannot break
-the gate for the checkout that carries it.
-
-The docs retrieval surface is the case that asks both: its configuration
-composition follows the context root, while the generated index it reads is a
-checkout-owned artifact and follows the project-state root.
-<!-- change:worktree-or-project-scope -->
 The `telec code` capability gate reads the declaration of the context the
 invocation acts in. From a slug worktree that is the worktree's own declaration:
 its tier and its subscriptions describe the change the worktree carries, so the
@@ -171,7 +156,6 @@ context question identifies the invocation as a project invocation, and the
 project-state root then carries both its configuration composition and the
 generated index it reads, because both belong to the owning checkout. A
 non-project context composes from its own context root.
-<!-- /planned-change:worktree-or-project-scope -->
 
 **Editor-schema publication.** Generation is a config-owned pure export from
 the four tier models. Generating from the model is what keeps a published
