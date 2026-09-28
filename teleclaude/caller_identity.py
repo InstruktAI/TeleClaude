@@ -275,10 +275,11 @@ def effective_role(facts: PersonRoleFacts, scope: RoleScope) -> str:
         member = facts.memberships.get(scope.company)
         if member is not None:
             candidates.append(member.role.value)
-    elif isinstance(scope, ProjectScope) and scope.owner is not None:
-        member = facts.memberships.get(scope.owner)
-        if member is not None and (member.role is CompanyRole.ADMIN or scope.project in member.projects):
-            candidates.append(member.role.value)
+    elif isinstance(scope, ProjectScope):
+        if scope.owner is not None:
+            member = facts.memberships.get(scope.owner)
+            if member is not None and (member.role is CompanyRole.ADMIN or scope.project in member.projects):
+                candidates.append(member.role.value)
     elif isinstance(scope, SharedDocsScope):
         candidates.extend(member.role.value for member in facts.memberships.values())
     elif isinstance(scope, PersonScope) and scope.person == facts.person_slug:
