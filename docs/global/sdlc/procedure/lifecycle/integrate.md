@@ -45,12 +45,22 @@ each decision point until the queue is drained.
   without ceremony. The `--confirmed` friction is the integrator's deliberate
   ratification that the working-tree mutation has been inspected and will not
   silently overwrite intentional state before the next bookkeeping commit.
+<!-- planned-change:declared-ownership-capture -->
 - **When repo-root sync is blocked by dirty files**, the integrator never stashes,
   overwrites, rebases across, or discards them. It waits on `integrator-main-clearance`
   and resolves each dirty path on its own: it asks the sessions that can have written
   the path, and commits the path as-is once it is quiet and unclaimed (see **REPO ROOT
   SYNC REQUIRED** below). The state machine emits this guidance when it observes the
   divergence.
+<!-- change:declared-ownership-capture -->
+- **When repo-root sync is blocked by dirty files**, the integrator never stashes,
+  overwrites, or rebases across them, and discards one only by an evidenced revert.
+  It waits on `integrator-main-clearance` and resolves each dirty path on its own:
+  it routes a declared path to its owner, asks only the sessions whose history shows
+  they wrote an undeclared path, and commits the path as-is once it is quiet and
+  unclaimed (see **REPO ROOT SYNC REQUIRED** below). The state machine emits this
+  guidance when it observes the divergence.
+<!-- /planned-change:declared-ownership-capture -->
 
 ## Steps
 
@@ -201,6 +211,7 @@ to own; the state machine never performs it. Divergence has two instruction shap
 
 #### Resolving a dirty path
 
+<!-- planned-change:declared-ownership-capture -->
 On each `integrator-main-clearance` beat, take each dirty path on its own. Each path
 keeps its own history of what was sent and claimed; a set of paths is never treated as
 one unit.
@@ -231,6 +242,46 @@ one unit.
 6. **Escalate** to the human, once per path, only when a claimed path stays
    uncommitted for three consecutive beats after its claim, or when a path's diff is
    unintelligible. Leave an escalated path untouched and hold as its blocker beacon.
+<!-- change:declared-ownership-capture -->
+On each `integrator-main-clearance` beat, run `telec code owners` once, then take
+each blocking path on its own. Each path keeps its own history of what was sent and
+claimed; a set of paths is never treated as one unit.
+
+1. **Declared.** A path with a live declaring session belongs to that session. Send
+   each owner one message listing all of its blocking paths, using step 4's message,
+   and never send it the same path again. Wait for its commit.
+2. **Recently written.** An undeclared path last modified within the current reminder
+   interval is being worked on. Leave it for a later beat: its writer's own
+   checkpoint may yet turn it into a declaration.
+3. **Named by a pending-doc marker.** When an undeclared path's uncommitted diff adds
+   a pending marker naming a todo slug — a `planned:<slug>` or
+   `planned-change:<slug>` block, a `<stem>.<slug>.md` companion, or a
+   `delivered_by` entry — that todo's prepare orchestrator wrote it. Find that
+   session from the todo's state (`telec todo show <slug>`). If it is live, send it
+   the path under step 4's message. If it is gone, read its transcript
+   (`telec history show <session-id>`) together with the todo's state and resolve
+   the path from that evidence under step 6.
+4. **Ask the writer.** For every other quiet undeclared path, find the sessions whose
+   history touched it with `telec history search <path> --project <project>`. Send
+   each live session found, once, one message listing its paths:
+   `These paths are dirty on main and block integration: <paths>. If you were in the middle of work, arm halt-to-respond first. Then: for each path that is yours, commit it now if it is ready and released for commit, otherwise reply that you are still working on it; if none are yours, end your turn with NOOP.`
+   No other session is asked. When the search finds no live session, the path goes
+   to step 6.
+5. **Claimed.** A session that replies that a path is its own and still in progress
+   owns that path. Keep waiting for its commit.
+6. **Quiet and unclaimed on a later beat.** A path still dirty, not recently written,
+   and claimed by no one — whether the sessions asked stayed silent or none was
+   found — is committed as-is with a pathspec-scoped
+   `telec code commit --approved --only <path>` under a message that names it as
+   stranded work. Revert it instead only when session history clearly shows the work
+   was abandoned, such as a path whose pending-doc markers name a todo that is removed
+   or delivered while its prepare orchestrator's transcript shows the work was
+   dropped. When that history cannot be read, commit and never revert.
+7. **Escalate** to the human, once per path, only when an owner or claimant leaves its
+   path uncommitted for three consecutive beats after it was messaged or claimed, or
+   when a path's diff is unintelligible. Leave an escalated path untouched and hold as
+   its blocker beacon.
+<!-- /planned-change:declared-ownership-capture -->
 
 #### Reminder: integrator-main-clearance
 

@@ -124,6 +124,22 @@ the last matching record for the attributed files, or across the cycle when
 there is no matching record. The post-commit review latch is eligible when
 the resulting evaluation owes no commit action.
 
+<!-- planned:declared-ownership-capture -->
+### Invariant 28 — Undeclared-write question
+
+On a shared branch, the engine derives advisory candidates from the same
+checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
+not declared that appear, as an exact path, in a successful shell command of
+that cycle that writes files. The candidates are rendered as a named question
+inviting `telec code add`; they never join the effective file set, never write a
+declaration, and never raise an obligation. Edit-tool writes are not
+candidates: the hook receiver declares them when the call succeeds
+(`sdlc/design/workspace-scoping`). When the effective set is empty but
+candidates exist, the engine still produces a decision carrying the question.
+Classifying a shell command as one that writes files and matching a known path
+in its text is structural; the engine never extracts paths from command text.
+<!-- /planned:declared-ownership-capture -->
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder

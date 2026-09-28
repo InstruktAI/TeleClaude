@@ -71,6 +71,7 @@ guardrails lane).
 
 ## Inputs/Outputs
 
+<!-- planned-change:declared-ownership-capture -->
 | Input                | Source                                                                                                                                   |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Execution context    | `resolve_workspace_scope_resolution()`                                                                                                   |
@@ -79,6 +80,16 @@ guardrails lane).
 | Dirty paths          | `git status --porcelain --untracked-files=all`                                                                                           |
 | Project languages    | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list   | CLI arguments (`telec code lint <files...>`)                                                                                             |
+<!-- change:declared-ownership-capture -->
+| Input                | Source                                                                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution context    | `resolve_workspace_scope_resolution()`                                                                                                   |
+| Session identity     | `$TMPDIR/teleclaude_identity.json`                                                                                                       |
+| Session declarations | The session's own declaration record, written by `telec code add` and by the session's successful edit-tool calls                        |
+| Dirty paths          | `git status --porcelain --untracked-files=all`                                                                                           |
+| Project languages    | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
+| Explicit file list   | CLI arguments (`telec code lint <files...>`)                                                                                             |
+<!-- /planned-change:declared-ownership-capture -->
 
 | Output                  | Description                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -88,6 +99,7 @@ guardrails lane).
 
 ### Session path declarations
 
+<!-- planned-change:declared-ownership-capture -->
 On a shared branch, session-owned path evidence is exactly the set of paths the
 session declared. A declaration is an entry a successful `telec code add` writes
 to the declaring session's own record, carrying the path and the instant it was
@@ -104,6 +116,35 @@ The record is session-scoped durable state, keyed by the declaring session and
 released when that session closes. It outlives the agent process, the host pane,
 and the machine, so a declaration stays live across an agent restart, a handoff,
 and a revival of the same session.
+<!-- change:declared-ownership-capture -->
+On a shared branch, session-owned path evidence is exactly the set of paths the
+session declared. A declaration is an entry in the declaring session's own
+record, carrying the path and the instant it was declared. Two acts write one:
+
+- a successful `telec code add`, which accepts paths that are clean or do not
+  yet exist — declaring is bookkeeping and carries no git state of its own; and
+- a successful call to an edit tool whose own input names the file it writes,
+  declared by the hook receiver when the runtime reports that call's success.
+  Session scoping owns, per runtime, which tools qualify and which input field
+  names the file. A failed call declares nothing, and a path outside the
+  session's checkout is never declared.
+
+Either act writes the record directly, so the shell form of an invocation, the
+agent runtime that ran it, and the readability of the session's transcript are
+all outside the evidence path. A declaration is live from the moment it is
+written until the commit that carries it lands and clears it; `--only` clears
+just the subset that commit carried. Shell-command text and transcript reading
+never write a declaration: they only raise the advisory questions described
+below, which a session answers with `telec code add`.
+
+The record lives in the declaring session's TeleClaude temporary directory,
+beside the checkpoint flags, and is kept when that directory is emptied for a
+fresh host pane. A declaration therefore stays live across an agent restart, a
+handoff, a revival of the same session, and a host reboot. The record is removed
+with the directory when the session closes, or when the orphan sweep reaps a
+directory whose session is gone. Writes to the record are serialized, so
+concurrent tool calls never lose an entry.
+<!-- /planned-change:declared-ownership-capture -->
 
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
@@ -117,6 +158,29 @@ session's job from its session record.
 A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same
 path; each is an owner, and no arbitration selects between them.
+
+<!-- planned:declared-ownership-capture -->
+### Undeclared-write questions
+
+A shell write leaves no declaration. At agent stop on a shared branch, the
+checkpoint names the dirty paths that match the session's own shell activity in
+the current checkpoint cycle and that the session has not declared, and asks the
+session to declare the ones that are its own. A path matches when a successful
+shell command that writes files carries that exact path in its text; read-only
+commands and read-only tools match nothing. The question is advice: it adds
+nothing to scope, writes no declaration, and blocks nothing. The session remains
+the only party that knows whether it wrote the file.
+
+### Ownership query
+
+`telec code owners` reports, for every dirty path of the project's canonical
+checkout, the live sessions that declared it, or none. It resolves the dirty set
+itself, takes no path arguments, and answers for the canonical checkout from
+wherever in the project it is invoked. Several declaring sessions are all
+reported; no arbitration selects between them. A path with no live declaration
+is reported as unowned; who may have written it is the caller's question to
+answer from session history.
+<!-- /planned:declared-ownership-capture -->
 
 ## Invariants
 
@@ -158,6 +222,7 @@ path; each is an owner, and no arbitration selects between them.
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
 
+<!-- planned-change:declared-ownership-capture -->
 12. **Ownership is declared, never inferred.** A path with no live declaration is
     unowned — that is a fact about the record, not a judgment about the work.
     Undeclared dirt is expected from a human editing the branch directly, and no
@@ -165,6 +230,17 @@ path; each is an owner, and no arbitration selects between them.
     These declarations scope `telec code` operations only; they do not set or
     confine file-edit targets. In a worktree, edit targets are resolved beneath
     the active worktree root as required by `sdlc/policy/version-control-safety`.
+<!-- change:declared-ownership-capture -->
+12. **Ownership is declared, never inferred.** A path with no live declaration is
+    unowned — that is a fact about the record, not a judgment about the work.
+    Undeclared dirt is expected from a human editing the branch directly. A
+    suggested writer — the checkpoint's question, or a lookup in session
+    history — is advice to a session and never makes it an owner; only a
+    declaration does.
+    These declarations scope `telec code` operations only; they do not set or
+    confine file-edit targets. In a worktree, edit targets are resolved beneath
+    the active worktree root as required by `sdlc/policy/version-control-safety`.
+<!-- /planned-change:declared-ownership-capture -->
 13. **A commit clears the declarations it carried.** A committed path's
     declaration ends at that commit; a later `telec code add` creates a new one.
     An uncommitted declaration stays live for as long as its session does.
