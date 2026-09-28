@@ -124,9 +124,11 @@ And an operation owned by another computer, for a session in a project that comp
 When the person reads that operation naming that computer
 Then that computer returns it
 And an operation there for a session in a project owned by another company is answered as not found
+And an operation the person's command started there is returned to them, recognised by the principal that command carried
 ```
 
 ## Known caveats
 
 - A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, closing a session another computer runs, peer synchronization — carries the daemon's system principal and keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other.
+- A direct conversation with a session another computer holds reaches that computer only as the daemon's own forwarding, so that computer does not decide it; a `telec sessions send` that opens or closes one naming another computer is judged at platform scope on the caller's computer (`project/spec/feature/identity/command-clearance`).
 - Sessions another computer shares with this one are listed here under `project/spec/feature/agent_runtime/session-lifecycle`, not by this contract.
