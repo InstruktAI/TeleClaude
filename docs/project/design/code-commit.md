@@ -369,7 +369,9 @@ Deletion-only commits
 13. **A todo worktree's commit publishes its branch after the commit is
     recorded.** In a slug worktree (`trees/<slug>`, never `trees/_integration`)
     of a repository with an `origin` remote, a successful commit is followed by
-    a push of the checked-out branch to the same-named branch on `origin`. The
+    a push of the todo's branch — the branch named after the worktree — to the
+    same-named branch on `origin`, and only when that branch is the one checked
+    out; any other checked-out branch is reported unpublished and never pushed. The
     push runs after the lock of Invariant 1 is released, so no other session's
     commit waits on the network. It is a lease-guarded forced update that also
     requires the remote-tracking tip to be reachable from the local branch's

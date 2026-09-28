@@ -947,7 +947,7 @@ But a file the session changed only through a shell command is not committed unt
 <!-- planned:worktree-commits-push-to-remote -->
 ### Branch publication
 
-A successful sealed commit in a todo worktree publishes that todo's branch to the project's `origin` remote, so every task commit exists off the computer that made it. Publication follows the commit and never decides it: the commit is recorded before any push is attempted, and no publication outcome changes the commit or the command's success.
+A successful sealed commit in a todo worktree whose checked-out branch is that todo's branch publishes it to the project's `origin` remote, so every task commit exists off the computer that made it. Publication follows the commit and never decides it: the commit is recorded before any push is attempted, and no publication outcome changes the commit or the command's success.
 
 #### UC-CGIP-50 — A commit in a todo worktree publishes the todo's branch
 
@@ -1002,6 +1002,15 @@ Given an agent session working in a todo worktree of a project with no origin re
 When the session's sealed commit succeeds
 Then nothing is pushed
 And the command reports nothing about publication
+```
+
+#### UC-CGIP-56 — A worktree checked out on another branch publishes nothing
+
+```
+Given an agent session working in a todo worktree whose checked-out branch is not the todo's branch
+When the session's sealed commit succeeds
+Then nothing is pushed to origin
+And the agent is told the branch was not published because it is not the todo's branch
 ```
 <!-- /planned:worktree-commits-push-to-remote -->
 
