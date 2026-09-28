@@ -135,11 +135,13 @@ But when a local event of that type occurs on one computer
 Then only the session on that computer is woken by it
 ```
 
-#### UC-ES12: Only callers cleared to operate the platform may subscribe
+#### UC-ES12: Only callers entitled to every tenant may subscribe
 
 ```gherkin
-Given a session acting for a caller outside the platform-operating clearance
-When it asks to subscribe to any event type
+Given an agent session acting for a person who holds the admin role, or running under the platform's system principal for no company
+When it asks to subscribe to a catalog event type
+Then the subscription is created
+But when the session acts for a person who is not an admin, or runs under the system principal for a company
 Then the request is refused and no subscription is created
 ```
 
@@ -147,9 +149,9 @@ Then the request is refused and no subscription is created
 
 - A subscription observes events from the moment it is created. An event that
   occurred before it existed is never delivered to it.
-- Events carry no tenant scope, so a cleared subscriber can observe events that
-  belong to any company or person on the computers it is entitled to observe.
-  Clearance is the only reach control.
+- Events carry no tenant scope, so a subscriber observes events belonging to any
+  company or person on the computers it is entitled to observe. The subscriber
+  audience is therefore limited to callers who may already read every tenant.
 - An every-time subscription to a high-frequency event type wakes its agent as
   often as the event occurs; control delivery batches what is pending at each
   boundary but does not rate-limit.
