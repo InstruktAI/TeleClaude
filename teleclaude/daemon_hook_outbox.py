@@ -559,10 +559,12 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             )
             event_bus.emit(TeleClaudeEvents.ERROR, context, visibility=EventVisibility.CLUSTER)
         else:
-            payload = build_agent_payload(cast(AgentHookEvents, event_type), data)
+            # Outbox rows store the event as text; consumers compare by enum identity.
+            hook_event = AgentHookEvents(event_type)
+            payload = build_agent_payload(hook_event, data)
             context = AgentEventContext(  # type: ignore[assignment]
                 session_id=session_id,
-                event_type=cast(AgentHookEvents, event_type),
+                event_type=hook_event,
                 data=payload,
             )
             # Directly await coordinator — outbox serialization depends on this completing
