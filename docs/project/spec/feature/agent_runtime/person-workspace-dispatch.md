@@ -26,7 +26,7 @@ start a session in a person's workspace exactly as they do in any other folder.
 The session the launch starts has no parent. Nothing waits on it and nothing
 decides its ending but itself; it tells the person what it did by sending a
 message and then ends. It receives the brief as a request made in the moment, so
-work a schedule owns stays with that schedule.
+work a schedule owns stays with that schedule (`personal/policy/assistant-conduct`).
 
 ## Canonical fields
 
@@ -106,8 +106,7 @@ And anything the person needs to see was delivered as a message rather than as a
 Given a person's recurring work is owned by a schedule
 When an agent invokes the personal-assistant launch command with a brief that would touch that work
 Then the launched session receives the brief together with the statement that it is an in-the-moment request
-And it does not perform the recurring work the schedule owns
-And it says that the work belongs to the schedule rather than silently omitting it
+And it handles the brief under the schedule rule (`personal/policy/assistant-conduct`) rather than as the recurring work itself
 ```
 
 ## See Also
