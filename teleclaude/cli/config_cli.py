@@ -52,7 +52,7 @@ def handle_config_cli(args: list[str]) -> None:
     handlers = {
         "env": _handle_env,
         "notify": _handle_notify,
-        "validate": handle_validate,
+        "validate": _handle_validate,
     }
 
     handler = handlers.get(sub)
@@ -156,7 +156,7 @@ def _handle_notify(args: list[str]) -> None:
 # --- Validate ---
 
 
-def handle_validate(args: list[str]) -> None:
+def _handle_validate(args: list[str]) -> None:
     parsed = parse_command_args(CONFIG_VALIDATE, args)
     use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
 

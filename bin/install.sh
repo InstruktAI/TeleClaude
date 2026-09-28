@@ -1357,7 +1357,7 @@ validate_config() {
     print_header "Validating config.yml"
     local output
     local exit_code=0
-    output=$(PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.config_validation 2>&1) || exit_code=$?
+    output=$("$INSTALL_DIR/bin/telec" config validate 2>&1) || exit_code=$?
     if [ -n "$output" ]; then
         printf '%s\n' "$output"
     fi
