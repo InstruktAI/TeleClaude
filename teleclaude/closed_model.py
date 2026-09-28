@@ -61,16 +61,16 @@ class ClosedModel(BaseModel):
 def _masked_input_at(model: type[ClosedModel], loc: tuple[int | str, ...], value: object) -> object:
     """Mask the input of one error raised while validating ``model``.
 
-    An error on a sensitive field hides its value. An error on the model as a
+    An error on a sensitive or undeclared field hides its value. An error on the model as a
     whole, or on one of its fields, carries raw input that may hold nested
     secrets, so that input is masked along the model's declared structure.
     """
     if not loc:
         return _masked_by_annotation(model, value)
     field = model.model_fields.get(loc[0]) if isinstance(loc[0], str) else None
-    if field is None:
-        return value
-    if field_is_sensitive(field):
+    if field is None or field_is_sensitive(field):
+        # An undeclared key is rejected by name, so its value adds no diagnosis, and the
+        # loader has already expanded any secret reference it held.
         return MASKED_INPUT
     return _masked_by_annotation(field.annotation, value) if len(loc) == 1 else value
 
