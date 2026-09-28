@@ -271,21 +271,25 @@ def effective_role(facts: PersonRoleFacts, scope: RoleScope) -> str:
     if facts.platform_role is not None:
         candidates.append(facts.platform_role)
 
-    if isinstance(scope, CompanyScope):
-        member = facts.memberships.get(scope.company)
-        if member is not None:
-            candidates.append(member.role.value)
-    elif isinstance(scope, ProjectScope):
-        if scope.owner is not None:
-            member = facts.memberships.get(scope.owner)
-            if member is not None and (member.role is CompanyRole.ADMIN or scope.project in member.projects):
+    match scope:
+        case PlatformScope():
+            pass
+        case CompanyScope(company=company):
+            member = facts.memberships.get(company)
+            if member is not None:
                 candidates.append(member.role.value)
-    elif isinstance(scope, SharedDocsScope):
-        candidates.extend(member.role.value for member in facts.memberships.values())
-    elif isinstance(scope, PersonScope) and scope.person == facts.person_slug:
-        candidates.append(HUMAN_ROLE_ADMIN)
-    elif not isinstance(scope, PlatformScope):
-        raise TypeError(_UNKNOWN_ROLE_SCOPE_ERROR.format(scope=scope))
+        case ProjectScope(project=project, owner=owner):
+            if owner is not None:
+                member = facts.memberships.get(owner)
+                if member is not None and (member.role is CompanyRole.ADMIN or project in member.projects):
+                    candidates.append(member.role.value)
+        case SharedDocsScope():
+            candidates.extend(member.role.value for member in facts.memberships.values())
+        case PersonScope(person=person):
+            if person == facts.person_slug:
+                candidates.append(HUMAN_ROLE_ADMIN)
+        case _:
+            raise TypeError(_UNKNOWN_ROLE_SCOPE_ERROR.format(scope=scope))
 
     recognized = [role for role in candidates if role in HUMAN_ROLES]
     if not recognized:
