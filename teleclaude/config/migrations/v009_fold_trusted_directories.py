@@ -25,6 +25,7 @@ _PATH_FIELD = "path"
 _NAME_FIELD = "name"
 _DESCRIPTION_FIELD = "description"
 _LEGACY_DESCRIPTION_FIELD = "desc"
+_EMPTY_DESCRIPTION = ""
 _PROJECT_FORUM_KEY_PREFIX = "project_forum:"
 _HOME_REFERENCE = "${HOME}"
 _USER_HOME = str(Path.home())
@@ -67,7 +68,7 @@ def _pending_entries(document: Mapping[str, object]) -> tuple[PendingTrustedDire
             raise ValueError(_INVALID_TRUSTED_DIRECTORY)
         raw_path = row.get(_PATH_FIELD)
         name = row.get(_NAME_FIELD)
-        description = row.get(_LEGACY_DESCRIPTION_FIELD)
+        description = row.get(_LEGACY_DESCRIPTION_FIELD, _EMPTY_DESCRIPTION)
         if (
             not isinstance(raw_path, str)
             or not raw_path.strip()
