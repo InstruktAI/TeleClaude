@@ -64,26 +64,11 @@ and how existing installations reach the declared state.
   beneath the home's global declaration, so the walk reaches the company file
   first and stops; without nearest-wins, an outer declaration would anchor a
   context the company tier does not confer.
-<!-- planned-change:home-activation-commit-fails-post-commit-hook -->
-
 - **The project-state resolver presupposes a project context.** Its input is a
   project context root and its answer comes from that root's git metadata: a
   primary checkout owns its own state, a linked worktree resolves through its
   `.git` file to the owning checkout, and a project root with no git metadata
   fails loud naming the root. It answers nothing about which tier governs.
-
-<!-- change:home-activation-commit-fails-post-commit-hook -->
-
-- **The project-state resolver presupposes a root that owns shared state.** Its
-  input is a project context root, or the platform home, whose commit-boundary
-  hooks and maintenance drain act on the home itself
-  (`project/spec/feature/integration/post-commit-maintenance`, UC-PCM10). Its
-  answer comes from that root's git metadata: a primary checkout owns its own
-  state, a linked worktree resolves through its `.git` file to the owning
-  checkout, and a root with no git metadata fails loud naming the root. It
-  answers nothing about which tier governs.
-
-<!-- /planned-change:home-activation-commit-fails-post-commit-hook -->
 - **One invocation may ask both questions.** A surface that composes
   configuration for the caller _and_ reads a checkout-owned artifact asks the
   context question for the first and the project-state question for the second.
