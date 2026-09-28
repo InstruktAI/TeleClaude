@@ -137,7 +137,7 @@ And sees none for the event carrying the other scope
 
 ```gherkin
 Given a procedure published in a person's tier declares an event type as activating it
-And a verified event of that type carries both a company and that person
+And an event of that type reaches routing carrying both a company and that person, from a producer other than an inbound source, which stamps a single scope
 When the event is matched against the published procedure subscriptions
 Then an agent inspecting the activation record sees no activation for that person's procedure
 And sees a routing decision naming the event's selected scope as one the procedure is not published for
