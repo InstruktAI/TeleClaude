@@ -151,7 +151,8 @@ Then the request is refused and no subscription is created
   occurred before it existed is never delivered to it.
 - Events carry no tenant scope, so a subscriber observes events belonging to any
   company or person on the computers it is entitled to observe. The subscriber
-  audience is therefore limited to callers who may already read every tenant.
+  audience is therefore limited to admin-rooted sessions and company-less system
+  sessions.
 - An every-time subscription to a high-frequency event type wakes its agent as
   often as the event occurs; control delivery batches what is pending at each
   boundary but does not rate-limit.
