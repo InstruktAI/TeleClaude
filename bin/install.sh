@@ -1355,9 +1355,19 @@ run_macos_permissions_probe() {
 
 validate_config() {
     print_header "Validating config.yml"
-    if "$INSTALL_DIR/bin/telec" config validate; then
+    local output
+    local exit_code=0
+    output=$("$INSTALL_DIR/bin/telec" config validate 2>&1) || exit_code=$?
+    if [ -n "$output" ]; then
+        printf '%s\n' "$output"
+    fi
+    if [ "$exit_code" -eq 0 ]; then
         print_success "config.yml is valid"
     else
+        # Unattended installs discard stdout/stderr, so the log is the only
+        # durable record of which check failed and why.
+        log "ERROR: config validate exited $exit_code with output:"
+        printf '%s\n' "$output" >> "$LOG_FILE"
         print_error "config.yml validation failed — fix the errors above and re-run install"
         exit 1
     fi
