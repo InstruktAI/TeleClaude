@@ -1,5 +1,6 @@
 """Evaluate one agent stop for a session and return its checkpoint text, or `None` when no checkpoint work is established or evaluation fails."""
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -24,10 +25,17 @@ from teleclaude.hooks.checkpoint._git import (
 )
 from teleclaude.hooks.checkpoint._heuristics import run_heuristics
 from teleclaude.hooks.checkpoint._integrator import _integrator_judgment_checkpoint
-from teleclaude.hooks.checkpoint._models import CheckpointContext
+from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult
 from teleclaude.hooks.checkpoint_flags import consume_authored_main_commit_flag, has_authored_main_commit_flag
+from teleclaude.hooks.edit_declarations import declare_certain_timeline_edits
 from teleclaude.project_root import declaration_root, is_slug_worktree
-from teleclaude.session_scoping import WorkspaceKind, live_declarations, resolve_workspace
+from teleclaude.session_scoping import (
+    WorkspaceKind,
+    live_declarations,
+    resolve_workspace,
+    undeclared_shell_write_candidates,
+)
+from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 __all__ = ["build_checkpoint_message", "get_checkpoint_content"]
@@ -35,6 +43,26 @@ __all__ = ["build_checkpoint_message", "get_checkpoint_content"]
 logger = get_logger("teleclaude.hooks.checkpoint")  # Preserve the package's record identity.
 
 _CHECKPOINT_BUILD_FAILED_MESSAGE = "Checkpoint content build failed; no checkpoint emitted"
+_CHECKPOINT_PAYLOAD_COMPUTED = "Checkpoint payload computed"
+_QUESTION_ONLY_MODE = "undeclared_write_question"
+_LOG_TIMELINE_HAS_DATA = "timeline_has_data"
+_LOG_TIMELINE_RECORDS = "timeline_records"
+_LOG_CHANGED_FILES = "changed_files"
+_LOG_WORKSPACE_KIND = "workspace_kind"
+_LOG_CATEGORIES = "categories"
+_LOG_REQUIRED_ACTIONS = "required_actions"
+_LOG_OBSERVATIONS = "observations"
+_LOG_MODE = "mode"
+_LOG_MESSAGE_LENGTH = "message_len"
+_LOG_SESSION_FALLBACK = "used_session_fallback"
+_LOG_AUTHORED_MAIN_COMMIT = "authored_main_commit"
+_QUESTION_ONLY_LOG_FIELDS: Mapping[str, object] = {
+    _LOG_CHANGED_FILES: 0,
+    _LOG_CATEGORIES: [],
+    _LOG_REQUIRED_ACTIONS: 0,
+    _LOG_OBSERVATIONS: 0,
+    _LOG_MODE: _QUESTION_ONLY_MODE,
+}
 
 
 def build_checkpoint_message(
@@ -117,6 +145,8 @@ def get_checkpoint_content(
             return integrator_checkpoint
 
         workspace = resolve_workspace(project_path)
+        if workspace.kind is WorkspaceKind.GIT_SHARED:
+            declare_certain_timeline_edits(session_id, agent_name, timeline, Path(project_path))
         declared_paths = {declaration.path for declaration in live_declarations(session_id)}
         dirty_paths = _dirty_repo_paths(project_path)
         worktree_root = Path(workspace.root) if workspace.root is not None else None
@@ -128,11 +158,40 @@ def get_checkpoint_content(
                 effective_files = sorted(dirty_paths)
         else:
             effective_files = sorted(declared_paths & dirty_paths)
+        undeclared_candidates: tuple[str, ...] = ()
+        if workspace.kind is WorkspaceKind.GIT_SHARED:
+            undeclared_candidates = undeclared_shell_write_candidates(
+                timeline,
+                dirty_paths=frozenset(dirty_paths),
+                declared_paths=frozenset(declared_paths),
+                certain_tools=CERTAIN_EDIT_TOOLS[agent_name],
+                checkout_root=Path(project_path),
+            )
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
         used_session_fallback = False
 
         if not effective_files and not force_main_commit_checkpoint:
+            if undeclared_candidates:
+                question_result = CheckpointResult(
+                    commit_action_required=False,
+                    undeclared_candidates=undeclared_candidates,
+                )
+                message = _compose_checkpoint_message([], question_result)
+                logger.info(
+                    _CHECKPOINT_PAYLOAD_COMPUTED,
+                    extra={
+                        **base_extra,
+                        **_QUESTION_ONLY_LOG_FIELDS,
+                        _LOG_TIMELINE_HAS_DATA: timeline.has_data,
+                        _LOG_TIMELINE_RECORDS: len(timeline.tool_calls),
+                        _LOG_WORKSPACE_KIND: workspace.kind,
+                        _LOG_MESSAGE_LENGTH: len(message) if message else 0,
+                        _LOG_SESSION_FALLBACK: used_session_fallback,
+                        _LOG_AUTHORED_MAIN_COMMIT: authored_main_commit,
+                    },
+                )
+                return message
             logger.info(
                 "Checkpoint payload skipped (no declared-and-dirty changes)",
                 extra={
@@ -157,7 +216,12 @@ def get_checkpoint_content(
             effective_files,
             project_path,
         )
-        if _is_no_action_only(effective_files, model) and not force_main_commit_checkpoint and docs_committed:
+        if (
+            _is_no_action_only(effective_files, model)
+            and not force_main_commit_checkpoint
+            and docs_committed
+            and not undeclared_candidates
+        ):
             logger.info(
                 "Checkpoint payload skipped (no-action changes only, already committed)",
                 extra={
@@ -192,12 +256,14 @@ def get_checkpoint_content(
             authored_main_commit=authored_main_commit,
             model=model,
         )
+        result.undeclared_candidates = undeclared_candidates
 
         if (
             result.is_all_clear
             and not result.commit_action_required
             and not force_main_commit_checkpoint
             and (not effective_files or _is_docs_only(effective_files))
+            and not undeclared_candidates
         ):
             logger.info(
                 "Checkpoint payload skipped (doc/no-action turn fully satisfied)",

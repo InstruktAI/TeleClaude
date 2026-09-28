@@ -44,6 +44,11 @@ _PRETTIER_EXTENSIONS = (
 )
 _ROOT_RUST_METADATA = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml"}
 _WORKTREE_CLASSIFICATION_FAILURE = "Failed to resolve workspace worktree classification"
+_LEADING_DASH_PREFIX = "-"
+_PARENT_SEGMENT = ".."
+_REJECTED_LEADING_DASH_PATH = "Rejected leading-dash path from invocation context: %s"
+_REJECTED_TRAVERSAL_PATH = "Rejected traversal path from invocation context: %s"
+_REJECTED_OUTSIDE_REPOSITORY_PATH = "Rejected path outside repository root: %s"
 
 
 class WorkspaceScopeKind(Enum):
@@ -185,6 +190,15 @@ def resolve_workspace_scope_resolution(
     )
 
 
+def _resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
+    repo = Repo(str(project_root))
+    try:
+        status = repo.git.status("--porcelain", "--untracked-files=all")
+    except GitCommandError as exc:
+        raise RuntimeError(f"Failed to resolve dirty workspace paths: {exc}") from exc
+    return tuple(_parse_dirty_status_line(line) for line in status.splitlines() if len(line) > 3)
+
+
 def validate_context_paths(
     paths: list[str],
     project_root: Path,
@@ -197,19 +211,19 @@ def validate_context_paths(
         return []
     safe: list[str] = []
     for raw_path in paths:
-        if raw_path.startswith("-"):
-            logger.warning("Rejected leading-dash path from invocation context: %s", raw_path)
+        if raw_path.startswith(_LEADING_DASH_PREFIX):
+            logger.warning(_REJECTED_LEADING_DASH_PATH, raw_path)
             continue
         candidate = Path(raw_path)
-        if not candidate.is_absolute() and ".." in candidate.parts:
-            logger.warning("Rejected traversal path from invocation context: %s", raw_path)
+        if not candidate.is_absolute() and _PARENT_SEGMENT in candidate.parts:
+            logger.warning(_REJECTED_TRAVERSAL_PATH, raw_path)
             continue
         raw_absolute_path = candidate if candidate.is_absolute() else context_root / candidate
         absolute_path = _resolve_context_path(raw_absolute_path, resolution_mode)
         try:
             relative_path = absolute_path.relative_to(project_root.resolve()).as_posix()
         except ValueError:
-            logger.warning("Rejected path outside repository root: %s", raw_path)
+            logger.warning(_REJECTED_OUTSIDE_REPOSITORY_PATH, raw_path)
             continue
         if _is_eligible_path(
             project_root,
@@ -228,13 +242,9 @@ def _resolve_context_path(path: Path, resolution_mode: ContextPathResolutionMode
     return path.resolve()
 
 
-def _resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
-    repo = Repo(str(project_root))
-    try:
-        status = repo.git.status("--porcelain", "--untracked-files=all")
-    except GitCommandError as exc:
-        raise RuntimeError(f"Failed to resolve dirty workspace paths: {exc}") from exc
-    return tuple(_parse_dirty_status_line(line) for line in status.splitlines() if len(line) > 3)
+def resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
+    """Return the parsed porcelain dirty paths for a project root."""
+    return _resolve_dirty_paths(project_root)
 
 
 def _parse_dirty_status_line(line: str) -> DirtyPath:

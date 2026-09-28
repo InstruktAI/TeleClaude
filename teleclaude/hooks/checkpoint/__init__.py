@@ -9,7 +9,7 @@ All heuristics are deterministic pattern matching, zero LLM calls.
 from teleclaude.hooks.checkpoint._composition import (
     _commit_instruction,
     _compose_checkpoint_message,
-    _declare_reminder_instruction,
+    _undeclared_write_question,
 )
 from teleclaude.hooks.checkpoint._entry import build_checkpoint_message, get_checkpoint_content
 from teleclaude.hooks.checkpoint._evidence import (
@@ -61,7 +61,6 @@ __all__ = [
     "_compose_checkpoint_message",
     "_compute_log_since_window",
     "_current_branch",
-    "_declare_reminder_instruction",
     "_dedupe_strings",
     "_dirty_repo_paths",
     "_extract_apply_patch_paths",
@@ -81,6 +80,7 @@ __all__ = [
     "_segment_tokens",
     "_split_shell_segments",
     "_transcript_observability",
+    "_undeclared_write_question",
     "build_checkpoint_message",
     "get_checkpoint_content",
     "run_heuristics",

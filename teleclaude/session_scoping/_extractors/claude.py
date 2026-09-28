@@ -10,13 +10,12 @@ from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 
 from .._types import ScopeMode
 from ._common import (
+    CERTAIN_EDIT_TOOLS,
     _normalize_workspace_path,
     extract_structured_paths_from_timeline,
 )
 
 __all__ = ["collect_claude_paths"]
-
-_CLAUDE_FALLBACK_MUTATORS = {"write", "edit"}
 
 
 def _snapshot_paths_from_entry(entry: Mapping[str, object], workspace_root: str | None) -> set[str]:
@@ -77,7 +76,7 @@ def collect_claude_paths(
     fallback_paths = extract_structured_paths_from_timeline(
         timeline,
         workspace_root=workspace_root,
-        allowed_tools=_CLAUDE_FALLBACK_MUTATORS,
+        allowed_tools=CERTAIN_EDIT_TOOLS[AgentName.CLAUDE],
     )
 
     if not current_snapshot_paths:

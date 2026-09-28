@@ -1479,7 +1479,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Code quality and commit tools",
         notes=[
             "lint, test, format, install, and blueprint require the code capability.",
-            "add and commit remain available when either code or docs is subscribed.",
+            "add, commit, and owners remain available when either code or docs is subscribed.",
         ],
         subcommands={
             "blueprint": CommandDef(
@@ -1550,6 +1550,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
                 ],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+            ),
+            "owners": CommandDef(
+                desc="Print live declaration owners for every dirty path in the canonical checkout",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "Prints one path-keyed JSON object for every dirty path of the project's canonical checkout.",
+                    "A value lists the live sessions that declared the path, or null when no live session declared it.",
+                ],
+                examples=["telec code owners"],
+                auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=_HR_MEMBER),
             ),
             "commit": CommandDef(
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
@@ -1700,6 +1710,7 @@ CODE_LINT = CLI_SURFACE["code"].subcommands["lint"]
 CODE_TEST = CLI_SURFACE["code"].subcommands["test"]
 CODE_FORMAT = CLI_SURFACE["code"].subcommands["format"]
 CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
+CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
 CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
 CODE_MAINTENANCE_STATUS = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["status"]
 CODE_MAINTENANCE_DRAIN = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["drain"]

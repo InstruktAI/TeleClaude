@@ -43,6 +43,7 @@ from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xm
 from teleclaude.core.models import JsonDict
 from teleclaude.core.organization import CompanyMembership, resolve_organization
 from teleclaude.core.session_status import AgentStatusReason
+from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
 from teleclaude.hooks.adapters.contracts import (
@@ -59,6 +60,11 @@ from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
+)
+from teleclaude.hooks.edit_declarations import (
+    declare_certain_edit,
+    hold_certain_edit,
+    settle_certain_edit,
 )
 from teleclaude.hooks.receiver._session import (
     _SESSION_EXPORTS,
@@ -82,6 +88,7 @@ from teleclaude.hooks.receiver._session import (
 )
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.session_identity import inspect_session_identity_marker
+from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS, _canonical_tool_name
 from teleclaude.utils.transcript import (
     extract_workdir_from_transcript,
     is_runtime_artifact_text,
@@ -166,6 +173,23 @@ _STEP_IDX_FIELD = "stepIdx"
 _HUMAN_PROFILE_ROOT = "human"
 _EMPTY_LOG_VALUE = ""
 _MODEL_DUMP_MODE = "json"
+_NATIVE_PRE_TOOL_USE_EVENT = "PreToolUse"
+_NATIVE_POST_TOOL_USE_EVENT = "PostToolUse"
+_TOOL_NAME_FIELD = "tool_name"
+_TOOL_INPUT_FIELD = "tool_input"
+_TOOL_CALL_ID_FIELD = "tool_call_id"
+_TOOL_RESULT_ERROR_FIELD = "error"
+_AGY_TOOL_RESULT_NAME = "agy_tool_result"
+_CERTAIN_EDIT_DECLARATION_FAILED = "certain_edit_declaration_failed"
+_DECLARATION_OPERATIONAL_ERRORS = (OSError, ValueError, SQLAlchemyError, yaml.YAMLError, GitCommandError)
+
+
+class CertainEditAction(StrEnum):
+    """Receiver action required by a recognized certain edit hook event."""
+
+    DECLARE = "declare"
+    HOLD = "hold"
+    SETTLE = "settle"
 
 
 def _enrich_headless_bootstrap(
@@ -294,6 +318,99 @@ def _resolve_checkpoint_project_path(row: db_models.Session) -> str:
     if subdir and project_path:
         project_path = str(Path(project_path) / subdir)
     return project_path
+
+
+def _certain_edit_action(
+    agent: AgentName,
+    event_type: AgentHookEventType,
+    raw_event_type: str,
+) -> CertainEditAction | None:
+    """Resolve the certain-edit action only for provider-confirmed tool events."""
+    if agent is AgentName.GEMINI:
+        if raw_event_type == _NATIVE_PRE_TOOL_USE_EVENT and event_type == AgentHookEvents.PRE_TOOL_USE:
+            return CertainEditAction.HOLD
+        if raw_event_type == _NATIVE_POST_TOOL_USE_EVENT and event_type == AgentHookEvents.POST_TOOL_USE:
+            return CertainEditAction.SETTLE
+        return None
+    if raw_event_type == _NATIVE_POST_TOOL_USE_EVENT and event_type == AgentHookEvents.POST_TOOL_USE:
+        return CertainEditAction.DECLARE
+    return None
+
+
+def _maybe_declare_certain_edit(
+    *,
+    session_id: str,
+    agent: AgentName,
+    event_type: AgentHookEventType,
+    raw_event_type: str,
+    data: JsonDict,
+) -> None:
+    """Capture certain edit paths before a later hook branch can return early."""
+    action = _certain_edit_action(agent, event_type, raw_event_type)
+    if action is None:
+        return
+
+    tool_name = data.get(_TOOL_NAME_FIELD)
+    display_tool_name = tool_name if isinstance(tool_name, str) else _AGY_TOOL_RESULT_NAME
+    if action is not CertainEditAction.SETTLE:
+        if not isinstance(tool_name, str) or _canonical_tool_name(tool_name) not in CERTAIN_EDIT_TOOLS[agent]:
+            return
+    try:
+        if action is CertainEditAction.SETTLE:
+            step_id = data.get(_TOOL_CALL_ID_FIELD)
+            if not isinstance(step_id, str) or not step_id:
+                raise ValueError(_TOOL_CALL_ID_FIELD)
+            error = data.get(_TOOL_RESULT_ERROR_FIELD)
+            succeeded = error is None or error == _EMPTY_LOG_VALUE
+            settle_certain_edit(session_id, step_id, succeeded=succeeded)
+            return
+
+        tool_input = data.get(_TOOL_INPUT_FIELD)
+        if not isinstance(tool_name, str) or not tool_name or not isinstance(tool_input, dict):
+            raise ValueError(_TOOL_INPUT_FIELD)
+        row = _load_session_row(
+            session_id,
+            cast(QueryableAttribute[Any], db_models.Session.project_path),
+            cast(QueryableAttribute[Any], db_models.Session.native_log_file),
+            cast(QueryableAttribute[Any], db_models.Session.subdir),
+        )
+        if row is None:
+            raise ValueError(_AGENT_NAME_FIELD)
+        checkout_path = _resolve_checkpoint_project_path(row)
+        if not checkout_path:
+            raise ValueError(_AGENT_NAME_FIELD)
+        checkout = Path(checkout_path)
+        if action is CertainEditAction.HOLD:
+            step_id = data.get(_TOOL_CALL_ID_FIELD)
+            if not isinstance(step_id, str) or not step_id:
+                raise ValueError(_TOOL_CALL_ID_FIELD)
+            hold_certain_edit(
+                session_id,
+                agent,
+                step_id,
+                tool_name,
+                cast(Mapping[str, object], tool_input),
+                checkout,
+            )
+        else:
+            declare_certain_edit(
+                session_id,
+                agent,
+                tool_name,
+                cast(Mapping[str, object], tool_input),
+                checkout,
+            )
+    # Antigravity's PreToolUse has not run the edit yet, so a bookkeeping error
+    # must not turn an allowed write into a denied one. After PostToolUse, the
+    # file may already be changed; surfacing an expected bookkeeping failure as
+    # a tool failure can invite a duplicate edit against that changed file.
+    except _DECLARATION_OPERATIONAL_ERRORS as exc:
+        logger.warning(
+            _CERTAIN_EDIT_DECLARATION_FAILED,
+            session_id=session_id,
+            tool=display_tool_name,
+            error=str(exc),
+        )
 
 
 def _resolve_agent_enum(agent: str) -> AgentName:
@@ -1643,6 +1760,14 @@ def main() -> None:
         receiver_ingress_id,
     ):
         return
+
+    _maybe_declare_certain_edit(
+        session_id=teleclaude_session_id,
+        agent=AgentName.from_str(args.agent),
+        event_type=event_type,
+        raw_event_type=raw_event_type,
+        data=data,
+    )
 
     if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
         _log_normalization_decision(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import sys
@@ -16,7 +17,7 @@ from sqlalchemy.exc import OperationalError
 
 from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
-from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
 from teleclaude.cli.telec.handlers._code_commit_guidance import (
     _NON_CODE_DOCUMENTATION_PATTERNS,
     _commit_stage_paths,
@@ -35,19 +36,22 @@ from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_com
 from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.telec.surface import CODE_COMMIT
+from teleclaude.cli.telec.surface import CODE_COMMIT, CODE_OWNERS
 from teleclaude.commit_identity import (
     CommitIdentityUnresolvable,
     compose_commit_footer,
     resolve_commit_identity_from_caller,
 )
 from teleclaude.core.db import get_db
+from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import (
     forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
+    resolve_invocation_roots,
+    resolve_project_root,
 )
 from teleclaude.quality.gate import QualityGateLeg, run_lint_gate
 from teleclaude.quality.scope import (
@@ -68,6 +72,8 @@ _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|r
 # `_NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
 # itself, not incidental prose elsewhere in the tree.
 _CODE_NAMESPACE = "code"
+_CODE_OWNERS_NO_POSITIONALS = "telec code owners takes no positional arguments"
+_CODE_OWNERS_QUERY_FAILURE = "telec code owners failed: {error}"
 _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
 _DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
@@ -93,6 +99,7 @@ class CodeSubcommand(StrEnum):
     FORMAT = "format"
     COMMIT = "commit"
     ADD = "add"
+    OWNERS = "owners"
     BLUEPRINT = "blueprint"
     POST_COMMIT = "post-commit"
     POST_MERGE = "post-merge"
@@ -109,7 +116,7 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.MAINTENANCE,
     }
 )
-_COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.ADD})
+_COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.ADD, CodeSubcommand.OWNERS})
 
 
 def handle_code(args: list[str]) -> None:
@@ -155,6 +162,8 @@ def handle_code(args: list[str]) -> None:
         handle_code_commit(rest)
     elif sub is CodeSubcommand.ADD:
         handle_code_add(rest)
+    elif sub is CodeSubcommand.OWNERS:
+        handle_code_owners(rest)
     elif sub is CodeSubcommand.BLUEPRINT:
         from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
 
@@ -174,6 +183,21 @@ def _require_code_capability(command: CodeSubcommand) -> None:
     ):
         print(_COMMIT_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
+
+
+def handle_code_owners(args: list[str]) -> None:
+    """Print declaration owners for every dirty path of the canonical checkout."""
+    parsed = parse_command_args(CODE_OWNERS, args)
+    if parsed.positionals:
+        raise CliUsageError(_CODE_OWNERS_NO_POSITIONALS)
+
+    project_root = resolve_project_root(resolve_invocation_roots().repository_root)
+    try:
+        result = asyncio.run(resolve_dirty_path_owners(project_root))
+    except Exception as exc:
+        print(_CODE_OWNERS_QUERY_FAILURE.format(error=exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(json.dumps(result.as_json(), indent=2, sort_keys=True))
 
 
 def handle_code_add(args: list[str]) -> None:
