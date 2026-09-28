@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass
 from enum import StrEnum
 from types import UnionType
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import Any, Union, get_args, get_origin
 
+from pydantic.fields import FieldInfo
+
+from teleclaude.closed_model import ClosedModel, field_is_sensitive
 from teleclaude.config._models import TeleclaudeConfig
 from teleclaude.config.tiers import (
     UNGOVERNED_BODY_METADATA_KEY,
     Tier,
-    dataclass_field_is_sensitive,
-    dataclass_field_tier,
     effective_tier,
+    pydantic_field_tier,
+    pydantic_field_ungoverned_body,
 )
 
 _PATH_SEPARATOR = "."
@@ -47,16 +49,15 @@ def machine_config_surface() -> tuple[ConfigSurfaceDescriptor, ...]:
 
 
 def _walk_schema(
-    struct_type: type[Any], inherited_tier: Tier, prefix: tuple[str, ...] = ()
+    struct_type: type[ClosedModel], inherited_tier: Tier, prefix: tuple[str, ...] = ()
 ) -> list[ConfigSurfaceDescriptor]:
     """Walk schema-declared leaves, rejecting structured bodies without an owner declaration."""
     descriptors: list[ConfigSurfaceDescriptor] = []
-    hints = get_type_hints(struct_type)
-    for field in dataclasses.fields(struct_type):
-        path = (*prefix, field.name)
-        tier = effective_tier(dataclass_field_tier(field), inherited_tier)
-        annotation = hints.get(field.name, field.type)
-        nested = _nested_dataclass(annotation)
+    for name, field_info in struct_type.model_fields.items():
+        path = (*prefix, name)
+        tier = effective_tier(pydantic_field_tier(field_info), inherited_tier)
+        annotation = field_info.annotation
+        nested = _nested_model(annotation)
         if nested is not None:
             descriptors.extend(_walk_schema(nested, tier, path))
             continue
@@ -68,8 +69,8 @@ def _walk_schema(
             continue
         structured_member = _structured_container_member(annotation)
         if structured_member is not None:
-            _require_ungoverned_body(field, path, structured_member)
-        sensitive = dataclass_field_is_sensitive(field)
+            _require_ungoverned_body(field_info, path, structured_member)
+        sensitive = field_is_sensitive(field_info)
         descriptors.append(
             ConfigSurfaceDescriptor(
                 path=path,
@@ -81,13 +82,13 @@ def _walk_schema(
     return descriptors
 
 
-def _nested_dataclass(annotation: Any) -> type[Any] | None:
-    """Return an optional nested dataclass annotation, excluding container members."""
+def _nested_model(annotation: Any) -> type[ClosedModel] | None:
+    """Return an optional nested closed-model annotation, excluding containers."""
     candidates = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
     for candidate in candidates:
         if candidate is type(None) or get_origin(candidate) in (dict, list):
             continue
-        if isinstance(candidate, type) and dataclasses.is_dataclass(candidate):
+        if isinstance(candidate, type) and issubclass(candidate, ClosedModel):
             return candidate
     return None
 
@@ -99,13 +100,13 @@ def _structured_container_member(annotation: Any) -> type[Any] | None:
         if get_origin(candidate) not in (dict, list):
             continue
         for member in get_args(candidate):
-            if isinstance(member, type) and dataclasses.is_dataclass(member):
+            if isinstance(member, type) and issubclass(member, ClosedModel):
                 return member
     return None
 
 
 def _enum_mapping(annotation: Any) -> tuple[type[StrEnum], type[Any]] | None:
-    """Return a closed enum-keyed mapping and its dataclass value type."""
+    """Return a closed enum-keyed mapping and its closed-model value type."""
     candidates = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
     for candidate in candidates:
         if get_origin(candidate) is not dict:
@@ -115,15 +116,15 @@ def _enum_mapping(annotation: Any) -> tuple[type[StrEnum], type[Any]] | None:
             isinstance(key_type, type)
             and issubclass(key_type, StrEnum)
             and isinstance(value_type, type)
-            and dataclasses.is_dataclass(value_type)
+            and issubclass(value_type, ClosedModel)
         ):
             return key_type, value_type
     return None
 
 
-def _require_ungoverned_body(field: dataclasses.Field[object], path: tuple[str, ...], member_type: type[Any]) -> None:
+def _require_ungoverned_body(field_info: FieldInfo, path: tuple[str, ...], member_type: type[Any]) -> None:
     """Fail when a structured container has neither static members nor an explicit owner."""
-    reason = field.metadata.get(UNGOVERNED_BODY_METADATA_KEY)
+    reason = pydantic_field_ungoverned_body(field_info)
     if isinstance(reason, str) and reason.strip():
         return
     dotted_path = _PATH_SEPARATOR.join(path)

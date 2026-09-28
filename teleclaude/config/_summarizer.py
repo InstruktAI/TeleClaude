@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Annotated
 
-from teleclaude.config._strictness import SCALAR, ClosedMapping, InputList
-from teleclaude.config.tiers import SENSITIVE_METADATA_KEY
+from pydantic import Field, field_validator, model_validator
+
+from teleclaude.closed_model import SENSITIVE, ClosedModel
+from teleclaude.config._coerce import TRUTHY, TRUTHY_TEXT
+
+_PROVIDER_PRIORITY_PATH = "config.yml:summarizer.provider_priority"
+_UNKNOWN_PROVIDER_ERROR = "Invalid config key `{path}`: unknown provider(s) {unknown}. Allowed values: {allowed}."
+_LOCAL_KEY = "local"
+_ENABLED_KEY = "enabled"
+_BASE_URL_KEY = "base_url"
+_MODEL_KEY = "model"
+_API_KEY_KEY = "api_key"
+_PROVIDER_PRIORITY_KEY = "provider_priority"
 
 
 class SummarizerProvider(StrEnum):
@@ -17,38 +29,23 @@ class SummarizerProvider(StrEnum):
     GOOGLE = "google"
 
 
-_CLOUD_PROVIDER_INPUT = ClosedMapping({"model": SCALAR, "api_key": SCALAR})
-SUMMARIZER_INPUT = ClosedMapping(
-    {
-        "local": ClosedMapping({"enabled": SCALAR, "base_url": SCALAR, "model": SCALAR, "api_key": SCALAR}),
-        "provider_priority": InputList(SCALAR),
-        "openai": _CLOUD_PROVIDER_INPUT,
-        "anthropic": _CLOUD_PROVIDER_INPUT,
-        "google": _CLOUD_PROVIDER_INPUT,
-    }
-)
-
-
-@dataclass
-class SummarizerLocalConfig:
+class SummarizerLocalConfig(ClosedModel):
     """Local (OpenAI-compatible) summarizer provider, e.g. LM Studio."""
 
-    enabled: bool = False
-    base_url: str | None = field(default="http://localhost:1234/v1", metadata={SENSITIVE_METADATA_KEY: True})
-    model: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    api_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    enabled: TRUTHY = False
+    base_url: Annotated[TRUTHY_TEXT, SENSITIVE] = "http://localhost:1234/v1"
+    model: Annotated[TRUTHY_TEXT, SENSITIVE] = None
+    api_key: Annotated[TRUTHY_TEXT, SENSITIVE] = None
 
 
-@dataclass
-class SummarizerCloudConfig:
+class SummarizerCloudConfig(ClosedModel):
     """Typed model and credential for one cloud summarizer provider."""
 
-    model: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    api_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    model: Annotated[TRUTHY_TEXT, SENSITIVE] = None
+    api_key: Annotated[TRUTHY_TEXT, SENSITIVE] = None
 
 
-@dataclass
-class SummarizerConfig:
+class SummarizerConfig(ClosedModel):
     """Summary/title generation providers, tried in order.
 
     ``local`` is tried first when enabled; then the cloud providers in
@@ -56,55 +53,65 @@ class SummarizerConfig:
     is absent. Each cloud provider owns its model and credential together.
     """
 
-    local: SummarizerLocalConfig = field(default_factory=SummarizerLocalConfig)
-    provider_priority: list[SummarizerProvider] = field(default_factory=list)
-    openai: SummarizerCloudConfig = field(default_factory=SummarizerCloudConfig)
-    anthropic: SummarizerCloudConfig = field(default_factory=SummarizerCloudConfig)
-    google: SummarizerCloudConfig = field(default_factory=SummarizerCloudConfig)
+    local: SummarizerLocalConfig = Field(default_factory=SummarizerLocalConfig)
+    provider_priority: list[SummarizerProvider] = Field(default_factory=list)
+    openai: SummarizerCloudConfig = Field(default_factory=SummarizerCloudConfig)
+    anthropic: SummarizerCloudConfig = Field(default_factory=SummarizerCloudConfig)
+    google: SummarizerCloudConfig = Field(default_factory=SummarizerCloudConfig)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_provider_sections(cls, value: object) -> object:
+        if not isinstance(value, Mapping):
+            return value
+        data = dict(value)
+        local = data.get(_LOCAL_KEY)
+        if local is None:
+            data[_LOCAL_KEY] = {
+                _ENABLED_KEY: False,
+                _BASE_URL_KEY: None,
+                _MODEL_KEY: None,
+                _API_KEY_KEY: None,
+            }
+        elif isinstance(local, Mapping):
+            local_data = dict(local)
+            local_data.setdefault(_ENABLED_KEY, False)
+            local_data.setdefault(_BASE_URL_KEY, None)
+            local_data.setdefault(_MODEL_KEY, None)
+            local_data.setdefault(_API_KEY_KEY, None)
+            data[_LOCAL_KEY] = local_data
+        data.setdefault(_PROVIDER_PRIORITY_KEY, [])
+        if data.get(_PROVIDER_PRIORITY_KEY) is None:
+            data[_PROVIDER_PRIORITY_KEY] = []
+        for provider in SummarizerProvider:
+            if data.get(provider.value) is None:
+                data[provider.value] = {}
+        return data
 
-def parse_summarizer_config(
-    raw: dict[str, object] | None,  # guard: loose-dict - YAML config value
-) -> SummarizerConfig | None:
-    """Parse the summarizer provider config from a raw YAML mapping."""
-    if not raw:
-        return None
-    local_obj = raw.get("local")
-    local_raw = local_obj if isinstance(local_obj, dict) else {}
-    local = SummarizerLocalConfig(
-        enabled=bool(local_raw.get("enabled", False)),
-        base_url=str(local_raw["base_url"]) if local_raw.get("base_url") else None,
-        model=str(local_raw["model"]) if local_raw.get("model") else None,
-        api_key=str(local_raw["api_key"]) if local_raw.get("api_key") else None,
-    )
-    priority_obj = raw.get("provider_priority", [])
-    priority: list[SummarizerProvider] = []
-    unknown: list[str] = []
-    if isinstance(priority_obj, list):
-        for provider in priority_obj:
-            if not provider:
+    @field_validator(_PROVIDER_PRIORITY_KEY, mode="before")
+    @classmethod
+    def _parse_provider_priority(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        providers: list[SummarizerProvider] = []
+        unknown: list[str] = []
+        for item in value:
+            if not item:
                 continue
+            if isinstance(item, (Mapping, list)):
+                return value
+            provider = str(item)
             try:
-                priority.append(SummarizerProvider(str(provider)))
+                providers.append(SummarizerProvider(provider))
             except ValueError:
-                unknown.append(str(provider))
-    if unknown:
-        raise ValueError(
-            f"Invalid config key `config.yml:summarizer.provider_priority`: unknown provider(s) "
-            f"{', '.join(unknown)}. Allowed values: {', '.join(provider.value for provider in SummarizerProvider)}."
-        )
-    providers: dict[SummarizerProvider, SummarizerCloudConfig] = {}
-    for provider in SummarizerProvider:
-        provider_obj = raw.get(provider.value)
-        provider_raw = provider_obj if isinstance(provider_obj, dict) else {}
-        providers[provider] = SummarizerCloudConfig(
-            model=str(provider_raw["model"]) if provider_raw.get("model") else None,
-            api_key=str(provider_raw["api_key"]) if provider_raw.get("api_key") else None,
-        )
-    return SummarizerConfig(
-        local=local,
-        provider_priority=priority,
-        openai=providers[SummarizerProvider.OPENAI],
-        anthropic=providers[SummarizerProvider.ANTHROPIC],
-        google=providers[SummarizerProvider.GOOGLE],
-    )
+                unknown.append(provider)
+        if unknown:
+            allowed = ", ".join(provider.value for provider in SummarizerProvider)
+            raise ValueError(
+                _UNKNOWN_PROVIDER_ERROR.format(
+                    path=_PROVIDER_PRIORITY_PATH,
+                    unknown=", ".join(unknown),
+                    allowed=allowed,
+                )
+            )
+        return providers

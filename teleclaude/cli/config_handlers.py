@@ -9,7 +9,6 @@ Both the interactive menu and onboarding wizard consume this layer.
 
 from __future__ import annotations
 
-import dataclasses
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,8 +48,6 @@ from teleclaude.project_manifest import load_registered_roots
 logger = get_logger(__name__)
 
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
-_COMPUTER = "computer"
-_TMUX_BINARY = "tmux_binary"
 _PERSON_MCP_SECRET_MANAGEMENT_FAILED = "Personal MCP secret management failed"
 
 
@@ -126,22 +123,6 @@ def list_people(config: GlobalConfig | None = None) -> list[PersonEntry]:
 # The global/person config writers and their YAML helpers live in
 # teleclaude.config.loader (the config domain). They are re-exported above so
 # every existing importer of config_handlers is unaffected.
-
-
-def save_machine_config(config: _tc_config_module.TeleclaudeConfig, path: Path | None = None) -> None:
-    """Atomic write of machine configuration (config.yml)."""
-    target = path or _tc_config_module.config_path
-    data = dataclasses.asdict(config)
-    computer = data.get(_COMPUTER)
-    if isinstance(computer, dict):
-        computer.pop(_TMUX_BINARY, None)
-    if "default_agent" in data:
-        default_agent = data.pop("default_agent")
-        if "agents" not in data or not isinstance(data["agents"], dict):
-            data["agents"] = {}
-        data["agents"]["default"] = default_agent
-    _atomic_yaml_write(target, data)
-    logger.info("Saved machine config to %s", target)
 
 
 def save_raw_machine_config(

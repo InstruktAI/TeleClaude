@@ -1,8 +1,8 @@
-"""Configuration schema dataclasses.
+"""Closed Pydantic models for the machine runtime configuration.
 
 The typed shapes the application reads configuration through. Parsing from raw
-YAML/.env into these models lives in the package ``__init__``; these are the
-schema definitions only.
+YAML/.env into these models lives at the machine-config loading boundary; these
+are the schema definitions only.
 
 Editability is opt-in and code-led: every field carries a ``tier`` in its
 ``metadata`` — ``internal`` (the default), ``public``, or ``tui`` — declaring what
@@ -26,41 +26,287 @@ vocabulary modelled as an open map does not qualify: it states the gap plainly
 and is keyed by its enum instead.
 """
 
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
+from typing import Annotated, NamedTuple, Protocol, Self, cast
+
+from pydantic import (
+    Field,
+    ModelWrapValidatorHandler,
+    TypeAdapter,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from teleclaude.agent_registry import AgentName
+from teleclaude.closed_model import SENSITIVE, ClosedModel
 from teleclaude.config._chiptunes import ChiptunesConfig
+from teleclaude.config._coerce import (
+    FLAG,
+    INT_LENIENT,
+    OPT_INT_LENIENT,
+    OPT_TEXT,
+    SCALAR_INPUT,
+    TEXT,
+    TRUTHY,
+    TRUTHY_TEXT,
+)
 from teleclaude.config._remote_computers import RemoteComputerConfig
+from teleclaude.config._runtime_models import (
+    ApiConfig as ApiConfig,
+)
+from teleclaude.config._runtime_models import (
+    DaemonConfig as DaemonConfig,
+)
+from teleclaude.config._runtime_models import (
+    DeploymentConfig as DeploymentConfig,
+)
+from teleclaude.config._runtime_models import (
+    HookOutboxConfig as HookOutboxConfig,
+)
+from teleclaude.config._runtime_models import (
+    ProcessJanitorConfig as ProcessJanitorConfig,
+)
+from teleclaude.config._runtime_models import (
+    ReleaseChannel as ReleaseChannel,
+)
+from teleclaude.config._runtime_models import (
+    TerminalConfig as TerminalConfig,
+)
+from teleclaude.config._runtime_models import (
+    WorkflowAutostartConfig as WorkflowAutostartConfig,
+)
+from teleclaude.config._runtime_models import (
+    WorkflowConfig as WorkflowConfig,
+)
+from teleclaude.config._runtime_models import (
+    WorkflowRunnerMode as WorkflowRunnerMode,
+)
 from teleclaude.config._summarizer import SummarizerConfig
-from teleclaude.config.tiers import SENSITIVE_METADATA_KEY, Tier
+from teleclaude.config.tiers import Tier
 
 
-@dataclass
-class PollingConfig:
+class ConfigValidationIssue(NamedTuple):
+    loc: tuple[str | int, ...]
+    message: str
+    input: object
+    code: str = "value_error"
+
+
+class AggregateInputDerivation(Protocol):
+    def prepare(self, data: object) -> tuple[object, list[ConfigValidationIssue]]: ...
+
+
+_COMPUTER_MAPPING_ERROR = "Invalid config key `config.yml:computer`: expected a mapping."
+_REDIS_MAPPING_ERROR = "Invalid config key `config.yml:redis`: expected a mapping."
+_HOOK_OUTBOX_MAPPING_ERROR = "Invalid config key `config.yml:hook_outbox`: expected a mapping."
+_API_MAPPING_ERROR = "Invalid config key `config.yml:api`: expected a mapping."
+_DAEMON_MAPPING_ERROR = "Invalid config key `config.yml:daemon`: expected a mapping."
+_TERMINAL_MAPPING_ERROR = "Invalid config key `config.yml:terminal`: expected a mapping."
+_TELEGRAM_MAPPING_ERROR = "Invalid config key `config.yml:telegram`: expected a mapping."
+_DISCORD_MAPPING_ERROR = "Invalid config key `config.yml:discord`: expected a mapping."
+_WHATSAPP_MAPPING_ERROR = "Invalid config key `config.yml:whatsapp`: expected a mapping."
+_EMAIL_MAPPING_ERROR = "Invalid config key `config.yml:email`: expected a mapping."
+_BACKUP_MAPPING_ERROR = "Invalid config key `config.yml:backup`: expected a mapping."
+_TTS_DISCORD_VOICE_ERROR = "tts.services.{service}.discord_voice '{voice}' is not in this service's voices"
+_TTS_DEFAULT_INSTRUCT = "A clear, natural conversational voice."
+_PYDANTIC_VALUE_ERROR = "value_error"
+_EXPERIMENT_DIMENSION_ERROR = "Experiment dimensions must be iterable configuration values."
+_EMPTY_TEXT = ""
+_EN_US_TEXT = "en_US"
+
+
+class _ConfigKey(StrEnum):
+    EVENTS = "events"
+    MESSAGE = "message"
+    MESSAGES = "messages"
+    SERVICES = "services"
+    SERVICE_PRIORITY = "service_priority"
+    VOICES = "voices"
+    PARAMS = "params"
+    NAME = "name"
+    VOICE_ID = "voice_id"
+    ENABLED = "enabled"
+    MODEL = "model"
+    API_KEY = "api_key"
+    CLI_BIN = "cli_bin"
+    INSTRUCT = "instruct"
+    DISCORD_VOICE = "discord_voice"
+    QOS = "qos"
+    TELEGRAM = "telegram"
+    WHATSAPP = "whatsapp"
+    PHONE_NUMBER = "phone_number"
+    TEMPLATE_LANGUAGE = "template_language"
+
+
+def _require_mapping(value: object, message: str) -> object:
+    if not isinstance(value, Mapping):
+        raise ValueError(message)
+    return value
+
+
+def _mapping_or_empty(value: object, message: str) -> object:
+    if value is None:
+        return {}
+    return _require_mapping(value, message)
+
+
+def _scalar_text_or_raw(value: object) -> object:
+    if isinstance(value, (Mapping, list)):
+        return value
+    return str(value)
+
+
+def _normalize_tts_input(value: object) -> object:
+    if not isinstance(value, Mapping):
+        return value
+    data = dict(value)
+    data.setdefault(_ConfigKey.ENABLED, False)
+    data.setdefault(_ConfigKey.SERVICE_PRIORITY, [])
+    priority = data.get(_ConfigKey.SERVICE_PRIORITY, [])
+    if isinstance(priority, list):
+        data[_ConfigKey.SERVICE_PRIORITY] = [_scalar_text_or_raw(item) for item in priority]
+    raw_events = data.get(_ConfigKey.EVENTS)
+    if raw_events is None:
+        data[_ConfigKey.EVENTS] = {}
+    elif isinstance(raw_events, Mapping):
+        events: dict[object, object] = {}
+        for event_name, event_value in raw_events.items():
+            if not isinstance(event_value, Mapping):
+                events[event_name] = event_value
+                continue
+            event = dict(event_value)
+            event.setdefault(_ConfigKey.ENABLED, False)
+            legacy = event.get(_ConfigKey.MESSAGE)
+            raw_messages = event.get(_ConfigKey.MESSAGES)
+            messages = (
+                [_scalar_text_or_raw(item) for item in raw_messages if item] if isinstance(raw_messages, list) else []
+            )
+            invalid_legacy = isinstance(legacy, (Mapping, list))
+            if invalid_legacy:
+                event[_ConfigKey.MESSAGE] = legacy
+            else:
+                event.pop(_ConfigKey.MESSAGE, None)
+                if not messages and legacy:
+                    messages = [_scalar_text_or_raw(legacy)]
+            event[_ConfigKey.MESSAGES] = messages or None
+            events[event_name] = event
+        data[_ConfigKey.EVENTS] = events
+    raw_services = data.get(_ConfigKey.SERVICES)
+    if raw_services is None:
+        data[_ConfigKey.SERVICES] = {}
+    elif isinstance(raw_services, Mapping):
+        services: dict[object, object] = {}
+        for service_name, service_value in raw_services.items():
+            if not isinstance(service_value, Mapping):
+                services[service_name] = service_value
+                continue
+            service = dict(service_value)
+            service.setdefault(_ConfigKey.ENABLED, False)
+            raw_voices = service.get(_ConfigKey.VOICES, [])
+            if isinstance(raw_voices, list):
+                voices: list[object] = []
+                for voice_value in raw_voices:
+                    if not isinstance(voice_value, Mapping):
+                        voices.append(voice_value)
+                        continue
+                    voice = dict(voice_value)
+                    voice.pop(_ConfigKey.PARAMS, None)
+                    voice[_ConfigKey.NAME] = _scalar_text_or_raw(voice.get(_ConfigKey.NAME, ""))
+                    raw_voice_id = voice.get(_ConfigKey.VOICE_ID)
+                    voice[_ConfigKey.VOICE_ID] = _scalar_text_or_raw(raw_voice_id) if raw_voice_id else None
+                    voices.append(voice)
+                service[_ConfigKey.VOICES] = voices or None
+            raw_params = service.get(_ConfigKey.PARAMS)
+            service[_ConfigKey.PARAMS] = dict(raw_params) if isinstance(raw_params, Mapping) else None
+            raw_instruct = service.get(_ConfigKey.INSTRUCT, _TTS_DEFAULT_INSTRUCT)
+            service[_ConfigKey.INSTRUCT] = _scalar_text_or_raw(raw_instruct or _TTS_DEFAULT_INSTRUCT)
+            voice_names: list[str] = [
+                voice[_ConfigKey.NAME]
+                for voice in service.get(_ConfigKey.VOICES, []) or []
+                if isinstance(voice, Mapping) and isinstance(voice.get(_ConfigKey.NAME), str)
+            ]
+            declared_voice = service.get(_ConfigKey.DISCORD_VOICE)
+            if not voice_names:
+                if not isinstance(declared_voice, (Mapping, list)):
+                    service[_ConfigKey.DISCORD_VOICE] = None
+            elif not isinstance(declared_voice, (Mapping, list)):
+                normalized_voice: str | None = TypeAdapter(OPT_TEXT).validate_python(declared_voice)
+                resolved_voice = normalized_voice or voice_names[0]
+                if resolved_voice not in voice_names:
+                    detail = InitErrorDetails(
+                        type=PydanticCustomError(
+                            _PYDANTIC_VALUE_ERROR,
+                            _TTS_DISCORD_VOICE_ERROR.format(service=service_name, voice=resolved_voice),  # pyright: ignore[reportArgumentType] - custom diagnostic text is dynamic
+                        ),
+                        loc=(_ConfigKey.SERVICES, service_name, _ConfigKey.DISCORD_VOICE),
+                        input=declared_voice,
+                    )
+                    raise ValidationError.from_exception_data(
+                        TTSConfig.__name__,
+                        [detail],
+                    )
+                service[_ConfigKey.DISCORD_VOICE] = resolved_voice
+            services[service_name] = service
+        data[_ConfigKey.SERVICES] = services
+    return data
+
+
+def _normalize_stt_input(value: object) -> object:
+    if not isinstance(value, Mapping):
+        return value
+    data = dict(value)
+    data.setdefault(_ConfigKey.ENABLED, False)
+    data.setdefault(_ConfigKey.SERVICE_PRIORITY, [])
+    priority = data.get(_ConfigKey.SERVICE_PRIORITY, [])
+    if isinstance(priority, list):
+        data[_ConfigKey.SERVICE_PRIORITY] = [_scalar_text_or_raw(item) for item in priority]
+    raw_services = data.get(_ConfigKey.SERVICES)
+    if raw_services is None:
+        data[_ConfigKey.SERVICES] = {}
+    elif isinstance(raw_services, Mapping):
+        services: dict[object, object] = {}
+        for service_name, service_value in raw_services.items():
+            if isinstance(service_value, Mapping):
+                service = dict(service_value)
+                service.setdefault(_ConfigKey.ENABLED, False)
+                services[service_name] = service
+            else:
+                services[service_name] = service_value
+        data[_ConfigKey.SERVICES] = services
+    return data
+
+
+class PollingConfig(ClosedModel):
     """Agent output polling intervals."""
 
     directory_check_interval: int
     output_cadence_s: float = 1.0
 
 
-@dataclass
-class ComputerConfig:
-    name: str = field(metadata={"tier": Tier.TUI})
-    user: str = field(metadata={"tier": Tier.INTERNAL})
-    role: str = field(metadata={"tier": Tier.TUI})
-    timezone: str = field(metadata={"tier": Tier.TUI})
-    default_working_dir: str = field(metadata={"tier": Tier.INTERNAL})
-    help_desk_dir: str = field(metadata={"tier": Tier.INTERNAL})
-    is_master: bool = field(metadata={"tier": Tier.TUI})
+class ComputerConfig(ClosedModel):
+    name: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
+    user: TEXT = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    role: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
+    timezone: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
+    default_working_dir: TEXT = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    help_desk_dir: TEXT = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    is_master: TRUTHY = Field(json_schema_extra={"tier": Tier.TUI})
     # Optional LAN address override; auto-detected when unset.
-    host: str | None = field(default=None, metadata={"tier": Tier.TUI})
-    tmux_binary: str = field(default="tmux", metadata={"tier": Tier.INTERNAL})
-    is_ingress_node: bool = field(default=False, metadata={"tier": Tier.TUI})
+    host: TEXT | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
+    tmux_binary: TEXT = Field(default="tmux", json_schema_extra={"tier": Tier.INTERNAL})
+    is_ingress_node: TRUTHY = Field(default=False, json_schema_extra={"tier": Tier.TUI})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_computer_mapping(cls, value: object) -> object:
+        return _require_mapping(value, _COMPUTER_MAPPING_ERROR)
 
 
-@dataclass
-class ModelChainEntry:
+class ModelChainEntry(ClosedModel):
     """One declared launch-model fallback entry: model label, opaque launch
     flags, and an optional per-launch patch parameter map (JSON of loader-id
     -> config) rendered into the session's ephemeral --patch overlay."""
@@ -70,29 +316,28 @@ class ModelChainEntry:
     patch: str = ""
 
 
-@dataclass
-class AgentConfig:
+class AgentConfig(ClosedModel):
     """Configuration for a specific AI agent."""
 
-    binary: str = field(metadata={"tier": Tier.INTERNAL})  # Resolved by runtime policy
-    profiles: dict[str, str] = field(metadata={"tier": Tier.PUBLIC})
-    session_dir: str = field(metadata={"tier": Tier.INTERNAL})
-    log_pattern: str = field(metadata={"tier": Tier.INTERNAL})
-    mode_chains: dict[str, list[ModelChainEntry]] = field(metadata={"tier": Tier.INTERNAL})
-    model_chains: dict[str, list[ModelChainEntry]] = field(metadata={"tier": Tier.PUBLIC})
-    exec_subcommand: str = field(metadata={"tier": Tier.INTERNAL})
+    binary: str = Field(json_schema_extra={"tier": Tier.INTERNAL})  # Resolved by runtime policy
+    profiles: dict[str, str] = Field(json_schema_extra={"tier": Tier.PUBLIC})
+    session_dir: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    log_pattern: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    mode_chains: dict[str, list[ModelChainEntry]] = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    model_chains: dict[str, list[ModelChainEntry]] = Field(json_schema_extra={"tier": Tier.PUBLIC})
+    exec_subcommand: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
     # Flag to add before prompt for interactive mode (e.g., "-i")
-    interactive_flag: str = field(metadata={"tier": Tier.INTERNAL})
+    interactive_flag: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
     # Flag for non-interactive/pipe mode (e.g., "-p")
-    non_interactive_flag: str = field(metadata={"tier": Tier.INTERNAL})
-    resume_template: str = field(metadata={"tier": Tier.INTERNAL})
-    continue_template: str = field(default="", metadata={"tier": Tier.INTERNAL})
-    prompt_at_launch: bool = field(default=False, metadata={"tier": Tier.INTERNAL})
-    model_via_launch_patch: bool = field(default=False, metadata={"tier": Tier.INTERNAL})
-    restricted_sandbox_mode: str = field(default="", metadata={"tier": Tier.INTERNAL})
-    enabled: bool = field(default=True, metadata={"tier": Tier.TUI})
+    non_interactive_flag: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    resume_template: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    continue_template: str = Field(default="", json_schema_extra={"tier": Tier.INTERNAL})
+    prompt_at_launch: bool = Field(default=False, json_schema_extra={"tier": Tier.INTERNAL})
+    model_via_launch_patch: bool = Field(default=False, json_schema_extra={"tier": Tier.INTERNAL})
+    restricted_sandbox_mode: str = Field(default="", json_schema_extra={"tier": Tier.INTERNAL})
+    enabled: bool = Field(default=True, json_schema_extra={"tier": Tier.TUI})
     # git --author value; from constants.GIT_AUTHOR_IDENTITIES at load time
-    git_identity: str | None = field(default=None, metadata={"tier": Tier.INTERNAL})
+    git_identity: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
 
     def get_command(self, profile: str = "default") -> str:
         """Assembled base command: binary + profile flags."""
@@ -108,21 +353,24 @@ class AgentConfig:
         return self.get_command("default")
 
 
-@dataclass
-class RedisConfig:
+class RedisConfig(ClosedModel):
     """Redis configuration with user-configurable and internal settings."""
 
-    url: str = field(metadata={SENSITIVE_METADATA_KEY: True})
-    password: str | None = field(metadata={SENSITIVE_METADATA_KEY: True})
-    max_connections: int
-    socket_timeout: int
-    message_stream_maxlen: int
-    output_stream_maxlen: int
-    output_stream_ttl: int
+    url: Annotated[TEXT, SENSITIVE]
+    password: Annotated[TRUTHY_TEXT, SENSITIVE]
+    max_connections: INT_LENIENT
+    socket_timeout: INT_LENIENT
+    message_stream_maxlen: INT_LENIENT
+    output_stream_maxlen: INT_LENIENT
+    output_stream_ttl: INT_LENIENT
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_redis_mapping(cls, value: object) -> object:
+        return _require_mapping(value, _REDIS_MAPPING_ERROR)
 
 
-@dataclass
-class EventReliabilityConfig:
+class EventReliabilityConfig(ClosedModel):
     """Event processor reliability controls."""
 
     idle_threshold_ms: int
@@ -135,8 +383,7 @@ AGENT_NO_START_TIMEOUT_S = 90
 AGENT_NO_SIGNAL_TIMEOUT_S = 300
 
 
-@dataclass
-class TelegramQoSConfig:
+class TelegramQoSConfig(ClosedModel):
     """QoS configuration for Telegram output pacing and coalescing."""
 
     enabled: bool = True
@@ -149,284 +396,227 @@ class TelegramQoSConfig:
     rounding_ms: int = 100
 
 
-@dataclass
-class TelegramConfig:
+class _TelegramQoSInput(ClosedModel):
+    enabled: SCALAR_INPUT = None
+    group_mpm: SCALAR_INPUT = None
+    output_budget_ratio: SCALAR_INPUT = None
+    reserve_mpm: SCALAR_INPUT = None
+    min_session_tick_s: SCALAR_INPUT = None
+    active_emitter_window_s: SCALAR_INPUT = None
+    active_emitter_ema_alpha: SCALAR_INPUT = None
+    rounding_ms: SCALAR_INPUT = None
+
+
+class TelegramConfig(ClosedModel):
     """Telegram adapter configuration."""
 
-    enabled: bool = False
-    bot_token: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    alert_username: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    alert_chat_id: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig, metadata={"tier": Tier.INTERNAL})
+    enabled: FLAG = False
+    bot_token: Annotated[OPT_TEXT, SENSITIVE] = None
+    alert_username: Annotated[OPT_TEXT, SENSITIVE] = None
+    alert_chat_id: Annotated[OPT_TEXT, SENSITIVE] = None
+    qos: TelegramQoSConfig = Field(default_factory=TelegramQoSConfig, json_schema_extra={"tier": Tier.INTERNAL})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _mapping_or_default(cls, value: object) -> object:
+        mapped = _mapping_or_empty(value, _TELEGRAM_MAPPING_ERROR)
+        if not isinstance(mapped, Mapping):
+            return mapped
+        data = dict(mapped)
+        qos = data.pop(_ConfigKey.QOS, None)
+        if qos is not None:
+            _TelegramQoSInput.model_validate(qos)
+        return data
 
 
-@dataclass
-class DiscordQoSConfig:
+class DiscordQoSConfig(ClosedModel):
     """QoS configuration for Discord output coalescing."""
 
     mode: str = "coalesce_only"  # "off" | "coalesce_only" | "strict"
 
 
-@dataclass
-class WhatsAppQoSConfig:
+class _ModeQoSInput(ClosedModel):
+    mode: SCALAR_INPUT = None
+
+
+class WhatsAppQoSConfig(ClosedModel):
     """QoS configuration for WhatsApp (disabled until limits are confirmed)."""
 
     mode: str = "off"  # "off" | "coalesce_only" | "strict"
 
 
-@dataclass
-class DiscordConfig:
+class DiscordConfig(ClosedModel):
     """Discord adapter configuration."""
 
-    enabled: bool
-    token: str | None = field(metadata={SENSITIVE_METADATA_KEY: True})
-    guild_id: int | None = field(metadata={SENSITIVE_METADATA_KEY: True})
-    qos: DiscordQoSConfig = field(default_factory=DiscordQoSConfig, metadata={"tier": Tier.INTERNAL})
+    enabled: FLAG
+    token: Annotated[TRUTHY_TEXT, SENSITIVE]
+    guild_id: Annotated[OPT_INT_LENIENT, SENSITIVE]
+    qos: DiscordQoSConfig = Field(default_factory=DiscordQoSConfig, json_schema_extra={"tier": Tier.INTERNAL})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _mapping_or_default(cls, value: object) -> object:
+        mapped = _mapping_or_empty(value, _DISCORD_MAPPING_ERROR)
+        if not isinstance(mapped, Mapping):
+            return mapped
+        data = dict(mapped)
+        qos = data.pop(_ConfigKey.QOS, None)
+        if qos is not None:
+            _ModeQoSInput.model_validate(qos)
+        return data
 
 
-@dataclass
-class WhatsAppConfig:
+class WhatsAppConfig(ClosedModel):
     """WhatsApp adapter configuration."""
 
-    enabled: bool = False
-    phone_number_id: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    access_token: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    webhook_secret: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    verify_token: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    business_number: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    api_version: str = field(default="v21.0", metadata={"tier": Tier.INTERNAL})
-    template_name: str | None = None
-    template_language: str = "en_US"
-    qos: WhatsAppQoSConfig = field(default_factory=WhatsAppQoSConfig, metadata={"tier": Tier.INTERNAL})
+    enabled: FLAG = False
+    phone_number_id: Annotated[OPT_TEXT, SENSITIVE] = None
+    access_token: Annotated[OPT_TEXT, SENSITIVE] = None
+    webhook_secret: Annotated[OPT_TEXT, SENSITIVE] = None
+    verify_token: Annotated[OPT_TEXT, SENSITIVE] = None
+    business_number: Annotated[OPT_TEXT, SENSITIVE] = None
+    api_version: TEXT = Field(default="v21.0", json_schema_extra={"tier": Tier.INTERNAL})
+    template_name: OPT_TEXT = None
+    template_language: TEXT = "en_US"
+    qos: WhatsAppQoSConfig = Field(default_factory=WhatsAppQoSConfig, json_schema_extra={"tier": Tier.INTERNAL})
+
+    @model_validator(mode="before")
+    @classmethod
+    def _mapping_or_default(cls, value: object) -> object:
+        mapped = _mapping_or_empty(value, _WHATSAPP_MAPPING_ERROR)
+        if not isinstance(mapped, Mapping):
+            return mapped
+        data = dict(mapped)
+        qos = data.pop(_ConfigKey.QOS, None)
+        if qos is not None:
+            _ModeQoSInput.model_validate(qos)
+        if _ConfigKey.TEMPLATE_LANGUAGE in data:
+            language = data[_ConfigKey.TEMPLATE_LANGUAGE]
+            if not isinstance(language, (Mapping, list)):
+                data[_ConfigKey.TEMPLATE_LANGUAGE] = _scalar_text_or_raw(language or _EN_US_TEXT)
+        else:
+            data[_ConfigKey.TEMPLATE_LANGUAGE] = _EN_US_TEXT
+        return data
 
 
-@dataclass
-class EmailConfig:
+class EmailConfig(ClosedModel):
     """Email (SMTP) sending capability and its typed delivery fields."""
 
-    enabled: bool = False
-    smtp_username: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    smtp_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    email_from: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    reply_to: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    smtp_relay: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    enabled: FLAG = False
+    smtp_username: Annotated[OPT_TEXT, SENSITIVE] = None
+    smtp_key: Annotated[OPT_TEXT, SENSITIVE] = None
+    email_from: Annotated[OPT_TEXT, SENSITIVE] = None
+    reply_to: Annotated[OPT_TEXT, SENSITIVE] = None
+    smtp_relay: Annotated[OPT_TEXT, SENSITIVE] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _mapping_or_default(cls, value: object) -> object:
+        return _mapping_or_empty(value, _EMAIL_MAPPING_ERROR)
 
 
-@dataclass
-class BackupConfig:
+class BackupConfig(ClosedModel):
     """Machine-wide backup destination and credential configuration."""
 
-    aws_access_key_id: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    aws_secret_access_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    aws_s3_host: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    aws_s3_region: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    aws_s3_bucket: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    backup_prefix: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    aws_access_key_id: Annotated[OPT_TEXT, SENSITIVE] = None
+    aws_secret_access_key: Annotated[OPT_TEXT, SENSITIVE] = None
+    aws_s3_host: Annotated[OPT_TEXT, SENSITIVE] = None
+    aws_s3_region: Annotated[OPT_TEXT, SENSITIVE] = None
+    aws_s3_bucket: Annotated[OPT_TEXT, SENSITIVE] = None
+    backup_prefix: Annotated[OPT_TEXT, SENSITIVE] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _mapping_or_default(cls, value: object) -> object:
+        return _mapping_or_empty(value, _BACKUP_MAPPING_ERROR)
 
 
-@dataclass
-class HookOutboxConfig:
-    """Resolved hook-outbox delivery and queue limits."""
-
-    poll_interval_s: float
-    batch_size: int
-    lock_ttl_s: float
-    base_backoff_s: float
-    max_backoff_s: float
-    session_idle_timeout_s: float
-    session_max_pending: int
-    session_critical_reserve: int
-    session_claim_high_watermark: int
-    session_claim_low_watermark: int
-    summary_interval_s: float
-    backlog_warn_threshold: int
-    lag_warn_threshold_s: float
-    warn_log_interval_s: float
-    max_lag_samples: int
-    staleness_ttl_s: float
-
-
-@dataclass
-class ApiConfig:
-    """Resolved API transport and monitoring tunables."""
-
-    watch_interval_s: float
-    watch_lag_threshold_ms: float
-    watch_inflight_threshold_s: float
-    watch_dump_cooldown_s: float
-    mcp_reaper_interval_s: float
-    ws_control_send_timeout_s: float
-    ws_default_send_timeout_s: float
-    ws_replaceable_send_timeout_s: float
-
-
-@dataclass
-class DaemonConfig:
-    """Daemon lifecycle, monitoring, and logging configuration."""
-
-    api_restart_max: int = field(metadata={"tier": Tier.INTERNAL})
-    api_restart_window_s: float = field(metadata={"tier": Tier.INTERNAL})
-    api_restart_backoff_s: float = field(metadata={"tier": Tier.INTERNAL})
-    resource_snapshot_interval_s: float = field(metadata={"tier": Tier.INTERNAL})
-    launchd_watch_interval_s: float = field(metadata={"tier": Tier.INTERNAL})
-    launchd_watch_enabled: bool = field(metadata={"tier": Tier.INTERNAL})
-    startup_gate_timeout_s: float = field(metadata={"tier": Tier.INTERNAL})
-    startup_gate_poll_interval_s: float = field(metadata={"tier": Tier.INTERNAL})
-    agent_prompt_ready_timeout_s: float = field(metadata={"tier": Tier.INTERNAL})
-    log_level: str = field(metadata={"tier": Tier.TUI})
-    legacy_gemini_root: str = field(metadata={"tier": Tier.INTERNAL})
-
-
-@dataclass
-class TTSServiceVoiceConfig:
+class TTSServiceVoiceConfig(ClosedModel):
     """Voice configuration for a TTS service."""
 
-    name: str
-    voice_id: str | None = None  # For services like ElevenLabs that need IDs
+    name: TEXT
+    voice_id: TRUTHY_TEXT = None  # For services like ElevenLabs that need IDs
 
 
-@dataclass
-class TTSServiceConfig:
+class TTSServiceConfig(ClosedModel):
     """Configuration for a single TTS service."""
 
-    enabled: bool
+    enabled: FLAG
     voices: list[TTSServiceVoiceConfig] | None = None
-    model: str | None = None  # Optional local path or HF repo id
-    api_key: str | None = None
-    params: dict[str, object] | None = None  # guard: loose-dict - Model-specific kwargs are dynamic.
-    cli_bin: str | None = None
-    instruct: str = "A clear, natural conversational voice."
-    discord_voice: str | None = None  # Room voice; None excludes this service from the room chain
+    model: TRUTHY_TEXT = None  # Optional local path or HF repo id
+    api_key: TRUTHY_TEXT = None
+    # Dynamic provider parameters preserve their original keys and values.
+    params: dict[object, object] | None = None  # guard: loose-dict - Model-specific kwargs are dynamic.
+    cli_bin: OPT_TEXT = None
+    instruct: TEXT = _TTS_DEFAULT_INSTRUCT
+    discord_voice: OPT_TEXT = None  # Room voice; None excludes this service from the room chain
 
 
-@dataclass
-class TTSEventConfig:
+class TTSEventConfig(ClosedModel):
     """Configuration for a TTS event.
 
     A non-empty ``messages`` list is spoken with one entry chosen at random; an
     empty list falls back to the built-in pool (session_start) or stays silent.
     """
 
-    enabled: bool
+    enabled: FLAG
     messages: list[str] | None = None  # Spoken text pool; one is picked at random
 
 
-@dataclass
-class TTSConfig:
+class TTSConfig(ClosedModel):
     """Text-to-speech configuration. Operator-facing — the wizard renders its leaves."""
 
-    enabled: bool = field(metadata={"tier": Tier.TUI})
-    service_priority: list[str] | None = field(default=None, metadata={"tier": Tier.TUI})
-    events: dict[str, TTSEventConfig] | None = field(
+    enabled: FLAG = Field(json_schema_extra={"tier": Tier.TUI})
+    service_priority: list[str] | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
+    events: dict[str, TTSEventConfig] | None = Field(
         default=None,
-        metadata={
+        json_schema_extra={
             "tier": Tier.TUI,
             "ungoverned_body": "operator-authored keys from the config mapping; membership is not schema-declared",
         },
     )
-    services: dict[str, TTSServiceConfig] | None = field(
+    services: dict[str, TTSServiceConfig] | None = Field(
         default=None,
-        metadata={
+        json_schema_extra={
             "tier": Tier.TUI,
             "ungoverned_body": "operator-authored provider keys from the config mapping; membership is not schema-declared",
         },
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_inputs(cls, value: object) -> object:
+        return _normalize_tts_input(value)
 
-@dataclass
-class STTServiceConfig:
+
+class STTServiceConfig(ClosedModel):
     """Configuration for a single STT service."""
 
-    enabled: bool
-    model: str | None = None  # HF repo id or local path (for parakeet)
-    api_key: str | None = None
-    cli_bin: str | None = None
+    enabled: FLAG
+    model: TRUTHY_TEXT = None  # HF repo id or local path (for parakeet)
+    api_key: TRUTHY_TEXT = None
+    cli_bin: OPT_TEXT = None
 
 
-@dataclass
-class STTConfig:
+class STTConfig(ClosedModel):
     """Speech-to-text configuration."""
 
-    enabled: bool
+    enabled: FLAG
     service_priority: list[str] | None = None
-    services: dict[str, STTServiceConfig] | None = field(
+    services: dict[str, STTServiceConfig] | None = Field(
         default=None,
-        metadata={
-            "ungoverned_body": "operator-authored provider keys from the config mapping; membership is not schema-declared",
+        json_schema_extra={
+            "ungoverned_body": "operator-authored provider keys from the config mapping; membership is not schema-declared"
         },
     )
 
-
-@dataclass
-class ProcessJanitorConfig:
-    """Process janitor timing and safety defaults."""
-
-    scan_interval_seconds: int = 300
-    default_signature_ttl_seconds: int = 3600
-    lease_ttl_seconds: int = 1800
-    dry_run_default: bool = True
-    reap_revalidation_seconds: int = 3600
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_inputs(cls, value: object) -> object:
+        return _normalize_stt_input(value)
 
 
-@dataclass
-class WorkflowAutostartConfig:
-    """Per-kind automatic lifecycle-runner dispatch policy (off by default)."""
-
-    feature: bool = False
-    change: bool = False
-    bug: bool = False
-    task: bool = False
-
-
-class WorkflowRunnerMode(StrEnum):
-    """Master switch over the lifecycle runner's autonomous dispatch path."""
-
-    AUTOSTART = "autostart"
-    MANUAL = "manual"
-
-
-@dataclass
-class WorkflowConfig:
-    """Daemon-runtime lifecycle-runner control plane."""
-
-    autostart: WorkflowAutostartConfig = field(default_factory=WorkflowAutostartConfig, metadata={"tier": Tier.PUBLIC})
-    runner: WorkflowRunnerMode = field(default=WorkflowRunnerMode.AUTOSTART, metadata={"tier": Tier.PUBLIC})
-    max_todo_dispatch: int = field(default=5, metadata={"tier": Tier.PUBLIC})
-
-
-class ReleaseChannel(StrEnum):
-    """TeleClaude self-update release channel."""
-
-    ALPHA = "alpha"
-    BETA = "beta"
-    STABLE = "stable"
-
-
-@dataclass
-class DeploymentConfig:
-    """Release channel and version pinning for TeleClaude self-update.
-
-    Machine-wide: the release channel governs this host's self-update — installed
-    once per host, not per project. ``stable`` requires a non-empty ``pinned_minor``.
-    """
-
-    channel: ReleaseChannel = ReleaseChannel.ALPHA
-    pinned_minor: str = ""
-
-    def __post_init__(self) -> None:
-        if self.channel == ReleaseChannel.STABLE and not self.pinned_minor:
-            raise ValueError("pinned_minor is required and must be non-empty when channel=stable")
-
-
-@dataclass
-class TerminalConfig:
-    """Terminal display settings."""
-
-    strip_ansi: bool = True
-
-
-@dataclass
-class ExperimentConfig:
+class ExperimentConfig(ClosedModel):
     """Configuration for a specific experiment.
 
     Attributes:
@@ -437,36 +627,57 @@ class ExperimentConfig:
                If None or empty, the adapter dimension is unconstrained.
     """
 
-    name: str
-    agents: list[str] | None = None
-    adapters: list[str] | None = None
+    name: TEXT
+    # The builder preserves every list item the operator supplied.
+    agents: list[object] | None = None
+    # The builder preserves every list item the operator supplied.
+    adapters: list[object] | None = None
+
+    @field_validator("agents", "adapters", mode="before")
+    @classmethod
+    def _preserve_iterable_dimension(cls, value: object) -> list[object] | None:
+        if not value:
+            return None
+        try:
+            return list(cast(Iterable[object], value))
+        except TypeError:
+            raise ValueError(_EXPERIMENT_DIMENSION_ERROR) from None
 
 
-@dataclass
-class TelegramCredsConfig:
+class TelegramCredsConfig(ClosedModel):
     """Telegram user credentials."""
 
     user_name: str
-    user_id: int
+    user_id: INT_LENIENT
 
 
-@dataclass
-class WhatsAppCredsConfig:
+class WhatsAppCredsConfig(ClosedModel):
     """WhatsApp phone credentials."""
 
     phone_number: str
 
 
-@dataclass
-class CredsConfig:
+class CredsConfig(ClosedModel):
     """Platform credentials container."""
 
     telegram: TelegramCredsConfig | None = None
     whatsapp: WhatsAppCredsConfig | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_credentials(cls, value: object) -> object:
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            return value
+        data = dict(value)
+        whatsapp = data.get(_ConfigKey.WHATSAPP)
+        if isinstance(whatsapp, Mapping) and not whatsapp.get(_ConfigKey.PHONE_NUMBER):
+            data[_ConfigKey.WHATSAPP] = None
+        return data
 
-@dataclass
-class TeleclaudeConfig:
+
+class TeleclaudeConfig(ClosedModel):
     """Top-level machine configuration aggregate.
 
     Each field carries an editability ``tier`` (see the module docstring and
@@ -476,43 +687,43 @@ class TeleclaudeConfig:
     container field's tier is inherited by its unmarked nested leaves.
     """
 
-    computer: ComputerConfig = field(metadata={"tier": Tier.TUI})
-    polling: PollingConfig = field(metadata={"tier": Tier.INTERNAL})
-    hook_outbox: HookOutboxConfig = field(metadata={"tier": Tier.INTERNAL})
-    api: ApiConfig = field(metadata={"tier": Tier.INTERNAL})
-    daemon: DaemonConfig = field(metadata={"tier": Tier.TUI})
-    redis: RedisConfig = field(metadata={"tier": Tier.TUI})
-    event_reliability: EventReliabilityConfig = field(metadata={"tier": Tier.INTERNAL})
-    telegram: TelegramConfig = field(metadata={"tier": Tier.TUI})
-    discord: DiscordConfig = field(metadata={"tier": Tier.TUI})
-    creds: CredsConfig = field(metadata={"tier": Tier.INTERNAL})
-    agents: dict[AgentName, AgentConfig] = field(metadata={"tier": Tier.PUBLIC})
-    default_agent: AgentName = field(metadata={"tier": Tier.PUBLIC})
-    terminal: TerminalConfig = field(metadata={"tier": Tier.INTERNAL})
-    whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig, metadata={"tier": Tier.TUI})
-    email: EmailConfig = field(default_factory=EmailConfig, metadata={"tier": Tier.TUI})
-    backup: BackupConfig = field(default_factory=BackupConfig, metadata={"tier": Tier.TUI})
-    tts: TTSConfig | None = field(default=None, metadata={"tier": Tier.TUI})
-    stt: STTConfig | None = field(default=None, metadata={"tier": Tier.TUI})
-    chiptunes: ChiptunesConfig | None = field(default=None, metadata={"tier": Tier.TUI})
-    process_janitor: ProcessJanitorConfig = field(
-        default_factory=ProcessJanitorConfig, metadata={"tier": Tier.INTERNAL}
+    computer: ComputerConfig = Field(json_schema_extra={"tier": Tier.TUI})
+    polling: PollingConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    hook_outbox: HookOutboxConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    api: ApiConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    daemon: DaemonConfig = Field(json_schema_extra={"tier": Tier.TUI})
+    redis: RedisConfig = Field(json_schema_extra={"tier": Tier.TUI})
+    event_reliability: EventReliabilityConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    telegram: TelegramConfig = Field(json_schema_extra={"tier": Tier.TUI})
+    discord: DiscordConfig = Field(json_schema_extra={"tier": Tier.TUI})
+    creds: CredsConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    agents: dict[AgentName, AgentConfig] = Field(json_schema_extra={"tier": Tier.PUBLIC})
+    default_agent: AgentName = Field(json_schema_extra={"tier": Tier.PUBLIC})
+    terminal: TerminalConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig, json_schema_extra={"tier": Tier.TUI})
+    email: EmailConfig = Field(default_factory=EmailConfig, json_schema_extra={"tier": Tier.TUI})
+    backup: BackupConfig = Field(default_factory=BackupConfig, json_schema_extra={"tier": Tier.TUI})
+    tts: TTSConfig | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
+    stt: STTConfig | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
+    chiptunes: ChiptunesConfig | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
+    process_janitor: ProcessJanitorConfig = Field(
+        default_factory=ProcessJanitorConfig, json_schema_extra={"tier": Tier.INTERNAL}
     )
-    workflow: WorkflowConfig = field(default_factory=WorkflowConfig, metadata={"tier": Tier.PUBLIC})
-    deployment: DeploymentConfig = field(default_factory=DeploymentConfig, metadata={"tier": Tier.PUBLIC})
-    database_url: str | None = field(default=None, metadata={"tier": Tier.PUBLIC, SENSITIVE_METADATA_KEY: True})
-    summarizer: SummarizerConfig | None = field(default=None, metadata={"tier": Tier.TUI})
-    load_id: str = field(default="", metadata={"tier": Tier.INTERNAL})
-    experiments: list[ExperimentConfig] = field(
+    workflow: WorkflowConfig = Field(default_factory=WorkflowConfig, json_schema_extra={"tier": Tier.PUBLIC})
+    deployment: DeploymentConfig = Field(default_factory=DeploymentConfig, json_schema_extra={"tier": Tier.PUBLIC})
+    database_url: Annotated[str | None, SENSITIVE] = Field(default=None, json_schema_extra={"tier": Tier.PUBLIC})
+    summarizer: SummarizerConfig | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
+    load_id: str = Field(default="", json_schema_extra={"tier": Tier.INTERNAL})
+    experiments: list[ExperimentConfig] = Field(
         default_factory=list,
-        metadata={
+        json_schema_extra={
             "tier": Tier.INTERNAL,
             "ungoverned_body": "config-authored list; entries are positional instances, not schema fields",
         },
     )
-    remote_computers: list[RemoteComputerConfig] = field(
+    remote_computers: list[RemoteComputerConfig] = Field(
         default_factory=list,
-        metadata={
+        json_schema_extra={
             "tier": Tier.INTERNAL,
             "ungoverned_body": "config-authored mapping parsed into a list; entries are instances, not schema fields",
         },
@@ -547,3 +758,43 @@ class TeleclaudeConfig:
                 continue
             return True
         return False
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _derive_runtime_fields_and_collect_errors(
+        cls,
+        data: object,
+        handler: ModelWrapValidatorHandler[Self],
+        info: ValidationInfo,
+    ) -> Self:
+        issues: list[ConfigValidationIssue] = []
+        candidate = data
+        if info.context is not None:
+            candidate, issues = cast(AggregateInputDerivation, info.context).prepare(data)
+        try:
+            aggregate = handler(candidate)
+        except ValidationError as error:
+            error_lines = error.errors(include_url=False)
+            title = error.title
+        else:
+            if not issues:
+                return aggregate
+            error_lines = []
+            title = cls.__name__
+        details: list[InitErrorDetails] = [
+            InitErrorDetails(
+                type=PydanticCustomError(issue.code, issue.message),  # pyright: ignore[reportArgumentType] - preserved validation errors are dynamic
+                loc=issue.loc,
+                input=issue.input,
+            )
+            for issue in issues
+        ]
+        details.extend(
+            InitErrorDetails(
+                type=PydanticCustomError(line["type"], line["msg"]),  # pyright: ignore[reportArgumentType] - preserved validation errors are dynamic
+                loc=line["loc"],
+                input=line["input"],
+            )
+            for line in error_lines
+        )
+        raise ValidationError.from_exception_data(title, details)

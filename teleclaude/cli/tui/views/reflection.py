@@ -1,14 +1,13 @@
-"""Generic reflection-based configuration schema parser for Pydantic models and dataclasses."""
+"""Generic reflection-based configuration schema parser for Pydantic models."""
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from types import UnionType
-from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -16,7 +15,6 @@ from teleclaude.config._environment import environment_reference_at_path
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import (
     Tier,
-    dataclass_field_tier,
     effective_tier,
     pydantic_field_tier,
     renders_in_tui,
@@ -122,20 +120,18 @@ def _resolve_type_and_choices(ann: Any) -> tuple[Any, list[str] | None]:
 
 
 def _struct_type_from_annotation(ann: Any) -> Any | None:
-    """Return the nested BaseModel/dataclass type within an annotation, or None."""
+    """Return the nested Pydantic model type within an annotation, or None."""
     for candidate in _unpack_union(ann):
         if candidate is type(None):
             continue
         if isinstance(candidate, type) and issubclass(candidate, BaseModel):
-            return candidate
-        if isinstance(candidate, type) and dataclasses.is_dataclass(candidate):
             return candidate
     return None
 
 
 def _is_struct_value(value: Any) -> bool:
     """Whether a value is a nested structure the walker descends into."""
-    return isinstance(value, (BaseModel, dict)) or (dataclasses.is_dataclass(value) and not isinstance(value, type))
+    return isinstance(value, (BaseModel, dict))
 
 
 def _reflect_field(
@@ -150,8 +146,8 @@ def _reflect_field(
 ) -> list[ReflectedField]:
     """Recurse into a nested struct/dict/list, or emit a single leaf field.
 
-    Recursion is driven by the value when one is present (a model, dataclass,
-    dict, or list of those), and by the declared type when the value is an unset
+    Recursion is driven by the value when one is present (a model, dict, or list
+    of those), and by the declared type when the value is an unset
     ``Optional`` nested struct — so a structure renders to its leaves regardless of
     whether it is currently populated. A list of scalars stays a single editable
     leaf; a list of structs expands to one indexed subtree per element.
@@ -224,22 +220,6 @@ def _reflect_type(
                     effective,
                 )
             )
-    elif isinstance(struct_type, type) and dataclasses.is_dataclass(struct_type):
-        type_hints = get_type_hints(struct_type)
-        for f in dataclasses.fields(struct_type):
-            effective = effective_tier(dataclass_field_tier(f), inherited_tier)
-            fields.extend(
-                _reflect_field(
-                    f"{prefix}.{f.name}" if prefix else f.name,
-                    f.name.replace("_", " ").title(),
-                    section,
-                    owning_source,
-                    type_hints.get(f.name, f.type),
-                    None,
-                    f.metadata.get("description") if f.metadata else None,
-                    effective,
-                )
-            )
     return fields
 
 
@@ -250,7 +230,7 @@ def reflect_schema(
     owning_source: str = "global",
     inherited_tier: Tier = Tier.INTERNAL,
 ) -> list[ReflectedField]:
-    """Inspect a Pydantic model, dataclass instance, or dict and return its ReflectedFields.
+    """Inspect a Pydantic model or dict and return its ReflectedFields.
 
     Editability is opt-in: a leaf renders only when its effective tier is ``tui``.
     The effective tier is the field's own ``tier`` marker when declared, else the
@@ -273,23 +253,6 @@ def reflect_schema(
                     field_info.annotation,
                     getattr(obj, name),
                     field_info.description or "",
-                    effective,
-                )
-            )
-
-    elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        type_hints = get_type_hints(type(obj))
-        for f in dataclasses.fields(obj):
-            effective = effective_tier(dataclass_field_tier(f), inherited_tier)
-            fields.extend(
-                _reflect_field(
-                    f"{prefix}.{f.name}" if prefix else f.name,
-                    f.name.replace("_", " ").title(),
-                    section,
-                    owning_source,
-                    type_hints.get(f.name, f.type),
-                    getattr(obj, f.name),
-                    f.metadata.get("description") if f.metadata else None,
                     effective,
                 )
             )

@@ -2,25 +2,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
 
-from teleclaude.config._coerce import as_bool
-from teleclaude.config._strictness import SCALAR, ClosedMapping
+from pydantic import model_validator
 
-CHIPTUNES_INPUT = ClosedMapping({"enabled": SCALAR, "music_dir": SCALAR, "volume": SCALAR})
+from teleclaude.closed_model import ClosedModel
+from teleclaude.config._coerce import FLAG, TRUTHY_TEXT
+
+_CHIPTUNES_MAPPING_ERROR = "Invalid config key `config.yml:chiptunes`: expected a mapping."
+_CHIPTUNES_VOLUME_KEY = "volume"
 
 
-@dataclass
-class ChiptunesConfig:
-    enabled: bool = False
-    music_dir: str | None = None
+class ChiptunesConfig(ClosedModel):
+    enabled: FLAG = False
+    music_dir: TRUTHY_TEXT = None
     volume: float = 1.0
 
-
-def parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig:  # guard: loose-dict
-    data = raw or {}
-    return ChiptunesConfig(
-        enabled=as_bool(data.get("enabled", False)),
-        music_dir=str(data["music_dir"]) if data.get("music_dir") else None,
-        volume=float(data.get("volume", 0.5)),  # type: ignore[arg-type]
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def _default_null_chiptunes_section(cls, value: object) -> object:
+        if value is None:
+            return {_CHIPTUNES_VOLUME_KEY: 0.5}
+        if not isinstance(value, Mapping):
+            raise ValueError(_CHIPTUNES_MAPPING_ERROR)
+        return value

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -61,11 +60,7 @@ from teleclaude.config import (
     WhatsAppConfig,
     deep_merge,
     machine_runtime_environment,
-    parse_daemon_config,
-    parse_stt_config,
-    parse_tts_config,
 )
-from teleclaude.config._summarizer import parse_summarizer_config
 from teleclaude.config.loader import find_person_config_path
 from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.person_secrets import PersonSecretStorageError
@@ -457,9 +452,9 @@ class ConfigContent(
         """Construct the reflected fields for a subtab from the current raw config."""
         if tab == Subtab.INFRA:
             computer_data = self._raw_config.get("computer", {})
-            computer_fields = {f.name for f in dataclasses.fields(ComputerConfig)}
+            computer_fields = set(ComputerConfig.model_fields)
             filtered_computer = {k: v for k, v in computer_data.items() if k in computer_fields}
-            computer_obj = ComputerConfig(
+            computer_obj = ComputerConfig.model_construct(
                 name=filtered_computer.get("name", "Mac"),
                 user=filtered_computer.get("user", ""),
                 role=filtered_computer.get("role", "development"),
@@ -475,7 +470,7 @@ class ConfigContent(
             )
 
             daemon_data = deep_merge(_default_section("daemon"), self._raw_config.get("daemon", {}))
-            daemon_obj: DaemonConfig = parse_daemon_config(daemon_data)
+            daemon_obj: DaemonConfig = DaemonConfig.model_validate(daemon_data)
             fields.extend(
                 reflect_schema(
                     daemon_obj,
@@ -488,9 +483,9 @@ class ConfigContent(
 
             redis_data = self._raw_config.get("redis", {})
             merged_redis = deep_merge(_default_section("redis"), redis_data)
-            redis_fields = {f.name for f in dataclasses.fields(RedisConfig)}
+            redis_fields = set(RedisConfig.model_fields)
             filtered_redis = {k: v for k, v in merged_redis.items() if k in redis_fields}
-            redis_obj = RedisConfig(**filtered_redis)
+            redis_obj = RedisConfig.model_construct(**filtered_redis)
             fields.extend(
                 reflect_schema(
                     redis_obj, prefix="redis", section="Redis", owning_source="machine", inherited_tier=Tier.TUI
@@ -499,9 +494,9 @@ class ConfigContent(
 
             chiptunes_data = self._raw_config.get("chiptunes", {})
             merged_chiptunes = deep_merge(_default_section("chiptunes"), chiptunes_data)
-            chiptunes_fields = {f.name for f in dataclasses.fields(ChiptunesConfig)}
+            chiptunes_fields = set(ChiptunesConfig.model_fields)
             filtered_chiptunes = {k: v for k, v in merged_chiptunes.items() if k in chiptunes_fields}
-            chiptunes_obj = ChiptunesConfig(**filtered_chiptunes)
+            chiptunes_obj = ChiptunesConfig.model_construct(**filtered_chiptunes)
             fields.extend(
                 reflect_schema(
                     chiptunes_obj,
@@ -516,18 +511,18 @@ class ConfigContent(
         if tab == Subtab.ADAPTERS:
             telegram_data = self._raw_config.get("telegram", {})
             merged_telegram = deep_merge(_default_section("telegram"), telegram_data)
-            telegram_fields = {f.name for f in dataclasses.fields(TelegramConfig)}
+            telegram_fields = set(TelegramConfig.model_fields)
             filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
-            telegram_obj = TelegramConfig(**filtered_telegram)
+            telegram_obj = TelegramConfig.model_construct(**filtered_telegram)
             fields = reflect_schema(
                 telegram_obj, prefix="telegram", section="Telegram", owning_source="machine", inherited_tier=Tier.TUI
             )
 
             discord_data = self._raw_config.get("discord", {})
             merged_discord = deep_merge(_default_section("discord"), discord_data)
-            discord_fields = {f.name for f in dataclasses.fields(DiscordConfig)}
+            discord_fields = set(DiscordConfig.model_fields)
             filtered_discord = {k: v for k, v in merged_discord.items() if k in discord_fields}
-            discord_obj = DiscordConfig(**filtered_discord)
+            discord_obj = DiscordConfig.model_construct(**filtered_discord)
             fields.extend(
                 reflect_schema(
                     discord_obj, prefix="discord", section="Discord", owning_source="machine", inherited_tier=Tier.TUI
@@ -536,9 +531,9 @@ class ConfigContent(
 
             whatsapp_data = self._raw_config.get("whatsapp", {})
             merged_whatsapp = deep_merge(_default_section("whatsapp"), whatsapp_data)
-            whatsapp_fields = {f.name for f in dataclasses.fields(WhatsAppConfig)}
+            whatsapp_fields = set(WhatsAppConfig.model_fields)
             filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
-            whatsapp_obj = WhatsAppConfig(**filtered_whatsapp)
+            whatsapp_obj = WhatsAppConfig.model_construct(**filtered_whatsapp)
             fields.extend(
                 reflect_schema(
                     whatsapp_obj,
@@ -552,15 +547,19 @@ class ConfigContent(
 
         if tab == Subtab.PROVIDERS:
             backup_data = deep_merge(_default_section("backup"), self._raw_config.get("backup", {}))
-            backup_fields = {field.name for field in dataclasses.fields(BackupConfig)}
-            backup_obj = BackupConfig(**{key: value for key, value in backup_data.items() if key in backup_fields})
+            backup_fields = set(BackupConfig.model_fields)
+            backup_obj = BackupConfig.model_construct(
+                **{key: value for key, value in backup_data.items() if key in backup_fields}
+            )
             fields = reflect_schema(
                 backup_obj, prefix="backup", section="Providers", owning_source="machine", inherited_tier=Tier.TUI
             )
             email_data = self._raw_config.get("email", {})
             merged_email = deep_merge(_default_section("email"), email_data)
-            email_fields = {field.name for field in dataclasses.fields(EmailConfig)}
-            email_obj = EmailConfig(**{key: value for key, value in merged_email.items() if key in email_fields})
+            email_fields = set(EmailConfig.model_fields)
+            email_obj = EmailConfig.model_construct(
+                **{key: value for key, value in merged_email.items() if key in email_fields}
+            )
             fields.extend(
                 reflect_schema(
                     email_obj, prefix="email", section="Email", owning_source="machine", inherited_tier=Tier.TUI
@@ -569,7 +568,8 @@ class ConfigContent(
             return fields
 
         if tab == Subtab.SUMMARIZER:
-            summarizer_obj = parse_summarizer_config(self._raw_config.get("summarizer", {})) or SummarizerConfig()
+            summarizer_raw = self._raw_config.get("summarizer") or {}
+            summarizer_obj = SummarizerConfig.model_validate(summarizer_raw) if summarizer_raw else SummarizerConfig()
             fields = reflect_schema(
                 summarizer_obj,
                 prefix="summarizer",
@@ -582,8 +582,8 @@ class ConfigContent(
         if tab == Subtab.TTS_STT:
             merged_stt = deep_merge(_default_section("stt"), self._raw_config.get("stt", {}))
             merged_tts = deep_merge(_default_section("tts"), self._raw_config.get("tts", {}))
-            stt_obj = parse_stt_config(merged_stt) or STTConfig(enabled=False)
-            tts_obj = parse_tts_config(merged_tts) or TTSConfig(enabled=False)
+            stt_obj = STTConfig.model_validate(merged_stt) if merged_stt else STTConfig(enabled=False)
+            tts_obj = TTSConfig.model_validate(merged_tts) if merged_tts else TTSConfig(enabled=False)
 
             fields = reflect_schema(
                 stt_obj, prefix="stt", section="STT", owning_source="machine", inherited_tier=Tier.TUI

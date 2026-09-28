@@ -1,4 +1,4 @@
-"""Editability tiers for machine-config fields.
+"""Editability tiers for machine-config Pydantic fields.
 
 A field's tier declares what reaches humans: ``internal`` (the default),
 ``public``, or ``tui``. The tier is the single authority for the public config
@@ -6,8 +6,7 @@ surface — the generated ``templates/config.yml`` sample and the config TUI ren
 set are consequences of these markers, never independent sources. See
 ``project/policy/config-public-surface``.
 
-The marker is read from a dataclass ``field``'s ``metadata["tier"]`` and from a
-pydantic ``FieldInfo``'s ``json_schema_extra["tier"]``. A field with no marker is
+The marker is read from a Pydantic ``FieldInfo``'s ``json_schema_extra["tier"]``. A field with no marker is
 ``internal``. ``effective_tier`` resolves a leaf's tier by inheritance: the leaf's
 own tier when declared, else the nearest ancestor container's tier, else the
 ``internal`` default — so a container marked ``tui`` lifts its unmarked leaves into
@@ -16,13 +15,11 @@ view without a marker on every one.
 
 from __future__ import annotations
 
-import dataclasses
 from enum import StrEnum
 
 from pydantic.fields import FieldInfo
 
 TIER_METADATA_KEY = "tier"
-SENSITIVE_METADATA_KEY = "sensitive"
 
 # A container field whose members are themselves structured carries this marker
 # with the reason its body is not walked. The schema walker refuses to skip such
@@ -39,12 +36,6 @@ class Tier(StrEnum):
     TUI = "tui"
 
 
-def dataclass_field_tier(field: dataclasses.Field[object]) -> Tier | None:
-    """Return the explicit tier declared on a dataclass field, or None."""
-    raw = field.metadata.get(TIER_METADATA_KEY) if field.metadata else None
-    return Tier(raw) if raw is not None else None
-
-
 def pydantic_field_tier(field_info: FieldInfo) -> Tier | None:
     """Return the explicit tier declared on a pydantic field, or None."""
     extra = field_info.json_schema_extra
@@ -55,9 +46,11 @@ def pydantic_field_tier(field_info: FieldInfo) -> Tier | None:
     return None
 
 
-def dataclass_field_is_sensitive(field: dataclasses.Field[object]) -> bool:
-    """Whether a dataclass field declares environment-backed secret handling."""
-    return bool(field.metadata.get(SENSITIVE_METADATA_KEY)) if field.metadata else False
+def pydantic_field_ungoverned_body(field_info: FieldInfo) -> str | None:
+    """Return the reason a field's structured body is deliberately operator-authored."""
+    extra = field_info.json_schema_extra
+    reason = extra.get(UNGOVERNED_BODY_METADATA_KEY) if isinstance(extra, dict) else None
+    return reason if isinstance(reason, str) else None
 
 
 def effective_tier(explicit: Tier | None, inherited: Tier) -> Tier:
