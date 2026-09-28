@@ -31,11 +31,17 @@ from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
-from teleclaude.core.events import RECEIVER_HANDLED_HOOK_EVENTS, AgentHookEvents, AgentHookEventType
+from teleclaude.core.events import (
+    AGENT_STATUS_REASON_FIELD,
+    RECEIVER_HANDLED_HOOK_EVENTS,
+    AgentHookEvents,
+    AgentHookEventType,
+)
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
 from teleclaude.core.models import JsonDict
 from teleclaude.core.organization import CompanyMembership, resolve_organization
+from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
 from teleclaude.hooks.adapters.contracts import (
@@ -231,10 +237,14 @@ class CheckpointEvidenceAddressSource(StrEnum):
 # Event types not in this map insert one row per emit. The codex-specific
 # 10 s window for agent_stop overrides the 1 s baseline below.
 _HOOK_COALESCE_WINDOWS_S: dict[str, float] = {
-    AgentHookEvents.PRE_TOOL_USE: 1.0,
     AgentHookEvents.AGENT_STOP: 1.0,
     AgentHookEvents.NATIVE_METADATA_UPDATE: 1.0,
 }
+_BLOCKED_REASON_BY_NORMALIZATION: dict[HookNormalizationReason, AgentStatusReason] = {
+    HookNormalizationReason.MAPPED_EVENT: AgentStatusReason.NEEDS_INPUT,
+    HookNormalizationReason.USAGE_LIMIT_WAIT: AgentStatusReason.QUOTA_WAIT,
+}
+_UNSUPPORTED_BLOCKED_NORMALIZATION_ERROR = "Blocked hook normalization requires a supported reason"
 
 
 @dataclass(frozen=True)
@@ -897,6 +907,20 @@ def _extract_native_hook_fields(data: JsonDict) -> tuple[str | None, str | None]
     return raw_native_session_id, raw_native_log_file
 
 
+def _attach_blocked_status_reason(
+    data: JsonDict,
+    event_type: AgentHookEventType,
+    normalization_reason: HookNormalizationReason,
+) -> None:
+    """Carry the adapter's blocked classification into the typed event payload."""
+    if event_type is not AgentHookEvents.AGENT_BLOCKED:
+        return
+    blocked_reason = _BLOCKED_REASON_BY_NORMALIZATION.get(normalization_reason)
+    if blocked_reason is None:
+        raise ValueError(_UNSUPPORTED_BLOCKED_NORMALIZATION_ERROR)
+    data[AGENT_STATUS_REASON_FIELD] = blocked_reason.value
+
+
 def _resolve_receiver_session_id(
     agent: str,
     event_type: str,
@@ -1440,7 +1464,7 @@ def main() -> None:
         return
 
     event_type = AgentHookEvents(event_type)
-
+    _attach_blocked_status_reason(data, event_type, normalization.reason)
     outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
     execution_kind = adapter.classify_execution_kind(data)
 

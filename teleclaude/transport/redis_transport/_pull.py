@@ -82,6 +82,21 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             items.append(item)
         return items
 
+    @staticmethod
+    def _parse_session_snapshots(data: list[JsonDict], computer: str) -> list[SessionSnapshot]:
+        """Decode tolerant peer snapshots and discard malformed exact-status claims."""
+        snapshots: list[SessionSnapshot] = []
+        for session_obj in data:
+            try:
+                snapshots.append(SessionSnapshot.from_dict(session_obj))
+            except ValueError as exc:
+                logger.warning(
+                    "Discarding malformed session snapshot",
+                    computer=computer,
+                    error=str(exc),
+                )
+        return snapshots
+
     async def _handle_error_status(
         self,
         computer: str,
@@ -149,13 +164,13 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
                     continue
 
                 # Populate cache with sessions
-                for session_obj in data:
-                    if isinstance(session_obj, dict):
-                        snapshot = SessionSnapshot.from_dict(session_obj)
-                        snapshot.computer = computer_name
-                        self.cache.update_session(snapshot)
+                session_data = [item for item in data if isinstance(item, dict)]
+                snapshots = self._parse_session_snapshots(session_data, computer_name)
+                for snapshot in snapshots:
+                    snapshot.computer = computer_name
+                    self.cache.update_session(snapshot)
 
-                logger.info("Pulled %d sessions from %s", len(data), computer_name)
+                logger.info("Pulled %d sessions from %s", len(snapshots), computer_name)
 
             except _PULL_EXCEPTIONS as e:
                 logger.warning("Failed to pull sessions from %s: %s", computer_name, e)
@@ -203,7 +218,7 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             if data is None:
                 return False
 
-            snapshots = [SessionSnapshot.from_dict(session_obj) for session_obj in data]
+            snapshots = self._parse_session_snapshots(data, computer)
             self.cache.apply_sessions_snapshot(computer, snapshots, from_cluster=True)
             logger.info("Pulled %d sessions from %s", len(snapshots), computer)
             return True

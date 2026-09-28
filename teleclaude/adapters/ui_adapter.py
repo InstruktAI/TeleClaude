@@ -541,8 +541,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         Dispatched by ``AdapterClient.dispatch_session_status`` after origin
         resolution — only the responsible adapter is invoked. The adapter owns
-        its own status-filter policy: typing fires on ``active`` / ``accepted`` /
-        ``active_output`` for non-headless sessions; badge fires only on
+        its own status-filter policy: typing fires on ``active`` / ``accepted``
+        for non-headless sessions; badge fires only on
         ``accepted``.
         """
         if not self._presence_eligible(session, status):
@@ -553,7 +553,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
     def _presence_eligible(self, session: Session, status: str) -> bool:
         """Gate shared by typing and badge: known status, non-headless session."""
-        if status not in ("active", "accepted", "active_output"):
+        if status not in ("active", "accepted"):
             return False
         if session.lifecycle_status == "headless":
             logger.debug(

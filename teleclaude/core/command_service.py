@@ -93,7 +93,8 @@ from teleclaude.core.events import SessionEscalatedPayload, VoiceFocusSetContext
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.protocols import AdminReflectionAdapter
-from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
+from teleclaude.core.session_links import close_link_for_member
+from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)

@@ -16,6 +16,7 @@ from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToTodo
 from teleclaude.cli.tui.session_attachability import is_headless_session
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
+    get_agent_attention_color,
     get_selection_fg_hex,
     resolve_color,
     resolve_preview_bg_hex,
@@ -28,6 +29,9 @@ from teleclaude.core.session_utils import session_display_title
 from teleclaude.slug import strip_slug_token
 
 _DETAIL_PREFIX_OVERHEAD = 17  # │ + [HH:MM:SS] + label (" in: " / "out: ")
+_SESSION_ATTENTION_DOT = "•"
+_SESSION_STATUS_COLUMN_EMPTY = " "
+_SESSION_STATUS_COLUMN_SEPARATOR = " "
 
 # Textual injects the content (column, row) of a click into the click's style
 # meta under this key; the row maps it to the title line's sub-regions.
@@ -158,13 +162,19 @@ class SessionRow(TelecMixin, Widget):
         return resolve_style(self.agent, self._tier("normal"))
 
     def _build_title_line(self, *, selected: bool = False, previewed: bool = False) -> Text:
-        """Build the header: `[N] ▶ agent/mode "Title"` matching old TUI format."""
+        """Build the header with its attention marker before `[N]`."""
         line = Text(no_wrap=True)
         indent = self._child_indent
         if indent:
             line.append(indent)
 
         style = self._get_row_style(selected=selected, previewed=previewed)
+        attention_color = get_agent_attention_color(self.session.agent_status)
+        if attention_color is not None:
+            line.append(_SESSION_ATTENTION_DOT, style=Style(color=attention_color, bold=True))
+        else:
+            line.append(_SESSION_STATUS_COLUMN_EMPTY, style=style)
+        line.append(_SESSION_STATUS_COLUMN_SEPARATOR, style=style)
 
         # Badge: sticky → reverse. Otherwise → tier-shifted normal.
         # Never inherits selection/preview background.

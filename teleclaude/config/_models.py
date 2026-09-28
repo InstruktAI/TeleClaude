@@ -131,7 +131,8 @@ class EventReliabilityConfig:
     dlq_destination: str
 
 
-STALL_THRESHOLD_SECONDS = 150
+AGENT_NO_START_TIMEOUT_S = 90
+AGENT_NO_SIGNAL_TIMEOUT_S = 300
 
 
 @dataclass

@@ -38,7 +38,7 @@ from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.injected_text import TranscriptEntryKind, is_peer_opening
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
-from teleclaude.core.session_listeners import (
+from teleclaude.core.session_links import (
     ConversationLink,
     ConversationLinkMember,
     get_active_links_for_session,

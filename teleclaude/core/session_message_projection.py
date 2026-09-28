@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import MessageDTO, SessionMessagesDTO
 from teleclaude.core import agents as agents_module
+from teleclaude.core.agent_status_projection import project_readiness_fields, read_session_agent_status
 from teleclaude.core.command_handlers import get_session_data
 from teleclaude.core.command_handlers._utils import SessionDataPayload
 from teleclaude.core.dates import parse_iso_datetime
@@ -19,9 +20,7 @@ from teleclaude.core.models import Session
 from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadItem, ReminderTransition
 from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
 from teleclaude.core.reminders.presentation import format_agent_reminder
-from teleclaude.core.session_lifecycle import readiness_projection
 from teleclaude.core.session_output import assistant_output_parts_are_bare_noop, is_bare_noop_output
-from teleclaude.core.session_status import compute_agent_status
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
@@ -291,21 +290,7 @@ async def build_session_messages_dto(
     last_agent_stop_at = session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None
     last_agent_idle_at = session.last_agent_idle_at.isoformat() if session.last_agent_idle_at else None
     now = datetime.now(UTC)
-    initializing_for_seconds, attention, procedure = readiness_projection(
-        lifecycle_status=session.lifecycle_status,
-        created_at=session.created_at,
-        active_agent=session.active_agent,
-        now=now,
-    )
-    agent_status = compute_agent_status(
-        lifecycle_status=session.lifecycle_status,
-        closed_at=session.closed_at,
-        runtime_activity_at=session.runtime_activity_at,
-        last_input_at=session.last_message_sent_at,
-        last_agent_stop_at=session.last_agent_stop_at,
-        last_agent_idle_at=session.last_agent_idle_at,
-        now=now,
-    )
+    initializing_for_seconds, attention, procedure = project_readiness_fields(session, now)
 
     return SessionMessagesDTO(
         session_id=session_id,
@@ -314,7 +299,10 @@ async def build_session_messages_dto(
         last_input_at=last_input_at,
         last_agent_stop_at=last_agent_stop_at,
         last_agent_idle_at=last_agent_idle_at,
-        agent_status=agent_status,
+        agent_status=read_session_agent_status(session),
+        agent_status_reason=session.agent_status_reason,
+        agent_status_since=session.agent_status_since.isoformat() if session.agent_status_since else None,
+        agent_status_exact=read_session_agent_status(session),
         runtime_start_observed=session.runtime_start_observed,
         runtime_activity_at=session.runtime_activity_at.isoformat() if session.runtime_activity_at else None,
         lifecycle_transitioned_at=(

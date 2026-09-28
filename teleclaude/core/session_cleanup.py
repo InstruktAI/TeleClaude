@@ -27,7 +27,8 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
-from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
+from teleclaude.core.session_links import cleanup_session_links
+from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 from teleclaude.events.envelope import EventVisibility

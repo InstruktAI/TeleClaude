@@ -13,6 +13,7 @@ from typing import Literal, Union, cast
 
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.dates import parse_iso_datetime
+from teleclaude.core.session_status import AgentStatusReason
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
@@ -86,6 +87,9 @@ _ATTENTION_NATIVE_EVENT_FIELD = "native_event_type"
 _ATTENTION_DETAILS_FIELD = "native_event_details"
 _ATTENTION_OBSERVED_AT_FIELD = "received_at"
 _ATTENTION_INGRESS_ID_FIELD = "receiver_ingress_id"
+AGENT_STATUS_REASON_FIELD = "agent_status_reason"
+TOOL_CALL_ID_FIELD = "tool_call_id"
+TOOL_BATCH_RESOLVED_FIELD = "tool_batch_resolved"
 RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_ERROR,
@@ -138,6 +142,8 @@ class AgentOutputPayload:
     transcript_path: str | None = None
     raw: Mapping[str, object] = field(default_factory=dict)
     source_computer: str | None = None
+    tool_call_id: str | None = None
+    tool_batch_resolved: bool = False
 
 
 @dataclass(frozen=True)
@@ -175,6 +181,7 @@ class AgentDistressPayload:
     transcript_path: str | None = None
     source_computer: str | None = None
     reason: str | None = None
+    blocked_reason: AgentStatusReason | None = None
     raw: Mapping[str, object] = field(default_factory=dict)
     observation: "AgentAttentionObservation | None" = None
 
@@ -260,11 +267,17 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
         AgentHookEvents.AGENT_BLOCKED,
         AgentHookEvents.AGENT_TURN_FAILED,
     }:
+        raw_blocked_reason = data.get(AGENT_STATUS_REASON_FIELD)
         return AgentDistressPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             source_computer=cast(str | None, data.get("source_computer")),
             reason=_distress_reason(data),
+            blocked_reason=(
+                AgentStatusReason(str(raw_blocked_reason))
+                if event_type is AgentHookEvents.AGENT_BLOCKED and raw_blocked_reason
+                else None
+            ),
             raw=frozen_raw,
             observation=_build_attention_observation(data),
         )
@@ -275,6 +288,8 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             transcript_path=cast(str | None, data.get("transcript_path")),
             source_computer=cast(str | None, data.get("source_computer")),
             raw=frozen_raw,
+            tool_call_id=cast(str | None, data.get(TOOL_CALL_ID_FIELD)),
+            tool_batch_resolved=data.get(TOOL_BATCH_RESOLVED_FIELD) is True,
         )
 
     raise ValueError(
@@ -538,9 +553,9 @@ class SessionUpdatedContext:
 class SessionStatusContext:
     """Context for canonical session lifecycle status transition events.
 
-    Canonical contract fields (ucap-truthful-session-status):
-      status: Canonical lifecycle status value (accepted, active,
-              active_output, completed, error, closed).
+    Canonical contract fields:
+      status: accepted, unknown, active, idle, blocked, stalled,
+              closed, error, escalated, or escalation_ended.
       reason: Reason code for the transition.
       last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
       message_intent: Routing intent (ctrl_status).

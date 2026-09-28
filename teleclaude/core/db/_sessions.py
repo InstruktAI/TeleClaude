@@ -4,7 +4,6 @@ import json
 import time
 import uuid
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
@@ -21,24 +20,21 @@ from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeE
 from ..models import OriginRevivalContext, Session, SessionField
 from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from ..session_status import SessionLifecycleStatus
+from ._agent_status import (
+    EMPTY_AGENT_STATUS_REASON,
+    TURN_NOTIFICATION_SEPARATOR,
+    AgentStatusPersistenceMixin,
+    TurnNotificationRecord,
+    serialize_agent_status_field,
+)
+from ._agent_status import (
+    TERMINAL_NOTIFICATION_RECORDS as _TERMINAL_NOTIFICATION_RECORDS,
+)
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
-
-
-class TurnNotificationRecord(StrEnum):
-    """Notification outcomes recorded for the current session turn."""
-
-    TERMINAL_TURN_END = "terminal_turn_end"
-    TERMINAL_TURN_FAILED = "terminal_turn_failed"
-    BLOCKED = "blocked"
-
-
-_TERMINAL_NOTIFICATION_RECORDS: frozenset[TurnNotificationRecord] = frozenset(
-    {TurnNotificationRecord.TERMINAL_TURN_END, TurnNotificationRecord.TERMINAL_TURN_FAILED}
-)
 
 
 class _LifecycleTransitionFields(TypedDict):
@@ -52,7 +48,7 @@ class _LifecycleTransitionFields(TypedDict):
     closed_at: NotRequired[datetime]
 
 
-class DbSessionsMixin:
+class DbSessionsMixin(AgentStatusPersistenceMixin):
     """Session persistence helpers and lifecycle state transitions."""
 
     async def create_session(
@@ -176,6 +172,12 @@ class DbSessionsMixin:
             lifecycle_status=session.lifecycle_status,
             runtime_start_observed=session.runtime_start_observed,
             runtime_activity_at=session.runtime_activity_at,
+            agent_status=session.agent_status.value,
+            agent_status_reason=(
+                session.agent_status_reason.value if session.agent_status_reason else EMPTY_AGENT_STATUS_REASON
+            ),
+            agent_status_since=session.agent_status_since,
+            open_tool_calls=json.dumps(sorted(session.open_tool_calls)),
             lifecycle_transitioned_at=session.created_at,
             lifecycle_transition_reason="created",
             active_agent=session.active_agent,
@@ -506,6 +508,7 @@ class DbSessionsMixin:
                         "created_at",
                         "last_activity",
                         "runtime_activity_at",
+                        SessionField.AGENT_STATUS_SINCE.value,
                         "lifecycle_transitioned_at",
                         "closed_at",
                         "last_message_sent_at",
@@ -526,6 +529,10 @@ class DbSessionsMixin:
                             parsed = self._coerce_datetime(value)
                             if parsed and current_val != parsed:
                                 updates[attr_name] = parsed
+                        continue
+                    handled, serialized_value = serialize_agent_status_field(attr_name, value)
+                    if handled:
+                        updates[attr_name] = serialized_value
                         continue
                     if current_val != value:
                         updates[attr_name] = value
@@ -955,3 +962,16 @@ class DbSessionsMixin:
     async def clear_turn_notifications(self, session_id: str) -> None:
         """Clear all notification outcomes when a new user turn begins."""
         await self.update_session(session_id, turn_notifications_sent="")
+
+    async def clear_inferred_stall_notification(self, session_id: str) -> None:
+        """Release only the inferred-stall slot when a new agent run begins."""
+        session = await self.get_session(session_id)
+        if session is None:
+            return
+        records = {
+            TurnNotificationRecord(value)
+            for value in session.turn_notifications_sent.split(TURN_NOTIFICATION_SEPARATOR)
+            if value
+        }
+        records.discard(TurnNotificationRecord.INFERRED_STALL)
+        await self.update_session(session_id, turn_notifications_sent=TURN_NOTIFICATION_SEPARATOR.join(sorted(records)))

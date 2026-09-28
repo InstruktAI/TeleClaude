@@ -28,7 +28,7 @@ from teleclaude.core.inbound_errors import DirectLinkExclusivityError, Unidentif
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import (
+from teleclaude.core.session_links import (
     create_or_reuse_direct_link,
     get_peer_members,
     resolve_link_for_sender_target,

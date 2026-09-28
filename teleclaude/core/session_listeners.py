@@ -10,34 +10,30 @@ Only one listener per caller-target pair is allowed (deduped by caller, not by t
 Storage is SQLite-backed so listeners survive daemon restarts.
 """
 
-import asyncio
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Literal
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config._models import AGENT_NO_SIGNAL_TIMEOUT_S, AGENT_NO_START_TIMEOUT_S
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.db_models import ConversationLinkMode
 from teleclaude.core.events import AgentAttentionObservation
-from teleclaude.core.inbound_errors import DirectLinkExclusivityError, SessionMessageRejectedError
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
-from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.session_status import AgentStatusReason, is_session_terminal
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
-_ENDPOINT_LOCKS: dict[str, asyncio.Lock] = {}
-_ENDPOINT_LOCKS_GUARD = asyncio.Lock()
 
 # Actor name stamped on daemon-injected runner notifications.
 NOTIFY_ACTOR_NAME = "system"
@@ -64,12 +60,31 @@ _PARENT_FAILED_NOTIFICATION_TEMPLATE = (
     "Assess its current state and recover within your mandate. "
     "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
 )
+_PARENT_INFERRED_STALL_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} stalled. Evidence: {evidence}. "
+    "Assess its current state and recover within your mandate. "
+    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
+)
+_INFERRED_STALL_HUMAN_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} stalled: {evidence}. "
+    "Use telec sessions tail {target_session_id}{computer_selector} to inspect."
+)
 _ATTENTION_EVIDENCE_PROVIDER_KEY = "provider"
 _ATTENTION_EVIDENCE_NATIVE_EVENT_KEY = "native_event"
 _ATTENTION_EVIDENCE_DETAILS_KEY = "details"
 _ATTENTION_EVIDENCE_OBSERVED_AT_KEY = "observed_at"
 _ATTENTION_EVIDENCE_INGRESS_ID_KEY = "ingress_id"
 _ATTENTION_EVIDENCE_UNAVAILABLE = "unavailable"
+INFERRED_STALL_EVIDENCE_METADATA_KEY: Final[Literal["inferred_stall_evidence"]] = "inferred_stall_evidence"
+INFERRED_STALL_REASON_FIELD = "reason"
+INFERRED_STALL_PANE_TAIL_FIELD = "pane_tail"
+_INFERRED_STALL_NO_SIGNAL_TEMPLATE = "gave no agent activity for {timeout}"
+_INFERRED_STALL_NO_START_TEMPLATE = "did not start within {timeout}\nPane last lines:\n{pane_tail}"
+_INFERRED_STALL_REASON_REQUIRED_ERROR = "Inferred stall evidence requires a watchdog reason"
+_INFERRED_STALL_TIMEOUTS: dict[AgentStatusReason, str] = {
+    AgentStatusReason.NO_SIGNAL: f"{AGENT_NO_SIGNAL_TIMEOUT_S // 60}m",
+    AgentStatusReason.NO_START: f"{AGENT_NO_START_TIMEOUT_S}s",
+}
 _NOTIFY_LISTENERS_LOG = "Notify listeners: target=%s callers=%s kind=%s"
 
 
@@ -100,106 +115,39 @@ class NotificationKind(StrEnum):
     TURN_FAILED = "turn_failed"
 
 
+@dataclass(frozen=True)
+class InferredStallEvidence:
+    """Daemon-observed liveness evidence replacing a native attention payload."""
+
+    reason: AgentStatusReason
+    timeout: str
+    pane_tail: str | None = None
+
+
+def build_inferred_stall_evidence(
+    reason: AgentStatusReason,
+    pane_tail: str | None = None,
+) -> InferredStallEvidence:
+    """Build local evidence with the timeout contract for an inferred stall."""
+    timeout = _INFERRED_STALL_TIMEOUTS.get(reason)
+    if timeout is None:
+        raise ValueError(_INFERRED_STALL_REASON_REQUIRED_ERROR)
+    return InferredStallEvidence(reason=reason, timeout=timeout, pane_tail=pane_tail)
+
+
+def _inferred_stall_summary(evidence: InferredStallEvidence) -> str:
+    """Render the configured timeout and optional startup pane evidence."""
+    if evidence.reason is AgentStatusReason.NO_SIGNAL:
+        return _INFERRED_STALL_NO_SIGNAL_TEMPLATE.format(timeout=evidence.timeout)
+    pane_tail = evidence.pane_tail or _ATTENTION_EVIDENCE_UNAVAILABLE
+    return _INFERRED_STALL_NO_START_TEMPLATE.format(timeout=evidence.timeout, pane_tail=pane_tail)
+
+
 class StopNotificationVariant(StrEnum):
     """Caller-facing stop notice variants."""
 
     INSPECT = "inspect"
     NOOP = "noop"
-
-
-@dataclass
-class ConversationLink:
-    """Conversation link metadata."""
-
-    link_id: str
-    mode: ConversationLinkMode
-    status: str
-    created_by_session_id: str
-    created_at: datetime
-    updated_at: datetime
-    closed_at: datetime | None
-    metadata: dict[str, object] | None  # guard: loose-dict - persisted link metadata JSON.
-
-
-@dataclass
-class ConversationLinkMember:
-    """Conversation link member metadata."""
-
-    link_id: str
-    session_id: str
-    participant_name: str | None
-    participant_number: int | None
-    participant_role: str | None
-    computer_name: str | None
-    joined_at: datetime
-
-
-async def _get_endpoint_lock(session_id: str) -> asyncio.Lock:
-    """Return the shared lock guarding one session's direct-link membership."""
-    async with _ENDPOINT_LOCKS_GUARD:
-        lock = _ENDPOINT_LOCKS.get(session_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _ENDPOINT_LOCKS[session_id] = lock
-        return lock
-
-
-@asynccontextmanager
-async def _direct_link_endpoints_locked(session_a: str, session_b: str) -> AsyncIterator[None]:
-    """Hold both endpoints' locks so exclusivity is decided atomically with creation.
-
-    Exclusivity is an endpoint-level invariant: two requests naming different
-    pairs can still collide on a shared endpoint. Locking the pair cannot
-    serialize them, so both endpoints are locked, in sorted order so two
-    overlapping requests can never deadlock against each other.
-    """
-    first, second = sorted((session_a, session_b))
-    first_lock = await _get_endpoint_lock(first)
-    second_lock = await _get_endpoint_lock(second) if second != first else None
-    async with first_lock:
-        if second_lock is None:
-            yield
-            return
-        async with second_lock:
-            yield
-
-
-def _to_conversation_link(row: object) -> ConversationLink:
-    metadata: dict[str, object] | None = None  # guard: loose-dict - metadata JSON from DB.
-    raw_metadata = getattr(row, "metadata_json", None)
-    if isinstance(raw_metadata, str) and raw_metadata:
-        try:
-            parsed = json.loads(raw_metadata)
-            if isinstance(parsed, dict):
-                metadata = parsed
-        except json.JSONDecodeError:
-            metadata = None
-
-    closed_at_raw = getattr(row, "closed_at", None)
-    closed_at = datetime.fromisoformat(closed_at_raw) if isinstance(closed_at_raw, str) and closed_at_raw else None
-
-    return ConversationLink(
-        link_id=str(getattr(row, "link_id", "")),
-        mode=ConversationLinkMode(str(getattr(row, "mode", ""))),
-        status=str(getattr(row, "status", "")),
-        created_by_session_id=str(getattr(row, "created_by_session_id", "")),
-        created_at=datetime.fromisoformat(str(getattr(row, "created_at", ""))),
-        updated_at=datetime.fromisoformat(str(getattr(row, "updated_at", ""))),
-        closed_at=closed_at,
-        metadata=metadata,
-    )
-
-
-def _to_conversation_link_member(row: object) -> ConversationLinkMember:
-    return ConversationLinkMember(
-        link_id=str(getattr(row, "link_id", "")),
-        session_id=str(getattr(row, "session_id", "")),
-        participant_name=getattr(row, "participant_name", None),
-        participant_number=getattr(row, "participant_number", None),
-        participant_role=getattr(row, "participant_role", None),
-        computer_name=getattr(row, "computer_name", None),
-        joined_at=datetime.fromisoformat(str(getattr(row, "joined_at", ""))),
-    )
 
 
 async def register_listener(
@@ -515,20 +463,30 @@ def _stop_notification_message(
 
 
 def _distress_notification_message(
-    target_session_id: str, computer: str, title: str | None, notification_kind: NotificationKind
+    target_session_id: str,
+    computer: str,
+    title: str | None,
+    notification_kind: NotificationKind,
+    inferred_stall_evidence: InferredStallEvidence | None = None,
 ) -> str:
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
-    template = (
-        _BLOCKED_NOTIFICATION_TEMPLATE
-        if notification_kind is NotificationKind.BLOCKED
-        else _FAILED_NOTIFICATION_TEMPLATE
-    )
+    if inferred_stall_evidence is not None:
+        template = _INFERRED_STALL_HUMAN_NOTIFICATION_TEMPLATE
+        evidence = _inferred_stall_summary(inferred_stall_evidence)
+    else:
+        template = (
+            _BLOCKED_NOTIFICATION_TEMPLATE
+            if notification_kind is NotificationKind.BLOCKED
+            else _FAILED_NOTIFICATION_TEMPLATE
+        )
+        evidence = _ATTENTION_EVIDENCE_UNAVAILABLE
     return template.format(
         location_part=locality.location_part,
         title_part=title_part,
         target_session_id=target_session_id,
         computer_selector=locality.computer_selector,
+        evidence=evidence,
     )
 
 
@@ -556,21 +514,27 @@ def _parent_attention_message(
     title: str | None,
     notification_kind: NotificationKind,
     observation: AgentAttentionObservation | None,
+    inferred_stall_evidence: InferredStallEvidence | None = None,
 ) -> str:
     """Format parent-only guidance around labelled native evidence."""
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
-    template = (
-        _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
-        if notification_kind is NotificationKind.BLOCKED
-        else _PARENT_FAILED_NOTIFICATION_TEMPLATE
-    )
+    if inferred_stall_evidence is not None:
+        template = _PARENT_INFERRED_STALL_NOTIFICATION_TEMPLATE
+        evidence = _inferred_stall_summary(inferred_stall_evidence)
+    else:
+        template = (
+            _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
+            if notification_kind is NotificationKind.BLOCKED
+            else _PARENT_FAILED_NOTIFICATION_TEMPLATE
+        )
+        evidence = _attention_evidence(observation)
     return template.format(
         location_part=locality.location_part,
         title_part=title_part,
         target_session_id=target_session_id,
         computer_selector=locality.computer_selector,
-        evidence=_attention_evidence(observation),
+        evidence=evidence,
     )
 
 
@@ -604,10 +568,18 @@ async def notify_distress(
     title: str | None = None,
     *,
     observation: AgentAttentionObservation | None = None,
+    inferred_stall_evidence: InferredStallEvidence | None = None,
     occurrence_key: str | None = None,
 ) -> set[str]:
     """Notify persistent listeners of one native attention occurrence."""
-    message = _parent_attention_message(target_session_id, computer, title, notification_kind, observation)
+    message = _parent_attention_message(
+        target_session_id,
+        computer,
+        title,
+        notification_kind,
+        observation,
+        inferred_stall_evidence,
+    )
     reached = await _notify_listeners(
         target_session_id,
         message,
@@ -623,12 +595,19 @@ async def notify_distress_human_fallback(
     notification_kind: NotificationKind,
     client: "AdapterClient",
     title: str | None,
+    inferred_stall_evidence: InferredStallEvidence | None = None,
 ) -> bool:
     """Deliver unwatched distress only to the target session's own adapter."""
     target = await db.get_session(target_session_id)
     if target is None:
         return False
-    message = _distress_notification_message(target_session_id, computer, title, notification_kind)
+    message = _distress_notification_message(
+        target_session_id,
+        computer,
+        title,
+        notification_kind,
+        inferred_stall_evidence,
+    )
     return (
         await client.send_message(
             target,
@@ -692,12 +671,20 @@ async def deliver_remote_distress_notification(
     title: str | None = None,
     occurrence_key: str | None = None,
     observation: AgentAttentionObservation | None = None,
+    inferred_stall_evidence: InferredStallEvidence | None = None,
 ) -> bool:
     """Deliver a forwarded distress notification directly to the remote caller."""
     caller = await db.get_session(caller_session_id)
     if caller is None:
         return False
-    message = _parent_attention_message(target_session_id, computer, title, notification_kind, observation)
+    message = _parent_attention_message(
+        target_session_id,
+        computer,
+        title,
+        notification_kind,
+        observation,
+        inferred_stall_evidence,
+    )
     try:
         await handoff_control_payload(
             session_id=caller_session_id,
@@ -748,246 +735,3 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
         return False
     logger.info("runner approval notify delivered", session_id=target_session_id, slug=slug)
     return True
-
-
-async def create_link(
-    *,
-    mode: ConversationLinkMode,
-    created_by_session_id: str,
-    metadata: dict[str, object] | None = None,  # guard: loose-dict - persisted metadata payload.
-) -> ConversationLink:
-    """Create a conversation link."""
-    metadata_json = json.dumps(metadata) if metadata is not None else None
-    row = await db.create_conversation_link(
-        mode=mode,
-        created_by_session_id=created_by_session_id,
-        metadata_json=metadata_json,
-    )
-    return _to_conversation_link(row)
-
-
-async def add_link_member(
-    *,
-    link_id: str,
-    session_id: str,
-    participant_name: str | None = None,
-    participant_number: int | None = None,
-    participant_role: str | None = None,
-    computer_name: str | None = None,
-) -> None:
-    """Create or update a link member."""
-    await db.upsert_conversation_link_member(
-        link_id=link_id,
-        session_id=session_id,
-        participant_name=participant_name,
-        participant_number=participant_number,
-        participant_role=participant_role,
-        computer_name=computer_name,
-    )
-
-
-async def get_link_members(link_id: str) -> list[ConversationLinkMember]:
-    """List members for a link."""
-    rows = await db.list_conversation_link_members(link_id)
-    return [_to_conversation_link_member(row) for row in rows]
-
-
-async def get_link(link_id: str) -> ConversationLink | None:
-    """Get link by ID."""
-    row = await db.get_conversation_link(link_id)
-    if row is None:
-        return None
-    return _to_conversation_link(row)
-
-
-async def get_active_links_for_session(session_id: str) -> list[ConversationLink]:
-    """Get active links containing the provided member session."""
-    try:
-        rows = await db.get_active_links_for_session(session_id)
-    except RuntimeError:
-        logger.debug("Link lookup skipped (db not initialized) for session %s", session_id)
-        return []
-    return [_to_conversation_link(row) for row in rows]
-
-
-async def active_direct_peer(
-    session_id: str,
-    *,
-    allowed_peer_session_id: str | None = None,
-) -> ConversationLinkMember | None:
-    """Return the peer holding this session in a direct conversation, if any.
-
-    Direct conversation is exclusive to two sessions, so an endpoint already
-    talking to someone cannot enter a second link. ``allowed_peer_session_id``
-    exempts the pair the caller is asking about, leaving re-ignition of an
-    existing conversation to its own reuse path.
-    """
-    for link in await get_active_links_for_session(session_id):
-        if link.mode != ConversationLinkMode.DIRECT:
-            continue
-        members = await get_link_members(link.link_id)
-        peers = [member for member in members if member.session_id != session_id]
-        if allowed_peer_session_id is not None and any(peer.session_id == allowed_peer_session_id for peer in peers):
-            continue
-        if peers:
-            return peers[0]
-    return None
-
-
-async def create_or_reuse_direct_link(
-    *,
-    caller_session_id: str,
-    target_session_id: str,
-    caller_name: str | None = None,
-    target_name: str | None = None,
-    caller_computer: str | None = None,
-    target_computer: str | None = None,
-) -> tuple[ConversationLink, bool]:
-    """Create or reuse an active two-member direct link.
-
-    Raises ``DirectLinkExclusivityError`` when either endpoint is already in a
-    direct conversation with someone else. The check runs under the endpoints'
-    own locks, so it cannot be overtaken by a competing request naming a
-    different pair that shares one of them.
-    """
-    async with _direct_link_endpoints_locked(caller_session_id, target_session_id):
-        existing_links = await db.get_active_links_between_sessions(
-            caller_session_id,
-            target_session_id,
-            mode=ConversationLinkMode.DIRECT,
-        )
-        if not existing_links:
-            for endpoint_id, other_id in (
-                (caller_session_id, target_session_id),
-                (target_session_id, caller_session_id),
-            ):
-                blocking_peer = await active_direct_peer(endpoint_id, allowed_peer_session_id=other_id)
-                if blocking_peer is not None:
-                    raise DirectLinkExclusivityError(
-                        endpoint_session_id=endpoint_id,
-                        peer_session_id=blocking_peer.session_id,
-                        peer_name=blocking_peer.participant_name,
-                        link_id=blocking_peer.link_id,
-                    )
-        if existing_links:
-            existing = existing_links[0]
-            for duplicate in existing_links[1:]:
-                await db.sever_conversation_link(duplicate.link_id)
-
-            await add_link_member(
-                link_id=existing.link_id,
-                session_id=caller_session_id,
-                participant_name=caller_name,
-                participant_number=1,
-                participant_role="peer",
-                computer_name=caller_computer,
-            )
-            await add_link_member(
-                link_id=existing.link_id,
-                session_id=target_session_id,
-                participant_name=target_name,
-                participant_number=2,
-                participant_role="peer",
-                computer_name=target_computer,
-            )
-            return (_to_conversation_link(existing), False)
-
-        link = await create_link(mode=ConversationLinkMode.DIRECT, created_by_session_id=caller_session_id)
-        await add_link_member(
-            link_id=link.link_id,
-            session_id=caller_session_id,
-            participant_name=caller_name,
-            participant_number=1,
-            participant_role="peer",
-            computer_name=caller_computer,
-        )
-        await add_link_member(
-            link_id=link.link_id,
-            session_id=target_session_id,
-            participant_name=target_name,
-            participant_number=2,
-            participant_role="peer",
-            computer_name=target_computer,
-        )
-        # Anchor the per-link delivery cursors at link creation time so that
-        # `_deliver_for_peer` can scan transcripts since this floor without
-        # ever pulling pre-link content into the first bundle. The cursor is
-        # the single source of truth for "what's already been delivered to
-        # this peer."
-        now_iso = datetime.now(UTC).isoformat()
-        await db.upsert_conversation_delivery_state(
-            link_id=link.link_id,
-            source_session_id=caller_session_id,
-            target_session_id=target_session_id,
-            delivered_through_ts=now_iso,
-        )
-        await db.upsert_conversation_delivery_state(
-            link_id=link.link_id,
-            source_session_id=target_session_id,
-            target_session_id=caller_session_id,
-            delivered_through_ts=now_iso,
-        )
-        refreshed = await db.get_conversation_link(link.link_id)
-        if refreshed is None:
-            return (link, True)
-        return (_to_conversation_link(refreshed), True)
-
-
-async def resolve_link_for_sender_target(
-    *,
-    sender_session_id: str,
-    target_session_id: str,
-) -> tuple[ConversationLink, list[ConversationLinkMember]] | None:
-    """Find active link containing sender and target."""
-    links = await get_active_links_for_session(sender_session_id)
-    for link in links:
-        members = await get_link_members(link.link_id)
-        if any(member.session_id == target_session_id for member in members):
-            return (link, members)
-    return None
-
-
-async def get_peer_members(
-    *,
-    link_id: str,
-    sender_session_id: str,
-) -> list[ConversationLinkMember]:
-    """Get all active members except sender."""
-    members = await get_link_members(link_id)
-    return [member for member in members if member.session_id != sender_session_id]
-
-
-async def close_link(link_id: str) -> bool:
-    """Sever a shared link for all members."""
-    return await db.sever_conversation_link(link_id)
-
-
-async def close_link_for_member(
-    *,
-    caller_session_id: str,
-    target_session_id: str | None = None,
-) -> str | None:
-    """Close a link if caller is a member (optionally scoped by target member)."""
-    if target_session_id:
-        links = await db.get_active_links_between_sessions(caller_session_id, target_session_id)
-        if not links:
-            return None
-        for link in links:
-            await db.sever_conversation_link(link.link_id)
-        return links[0].link_id
-
-    links = await db.get_active_links_for_session(caller_session_id)
-    if not links:
-        return None
-    link = links[0]
-    await db.sever_conversation_link(link.link_id)
-    return link.link_id
-
-
-async def cleanup_session_links(session_id: str) -> int:
-    """Sever all active links involving this session."""
-    try:
-        return await db.cleanup_conversation_links_for_session(session_id)
-    except RuntimeError:
-        logger.debug("Link cleanup skipped (db not initialized) for session %s", session_id)
-        return 0

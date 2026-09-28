@@ -37,6 +37,8 @@ _REASON_FIELD = "reason"
 _BLOCK_DECISION = "block"
 _CONTEXT_SEPARATOR = "\n\n"
 _UNSUPPORTED_DELIVERY_EVENT = "Codex event does not support control delivery"
+_TOOL_USE_ID_FIELD = "tool_use_id"
+_TOOL_CALL_ID_FIELD = "tool_call_id"
 
 
 class CodexHookEvent(StrEnum):
@@ -91,11 +93,15 @@ class CodexAdapter(HookAdapter):
 
     def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Normalize Codex payload aliases to the TeleClaude hook shape."""
-        return normalize_common_payload(
+        normalized = normalize_common_payload(
             data,
             prompt_keys=("prompt", "user_prompt"),
             message_keys=("message", "last_assistant_message"),
         )
+        tool_call_id = normalized.get(_TOOL_USE_ID_FIELD)
+        if isinstance(tool_call_id, str) and tool_call_id:
+            normalized[_TOOL_CALL_ID_FIELD] = tool_call_id
+        return normalized
 
     def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
         """Render context without using fields unavailable on Codex Stop."""

@@ -30,6 +30,8 @@ from teleclaude.hooks.adapters.contracts import (
 )
 
 _INVOCATION_NUM_FIELD = "invocationNum"
+_STEP_IDX_FIELD = "stepIdx"
+_TOOL_CALL_ID_FIELD = "tool_call_id"
 _FULLY_IDLE_FIELD = "fullyIdle"
 _ERROR_FIELD = "error"
 _DECISION_FIELD = "decision"
@@ -38,6 +40,7 @@ _INJECT_STEPS_FIELD = "injectSteps"
 _EPHEMERAL_MESSAGE_FIELD = "ephemeralMessage"
 _PRE_INVOCATION_EVENT = "PreInvocation"
 _PRE_TOOL_USE_EVENT = "PreToolUse"
+_POST_TOOL_USE_EVENT = "PostToolUse"
 _STOP_EVENT = "Stop"
 _INVALID_INVOCATION_NUM = "Antigravity PreInvocation requires a non-negative integer invocationNum"
 _INVALID_FULLY_IDLE = "Antigravity Stop requires a boolean fullyIdle"
@@ -51,6 +54,7 @@ class AgyHookEvent(StrEnum):
 
     PRE_INVOCATION = "PreInvocation"
     PRE_TOOL_USE = "PreToolUse"
+    POST_TOOL_USE = "PostToolUse"
     POST_INVOCATION = "PostInvocation"
     STOP = "Stop"
 
@@ -107,6 +111,10 @@ class AgyAdapter(HookAdapter):
                 AgentHookEvents.PRE_TOOL_USE,
                 frozenset(),
             ),
+            AgyHookEvent.POST_TOOL_USE: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset(),
+            ),
             AgyHookEvent.POST_INVOCATION: NativeHookSpec(
                 AgentHookEvents.POST_TOOL_USE,
                 frozenset({HookPurpose.CONTROL_DELIVERY}),
@@ -150,6 +158,9 @@ class AgyAdapter(HookAdapter):
                 normalized["tool_name"] = tool_name
             if isinstance(tool_input, dict):
                 normalized["tool_input"] = tool_input
+        step_idx = normalized.get(_STEP_IDX_FIELD)
+        if isinstance(step_idx, int) and not isinstance(step_idx, bool):
+            normalized[_TOOL_CALL_ID_FIELD] = str(step_idx)
         return normalize_common_payload(normalized)
 
     def classify_execution_kind(self, data: JsonDict) -> str | None:
@@ -210,6 +221,6 @@ class AgyAdapter(HookAdapter):
         """Serialize Antigravity's native success response for each installed hook."""
         if raw_event_type == _PRE_INVOCATION_EVENT:
             return json.dumps({})
-        if raw_event_type in {_PRE_TOOL_USE_EVENT, _STOP_EVENT}:
+        if raw_event_type in {_PRE_TOOL_USE_EVENT, _POST_TOOL_USE_EVENT, _STOP_EVENT}:
             return json.dumps({_DECISION_FIELD: AgyDecision.ALLOW})
         return None

@@ -26,6 +26,7 @@ from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
 from ..models import Session
 from ..models._types import JsonDict, to_json_dict
+from ..session_status import AgentStatusReason, AgentStatusValue
 from .connection_factory import create_async_db_engine, get_outbox_db_path
 
 if TYPE_CHECKING:
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 DB_NOT_INITIALIZED_ERROR = "Database not initialized - call initialize() first"
+EMPTY_OPEN_TOOL_CALLS_JSON = "[]"
+INVALID_OPEN_TOOL_CALLS_ERROR = "Invalid open_tool_calls for session %s"
 
 _USER_TABLE_COUNT_SQL = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
 
@@ -143,6 +146,12 @@ class DbBase:
             except json.JSONDecodeError:
                 pass
 
+        raw_open_tool_calls = json.loads(row.open_tool_calls or EMPTY_OPEN_TOOL_CALLS_JSON)
+        if not isinstance(raw_open_tool_calls, list) or not all(
+            isinstance(call_id, str) for call_id in raw_open_tool_calls
+        ):
+            raise ValueError(INVALID_OPEN_TOOL_CALLS_ERROR % row.session_id)
+
         return Session(
             session_id=row.session_id,
             computer_name=row.computer_name,
@@ -157,6 +166,10 @@ class DbBase:
             last_activity=DbBase._coerce_datetime(row.last_activity),
             runtime_start_observed=bool(getattr(row, "runtime_start_observed", False)),
             runtime_activity_at=DbBase._coerce_datetime(getattr(row, "runtime_activity_at", None)),
+            agent_status=AgentStatusValue(row.agent_status),
+            agent_status_reason=AgentStatusReason(row.agent_status_reason) if row.agent_status_reason else None,
+            agent_status_since=DbBase._coerce_datetime(row.agent_status_since),
+            open_tool_calls=set(raw_open_tool_calls),
             lifecycle_transitioned_at=DbBase._coerce_datetime(getattr(row, "lifecycle_transitioned_at", None)),
             lifecycle_transition_reason=getattr(row, "lifecycle_transition_reason", None),
             closed_at=DbBase._coerce_datetime(row.closed_at),

@@ -160,7 +160,7 @@ async def resolve_pending_review_state(
         SlashCommand.REVIEW_BUILD.value,
     )
 
-    if reviewer_id is not None and reviewer_status in ("active", "unknown"):
+    if reviewer_id is not None and reviewer_status in ("active", "unknown", "blocked"):
         return await _resolve_live_review(
             context,
             state,

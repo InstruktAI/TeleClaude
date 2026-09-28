@@ -90,6 +90,11 @@ from teleclaude.core.agent_coordinator import AgentCoordinator
 _record_import_timing("teleclaude.core.agent_coordinator", _t)
 
 _t = time.perf_counter()
+from teleclaude.services.agent_status_watchdog import run_agent_status_watchdog
+
+_record_import_timing("teleclaude.services.agent_status_watchdog", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.cache import DaemonCache
 
 _record_import_timing("teleclaude.core.cache", _t)
@@ -429,6 +434,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
+        self.agent_status_watchdog_task: asyncio.Task[object] | None = None
         self._event_db: EventDB | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
@@ -868,6 +874,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
+            self.agent_status_watchdog_task = asyncio.create_task(
+                run_agent_status_watchdog(self.shutdown_event, self.agent_coordinator),
+                name="agent-status-watchdog",
+            )
+            self.agent_status_watchdog_task.add_done_callback(
+                self._log_background_task_exception("agent_status_watchdog")
+            )
+            logger.info("Agent status watchdog started")
+
             mirror_worker = MirrorWorker()
             self.mirror_worker_task = asyncio.create_task(mirror_worker.run(), name="mirror-worker")
             self._track_background_task(self.mirror_worker_task, "mirror-worker")
@@ -947,6 +962,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("cleanup_task", "Periodic cleanup task stopped"),
             ("poller_watch_task", "Poller watch task stopped"),
             ("hook_outbox_task", "Hook outbox worker stopped"),
+            ("agent_status_watchdog_task", "Agent status watchdog stopped"),
             ("mirror_worker_task", "Mirror worker stopped"),
         ):
             await self._cancel_task_attr(attr_name, log_message)

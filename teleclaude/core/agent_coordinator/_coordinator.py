@@ -12,15 +12,21 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
+from teleclaude.core.agent_status import (
+    AgentStatusTransition,
+    apply_agent_event,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import schedule_debounced_delivery
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentActivityEvent,
     AgentDistressPayload,
     AgentEventContext,
+    AgentEventPayload,
     AgentHookEvents,
     AgentHookEventType,
     AgentIdlePayload,
@@ -45,7 +51,7 @@ from teleclaude.core.session_lifecycle import (
 )
 from teleclaude.core.session_listeners import NotificationKind, StopNotificationVariant
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
-from teleclaude.core.session_status import SessionLifecycleStatus
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.status_contract import serialize_status_event
@@ -75,10 +81,9 @@ _HOOK_MESSAGE_KEY = "message"
 _AGENT_SESSION_START_OBSERVED_EVENT = "agent_session_start_observed"
 _AGENT_SESSION_START_OBSERVED_OUTCOME = "accepted"
 _AGENT_SESSION_START_NORMALIZED_HOOK_REASON = "normalized_hook"
-_AGENT_SESSION_LIFECYCLE_TRANSITION_EVENT = "agent_session_lifecycle_transition"
-_AGENT_SESSION_LIFECYCLE_TRANSITION_OUTCOME = "active"
-_AGENT_SESSION_LIFECYCLE_TRANSITION_REASON = "agent_session_started"
-_AGENT_SESSION_LIFECYCLE_STATUS = "active"
+_RECEIVED_AT_FIELD = "received_at"
+_ACCEPTED_STATUS = "accepted"
+_USER_PROMPT_ACCEPTED_REASON = "user_prompt_accepted"
 _AGENT_IDLE_OBSERVED_EVENT = "agent_idle_observed"
 _AGENT_IDLE_OBSERVED_OUTCOME = "recorded"
 _AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON = "manual_native_command"
@@ -102,8 +107,6 @@ class AgentCoordinator(
         self.tts_manager = tts_manager
         self.reminder_service = reminder_service
         self._background_tasks: set[asyncio.Task[object]] = set()
-        # Track last emitted lifecycle status per session for guard checks.
-        self._last_emitted_status: dict[str, str] = {}
 
     def _queue_background_task(
         self,
@@ -264,49 +267,48 @@ class AgentCoordinator(
             )
         raise ValueError(f"Unsupported activity event_type: {event_type}")
 
-    def _emit_status_event(
+    async def _apply_agent_status(
         self,
-        session_id: str,
-        status: str,
-        reason: str,
+        context: AgentEventContext,
+        payload: AgentEventPayload,
         *,
-        last_activity_at: str | None = None,
-    ) -> bool:
-        """Emit a canonical lifecycle status transition event.
+        tool_call_id: str | None = None,
+        tool_batch_resolved: bool = False,
+        blocked_reason: AgentStatusReason | None = None,
+    ) -> AgentStatusTransition | None:
+        """Apply one normalized event using the receiver's observation time."""
+        received_at = parse_iso_datetime(payload.raw.get(_RECEIVED_AT_FIELD)) or datetime.now(UTC)
+        return await apply_agent_event(
+            db,
+            context.session_id,
+            context.event_type,
+            received_at=received_at,
+            tool_call_id=tool_call_id,
+            tool_batch_resolved=tool_batch_resolved,
+            blocked_reason=blocked_reason,
+        )
 
-        Routes through status_contract.serialize_status_event() for validation.
-        Failures are logged but never crash the event flow (parallel to _emit_activity_event).
-
-        Args:
-            session_id: Session identifier.
-            status: Target lifecycle status (must be a valid LifecycleStatus value).
-            reason: Reason code for this transition.
-            last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
-        """
-        # Idempotency suppresses redundant status emissions and their cache and
-        # WebSocket broadcasts.
-        if self._last_emitted_status.get(session_id) == status:
-            return False
+    def _emit_accepted_status_event(self, session_id: str) -> bool:
+        """Emit the independent accepted signal for terminal-origin input."""
         try:
             timestamp = datetime.now(UTC).isoformat()
             canonical = serialize_status_event(
                 session_id=session_id,
-                status=status,
-                reason=reason,
+                status=_ACCEPTED_STATUS,
+                reason=_USER_PROMPT_ACCEPTED_REASON,
                 timestamp=timestamp,
-                last_activity_at=last_activity_at,
+                last_activity_at=timestamp,
             )
             if canonical is None:
                 return False
-            self._last_emitted_status[session_id] = status
             event_bus.emit(
                 TeleClaudeEvents.SESSION_STATUS,
                 SessionStatusContext(
                     session_id=session_id,
-                    status=status,
-                    reason=reason,
+                    status=_ACCEPTED_STATUS,
+                    reason=_USER_PROMPT_ACCEPTED_REASON,
                     timestamp=timestamp,
-                    last_activity_at=last_activity_at,
+                    last_activity_at=timestamp,
                     message_intent=canonical.message_intent,
                     delivery_scope=canonical.delivery_scope,
                 ),
@@ -315,8 +317,8 @@ class AgentCoordinator(
             logger.debug(
                 "status transition: session=%s %s (reason=%s)",
                 session_id,
-                status,
-                reason,
+                _ACCEPTED_STATUS,
+                _USER_PROMPT_ACCEPTED_REASON,
             )
             return True
         except Exception as exc:
@@ -324,7 +326,7 @@ class AgentCoordinator(
                 "Failed to emit status event: %s",
                 exc,
                 exc_info=True,
-                extra={"session_id": session_id, "status": status},
+                extra={"session_id": session_id, "status": _ACCEPTED_STATUS},
             )
             return False
 
@@ -348,7 +350,7 @@ class AgentCoordinator(
             await self.handle_agent_distress(context, NotificationKind.BLOCKED)
         elif context.event_type == AgentHookEvents.AGENT_TURN_FAILED:
             await self.handle_agent_distress(context, NotificationKind.TURN_FAILED)
-        elif context.event_type == AgentHookEvents.PRE_TOOL_USE:
+        elif context.event_type in {AgentHookEvents.PRE_TOOL_USE, AgentHookEvents.POST_TOOL_USE}:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
@@ -362,6 +364,7 @@ class AgentCoordinator(
             last_agent_idle_at=idle_at.isoformat(),
             last_activity=idle_at.isoformat(),
         )
+        await self._apply_agent_status(context, payload)
         logger.info(
             _AGENT_IDLE_OBSERVED_EVENT,
             session_id=context.session_id,
@@ -379,6 +382,11 @@ class AgentCoordinator(
         control payload once no later input has arrived.
         """
         payload = cast(AgentDistressPayload, context.data)
+        transition = await self._apply_agent_status(
+            context,
+            payload,
+            blocked_reason=payload.blocked_reason,
+        )
         if notification_kind is NotificationKind.TURN_FAILED:
             idle_at = datetime.now(UTC)
             await db.update_session(
@@ -392,6 +400,8 @@ class AgentCoordinator(
                 outcome=_AGENT_TURN_FAILED_OBSERVED_OUTCOME,
                 reason=_AGENT_TURN_FAILED_BOUNDARY_REASON,
             )
+        if transition is None or transition.entered not in {AgentStatusValue.BLOCKED, AgentStatusValue.STALLED}:
+            return
         await self._notify_session_distress(
             context.session_id,
             notification_kind,
@@ -431,9 +441,9 @@ class AgentCoordinator(
                     SessionLifecycleStatus.ACTIVE,
                     LifecycleTransitionReason.RUNTIME_SESSION_START,
                     runtime_start_observed=True,
-                    runtime_activity_at=datetime.now(UTC),
                 ),
             )
+        await self._apply_agent_status(context, payload)
 
         voice = await db.get_voice(context.session_id)
         if voice:
@@ -457,21 +467,6 @@ class AgentCoordinator(
             SessionLifecycleContext(session_id=context.session_id),
             visibility=EventVisibility.LOCAL,
         )
-
-        # Headless state flows through session data, not status events.
-        if not session or session.lifecycle_status != "headless":
-            transition_emitted = self._emit_status_event(
-                context.session_id,
-                _AGENT_SESSION_LIFECYCLE_STATUS,
-                _AGENT_SESSION_LIFECYCLE_TRANSITION_REASON,
-            )
-            if transition_emitted:
-                logger.info(
-                    _AGENT_SESSION_LIFECYCLE_TRANSITION_EVENT,
-                    session_id=context.session_id,
-                    outcome=_AGENT_SESSION_LIFECYCLE_TRANSITION_OUTCOME,
-                    reason=_AGENT_SESSION_LIFECYCLE_TRANSITION_REASON,
-                )
 
         # Speak only on the first normalized session_start for this session.
         # TTS is scheduled (debounced, cancelable) so it never blocks the
@@ -522,6 +517,7 @@ class AgentCoordinator(
             prompt_text = await self._backfill_prompt_from_transcript(session) or ""
         if not prompt_text.strip():
             # Transcript not flushed yet; let the projection cadence reflect it.
+            await self._apply_agent_status(context, payload)
             logger.debug("No prompt text available yet for session %s; deferring to projection", session_id)
             if session.lifecycle_status == "headless":
                 await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
@@ -531,6 +527,7 @@ class AgentCoordinator(
 
         # System-injected checkpoint — not real user input, skip entirely
         if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
+            await self._apply_agent_status(context, payload)
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id)
             return
 
@@ -573,9 +570,6 @@ class AgentCoordinator(
 
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
-        current = await db.get_session(session_id)
-        if current and current.runtime_start_observed:
-            await db.update_session(session_id, runtime_activity_at=datetime.now(UTC))
         await db.update_last_activity(session_id)
         if session.lifecycle_status == "headless":
             await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
@@ -591,8 +585,8 @@ class AgentCoordinator(
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         if session.lifecycle_status != "headless" and terminal_origin_recorded:
-            now_ts = datetime.now(UTC).isoformat()
-            self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
+            self._emit_accepted_status_event(session_id)
+        await self._apply_agent_status(context, payload)
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped.
@@ -636,6 +630,7 @@ class AgentCoordinator(
             owed_lanes=owed_lanes,
             known_ui_lanes=self.client.canonical_ui_lanes(),
         )
+        await self._apply_agent_status(context, payload)
         if self.reminder_service is not None:
             await self.reminder_service.handle_agent_event(
                 ReminderEvent(
@@ -648,9 +643,6 @@ class AgentCoordinator(
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=None)
-
-        # Emit canonical lifecycle status: completed (R2)
-        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=stop_timestamp)
 
         # Immediate projection pull on stop — final output must be captured.
         await self._signal_projection_activity(
@@ -853,35 +845,38 @@ class AgentCoordinator(
             await self._forward_stop_to_initiator(session_id, notification_variant)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
-        """Handle pre_tool_use event — agent started a tool call.
+        """Handle normalized tool-call start or completion events.
 
         Only records the FIRST pre_tool_use per turn (when last_tool_use_at is NULL).
         Cleared by handle_user_prompt_submit when a new turn begins.
         """
         session_id = context.session_id
         payload = cast(AgentOutputPayload, context.data)
+        await self._apply_agent_status(
+            context,
+            payload,
+            tool_call_id=payload.tool_call_id,
+            tool_batch_resolved=payload.tool_batch_resolved,
+        )
 
         tool_name = extract_tool_name(payload.raw)
         tool_preview = build_tool_preview(tool_name=tool_name, raw_payload=payload.raw)
 
-        # Always emit activity event for UI updates (every tool call)
-        self._emit_activity_event(
-            session_id,
-            AgentHookEvents.PRE_TOOL_USE,
-            tool_name,
-            tool_preview=tool_preview,
-        )
+        if context.event_type is AgentHookEvents.PRE_TOOL_USE:
+            # Tool starts remain UI activity; completions only fold into stored status.
+            self._emit_activity_event(
+                session_id,
+                AgentHookEvents.PRE_TOOL_USE,
+                tool_name,
+                tool_preview=tool_preview,
+            )
 
-        # Output evidence observed → active_output
-        now_ts = datetime.now(UTC).isoformat()
-        self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
-
-        # DB write is deduped: only record the FIRST pre_tool_use per turn for checkpoint timing
-        session = await db.get_session(session_id)
-        if session and not session.last_tool_use_at:
-            now = datetime.now(UTC)
-            await db.update_session(session_id, last_tool_use_at=now.isoformat())
-            logger.debug("pre_tool_use recorded for session %s", session_id)
+            # DB write is deduped: only record the FIRST pre_tool_use per turn for checkpoint timing.
+            session = await db.get_session(session_id)
+            if session and not session.last_tool_use_at:
+                now = datetime.now(UTC)
+                await db.update_session(session_id, last_tool_use_at=now.isoformat())
+                logger.debug("pre_tool_use recorded for session %s", session_id)
 
         # Tool hooks are liveness signals; projection remains transcript-driven.
         await self._signal_projection_activity(session_id)

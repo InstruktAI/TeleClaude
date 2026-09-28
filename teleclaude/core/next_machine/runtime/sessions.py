@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR, SlashCommand
+from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
-from teleclaude.core.session_status import compute_agent_status
+from teleclaude.core.session_status import AgentStatusValue
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
@@ -78,19 +78,8 @@ async def find_live_session_with_status_for_slug(
             continue
         if session.working_slug != slug or not _matches_command(session.command, command_values):
             continue
-        return (
-            session.session_id,
-            compute_agent_status(
-                lifecycle_status=session.lifecycle_status,
-                closed_at=session.closed_at,
-                runtime_activity_at=session.runtime_activity_at,
-                last_input_at=session.last_message_sent_at,
-                last_agent_stop_at=session.last_agent_stop_at,
-                last_agent_idle_at=session.last_agent_idle_at,
-                now=datetime.now(UTC),
-            ),
-        )
-    return None, "unknown"
+        return session.session_id, read_session_agent_status(session).value
+    return None, AgentStatusValue.UNKNOWN.value
 
 
 async def find_all_live_sessions_for_slug(

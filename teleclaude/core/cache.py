@@ -504,7 +504,7 @@ class DaemonCache:
         self._notify(event, session)
         if not from_cluster:
             channel = "cluster.session.created" if is_new else "cluster.session.updated"
-            self._publish_cluster(channel, session.to_dict())
+            self._publish_cluster(channel, session.to_peer_dict())
 
     def remove_session(self, session_id: str, *, from_cluster: bool = False) -> None:
         """Remove session from cache.

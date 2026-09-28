@@ -95,6 +95,7 @@ from teleclaude.core.session_startup_message import (
     resolve_command_document,
     resolve_slash_command,
 )
+from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.project_manifest import load_registered_entries
@@ -112,6 +113,9 @@ if TYPE_CHECKING:
 from teleclaude.types.commands import SystemCommand
 
 logger = get_logger(__name__)
+_AGENT_STATUS_FIELD = "agent_status"
+_AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
+_REMOTE_AGENT_STATUS_INVALID_DETAIL = "Remote session returned an invalid agent status"
 
 WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.BUILD,
@@ -700,6 +704,24 @@ async def get_session_messages(
                 target_computer=target_computer,
                 command=REMOTE_SESSION_MESSAGES_COMMAND,
             )
+            if not isinstance(data, dict):
+                raise HTTPException(status_code=502, detail=_REMOTE_AGENT_STATUS_INVALID_DETAIL)
+            exact_present = _AGENT_STATUS_EXACT_FIELD in data
+            raw_status = data.get(_AGENT_STATUS_EXACT_FIELD if exact_present else _AGENT_STATUS_FIELD)
+            try:
+                status_input = raw_status if exact_present else (raw_status or AgentStatusValue.UNKNOWN)
+                remote_status = AgentStatusValue(str(status_input))
+            except ValueError as exc:
+                logger.warning(
+                    "Rejected remote session status",
+                    session_id=session_id,
+                    target_computer=target_computer,
+                    exact_present=exact_present,
+                )
+                raise HTTPException(status_code=502, detail=_REMOTE_AGENT_STATUS_INVALID_DETAIL) from exc
+            data[_AGENT_STATUS_FIELD] = remote_status.value
+            if exact_present:
+                data[_AGENT_STATUS_EXACT_FIELD] = remote_status.value
             return SessionMessagesDTO.model_validate(data)
 
         return await build_session_messages_dto(

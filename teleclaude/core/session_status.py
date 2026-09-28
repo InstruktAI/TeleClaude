@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from teleclaude.config._models import STALL_THRESHOLD_SECONDS
-
 
 class SessionLifecycleStatus(StrEnum):
     """Closed vocabulary for a session's lifecycle status field.
@@ -35,8 +33,19 @@ class AgentStatusValue(StrEnum):
 
     ACTIVE = "active"
     IDLE = "idle"
+    BLOCKED = "blocked"
     STALLED = "stalled"
     UNKNOWN = "unknown"
+
+
+class AgentStatusReason(StrEnum):
+    """Structured reasons for a non-idle agent status."""
+
+    NEEDS_INPUT = "needs_input"
+    QUOTA_WAIT = "quota_wait"
+    TURN_FAILED = "turn_failed"
+    NO_SIGNAL = "no_signal"
+    NO_START = "no_start"
 
 
 def is_session_open(*, closed_at: datetime | None) -> bool:
@@ -77,41 +86,3 @@ def is_agent_turn_running(
         boundary for boundary in (last_agent_stop_at, last_agent_idle_at) if isinstance(boundary, datetime)
     ]
     return not idle_boundaries or last_input_at > max(idle_boundaries)
-
-
-def compute_agent_status(
-    *,
-    lifecycle_status: str | None,
-    closed_at: datetime | None,
-    runtime_activity_at: datetime | None,
-    last_input_at: datetime | None,
-    last_agent_stop_at: datetime | None,
-    last_agent_idle_at: datetime | None,
-    now: datetime,
-) -> AgentStatusValue:
-    """Derive session activity status from lifecycle and observed timestamps.
-
-    Terminal lifecycle markers are authoritative over activity timestamps.
-    An agent stop, a failed turn, or a completed native command is
-    authoritative: once any fires, the agent is idle unless new input
-    arrived after that boundary. Poller flushes that bump last_activity
-    after the stop are not signal.
-    """
-    if is_session_terminal(lifecycle_status=lifecycle_status, closed_at=closed_at):
-        return AgentStatusValue.IDLE
-    if lifecycle_status == SessionLifecycleStatus.INITIALIZING:
-        return AgentStatusValue.UNKNOWN
-    if not isinstance(runtime_activity_at, datetime):
-        return AgentStatusValue.UNKNOWN
-    has_idle_boundary = isinstance(last_agent_stop_at, datetime) or isinstance(last_agent_idle_at, datetime)
-    if not is_agent_turn_running(
-        last_input_at=last_input_at,
-        last_agent_stop_at=last_agent_stop_at,
-        last_agent_idle_at=last_agent_idle_at,
-    ):
-        if has_idle_boundary:
-            return AgentStatusValue.IDLE
-        return AgentStatusValue.ACTIVE
-    if (now - runtime_activity_at).total_seconds() > STALL_THRESHOLD_SECONDS:
-        return AgentStatusValue.STALLED
-    return AgentStatusValue.ACTIVE

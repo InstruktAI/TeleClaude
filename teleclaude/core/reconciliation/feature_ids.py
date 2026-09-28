@@ -13,6 +13,7 @@ INTERACTIVE_COMMAND_INPUT_FEATURE_ID = "project/spec/feature/agent_runtime/inter
 HANDOFF_AGENT_FEATURE_ID = "project/spec/feature/agent_runtime/agent-handoff"
 SESSION_OBSERVED_STOP_FEATURE_ID = "project/spec/feature/integration/discord-personal-voice-conversation"
 DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID = "project/spec/feature/integration/discord-admin-reflection-state"
+STORED_AGENT_STATUS_FEATURE_ID = "project/spec/feature/agent_runtime/session-lifecycle"
 
 
 class FeatureMark(StrEnum):
@@ -120,6 +121,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         FeatureID(
             identifier=DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID,
             mark=FeatureMark.MUST_NEGOTIATE,
+        ),
+        FeatureID(
+            identifier=STORED_AGENT_STATUS_FEATURE_ID,
+            mark=FeatureMark.IGNORABLE,
         ),
     )
 )

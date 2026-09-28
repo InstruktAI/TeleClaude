@@ -28,6 +28,7 @@ from teleclaude.cli.tui.color_utils import (
     relative_luminance,
 )
 from teleclaude.config import config
+from teleclaude.core.session_status import AgentStatusValue
 
 # Re-export color utilities that consumers import from theme
 __all_reexports__ = [blend, deepen_for_light_mode, letter_color_floor]
@@ -174,6 +175,8 @@ STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
         "input_border": "#444444",
         "banner": "#585858",
         "status_fg": "#727578",
+        "agent_status_blocked": "#ff9d00",
+        "agent_status_stalled": "#ff4d4d",
     },
     "light": {
         "connector": "#808080",
@@ -181,7 +184,14 @@ STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
         "input_border": "#c0c0c0",
         "banner": "#a0a0a0",
         "status_fg": "#727578",
+        "agent_status_blocked": "#a94f00",
+        "agent_status_stalled": "#b42318",
     },
+}
+
+_AGENT_ATTENTION_COLOR_KEYS: dict[AgentStatusValue, str] = {
+    AgentStatusValue.BLOCKED: "agent_status_blocked",
+    AgentStatusValue.STALLED: "agent_status_stalled",
 }
 
 NEUTRAL_PALETTE: dict[str, dict[str, str]] = {
@@ -249,6 +259,14 @@ def get_peaceful_color(tier: str = "normal") -> str:
 def get_structural_color(key: str) -> str:
     """Hex color from structural palette for the current mode."""
     return STRUCTURAL_PALETTE[_mode_key()][key]
+
+
+def get_agent_attention_color(status: AgentStatusValue | None) -> str | None:
+    """Return the mode-aware dot color for a blocked or stalled session."""
+    if status is None:
+        return None
+    color_key = _AGENT_ATTENTION_COLOR_KEYS.get(status)
+    return get_structural_color(color_key) if color_key is not None else None
 
 
 def get_connector_color() -> str:

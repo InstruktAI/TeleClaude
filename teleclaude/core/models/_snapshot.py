@@ -6,9 +6,13 @@ from datetime import UTC, datetime
 from typing import cast
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.core.agent_status_projection import (
+    project_peer_agent_status,
+    project_readiness_fields,
+    read_session_agent_status,
+)
 from teleclaude.core.feedback import get_last_output_summary
-from teleclaude.core.session_lifecycle import readiness_projection
-from teleclaude.core.session_status import compute_agent_status
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import (
@@ -24,6 +28,21 @@ from ._session import Session
 from ._types import JsonDict, json_int, to_json_dict
 
 _INITIALIZING_FOR_SECONDS_FIELD = "initializing_for_seconds"
+
+_AGENT_STATUS_FIELD = "agent_status"
+_AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
+_AGENT_STATUS_REASON_FIELD = "agent_status_reason"
+_AGENT_STATUS_SINCE_FIELD = "agent_status_since"
+
+
+def _parse_peer_agent_status(data: Mapping[str, object]) -> tuple[AgentStatusValue, AgentStatusReason | None]:
+    """Read exact peer status when present; otherwise use the legacy field."""
+    status_key = _AGENT_STATUS_EXACT_FIELD if _AGENT_STATUS_EXACT_FIELD in data else _AGENT_STATUS_FIELD
+    status_raw = data.get(status_key, AgentStatusValue.UNKNOWN)
+    status = AgentStatusValue(str(status_raw))
+    reason_raw = data.get(_AGENT_STATUS_REASON_FIELD)
+    reason = AgentStatusReason(str(reason_raw)) if reason_raw else None
+    return status, reason
 
 
 @dataclass
@@ -102,6 +121,8 @@ class SessionSnapshot(
     system_role: str | None = None
     job: str | None = None
     agent_status: str | None = None
+    agent_status_reason: str | None = None
+    agent_status_since: str | None = None
     next_reminder_slug: str | None = None
     next_reminder_at: str | None = None
     conversation_url: str | None = None
@@ -149,7 +170,9 @@ class SessionSnapshot(
             "visibility": self.visibility,
             "system_role": self.system_role,
             "job": self.job,
-            "agent_status": self.agent_status,
+            _AGENT_STATUS_FIELD: self.agent_status,
+            _AGENT_STATUS_REASON_FIELD: self.agent_status_reason,
+            _AGENT_STATUS_SINCE_FIELD: self.agent_status_since,
             "next_reminder_slug": self.next_reminder_slug,
             "next_reminder_at": self.next_reminder_at,
             "conversation_url": self.conversation_url,
@@ -163,25 +186,19 @@ class SessionSnapshot(
             "last_output_stop_at": self.last_output_stop_at,
         }
 
+    def to_peer_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
+        """Serialize the compatible peer status plus this node's exact status."""
+        data = self.to_dict()
+        exact_status = AgentStatusValue(self.agent_status or AgentStatusValue.UNKNOWN)
+        data[_AGENT_STATUS_FIELD] = project_peer_agent_status(exact_status).value
+        data[_AGENT_STATUS_EXACT_FIELD] = exact_status.value
+        return data
+
     @classmethod
     def from_db_session(cls, session: "Session", computer: str | None = None) -> "SessionSnapshot":
         """Create from database Session object."""
         now = datetime.now(UTC)
-        initializing_for_seconds, attention, procedure = readiness_projection(
-            lifecycle_status=session.lifecycle_status,
-            created_at=session.created_at,
-            active_agent=session.active_agent,
-            now=now,
-        )
-        agent_status = compute_agent_status(
-            lifecycle_status=session.lifecycle_status,
-            closed_at=session.closed_at,
-            runtime_activity_at=session.runtime_activity_at,
-            last_input_at=session.last_message_sent_at,
-            last_agent_stop_at=session.last_agent_stop_at,
-            last_agent_idle_at=session.last_agent_idle_at,
-            now=now,
-        )
+        initializing_for_seconds, attention, procedure = project_readiness_fields(session, now)
         from teleclaude.core.db import (  # noqa: PLC0415 - core.db imports core.models, so resolve only after model initialization
             SessionIdentityError,
             resolve_session_principal,
@@ -228,7 +245,9 @@ class SessionSnapshot(
             visibility=getattr(session, "visibility", None) or "private",
             system_role=session.system_role,
             job=session.job,
-            agent_status=agent_status,
+            agent_status=read_session_agent_status(session).value,
+            agent_status_reason=session.agent_status_reason.value if session.agent_status_reason else None,
+            agent_status_since=session.agent_status_since.isoformat() if session.agent_status_since else None,
             next_reminder_slug=None,
             next_reminder_at=None,
             conversation_url=None,
@@ -247,6 +266,7 @@ class SessionSnapshot(
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> "SessionSnapshot":  # guard: loose-dict
         """Create from dict."""
+        agent_status, agent_status_reason = _parse_peer_agent_status(data)
         return cls(
             session_id=str(data["session_id"]),
             last_input_origin=str(data.get("last_input_origin")) if data.get("last_input_origin") else None,
@@ -289,7 +309,11 @@ class SessionSnapshot(
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
             system_role=str(data.get("system_role")) if data.get("system_role") else None,
             job=str(data.get("job")) if data.get("job") else None,
-            agent_status=str(data.get("agent_status")) if data.get("agent_status") else None,
+            agent_status=agent_status.value,
+            agent_status_reason=agent_status_reason.value if agent_status_reason else None,
+            agent_status_since=(
+                str(data.get(_AGENT_STATUS_SINCE_FIELD)) if data.get(_AGENT_STATUS_SINCE_FIELD) else None
+            ),
             next_reminder_slug=(str(data.get("next_reminder_slug")) if data.get("next_reminder_slug") else None),
             next_reminder_at=str(data.get("next_reminder_at")) if data.get("next_reminder_at") else None,
             conversation_url=str(data.get("conversation_url")) if data.get("conversation_url") else None,

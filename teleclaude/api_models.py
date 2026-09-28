@@ -9,7 +9,7 @@ from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.schema import MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
-from teleclaude.core.session_status import AgentStatusValue
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TodoDumpKind
 
@@ -191,6 +191,8 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     system_role: str | None = None
     job: str | None = None
     agent_status: AgentStatusValue | None = None
+    agent_status_reason: AgentStatusReason | None = None
+    agent_status_since: str | None = None
     next_reminder_slug: str | None = None
     next_reminder_at: str | None = None
     conversation_url: str | None = None
@@ -233,6 +235,8 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
                 "system_role": session.system_role,
                 "job": session.job,
                 "agent_status": session.agent_status,
+                "agent_status_reason": session.agent_status_reason,
+                "agent_status_since": session.agent_status_since,
                 "next_reminder_slug": session.next_reminder_slug,
                 "next_reminder_at": session.next_reminder_at,
             }
@@ -656,9 +660,9 @@ class ChiptunesCommandReceiptDTO(BaseModel):
 class SessionLifecycleStatusEventDTO(BaseModel):
     """WebSocket event for canonical session lifecycle status transitions.
 
-    Canonical contract fields (ucap-truthful-session-status):
-      status: Lifecycle status vocabulary value (accepted, active,
-              active_output, completed, error, closed).
+    Canonical contract fields:
+      status: accepted, unknown, active, idle, blocked, stalled,
+              closed, error, escalated, or escalation_ended.
       reason: Reason code for the transition.
       last_activity_at: ISO 8601 UTC timestamp of last observed activity (optional).
       message_intent: Routing intent (ctrl_status).
@@ -788,6 +792,9 @@ class SessionMessagesDTO(SessionReadinessDTOFields):
     last_agent_stop_at: str | None = None
     last_agent_idle_at: str | None = None
     agent_status: AgentStatusValue | None = None
+    agent_status_reason: AgentStatusReason | None = None
+    agent_status_since: str | None = None
+    agent_status_exact: AgentStatusValue | None = None
     messages: list[MessageDTO] = Field(default_factory=list)
 
 

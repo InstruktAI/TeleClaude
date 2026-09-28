@@ -92,6 +92,8 @@ class SessionOriginMetadata(TypedDict):
     discord: NotRequired[dict[str, object] | None]  # guard: loose-dict
     whatsapp: NotRequired[dict[str, object] | None]  # guard: loose-dict
     redis: NotRequired[dict[str, object] | None]  # guard: loose-dict
+    attention_observation: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote distress evidence
+    inferred_stall_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote watchdog evidence
 
 
 class _DataclassInstance(Protocol):

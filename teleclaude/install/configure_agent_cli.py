@@ -19,6 +19,7 @@ from typing import Any
 
 from teleclaude.constants import CODEX_HOOK_STOP_TIMEOUT_SEC, MAIN_MODULE
 from teleclaude.hooks.adapters import get_adapter
+from teleclaude.hooks.adapters.agy import AgyHookEvent
 from teleclaude.install.codex_hooks_install import (
     all_positions_per_label,
     first_positions_per_label,
@@ -674,7 +675,7 @@ def configure_agy(repo_root: Path) -> None:
 
     teleclaude_hooks: dict[str, object] = {}
     for event_name in declared_events:
-        if event_name == "PreToolUse":
+        if event_name in {AgyHookEvent.PRE_TOOL_USE.value, AgyHookEvent.POST_TOOL_USE.value}:
             teleclaude_hooks[event_name] = [{MATCHER_KEY: MATCHER_ALL, HOOKS_KEY: [command_handler(event_name)]}]
         else:
             teleclaude_hooks[event_name] = [command_handler(event_name)]

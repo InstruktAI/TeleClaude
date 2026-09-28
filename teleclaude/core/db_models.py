@@ -55,6 +55,10 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     lifecycle_status: str | None = "initializing"
     runtime_start_observed: bool | None = False
     runtime_activity_at: datetime | None = None
+    agent_status: str = "unknown"
+    agent_status_reason: str = ""
+    agent_status_since: datetime | None = None
+    open_tool_calls: str = "[]"
     lifecycle_transitioned_at: datetime | None = None
     lifecycle_transition_reason: str | None = None
     human_email: str | None = None

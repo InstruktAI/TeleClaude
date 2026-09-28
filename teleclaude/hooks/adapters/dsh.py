@@ -46,6 +46,10 @@ _DECISION_FIELD = "decision"
 _REASON_FIELD = "reason"
 _BLOCK_DECISION = "block"
 _UNSUPPORTED_DELIVERY_EVENT = "DeepSeek event does not support control delivery"
+_HOOK_EVENT_NAME_FIELD = "hook_event_name"
+_TOOL_USE_ID_FIELD = "tool_use_id"
+_TOOL_CALL_ID_FIELD = "tool_call_id"
+_TOOL_BATCH_RESOLVED_FIELD = "tool_batch_resolved"
 
 
 class DshHookEvent(StrEnum):
@@ -55,6 +59,8 @@ class DshHookEvent(StrEnum):
     USER_PROMPT_SUBMIT = "UserPromptSubmit"
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
+    POST_TOOL_USE_FAILURE = "PostToolUseFailure"
+    POST_TOOL_BATCH = "PostToolBatch"
     STOP = "Stop"
     STOP_FAILURE = "StopFailure"
 
@@ -84,6 +90,14 @@ class DshAdapter(HookAdapter):
                 frozenset({HookPurpose.CONTROL_DELIVERY}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
+            DshHookEvent.POST_TOOL_USE_FAILURE: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset(),
+            ),
+            DshHookEvent.POST_TOOL_BATCH: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset(),
+            ),
             DshHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
                 frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
@@ -99,15 +113,23 @@ class DshAdapter(HookAdapter):
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read the CC-shaped JSON payload from stdin; event name from args or payload."""
-        return parse_stdin_hook_input(args)
+        raw_input, raw_event_type, data = parse_stdin_hook_input(args)
+        data.setdefault(_HOOK_EVENT_NAME_FIELD, raw_event_type)
+        return raw_input, raw_event_type, data
 
     def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Normalize CC aliases (last_assistant_message) to TeleClaude names."""
-        return normalize_common_payload(
+        normalized = normalize_common_payload(
             data,
             prompt_keys=("prompt", "user_prompt"),
             message_keys=("message", "last_assistant_message"),
         )
+        tool_call_id = normalized.get(_TOOL_USE_ID_FIELD)
+        if isinstance(tool_call_id, str) and tool_call_id:
+            normalized[_TOOL_CALL_ID_FIELD] = tool_call_id
+        if normalized.get(_HOOK_EVENT_NAME_FIELD) == DshHookEvent.POST_TOOL_BATCH:
+            normalized[_TOOL_BATCH_RESOLVED_FIELD] = True
+        return normalized
 
     def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
         """Render the documented Claude-compatible DeepSeek stdout subset."""

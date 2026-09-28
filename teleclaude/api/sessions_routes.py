@@ -91,12 +91,14 @@ from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import (
+from teleclaude.core.session_links import (
     active_direct_peer,
     close_link_for_member,
     create_or_reuse_direct_link,
-    register_listener,
     resolve_link_for_sender_target,
+)
+from teleclaude.core.session_listeners import (
+    register_listener,
 )
 from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal

@@ -5,13 +5,9 @@ and shared serializer/validator utilities. All lifecycle status transition
 producers must route through this module before fan-out to ensure schema
 consistency.
 
-Canonical lifecycle status values (outbound vocabulary):
-  - accepted        — user prompt accepted, agent response imminent
-  - active          — agent session started, confirmed alive and working
-  - active_output   — agent is actively producing output
-  - completed       — agent turn finished successfully
-  - error           — agent encountered an error
-  - closed          — session closed
+Canonical session status values (outbound vocabulary):
+  - accepted, unknown, active, idle, blocked, stalled
+  - closed, error, escalated, escalation_ended
 
 Required outbound fields (R2):
   session_id, status, reason, timestamp, last_activity_at (when known)
@@ -32,9 +28,11 @@ logger = get_logger(__name__)
 
 LifecycleStatus = Literal[
     "accepted",
+    "unknown",
     "active",
-    "active_output",
-    "completed",
+    "idle",
+    "blocked",
+    "stalled",
     "error",
     "closed",
     "escalated",
@@ -45,9 +43,11 @@ LifecycleStatus = Literal[
 LIFECYCLE_STATUSES: frozenset[str] = frozenset(
     {
         "accepted",
+        "unknown",
         "active",
-        "active_output",
-        "completed",
+        "idle",
+        "blocked",
+        "stalled",
         "error",
         "closed",
         "escalated",
@@ -69,11 +69,19 @@ STATUS_DELIVERY_SCOPE: Literal["CTRL"] = "CTRL"
 StatusReason = Literal[
     "user_prompt_accepted",
     "agent_session_started",
-    "output_observed",
-    "output_resumed",
     "agent_turn_complete",
     "agent_error",
     "session_closed",
+    "unknown",
+    "active",
+    "idle",
+    "blocked",
+    "stalled",
+    "needs_input",
+    "quota_wait",
+    "turn_failed",
+    "no_signal",
+    "no_start",
 ]
 
 # ---------------------------------------------------------------------------

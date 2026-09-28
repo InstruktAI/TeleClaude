@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from teleclaude.api.auth import CallerIdentity, caller_from_carried_identity
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core import command_handlers
+from teleclaude.core.agent_status_projection import project_peer_agent_status
 from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
@@ -34,8 +35,13 @@ from teleclaude.core.models._types import json_int
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.session_listeners import (
+    INFERRED_STALL_EVIDENCE_METADATA_KEY,
+    INFERRED_STALL_PANE_TAIL_FIELD,
+    INFERRED_STALL_REASON_FIELD,
+    InferredStallEvidence,
     NotificationKind,
     StopNotificationVariant,
+    build_inferred_stall_evidence,
     deliver_remote_distress_notification,
     deliver_remote_stop_notification,
 )
@@ -44,6 +50,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.core.session_pane import get_session_pane
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.history.service import (
     HistoryRelayCommand,
@@ -62,6 +69,9 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+_AGENT_STATUS_FIELD = "agent_status"
+_AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
 
 _DB_EXCEPTIONS = (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError)
 _MESSAGE_EXCEPTIONS = (
@@ -146,6 +156,28 @@ def _attention_observation_from_metadata(metadata: JsonDict | None) -> AgentAtte
         observed_at=parse_iso_datetime(raw_observation.get(_ATTENTION_OBSERVED_AT_KEY)),
         ingress_id=_optional_string(raw_observation.get(_ATTENTION_INGRESS_ID_KEY)),
     )
+
+
+def _inferred_stall_evidence_from_metadata(metadata: JsonDict | None) -> InferredStallEvidence | None:
+    """Decode additive daemon-side stall evidence, ignoring older unknown shapes."""
+    if metadata is None:
+        return None
+    raw_evidence = metadata.get(INFERRED_STALL_EVIDENCE_METADATA_KEY)
+    if not isinstance(raw_evidence, dict):
+        return None
+    raw_reason = raw_evidence.get(INFERRED_STALL_REASON_FIELD)
+    try:
+        reason = AgentStatusReason(str(raw_reason))
+    except ValueError:
+        logger.warning("Ignoring malformed inferred stall reason", reason=raw_reason)
+        return None
+    raw_pane_tail = raw_evidence.get(INFERRED_STALL_PANE_TAIL_FIELD)
+    pane_tail = raw_pane_tail if isinstance(raw_pane_tail, str) else None
+    try:
+        return build_inferred_stall_evidence(reason, pane_tail)
+    except ValueError:
+        logger.warning("Ignoring unsupported inferred stall reason", reason=reason)
+        return None
 
 
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
@@ -346,7 +378,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         await self.send_response(message_id, response_json)
                         return
                 elif cmd_name == "list_sessions":
-                    payload = [s.to_dict() for s in await command_handlers.list_sessions()]
+                    payload = [s.to_peer_dict() for s in await command_handlers.list_sessions()]
                 elif cmd_name == "list_projects":
                     payload = [project.to_dict() for project in await command_handlers.list_projects()]
                 elif cmd_name == "get_session_messages":
@@ -358,6 +390,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         options=options,
                     )
                     payload = dto.model_dump(mode="json")
+                    exact_status = dto.agent_status or AgentStatusValue.UNKNOWN
+                    payload[_AGENT_STATUS_FIELD] = project_peer_agent_status(exact_status).value
+                    payload[_AGENT_STATUS_EXACT_FIELD] = exact_status.value
                 elif cmd_name == "get_session_pane":
                     pane = await get_session_pane(parsed.session_id or "")
                     payload = {
@@ -506,6 +541,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 title,
                 occurrence_key,
                 _attention_observation_from_metadata(origin_metadata),
+                _inferred_stall_evidence_from_metadata(origin_metadata),
             )
             return {"status": "success", "data": {"delivered": delivered}}
 

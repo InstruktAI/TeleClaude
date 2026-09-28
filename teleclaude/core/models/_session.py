@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.core.injected_text import TranscriptEntryKind
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
-from ._types import JsonDict, SessionOriginMetadata, to_json_dict
+from ._types import JsonDict, SessionOriginMetadata, to_json_dict, to_json_value
 
 if TYPE_CHECKING:
     from ._context import InlineKeyboardMarkup
@@ -229,6 +230,10 @@ class SessionField(Enum):
     LAST_AGENT_IDLE_AT = "last_agent_idle_at"
     LIFECYCLE_STATUS = "lifecycle_status"
     RUNTIME_ACTIVITY_AT = "runtime_activity_at"
+    AGENT_STATUS = "agent_status"
+    AGENT_STATUS_REASON = "agent_status_reason"
+    AGENT_STATUS_SINCE = "agent_status_since"
+    OPEN_TOOL_CALLS = "open_tool_calls"
     LIFECYCLE_TRANSITIONED_AT = "lifecycle_transitioned_at"
     TURN_ANCHOR_SHA = "turn_anchor_sha"
 
@@ -277,6 +282,10 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     lifecycle_status: str = "initializing"
     runtime_start_observed: bool = False
     runtime_activity_at: datetime | None = None
+    agent_status: AgentStatusValue = AgentStatusValue.UNKNOWN
+    agent_status_reason: AgentStatusReason | None = None
+    agent_status_since: datetime | None = None
+    open_tool_calls: set[str] = field(default_factory=set)
     lifecycle_transitioned_at: datetime | None = None
     lifecycle_transition_reason: str | None = None
     last_memory_extraction_at: datetime | None = None
@@ -305,6 +314,13 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["last_activity"] = self.last_activity.isoformat()
         if self.runtime_activity_at:
             data["runtime_activity_at"] = self.runtime_activity_at.isoformat()
+        if self.agent_status_since:
+            data[SessionField.AGENT_STATUS_SINCE.value] = self.agent_status_since.isoformat()
+        data[SessionField.AGENT_STATUS.value] = self.agent_status.value
+        data[SessionField.AGENT_STATUS_REASON.value] = (
+            self.agent_status_reason.value if self.agent_status_reason else None
+        )
+        data[SessionField.OPEN_TOOL_CALLS.value] = to_json_value(sorted(self.open_tool_calls))
         if self.lifecycle_transitioned_at:
             data["lifecycle_transitioned_at"] = self.lifecycle_transitioned_at.isoformat()
         if self.last_message_sent_at:
@@ -488,6 +504,18 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             runtime_activity_at=parse_iso_datetime(data["runtime_activity_at"])
             if isinstance(data.get("runtime_activity_at"), str)
             else None,
+            agent_status=AgentStatusValue(
+                str(data.get(SessionField.AGENT_STATUS.value, AgentStatusValue.UNKNOWN.value))
+            ),
+            agent_status_reason=(
+                AgentStatusReason(str(data[SessionField.AGENT_STATUS_REASON.value]))
+                if data.get(SessionField.AGENT_STATUS_REASON.value)
+                else None
+            ),
+            agent_status_since=parse_iso_datetime(data[SessionField.AGENT_STATUS_SINCE.value])
+            if isinstance(data.get(SessionField.AGENT_STATUS_SINCE.value), str)
+            else None,
+            open_tool_calls=set(cast(list[str], data.get(SessionField.OPEN_TOOL_CALLS.value, []))),
             lifecycle_transitioned_at=parse_iso_datetime(data["lifecycle_transitioned_at"])
             if isinstance(data.get("lifecycle_transitioned_at"), str)
             else None,

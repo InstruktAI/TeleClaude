@@ -40,6 +40,9 @@ _POST_COMPACT_MANUAL_TRIGGER = "manual"
 _POST_COMPACT_AUTO_TRIGGER = "auto"
 _INVALID_POST_COMPACT_TRIGGER = "Claude PostCompact payload requires a manual or auto trigger"
 _NOTIFICATION_TYPE_FIELD = "notification_type"
+_TOOL_USE_ID_FIELD = "tool_use_id"
+_TOOL_CALL_ID_FIELD = "tool_call_id"
+_TOOL_BATCH_RESOLVED_FIELD = "tool_batch_resolved"
 
 
 class ClaudeHookEvent(StrEnum):
@@ -49,6 +52,8 @@ class ClaudeHookEvent(StrEnum):
     USER_PROMPT_SUBMIT = "UserPromptSubmit"
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
+    POST_TOOL_USE_FAILURE = "PostToolUseFailure"
+    POST_TOOL_BATCH = "PostToolBatch"
     POST_COMPACT = "PostCompact"
     STOP = "Stop"
     NOTIFICATION = "Notification"
@@ -103,6 +108,14 @@ class ClaudeAdapter(HookAdapter):
                 frozenset({HookPurpose.CONTROL_DELIVERY}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
+            ClaudeHookEvent.POST_TOOL_USE_FAILURE: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset(),
+            ),
+            ClaudeHookEvent.POST_TOOL_BATCH: NativeHookSpec(
+                AgentHookEvents.POST_TOOL_USE,
+                frozenset(),
+            ),
             ClaudeHookEvent.POST_COMPACT: NativeHookSpec(
                 AgentHookEvents.AGENT_IDLE,
                 frozenset(),
@@ -120,11 +133,19 @@ class ClaudeAdapter(HookAdapter):
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
-        return parse_stdin_hook_input(args)
+        raw_input, raw_event_type, data = parse_stdin_hook_input(args)
+        data.setdefault(_HOOK_EVENT_NAME_FIELD, raw_event_type)
+        return raw_input, raw_event_type, data
 
     def normalize_payload(self, data: JsonDict) -> JsonDict:
-        """Identity: Claude already uses canonical field names."""
-        return normalize_common_payload(data)
+        """Normalize Claude tool-call identity and batch closure fields."""
+        normalized = normalize_common_payload(data)
+        tool_call_id = normalized.get(_TOOL_USE_ID_FIELD)
+        if isinstance(tool_call_id, str) and tool_call_id:
+            normalized[_TOOL_CALL_ID_FIELD] = tool_call_id
+        if normalized.get(_HOOK_EVENT_NAME_FIELD) == ClaudeHookEvent.POST_TOOL_BATCH:
+            normalized[_TOOL_BATCH_RESOLVED_FIELD] = True
+        return normalized
 
     def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
         """Map only provider-confirmed manual compaction to an idle boundary."""

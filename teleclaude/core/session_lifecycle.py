@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
-from teleclaude.config._models import STALL_THRESHOLD_SECONDS
 from teleclaude.core.session_status import SessionLifecycleStatus
 
 if TYPE_CHECKING:
@@ -94,18 +93,6 @@ _ALLOWED_SOURCES: dict[LifecycleTransitionReason, frozenset[SessionLifecycleStat
     ),
     LifecycleTransitionReason.MIGRATED_UNPROVEN: frozenset({SessionLifecycleStatus.ACTIVE}),
 }
-
-
-def readiness_projection(
-    *, lifecycle_status: str | None, created_at: datetime | None, active_agent: str | None, now: datetime
-) -> tuple[int | None, str | None, str | None]:
-    """Return additive investigation facts for an unproved agent startup."""
-    if lifecycle_status != SessionLifecycleStatus.INITIALIZING or not created_at or not active_agent:
-        return None, None, None
-    elapsed = int((now - created_at).total_seconds())
-    if elapsed < STALL_THRESHOLD_SECONDS:
-        return elapsed, None, None
-    return elapsed, "readiness_investigation", "general/procedure/orchestration#agent-degradation-handling"
 
 
 async def transition_session(store: LifecycleStore, session_id: str, transition: LifecycleTransition) -> None:
