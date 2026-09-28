@@ -198,10 +198,16 @@ owned without being offered it.
   operation outcome. Nothing retries on another agent's behalf.
 - **Activation submission fails** — no operation can be opened. The failure is
   emitted as a platform error event; nothing is reported as activated.
-- **The scope is not configured on a computer** — that computer does nothing
-  and records nothing. This is the normal case on every computer that does not
-  serve the company, person, or project.
-- **An event carries no scope** — no computer activates anything for it.
+- **The scope is not configured on a computer** — that computer activates
+  nothing and opens no operation; its routing decision record names the scope as
+  not hosted, and no failure is recorded. This is the normal case on every
+  computer that does not serve the company, person, or project.
+- **An event carries no scope** — no computer activates anything for it; each
+  records a routing decision naming the absent scope.
+- **A tier-published procedure matches an event whose scope is another** — the
+  event's scope decides: a procedure published in a company's or a person's tier
+  is activated only when the event's scope is that company or person, and the
+  routing decision records the mismatch otherwise.
 - **A payload names a company, person, or project** — the ingress replaces it
   with the source's declaration; a source that declares no scope produces
   events with none.
