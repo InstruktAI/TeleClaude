@@ -369,18 +369,17 @@ Then a chip showing the single letter "S" is rendered in the chip's place
 And the chip carries no person's colors and does not act as a person filter
 ```
 
-
 #### UC-XNAV-30: A session row shows an attention status as a leading dot
 
 ```
 Given a session whose agent status is `blocked` or `stalled`
 When the session row title line is rendered
-Then a dot occupies the column immediately before the index
+Then a dot occupies the row's first column, the first of the two columns that precede the index
 And the dot is orange for `blocked` and red for `stalled`
 And a session whose status is `active`, `idle`, or `unknown` renders that column blank
+And no other column of the row shifts: every line reads the same with and without the dot
 And the rendered line reads: • [N] ▶ claude/med <chip> /work config-public-surface-contract
 ```
-
 
 ## Known caveats
 

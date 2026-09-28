@@ -30,8 +30,10 @@ from teleclaude.slug import strip_slug_token
 
 _DETAIL_PREFIX_OVERHEAD = 17  # │ + [HH:MM:SS] + label (" in: " / "out: ")
 _SESSION_ATTENTION_DOT = "•"
-_SESSION_STATUS_COLUMN_EMPTY = " "
-_SESSION_STATUS_COLUMN_SEPARATOR = " "
+# The row's leftmost column: the attention dot, or blank. It stands where the
+# left padding used to be, so every other column keeps its position.
+_ATTENTION_GUTTER_BLANK = " "
+_ATTENTION_GUTTER_WIDTH = 1
 
 # Textual injects the content (column, row) of a click into the click's style
 # meta under this key; the row maps it to the title line's sub-regions.
@@ -54,7 +56,7 @@ class SessionRow(TelecMixin, Widget):
     SessionRow {
         width: 100%;
         height: auto;
-        padding: 0 1;
+        padding: 0 1 0 0;
     }
     """
 
@@ -111,8 +113,8 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _content_width(self) -> int:
-        """Available content width (widget width minus horizontal padding)."""
-        return max(self.size.width - 2, 40)
+        """Available line width (widget width minus right padding), gutter included."""
+        return max(self.size.width - 1, 40)
 
     @property
     def _detail_text_limit(self) -> int:
@@ -122,7 +124,7 @@ class SessionRow(TelecMixin, Widget):
         prefix grows by ``DATE_SUFFIX_WIDTH`` and the text budget shrinks to match.
         """
         overhead = _DETAIL_PREFIX_OVERHEAD + (0 if self.collapsed else DATE_SUFFIX_WIDTH)
-        return min(75, max(20, self._content_width - self._connector_col - overhead))
+        return min(75, max(20, self._content_width - _ATTENTION_GUTTER_WIDTH - self._connector_col - overhead))
 
     @property
     def _child_indent(self) -> str:
@@ -131,7 +133,7 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _connector_col(self) -> int:
-        """Column for tree │ and └ connectors (depth-based, independent of badge indent).
+        """Column for tree │ and └ connectors after the gutter (depth-based, independent of badge indent).
 
         depth=2 → 2, depth=3 → 3, depth=4 → 5
         """
@@ -162,19 +164,16 @@ class SessionRow(TelecMixin, Widget):
         return resolve_style(self.agent, self._tier("normal"))
 
     def _build_title_line(self, *, selected: bool = False, previewed: bool = False) -> Text:
-        """Build the header with its attention marker before `[N]`."""
+        """Build the header: `• [N] ▶ agent/mode "Title"`, the dot only for attention states."""
         line = Text(no_wrap=True)
-        indent = self._child_indent
-        if indent:
-            line.append(indent)
-
-        style = self._get_row_style(selected=selected, previewed=previewed)
         attention_color = get_agent_attention_color(self.session.agent_status)
         if attention_color is not None:
             line.append(_SESSION_ATTENTION_DOT, style=Style(color=attention_color, bold=True))
         else:
-            line.append(_SESSION_STATUS_COLUMN_EMPTY, style=style)
-        line.append(_SESSION_STATUS_COLUMN_SEPARATOR, style=style)
+            line.append(_ATTENTION_GUTTER_BLANK)
+        line.append(self._child_indent)
+
+        style = self._get_row_style(selected=selected, previewed=previewed)
 
         # Badge: sticky → reverse. Otherwise → tier-shifted normal.
         # Never inherits selection/preview background.
@@ -265,6 +264,7 @@ class SessionRow(TelecMixin, Widget):
         human_role = getattr(self.session, "human_role", None)
         if human_name and human_role:
             line = Text(no_wrap=True)
+            line.append(_ATTENTION_GUTTER_BLANK)
             line.append(connector_pad)
             line.append("\u2502", style=connector_style)
             line.append(f"{detail_pad}{human_role}: ", style=resolve_style(self.agent, self._tier("muted")))
@@ -305,6 +305,7 @@ class SessionRow(TelecMixin, Widget):
             input_text = last_input.replace("\n", " ")[:text_limit]
             input_time = format_time(last_input_at, with_date=with_date)
             line3 = Text(no_wrap=True)
+            line3.append(_ATTENTION_GUTTER_BLANK)
             line3.append(connector_pad)
             line3.append("\u2502", style=connector_style)
             line3.append(f"{detail_pad}[{input_time}]  in: {input_text}", style=input_style)
@@ -313,6 +314,7 @@ class SessionRow(TelecMixin, Widget):
         if self.activity_event == "pre_tool_use" and self.activity_text:
             activity_time_str = format_time(self.session.last_activity, with_date=with_date)
             line4 = Text(no_wrap=True)
+            line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{activity_time_str}] out: ", style=output_style)
@@ -321,6 +323,7 @@ class SessionRow(TelecMixin, Widget):
         elif self.activity_event == "thinking" and self.activity_text:
             activity_time_str = format_time(self.session.last_activity, with_date=with_date)
             line4 = Text(no_wrap=True)
+            line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
             thinking_text = self.activity_text.replace("\n", " ")[:text_limit]
@@ -331,6 +334,7 @@ class SessionRow(TelecMixin, Widget):
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
             output_time = format_time(summary_at, with_date=with_date)
             line4 = Text(no_wrap=True)
+            line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
@@ -343,6 +347,7 @@ class SessionRow(TelecMixin, Widget):
                 :text_limit
             ]
             line4 = Text(no_wrap=True)
+            line4.append(_ATTENTION_GUTTER_BLANK)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
@@ -360,6 +365,7 @@ class SessionRow(TelecMixin, Widget):
         sid = self.session.session_id
         native_id = getattr(self.session, "native_session_id", None) or "-"
         line = Text(no_wrap=True)
+        line.append(_ATTENTION_GUTTER_BLANK)
         line.append(connector_pad)
         line.append("\u2502", style=connector_style)
         line.append(f"{detail_pad}[{created_time}] {sid}/{native_id}", style=id_style)
@@ -375,6 +381,7 @@ class SessionRow(TelecMixin, Widget):
         run_len = max(self.size.width - self._connector_col - 1, 20)
         char = "\u2514" if self.is_last_child else "\u251c"
         line = Text(no_wrap=True)
+        line.append(_ATTENTION_GUTTER_BLANK)
         line.append(connector_pad)
         line.append(char, style=connector_style)
         line.append("-" * run_len, style=connector_style)
