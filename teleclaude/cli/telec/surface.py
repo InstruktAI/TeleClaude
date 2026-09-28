@@ -1307,7 +1307,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "validate": CommandDef(
                 desc="Full validation",
                 flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.PLATFORM,
+                ),
             ),
             "env": CommandDef(
                 desc="Manage environment variables",
