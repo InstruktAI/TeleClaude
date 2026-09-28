@@ -29,7 +29,8 @@ depends on registration or an instance waits only when the resulting view is
 valid under the current model. A declared unregistered project therefore
 loads with recognized retired fields removed and omitted capabilities
 unsubscribed; it receives no registered project's grandfathered values. An
-overlay from before the declaring migration that no registry names loads the
+overlay from before the declaring migration that declares no tier and that no
+registry names loads the
 same way as a declared unregistered project, because project is the only tier
 not located by a registry. Any other document with neither a registry subject nor
 a valid tier declaration fails loading. An unsupported key in the resulting view fails the load. A document

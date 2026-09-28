@@ -49,8 +49,8 @@ from the registries that define the tiers — the designated locations for the
 home's own configuration, person, and company files, and the project registry
 for project roots and the linked worktrees of those roots. A read supplies that tier in memory; a migration run or a
 writer stores it. Every tier but project has a designated location, so a
-document from before the declaring migration that those registries do not name
-can only be a project: a read gives it the project tier without registry
+document from before the declaring migration that declares no tier and that
+those registries do not name can only be a project: a read gives it the project tier without registry
 standing. A file the platform creates is written declared. A file past the
 declaring migration that reaches loading without a valid declaration fails
 wherever it sits, and a declaration naming an
