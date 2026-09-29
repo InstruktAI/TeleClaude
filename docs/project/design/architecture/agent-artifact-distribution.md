@@ -231,7 +231,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   here because the name misleads:
   `run-job` executes a configured job, and the job model is `config`'s —
   the declaration, the schedule contract, its canonical
-  `general/run-job` name, and the scheduler emission all resolve there,
+  command name, and the scheduler emission all resolve there,
   while `agent_runtime` dispatches the scheduled job into a session as it
   dispatches any command. The `general` path is its corpus partition, not a
   second semantic owner.
