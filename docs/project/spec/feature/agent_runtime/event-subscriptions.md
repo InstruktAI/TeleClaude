@@ -21,8 +21,9 @@ A subscription only ever delivers events the subscribing session may receive.
 Every event carries one scope — a company, a person, a project, or none for a
 platform event — and receipt follows it: a company event reaches members of that
 company, a person event reaches that person only, a project event reaches the
-project's owner, and a platform event reaches admin lineage only. A session
-working a company's business receives only that company's events.
+project's owner, and a platform event reaches admin lineage only. Sessions under
+the system principal are entitled to every scope. A session working a company's
+business receives only that company's events.
 
 A subscription belongs to the session that made it. The session can list and
 withdraw its own subscriptions and cannot see or touch another session's. The
@@ -189,6 +190,14 @@ Given an agent session working a company's business, whose principal is entitled
 When events scoped to another company, to a person, or to the platform occur for a type it subscribes to
 Then the session is not woken by them
 And it is woken only by events scoped to its own company
+```
+
+#### UC-ES20: A system-principal session receives events of every scope
+
+```gherkin
+Given a session with no human origin, running under the system principal and working no company's business, subscribes to an event type
+When events of that type scoped to a company, a person, a project, or the platform occur
+Then the session is woken by each of them
 ```
 
 #### UC-ES18: A narrowing on an undeclared payload field is refused
