@@ -60,6 +60,17 @@ _DIAGNOSE_PRE_DISPATCH_TEMPLATE = (
     "dispatched worker will load its separate peer procedure."
 )
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
+_REUSE_FINDINGS_CLAUSE_TEMPLATE = (
+    "If a {artifact} artifact exists, read it first: telec todo artifacts read {slug} {artifact}. Then re-execute"
+)
+_REUSE_NO_FINDINGS_CLAUSE = "Re-execute"
+_REUSE_MESSAGE_TEMPLATE = (
+    "Re-run your task for {slug}.{count_clause} The relevant artifact(s) have been "
+    "updated since your prior pass. {findings_clause} your loaded procedure on the new "
+    "content. Reviewers: re-stamp via telec todo stamp {slug} --verdict "
+    "approve|needs_work --phase {phase}. Drift analyzers: stamp "
+    "drift_reviewed for each re-assessed artifact."
+)
 
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
@@ -186,14 +197,16 @@ async def _dispatch_worker(
         if admission is not None:
             await admit_prepare_review(todos_db, slug, state, admission)
         count_clause = f" Admitted {format_admission_count(admission)}." if admission is not None else ""
-        base_message = (
-            f"Re-run your task for {slug}.{count_clause} The relevant artifact(s) have been "
-            f"updated since your prior pass. If a review-findings artifact "
-            f"exists, read it first: telec todo artifacts read {slug} "
-            f"review-findings. Then re-execute your loaded procedure on the new "
-            f"content. Reviewers: re-stamp via telec todo stamp {slug} --verdict "
-            f"approve|needs_work --phase {phase.value}. Drift analyzers: stamp "
-            f"drift_reviewed for each re-assessed artifact."
+        findings_clause = (
+            _REUSE_FINDINGS_CLAUSE_TEMPLATE.format(artifact=admission.report_artifact, slug=slug)
+            if admission is not None
+            else _REUSE_NO_FINDINGS_CLAUSE
+        )
+        base_message = _REUSE_MESSAGE_TEMPLATE.format(
+            slug=slug,
+            count_clause=count_clause,
+            findings_clause=findings_clause,
+            phase=phase.value,
         )
         message = f"{additional_context} {base_message}" if additional_context else base_message
         redispatch_script = format_worker_redispatch(
