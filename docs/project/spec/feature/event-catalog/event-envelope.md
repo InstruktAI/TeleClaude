@@ -139,6 +139,8 @@ Then it reads that event as having no emitting session, no origin home, and no s
 
 ## See Also
 
+- docs/project/adr/0105-event-access-follows-the-subject-its-producer-states.md — why events state origin and subject as facts about themselves, why access follows the subject, why a project subject carries its owner, and why emission validates nothing.
+- docs/project/adr/0026-cross-version-fleet-compatibility.md — why origin and subject evolve additively and older events read as carrying neither.
 - ~/.teleclaude/docs/sdlc/principle/architectural-defaults.md — event-driven decoupling: producers publish facts, consumers decide their own reaction.
 - docs/project/spec/domain/event-catalog.md — the catalog owns envelope shape and discovery metadata; producing contexts own event meaning.
 - docs/project/spec/feature/identity/organizational-membership.md — what a project's declared owner means.
