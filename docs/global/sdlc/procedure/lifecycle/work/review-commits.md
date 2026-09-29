@@ -43,7 +43,10 @@ Read full changed-file context at the named commit with
 Mechanically attached records are outside the authored review target.
 
 Never compute a range diff or range log. Range forms silently include commits
-the reviewer was not given.
+the reviewer was not given. Named commits may still be checked together — how
+they compose, or whether a named remediation repairs an earlier named change —
+using the named snapshots as evidence while each commit keeps its own
+attribution.
 
 ### 3. Execute the shared review contract
 
@@ -54,12 +57,24 @@ For this invocation:
 - The target is the discrete SHA list.
 - The applicable contracts are the governing policies, principles, specs, and
   resulting behavior touched by the named commits.
-- The lifecycle scope lane is skipped because no prepared requirements exist.
+- Establish the intent basis and governing contracts available for the named
+  changes. A commit message states the author's claims; it does not itself
+  authorize scope. Where an authoritative intent basis is available, apply scope
+  verification against it within the named review target. Otherwise state that
+  limitation and assess the resulting change against its governing contracts. A
+  material authority gap that prevents judgment is a blocker under
+  `sdlc/procedure/lifecycle/review`, not permission inferred from the message.
+- Check material claims in the authored message against the diff and resulting
+  behavior. Classify any contradiction under the governing contract; message
+  consistency does not establish intent authority.
+- The authoring caller owns continuation and recovery for this review; the
+  reviewer retains verdict authority. Apply the shared convergence contract
+  without introducing a lifecycle phase or stamp.
 - Every other lane runs according to the shared catalog's trigger conditions,
   against only the named changes.
 - The doc-hygiene lane runs whenever a named commit changes a doc snippet.
-- The doc-first paradigm lane runs because this is an ad-hoc commit review with
-  no prepare artifacts.
+- Run the doc-first paradigm lane when its trigger in
+  `sdlc/policy/definition-of-done-lanes` applies.
 - When a named commit changes `docs/third-party/**`, load
   `general/spec/third-party-docs` and verify that each root belongs to one
   upstream party, the selected scope is justified, the content is factual
@@ -71,8 +86,10 @@ and record evidence or a reasoned `N/A`.
 
 ### 4. Return the commit-review result
 
-Print the complete structured findings and verdict to the caller. Do not select
-a todo, write a todo artifact, or stamp lifecycle state.
+Print the complete report the shared review procedure requires — every executed
+lane's section and, when no Important-or-higher finding remains, its clean-pass
+evidence — with the verdict, to the caller. Do not select a todo, write a todo
+artifact, or stamp lifecycle state.
 
 Use comma-separated commit notation in the target line, never range notation:
 
@@ -82,11 +99,25 @@ REVIEW COMPLETE: commits <sha1[:8]>,<sha2[:8]>,...,<shaN[:8]>
 
 ### 5. Remediation pass
 
-A follow-up turn that names remediation commit(s) is a fresh review over those
-SHAs — execute Steps 2–4 in full over the named commits and emit a
-`REVIEW COMPLETE` line carrying APPROVE or REQUEST CHANGES with full lane
-coverage. An acknowledgement without a verdict line is never a review outcome;
-the caller never infers one.
+A follow-up addressing this review continues its existing findings ledger under
+`sdlc/procedure/lifecycle/review`. Identify the prior report and target, read the
+producer's dispositions and evidence, inspect each named remediation commit in
+full, and independently determine which findings are resolved, invalid or still
+open. An evidence-only rejection may require no new commit.
+
+Apply the shared re-review boundaries to new findings. Emit a complete report
+identifying the original target and any remediation SHAs, with current lane
+assessments and a verdict over all unresolved findings. Approval of a
+remediation commit alone does not close the original review.
+
+Keep the discrete-SHA boundary: intervening commits are not additional review
+targets. If establishing closure requires reviewing another commit, identify the
+missing SHA rather than silently expanding the target. A request naming
+unrelated new work is a separately scoped review, not part of this remediation
+cycle, whichever session receives it.
+
+An acknowledgement without a verdict line is never a review outcome; the caller
+never infers one.
 
 ## Outputs
 

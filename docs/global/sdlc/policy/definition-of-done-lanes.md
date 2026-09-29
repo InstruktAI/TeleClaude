@@ -21,7 +21,7 @@ The review lanes are the focus areas a code review runs. Each lane is the
 the requirement contract). They are defined once here and consumed by:
 
 - `sdlc/procedure/lifecycle/work/review` — the build reviewer, which **executes** the applicable lanes.
-- `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes minus scope.
+- `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes; that procedure resolves the scope lane's intent basis.
 - `sdlc/procedure/lifecycle/prepare/plan-draft` and `.../prepare/review-plan` — the planner and plan reviewer, which **anticipate** the lanes (the plan must pre-satisfy what build-review will check).
 
 Severity tiers, citation rules, the lane execution gate, and verdict arithmetic
@@ -126,35 +126,37 @@ no separate report line.
 
 #### Scope verification
 
-**Authority:** the requirement contract — `prd` (feature) or `input` (change/bug),
+**Authority:** the intent basis the invoking procedure resolves. For a lifecycle
+review it is the requirement contract — `prd` (feature) or `input` (change/bug),
 or the `implementation-plan`'s _Intent & scope_ for a `--plan` `change` with no `input`.
 
-The delivery must match the approved intent (`prd` for a `feature`, `input` for a
-`change`/`bug`, or the `implementation-plan`'s _Intent & scope_ for a `--plan`
-`change` with no `input`; see `sdlc/concept/approved-intent-artifact`) —
-nothing more, nothing less.
+The reviewed changes must satisfy the resolved authorized intent within the
+named review target — nothing more, nothing less (for lifecycle work, see
+`sdlc/concept/approved-intent-artifact`).
 
-For each approved-intent success criterion (a `prd` criterion, a goal/outcome stated in `input`, or — for a `--plan` `change` with no `input` — a goal/outcome stated in the `implementation-plan`'s _Intent & scope_), produce a `Scope verification` entry in `review-findings.md`:
+For each criterion in that intent basis, produce a `Scope verification` entry in
+the report surface named by the invoking procedure (`review-findings.md` for a
+lifecycle review):
 
-1. Quote the criterion verbatim from the approved intent artifact.
-2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
-3. State, in one sentence, how the code change satisfies the criterion.
+1. Identify the authoritative source and quote the criterion.
+2. Identify the specific reviewed change that delivers it (file, function, line range).
+3. Explain, in one sentence, how that change satisfies it.
 4. Where the project opts into tests, name the scenario-bound test and the
    concrete production-code mutation it catches under the testing policy.
 
 Findings:
 
-- Criterion not delivered by any code change in the diff → **Requirement-Violation** (see Severity schema in the review procedure).
+- Criterion not delivered by any reviewed change → **Requirement-Violation** (see Severity schema in the review procedure).
 - Criterion partially delivered — some criteria sub-points addressed, others silently dropped → **Requirement-Violation**. A delivery that narrows a criterion's scope is as broken as one that omits it.
 - In a project that opts into tests, the named test would pass on a broken
   implementation → **Requirement-Violation**.
 - Unrequested feature (no criterion drives it) → **Critical**.
 - For a change/bug, a behavioral delta the intent does not call for — including one introduced alongside a necessary change, or one resolving a forced decision by new behavior where established behavior or human escalation was the path → **Critical**.
 - Directive text authored where the intent called only for its removal or correction → **Critical**. Replacing an instruction the intent condemned with a different instruction of the author's own devising is a behavioral delta wearing the shape of the requested edit; the one-line diff and the honest commit subject are what let it pass. `general/policy/documentation-discipline` owns which text is directive.
-- Gold-plating (scope creep beyond the PRD) → Important.
+- Gold-plating (scope creep beyond the authorized intent) → Important.
 
 A reviewer cannot approve while any Scope verification entry is missing its
-code change or satisfaction analysis. In a project that opts into tests, the
+reviewed change or satisfaction analysis. In a project that opts into tests, the
 entry also needs its test and killing mutation.
 
 #### Code quality review
@@ -457,9 +459,9 @@ When the delivery changes CLI subcommands, config keys, API endpoints, or user-f
 
 **Doc-snippet reflection (always, not only interface changes):** when the delivery
 changes or adds a documented behavioral contract, the corresponding doc snippet
-(spec / principle / policy / concept / ADR) must be updated to match — as a pending
-snippet (`delivered_by`) for lifecycle work, or directly for an in-place
-correction. A behavioral delta whose contract snippet was not updated, with no
+(spec / principle / policy / concept / ADR) must be updated to match — through a pending carrier
+(`general/procedure/doc-snippet-authoring`) for lifecycle work, or directly for
+an in-place correction. A behavioral delta whose contract snippet was not updated, with no
 recorded `doc_impact_none: <reason>`, is a finding. This is the build/commit-review
 backstop to the plan-review documentation hard gate, so a forgotten snippet update
 cannot reach delivery.
@@ -678,29 +680,15 @@ Severity guidance:
 
 #### Doc-first paradigm check
 
-**Authority:** `documentation-first-development`.
+**Authority:** `sdlc/policy/todo-creation-discipline` and `general/policy/documentation-discipline`.
 
-Conditional lane. Triggers only when the review surface is an ad-hoc commit series with no upstream prepare-phase artifacts (e.g. the Path C inline `/review-commits` dispatch flow). For lifecycle work reviews where a PRD, implementation-plan, and feature/domain spec are in context, the prepare phase already enforced the doc-first paradigm — this lane is a no-op there.
+Conditional lane. Triggers only for an ad-hoc commit review with no prepare artifacts; in a lifecycle work review the prepare phase owns doc reflection and this lane is a no-op.
 
-Consult `sdlc/principle/documentation-first-development` for the authoritative Category A/B/C classification.
+For an ad-hoc commit review, establish whether the work qualified for its execution route under the intake contract. Commit size, file count and absence of prepare artifacts do not establish a violation.
 
-Apply the check only when the commit series shows clear Category A indicators:
+Apply documentation obligations under `general/policy/documentation-discipline`; the documentation and doc-hygiene lanes assess their satisfaction. Ad-hoc delivery alone creates no feature-spec obligation, and global doctrine receives no use case.
 
-- A new public agent verb in the `telec` surface.
-- A new behavioral contract that spans multiple files and changes how agents are supposed to act.
-- A new sealed guard / wrapper rule.
-- A new event in the event taxonomy.
-- A new bounded-context surface.
-
-If at least one Category A indicator is present:
-
-1. Inspect whether the series came through prepare (slug in commit subjects, `telec todo list --include-delivered` shows item, upstream prepare artifacts).
-2. If it did NOT come through prepare, raise an **Important** finding: the series introduces what the principle classifies as Category A but bypassed the prepare phase where its feature spec snippet would have been authored.
-3. The finding offers two acceptable resolutions:
-   a. Author a retroactive feature spec under `docs/project/spec/feature/<context>/<concept>.md` and commit it as a Path A follow-up.
-   b. Acknowledge the process gap explicitly in the report and defer retroactive authoring to the next prepare-phase pass that touches the same area.
-
-Do NOT raise this finding for commits with no Category A indicators. Category B and Category C work legitimately produces no feature spec; the principle is the authority on classification — consult it rather than improvising.
+A routing or documentation finding must satisfy the validity and closure rules in `sdlc/procedure/lifecycle/review`. Acknowledging or deferring a valid unresolved finding does not close it.
 
 #### Simplification review
 

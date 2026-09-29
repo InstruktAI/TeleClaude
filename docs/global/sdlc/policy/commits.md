@@ -97,7 +97,15 @@ All Committizen types are allowed.
   dispatches it automatically and waits for the verdict; review is technical
   stewardship, never a human ratification step. A `REQUEST CHANGES` verdict
   stays with the authoring session for evidence-based rejection or in-scope
-  remediation and re-review. Only a genuine human-owned decision, an unresolved
+  remediation and re-review. Before remediation, the author records each
+  finding's disposition and its independently established basis in the
+  follow-up to the continuing reviewer, applying the finding-validation and
+  disposition rules in `sdlc/procedure/lifecycle/fix-review-findings`. After
+  remediation, the follow-up identifies the fixing commits and closure evidence;
+  an evidence-only rejection names its sources. For commit review, this exchange
+  carries the disposition record — no todo artifact or lifecycle stamp is
+  introduced. The author retains commit and review-routing responsibilities; the
+  reviewer alone determines the verdict. Only a genuine human-owned decision, an unresolved
   contract deadlock, or a safety gate is carried to the human.
   Governed contracts (documentation snippets) and agent artifacts require
   independent review after commit. The main-branch checkpoint's code-scoped
