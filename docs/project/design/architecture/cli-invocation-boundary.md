@@ -95,23 +95,9 @@ design owns only the path that connects them.
    prompt to investigate, not proof that the module itself is forbidden or slow. A
    command whose own work is trivial completes in roughly 200 ms from the shell; the
    figure is the target that shows invariants 4–6 hold, not a limit a change is graded
-   against.
-
-### Responding to an import-closure refusal
-
-Trace the new import edge through package initializers and its third-party dependencies.
-Establish which work the pre-dispatch gate actually needs. Keep a dependency used by
-only some commands behind those commands' handler dispatch, and preserve the gate's
-independence from machine configuration, the ORM, and the daemon API client. Do not
-append a module to the declared closure merely to make the guardrail pass, or hide
-the import behind a local import without accounting for when it runs.
-
-If the new dependency is necessary before dispatch, compare fresh-process startup
-of a trivial command from the base and changed checkout on the same host, inspect
-the import and initialization delta, and record the evidence and reason for the
-shared cost in the change description. A justified closure update goes through the
-independent review required for quality-defining guardrail changes. The guardrail
-identifies the new edge; timing evidence and review determine whether it belongs.
+   against. Expanding the closure relaxes its guardrail and requires explicit approval
+   from an independent reviewer with no stake in the change
+   (`general/policy/agent-artifact-governance`).
 
 ## Primary flows
 
@@ -156,15 +142,15 @@ one, whose code is delivered code; that behavior is verified after delivery
 
 ## Failure modes
 
-| Condition                                              | Effect                                                                                                                                                                                 |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Machine configuration is invalid                       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working.                                                   |
-| People roster cannot be read                           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                                                                           |
-| Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                                                                        |
-| Worktree code started                                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                                                                     |
-| The worktree's home is missing                         | Refused at startup, naming the home; nothing is created.                                                                                                                               |
-| Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                                                                  |
-| A change imports a new module on the pre-dispatch path | The guardrail refuses the undeclared edge and directs the agent to trace its shared cost, then either move command-specific work behind dispatch or justify a reviewed closure update. |
+| Condition                                              | Effect                                                                                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Machine configuration is invalid                       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
+| People roster cannot be read                           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
+| Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
+| Worktree code started                                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                   |
+| The worktree's home is missing                         | Refused at startup, naming the home; nothing is created.                                                                             |
+| Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                |
+| A change imports a new module on the pre-dispatch path | The guardrail refuses the undeclared edge; invariant 7 describes it as a shared-cost tripwire.                                       |
 
 ## See Also
 
