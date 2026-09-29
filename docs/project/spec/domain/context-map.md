@@ -37,6 +37,12 @@ contracts and never creates shared ownership.
   facts, no persistence, and no other context's semantics; it never redefines,
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
+<!-- planned:event-origin-and-subject -->
+- `event-catalog`: the platform event stream's envelope shape, the facts every
+  event states about itself — origin and subject — and each event type's
+  declared subject assignment and payload fields. It owns no event's meaning
+  and no consumer's reaction.
+<!-- /planned:event-origin-and-subject -->
 
 ### Boundary contracts
 
@@ -103,6 +109,20 @@ contracts and never creates shared ownership.
   decides whether an agent stands, `agent_runtime` never matches events or reads
   procedure metadata, and `identity` never chooses a session's company.
 
+<!-- planned:event-origin-and-subject -->
+- Every context that emits onto the platform event stream states each event's
+  subject — the registered home its act concerned, or none when the event is
+  about the platform itself — and owns that choice as part of its emission
+  invariant. `event-catalog` composes the rest of the envelope at emission from
+  the owners' published answers. From `identity`, it takes the verified caller
+  session whose request produced the event. From `agent_runtime`, it takes that
+  session's recorded configuration subject as the origin home. From `config`,
+  it takes the registered-subject vocabulary and a project subject's declared
+  owner. It restates none of their rules, validates nothing, and decides no
+  audience. Consumers read origin and subject from the event, and receipt
+  decisions stay with the consuming contexts.
+
+<!-- /planned:event-origin-and-subject -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI and the CLI are
 `presentation`'s hosting surfaces. Existing placement outside
