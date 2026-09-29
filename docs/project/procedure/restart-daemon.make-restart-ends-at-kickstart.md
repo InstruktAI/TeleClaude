@@ -27,5 +27,5 @@ Restart the daemon with minimal downtime.
 
 ## Recovery
 
-- If `make restart` reports that the service manager refused the restart, run `make status` and read recent logs with `instrukt-ai-logs teleclaude --since 10m` to find why.
-- Whether the restarted daemon came back healthy is a separate question, answered on demand by `make status` and recent logs. If the daemon is restarting repeatedly, review the `system.process.reaped` event stream (`telec events`) and the structured SIGTERM/shutdown logs before taking action; if it fails to start, review logs and revert recent changes.
+- A refused restart is reported by `make restart` itself: a non-zero exit carrying the service manager's own output.
+- Why a restart was refused, and whether a restarted daemon came back healthy, are separate questions, never a continuation of the restart sequence. Each is answered on demand with `make status` and recent logs (`instrukt-ai-logs teleclaude --since 10m`). If the daemon is restarting repeatedly, review the `system.process.reaped` event stream (`telec events`) and the structured SIGTERM/shutdown logs before taking action; if it fails to start, review logs and revert recent changes.
