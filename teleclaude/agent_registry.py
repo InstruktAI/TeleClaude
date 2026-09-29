@@ -351,7 +351,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                 "mode_chains": {
                     "fast": [
                         {
-                            "model": "luna",
+                            "model": "luna-fast",
                             "flags": (
                                 "-m gpt-6-luna -c model_reasoning_effort='medium'"
                                 " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
@@ -360,7 +360,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     ],
                     "med": [
                         {
-                            "model": "terra",
+                            "model": "luna-med",
                             "flags": (
                                 "-m gpt-6-luna -c model_reasoning_effort='high'"
                                 " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
@@ -379,7 +379,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         {
                             "model": "sol",
                             "flags": (
-                                "-m gpt-6-sol -c model_reasoning_effort='high'"
+                                "-m gpt-6.1-sol -c model_reasoning_effort='high'"
                                 " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
                             ),
                         },
