@@ -65,6 +65,7 @@ from teleclaude.types.lifecycle import (
     DriftClass,
     LifecyclePhase,
 )
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TodoKind
 from teleclaude.types.todos import ApprovalStamp, ArtifactEntry, BuildReviewState, ReviewVerdictState, TodoState
 
 __all__ = [
@@ -104,6 +105,7 @@ __all__ = [
 _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = FEATURE_PREPARE_KINDS
 _EMPTY_TEXT = ""
+_INVALID_WORK_KIND_REASON = "unsupported todo kind"
 _PREPARED_SESSION_ID_REQUIRED_ERROR = "prepared transition requires a completing TeleClaude session identity"
 
 # Pre-finalize phases from which a build_review verdict re-derives the phase.
@@ -212,8 +214,10 @@ def is_work_lifecycle_phase(phase: LifecyclePhase) -> bool:
     return phase in WORK_LIFECYCLE_PHASES
 
 
-def is_ready_for_work(*, kind: str, lifecycle_phase: str | None) -> tuple[bool, str]:
+def is_ready_for_work(*, kind: TodoKind, lifecycle_phase: str | None) -> tuple[bool, str]:
     """Authoritative gate for entering or resuming the work lane."""
+    if kind not in ALL_DUMP_KINDS:
+        return False, _INVALID_WORK_KIND_REASON
     if kind == KIND_TASK:
         return False, "task todos are executed by the task lane, not the SDLC work lane"
     phase = coerce_lifecycle_phase(lifecycle_phase)

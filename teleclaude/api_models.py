@@ -11,7 +11,10 @@ from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
-from teleclaude.types.todo_kind import TodoKind
+from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
+
+_TODO_KIND_FIELD = "kind"
+_TODO_KIND_REQUIRED_ERROR = f"kind is required; valid kinds: {TODO_KIND_USAGE}"
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -442,6 +445,13 @@ class TodoDumpRequest(BaseModel):
     reason: str | None = None
     human_involved: bool = False
     human_involvement_reason: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _require_kind(cls, data: object) -> object:
+        if isinstance(data, dict) and _TODO_KIND_FIELD not in data:
+            raise ValueError(_TODO_KIND_REQUIRED_ERROR)
+        return data
 
 
 class PersonMessageRequest(BaseModel):
