@@ -49,6 +49,14 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **config-schema-publication** — `docs/project/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
 
 
+<!-- planned:event-origin-and-subject -->
+### Event subjects
+
+Node presence and schema-governance events state no subject, because they
+concern the fleet itself rather than any registered home.
+
+<!-- /planned:event-origin-and-subject -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

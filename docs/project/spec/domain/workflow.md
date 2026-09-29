@@ -77,6 +77,20 @@ This placement follows `sdlc/policy/domain-ownership`:
 workflow records and publishes its facts once, while presentation consumers
 never reconstruct lifecycle or artifact policy.
 
+<!-- planned:event-origin-and-subject -->
+### Event subjects
+
+Every platform event workflow emits states as its subject what its act
+concerned:
+
+- todo lifecycle, roadmap, preparation, build, review, integration, and delivery
+  events: the project whose todo or delivery they concern;
+- deployment events: the deployed project;
+- the schedule clock's minute tick: no subject, because it concerns the
+  platform's clock rather than any registered home.
+
+<!-- /planned:event-origin-and-subject -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

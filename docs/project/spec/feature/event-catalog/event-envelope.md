@@ -17,8 +17,9 @@ its producer where the event happens:
   home (a project, person, or company).
 - **Subject** — what the event is about: the registered project, person, or
   company it concerns, or none when it concerns the platform itself. A project
-  subject also carries its owner — the owning company or person, or no owner —
-  as resolved on the computer where the event happened.
+  subject also carries its owner as resolved on the computer where the event
+  happened: the owning company or person, no owner, or unresolved when that
+  computer cannot read the project's ownership.
 
 Both are facts about the event, never about its consumers. A producer does not
 decide, assume, or check who will receive an event, and emission refuses nothing
@@ -89,6 +90,7 @@ Examples:
   | a company                    | that company             |
   | a person                     | that person              |
   | no one                       | no owner                 |
+  | a declaration the emitting computer cannot read | unresolved, never no owner |
 ```
 
 #### UC-EE5: An event about the platform itself carries no subject

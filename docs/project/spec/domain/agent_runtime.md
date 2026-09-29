@@ -131,6 +131,22 @@ TeleClaudeNext repository.
   validate a selection and to list memberships; this context never re-derives
   membership.
 
+<!-- planned:event-origin-and-subject -->
+### Event subjects
+
+Every platform event agent_runtime emits states as its subject what its act
+concerned:
+
+- session lifecycle events (a session ended, a restart failed, a bootstrap
+  failed): the session's recorded configuration subject, or no subject when the
+  session has none;
+- events a session's own tools emit about its work, such as captured content or
+  a raised escalation: that session's recorded configuration subject;
+- daemon and process-supervision events: no subject, because they concern the
+  platform.
+
+<!-- /planned:event-origin-and-subject -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

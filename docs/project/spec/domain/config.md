@@ -153,6 +153,20 @@ and preserve every unrelated key and line. Runtime and TUI consumers use this
 published contract and never parse the store or consult the process environment
 directly.
 
+<!-- planned:event-origin-and-subject -->
+### Event subjects
+
+Every platform event config emits states as its subject what its act concerned:
+
+- a job run's outcome: the registered home the run executes for. For a job run
+  in a project, including a globally published job run in a subscribing
+  project, that is the project. A run executing for no registered home has no
+  subject.
+- an effective configuration change: the project whose configuration changed.
+  A machine or global configuration change has no subject.
+
+<!-- /planned:event-origin-and-subject -->
+
 ## See Also
 
 - docs/project/spec/teleclaude-config.md

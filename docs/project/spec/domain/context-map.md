@@ -114,8 +114,9 @@ contracts and never creates shared ownership.
   subject — the registered home its act concerned, or none when the event is
   about the platform itself — and owns that choice as part of its emission
   invariant. `event-catalog` composes the rest of the envelope at emission from
-  the owners' published answers. From `identity`, it takes the verified caller
-  session whose request produced the event. From `agent_runtime`, it takes that
+  the owners' published answers. From `identity`, it takes the caller session
+  resolved at the request boundary for the request that produced the event,
+  held for the request's whole duration. From `agent_runtime`, it takes that
   session's recorded configuration subject as the origin home. From `config`,
   it takes the registered-subject vocabulary and a project subject's declared
   owner. It restates none of their rules, validates nothing, and decides no
