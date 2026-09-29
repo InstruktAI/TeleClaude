@@ -180,6 +180,19 @@ And the same refusal applies when the requested dependency is any ancestor holde
 And a dependency from a non-member todo onto the holder is still allowed
 ```
 
+<!-- planned:todo-update-regroup -->
+#### UC-WDG9: A todo cannot join a group it depends on
+
+```gherkin
+Given "child-a" is an active todo with an "after" dependency on "parent-slug"
+When a caller runs `telec todo update child-a --group parent-slug`
+Then the request is refused with a conflict error stating that group membership and an "after" dependency on the same holder are mutually exclusive
+And "child-a"'s group membership and dependencies are left unchanged
+And the same refusal applies when "child-a" depends on any holder that "parent-slug" is itself grouped under
+And the same refusal applies when one update both joins the group and adds the dependency
+```
+<!-- /planned:todo-update-regroup -->
+
 #### UC-WDG6: A task parent clears the prepare gate only on delivery
 
 ```gherkin

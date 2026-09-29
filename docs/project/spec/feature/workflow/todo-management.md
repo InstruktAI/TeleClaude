@@ -19,6 +19,10 @@ Each entry is tied to a Todo by durable identity and active slug. Creation goes 
 
 Visual hierarchy within a section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. A holder is an explicit row status, entered once when the first child is grouped under a parent and never left; a holder is exempt from the todo lifecycle and exists to bind its artifacts as evidence of the split and to label its children wherever they render. Children reference their holder by durable row id, and every surface renders the holder label as context joined from that row — the holder has no row-presence of its own in any band. Gaining an `after`-child never makes a node a holder; a node keeps its own row state while nesting its dependents.
 
+<!-- planned:todo-update-regroup -->
+Group membership is set when a todo is created under a parent and can be changed later through the update facade: a live todo moves into a group, into a different group, or out of any group. The move changes only which holder labels the todo and which holder's roll-up counts it; the todo keeps its own lifecycle state, artifacts, and dependencies. Moving into a parent that is not yet a holder makes it one through the same transition group creation uses, and a holder that loses its last live child stays a holder that renders nowhere.
+<!-- /planned:todo-update-regroup -->
+
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
 Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.
@@ -393,6 +397,67 @@ When the TUI reads that project's todo data
 Then it carries the todos delivered within `RECENTLY_DELIVERED_HOURS` and no earlier delivery
 And it carries every iced todo, whatever its age
 ```
+
+<!-- planned:todo-update-regroup -->
+#### UC-WM36: An agent moves a live todo into a group
+
+```gherkin
+Given an agent is working with an active todo "moved" that belongs to no group
+And "epic" is a holder, or a live todo that has not yet reached prepared
+When the agent runs "telec todo update moved --group epic"
+Then "moved" becomes a child of "epic"
+And every todo listing renders "moved" under the "epic" label
+And "epic" counts "moved" when it decides whether all of its children are prepared or delivered
+And "moved" keeps its own lifecycle state, artifacts, and dependencies
+And an "epic" that was not yet a holder becomes one exactly as it would when a child is created under it
+```
+
+#### UC-WM37: An agent moves a grouped todo to another group
+
+```gherkin
+Given an agent is working with an active todo "moved" that is a child of holder "old-epic"
+When the agent runs "telec todo update moved --group new-epic"
+Then "moved" becomes a child of "new-epic" and is no longer a child of "old-epic"
+And "old-epic" stays a holder, and renders nowhere once it has no live child
+```
+
+#### UC-WM38: An agent moves a grouped todo out of every group
+
+```gherkin
+Given an agent is working with an active todo "moved" that is a child of holder "old-epic"
+When the agent runs 'telec todo update moved --group ""'
+Then "moved" belongs to no group and renders at its section root
+And "old-epic" stays a holder, and renders nowhere once it has no live child
+```
+
+#### UC-WM39: A move into an ineligible or cyclic group is refused
+
+```gherkin
+Scenario Outline: the agent names a target that cannot hold the todo
+Given an agent is working with an active todo "moved"
+When the agent runs "telec todo update moved --group <target>"
+Then the update is refused with an error naming why the target cannot hold "moved"
+And "moved"'s group membership and every other todo are left unchanged
+
+Examples:
+| target                                                 |
+| a slug that names no live todo or holder               |
+| "moved" itself                                         |
+| a todo that is not yet a holder and has reached prepared |
+```
+
+#### UC-WM40: A move respects the live claims on the todos it changes
+
+```gherkin
+Given an agent is working with an active todo "moved"
+When the agent runs "telec todo update moved --group epic"
+And "moved" is claimed by a live session outside the agent's claiming group
+Or "epic" is not yet a holder and is claimed by a live session outside the agent's claiming group
+Then the update is refused with an error naming the claiming session
+And neither "moved" nor "epic" is changed
+But a move by a session inside the claiming group proceeds
+```
+<!-- /planned:todo-update-regroup -->
 
 ### Cross-context references
 
