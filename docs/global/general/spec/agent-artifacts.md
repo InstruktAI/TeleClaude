@@ -16,9 +16,7 @@ and where those outputs land.
 - **Commands**:
   - Frontmatter: `description`, optional `argument-hint`, optional `parameters`, optional `hooks` (emitted for Claude Code outputs only)
   - Body: normalized command schema (see below)
-<!-- planned:fold-retires-whole-files -->
   - Retirement companion: a zero-byte sibling `<name>.<slug>.md` marks the command retired by the delivering `<slug>`. Validation accepts it in place of a command, distribution emits nothing for it and keeps deploying the command, and the delivery fold deletes both (`general/policy/agent-artifact-governance`).
-<!-- /planned:fold-retires-whole-files -->
 
 - **Skills**:
   - Frontmatter: required `name` and `description`

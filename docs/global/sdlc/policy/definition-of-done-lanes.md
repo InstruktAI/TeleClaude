@@ -536,14 +536,6 @@ delivery that lives elsewhere or has already been hard-purged after reconciliati
 Do not use `telec todo show <slug>` 404 as evidence that a pending snippet is
 undeliverable.
 
-<!-- planned-change:fold-retires-whole-files -->
-**Companion re-sync check.** When a commit edits a live parent `<stem>.md` and
-a pending companion `<stem>.<slug>.md` exists, the reviewer reads both the
-parent diff and the companion. The commit is flagged unless the companion is
-re-synced in the same change or the diff records a deliberate coordination
-decision. This is reviewer judgment over the changed files, not an automated
-free-text grader.
-<!-- change:fold-retires-whole-files -->
 **Companion re-sync check.** When a commit edits a live parent `<stem>.md` and
 a non-empty pending companion `<stem>.<slug>.md` exists, the reviewer reads
 both the parent diff and the companion. The commit is flagged unless the
@@ -551,7 +543,6 @@ companion is re-synced in the same change or the diff records a deliberate
 coordination decision. An empty companion retires its parent and carries no
 body to re-sync. This is reviewer judgment over the changed files, not an
 automated free-text grader.
-<!-- /planned-change:fold-retires-whole-files -->
 
 **Process-change check.** When changed prose alters a process-layer behavioral
 contract, apply `sdlc/policy/process-change-authority`: verify

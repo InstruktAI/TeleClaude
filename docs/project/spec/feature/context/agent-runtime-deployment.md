@@ -291,7 +291,6 @@ Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/comman
   And a destination file with no ownership record is preserved
 ```
 
-<!-- planned:fold-retires-whole-files -->
 #### UC-ARD40: A retiring command stays deployed until its delivery folds
 
 ```
@@ -301,7 +300,6 @@ Scenario: UC-ARD40 A session can still load a retiring command until its deliver
   Then an agent session loading that command from the corpus receives it unchanged
   And an agent session finds no command named after the companion
 ```
-<!-- /planned:fold-retires-whole-files -->
 
 
 

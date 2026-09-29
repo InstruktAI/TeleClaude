@@ -142,7 +142,6 @@ Scenario: The commit gate validates the artifacts in its pathspec
   And a validation finding refuses the commit
 ```
 
-<!-- planned:fold-retires-whole-files -->
 #### UC-AAV5: An empty command companion is accepted as a retirement
 
 ```
@@ -154,7 +153,6 @@ Scenario: An agent commits a retirement companion beside a command
   But when the sibling is not zero bytes, or has no command beside it
   Then the agent receives a finding naming the file as a malformed command source
 ```
-<!-- /planned:fold-retires-whole-files -->
 
 
 ### Cross-context references

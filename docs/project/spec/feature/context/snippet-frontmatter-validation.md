@@ -223,7 +223,6 @@ Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status
 ```
 
-<!-- planned:fold-retires-whole-files -->
 #### UC-SFV5: An empty companion is accepted as a retirement
 
 ```
@@ -232,7 +231,6 @@ When snippet validation runs on that commit
 Then the agent receives no frontmatter, title-suffix, or section finding for the companion
 And the live snippet is still validated in full
 ```
-<!-- /planned:fold-retires-whole-files -->
 
 ### Cross-context references
 

@@ -12,12 +12,8 @@ visibility: 'public'
 - A machine-generated artifact reaches no further than the tier that produced it; promotion to a wider tier is a human act.
 
 
-<!-- planned-change:fold-retires-whole-files -->
-- **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts — commands and skills — are standalone agent-infrastructure plumbing; code never depends on their content, and couples to a command only where the platform dispatches it by name. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no content for code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, artifact distribution deploys it and the commits policy governs its commit.
-<!-- change:fold-retires-whole-files -->
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts — commands and skills — are standalone agent-infrastructure plumbing; code never depends on their content, and couples to a command only where the platform dispatches it by name. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no content for code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, artifact distribution deploys it and the commits policy governs its commit.
 - **A dispatched command retires with the delivery that removes its last dispatcher.** The command must exist while any dispatcher on `main` still names it, and must not outlive the delivery that removes the last one. Its retirement is therefore the one pending carrier an artifact takes: during that delivery's preparation, an empty companion `<name>.<slug>.md` is authored beside the command on `main`, naming the delivering slug, and the delivery fold deletes the command and the companion together. The command stays deployed until then. A new dispatched command needs no carrier: authored on `main` ahead of its dispatcher, it is inert until dispatched.
-<!-- /planned-change:fold-retires-whole-files -->
 - Any `AGENTS.master.md` in a project is inflated by artifact distribution into an adjacent `AGENTS.md`.
 
 
@@ -53,9 +49,7 @@ visibility: 'public'
 - Quality configuration is the wall agent work is measured against; under goal pressure, any checker its own subject can edit gets edited toward green, one defensible commit message at a time. Governing the wall's definition places it outside the constrained author's unilateral reach.
 
 
-<!-- planned:fold-retires-whole-files -->
 - A dispatched command is coupled to code in one direction only: its removal. Deleted on `main` before its last dispatcher is delivered, it breaks the dispatch still live there; deleted by hand afterwards, it has no owner once the preparing session ends. The fold that delivers the dispatcher's removal is the only act that reaches exactly that moment, so the removal rides it.
-<!-- /planned:fold-retires-whole-files -->
 
 - Reading authored input from a directory the platform also writes makes a file's provenance unreadable from its location: an author cannot tell their own work from generated output, and a regenerating deploy is free to overwrite something a human wrote. Keeping the source root out of every delivery location is what makes that class of loss unrepresentable rather than merely avoided by convention.
 
