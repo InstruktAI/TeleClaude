@@ -57,11 +57,7 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 
 ### Commands that do not depend on the caller
 
-<!-- planned-change:integration-push-lint-loses-identity -->
-`version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `signals status`, `mcp list`, the hidden git-hook commands `code pre-commit`, `code post-commit` and `code post-merge`, and the hidden todo-state-transfer helper `todo sync-replica` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state — hook maintenance acts only on a canonical-main range and runs only main-only actions — so a caller role adds no protection. The transfer helper runs on a receiving computer inside a non-interactive SSH session, which carries no login or session identity; it only reports where that computer keeps a project's todo state and whether that state is intact, facts any account able to run it can already read from disk, and it changes nothing.
-<!-- change:integration-push-lint-loses-identity -->
 `version`, `auth login`, `auth whoami`, `auth logout`, `events list`, `signals status`, `mcp list`, the local code-tooling commands `code lint`, `code test`, `code format`, `code add` and `code blueprint affected`, the hidden git-hook commands `code pre-commit`, `code post-commit` and `code post-merge`, and the hidden todo-state-transfer helper `todo sync-replica` admit a caller with no identity. Each either reads nothing that belongs to a caller or acts on an object already guarded by its own state (`general/principle/trust-and-guardrails`) — the code-tooling commands change only the invoking checkout and, when a session invokes them, that session's own path declarations, and those that narrow their scope to a session read the session marker, never the caller, and hook maintenance acts only on a canonical-main range and runs only main-only actions. The transfer helper runs on a receiving computer inside a non-interactive SSH session, which carries no login or session identity; it only reports where that computer keeps a project's todo state and whether that state is intact, facts any account able to run it can already read from disk, and it changes nothing.
-<!-- /planned-change:integration-push-lint-loses-identity -->
 
 ## Failure modes
 
