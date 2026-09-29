@@ -219,7 +219,7 @@ Given a live snippet or command artifact has an empty companion naming an integr
 And no other slug owns pending material in that file
 When the integrator delivers the candidate
 Then the integrator's folded repository root carries neither the file nor its companion
-And an agent reading documentation or dispatching commands after delivery no longer finds the file
+And once the maintenance that fold commit owes reaches its terminal outcome, an agent reading documentation or dispatching commands no longer finds the file
 And a repeated reconciliation for the same slug makes no further change
 ```
 
