@@ -33,6 +33,7 @@ import platform
 import shutil
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -49,13 +50,12 @@ logger = get_logger(__name__)
 # check keeps an idle-but-open session alive for this whole window.
 _MAX_IDLE_SECONDS = 24 * 3600
 
-# <root>/<project-slug>/<session-id> for sessions, <root>/<tool>/<entry> otherwise.
-_UNIT_GLOB = "*/*"
 _CLAUDE_TRANSCRIPTS_DIR = Path.home() / ".claude" / "projects"
 _TRANSCRIPT_SUFFIX = ".jsonl"
 
-_REAPING_MESSAGE = "Reaping units idle longer than %ds from %s"
-_UNIT_REAP_FAILED_MESSAGE = "Could not reap %s: %s"
+_REAPING_EVENT = "reaping idle temp units"
+_UNIT_REAP_FAILED_EVENT = "temp unit reap failed"
+_UNIT_REAP_FAILED_TEMPLATE = "{unit}: {error}"
 _NOTHING_TO_REAP_MESSAGE = "Nothing to reap"
 _REAPED_MESSAGE_TEMPLATE = (
     "Reaped {units} idle units ({mb:.1f}MB), pruned {dirs} empty dirs, removed {sockets} orphaned sockets"
@@ -104,18 +104,33 @@ def _transcript_mtime(unit: Path) -> float | None:
         return None
 
 
-def _reap_idle_units(root: Path, max_idle: int) -> tuple[int, int]:
-    """Remove every unit under root that has been idle for longer than max_idle seconds.
+@dataclass
+class _ReapOutcome:
+    units_removed: int = 0
+    bytes_freed: int = 0
+    errors: list[str] = field(default_factory=list[str])
 
-    Returns (units_removed, bytes_freed).
+
+def _iter_units(root: Path) -> list[Path]:
+    """List the reaping units under root: <root>/<project-slug>/<session-id> for
+    sessions, <root>/<tool>/<entry> otherwise.
+
+    Symlinks are skipped at both levels so no unit resolves outside root.
     """
-    cutoff = time.time() - max_idle
-    units_removed = 0
-    bytes_freed = 0
-
-    for unit in root.glob(_UNIT_GLOB):
-        if unit.is_symlink() or not unit.is_dir():
+    units: list[Path] = []
+    for parent in root.iterdir():
+        if parent.is_symlink() or not parent.is_dir():
             continue
+        units.extend(unit for unit in parent.iterdir() if not unit.is_symlink() and unit.is_dir())
+    return units
+
+
+def _reap_idle_units(root: Path, max_idle: int) -> _ReapOutcome:
+    """Remove every unit under root that has been idle for longer than max_idle seconds."""
+    cutoff = time.time() - max_idle
+    outcome = _ReapOutcome()
+
+    for unit in _iter_units(root):
         try:
             latest, size = _tree_stats(unit)
             transcript_mtime = _transcript_mtime(unit)
@@ -125,12 +140,13 @@ def _reap_idle_units(root: Path, max_idle: int) -> tuple[int, int]:
                 continue
             shutil.rmtree(unit)
         except OSError as exc:
-            logger.warning(_UNIT_REAP_FAILED_MESSAGE, unit, exc)
+            logger.warning(_UNIT_REAP_FAILED_EVENT, unit=str(unit), error=str(exc))
+            outcome.errors.append(_UNIT_REAP_FAILED_TEMPLATE.format(unit=unit, error=exc))
             continue
-        units_removed += 1
-        bytes_freed += size
+        outcome.units_removed += 1
+        outcome.bytes_freed += size
 
-    return units_removed, bytes_freed
+    return outcome
 
 
 def _prune_empty_parents(root: Path) -> int:
@@ -187,31 +203,35 @@ class TempReaperJob(Job):
         del context
         temp_dir = _find_claude_temp_dir()
 
-        units_removed = 0
-        bytes_freed = 0
+        outcome = _ReapOutcome()
         dirs_removed = 0
         sockets_removed = 0
 
         if temp_dir:
-            logger.info(_REAPING_MESSAGE, _MAX_IDLE_SECONDS, temp_dir)
-            units_removed, bytes_freed = _reap_idle_units(temp_dir, _MAX_IDLE_SECONDS)
+            logger.info(_REAPING_EVENT, root=str(temp_dir), max_idle_seconds=_MAX_IDLE_SECONDS)
+            outcome = _reap_idle_units(temp_dir, _MAX_IDLE_SECONDS)
             dirs_removed = _prune_empty_parents(temp_dir)
 
         sockets_removed = _reap_orphaned_sockets()
 
-        total_items = units_removed + dirs_removed + sockets_removed
+        total_items = outcome.units_removed + dirs_removed + sockets_removed
 
-        if total_items == 0:
+        if total_items == 0 and not outcome.errors:
             return JobResult(success=True, message=_NOTHING_TO_REAP_MESSAGE, items_processed=0)
 
         msg = _REAPED_MESSAGE_TEMPLATE.format(
-            units=units_removed,
-            mb=bytes_freed / (1024 * 1024),
+            units=outcome.units_removed,
+            mb=outcome.bytes_freed / (1024 * 1024),
             dirs=dirs_removed,
             sockets=sockets_removed,
         )
         logger.info(msg)
-        return JobResult(success=True, message=msg, items_processed=total_items)
+        return JobResult(
+            success=not outcome.errors,
+            message=msg,
+            items_processed=total_items,
+            errors=outcome.errors or None,
+        )
 
 
 JOB = TempReaperJob()
