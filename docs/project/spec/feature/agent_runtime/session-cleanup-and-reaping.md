@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-The cleanup half of agent_runtime session lifecycle. Where `session-lifecycle` accepts a close request, this surface performs it: token revocation, host-pane termination, conversation-link teardown, listener cleanup, adapter channel deletion, workspace removal, per-session tmpdir removal, Claude Code session temp directory removal, escalation teardown, inbound expiry, and the final `closing -> closed` lifecycle write.
+The cleanup half of agent_runtime session lifecycle. Where `session-lifecycle` accepts a close request, this surface performs it: token revocation, host-pane termination, conversation-link teardown, listener cleanup, adapter channel deletion, workspace removal, per-session tmpdir removal, Claude Code session temp directory removal on purge, escalation teardown, inbound expiry, and the final `closing -> closed` lifecycle write.
 
 It also reconciles the gap between what durable storage believes and what the system holds: stale sessions (storage-active but host-pane-gone), orphan host-pane sessions (TeleClaude-prefixed host pane with no storage row), orphan workspace directories (UUID-named directory under the workspace base with no storage row), and orphan per-session tmpdirs (UUID-named subdirectory under the configured tmpdir base, not bound to a live session).
 
@@ -34,7 +34,7 @@ And the lifecycle status is written to "closing"
 And the host pane is terminated when a host pane reference is present and the session is not headless
 And the resource-cleanup step runs (links, listeners, channel delete, workspace removal)
 And the per-session tmpdir cleanup runs
-And the Claude Code session temp directory cleanup runs
+And the Claude Code session temp directory cleanup runs only when the destructive delete variant is requested
 And the inbound queue manager expires pending inbound messages for the session
 And the escalation-end step clears relay state and emits `session.escalation_ended` if relay status was active
 And the lifecycle write completes via close-session (or delete-session when the destructive variant is requested)
@@ -57,7 +57,7 @@ And the tmpdir is removed without a "directory not empty" failure
 
 ```
 Given the termination flow is mid-flight
-Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> reap the host pane's process tree -> resource cleanup -> per-session tmpdir cleanup -> Claude Code session temp directory cleanup -> expire inbound -> end escalation -> close-session (or delete-session)
+Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> reap the host pane's process tree -> resource cleanup -> per-session tmpdir cleanup -> Claude Code session temp directory cleanup (delete variant only) -> expire inbound -> end escalation -> close-session (or delete-session)
 And every step after host-pane termination is wrapped in best-effort error handling
 And a failure in any intermediate step is logged but does NOT prevent the final lifecycle write — once the host pane is gone, leaving the row stuck at "closing" would be worse than continuing
 And a reap that cannot confirm the process tree exited within its bound logs the unresolved or surviving process ids and continues, so the final lifecycle write still runs
@@ -90,7 +90,7 @@ And the destructive delete variant is NOT requested (the default)
 When terminate-session runs
 Then the function records the already-closed state
 And the lifecycle-status="closing" write is SKIPPED (the row stays at its closed status)
-And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, Claude Code session temp directory, inbound expiry, escalation teardown) — straggling artifacts get reaped
+And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, inbound expiry, escalation teardown) — straggling artifacts get reaped
 And the final close-session call is also SKIPPED
 And the function returns without reporting a new transition
 ```
@@ -103,7 +103,7 @@ And the destructive delete variant is NOT requested (the default)
 When terminate-session runs for that session
 Then the function records that the close has already started
 And the lifecycle-status="closing" write is SKIPPED (re-declaring a close that is already underway is not a permitted transition)
-And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, Claude Code session temp directory, inbound expiry, escalation teardown)
+And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, inbound expiry, escalation teardown)
 And the final close-session call sets the closed-at marker and moves the row to "closed"
 And the caller receives the ordinary end-session success rather than a lifecycle-transition error
 ```
@@ -194,16 +194,18 @@ And paths that do not resolve under the base are refused with a warning
 And the removal swallows mid-walk "file vanished" errors (Node compile-cache vanish race) but propagates other exceptions
 ```
 
-#### UC-SCR-10: A closed Claude session's Claude Code temp directory is removed
+#### UC-SCR-10: A purged Claude session's Claude Code temp directory is removed
 
 ```
 Given a session whose active agent is Claude and whose native session id is a canonical UUID
+And terminate-session runs with the destructive delete variant (retention purge or stale-session cleanup)
 And Claude Code's per-user temp root is a real directory owned by the daemon user, not a symlink
 When terminate-session runs the Claude Code session temp directory cleanup
 Then every directory named by that native session id directly under a project directory of the temp root is removed
 And project directories and session directories that are symlinks are skipped
 And temp directories of every other Claude session, open or closed, are left untouched
 And a session of any other agent, or without a native session id, removes nothing
+And a close without the delete variant leaves the Claude Code temp directory in place, so a revived session resumes with its scratchpad
 ```
 
 #### emit-recently-closed-session-events — restart-recovery sweep

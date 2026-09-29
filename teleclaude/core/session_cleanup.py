@@ -167,7 +167,7 @@ def _claude_temp_root() -> Path | None:
 
 
 async def cleanup_claude_session_tmpdir(session: Session) -> int:
-    """Delete Claude Code's temp directory for a closed Claude session.
+    """Delete Claude Code's temp directory for a purged Claude session.
 
     Returns the number of directories removed.
     """
@@ -434,15 +434,18 @@ async def _terminate_session_inner(
                 exc_info=True,
             )
 
-        try:
-            await cleanup_claude_session_tmpdir(session)
-        except Exception as exc:
-            logger.error(
-                _CLAUDE_TMPDIR_CLEANUP_FAILED_EVENT,
-                session_id=session.session_id,
-                error=str(exc),
-                exc_info=True,
-            )
+        # A closed session stays revivable with its Claude scratchpad until its
+        # row is purged, so the Claude temp directory goes only with the row.
+        if delete_db:
+            try:
+                await cleanup_claude_session_tmpdir(session)
+            except Exception as exc:
+                logger.error(
+                    _CLAUDE_TMPDIR_CLEANUP_FAILED_EVENT,
+                    session_id=session.session_id,
+                    error=str(exc),
+                    exc_info=True,
+                )
 
         # Expire any pending inbound messages before marking the session closed.
         try:
