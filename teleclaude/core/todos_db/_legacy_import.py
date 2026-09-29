@@ -21,6 +21,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE
 from teleclaude.slug import normalize_slug, validate_slug
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import DorState, TodoState
 
 logger = get_logger(__name__)
@@ -62,7 +63,7 @@ class _LegacyEntry:
     status: str
     marker: str
     description: str
-    kind: str
+    kind: TodoKind
     delivered_at: str | None = None
     delivered_commit: str | None = None
 
@@ -344,7 +345,7 @@ def _clean_description(description: str) -> str:
 
 
 # guard: loose-dict - TodoState.model_dump emits heterogeneous JSON payload values by design.
-def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str) -> dict[str, object]:
+def _build_state(*, kind: TodoKind, marker: str, artifacts: dict[str, str], now: str) -> dict[str, object]:
     state = TodoState.defaults()
     state.kind = kind
 
