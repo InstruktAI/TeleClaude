@@ -166,6 +166,11 @@ _PRE_DISPATCH_THIRD_PARTY_ROOTS = frozenset(
     }
 )
 _PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS = frozenset({"_virtualenv"})
+_PRE_DISPATCH_CLOSURE_GUIDANCE = (
+    "Pre-dispatch imports affect every telec command. Read "
+    "project/design/architecture/cli-invocation-boundary; trace the new import chain "
+    "and shared startup cost before proposing an independently reviewed closure update."
+)
 _CALLER_IDENTITY_MODULE = "teleclaude.caller_identity"
 _IDENTITY_INTERNAL_ROLE_NAMES = frozenset(
     {
@@ -357,7 +362,7 @@ def _check_pre_dispatch_import_closure(repo_root: Path) -> None:
             detail = (result.stderr or result.stdout).strip()
             failures.append(f"{label} failed: {detail}")
     if failures:
-        _fail("\n".join(failures))
+        _fail("\n".join([*failures, _PRE_DISPATCH_CLOSURE_GUIDANCE]))
 
 
 def _check_identity_role_imports(repo_root: Path) -> None:

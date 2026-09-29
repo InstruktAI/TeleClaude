@@ -89,10 +89,29 @@ design owns only the path that connects them.
    at module scope that one of those commands does not need. The daemon API client is
    loaded only by commands that act through the daemon, and carries no history,
    summarizer or LLM dependency.
-7. **The pre-dispatch path is closed.** The set of modules the path before dispatch may
-   import is declared, and a guardrail rejects a change that widens it. A command whose
-   own work is trivial completes in roughly 200 ms from the shell; the figure is the
-   target that shows invariants 4–6 hold, not a limit a change is graded against.
+7. **Pre-dispatch import cost is shared.** Every module loaded before handler dispatch
+   adds cost to commands that never use it. The declared import closure and its guardrail
+   catch new imports before that cost can spread silently; an undeclared import is a
+   prompt to investigate, not proof that the module itself is forbidden or slow. A
+   command whose own work is trivial completes in roughly 200 ms from the shell; the
+   figure is the target that shows invariants 4–6 hold, not a limit a change is graded
+   against.
+
+### Responding to an import-closure refusal
+
+Trace the new import edge through package initializers and its third-party dependencies.
+Establish which work the pre-dispatch gate actually needs. Keep a dependency used by
+only some commands behind those commands' handler dispatch, and preserve the gate's
+independence from machine configuration, the ORM, and the daemon API client. Do not
+append a module to the declared closure merely to make the guardrail pass, or hide
+the import behind a local import without accounting for when it runs.
+
+If the new dependency is necessary before dispatch, compare fresh-process startup
+of a trivial command from the base and changed checkout on the same host, inspect
+the import and initialization delta, and record the evidence and reason for the
+shared cost in the change description. A justified closure update goes through the
+independent review required for quality-defining guardrail changes. The guardrail
+identifies the new edge; timing evidence and review determine whether it belongs.
 
 ## Primary flows
 
@@ -137,15 +156,15 @@ one, whose code is delivered code; that behavior is verified after delivery
 
 ## Failure modes
 
-| Condition                                                 | Effect                                                                                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Machine configuration is invalid                          | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
-| People roster cannot be read                              | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
-| Session marker names no admissible row                    | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
-| Worktree code started | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched. |
-| The worktree's home is missing | Refused at startup, naming the home; nothing is created. |
-| Daemon unreachable                                        | Only commands that act through the daemon fail; everything else runs.                                                                |
-| A change imports a new module on the pre-dispatch path    | The guardrail rejects it before it lands.                                                                                            |
+| Condition                                              | Effect                                                                                                                                                                                 |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine configuration is invalid                       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working.                                                   |
+| People roster cannot be read                           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                                                                           |
+| Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                                                                        |
+| Worktree code started                                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                                                                     |
+| The worktree's home is missing                         | Refused at startup, naming the home; nothing is created.                                                                                                                               |
+| Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                                                                  |
+| A change imports a new module on the pre-dispatch path | The guardrail refuses the undeclared edge and directs the agent to trace its shared cost, then either move command-specific work behind dispatch or justify a reviewed closure update. |
 
 ## See Also
 
