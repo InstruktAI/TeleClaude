@@ -351,7 +351,6 @@ class SlashCommand(StrEnum):
     CREATE_ART = "creative/create-art"
     CREATE_HTML = "creative/create-html"
     DEFER = "sdlc/defer"
-    ASSIST = "sdlc/assist"
     RUN_JOB = "general/run-job"
     ACTIVATE_PROCEDURE = "general/activate-procedure"
 
@@ -378,7 +377,6 @@ NON_SLUG_BOUND_COMMANDS = frozenset(
 class JobRole(str, Enum):
     """Canonical job roles for sessions spawned by slash commands."""
 
-    ASSIST = "assist"
     BUILDER = "builder"
     COORDINATOR = "coordinator"
     REVIEWER = "reviewer"
@@ -412,7 +410,6 @@ class JobRole(str, Enum):
 # The prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`) recognizes
 # the job regardless of which system role carries it.
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[SystemRole, JobRole]] = {
-    SlashCommand.ASSIST: (ROLE_WORKER, JobRole.ASSIST),
     SlashCommand.BUILD: (ROLE_WORKER, JobRole.BUILDER),
     SlashCommand.REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
     SlashCommand.REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine._types import DEFAULT_REVIEW_ROUND_THRESHOLD, PreparePhase, StateValue
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -32,10 +31,11 @@ _PREPARE_REVIEW_PHASES: dict[PreparePhase, ReviewPhase] = {
 }
 _THRESHOLD_REPORT_TEMPLATE = (
     "Review round threshold crossed for {slug}: phase={phase}, admitted={admitted}, "
-    f"threshold={{threshold}}. Dispatch an assist against this loop: run /{SlashCommand.ASSIST.value} for "
-    "{slug}, phase {phase}, giving it the target, the review evidence ({report_artifact}), "
-    "both sessions, and the contract under dispute. Nothing is refused — continue "
-    "dispatching or reusing the reviewer as usual."
+    "threshold={threshold}. Nothing is refused — before requesting another pass, "
+    "apply the continuation contract in sdlc/procedure/lifecycle/review: run "
+    "telec docs get sdlc/procedure/lifecycle/review and establish from the current "
+    "review evidence ({report_artifact}) what remains unresolved and why the next "
+    "act can resolve it within the frozen scope."
 )
 
 
