@@ -220,6 +220,33 @@ against the code is defective **even when the mechanism happens to be correct**:
 the defect is the unverified adoption, because the next wrong guess rides the
 same unchecked path.
 
+### Builder discretion within prepared contracts
+
+The builder owns implementation decisions within the authorized outcome,
+bounded-context ownership, published contracts, invariants, and applicable
+quality gates (`general/policy/human-contract`). A reviewed architectural
+constraint binds through the guarantee it protects; a file name, helper name,
+signature, decomposition, or sequence does not become binding merely because
+the approved plan names it.
+
+The builder may adapt those implementation hypotheses when grounded code
+reality requires it, including splitting a module to satisfy a quality limit.
+The adaptation preserves the delivery's outcomes and binding constraints and
+does not weaken the quality floor. Record a material adaptation and its
+grounded reason in the existing build report, todo log, or change description;
+do not rewrite a prepare-owned artifact to authorize it.
+
+Build review evaluates the actual implementation against those contracts. A
+different file placement or a path absent from the plan is not itself a
+finding. A challenge to the adaptation identifies the binding guarantee or
+applicable principle it violates and establishes the contradiction under
+`sdlc/procedure/lifecycle/review`.
+
+Return to prepare only when evidence establishes that satisfying the delivery
+requires re-deriving a prepared outcome or binding constraint. A sound
+implementation adaptation that preserves them stays in work; a disagreement
+about its correctness stays with the producer and reviewer.
+
 ### Missing upstream intent — reconstruct before you invent or escalate
 
 The section above governs when a mechanism is named. This is its mirror. When the
@@ -486,9 +513,13 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
 - The implementation plan declares exactly one ` ```referenced-paths ` fenced
-  contract block listing every file the work creates or modifies. This block is
-  the authoritative code drift surface. Per-task prose may still name files for
-  builder grounding, but prose path mentions are not part of the drift contract.
+  contract block listing every file the grounded plan expects to create or
+  modify at preparation time. This block is the authoritative code drift
+  surface, not an allowlist of builder edits or a requirement to predict later
+  implementation discoveries. Per-task prose may still name files for builder
+  grounding, but prose path mentions are not part of the drift contract. Builder
+  adaptations follow the discretion rule above; the actual diff supplies the
+  complete changed-file surface for build review.
 - **A remediation carries its premise through the whole plan.** When a fix
   changes something the plan stands on — a mechanism or scope boundary —
   every statement that depends on it is brought into line in the same
@@ -497,6 +528,11 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 
 ## Rationale
 
+- Freezing outcomes and protected guarantees preserves the prepared contract;
+  freezing implementation hypotheses prevents the builder from resolving code
+  reality within its own authority. The grounding path set describes the plan
+  at preparation time, while the actual diff exposes the implementation to
+  independent review without an unnecessary return to preparation.
 - Domain intelligence adds value only when it can widen the candidate target
   before scope is chosen, while inspectable premises and independent review
   prevent a generic recital from acquiring intent authority.
