@@ -153,6 +153,17 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   The package selector admits directories only, so it cannot absorb the master;
   every consumer asks the registry for the matched record and carries no local
   path exception.
+<!-- planned:fold-retires-whole-files -->
+- A command tree holds commands and their retirement companions. A file whose
+  name carries no dot before `.md` is a command record. A zero-byte
+  `<name>.<slug>.md` beside a command is that command's retirement companion
+  (`general/spec/agent-artifacts`): it matches the command's own record, so a
+  commit touching it routes as authored content, and it is never a command
+  itself, so validation, composition, and deployment see only the command.
+  Any other file in a command tree whose name carries a dot before `.md` —
+  non-empty, or with no command beside it — matches no boundary and is a
+  validation finding naming it as a malformed command source.
+<!-- /planned:fold-retires-whole-files -->
 
 ### Reach gate
 

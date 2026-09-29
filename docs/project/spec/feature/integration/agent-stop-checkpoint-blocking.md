@@ -300,7 +300,11 @@ Then no checkpoint is force-fired on account of the moved main HEAD
 
 ```gherkin
 Given a turn edits a live parent doc snippet `<stem>.md`
+<!-- planned-change:fold-retires-whole-files -->
 And a pending companion sibling `<stem>.<slug>.md` exists on disk
+<!-- change:fold-retires-whole-files -->
+And a non-empty pending companion sibling `<stem>.<slug>.md` exists on disk
+<!-- /planned-change:fold-retires-whole-files -->
 And the companion is NOT in the turn's changed files
 When the heuristic engine evaluates the turn window
 Then the result surfaces an action telling the agent to mirror the parent edit into the companion
@@ -540,6 +544,18 @@ When the session reaches an agent-stop checkpoint boundary with that file dirty
 Then the file is among the session's declared paths
 And the checkpoint treats it as the session's own undelivered work rather than asking about it
 ```
+
+<!-- planned:fold-retires-whole-files -->
+#### UC-CP38: A retiring parent's edit owes its empty companion no mirror
+
+```gherkin
+Given a turn edits a live parent doc snippet `<stem>.md`
+And an empty companion sibling `<stem>.<slug>.md` beside it marks the parent retired
+And the companion is NOT in the turn's changed files
+When the heuristic engine evaluates the turn window
+Then the agent receives no companion-drift action for that parent
+```
+<!-- /planned:fold-retires-whole-files -->
 
 ### Cross-context references
 

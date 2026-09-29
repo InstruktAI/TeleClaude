@@ -128,7 +128,11 @@ tooling.
 
         - **Discoverability.** `telec docs index` flags pending work inline, never hiding it: `(delivered by: <slugs>)` on a brand-new snippet not yet live, `(superseded by: <slugs>)` on a live parent with a pending companion, planned section, or planned-change section (derived from the filename/marker). Companions never get their own line. The pending **bodies** stay invisible until active: default `telec docs get <id>` strips planned additions and renders the current side of planned-change blocks; `telec docs get <id> --target <slug>` reveals that slug's pending view. `telec docs index --target <slug>` narrows the listing to one todo's new snippets.
 
+<!-- planned-change:fold-retires-whole-files -->
         - **Related-file discovery.** Before editing a live parent `<stem>.md`, list sibling files by stripping `.md` and globbing the stem (`ls docs/.../<stem>.*`). If a pending companion `<stem>.<slug>.md` exists, mirror the parent edit into that companion or coordinate ownership. A parent edit that leaves its pending companion unsynced is a defect.
+<!-- change:fold-retires-whole-files -->
+        - **Related-file discovery.** Before editing a live parent `<stem>.md`, list sibling files by stripping `.md` and globbing the stem (`ls docs/.../<stem>.*`). If a non-empty pending companion `<stem>.<slug>.md` exists, mirror the parent edit into that companion or coordinate ownership. A parent edit that leaves its non-empty pending companion unsynced is a defect. An empty companion is a retirement and is never mirrored into: content in it makes it a replacement.
+<!-- /planned-change:fold-retires-whole-files -->
 
 13. **Every rule reaches its reason in one hop.** A normative rule you author is
     traceable to its reason — and the reason names the invariant protected or the
