@@ -102,7 +102,7 @@ with the governing contract.
    inside them are yours, including file placement, helper names, and
    decomposition, which a plan anticipates rather than binds
    (`sdlc/policy/preparation-artifact-quality`). Record a departure from what
-   the plan names, with the code reality that forced it, in the todo `log`,
+   the plan names, with its reason, in the todo `log`,
    where the build reviewer reads it. Kick back to prepare when code reality invalidates
    the contract or a reviewed decision — not whenever implementation differs
    from prose. Never revise the plan to fit what you built. A material decision

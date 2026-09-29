@@ -222,23 +222,28 @@ same unchecked path.
 
 ### Implementation is the builder's within prepared contracts
 
-The rule above binds the builder as it binds every consumer of a plan: the
-plan's file placement, helper names, and decomposition are hypotheses about how
-to deliver the work. They anticipate it and do not bound it.
+A reviewed plan's file placement, helper names, and decomposition anticipate the
+work and do not bound it: they are the plan's hypotheses about how to deliver it.
 
-What binds the builder is what the delivery must preserve: the intent's outcomes
-and success criteria, scope, bounded-context ownership, published contracts,
-invariants, the risk the prepared artifacts accepted, applicable quality gates,
-and every decision the reviewed architecture makes. A placement, name, or
-decomposition that one of these itself decides — an ownership boundary, a
-layering rule, an invariant — binds as that decision, not as a plan detail.
+Everything else the prepared artifacts settle binds the builder as they state
+it: the intent's outcomes and success criteria, scope, bounded-context
+ownership, published contracts, invariants, the risk the artifacts accepted,
+applicable quality gates, every decision the reviewed architecture makes, and
+the reviewed plan's tasks. A placement, name, or decomposition that one of these
+itself decides — an ownership boundary, a layering rule, an invariant — binds as
+that decision, not as a plan detail.
+
+A reviewed architecture decision that code reality contradicts is not settled
+inside the work phase; it goes to kickback under
+`sdlc/procedure/lifecycle/work/build`, whatever the builder's own adaptation
+would be.
 
 Within those bounds the builder decides placement, names, and decomposition from
 the code in front of it, including splitting a module to meet a quality limit,
 and never lowers the quality floor to do so. A departure from what the plan
-names is recorded in the todo `log` with the code reality that forced it, where
-the build reviewer reads it. The plan and other prepare-owned artifacts are not
-edited to match the build.
+names is recorded in the todo `log` with its reason, where the build reviewer
+reads it. The plan and other prepare-owned artifacts are not edited to match the
+build.
 
 Build review judges the actual diff. A difference from the plan's placement,
 names, or decomposition is neither a finding nor a plan defect by itself: a
@@ -558,8 +563,8 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   keeps the useful lead instead of discarding it. See
   `project/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` for why a
   creation-time gate was rejected.
-- A plan is written before the code is opened, so its placement, names, and
-  decomposition are guesses the code can falsify (`general/principle/grounding`).
+- A plan is written before the implementation exists, so its placement, names,
+  and decomposition are forecasts the implementation can falsify (`general/principle/grounding`).
   Binding the builder to them turns every code discovery into a plan defect and
   moves a decision to prepare that only the builder has the evidence for.
   Binding what the delivery must preserve keeps kickback for a prepared outcome,
