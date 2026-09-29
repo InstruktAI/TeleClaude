@@ -97,7 +97,8 @@ design owns only the path that connects them.
    figure is the target that shows invariants 4–6 hold, not a limit a change is graded
    against. Expanding the closure relaxes its guardrail and requires explicit approval
    from an independent reviewer with no stake in the change
-   (`general/policy/agent-artifact-governance`).
+   (`general/policy/agent-artifact-governance`). Evidence for a necessary pre-dispatch
+   dependency is established under `project/procedure/pre-dispatch-import-closure`.
 
 ## Primary flows
 
