@@ -1,7 +1,9 @@
 ---
-description: Agent sessions subscribe to catalog events and are woken with the content of each matching event their principal may receive, once or every time, until they withdraw the subscription or their session ends.
+description: Agent sessions subscribe to catalog events and are woken with the content
+  of each matching event their principal may receive, once or every time, until they
+  withdraw the subscription or their session ends.
 delivered_by:
-  - telec-events-subscribe-feat
+- subject-scoped-access
 ---
 
 # Event Subscriptions — Spec
