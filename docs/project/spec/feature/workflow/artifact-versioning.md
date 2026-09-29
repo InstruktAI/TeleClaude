@@ -106,7 +106,6 @@ Then it refuses the request as malformed input, citing the expected digest shape
 And the refusal is distinct from the not-found refusal for a well-formed digest the artifact never had
 ```
 
-<!-- planned:container-artifact-remove-404 -->
 
 #### UC-WAV27: Removing a holder's artifact is refused as a holder mutation
 
@@ -118,7 +117,6 @@ And the refusal is distinct from the not-found refusal for a slug with no todo
 And the holder's artifacts and their version history are unchanged
 ```
 
-<!-- /planned:container-artifact-remove-404 -->
 
 ### Write authority
 
