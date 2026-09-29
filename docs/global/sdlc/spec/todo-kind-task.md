@@ -24,8 +24,7 @@ architecture, implementation-plan, or reviewer verdict — and is drafted by
 <!-- planned-change:todo-kind-required-at-creation -->
 - **Discriminator** — does fulfilling the intent require touching the
   codebase? Yes → route to `change`/`feature`/`bug`. No, pure side effects →
-  `task`. This is the same test applied at classification
-  (`sdlc/procedure/analyze-todo-input`) and at task
+  `task`. This is the same test applied at classification and at task
   preparation (`sdlc/procedure/lifecycle/task/prepare-task`).
 <!-- change:todo-kind-required-at-creation -->
 - **Discriminator** — does fulfilling the intent require touching the
