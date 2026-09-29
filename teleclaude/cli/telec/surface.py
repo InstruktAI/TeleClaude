@@ -1519,7 +1519,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         examples=[
                             "telec code blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                        auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
                     ),
                 },
             ),
@@ -1529,7 +1529,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_HELP,
                     F.FLAG_CODE_ALL_LINT,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
             ),
             "test": CommandDef(
                 desc="Run native make test",
@@ -1538,12 +1538,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_CODE_ALL_TEST,
                     F.FLAG_CODE_UPDATE_SNAPSHOTS,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
             ),
             "format": CommandDef(
                 desc="Run native make format",
                 flags=[F.FLAG_HELP, F.FLAG_CODE_ALL_FORMAT],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
             ),
             "add": CommandDef(
                 desc="Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)",
@@ -1568,7 +1568,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the agent may have created incidentally).",
                     "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
             ),
             "owners": CommandDef(
                 desc="Print live declaration owners for every dirty path in the canonical checkout",
