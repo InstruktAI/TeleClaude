@@ -93,6 +93,7 @@ contract governs only what happens when maintenance runs.
   maintenance depends on no caller identity and on no command existing. A
   failed action is replayed with `telec code maintenance retry`, which re-runs
   the recorded action through this executor.
+<!-- planned-change:make-restart-ends-at-kickstart -->
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -110,6 +111,27 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
+<!-- change:make-restart-ends-at-kickstart -->
+- **Observation.** Every attempt and terminal outcome retains the immutable
+  activation and action identity in structured records. The commit boundary
+  records a checkout-scoped integrator judgment for every qualifying code
+  activation after its owed action records are durable, including a direct main
+  commit with no todo candidate. The judgment retains the activation time and
+  becomes eligible only after all owed actions succeed. Restart is the final
+  owed action of an activation; it succeeds when the service manager accepts
+  it, and whether the restarted daemon came back healthy belongs to the
+  integrator's log judgment, not to the action. The drain records the latest maintenance-ready time
+  on that marker; if interrupted before recording readiness, the judgment stays
+  outstanding for integrator recovery even when action files are absent. A log
+  read can discharge it only after that ready time
+  with a window covering the activation through completed maintenance. Operational
+  anomaly detection observes failed or stale actions. A regular committer has no
+  post-commit maintenance log judgment. The standing integrator inspects
+  outstanding and terminal maintenance through its recurring watch, judges
+  the relevant runtime evidence after owed actions complete, and owns bounded
+  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
+  completion sends no notification to the committer.
+<!-- /planned-change:make-restart-ends-at-kickstart -->
 
 ### Use cases
 
