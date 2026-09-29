@@ -30,14 +30,11 @@ executes the work itself and never mutates the `input`.
 ## Steps
 
 0. **Read the creation record first.** `telec todo show {slug}` exposes
-   `entry_point`, `lineage`, `human_involved`, and `context`. It tells you which
-   door filed this todo, whose hands acted, and whether a human was involved —
-   before you interpret a single word of the input. An agent-initiated filing
-   (`human_involved=false`) is read with sharper skepticism about assumed
-   intent; a `split` filing points at its parent todo via `context`, which is
-   required context for classification.
-   Never reconstruct provenance from account identity — the lineage root is the
-   authority the work ran under, not its author.
+   `entry_point`, `lineage`, `human_involved`, and `context`. A `split` filing
+   points at its parent todo via `context`, which is required context for
+   classification. The other fields are audit records: the filing route, the
+   authority the work ran under, and human presence at filing. None of them
+   says who authored the input, and none of them changes how it is read.
 
    Classify from what the `input` carries, including its logically necessary
    implications and existing authoritative product constraints. If another
