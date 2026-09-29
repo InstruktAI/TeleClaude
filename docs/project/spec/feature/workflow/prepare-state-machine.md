@@ -97,19 +97,6 @@ And the cycle-local admitted pass count therefore starts at zero without changin
 And other legacy review shapes keep a zero offset
 ```
 
-<!-- planned-change:retire-assist-review-loop-watcher -->
-#### UC-WPS22: A crossed review threshold reports once and dispatches an assist
-
-```gherkin
-Given a prepare review phase has crossed its configured round threshold
-When the orchestrator calls "telec todo prepare my-feature"
-Then the machine reports the phase, the admitted-pass count and the threshold, and instructs the orchestrator to dispatch an assist against the loop
-And it refuses no pass and emits no continuation stamp
-And it reports that instruction once, on the crossing pass, and not on later passes
-And the admitted-pass count keeps rendering on later passes
-And a dispute the assist judges to be in the contract rather than in the work reaches that contract's decision owner, reaching the human only when that owner is human
-```
-<!-- change:retire-assist-review-loop-watcher -->
 #### UC-WPS22: A crossed review threshold reports once and summons no session
 
 ```gherkin
@@ -120,7 +107,6 @@ And it refuses no pass, emits no continuation stamp, and instructs no additional
 And it reports the crossing once, on the crossing pass, and not on later passes
 And the admitted-pass count keeps rendering on later passes
 ```
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 

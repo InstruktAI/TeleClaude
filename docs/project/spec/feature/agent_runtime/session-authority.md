@@ -31,13 +31,8 @@ acts on a session above it in the dispatch chain, because the act would reach
 past its own mandate into the one that dispatched it. Upward reporting needs no
 act — a completed turn already wakes the session above.
 
-<!-- planned-change:retire-assist-review-loop-watcher -->
-Peers are unaffected: a reviewer and a builder, a driver and the peer it
-dispatched, an assist and either party all keep talking. So does a session with
-<!-- change:retire-assist-review-loop-watcher -->
 Peers are unaffected: a reviewer and a builder, and a driver and the peer it
 dispatched, all keep talking. So does a session with
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 nothing above it, reaching anywhere in the fleet.
 
 ## Canonical fields

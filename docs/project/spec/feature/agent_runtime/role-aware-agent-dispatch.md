@@ -78,10 +78,6 @@ supplies either. System role and job role remain identity and authority facts.
 | `create-art`           | Gemini, Claude, Codex, DeepSeek | `med`                 |
 | `create-html`          | Gemini, Claude, Codex, DeepSeek | `med`                 |
 | `defer`                | Claude, Codex, Gemini, DeepSeek | `slow`                |
-<!-- planned-change:retire-assist-review-loop-watcher -->
-| `assist`               | Claude, Codex, Gemini, DeepSeek | `slow`                |
-<!-- change:retire-assist-review-loop-watcher -->
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 The global automatic order is Claude, Codex, Gemini, DeepSeek. It applies to generic session
 creation with no canonical command; a known command missing from this matrix is a

@@ -54,14 +54,12 @@ procedure is ever dispatched.
    enters remediation, requires no response from you, and cannot enlarge the
    current work. Address findings; leave leads where the reviewer put them.
 
-   <!-- planned:retire-assist-review-loop-watcher -->
    Before remediating a further finding in work you already remediated, compare
    it with the earlier finding, its disposition, and the change that answered it;
    a repeated failure on the same invariant re-derives the affected unit rather
    than patching it again (`sdlc/procedure/lifecycle/review`). A grounded defect
    in continuing the loop is raised to the phase orchestrator, which owns
    continuation under the same contract.
-   <!-- /planned:retire-assist-review-loop-watcher -->
 
 2. **Dispose of every finding, then remediate the fixes.** Each finding
    receives exactly one disposition, written before any remediation: **fix**,

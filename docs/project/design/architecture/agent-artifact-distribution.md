@@ -216,17 +216,6 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   command's own governing global-domain contract, never assumed from its name
   (`@prd#premises-and-assumptions`): a command publishes under the domain that
   owns the contract it executes, and a command whose contract is domain-agnostic
-<!-- planned-change:retire-assist-review-loop-watcher -->
-  publishes under `general`, which is the mother's alone. Two cases are named
-  here because the name misleads: `assist` executes a sdlc
-  lifecycle procedure and publishes under `sdlc`, not `general`;
-  `run-job` executes a configured job, and the job model is `config`'s —
-  the declaration, the schedule contract, its canonical
-  `general/run-job` name, and the scheduler emission all resolve there,
-  while `agent_runtime` dispatches the scheduled job into a session as it
-  dispatches any command. The `general` path is its corpus partition, not a
-  second semantic owner.
-<!-- change:retire-assist-review-loop-watcher -->
   publishes under `general`, which is the mother's alone. One case is named
   here because the name misleads:
   `run-job` executes a configured job, and the job model is `config`'s —
@@ -235,7 +224,6 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   while `agent_runtime` dispatches the scheduled job into a session as it
   dispatches any command. The `general` path is its corpus partition, not a
   second semantic owner.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 ### Migration by expansion before contraction
 

@@ -53,17 +53,6 @@ focused procedure and advances through the machine-owned transitions.
    review cycles. A valid substantive drift stamp starts a new cycle for every
    review target it invalidates. The machine persists cumulative history before
    returning each reviewer instruction, and target or report rewrites without a
-   <!-- planned-change:retire-assist-review-loop-watcher -->
-   substantive stamp reset nothing. At the configured threshold it reports the
-   count once and instructs this session to dispatch an assist against the loop;
-   it refuses no pass and preserves the active prepare session. That instruction
-   is reported once and the obligation to dispatch stands until an assist is
-   live. The assist reads both sides and owns the loop-level disposition: this
-   session continues review, redirects a party, returns to the owning phase for
-   reduction or re-derivation, routes a contract dispute, or stops review
-   continuation while preserving the current verdict and findings. Escalation follows
-   `general/policy/human-contract` rather than the review count.
-   <!-- change:retire-assist-review-loop-watcher -->
    substantive stamp reset nothing. At the configured threshold it reports the
    count once; it refuses no pass, summons no one, and preserves the active
    prepare session. This session owns continuation: it requests another pass
@@ -72,7 +61,6 @@ focused procedure and advances through the machine-owned transitions.
    the grounded cause and routes the next contribution
    (`sdlc/procedure/lifecycle/review`). Escalation follows
    `general/policy/human-contract` rather than the review count.
-   <!-- /planned-change:retire-assist-review-loop-watcher -->
    Legacy prepare-review state that predates cycle identity initializes through
    the one-time migration rule in the shared review procedure.
 

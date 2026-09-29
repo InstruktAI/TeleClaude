@@ -161,15 +161,6 @@ is semantic and line count proves nothing either way. A remediation changes the
 target, not its authority; every addition remains answerable to the same frozen
 denominator.
 
-<!-- planned-change:retire-assist-review-loop-watcher -->
-The first review of a target is one complete discovery pass over the frozen
-digest. A remediation review closes existing findings and inspects the
-remediation delta. A new finding on a remediation review is admissible only
-when it is remediation-induced, or newly observable because the target changed.
-A finding that was observable in the discovery pass and is raised later is the
-reviewer's incompleteness: it halts the loop for reassessment instead of being
-appended to the producer's work.
-<!-- change:retire-assist-review-loop-watcher -->
 The first review of a target is one complete discovery pass over the frozen
 digest. A remediation review closes existing findings and inspects the
 remediation delta. A new finding on a remediation review is admissible only
@@ -189,7 +180,6 @@ affected unit before another pass: a remediation applied only where a finding
 points converges one leftover per pass
 (`sdlc/policy/preparation-artifact-quality`). A second edit to the same region
 establishes neither by itself.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 Review passes are counted within a review cycle. A valid substantive-drift stamp
 ends the current cycle for every review target it invalidates and starts a new
@@ -210,40 +200,6 @@ a zero offset. This keeps the reported cycle-local count describing the target i
 governs rather than inheriting totals from a boundary that was never persisted
 (`general/principle/grounding`).
 
-<!-- planned-change:retire-assist-review-loop-watcher -->
-When a review cycle reaches its configured threshold, the count is reported
-and nothing is refused. The report names the phase, the passes admitted, and the
-threshold, and it instructs the orchestrator to dispatch an assist against the
-loop. It is emitted once, on the pass that crosses the threshold, and not again;
-the count keeps rendering afterwards. The instruction stands until an assist is
-live — an orchestrator that did not act on the crossing pass is still obliged,
-and is not reminded a second time.
-
-The assist is an ordinary child of the orchestrator and lives for the loop. The
-orchestrator sends it a line when a pass lands; it reads both sessions and the
-review evidence itself, and says what shape the loop is in or says nothing. The
-orchestrator waits for that turn before starting another review pass. A silent
-turn leaves continuation available; a stated disposition binds the next act.
-The assist records no verdict and stamps nothing: it owns whether another pass
-is useful and where the loop goes next, while the reviewer and producer retain
-their existing verdict, finding-disposition, and remediation authority. Its
-procedure is `sdlc/procedure/lifecycle/assist`.
-
-Nothing classifies the halt into a recorded vocabulary. Whether a loop is
-converging, contested, moving under its reviewer, or stuck on a contract that
-admits two grounded readings is what the assist says in its own words. It also
-recognises when the target or remediation has become disproportionate to the
-concern being resolved and returns it to its owning phase for reduction or
-re-derivation. A dispute the assist judges to be in the contract rather than in
-the work leaves the loop and goes to that contract's decision owner. Human
-escalation follows the closed human lane, never the round count.
-
-Crossing the threshold refuses nothing mechanically. The obligation to dispatch
-the assist and follow its loop-level disposition is carried by this contract
-rather than by a gate or continuation stamp. An orchestrator does not start
-another reviewer pass after the assist directs correction, re-derivation,
-routing, or closure.
-<!-- change:retire-assist-review-loop-watcher -->
 When a review cycle reaches its configured threshold, the count is reported
 and nothing is refused. The report names the phase, the passes admitted, and the
 threshold, and points at this continuation contract. It is emitted once, on the
@@ -270,7 +226,6 @@ goes to that contract's owner. Human escalation follows the closed human lane
 
 Neither elapsed rounds nor stopping authorizes approval, scope growth, or a
 weakened finding.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

@@ -45,11 +45,7 @@ the coordinator would have chosen differently. If it does not survive, return
 it for correction, or carry the unresolved decision to whoever genuinely owns
 it. Challenge never transfers the decision: verdicts the governing contracts
 assign elsewhere — a drift classification, a duplicate retirement, a kickback,
-<!-- planned-change:retire-assist-review-loop-watcher -->
-review-threshold closure, a product or architecture approval — stay with those owners
-<!-- change:retire-assist-review-loop-watcher -->
 review continuation, a product or architecture approval — stay with those owners
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 while their basis is challenged.
 
 ### What it is for
@@ -237,17 +233,6 @@ clear it. An empty day is a valid day. The log is write-only for this role — i
 is never read back to decide anything; fleet awareness comes from live sources
 each sweep, and the session's own context holds its working state.
 
-<!-- planned-change:retire-assist-review-loop-watcher -->
-A loop past its review threshold has an assist watching it, dispatched by the
-orchestrator and alive for that loop. What the assist says is a challengeable
-judgment like any other owner-held verdict: read its session and challenge the
-basis where it is missing, and own none of it. A threshold crossed with no
-assist live, where the orchestrator is not still acting on the crossing pass, is
-attention fallen between roles — point at it. The entry written
-carries phase, subject, source, and what the assist said; the log supplies
-precedent and recognizes recurrence and never becomes a read-back decision
-source.
-<!-- change:retire-assist-review-loop-watcher -->
 A loop past its review threshold is continued or stopped by its phase
 orchestrator, which records the grounded cause when it stops. That continuation
 judgment is challengeable like any other owner-held verdict: read the
@@ -258,7 +243,6 @@ between roles — point at it. The entry written carries phase, subject, source,
 and the orchestrator's recorded cause; the log supplies
 precedent and recognizes recurrence and never becomes a read-back decision
 source.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 ### 7. Carry to the human
 

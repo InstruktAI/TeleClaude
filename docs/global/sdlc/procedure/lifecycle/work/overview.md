@@ -114,16 +114,9 @@ not itself require the human.
 Review/fix loops report their round count against the configured threshold. No
 fresh fixer session is dispatched — the original builder handles the fix cycle,
 and the next review round reuses the same reviewer session when it is still
-<!-- planned-change:retire-assist-review-loop-watcher -->
-alive. Crossing the threshold refuses nothing; it instructs this orchestrator to
-dispatch an assist against the loop and keep it alive as one of its children.
-That instruction is reported once and the obligation stands until an assist is
-live.
-<!-- change:retire-assist-review-loop-watcher -->
 alive. Crossing the threshold refuses nothing and summons no one; this
 orchestrator owns continuation under the shared convergence contract
 (`sdlc/procedure/lifecycle/review`).
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 ### 5. Finalize
 
@@ -233,18 +226,10 @@ reverts what the amendment invalidates, keeps what still serves, and continues.
   recovery under `general/procedure/orchestration`.
 - Failed recovery iterations require a grounded reassessment and an accountable
   owner, not automatic human escalation; apply `general/policy/human-contract`.
-<!-- planned-change:retire-assist-review-loop-watcher -->
-- At the review threshold, dispatch an assist against the loop and keep it
-  alive for that loop; its loop-level disposition governs whether another pass
-  is useful and where the next contribution belongs. This orchestrator executes
-  that disposition without changing verdict ownership or weakening unresolved
-  findings, which still block approval.
-<!-- change:retire-assist-review-loop-watcher -->
 - When review continuation stops, record the grounded cause and route the next
   contribution under the shared convergence contract
   (`sdlc/procedure/lifecycle/review`), without changing verdict ownership or
   weakening unresolved findings, which still block approval.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.
 
 ## See also

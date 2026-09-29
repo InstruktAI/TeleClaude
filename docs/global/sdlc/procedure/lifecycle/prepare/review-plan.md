@@ -504,21 +504,12 @@ Verdict rules:
 - The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
 - `approve` only when no Requirement-Violation, Critical or Important finding remains unresolved.
 - `needs_work` when any finding in those three tiers remains unresolved.
-<!-- planned-change:retire-assist-review-loop-watcher -->
-- **Round threshold.** The prepare state machine counts plan-review passes
-  against the configured threshold and refuses none. Crossing it obliges the
-  orchestrator to dispatch an assist under
-  `sdlc/procedure/lifecycle/review`. The threshold never changes
-  verdict arithmetic: the reviewer writes the complete report and stamps
-  `approve` only at zero unresolved findings, or `needs_work` otherwise.
-<!-- change:retire-assist-review-loop-watcher -->
 - **Round threshold.** The prepare state machine counts plan-review passes
   against the configured threshold and refuses none. The count summons no one;
   continuation stays with the prepare orchestrator under
   `sdlc/procedure/lifecycle/review`. The threshold never changes
   verdict arithmetic: the reviewer writes the complete report and stamps
   `approve` only at zero unresolved findings, or `needs_work` otherwise.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
 before stamping, with findings classified under
@@ -546,15 +537,9 @@ Review artifact: plan-review-findings
 
 ## Recovery
 
-<!-- planned-change:retire-assist-review-loop-watcher -->
-- If any finding remains unresolved, mark `needs_work`. The
-  state machine routes the findings while the loop runs; past the threshold, an
-  assist watches it under the shared review procedure.
-<!-- change:retire-assist-review-loop-watcher -->
 - If any finding remains unresolved, mark `needs_work`. The
   state machine routes the findings; whether another pass follows is the
   prepare orchestrator's continuation judgment under the shared review procedure.
-<!-- /planned-change:retire-assist-review-loop-watcher -->
 - If upstream artifacts themselves are the problem (plan is correct but PRD,
   architecture, or in-scope feature specs are wrong), flag as blocker — the affected
   upstream artifact must be re-reviewed first.
