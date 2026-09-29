@@ -227,13 +227,10 @@ And the sync exits with a non-zero status
 #### UC-SFV5: An empty companion is accepted as a retirement
 
 ```
-Given a live snippet has a zero-byte sibling companion naming a slug
-When snippet validation runs
-Then the companion receives no frontmatter, title-suffix, or section finding
-And the parent is validated as the live snippet
-Given a companion that is not zero bytes
-When snippet validation runs on it
-Then it is validated as a full snippet
+Given an agent commits a zero-byte sibling companion naming a slug beside a live snippet
+When snippet validation runs on that commit
+Then the agent receives no frontmatter, title-suffix, or section finding for the companion
+And the live snippet is still validated in full
 ```
 <!-- /planned:fold-retires-whole-files -->
 

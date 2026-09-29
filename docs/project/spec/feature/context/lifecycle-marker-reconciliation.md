@@ -215,17 +215,22 @@ And a repeated reconciliation for the same slug makes no further change
 #### UC-LMR12: Delivery retires a whole file through its empty companion
 
 ```gherkin
-Given a live snippet or command artifact has an empty companion naming the current candidate
-And the candidate removes the capability that file describes or the last dispatcher of that command
-When delivery reconciliation runs for the current candidate
-Then the parent file and its empty companion are both deleted
-And the folded repository root carries neither file
-And a second reconciliation run makes no further change
-But when the parent still carries pending material owned by another slug
-Then the caller receives a fault naming the slug, source path, line, and reason
-And neither file is deleted
-When a lifecycle caller abandons the candidate instead
-Then the empty companion is discarded and the parent stays live unchanged
+Given a live snippet or command artifact has an empty companion naming an integration candidate
+And no other slug owns pending material in that file
+When the integrator delivers the candidate
+Then the integrator's folded repository root carries neither the file nor its companion
+And an agent reading documentation or dispatching commands after delivery no longer finds the file
+And a repeated reconciliation for the same slug makes no further change
+```
+
+#### UC-LMR13: Retirement refuses to delete another slug's pending material
+
+```gherkin
+Given a live file has an empty companion naming an integration candidate
+And the file also carries pending material owned by another active slug
+When the integrator delivers the candidate
+Then the integrator receives a fault naming the slug, source path, line, and reason
+And the file, its companion, and the other slug's pending material remain unchanged
 ```
 <!-- /planned:fold-retires-whole-files -->
 
