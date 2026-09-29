@@ -6,16 +6,28 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
+import teleclaude.core.todo_dependency_warnings as dependency_warnings
+from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.todo_artifact_authority import refuse_todo_update_outside_claiming_group
+from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.constants import (
     REMOVED_TODO_MUTATION_REFUSED_DETAIL,
     REMOVED_TODO_RETENTION_WINDOW,
     SLUG_NOT_FOUND_DETAIL,
+    TodoStatus,
 )
 from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.unclaim import unclaim_todo_for_caller
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db import (
+    GroupCycleRefused,
+    GroupDependencyConflict,
+    HolderReconciliationRefused,
+    HolderTransitionRefused,
+    TodosDb,
+)
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.types.todos import HoldAuditSource
 
@@ -31,6 +43,7 @@ HOLD_REASON_REQUIRES_HOLD_DETAIL = "reason is valid only with hold"
 def validate_update_request(
     *,
     new_slug: str | None,
+    group: str | None,
     after: list[str] | None,
     kind: str | None,
     hold: bool,
@@ -41,6 +54,7 @@ def validate_update_request(
 ) -> str | None:
     if (
         new_slug is None
+        and group is None
         and after is None
         and kind is None
         and schedule is None
@@ -50,7 +64,7 @@ def validate_update_request(
     ):
         raise HTTPException(
             status_code=400,
-            detail="at least one of new_slug, after, kind, schedule, hold, release, or unclaim is required",
+            detail=("at least one of new_slug, group, after, kind, schedule, hold, release, or unclaim is required"),
         )
     if hold and release:
         raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
@@ -77,6 +91,87 @@ def normalize_schedule_request(schedule: str | None) -> str | None:
         return normalize_task_schedule(schedule)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def apply_group_membership_update(
+    todos_db: TodosDb,
+    *,
+    slug: str,
+    group_slug: str | None,
+    requested_after: list[str] | None,
+    cwd: str,
+    identity: CallerIdentity,
+) -> None:
+    """Validate and apply the group leg before other update legs can write."""
+    if group_slug is not None and not await todos_db.is_holder(group_slug):
+        await refuse_todo_update_outside_claiming_group(todos_db, identity, group_slug)
+    if requested_after is not None:
+        await validate_requested_dependencies(todos_db, slug, requested_after, check_membership=False)
+        deps = await todos_db.load_deps()
+        cycle = detect_circular_dependency(deps, slug, requested_after)
+        if cycle:
+            cycle_str = " -> ".join(cycle)
+            raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
+
+    try:
+        await todos_db.check_membership_update(
+            slug,
+            group_slug=group_slug,
+            group_present=True,
+            after=requested_after,
+        )
+    except (GroupCycleRefused, GroupDependencyConflict, HolderTransitionRefused) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        await todos_db.update_membership(
+            slug,
+            group_slug=group_slug,
+            after=requested_after,
+            cwd=cwd,
+        )
+    except (GroupCycleRefused, GroupDependencyConflict, HolderTransitionRefused, HolderReconciliationRefused) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+async def apply_dependency_update(
+    todos_db: TodosDb,
+    *,
+    slug: str,
+    requested_after: list[str] | None,
+    group_present: bool,
+) -> list[str]:
+    """Apply dependencies when not already committed with membership and return warnings."""
+    if requested_after is None:
+        return []
+    if not group_present:
+        await validate_requested_dependencies(todos_db, slug, requested_after)
+        deps = await todos_db.load_deps()
+        cycle = detect_circular_dependency(deps, slug, requested_after)
+        if cycle:
+            cycle_str = " -> ".join(cycle)
+            raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
+        await todos_db.set_deps(slug, after=requested_after)
+
+    target_status = await todos_db.find_live_slug_conflict(slug)
+    if requested_after and target_status == TodoStatus.ACTIVE.value:
+        return dependency_warnings.frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug))
+    return []
+
+
+async def resolve_current_group_slug(todos_db: TodosDb, slug: str) -> str | None:
+    """Return the live todo's holder slug, or None when it is ungrouped."""
+    rows = await todos_db.list_todo(include_icebox=True, include_holders=True)
+    slug_by_id = {row["id"]: row["slug"] for row in rows}
+    todo = next(
+        (row for row in rows if row["slug"] == slug and row["status"] in ("active", "icebox")),
+        None,
+    )
+    return slug_by_id.get(todo["group_id"]) if todo is not None and todo["group_id"] is not None else None
 
 
 def validate_kind_for_update(kind: str | None) -> None:
@@ -171,6 +266,7 @@ async def apply_unclaim_update(
 
 def should_emit_route_update(
     *,
+    group_present: bool,
     kind: str | None,
     requested_after: list[str] | None,
     schedule: str | None,
@@ -178,7 +274,8 @@ def should_emit_route_update(
     unclaim_summary: str | None,
 ) -> bool:
     return (
-        kind is not None
+        group_present
+        or kind is not None
         or requested_after is not None
         or schedule is not None
         or hold_value is not None
@@ -187,12 +284,15 @@ def should_emit_route_update(
 
 
 __all__ = [
+    "apply_dependency_update",
+    "apply_group_membership_update",
     "apply_hold_update",
     "apply_unclaim_update",
     "normalize_hold_reason",
     "normalize_schedule_request",
     "require_slug_found",
     "require_slug_in_todo",
+    "resolve_current_group_slug",
     "should_emit_route_update",
     "validate_kind_for_update",
     "validate_update_request",

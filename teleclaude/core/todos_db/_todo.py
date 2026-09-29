@@ -41,6 +41,7 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.todos_db._todo_membership import TodosDbTodoMembershipMixin
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
 from teleclaude.types.state_value import StateValue
@@ -166,7 +167,7 @@ def _readiness_state_fields(state_model: TodoStateModel | None) -> tuple[str | N
     )
 
 
-class TodosDbTodoMixin:
+class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
     """Todo CRUD, ordering, deps, delivery, icebox (replaces todo.yaml)."""
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
@@ -204,20 +205,11 @@ class TodosDbTodoMixin:
         first_child_slug: str,
         project_root: Path,
     ) -> tuple[str, MarkerReceipt | None]:
-        """Resolve ``--group``'s target and, on first grouping, transition it to a holder.
+        """Promote an eligible live target to holder, returning its id and split receipt.
 
-        Returns the parent row's durable id. A parent already ``holder`` (its
-        earlier group may have ended) attaches with no further mutation.
-        Otherwise the parent's `todo_state` is removed — voiding any claim or
-        hold — and its artifacts and version history are preserved as frozen,
-        read-only evidence.
-
-        Refuses the transition when the parent's lifecycle_phase has reached
-        ``prepared`` or a work-lane phase, since a todo cannot exit the
-        lifecycle mid-build. A missing, uncoercible, or valid but unordered
-        phase (e.g. ``task_running``, which has no place in the SDLC lane
-        order) also refuses — this is a destructive delete path, so
-        unclassifiable state is protected rather than shredded.
+        Existing holders attach unchanged. Other targets must be pre-prepared; their
+        lifecycle state is removed and artifacts remain frozen. Missing, invalid,
+        unordered, or at/past-prepared phases refuse because conversion removes state.
         """
         parent = await self._resolve_group_parent(session, group_slug)
         if parent is None:
@@ -225,20 +217,7 @@ class TodosDbTodoMixin:
         if parent.status == TodoStatus.HOLDER.value:
             return parent.id, None
 
-        state_model = await session.get(TodoStateModel, parent.id)
-        _, lifecycle_phase = _readiness_state_fields(state_model)
-        phase = coerce_lifecycle_phase(lifecycle_phase)
-        if (
-            phase is None
-            or phase not in LIFECYCLE_PHASE_ORDER
-            or lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED)
-        ):
-            raise HolderTransitionRefused(
-                f"todo '{group_slug}' cannot become a holder because its lifecycle_phase "
-                f"({lifecycle_phase!r}) is missing, invalid, or at/past 'prepared' — a todo cannot "
-                "exit the lifecycle mid-build"
-            )
-
+        state_model = await self._validate_holder_transition(session, parent, group_slug)
         receipt = reconcile_lifecycle_markers(
             project_root,
             group_slug,
@@ -256,6 +235,28 @@ class TodosDbTodoMixin:
         if state_model is not None:
             await session.delete(state_model)
         return parent.id, receipt
+
+    async def _validate_holder_transition(
+        self,
+        session: SqlAsyncSession,
+        parent: Todo,
+        group_slug: str,
+    ) -> TodoStateModel | None:
+        """Return the target state after confirming it may become a holder."""
+        state_model = await session.get(TodoStateModel, parent.id)
+        _, lifecycle_phase = _readiness_state_fields(state_model)
+        phase = coerce_lifecycle_phase(lifecycle_phase)
+        if (
+            phase is None
+            or phase not in LIFECYCLE_PHASE_ORDER
+            or lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED)
+        ):
+            raise HolderTransitionRefused(
+                f"todo '{group_slug}' cannot become a holder because its lifecycle_phase "
+                f"({lifecycle_phase!r}) is missing, invalid, or at/past 'prepared' — a todo cannot "
+                "exit the lifecycle mid-build"
+            )
+        return state_model
 
     async def _todo_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
         """Return a slug-status map where any non-removed row outranks removed history."""

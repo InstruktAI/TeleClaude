@@ -26,6 +26,22 @@ class HolderTransitionRefused(ValueError):
     """
 
 
+class GroupCycleRefused(ValueError):
+    """A todo cannot be grouped beneath itself or one of its descendants."""
+
+
+class GroupDependencyConflict(ValueError):
+    """A todo cannot depend on a holder in its effective group chain."""
+
+    def __init__(self, slug: str, holder: str) -> None:
+        self.slug = slug
+        self.holder = holder
+        super().__init__(
+            f"todo '{slug}' cannot depend on holder '{holder}': group membership and an after dependency "
+            "on the same holder are mutually exclusive"
+        )
+
+
 class HolderReconciliationRefused(ValueError):
     """A holder transition was refused because documentation reconciliation failed safely.
 

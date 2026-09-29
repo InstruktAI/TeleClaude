@@ -47,6 +47,7 @@ class _TodoUpdateBody(TypedDict):
     cwd: str
     client_request_id: str
     new_slug: NotRequired[str]
+    group: NotRequired[str]
     after: NotRequired[list[str]]
     schedule: NotRequired[str]
     kind: NotRequired[str]
@@ -557,6 +558,7 @@ def _handle_todo_update(args: list[str]) -> None:
     parsed = _parse_todo_update_args(args)
     slug = parsed["slug"]
     new_slug = parsed["new_slug"]
+    group = parsed["group"]
     after_present = parsed["after_present"]
     kind = parsed["kind"]
     schedule = parsed["schedule"]
@@ -567,7 +569,8 @@ def _handle_todo_update(args: list[str]) -> None:
     unclaim = parsed["unclaim"]
     after = _normalize_after_values(parsed["raw_after"]) if after_present else []
 
-    _validate_slugs(slug, new_slug, *after)
+    normalized_group = group.strip() if group is not None else None
+    _validate_slugs(slug, new_slug, normalized_group or None, *after)
     if kind is not None and kind not in ALL_DUMP_KINDS:
         print(f"unknown todo kind: {kind!r}")
         print(f"Valid kinds: {TODO_KIND_USAGE}")
@@ -586,6 +589,8 @@ def _handle_todo_update(args: list[str]) -> None:
     }
     if new_slug is not None:
         body["new_slug"] = new_slug
+    if group is not None:
+        body["group"] = normalized_group or ""
     if after_present:
         body["after"] = after
     if schedule is not None:

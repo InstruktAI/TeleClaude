@@ -9,7 +9,13 @@ from teleclaude.core.todos_db_path import todos_db_path
 
 from ._artifacts import TodosDbArtifactsMixin, malformed_digest_detail
 from ._base import TodosDbBase
-from ._errors import HolderReconciliationRefused, HolderTransitionRefused, HolderWriteRefused
+from ._errors import (
+    GroupCycleRefused,
+    GroupDependencyConflict,
+    HolderReconciliationRefused,
+    HolderTransitionRefused,
+    HolderWriteRefused,
+)
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, ArtifactWritersRow, TodoRow
 from ._state import TodosDbStateMixin
 from ._todo import TodosDbTodoMixin
@@ -90,6 +96,8 @@ __all__ = [
     "ArtifactMetadataRow",
     "ArtifactVersionRow",
     "ArtifactWritersRow",
+    "GroupCycleRefused",
+    "GroupDependencyConflict",
     "HolderReconciliationRefused",
     "HolderTransitionRefused",
     "HolderWriteRefused",

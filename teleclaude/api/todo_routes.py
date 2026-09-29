@@ -24,15 +24,17 @@ from teleclaude.api.todo_artifact_authority import (
     resolve_creation_lineage,
 )
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
-from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api.todo_update_support import TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL
 from teleclaude.api.todo_update_support import (
+    apply_dependency_update,
+    apply_group_membership_update,
     apply_hold_update,
     apply_unclaim_update,
     normalize_hold_reason,
     normalize_schedule_request,
     require_slug_found,
     require_slug_in_todo,
+    resolve_current_group_slug,
     should_emit_route_update,
     validate_kind_for_update,
     validate_update_request,
@@ -59,7 +61,6 @@ from teleclaude.core.human_involvement import (
     resolve_human_involvement,
 )
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
-from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
     KindMigrationResult,
@@ -146,6 +147,7 @@ class _TodoUpdateResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
     status: str
     slug: str
+    group: str | None = None
     kind: str | None = None
     lifecycle_phase: str | None = None
     after: list[str] | None = None
@@ -269,6 +271,7 @@ async def todo_integrate(  # pyright: ignore
 async def todo_update(  # pyright: ignore
     slug: Annotated[str, Body()],
     new_slug: Annotated[str | None, Body()] = None,
+    group: Annotated[str | None, Body()] = None,
     after: Annotated[list[str] | None, Body()] = None,
     schedule: Annotated[str | None, Body()] = None,
     kind: Annotated[str | None, Body()] = None,
@@ -281,11 +284,12 @@ async def todo_update(  # pyright: ignore
     client_request_id: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation | _TodoUpdateResponse:
-    """Update a todo slug, dependencies, or kind through one mutation facade."""
+    """Update a todo slug, group, dependencies, or kind through one mutation facade."""
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
     normalized_hold_reason = validate_update_request(
         new_slug=new_slug,
+        group=group,
         after=after,
         kind=kind,
         schedule=schedule,
@@ -298,6 +302,12 @@ async def todo_update(  # pyright: ignore
     _validate_slug_for_update(slug, field_name="slug")
     if new_slug is not None:
         _validate_slug_for_update(new_slug, field_name="new_slug")
+    group_present = group is not None
+    normalized_group = group.strip() if group is not None else None
+    if normalized_group == "":
+        normalized_group = None
+    if normalized_group is not None:
+        _validate_slug_for_update(normalized_group, field_name="group")
     validate_kind_for_update(kind)
 
     requested_after = after
@@ -335,6 +345,16 @@ async def todo_update(  # pyright: ignore
             status_code=409, detail=f"slug and kind updates are refused after build starts for '{slug}'"
         )
 
+    if group_present:
+        await apply_group_membership_update(
+            todos_db,
+            slug=slug,
+            group_slug=normalized_group,
+            requested_after=requested_after,
+            cwd=cwd,
+            identity=identity,
+        )
+
     if kind is not None:
         try:
             migration_result = await migrate_todo_kind(todos_db, slug, target_kind=kind, force=force)
@@ -344,19 +364,14 @@ async def todo_update(  # pyright: ignore
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         warnings.extend(migration_result["warnings"])
 
-    if requested_after is not None:
-        await validate_requested_dependencies(todos_db, slug, requested_after)
-
-        deps = await todos_db.load_deps()
-        cycle = detect_circular_dependency(deps, slug, requested_after)
-        if cycle:
-            cycle_str = " -> ".join(cycle)
-            raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
-
-        await todos_db.set_deps(slug, after=requested_after)
-        target_status = await todos_db.find_live_slug_conflict(slug)
-        if requested_after and target_status == TodoStatus.ACTIVE.value:
-            warnings.extend(dependency_warnings.frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug)))
+    warnings.extend(
+        await apply_dependency_update(
+            todos_db,
+            slug=slug,
+            requested_after=requested_after,
+            group_present=group_present,
+        )
+    )
     if schedule is not None:
         await todos_db.set_schedule(slug, schedule=normalized_schedule)
 
@@ -396,6 +411,7 @@ async def todo_update(  # pyright: ignore
         )
 
     if should_emit_route_update(
+        group_present=group_present,
         kind=kind,
         requested_after=requested_after,
         schedule=schedule,
@@ -404,9 +420,11 @@ async def todo_update(  # pyright: ignore
     ):
         await _emit_todo_updated(slug=slug, cwd=cwd)
 
+    group_result = await resolve_current_group_slug(todos_db, slug)
     logger.info(
         "todo update route completed",
         slug=slug,
+        group=group_result,
         kind=migration_result["kind"] if migration_result else None,
         lifecycle_phase=migration_result["lifecycle_phase"] if migration_result else None,
         orphaned_artifacts=migration_result["orphaned_artifacts"] if migration_result else None,
@@ -416,6 +434,7 @@ async def todo_update(  # pyright: ignore
     return _TodoUpdateResponse(
         status="ok",
         slug=slug,
+        group=group_result,
         kind=migration_result["kind"] if migration_result else None,
         lifecycle_phase=migration_result["lifecycle_phase"] if migration_result else None,
         after=requested_after,

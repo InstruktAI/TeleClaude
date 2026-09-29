@@ -22,6 +22,19 @@ def holder_ancestors(group_slugs: Mapping[str, str | None], slug: str) -> set[st
     return ancestors
 
 
+def group_dependency_conflict(
+    group_slugs: Mapping[str, str | None],
+    slug: str,
+    group_slug: str | None,
+    after: set[str],
+) -> str | None:
+    """Return the holder shared by a todo's effective group and dependencies."""
+    effective_groups = dict(group_slugs)
+    effective_groups[slug] = group_slug
+    conflicts = holder_ancestors(effective_groups, slug).intersection(after)
+    return min(conflicts) if conflicts else None
+
+
 def detect_circular_dependency(deps: dict[str, list[str]], slug: str, new_deps: list[str]) -> list[str] | None:
     """Detect if adding new_deps to slug would create a cycle.
 

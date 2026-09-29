@@ -667,11 +667,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
             ),
             "update": CommandDef(
-                desc="Update a todo slug, dependencies, or kind",
-                args=f"<slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <{TODO_KIND_USAGE}>] [--hold --reason <text>] [--release] [--unclaim] [--force]",
+                desc="Update a todo slug, group, dependencies, or kind",
+                args=f"<slug> [--slug <new>] [--group <parent-slug>] [--after <dep>]... [--schedule <value>] [--kind <{TODO_KIND_USAGE}>] [--hold --reason <text>] [--release] [--unclaim] [--force]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_TODO_UPDATE_SLUG,
+                    F.FLAG_TODO_UPDATE_GROUP,
                     F.FLAG_TODO_UPDATE_AFTER,
                     F.FLAG_TODO_UPDATE_SCHEDULE,
                     F.FLAG_TODO_UPDATE_KIND,
@@ -682,7 +683,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_TODO_UPDATE_FORCE,
                 ],
                 notes=[
-                    "Mutates slug, deps, kind, or hold; --after replaces the full dependency set.",
+                    "Mutates slug, group, deps, kind, or hold; --after replaces the full dependency set.",
+                    "--group uses the same holder eligibility as create --group; pass an empty value to clear membership.",
+                    "Group membership and an after dependency on the same holder or ancestor are mutually exclusive.",
                     "Agent callers may update only an unclaimed todo or one held by their claiming group; a live foreign claim is refused with the holder named.",
                     "Kind and slug changes are refused after build starts; --after remains allowed.",
                     "--hold requires --reason; --reason is refused without --hold, and --hold and --release are mutually exclusive.",

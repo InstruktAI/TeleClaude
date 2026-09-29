@@ -13,6 +13,7 @@ from teleclaude.cli.telec.surface import TODO_UPDATE
 class ParsedTodoUpdate(TypedDict):
     slug: str
     new_slug: str | None
+    group: str | None
     raw_after: list[str]
     after_present: bool
     schedule: str | None
@@ -38,6 +39,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
     return {
         "slug": positionals[0],
         "new_slug": parsed.value(F.FLAG_TODO_UPDATE_SLUG),
+        "group": parsed.value(F.FLAG_TODO_UPDATE_GROUP),
         "raw_after": list(parsed.values(F.FLAG_TODO_UPDATE_AFTER)),
         "after_present": parsed.has(F.FLAG_TODO_UPDATE_AFTER),
         "schedule": parsed.value(F.FLAG_TODO_UPDATE_SCHEDULE),

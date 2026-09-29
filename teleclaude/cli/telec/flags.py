@@ -305,6 +305,11 @@ FLAG_TODO_DELIVER_COMMIT = Flag(
 )
 
 FLAG_TODO_UPDATE_SLUG = Flag("--slug", desc="New todo slug; delegates to the durable rename engine", arity=VALUE)
+FLAG_TODO_UPDATE_GROUP = Flag(
+    "--group",
+    desc="Move into this holder or pre-prepared todo; pass an empty value to remove the todo from its group",
+    arity=VALUE,
+)
 FLAG_TODO_UPDATE_AFTER = Flag(
     "--after",
     desc=(
