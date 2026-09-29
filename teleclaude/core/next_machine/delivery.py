@@ -34,15 +34,27 @@ _LEGACY_TRASH_REMOVAL_FAILED = "legacy worktree trash removal failed for %s: %s"
 _WORKTREE_HOME_RELEASE_FAILED = "worktree home release failed for %s: %s"
 
 
-def _run_git_cmd(args: list[str], *, cwd: str, timeout: float | None = 30) -> tuple[int, str, str]:
+def _run_git_cmd(
+    args: list[str],
+    *,
+    cwd: str,
+    timeout: float | None = 30,
+    preserve_stdout_newlines: bool = False,
+) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
         execute = cast(Callable[..., object], repo.git.execute)
         if timeout is None:
-            output = str(execute([GIT_EXECUTABLE, *args]))
+            output = str(execute([GIT_EXECUTABLE, *args], strip_newline_in_stdout=not preserve_stdout_newlines))
         else:
-            output = str(execute([GIT_EXECUTABLE, *args], kill_after_timeout=timeout))
+            output = str(
+                execute(
+                    [GIT_EXECUTABLE, *args],
+                    kill_after_timeout=timeout,
+                    strip_newline_in_stdout=not preserve_stdout_newlines,
+                )
+            )
         return 0, output, ""
     except GitCommandError as exc:
         if timeout is not None and "timeout" in str(exc).lower():
