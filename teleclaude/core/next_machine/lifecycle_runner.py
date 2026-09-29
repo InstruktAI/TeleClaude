@@ -56,6 +56,7 @@ from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.todos_db._state import TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditState, TodoState
 
 logger = get_logger(__name__)
@@ -82,7 +83,6 @@ _TERMINAL_TODO_STATUSES: frozenset[str] = frozenset({TodoStatus.DELIVERED.value,
 
 class _RunnerTodoRead(NamedTuple):
     todo: RunnerTodo | None
-    allow_kind_discovery: bool
     current_status: str | None
     is_holder: bool
 
@@ -98,8 +98,6 @@ def default_session_runner() -> SessionRunner:
 
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
-    if lane is RunnerLane.ANALYZE:
-        return f"/{SlashCommand.ANALYZE_TODO_INPUT.value}", ""
     if lane is RunnerLane.TASK_PREPARE:
         return f"/{SlashCommand.PREPARE_TASK.value}", ""
     if lane is RunnerLane.TASK_RUN:
@@ -140,7 +138,7 @@ def _intent(slug: str, lane: RunnerLane) -> DispatchIntent:
     )
 
 
-def _autostart_enabled(kind: str, autostart: Mapping[str, bool]) -> bool:
+def _autostart_enabled(kind: TodoKind, autostart: Mapping[TodoKind, bool]) -> bool:
     return bool(autostart.get(kind, False))
 
 
@@ -150,11 +148,11 @@ def _pending_approval_gate_for_runner(todo: RunnerTodo) -> bool:
 
 def _resolve_kinded_dispatch(
     todo: RunnerTodo,
-    kind: str,
+    kind: TodoKind,
     *,
     prepared_slugs: set[str],
     delivered_slugs: set[str],
-    autostart: Mapping[str, bool],
+    autostart: Mapping[TodoKind, bool],
     now: datetime | None = None,
 ) -> tuple[RunnerLane | None, RunnerSkipReason | None]:
     """Resolve the dispatch lane (or skip reason) for a kinded todo."""
@@ -207,7 +205,7 @@ def decide_dispatches(
     *,
     prepared_slugs: set[str],
     delivered_slugs: set[str],
-    autostart: Mapping[str, bool],
+    autostart: Mapping[TodoKind, bool],
     live_session_ids: set[str],
     orchestrator_owned_slugs: set[str] | None = None,
     max_dispatch: int = 5,
@@ -257,16 +255,6 @@ def decide_dispatches(
         # session_role in the registry.
         if slug in owned_slugs or (todo.active_runner and todo.active_runner in live_session_ids):
             decision.skip(RunnerSkipReason.ALREADY_DRIVEN, slug)
-            continue
-        if todo.kind is None:
-            # Kind-discovery is preparation — it always runs (capped/deduped),
-            # never gated by autostart, so kindless todos get classified and
-            # prepared regardless of the work-lane autostart policy.
-            lane = RunnerLane.ANALYZE
-            if _at_capacity():
-                decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
-                continue
-            decision.intents.append(_intent(slug, lane))
             continue
         try:
             kind = canonical_kind(todo.kind)
@@ -337,34 +325,29 @@ def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _Runner
                 after=(),
                 schedule=row["schedule"],
             ),
-            allow_kind_discovery=False,
             current_status=current_status,
             is_holder=status_read.is_holder,
         )
     if current_status not in _LIVE_TODO_STATUSES:
         return _RunnerTodoRead(
             todo=None,
-            allow_kind_discovery=False,
             current_status=current_status,
             is_holder=status_read.is_holder,
         )
     if status_read.is_holder:
         return _RunnerTodoRead(
             todo=None,
-            allow_kind_discovery=False,
             current_status=current_status,
             is_holder=True,
         )
     if state is None:
         return _RunnerTodoRead(
             todo=None,
-            allow_kind_discovery=True,
             current_status=current_status,
             is_holder=False,
         )
     return _RunnerTodoRead(
         todo=_todo_from_state(row, current_status, state),
-        allow_kind_discovery=False,
         current_status=current_status,
         is_holder=False,
     )
@@ -372,16 +355,14 @@ def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _Runner
 
 def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue]) -> RunnerTodo:
     model = TodoState.model_validate(state)
-    kind = state.get("kind")
-    phase = state.get("lifecycle_phase")
     active_runner = state.get("active_runner")
     task_plan_digest = _artifact_digest_from_state(state, "task_plan")
     task_approval = _approval_from_state(state, "task_approved")
     return RunnerTodo(
         slug=row["slug"],
         status=status,
-        kind=kind if isinstance(kind, str) else None,
-        lifecycle_phase=phase if isinstance(phase, str) else None,
+        kind=model.kind,
+        lifecycle_phase=model.lifecycle_phase.value,
         human_approval_pending=pending_approval_gate(model) is not None,
         hold=state.get("hold") is True,
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
@@ -484,30 +465,18 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
         if todo is None:
             # A structural holder (status == 'holder') is deliberately
             # state-less by design; never reconstitute it into a dispatchable
-            # kind-less entry. Holder-ness is read directly off the row's own
+            # todo entry. Holder-ness is read directly off the row's own
             # status, so it can never disagree with this skip.
             if read.is_holder:
                 continue
-            if not read.allow_kind_discovery:
+            if read.current_status in _LIVE_TODO_STATUSES and status_read.state is None:
                 logger.warning(
-                    "runner_todo_load_skipped_unclassifiable",
+                    "runner_todo_load_skipped_missing_state",
                     slug=row["slug"],
                     row_id=row["id"],
                     snapshot_status=row["status"],
                     current_status=read.current_status,
                 )
-                continue
-            assert read.current_status is not None
-            loaded[row["slug"]] = RunnerTodo(
-                slug=row["slug"],
-                status=read.current_status,
-                kind=None,
-                lifecycle_phase=None,
-                human_approval_pending=False,
-                hold=False,
-                active_runner=None,
-                schedule=row["schedule"],
-            )
             continue
         todo = RunnerTodo(
             slug=todo.slug,

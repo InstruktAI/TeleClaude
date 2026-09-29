@@ -80,7 +80,7 @@ from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
-from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditSource
 
 if TYPE_CHECKING:
@@ -318,7 +318,7 @@ async def todo_update(  # pyright: ignore
     current_kind = raw_state.get("kind") if isinstance(raw_state, dict) else None
     active_runner = raw_state.get("active_runner") if isinstance(raw_state, dict) else None
     schedule_kind = kind if kind is not None else current_kind
-    if schedule is not None and schedule_kind != TODO_KIND_TASK:
+    if schedule is not None and schedule_kind != TodoKind.TASK:
         raise HTTPException(status_code=400, detail="schedule is valid only for kind='task'")
     existing_schedule = await todos_db.get_schedule(slug)
     existing_deps = await todos_db.get_deps(slug)
@@ -530,7 +530,6 @@ async def todo_content_create(
     """Create a todo: state + artifact + todo entry in todos.db.
 
     Kind selects the entry point (see TodoDumpRequest):
-      - omitted kind: content is the "input" artifact; enters analyzer assignment.
       - "feature" | "change": content is the "input" artifact; enters prepare
         (feature authors a PRD, change drafts a plan directly).
       - "change" with ``--plan``: content seeds the "implementation-plan"
@@ -570,11 +569,11 @@ async def todo_content_create(
             raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
 
         normalized_schedule = normalize_schedule_request(request.schedule)
-        if request.schedule is not None and request.kind != TODO_KIND_TASK:
+        if request.schedule is not None and request.kind != TodoKind.TASK:
             raise HTTPException(status_code=400, detail="schedule is valid only for kind='task'")
         if normalized_schedule is not None and request.after:
             raise HTTPException(status_code=400, detail="schedule and dependencies are mutually exclusive")
-        if request.plan and request.kind not in {TODO_KIND_CHANGE, TODO_KIND_TASK}:
+        if request.plan and request.kind not in {TodoKind.CHANGE, TodoKind.TASK}:
             raise HTTPException(
                 status_code=400,
                 detail="--plan is valid only with --kind change or --kind task",
@@ -635,7 +634,7 @@ async def todo_content_create(
                 await todos_db.write_state(slug, state, session=session)
 
                 if request.plan:
-                    is_task_plan = request.kind == TODO_KIND_TASK
+                    is_task_plan = request.kind == TodoKind.TASK
                     plan_content = (
                         f"# {slug} — Task Plan\n\n{request.content}\n"
                         if is_task_plan
@@ -674,13 +673,13 @@ async def todo_content_create(
                 prepared_session_id=identity.session_id,
             )
 
-        if request.plan and request.kind == TODO_KIND_CHANGE:
+        if request.plan and request.kind == TodoKind.CHANGE:
             # Seed the supplied plan as a plan-drafting basis (see
             # seed_plan_drafting); it must run after the seeding write's
             # provenance sync above, which would otherwise clear the seed.
             state["lifecycle_phase"] = await seed_plan_drafting(todos_db, slug, repo_root=effective_cwd)
             todos_db.on_committed("todo_updated")
-        elif request.plan and request.kind == TODO_KIND_TASK:
+        elif request.plan and request.kind == TodoKind.TASK:
             state["lifecycle_phase"] = await seed_task_plan_authorization(
                 todos_db,
                 slug,
@@ -698,7 +697,7 @@ async def todo_content_create(
             domain="sdlc",
             payload={
                 "slug": slug,
-                "kind": None if request.kind is None else map_v1_kind_to_canonical(request.kind),
+                "kind": map_v1_kind_to_canonical(request.kind),
                 "creation_mode": "pickup" if pickup_requested else "silent",
                 "pickup_requested": pickup_requested,
                 "lifecycle_phase": event_lifecycle_phase,

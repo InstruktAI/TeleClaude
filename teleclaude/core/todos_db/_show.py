@@ -15,7 +15,7 @@ from teleclaude.core.next_machine.slug_resolution import effective_delivered_slu
 from teleclaude.core.todos_db._models import Todo, TodoStateModel
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
-from teleclaude.types.todo_kind import TODO_KIND_TASK
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditReason, TodoState
 
 if TYPE_CHECKING:
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
-_CLASSIFY_PHASE = "classify"
 _PHASE_LABEL_OVERRIDES: dict[LifecyclePhase, str] = {
     LifecyclePhase.BUILD_STARTED: "build",
     LifecyclePhase.BUILD_COMPLETE: "build",
@@ -51,7 +50,7 @@ _DONE_PHASE_VALUES: frozenset[str] = frozenset(
 # Values belonging to the prepare lifecycle for stage classification.
 _PREPARE_VALUES: frozenset[str] = frozenset(
     phase.value for phase in LIFECYCLE_PHASE_ORDER[: LIFECYCLE_PHASE_ORDER.index(LifecyclePhase.PREPARED)]
-) | frozenset({_CLASSIFY_PHASE, LifecyclePhase.TASK_PLAN_DRAFTING.value})
+) | frozenset({LifecyclePhase.TASK_PLAN_DRAFTING.value})
 
 _EVENTS_INLINE_LIMIT = 20
 _HOLDER_PHASE: Literal["holder"] = "holder"
@@ -156,8 +155,6 @@ async def _derive_phase_value(
 ) -> str:
     """Return the current canonical lifecycle phase value for a slug."""
     _ = todos_db, slug, worktree_cwd
-    if state.get("kind") is None and state.get("lifecycle_phase") is None:
-        return _CLASSIFY_PHASE
     return require_lifecycle_phase(
         state.get("lifecycle_phase"),
         context=f"assemble_show_payload({slug})",
@@ -177,8 +174,6 @@ def _derive_stage(current_value: str, *, delivered: bool) -> TodoShowStage:
 
 def _phase_label(current_value: str) -> str:
     """Return the show label for a canonical lifecycle value."""
-    if current_value == _CLASSIFY_PHASE:
-        return current_value
     lifecycle_phase = LifecyclePhase(current_value)
     return _PHASE_LABEL_OVERRIDES.get(lifecycle_phase, lifecycle_phase.value)
 
@@ -344,17 +339,15 @@ def _derive_next_commands_block(slug: str) -> dict[str, str]:
     }
 
 
-def _navigation_order(kind: str | None) -> tuple[LifecyclePhase, ...]:
+def _navigation_order(kind: str) -> tuple[LifecyclePhase, ...]:
     """Return the canonical display progression for a kind-bearing todo."""
-    if kind == TODO_KIND_TASK:
+    if kind == TodoKind.TASK:
         return tuple(TASK_LIFECYCLE_PHASE_ORDER)
     return _SDLC_DISPLAY_ORDER
 
 
-def _derive_previous(current_value: str, kind: str | None) -> str | None:
+def _derive_previous(current_value: str, kind: str) -> str | None:
     """Return the label of the phase immediately before ``current_value``."""
-    if current_value == _CLASSIFY_PHASE:
-        return None
     try:
         current_phase = LifecyclePhase(current_value)
         idx = _navigation_order(kind).index(current_phase)
@@ -365,7 +358,7 @@ def _derive_previous(current_value: str, kind: str | None) -> str | None:
     return _phase_label(_navigation_order(kind)[idx - 1].value)
 
 
-def _derive_next(current_value: str, kind: str | None) -> str | None:
+def _derive_next(current_value: str, kind: str) -> str | None:
     """Return the label of the phase immediately after ``current_value`` when done."""
     if current_value not in _DONE_PHASE_VALUES:
         return None

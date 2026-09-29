@@ -212,7 +212,7 @@ def is_work_lifecycle_phase(phase: LifecyclePhase) -> bool:
     return phase in WORK_LIFECYCLE_PHASES
 
 
-def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
+def is_ready_for_work(*, kind: str, lifecycle_phase: str | None) -> tuple[bool, str]:
     """Authoritative gate for entering or resuming the work lane."""
     if kind == KIND_TASK:
         return False, "task todos are executed by the task lane, not the SDLC work lane"

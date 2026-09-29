@@ -17,7 +17,6 @@ _INTERACTIVE_SHORTHAND_INPUT_MODE = "interactive_shorthand"
 _INVALID_COMMAND_TEMPLATE = "invalid command: {command}"
 _NORMALIZED_COMMAND_TEMPLATE = "/{command}"
 _NORMALIZED_COMMAND_WITH_ARGS_TEMPLATE = "/{command} {args}"
-_ANALYZE_TODO_INPUT_COMMAND = SlashCommand.ANALYZE_TODO_INPUT.value
 _PREPARE_COMMAND = SlashCommand.PREPARE.value
 _DEFER_COMMAND = SlashCommand.DEFER.value
 # Not a SlashCommand member (never composed by platform state machines), but a
@@ -75,7 +74,7 @@ class RefusedCommandInput:
 CommandInputResult = NoCommandInput | ResolvedCommandInput | RefusedCommandInput
 
 _SLUG_COMMANDS = frozenset(command.value for command in COMMAND_ROLE_MAP if command not in NON_SLUG_BOUND_COMMANDS)
-WORKING_SLUG_COMMANDS = _SLUG_COMMANDS | {_ANALYZE_TODO_INPUT_COMMAND, _PREPARE_COMMAND}
+WORKING_SLUG_COMMANDS = _SLUG_COMMANDS | {_PREPARE_COMMAND}
 SLUG_REQUIRED_LIFECYCLE_COMMANDS = _SLUG_COMMANDS - frozenset(command.value for command in NON_SLUG_BOUND_COMMANDS)
 REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS = frozenset({_DEFER_COMMAND, _RESEARCH_COMMAND})
 WORKTREE_BOUND_WORKER_COMMANDS = frozenset({SlashCommand.BUILD, SlashCommand.REVIEW_BUILD, SlashCommand.FINALIZE})

@@ -82,10 +82,7 @@ def _validate_full_state(state: dict[str, StateValue]) -> TodoState:
 
 def _dump_state(model: TodoState) -> dict[str, StateValue]:
     """Return a JSON-safe dict for persistence."""
-    payload = model.model_dump(exclude_none=True)
-    if model.kind is None:
-        payload["kind"] = None
-    return payload
+    return model.model_dump(exclude_none=True)
 
 
 class StateWriter:

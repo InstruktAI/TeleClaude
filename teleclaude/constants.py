@@ -329,7 +329,6 @@ class SlashCommand(StrEnum):
     ``teleclaude.agent_artifacts`` and ``project/design/architecture/agent-artifact-distribution#corpus-layout-and-names``.
     """
 
-    ANALYZE_TODO_INPUT = "sdlc/analyze-todo-input"
     BUILD = "sdlc/build"
     REVIEW_BUILD = "sdlc/review-build"
     REVIEW_PRD = "sdlc/review-prd"
@@ -385,7 +384,6 @@ class JobRole(str, Enum):
     REVIEWER = "reviewer"
     FINALIZER = "finalizer"
     INTAKER = "intaker"
-    INPUT_ANALYZER = "input-analyzer"
     PLANNER = "planner"
     DIAGNOSER = "diagnoser"
     ARCHITECT = "architect"
@@ -410,10 +408,9 @@ class JobRole(str, Enum):
 # session running them IS the orchestrator, and they carry ROLE_ORCHESTRATOR because the
 # role a command confers must match the session that actually runs it. Diagnose is the
 # named exception: it is dispatched to a cross-model peer, so the session running it is a
-# worker for fleet classification, while its job still names what it authors. The input
-# analyzer is also a dispatched worker; it classifies kindless todos without advancing
-# the lifecycle. The prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`)
-# recognizes the job regardless of which system role carries it.
+# worker for fleet classification, while its job still names what it authors.
+# The prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`) recognizes
+# the job regardless of which system role carries it.
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[SystemRole, JobRole]] = {
     SlashCommand.ASSIST: (ROLE_WORKER, JobRole.ASSIST),
     SlashCommand.BUILD: (ROLE_WORKER, JobRole.BUILDER),
@@ -428,7 +425,6 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[SystemRole, JobRole]] = {
     SlashCommand.PREPARE_INTAKE: (ROLE_ORCHESTRATOR, JobRole.INTAKER),
     SlashCommand.PREPARE_ARCHITECTURE: (ROLE_ORCHESTRATOR, JobRole.ARCHITECT),
     SlashCommand.PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
-    SlashCommand.ANALYZE_TODO_INPUT: (ROLE_WORKER, JobRole.INPUT_ANALYZER),
     SlashCommand.PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
     SlashCommand.PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
     SlashCommand.DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),

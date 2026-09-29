@@ -26,15 +26,13 @@ from teleclaude.core.next_machine.lifecycle import (
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
-from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY
+from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
 
 logger = get_logger(__name__)
 
 RECENTLY_DELIVERED_HOURS = 72
 READY_BAND = "ready"
 IN_PREP_BAND = "in_prep"
-_CLASSIFY_PHASE = "classify"
 
 
 @dataclass(frozen=True)
@@ -314,25 +312,18 @@ def _derive_projection_fields(
             prepare_review_verdict=None,
         )
 
-    raw_kind = state.get("kind")
-    kind = raw_kind if isinstance(raw_kind, str) else None
+    kind = TodoState.model_validate(state).kind
 
     finalize_raw = state.get("finalize")
     finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
     finalize_status = _non_empty_str(finalize.get("status"))
 
-    kind_is_unset = raw_kind is None
-    if kind_is_unset and state.get("lifecycle_phase") is None:
-        lifecycle = None
-        current_value = _CLASSIFY_PHASE
-        is_draft_lifecycle = False
-    else:
-        lifecycle = require_lifecycle_phase(
-            state.get("lifecycle_phase"),
-            context=f"assemble_todo_from_db({slug})",
-        )
-        current_value = lifecycle.value
-        is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
+    lifecycle = require_lifecycle_phase(
+        state.get("lifecycle_phase"),
+        context=f"assemble_todo_from_db({slug})",
+    )
+    current_value = lifecycle.value
+    is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
     state_phase = state.get("phase", "")
     is_delivered = state_phase == TodoStatus.DELIVERED
@@ -368,15 +359,13 @@ def _derive_projection_fields(
         todo_status = TodoStatus.PENDING
 
     ready, _ = is_ready_for_work(
-        kind=kind if isinstance(kind, str) else TODO_KIND_DEFAULT,
+        kind=kind,
         lifecycle_phase=lifecycle_phase,
     )
     if todo_status == TodoStatus.ACTIVE and build_status:
         todo_status = TodoStatus.IN_PROGRESS
     elif todo_status == TodoStatus.ACTIVE and ready:
         todo_status = TodoStatus.READY
-    elif todo_status == TodoStatus.ACTIVE and kind_is_unset:
-        todo_status = TodoStatus.IN_PROGRESS
     elif todo_status == TodoStatus.ACTIVE and lifecycle_phase:
         todo_status = TodoStatus.IN_PROGRESS
 

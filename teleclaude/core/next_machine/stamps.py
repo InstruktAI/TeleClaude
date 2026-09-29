@@ -53,7 +53,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_origin_main_sha,
     has_build_commits_beyond_main,
 )
-from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_ENTRY_PHASE, KIND_TASK
+from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current, reset_finalize
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.next_machine.provenance import (
@@ -120,7 +120,6 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     ARTIFACT_TASK_PLAN: STATE_KEY_TASK_PLAN,
     STATE_KEY_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
-_KIND_ASSIGN_VALUE = "kind_assign"
 _EMPTY_TEXT = ""
 _KICKBACK_REQUEST_ACCEPTED_EVENT = "todo_kickback_request_accepted"
 _KICKBACK_APPLIED_EVENT = "todo_kickback_applied"
@@ -304,16 +303,6 @@ async def _apply_mutation_stamp(
             snippet_digest_fn=snippet_digest_fn,
             caller_session_id=caller_session_id or "",
         )
-    elif stamp_type == _KIND_ASSIGN_VALUE:
-        if phase is None:
-            raise ValueError("--kind-assign requires a kind value")
-        return await _apply_kind_assign_stamp(
-            todos_db,
-            writer,
-            slug,
-            assigned_kind=phase,
-            content=value,
-        )
     elif stamp_type == "build_complete":
         await _apply_build_complete_stamp(
             writer,
@@ -356,25 +345,6 @@ def _log_kickback_request_acceptance(stamp_type: str, *, slug: str, caller_sessi
         slug=slug,
         caller_session_id=caller_session_id or _EMPTY_TEXT,
     )
-
-
-async def _apply_kind_assign_stamp(
-    todos_db: TodosDb,
-    writer: StateWriter,
-    slug: str,
-    *,
-    assigned_kind: str,
-    content: str,
-) -> dict[str, StateValue]:
-    if assigned_kind not in KIND_ENTRY_PHASE:
-        raise StateMutationError(f"unknown assigned kind: {assigned_kind!r}")
-    if writer.state.kind is not None:
-        raise StateMutationError("cannot assign kind after kind is already fixed")
-
-    writer.state.kind = assigned_kind
-    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[assigned_kind]
-
-    return await writer.commit(todos_db, slug)
 
 
 def _validate_verdict_stamp(phase: str | None, verdict: str) -> None:

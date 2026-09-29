@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from teleclaude.constants import TodoStatus
 from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION, LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
+from teleclaude.types.todo_kind import TodoKind
 
 ACTIVE_RUNNER_STATE_KEY = "active_runner"
 LIFECYCLE_PHASE_STATE_KEY = "lifecycle_phase"
@@ -178,6 +178,7 @@ class HoldAuditSource(StrEnum):
     SESSION_CLOSE = "session_close"
     TASK_ERROR = "task_error"
     DIAGNOSIS_UNRESOLVED = "diagnosis_unresolved"
+    KIND_BACKFILL = "kind_backfill"
 
 
 class HoldAuditReason(StrEnum):
@@ -289,14 +290,14 @@ class TodoState(BaseModel):
 
     schema_version: Literal[13] = 13
     phase: str = "pending"
-    lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
+    lifecycle_phase: LifecyclePhase = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)
     work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""
     build_plan_digest: str = ""
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
-    kind: str | None = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS
+    kind: TodoKind = TodoKind.FEATURE
     hold: bool = False
     hold_audit: HoldAuditState = Field(default_factory=HoldAuditState)
     active_runner: str | None = None
@@ -338,36 +339,15 @@ class TodoState(BaseModel):
         # persisted before the cutover.
         legacy_keys = {"current", "test_spec_review"}
         lifecycle_phase = data.get("lifecycle_phase")
-        needs_kindless_phase_default = "kind" in data and data.get("kind") is None and "lifecycle_phase" not in data
-        if (
-            not legacy_keys.intersection(data)
-            and lifecycle_phase not in LEGACY_LIFECYCLE_PHASE_NORMALIZATION
-            and not needs_kindless_phase_default
-        ):
+        if not legacy_keys.intersection(data) and lifecycle_phase not in LEGACY_LIFECYCLE_PHASE_NORMALIZATION:
             return data
 
         cleaned = dict(data)
         for key in legacy_keys:
             cleaned.pop(key, None)
-        if needs_kindless_phase_default:
-            cleaned["lifecycle_phase"] = None
         if isinstance(lifecycle_phase, str):
             cleaned["lifecycle_phase"] = LEGACY_LIFECYCLE_PHASE_NORMALIZATION.get(lifecycle_phase, lifecycle_phase)
         return cleaned
-
-    @model_validator(mode="after")
-    def _validate_kind_window(self) -> TodoState:
-        """Keep kind-less state represented by ``kind=None`` and no phase."""
-        if self.kind is None:
-            if self.lifecycle_phase is not None:
-                raise ValueError("kind-less todo state requires lifecycle_phase to be unset")
-            return self
-
-        if self.lifecycle_phase is None:
-            raise ValueError(f"todo kind {self.kind!r} requires a canonical lifecycle_phase")
-        if self.kind not in ALL_DUMP_KINDS:
-            raise ValueError(f"unknown todo kind: {self.kind!r}")
-        return self
 
     @classmethod
     def defaults(cls) -> TodoState:

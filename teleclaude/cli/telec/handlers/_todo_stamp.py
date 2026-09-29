@@ -11,9 +11,15 @@ from teleclaude.cli.telec.surface import TODO_STAMP
 from teleclaude.cli.telec.surface_types import Flag
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.project_root import resolve_invocation_cwd
-from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
 __all__ = ["_handle_todo_stamp"]
+_MISSING_STAMP_FLAG_MESSAGE = (
+    "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
+    "--task-approved, --drift-reviewed, --build-complete, "
+    "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
+    "--art-approved, --visuals-approved, --kickback, --task-outcome, "
+    "--diagnosis-settled, --diagnosis-unresolved)"
+)
 
 
 class _TodoStampBody(TypedDict):
@@ -37,19 +43,10 @@ def _handle_todo_stamp(args: list[str]) -> None:
         print("Usage: telec todo stamp <slug> --verdict approve --phase <phase>")
         raise SystemExit(1)
     if not stamp_type:
-        print(
-            "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
-            "--task-approved, --drift-reviewed, --kind-assign, --build-complete, "
-            "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
-            "--art-approved, --visuals-approved, --kickback, --task-outcome, "
-            "--diagnosis-settled, --diagnosis-unresolved)"
-        )
+        print(_MISSING_STAMP_FLAG_MESSAGE)
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
         print("--verdict requires --phase <phase>")
-        raise SystemExit(1)
-    if stamp_type == "kind_assign" and not phase:
-        print(f"--kind-assign requires <{TODO_KIND_USAGE}> [content]")
         raise SystemExit(1)
     if stamp_type == "kickback" and not value:
         print("--kickback requires --reason <reason>")
@@ -112,14 +109,6 @@ def _parse_todo_stamp_args(parsed: ParsedArgs) -> tuple[str | None, str | None, 
             raise SystemExit(1)
         stamp_type = "drift_reviewed"
         value = _json.dumps({"artifact": drift_values[0], "verdict": drift_values[1], "reason": drift_values[2]})
-    if parsed.has(F.FLAG_STAMP_KIND_ASSIGN):
-        kind_values = parsed.values(F.FLAG_STAMP_KIND_ASSIGN)
-        if len(kind_values) not in (1, 2):
-            print(f"--kind-assign requires 1 or 2 values: <kind> [content] (got {len(kind_values)})")
-            raise SystemExit(1)
-        stamp_type = "kind_assign"
-        phase = kind_values[0]
-        value = kind_values[1] if len(kind_values) == 2 else ""
     if parsed.has(F.FLAG_STAMP_FINALIZE_READY):
         stamp_type = "finalize_ready"
         value = ""

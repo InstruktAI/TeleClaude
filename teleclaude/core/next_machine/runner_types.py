@@ -7,7 +7,6 @@ from enum import StrEnum
 
 
 class RunnerLane(StrEnum):
-    ANALYZE = "analyze"
     PREPARE = "prepare"
     WORK = "work"
     TASK_PREPARE = "task-prepare"

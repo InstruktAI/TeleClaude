@@ -8,19 +8,19 @@ in the state machines.
 from __future__ import annotations
 
 from teleclaude.types.lifecycle import LifecyclePhase
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE, TODO_KIND_TASK
+from teleclaude.types.todo_kind import TodoKind
 
-KIND_BUG = TODO_KIND_BUG
-KIND_CHANGE = TODO_KIND_CHANGE
-KIND_FEATURE = TODO_KIND_FEATURE
-KIND_TASK = TODO_KIND_TASK
+KIND_BUG = TodoKind.BUG
+KIND_CHANGE = TodoKind.CHANGE
+KIND_FEATURE = TodoKind.FEATURE
+KIND_TASK = TodoKind.TASK
 
 # Single source of truth: the phase each kind enters the lifecycle at.
 #   feature → author a PRD (full prepare)
 #   change  → draft a plan directly (no PRD; intent is the input artifact)
 #   bug     → verify a diagnosis first, then draft a plan (same plan→review pipeline)
 #   task    → non-SDLC; task-plan drafting lane, outside SDLC prepare/work
-KIND_ENTRY_PHASE: dict[str, LifecyclePhase] = {
+KIND_ENTRY_PHASE: dict[TodoKind, LifecyclePhase] = {
     KIND_FEATURE: LifecyclePhase.PRD_DRAFTING,
     KIND_CHANGE: LifecyclePhase.PLAN_DRAFTING,
     KIND_BUG: LifecyclePhase.DIAGNOSE,
@@ -35,7 +35,7 @@ FAST_TRACK_PREPARED_KINDS = frozenset(k for k, p in KIND_ENTRY_PHASE.items() if 
 PLAN_WITHOUT_INTENT_UPSTREAM_KINDS = PLAN_ONLY_PREPARE_KINDS
 
 # Pre-collapse SDLC kinds map to their canonical lifecycle successors.
-_LEGACY_KIND_MAP = {
+_LEGACY_KIND_MAP: dict[str, TodoKind] = {
     "todo": KIND_FEATURE,
     "draft": KIND_FEATURE,
     "refactor": KIND_CHANGE,
@@ -46,7 +46,10 @@ _LEGACY_KIND_MAP = {
 }
 
 
-def canonical_kind(raw: str | None) -> str:
+_UNKNOWN_KIND_ERROR_TEMPLATE = "unknown todo kind: {raw!r}"
+
+
+def canonical_kind(raw: str | None) -> TodoKind:
     """Normalize a present kind to the canonical {feature, change, bug, task}.
 
     Current kinds pass through; known pre-collapse kinds map to their successor.
@@ -54,9 +57,12 @@ def canonical_kind(raw: str | None) -> str:
     legitimately backfills a missing kind on a pre-collapse row does so explicitly
     (see ``upcycle_state_dict``), never through a silent fallback here.
     """
-    if raw is not None and raw in KIND_ENTRY_PHASE:
-        return raw
+    if raw is not None:
+        try:
+            return TodoKind(raw)
+        except ValueError:
+            pass
     mapped = _LEGACY_KIND_MAP.get(raw) if raw else None
     if mapped is not None:
         return mapped
-    raise ValueError(f"unknown todo kind: {raw!r}")
+    raise ValueError(_UNKNOWN_KIND_ERROR_TEMPLATE.format(raw=raw))

@@ -188,9 +188,8 @@ FLAG_TODO_SCHEDULE = Flag(
 FLAG_TODO_KIND = Flag(
     "--kind",
     desc=(
-        f"The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}. Always set it "
-        "when creating via the CLI — agents classify their own todos; omitting it is the "
-        "TUI dump path only. --kind task is side-effect-only and never touches the repo "
+        f"The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}. Required "
+        "when creating a todo. --kind task is side-effect-only and never touches the repo "
         "(sdlc/spec/todo-kind-task) — code work is change/feature/bug."
     ),
     arity=VALUE,
@@ -358,14 +357,6 @@ FLAG_STAMP_ARCHITECTURE_SKIPPED = Flag(
 )
 FLAG_STAMP_DRIFT_REVIEWED = Flag(
     "--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>", arity=GREEDY
-)
-FLAG_STAMP_KIND_ASSIGN = Flag(
-    "--kind-assign",
-    desc=(
-        f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]. "
-        "task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task)."
-    ),
-    arity=GREEDY,
 )
 FLAG_STAMP_BUILD_COMPLETE = Flag(
     "--build-complete",

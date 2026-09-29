@@ -204,7 +204,6 @@ _CODEX_FIRST = agent_permutation(AgentName.CODEX, AgentName.CLAUDE, AgentName.GE
 _GEMINI_FIRST = agent_permutation(AgentName.GEMINI, AgentName.CLAUDE, AgentName.CODEX, AgentName.DEEPSEEK)
 
 _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
-    SlashCommand.ANALYZE_TODO_INPUT: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.REVIEW_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.REVIEW_PRD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),

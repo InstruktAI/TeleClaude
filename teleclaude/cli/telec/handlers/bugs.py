@@ -30,7 +30,7 @@ from teleclaude.services.log_bug_hunter_suppressions import (
     remove,
     suppressions_path_for,
 )
-from teleclaude.types.todo_kind import TODO_KIND_BUG
+from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
     from teleclaude.api_models import BugListEntryDTO
@@ -238,7 +238,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     bug_request = TodoDumpRequest(
         slug=slug,
         content=bug_content,
-        kind=TODO_KIND_BUG,
+        kind=TodoKind.BUG,
         cwd=str(project_root),
         human_involved=human_involvement_reason is not None,
         human_involvement_reason=human_involvement_reason,

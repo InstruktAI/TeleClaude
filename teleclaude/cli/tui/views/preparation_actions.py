@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
 from urllib.parse import quote
 
 from instrukt_ai_logging import get_logger
@@ -25,6 +25,7 @@ from teleclaude.cli.tui.widgets.modals import (
     ConfirmModal,
     ContentInputModal,
     CreateSlugModal,
+    CreateSlugResult,
     NewProjectModal,
     NewProjectResult,
 )
@@ -34,16 +35,12 @@ from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, RUNNER_NOT_DISPATCHED, TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     ApprovalGate,
-    is_ready_for_work,
     pending_approval_gate,
 )
 from teleclaude.core.operations.service import TERMINAL_OPERATION_STATES
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.types.todo_kind import (
-    ALL_DUMP_KINDS,
     TODO_KIND_BUG,
-    TODO_KIND_FEATURE,
-    TODO_KIND_TASK,
     TodoDumpKind,
 )
 
@@ -58,6 +55,8 @@ if TYPE_CHECKING:
 _LIFECYCLE_POLL_BUDGET_S = 60.0
 _LIFECYCLE_POLL_DEFAULT_DELAY_S = 0.25
 _MISSING_TODO_ID_WARNING = "row missing durable id; refresh the todo pane"
+_NEW_BUG_MODAL_TITLE = "New Bug"
+_NEW_BUG_SLUG_PLACEHOLDER = "my-new-bug"
 RETAINED_TODO_STATUSES: frozenset[TodoStatus] = frozenset({TodoStatus.REMOVED, TodoStatus.DELIVERED})
 _ROW_ACTION_FAILURE_EVENT = "tui.preparation_row_action_failed"
 _ROW_ACTION_POST = "POST"
@@ -601,7 +600,7 @@ class PreparationViewActionsMixin:
             return context.project_path
         return str(resolve_invocation_roots().invocation_dir)
 
-    def _create_item(self, slug: str, *, kind: str | None) -> None:
+    def _create_item(self, slug: str, *, kind: TodoDumpKind) -> None:
         """Create a todo or bug via the daemon API after content modal confirmation."""
         project_root = self._current_project_path()
 
@@ -612,7 +611,7 @@ class PreparationViewActionsMixin:
             request = TodoDumpRequest(
                 slug=slug,
                 content=content.strip(),
-                kind=cast(TodoDumpKind, kind) if kind in ALL_DUMP_KINDS else None,
+                kind=kind,
                 cwd=project_root,
             )
 
@@ -674,9 +673,9 @@ class PreparationViewActionsMixin:
     def action_new_todo(self) -> None:
         """n: create a new todo via modal."""
 
-        def _on_result(slug: str | None) -> None:
-            if slug:
-                self._create_item(slug, kind=None)
+        def _on_result(result: CreateSlugResult | None) -> None:
+            if result:
+                self._create_item(result.slug, kind=result.kind)
 
         self.app.push_screen(  # type: ignore[attr-defined]
             CreateSlugModal(title="New Todo"),
@@ -686,12 +685,16 @@ class PreparationViewActionsMixin:
     def action_new_bug(self) -> None:
         """b: create a new bug via modal."""
 
-        def _on_result(slug: str | None) -> None:
-            if slug:
-                self._create_item(slug, kind=TODO_KIND_BUG)
+        def _on_result(result: CreateSlugResult | None) -> None:
+            if result:
+                self._create_item(result.slug, kind=result.kind)
 
         self.app.push_screen(  # type: ignore[attr-defined]
-            CreateSlugModal(title="New Bug", placeholder="my-new-bug"),
+            CreateSlugModal(
+                title=_NEW_BUG_MODAL_TITLE,
+                placeholder=_NEW_BUG_SLUG_PLACEHOLDER,
+                preset_kind=TODO_KIND_BUG,
+            ),
             callback=_on_result,
         )
 
@@ -915,13 +918,7 @@ class PreparationViewActionsMixin:
         )
 
     def action_start_work(self) -> None:
-        """s: submit a work operation for the selected scope.
-
-        SDLC kinds are pre-gated on canonical work-lane readiness. A task is not:
-        ``is_ready_for_work`` is the SDLC work-lane authority and rejects tasks by
-        design, so the TUI submits the task directly and lets the authenticated
-        server route resolve it to the task-run lane and report any skip reason.
-        """
+        """Submit a work operation and report the workflow's terminal outcome."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
@@ -936,15 +933,6 @@ class PreparationViewActionsMixin:
             todo_id = self._require_row_todo_id(todo_row)
             if todo_id is None:
                 return
-            kind = todo_row.todo.kind or TODO_KIND_FEATURE
-            if kind != TODO_KIND_TASK:
-                ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
-                if not ready:
-                    self.app.notify_text(
-                        f"Todo is not ready to start work: {reason}",
-                        severity="warning",
-                    )  # type: ignore[attr-defined]
-                    return
 
         if slug is None:
             self._submit_lifecycle_operation(

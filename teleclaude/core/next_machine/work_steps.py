@@ -37,7 +37,7 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
     todo_change_since,
 )
-from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE, PLAN_ONLY_PREPARE_KINDS
+from teleclaude.core.next_machine.kinds import KIND_BUG, PLAN_ONLY_PREPARE_KINDS
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     _clear_build_review,
@@ -235,11 +235,8 @@ async def _work_step_build_started(
     if claim_result is not None:
         return claim_result
 
-    kind_raw = state.get("kind")
-    kind = kind_raw if isinstance(kind_raw, str) else KIND_FEATURE
-    lifecycle_phase_raw = state.get("lifecycle_phase")
-    lifecycle_phase = lifecycle_phase_raw if isinstance(lifecycle_phase_raw, str) else None
-    ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=lifecycle_phase)
+    model = StateWriter(state).state
+    ready, reason = is_ready_for_work(kind=model.kind, lifecycle_phase=model.lifecycle_phase.value)
     if not ready:
         return False, format_error(
             "NOT_PREPARED",
@@ -248,7 +245,6 @@ async def _work_step_build_started(
         )
 
     command = SlashCommand.BUILD
-    model = StateWriter(state).state
     old_plan_digest = model.build_plan_digest
     current_plan_digest = model.artifacts.implementation_plan.digest
     reconciliation_required = bool(old_plan_digest) and old_plan_digest != current_plan_digest
@@ -307,7 +303,7 @@ async def _work_step_build_started(
             project=_derive_project_root(cwd, slug),
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"{_artifact_contract_note(slug, kind)} Start implementation now. "
+                f"{_artifact_contract_note(slug, model.kind)} Start implementation now. "
                 f"When the build is committed and ready for review, "
                 f"run `telec todo stamp {slug} --build-complete`."
             ),
@@ -478,8 +474,7 @@ async def _work_step_build_complete(
     # No live reviewer claimed the review — dispatch a fresh one.
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-    kind_raw = state.get("kind")
-    kind = kind_raw if isinstance(kind_raw, str) else KIND_FEATURE
+    kind = StateWriter(state).state.kind
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
     await admit_build_review(todos_db, slug, state, admission)

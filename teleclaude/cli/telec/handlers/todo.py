@@ -61,6 +61,9 @@ _CREATION_ACK_FLAG = "--approved"
 _REASON_REQUIRED_WITH_HOLD = "Error: --reason is required with --hold"
 _REASON_REQUIRES_HOLD = "Error: --reason is valid only with --hold"
 _UNKNOWN_TODO_SUBCOMMAND_TEMPLATE = "Unknown todo subcommand: {subcommand}"
+_TODO_CREATE_KIND_REQUIRED_TEMPLATE = "Error: --kind is required. Valid values: {valid_kinds}"
+_TODO_CREATE_KIND_INVALID_TEMPLATE = "Error: invalid --kind '{kind}'. Valid values: {valid_kinds}"
+_TODO_CREATED_KIND_TEMPLATE = "Created todo: {slug} (kind={kind})"
 
 _TODO_CREATION_GATE = render_todo_creation_gate(_CREATION_ACK_FLAG)
 
@@ -375,6 +378,15 @@ def _handle_todo_create(args: list[str]) -> None:
         print(_REASON_REQUIRED_WITH_HOLD if parsed.hold else _REASON_REQUIRES_HOLD)
         raise SystemExit(1)
 
+    if parsed.kind_value is None:
+        print(_TODO_CREATE_KIND_REQUIRED_TEMPLATE.format(valid_kinds=_VALID_KINDS_STR))
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+    if parsed.kind_value not in ALL_DUMP_KINDS:
+        print(_TODO_CREATE_KIND_INVALID_TEMPLATE.format(kind=parsed.kind_value, valid_kinds=_VALID_KINDS_STR))
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+
     # The interrogation gate: a complete creation request without the
     # acknowledgment flag is the designed discovery moment (mirrors the bug
     # filing gate) - serving it is the successful outcome, so this exits 0
@@ -384,11 +396,7 @@ def _handle_todo_create(args: list[str]) -> None:
         print(_TODO_CREATION_GATE, file=sys.stderr, end="")
         return
 
-    if parsed.kind_value is not None and parsed.kind_value not in ALL_DUMP_KINDS:
-        print(f"Error: invalid --kind '{parsed.kind_value}'. Valid values: {_VALID_KINDS_STR}")
-        print(_usage("todo", "create"))
-        raise SystemExit(1)
-    dump_kind = cast(TodoDumpKind, parsed.kind_value) if parsed.kind_value is not None else None
+    dump_kind = cast(TodoDumpKind, parsed.kind_value)
 
     request = TodoDumpRequest(
         slug=slug,
@@ -413,10 +421,7 @@ def _handle_todo_create(args: list[str]) -> None:
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":
-        if dump_kind is None:
-            print(f"Created todo: {slug}")
-        else:
-            print(f"Created todo: {slug} (kind={dump_kind})")
+        print(_TODO_CREATED_KIND_TEMPLATE.format(slug=slug, kind=dump_kind))
         if not parsed.icebox and not parsed.hold:
             print("Dispatched to the coordinator. Do not offer, ask about, or narrate further action on this todo.")
         warnings = result.get("warnings")

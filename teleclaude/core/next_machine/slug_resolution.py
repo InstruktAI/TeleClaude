@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
-from teleclaude.core.next_machine.kinds import KIND_FEATURE, KIND_TASK
+from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
@@ -20,6 +20,7 @@ from teleclaude.core.next_machine.lifecycle import (
     plan_review_current,
 )
 from teleclaude.types.lifecycle import TASK_LIFECYCLE_PHASES
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -134,11 +135,8 @@ async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
     state = await todos_db.read_state(slug)
     if state is None:
         return False
-    kind_raw = state.get("kind")
-    kind = kind_raw if isinstance(kind_raw, str) else KIND_FEATURE
-    lifecycle_phase_raw = state.get("lifecycle_phase")
-    lifecycle_phase = lifecycle_phase_raw if isinstance(lifecycle_phase_raw, str) else None
-    ready, _ = is_ready_for_work(kind=kind, lifecycle_phase=lifecycle_phase)
+    todo_state = TodoState.model_validate(state)
+    ready, _ = is_ready_for_work(kind=todo_state.kind, lifecycle_phase=todo_state.lifecycle_phase.value)
     return ready
 
 

@@ -11,7 +11,7 @@ from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
-from teleclaude.types.todo_kind import TodoDumpKind
+from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -411,14 +411,11 @@ class SetAgentStatusRequest(BaseModel):
 class TodoDumpRequest(BaseModel):
     """Request body for POST /todos/dump.
 
-    ``kind`` selects the lifecycle entry point when present:
+    ``kind`` selects the lifecycle entry point:
       - "feature": content is the "input" artifact; enters intake (authors a PRD).
       - "change":  content is the "input" artifact; enters plan drafting (no PRD).
       - "bug":     content is the "input" artifact; skips prepare and enters the fix lane.
       - "task":    content is the "input" artifact; created unheld and tracked by task-plan.
-
-    Omitted ``kind`` creates a kind-less todo: content is stored as immutable
-    ``input`` with no lifecycle_phase and routed to /analyze-todo-input for assignment.
 
     ``icebox`` creates the todo parked in the icebox so the daemon's prepare
     auto-spawn is suppressed. ``group`` attaches the new todo as a child of the
@@ -434,7 +431,7 @@ class TodoDumpRequest(BaseModel):
 
     slug: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
-    kind: TodoDumpKind | None = None
+    kind: TodoKind
     after: list[str] | None = None
     schedule: str | None = None
     cwd: str | None = None

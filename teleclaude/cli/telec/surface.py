@@ -580,10 +580,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "state is never shredded. Grouping also moves the parent's pending documentation ownership to the first "
                     "grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent "
                     "is rewritten to that child and committed as part of the same transition.",
-                    "ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. "
-                    "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
-                    "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "
-                    "shortcut to skip classifying work you understand.",
+                    "The filer always supplies --kind, choosing one of the four lifecycle entry points.",
                     "--plan is valid with --kind change or --kind task.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
@@ -799,7 +796,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--task-approved]"
                     " [--architecture-skipped <reason>]"
                     " [--drift-reviewed <artifact> <verdict> <reason>]"
-                    f" [--kind-assign <{TODO_KIND_USAGE}> [<content>]]"
                     " [--build-complete] [--finalize-ready]"
                     " [--kickback --reason <reason>]"
                     " [--task-outcome <success|error> [--reason <text>]]"
@@ -813,7 +809,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_STAMP_TASK_APPROVED,
                     F.FLAG_STAMP_ARCHITECTURE_SKIPPED,
                     F.FLAG_STAMP_DRIFT_REVIEWED,
-                    F.FLAG_STAMP_KIND_ASSIGN,
                     F.FLAG_STAMP_BUILD_COMPLETE,
                     F.FLAG_STAMP_FINALIZE_READY,
                     F.FLAG_STAMP_KICKBACK,
@@ -832,7 +827,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
                     "telec todo stamp my-task --task-approved",
-                    'telec todo stamp my-slug --kind-assign task "actionable task"',
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
                     'telec todo stamp my-slug --kickback --reason "<why the plan cannot be built>"',

@@ -26,6 +26,7 @@ class TodoItem:
     version_total: int = 0
     after: list[str] = field(default_factory=list)
     group: str | None = None
+    # Structural holder rows have no todo state or lifecycle, so their kind is absent.
     kind: str | None = None
     lifecycle_phase: str | None = None
     integration_phase: str | None = None

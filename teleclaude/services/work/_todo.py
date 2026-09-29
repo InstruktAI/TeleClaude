@@ -18,7 +18,7 @@ from teleclaude.core.todo import assemble_todo_from_db
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todo_kind import TODO_KIND_BUG
+from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
     from teleclaude.services.work._base import WorkServiceBase
@@ -101,7 +101,7 @@ class TodoOps:
         for slug, state_json in rows:
             raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
             state = upcycle_state_dict(raw_state)
-            if state.get(_TodoStateField.KIND) != TODO_KIND_BUG:
+            if state.get(_TodoStateField.KIND) != TodoKind.BUG:
                 continue
             lifecycle_phase = coerce_lifecycle_phase(state.get(_TodoStateField.LIFECYCLE_PHASE))
             build_review = state.get(_TodoStateField.BUILD_REVIEW, {})

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from rich.style import Style
 from rich.text import Text
@@ -22,7 +22,7 @@ from textual.events import Click
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label, TextArea
+from textual.widgets import Button, Input, Label, Select, TextArea
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
@@ -30,8 +30,16 @@ from teleclaude.cli.tui.messages import CreateSessionRequest, HandoffSessionRequ
 from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 from teleclaude.core.agents import get_enabled_agents
 from teleclaude.slug import SLUG_PATTERN
+from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHOICES, TodoDumpKind
 
 WIDGET_TYPE = TypeVar("WIDGET_TYPE", bound=Widget)
+_CREATE_KIND_LABEL_ID = "kind-label"
+_CREATE_KIND_LABEL = "Choose the todo kind:"
+_CREATE_KIND_SELECT_ID = "kind-select"
+_CREATE_KIND_SELECT_SELECTOR = "#kind-select"
+_CREATE_KIND_SELECT_PROMPT = "Choose a kind"
+_PRESET_KIND_LABEL_TEMPLATE = "Kind: {kind}"
+_CREATE_KIND_REQUIRED_ERROR = "Choose a todo kind"
 
 
 @dataclass
@@ -669,7 +677,15 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
         self.dismiss(NewProjectResult(path=resolved))
 
 
-class CreateSlugModal(ModalScreen[str | None]):
+@dataclass(frozen=True)
+class CreateSlugResult:
+    """Slug and kind selected for a new todo."""
+
+    slug: str
+    kind: TodoDumpKind
+
+
+class CreateSlugModal(ModalScreen[CreateSlugResult | None]):
     """Slug creation modal — parameterized for todo or bug."""
 
     BINDINGS = [
@@ -680,17 +696,29 @@ class CreateSlugModal(ModalScreen[str | None]):
         self,
         title: str = "New Todo",
         placeholder: str = "my-new-todo",
+        preset_kind: TodoDumpKind | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self._title = title
         self._placeholder = placeholder
+        self._preset_kind = preset_kind
 
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-box") as box:
             box.border_title = self._title
             yield Label("Enter a slug (lowercase, hyphens, numbers):", id="slug-label")
             yield Input(placeholder=self._placeholder, id="slug-input")
+            if self._preset_kind is None:
+                yield Label(_CREATE_KIND_LABEL, id=_CREATE_KIND_LABEL_ID)
+                yield Select(
+                    [(kind, kind) for kind in TODO_KIND_CHOICES],
+                    prompt=_CREATE_KIND_SELECT_PROMPT,
+                    allow_blank=True,
+                    id=_CREATE_KIND_SELECT_ID,
+                )
+            else:
+                yield Label(_PRESET_KIND_LABEL_TEMPLATE.format(kind=self._preset_kind), id=_CREATE_KIND_LABEL_ID)
             yield Label("", id="slug-error")
             with Horizontal(id="modal-actions"):
                 yield Button("[Enter] Create", variant="primary", id="create-btn")
@@ -724,7 +752,15 @@ class CreateSlugModal(ModalScreen[str | None]):
             error_label.update("Invalid: use lowercase, numbers, hyphens only")
             return
 
-        self.dismiss(slug)
+        kind = self._preset_kind
+        if kind is None:
+            selected_kind = self.query_one(_CREATE_KIND_SELECT_SELECTOR, Select).value
+            if not isinstance(selected_kind, str) or selected_kind not in ALL_DUMP_KINDS:
+                error_label.update(_CREATE_KIND_REQUIRED_ERROR)
+                return
+            kind = cast(TodoDumpKind, selected_kind)
+
+        self.dismiss(CreateSlugResult(slug=slug, kind=kind))
 
 
 class ContentInputModal(ModalScreen[str | None]):

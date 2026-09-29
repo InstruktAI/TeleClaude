@@ -16,27 +16,38 @@ The kind → entry-phase routing table lives in ``teleclaude.core.next_machine.k
 
 from __future__ import annotations
 
-from typing import Final, Literal
+from enum import StrEnum
+from typing import Final
 
-TODO_KIND_FEATURE: Final = "feature"
-TODO_KIND_CHANGE: Final = "change"
-TODO_KIND_BUG: Final = "bug"
-TODO_KIND_TASK: Final = "task"
 
-# Backfill value the state upcycle assigns to legacy rows that predate explicit
-# kind selection. Never a runtime fallback — every input boundary requires an
-# explicit kind, and the read boundary hard-fails on a missing kind.
-TODO_KIND_DEFAULT: Final = TODO_KIND_FEATURE
+class TodoKind(StrEnum):
+    """Closed vocabulary of todo lifecycle entry kinds."""
 
-# Literal type alias for static type checking at API boundaries.
-TodoDumpKind = Literal["feature", "change", "bug", "task"]
+    FEATURE = "feature"
+    CHANGE = "change"
+    BUG = "bug"
+    TASK = "task"
+
+
+TODO_KIND_FEATURE: Final[TodoKind] = TodoKind.FEATURE
+TODO_KIND_CHANGE: Final[TodoKind] = TodoKind.CHANGE
+TODO_KIND_BUG: Final[TodoKind] = TodoKind.BUG
+TODO_KIND_TASK: Final[TodoKind] = TodoKind.TASK
+
+# Backfill value the state upcycle assigns to a legacy row with no kind. The
+# upcycle also holds the row until an operator sets its real kind and releases it.
+# Creation boundaries require an explicit kind; this is never a runtime fallback.
+TODO_KIND_DEFAULT: Final[TodoKind] = TodoKind.FEATURE
+
+# API boundary alias for the closed kind type.
+TodoDumpKind = TodoKind
 
 # All valid values accepted by the CLI --kind flag and the API dump endpoint.
-TODO_KIND_CHOICES: Final[tuple[TodoDumpKind, ...]] = (
+TODO_KIND_CHOICES: Final[tuple[TodoKind, ...]] = (
     TODO_KIND_FEATURE,
     TODO_KIND_CHANGE,
     TODO_KIND_BUG,
     TODO_KIND_TASK,
 )
 TODO_KIND_USAGE: Final[str] = "|".join(TODO_KIND_CHOICES)
-ALL_DUMP_KINDS: frozenset[str] = frozenset(TODO_KIND_CHOICES)
+ALL_DUMP_KINDS: frozenset[TodoKind] = frozenset(TODO_KIND_CHOICES)

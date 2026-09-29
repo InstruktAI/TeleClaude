@@ -146,8 +146,6 @@ _RUN_JOB_INSTRUCTION_FORMAT: Final[str] = "/{command} {job_name} {procedure_id}"
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
 }
-SLUG_INFERABLE_LIFECYCLE_COMMANDS.add(SlashCommand.ANALYZE_TODO_INPUT.value)
-
 SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
 }

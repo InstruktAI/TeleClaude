@@ -44,7 +44,7 @@ from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todo_kind import TODO_KIND_TASK
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import DependencyEntry, TodoState
 
 _ACTIVE_TODO_STATUS = "active"
@@ -69,7 +69,7 @@ def _require_delivery_provenance(slug: str, state_model: TodoStateModel | None, 
         )
     except (TypeError, ValueError):
         kind = None
-    if kind != TODO_KIND_TASK:
+    if kind != TodoKind.TASK:
         raise DeliveryProvenanceRefused(slug, kind)
 
 

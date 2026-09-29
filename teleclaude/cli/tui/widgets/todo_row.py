@@ -140,9 +140,7 @@ def _status_label(status: TodoStatus | str) -> str:
     return _UNKNOWN_TODO_STATUS_LABEL_TEMPLATE.format(status=status)
 
 
-def _display_kind(kind: str | None) -> str:
-    if kind is None:
-        return "?"
+def _display_kind(kind: str) -> str:
     return _KIND_DISPLAY.get(kind, kind)
 
 
@@ -283,12 +281,10 @@ _KIND_COLORS_LIGHT: dict[str, str] = {
 }
 
 
-def _kind_color(kind: str | None) -> str:
+def _kind_color(kind: str) -> str:
     """Return the theme-aware color for the kind label."""
-    if kind is None:
-        return _gold_color()
     colors = _KIND_COLORS_DARK if is_dark_mode() else _KIND_COLORS_LIGHT
-    return colors.get(kind or "", colors["feature"])
+    return colors.get(kind, colors["feature"])
 
 
 def _icebox_color() -> str:
@@ -377,7 +373,10 @@ class TodoRow(TelecMixin, Widget):
         """
         maxes: dict[str, int] = {"K": 0, "P": 0, "D": 0}
         for t in todos:
-            maxes["K"] = max(maxes["K"], len(_col_plain_text(_PHASE_PREFIX_KIND, _display_kind(t.kind))))
+            if t.is_holder:
+                continue
+            kind = t.kind
+            maxes["K"] = max(maxes["K"], len(_col_plain_text(_PHASE_PREFIX_KIND, _display_kind(kind))))
             if not isinstance(t.status, TodoStatus):
                 maxes["P"] = max(maxes["P"], len(_col_plain_text(_PHASE_PREFIX_LIFECYCLE, _status_label(t.status))))
                 continue
@@ -386,9 +385,6 @@ class TodoRow(TelecMixin, Widget):
                 continue
             if _approval_pending(t):
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:approve"))
-                continue
-            if t.kind is None:
-                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:classify"))
                 continue
             work_label = _work_phase_label(t.lifecycle_phase)
             if work_label is not None:
@@ -517,13 +513,14 @@ class TodoRow(TelecMixin, Widget):
 
         w = self._col_widths
         result = Text()
+        kind = self.todo.kind
         # Kind column renders first on every non-holder row (no colon prefix).
         result.append_text(
             self._build_col(
                 _PHASE_PREFIX_KIND,
-                _display_kind(self.todo.kind),
+                _display_kind(kind),
                 w.get("K", 0),
-                Style(color=_kind_color(self.todo.kind)),
+                Style(color=_kind_color(kind)),
             )
         )
 
@@ -555,12 +552,6 @@ class TodoRow(TelecMixin, Widget):
         if self.todo.status == TodoStatus.REMOVED:
             age = format_relative_time(self.todo.removed_at) if self.todo.removed_at else ""
             result.append_text(self._build_col("T", age, w.get("P", 0), Style(color=_trashed_color())))
-            return self._finish_columns(result)
-
-        if self.todo.kind is None:
-            result.append_text(
-                self._build_col(_PHASE_PREFIX_LIFECYCLE, "classify", w.get("P", 0), Style(color=_gold_color()))
-            )
             return self._finish_columns(result)
 
         ok = _ok_color()

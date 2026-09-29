@@ -508,8 +508,7 @@ async def resolve_manual_dispatch_intent(
     An explicit ``requested_lane`` of PREPARE re-opens the prepare lane for a todo
     whose natural lane has advanced to WORK (the drift re-preparation route). The
     flip is asymmetric: it fires only on an already-resolved WORK lane, so a
-    kind-less todo remains undispatched and a naturally-PREPARE draft is
-    unaffected.
+    naturally-PREPARE draft is unaffected.
     """
     state = await todos_db.read_state(slug)
     if state is None:

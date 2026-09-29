@@ -15,7 +15,7 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_FEATURE, TODO_KIND_TASK
+from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -41,13 +41,13 @@ class KindMigrationResult(TypedDict):
 class KindMigrationRequiresForce(StateMutationError):
     """Raised when a kind migration would orphan artifacts without force."""
 
-    def __init__(self, *, current_kind: str | None, target_kind: str, orphaned_artifacts: list[str]) -> None:
+    def __init__(self, *, current_kind: str, target_kind: str, orphaned_artifacts: list[str]) -> None:
         self.current_kind = current_kind
         self.target_kind = target_kind
         self.orphaned_artifacts = orphaned_artifacts
         super().__init__(
             "kind migration "
-            f"{current_kind or 'kindless'} -> {target_kind} orphans {_format_artifacts(orphaned_artifacts)}; "
+            f"{current_kind} -> {target_kind} orphans {_format_artifacts(orphaned_artifacts)}; "
             "re-run with --force to permanently remove them."
         )
 
@@ -66,7 +66,7 @@ async def migrate_todo_kind(
         raise StateMutationError(f"slug {slug!r} not found in todo list")
 
     writer = StateWriter(raw_state)
-    current_kind = canonical_kind(writer.state.kind) if writer.state.kind is not None else None
+    current_kind = canonical_kind(writer.state.kind)
     present_artifacts = frozenset(await todos_db.list_artifacts(slug))
     orphaned_artifacts = _orphaned_artifacts(present_artifacts, target_kind)
     if orphaned_artifacts and not force:
@@ -125,13 +125,13 @@ async def migrate_todo_kind(
 
 def _orphaned_artifacts(present_artifacts: frozenset[str], target_kind: str) -> list[str]:
     orphaned = []
-    if target_kind != TODO_KIND_FEATURE:
+    if target_kind != TodoKind.FEATURE:
         orphaned.extend([ARTIFACT_PRD, ARTIFACT_ARCHITECTURE])
-    if target_kind != TODO_KIND_BUG:
+    if target_kind != TodoKind.BUG:
         orphaned.append(ARTIFACT_DIAGNOSIS)
-    if target_kind != TODO_KIND_TASK:
+    if target_kind != TodoKind.TASK:
         orphaned.append(ARTIFACT_TASK_PLAN)
-    if target_kind == TODO_KIND_TASK:
+    if target_kind == TodoKind.TASK:
         orphaned.append(ARTIFACT_IMPLEMENTATION_PLAN)
     return [artifact for artifact in _ORPHAN_CHECK_ORDER if artifact in present_artifacts and artifact in orphaned]
 

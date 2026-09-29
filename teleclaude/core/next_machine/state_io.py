@@ -53,6 +53,7 @@ from teleclaude.core.next_machine.review_evidence import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
 if TYPE_CHECKING:
@@ -61,14 +62,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def initial_todo_state_for_kind(kind: str | None) -> dict[str, StateValue]:
+def initial_todo_state_for_kind(kind: TodoKind) -> dict[str, StateValue]:
     """Return the initial persisted state for a newly created todo kind."""
     state = default_state()
-    if kind is None:
-        state["kind"] = None
-        state.pop("lifecycle_phase", None)
-        return state
-
     canonical = canonical_kind(kind)
     state["kind"] = canonical
     entry_phase = KIND_ENTRY_PHASE[canonical]

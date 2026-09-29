@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import cast
 
-from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
+from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_ENTRY_PHASE, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
 from teleclaude.types.todos import (
     ACTIVE_RUNNER_STATE_KEY,
     LIFECYCLE_PHASE_STATE_KEY,
     PREPARED_SESSION_ID_STATE_KEY,
     SCHEMA_VERSION_STATE_KEY,
+    HoldAuditSource,
     TodoState,
 )
 
@@ -45,6 +47,9 @@ _CONTINUATION_REVIEW_KEYS = (
 )
 _PREPARE_REVIEW_KEYS = _CONTINUATION_REVIEW_KEYS[:-1]
 _EMPTY_TEXT = ""
+_TODO_KIND_STATE_KEY = "kind"
+_KIND_VALUE_TYPE_ERROR_TEMPLATE = "persisted todo kind must be a string, got {value!r}"
+_KIND_BACKFILL_REASON = "Set the real kind with `telec todo update <slug> --kind` and then release the hold."
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
@@ -104,6 +109,20 @@ def _dict(raw: dict[str, StateValue], key: str) -> dict[str, StateValue]:
 def _text(raw: dict[str, StateValue], key: str) -> str:
     value = raw.get(key)
     return value if isinstance(value, str) else ""
+
+
+def _canonicalize_kind_if_present(state: dict[str, StateValue]) -> bool:
+    """Canonicalize present kinds while preserving both legacy absence encodings."""
+    if _TODO_KIND_STATE_KEY not in state:
+        return False
+    raw_kind = state[_TODO_KIND_STATE_KEY]
+    if raw_kind is None:
+        state.pop(_TODO_KIND_STATE_KEY)
+        return False
+    if not isinstance(raw_kind, str):
+        raise ValueError(_KIND_VALUE_TYPE_ERROR_TEMPLATE.format(value=raw_kind))
+    state[_TODO_KIND_STATE_KEY] = canonical_kind(raw_kind)
+    return True
 
 
 def _artifact_produced(raw: dict[str, StateValue], artifact_key: str) -> bool:
@@ -249,11 +268,7 @@ def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated.pop("prepare_pair", None)
     migrated.pop("grounding", None)
     migrated.setdefault("approvals", {})
-    raw_kind = _text(migrated, "kind")
-    if raw_kind:
-        migrated["kind"] = canonical_kind(raw_kind)
-    else:
-        migrated["kind"] = None
+    if not _canonicalize_kind_if_present(migrated):
         migrated.pop("lifecycle_phase", None)
     migrated["schema_version"] = _V3_SCHEMA_VERSION
     return migrated
@@ -503,7 +518,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             raise ValueError(msg)
         version = _detect_schema_version(migrated)
 
-    if "lifecycle_phase" not in migrated and migrated.get("kind") is not None:
+    has_kind = _canonicalize_kind_if_present(migrated)
+    if "lifecycle_phase" not in migrated and has_kind:
         msg = f"todo state schema v{LATEST_TODO_STATE_SCHEMA_VERSION} is missing required lifecycle_phase"
         raise ValueError(msg)
     return migrated
@@ -517,16 +533,18 @@ def upcycle_state_dict(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     # (refactor/migration/prepped/draft/todo). A present kind is canonicalized (an
     # unknown one fails fast); a missing kind on a pre-collapse row is an explicit
     # legacy backfill, never a silent fallback.
-    raw_kind = _text(latest, "kind")
-    if raw_kind:
-        latest["kind"] = canonical_kind(raw_kind)
-    else:
-        latest["kind"] = None
-        latest.pop("lifecycle_phase", None)
+    if _TODO_KIND_STATE_KEY not in latest:
+        latest[_TODO_KIND_STATE_KEY] = TODO_KIND_DEFAULT
+        latest["lifecycle_phase"] = KIND_ENTRY_PHASE[TODO_KIND_DEFAULT].value
+        latest["hold"] = True
+        latest["hold_audit"] = {
+            "source": HoldAuditSource.KIND_BACKFILL.value,
+            "set_at": "",
+            "set_by_session_id": "",
+            "reason": _KIND_BACKFILL_REASON,
+        }
     model = TodoState.model_validate(latest)
     payload = model.model_dump(exclude_none=True)
-    if model.kind is None:
-        payload["kind"] = None
     return cast(dict[str, StateValue], payload)
 
 
