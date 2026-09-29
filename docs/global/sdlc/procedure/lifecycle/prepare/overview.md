@@ -260,7 +260,7 @@ If the recorded kind does not match the intent, reclassify it with `telec todo
 update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
 force an intent through the wrong lane to preserve an already chosen kind.
 
-### 1c. Settled small change
+### 1c. Settled change
 
 At audited entry, before drafting or review starts, the owning prepare session
 may apply the in-context criteria in `sdlc/policy/todo-creation-discipline` to a

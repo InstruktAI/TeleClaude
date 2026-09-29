@@ -55,7 +55,7 @@ description: Decide whether a todo should exist, audit that decision at preparat
   `general/policy/documentation-discipline`; when a snippet enters
   consideration, `general/procedure/doc-snippet-authoring` owns the authoring
   gate.
-- **Execute small, settled code work in context (5m rule).** When the approach is known,
+- **Execute settled code work in context.** When the approach is known,
   the edit is bounded, and the work needs neither a plan, a builder, nor a
   handoff, make the change on `main` only when an explicit execution request, a
   bounded brief, or a completed human conversation in which every active
