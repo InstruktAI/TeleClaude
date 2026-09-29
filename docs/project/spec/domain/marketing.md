@@ -15,9 +15,8 @@ through its domain handlers.
 
 ## Canonical fields
 
-- **Event vocabulary:** the `domain.marketing.*` registrations in
-  `teleclaude/events/schemas/marketing.py`.
-- **Implementation roots:** `teleclaude/events/domains/marketing/`.
+- **Event vocabulary:** its `domain.marketing.*` registrations in the event catalog;
+  operators discover them with `telec events list`.
 - **Maintenance stance:** see `project/spec/domain/glossary`.
 
 ### Ownership boundary
@@ -40,3 +39,6 @@ through its domain handlers.
 ## See Also
 
 - docs/project/spec/domain/event-catalog.md
+<!-- planned:event-origin-and-subject -->
+- docs/project/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+<!-- /planned:event-origin-and-subject -->

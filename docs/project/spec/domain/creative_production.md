@@ -15,9 +15,8 @@ through its domain handlers.
 
 ## Canonical fields
 
-- **Event vocabulary:** the `domain.creative-production.*` registrations in
-  `teleclaude/events/schemas/creative_production.py`.
-- **Implementation roots:** `teleclaude/events/domains/creative_production/`.
+- **Event vocabulary:** its `domain.creative-production.*` registrations in the event catalog;
+  operators discover them with `telec events list`.
 - **Maintenance stance:** see `project/spec/domain/glossary`.
 
 ### Ownership boundary
@@ -38,3 +37,6 @@ Asset and format events are about the company whose creative work they record.
 ## See Also
 
 - docs/project/spec/domain/event-catalog.md
+<!-- planned:event-origin-and-subject -->
+- docs/project/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+<!-- /planned:event-origin-and-subject -->

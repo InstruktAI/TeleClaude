@@ -67,8 +67,7 @@ The event platform's own emitters state as their subject what their act
 concerned:
 
 - stream-health events (burst and failure-cascade detection, dead-lettered
-  entries, processor worker crashes): no subject, because they concern the
-  stream, whatever events they count;
+  entries, processor worker crashes): no subject;
 - entity degradation: the subject of the failing events it correlates.
   Correlation keeps same-named entities under different subjects apart, so each
   degradation concerns one subject.
@@ -93,4 +92,5 @@ reaction. Catalog registration does not transfer either responsibility.
 <!-- planned:event-origin-and-subject -->
 - docs/project/adr/0105-event-access-follows-the-subject-its-producer-states.md
 - docs/project/spec/feature/event-catalog/event-envelope.md
+- ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's handlers confers no ownership of its event subjects.
 <!-- /planned:event-origin-and-subject -->

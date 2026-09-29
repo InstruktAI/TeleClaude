@@ -86,11 +86,13 @@ concerned:
 - todo lifecycle, roadmap, preparation, build, review, integration, and delivery
   events: the project whose todo or delivery they concern;
 - deployment events: the deployed project;
-- the schedule clock's minute tick: no subject, because it concerns the
-  platform's clock rather than any registered home.
+- the schedule clock's minute tick: no subject.
 
 <!-- /planned:event-origin-and-subject -->
 
 ## See Also
 
+<!-- planned:event-origin-and-subject -->
+- docs/project/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned, and no subject only when it concerns the platform itself.
+<!-- /planned:event-origin-and-subject -->
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md
