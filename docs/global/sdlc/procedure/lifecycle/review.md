@@ -161,6 +161,7 @@ is semantic and line count proves nothing either way. A remediation changes the
 target, not its authority; every addition remains answerable to the same frozen
 denominator.
 
+<!-- planned-change:retire-assist-review-loop-watcher -->
 The first review of a target is one complete discovery pass over the frozen
 digest. A remediation review closes existing findings and inspects the
 remediation delta. A new finding on a remediation review is admissible only
@@ -168,6 +169,27 @@ when it is remediation-induced, or newly observable because the target changed.
 A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
+<!-- change:retire-assist-review-loop-watcher -->
+The first review of a target is one complete discovery pass over the frozen
+digest. A remediation review closes existing findings and inspects the
+remediation delta. A new finding on a remediation review is admissible only
+when it is remediation-induced, or newly observable because the target changed.
+A finding that was observable in the discovery pass and is raised later is the
+reviewer's incompleteness: it pauses continuation for reassessment and is not
+appended to the producer's work. The finding and the current verdict are
+preserved. A replacement reviewer, when reassessment calls for one, derives
+independently before reconciling the existing findings and dispositions, and
+resets neither the frozen scope nor the review history.
+
+A further finding in previously remediated work is compared with the earlier
+finding, its disposition, and the change that answered it. Repeated failure to
+establish the same invariant, or a remediation chain that introduces another
+defect while leaving its premise unresolved, requires re-derivation of the
+affected unit before another pass: a remediation applied only where a finding
+points converges one leftover per pass
+(`sdlc/policy/preparation-artifact-quality`). A second edit to the same region
+establishes neither by itself.
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 Review passes are counted within a review cycle. A valid substantive-drift stamp
 ends the current cycle for every review target it invalidates and starts a new
@@ -188,6 +210,7 @@ a zero offset. This keeps the reported cycle-local count describing the target i
 governs rather than inheriting totals from a boundary that was never persisted
 (`general/principle/grounding`).
 
+<!-- planned-change:retire-assist-review-loop-watcher -->
 When a review cycle reaches its configured threshold, the count is reported
 and nothing is refused. The report names the phase, the passes admitted, and the
 threshold, and it instructs the orchestrator to dispatch an assist against the
@@ -220,6 +243,34 @@ the assist and follow its loop-level disposition is carried by this contract
 rather than by a gate or continuation stamp. An orchestrator does not start
 another reviewer pass after the assist directs correction, re-derivation,
 routing, or closure.
+<!-- change:retire-assist-review-loop-watcher -->
+When a review cycle reaches its configured threshold, the count is reported
+and nothing is refused. The report names the phase, the passes admitted, and the
+threshold, and points at this continuation contract. It is emitted once, on the
+pass that crosses the threshold, and not again; the count keeps rendering
+afterwards. The count summons no one.
+
+The phase orchestrator owns continuation, as it owns the loop's lifecycle
+execution (`general/concept/orchestrator`); the reviewer keeps verdict
+authority, and the producer keeps disposition and implementation authority.
+Before requesting another pass, the orchestrator establishes from the current
+delta and findings what remains unresolved and why the next act can resolve it
+within the frozen scope. Either party may halt continuation by identifying a
+grounded defect in continuing; the orchestrator resolves or routes that defect
+before requesting another pass.
+
+When continuation stops, the phase orchestrator records the grounded cause and
+routes the next contribution under the invoking phase's correction procedure.
+The target returns to drafting only when the evidence requires re-deriving a
+prepared artifact. Reviewer incompleteness stays a review correction; an
+implementation defect within the approved contract stays with the producer. The
+findings and the current verdict are preserved. An unresolved contract dispute
+goes to that contract's owner. Human escalation follows the closed human lane
+(`general/policy/human-contract`), never the round count.
+
+Neither elapsed rounds nor stopping authorizes approval, scope growth, or a
+weakened finding.
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

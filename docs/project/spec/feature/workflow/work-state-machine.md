@@ -286,6 +286,7 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
+<!-- planned-change:retire-assist-review-loop-watcher -->
 #### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
 
 ```gherkin
@@ -300,6 +301,22 @@ And it reports that instruction once, on the crossing pass, and not on later pas
 And the admitted-pass count keeps rendering on later passes
 And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
 ```
+<!-- change:retire-assist-review-loop-watcher -->
+#### UC-WSM12: Build review reports its crossed threshold once and summons no session
+
+```gherkin
+Given a Todo has admitted build-review passes up to its configured round threshold
+And no approve verdict is current under UC-WSM8
+When the orchestrator calls "telec todo work my-feature"
+Then the machine reports the phase, admitted-pass count, threshold and current review evidence, and points the orchestrator at the shared convergence contract before another pass
+And it refuses no reviewer dispatch, emits no continuation stamp, and instructs no additional session to be dispatched
+And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
+And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
+And it reports the crossing once, on the crossing pass, and not on later passes
+And the admitted-pass count keeps rendering on later passes
+And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
+```
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 
@@ -351,7 +368,11 @@ And the work orchestrator agent receives no reviewer dispatch, no follow-up for 
 - A holder entry cannot itself enter work. The orchestrator is always routed to its direct, runnable children via the same holder-resolution helpers prepare uses.
 - The single-flight lock is per `(canonical project root, slug)`. Same slug in a different repo runs independently — this is the explicit behavior, not a leak.
 - Bug-kind Todos require an explicit `telec todo stamp <slug> --build-complete` even when the build session committed and exited; the machine will not advance on commit alone.
+<!-- planned-change:retire-assist-review-loop-watcher -->
 - The review threshold is not an escape hatch. Crossing it points at `review-findings` and requires an assist; the orchestrator must address Requirement-Violation / Critical / Important findings rather than moving the threshold.
+<!-- change:retire-assist-review-loop-watcher -->
+- The review threshold is not an escape hatch. Crossing it points at `review-findings` and the shared convergence contract; the orchestrator must address Requirement-Violation / Critical / Important findings rather than moving the threshold.
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 - The work loop limit bounds in-call transitions. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - `finalize_ready` is gated by a triple-ref check (`worktree HEAD == branch ref == remote ref`) AND the Stamped SHA must equal worktree HEAD; any mismatch refuses the transition and requires a re-stamp.
 - Chokepoint emission is at-least-once at the bus layer under concurrent first-transition writers. Integrator spawning remains at-most-once for duplicate same-key events through cartridge dedup, and distinct-key races are serialized by the integration singleton lease.

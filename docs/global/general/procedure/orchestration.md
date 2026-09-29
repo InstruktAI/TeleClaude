@@ -209,6 +209,7 @@ credit, or instability:
 
 ### Review Threshold Handling (Orchestrator-Owned)
 
+<!-- planned-change:retire-assist-review-loop-watcher -->
 When a preparation or work review reaches its documented threshold, apply
 `sdlc/procedure/lifecycle/review` §6. Nothing is refused: the
 count is reported once and the orchestrator dispatches an assist against the
@@ -218,6 +219,16 @@ and which party or owning phase has the next act. The reviewer retains its
 verdict, the producer retains its finding dispositions, and this orchestrator
 retains lifecycle execution and state mutation.
 `general/policy/human-contract` governs any escalation.
+<!-- change:retire-assist-review-loop-watcher -->
+When a preparation or work review reaches its documented threshold, the count
+is reported once and nothing is refused. Continuation stays with this
+orchestrator: it requests another pass only when it can establish what remains
+unresolved and why the next act resolves it within the frozen scope
+(`sdlc/procedure/lifecycle/review`). The reviewer retains its verdict, the
+producer retains its finding dispositions, and this orchestrator retains
+lifecycle execution and state mutation.
+`general/policy/human-contract` governs any escalation.
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 1. Inspect current evidence:
    - `telec todo artifacts read {slug} review-findings`
@@ -230,11 +241,19 @@ retains lifecycle execution and state mutation.
      while a finding remains unresolved.
    - If every finding is resolved, mark `review=approved`. The verdict is
      arithmetic: zero unresolved findings means APPROVE.
+   <!-- planned-change:retire-assist-review-loop-watcher -->
    - If the loop is stuck or its remediation has become disproportionate to the
      concern, wake the assist and follow its disposition under the shared review
      procedure. A technical recovery, return to an owning phase, or further
      bounded review does not require human approval. A decision in the closed
      human lane does.
+   <!-- change:retire-assist-review-loop-watcher -->
+   - If the loop is stuck or its remediation has become disproportionate to the
+     concern, stop continuation, record the grounded cause, and route the next
+     contribution under the shared review procedure. A technical recovery,
+     return to an owning phase, or further bounded review does not require
+     human approval. A decision in the closed human lane does.
+   <!-- /planned-change:retire-assist-review-loop-watcher -->
 3. Record rationale in todo artifacts so the closure is auditable.
 
 When an orchestrator or human closes any preparation or build review through a
@@ -250,6 +269,7 @@ category to reach approve. Per the review procedure severity schema, such
 findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
+<!-- planned-change:retire-assist-review-loop-watcher -->
 When a prepare or work review crosses its threshold, the orchestrator dispatches
 `assist` against the slug and sends it a line each time a pass lands. Before
 re-entering the state machine for another reviewer pass, it waits for the
@@ -262,6 +282,10 @@ mutates no lifecycle state. The report is emitted once and the obligation to
 dispatch stands until an assist is live. Reminder ownership follows
 `general/policy/reminder`; a crossed threshold never transfers the next move to
 the human.
+<!-- change:retire-assist-review-loop-watcher -->
+Reminder ownership follows `general/policy/reminder`; a crossed threshold never
+transfers the next move to the human.
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 - Point workers to the kind-resolved approved intent artifact, optional
   `architecture` when present, and `implementation-plan` for the execution

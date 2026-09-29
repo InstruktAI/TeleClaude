@@ -234,6 +234,7 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 ##### NC-09 — Review threshold crossed
 
+<!-- planned-change:retire-assist-review-loop-watcher -->
 - **Evidence available:** configured round threshold, round counter, current review
   findings/verdict, whether an assist is live for the loop, and Work recovery contract.
 - **Ownership:** Work Orchestrator owns dispatching the assist and executing its
@@ -248,6 +249,23 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** stop after the pointer. Settle when the orchestrator
   follows the assist's disposition or grounds that the remaining decision is
   independently human-owned.
+<!-- change:retire-assist-review-loop-watcher -->
+- **Evidence available:** configured round threshold, round counter, current review
+  findings/verdict, the phase orchestrator's recorded continuation ground or stop
+  cause, and Work recovery contract.
+- **Ownership:** the phase orchestrator owns continuation and routing the next
+  contribution under the shared convergence contract
+  (`sdlc/procedure/lifecycle/review`); reviewer and producer retain verdict,
+  finding-disposition, and remediation authority; Work state machine owns
+  resulting state.
+- **Coordinator:** when passes continue past the threshold with no grounded account
+  of what the next pass resolves, point to the convergence contract's address and
+  the current review-findings artifact address. Do not send findings content or the
+  decision to Human merely because the rounds ended, and do not judge the loop.
+- **Stop and settlement:** stop after the pointer. Settle when the orchestrator
+  records its continuation ground or its stop cause and routing, or grounds that
+  the remaining decision is independently human-owned.
+<!-- /planned-change:retire-assist-review-loop-watcher -->
 
 ##### NC-10 — Integrator drained the queue
 
