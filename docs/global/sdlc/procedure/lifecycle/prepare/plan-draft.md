@@ -309,11 +309,13 @@ policy. Structure the plan as an ordered task list. Each task must include:
 - **Referenced files**: exact file paths the grounded plan expects to create or
   modify. These are used by the state machine for grounding and staleness detection.
 - **Referenced paths contract**: author exactly one machine-readable
-  ` ```referenced-paths ` fenced block in the plan body, one path per line,
-  applying the preparation-time path contract in
-  `sdlc/policy/preparation-artifact-quality` (Plan-specific quality). File paths
-  mentioned in prose may help the builder, but they are not a drift contract
-  unless they appear in this block.
+  ` ```referenced-paths ` fenced block in the plan body, listing every file
+  the grounded plan expects the work to create or modify, one path per line. The
+  block anticipates the work and is not an allowlist of builder edits
+  (`sdlc/policy/preparation-artifact-quality`). This block is the only code
+  drift surface the state machine reads. File paths mentioned in prose may help
+  the builder, but they are not a drift contract unless they appear in this
+  block.
 
 Apply the structural ratchet (`definition-of-done` §2) to the change path
 derived in step 2c. Where a preparatory deepening meets its five conditions —

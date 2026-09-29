@@ -56,12 +56,13 @@ that the intent does not call for is a Critical scope finding even when the
 approved plan contains it. For a bug, `input` sharpened by `diagnosis` is the
 scope authority.
 
-Apply `sdlc/policy/preparation-artifact-quality` (Builder discretion within
-prepared contracts) to differences between the plan and implementation. Read
-the builder's recorded adaptations, then independently check the actual diff
-against the binding guarantees. A placement challenge must establish the
-violated guarantee or principle under the shared finding-validity contract;
-the plan's path list supplies no edit authorization boundary.
+The plan's file placement, helper names, and decomposition anticipate the work
+and do not bound it (`sdlc/policy/preparation-artifact-quality`). A difference
+between them and the diff is not a finding by itself; a finding cites the
+contract the difference violates and establishes the contradiction
+(`sdlc/procedure/lifecycle/review`). The departures the builder recorded in
+`log` are its stated reasons, and the review checks them independently against
+the diff.
 
 State what every required outcome promises before running a lane. Reading only
 the diff is insufficient.
@@ -89,8 +90,7 @@ them unless the review scope explicitly includes planning or state edits.
 ### 2. Check build completeness
 
 - Every implementation-plan task is delivered by a commit or explicitly
-  deferred under the plan. Assess the task's delivered outcome under the
-  builder-discretion contract, including any recorded implementation adaptation.
+  deferred under the plan.
 - Every deferral is justified.
 
 An undelivered task without a deferral, or an unjustified deferral, yields

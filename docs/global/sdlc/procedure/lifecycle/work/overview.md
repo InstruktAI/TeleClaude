@@ -13,6 +13,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/general/procedure/orchestration.md
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -181,21 +182,20 @@ re-stamping over a worker that was mid-write is how two records disagree.
 
 ### 9. Kickback to prepare (orchestrator-owned)
 
-A build can stall on a prepared-contract defect that requires re-derivation.
-Apply `sdlc/policy/preparation-artifact-quality` (Builder discretion within
-prepared contracts) to distinguish that defect from an implementation
-adaptation. The builder surfaces the defect's evidence to its orchestrator and
-preserves its work.
+A build can stall on a plan defect that no fix resolves — the implementation plan
+cannot be executed as written and needs re-derivation, not a fix round. The builder
+surfaces the reason to its orchestrator and preserves its work.
 
 The orchestrator owns the technical kickback decision under
 `general/policy/human-contract`; the worker does not invoke it. Read the
-builder's evidence, identify the prepared outcome or binding constraint that
-needs re-derivation, and establish why an implementation adaptation cannot
-preserve it. Record that basis and how re-preparation resolves it within
-authorized intent before acting. When a review requests kickback without that
-basis, return the disputed finding to its reviewer under
-`sdlc/procedure/lifecycle/review`; preserve the finding and verdict while it is
-adjudicated. A change to product intent, scope, the governing process contract, or a safety-gated
+builder's evidence, establish why re-preparation can resolve the plan defect
+within authorized intent, and record that direction before acting. A build
+that differs from the plan only in file placement, helper names, or
+decomposition shows no plan defect and is no basis for kickback
+(`sdlc/policy/preparation-artifact-quality`); a review that asks for kickback on
+that ground alone is answered through the review loop, its finding and verdict
+intact (`sdlc/procedure/lifecycle/review`). A change
+to product intent, scope, the governing process contract, or a safety-gated
 action follows its human authority path. An unresolved technical question
 returns to evidence and its agent owner, never to a human merely because a
 fix round failed. Kickback supplies no approval of the revised plan; normal

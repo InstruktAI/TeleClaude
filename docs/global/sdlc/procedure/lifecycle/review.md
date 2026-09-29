@@ -153,13 +153,13 @@ for that artifact.
 
 ### 6. Bound the convergence
 
-Scope is frozen before review begins: the authorized intent and binding
-guarantees in the independently reviewed architecture or plan, where one
-exists, form the fixed denominator every finding is judged against. Resolve
-binding guarantees and implementation hypotheses under
-`sdlc/policy/preparation-artifact-quality` (Builder discretion within prepared
-contracts); approval does not freeze the hypotheses as scope. Remediation closes
-valid findings within that scope; a valid omission finding may add material, but scope growth
+Scope is frozen before review begins: the authorized intent, and the
+independently reviewed architecture or plan where one exists, form the fixed
+denominator every finding is judged against. When the target is an
+implementation, the plan's file placement, helper names, and decomposition are
+not part of that denominator (`sdlc/policy/preparation-artifact-quality`).
+Remediation closes valid findings
+within that scope; a valid omission finding may add material, but scope growth
 is semantic and line count proves nothing either way. A remediation changes the
 target, not its authority; every addition remains answerable to the same frozen
 denominator.

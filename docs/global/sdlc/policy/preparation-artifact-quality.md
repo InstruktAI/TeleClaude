@@ -220,32 +220,31 @@ against the code is defective **even when the mechanism happens to be correct**:
 the defect is the unverified adoption, because the next wrong guess rides the
 same unchecked path.
 
-### Builder discretion within prepared contracts
+### Implementation is the builder's within prepared contracts
 
-The builder owns implementation decisions within the authorized outcome,
-bounded-context ownership, published contracts, invariants, and applicable
-quality gates (`general/policy/human-contract`). A reviewed architectural
-constraint binds through the guarantee it protects; a file name, helper name,
-signature, decomposition, or sequence does not become binding merely because
-the approved plan names it.
+The rule above binds the builder as it binds every consumer of a plan: the
+plan's file placement, helper names, and decomposition are hypotheses about how
+to deliver the work. They anticipate it and do not bound it.
 
-The builder may adapt those implementation hypotheses when grounded code
-reality requires it, including splitting a module to satisfy a quality limit.
-The adaptation preserves the delivery's outcomes and binding constraints and
-does not weaken the quality floor. Record a material adaptation and its
-grounded reason in the existing build report, todo log, or change description;
-do not rewrite a prepare-owned artifact to authorize it.
+What binds the builder is what the delivery must preserve: the intent's outcomes
+and success criteria, scope, bounded-context ownership, published contracts,
+invariants, the risk the prepared artifacts accepted, applicable quality gates,
+and every decision the reviewed architecture makes. A placement, name, or
+decomposition that one of these itself decides — an ownership boundary, a
+layering rule, an invariant — binds as that decision, not as a plan detail.
 
-Build review evaluates the actual implementation against those contracts. A
-different file placement or a path absent from the plan is not itself a
-finding. A challenge to the adaptation identifies the binding guarantee or
-applicable principle it violates and establishes the contradiction under
-`sdlc/procedure/lifecycle/review`.
+Within those bounds the builder decides placement, names, and decomposition from
+the code in front of it, including splitting a module to meet a quality limit,
+and never lowers the quality floor to do so. A departure from what the plan
+names is recorded in the todo `log` with the code reality that forced it, where
+the build reviewer reads it. The plan and other prepare-owned artifacts are not
+edited to match the build.
 
-Return to prepare only when evidence establishes that satisfying the delivery
-requires re-deriving a prepared outcome or binding constraint. A sound
-implementation adaptation that preserves them stays in work; a disagreement
-about its correctness stays with the producer and reviewer.
+Build review judges the actual diff. A difference from the plan's placement,
+names, or decomposition is neither a finding nor a plan defect by itself: a
+finding cites the contract the difference violates and establishes the
+contradiction (`sdlc/procedure/lifecycle/review`), and a kickback rests on the
+triggers of `sdlc/procedure/lifecycle/work/build`, never on the difference.
 
 ### Missing upstream intent — reconstruct before you invent or escalate
 
@@ -513,13 +512,11 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
 - The implementation plan declares exactly one ` ```referenced-paths ` fenced
-  contract block listing every file the grounded plan expects to create or
-  modify at preparation time. This block is the authoritative code drift
-  surface, not an allowlist of builder edits or a requirement to predict later
-  implementation discoveries. Per-task prose may still name files for builder
-  grounding, but prose path mentions are not part of the drift contract. Builder
-  adaptations follow the discretion rule above; the actual diff supplies the
-  complete changed-file surface for build review.
+  contract block listing every file the grounded plan expects the work to create
+  or modify. This block is the authoritative code drift surface. It anticipates
+  the work and is not an allowlist of builder edits. Per-task prose may still
+  name files for builder grounding, but prose path mentions are not part of the
+  drift contract.
 - **A remediation carries its premise through the whole plan.** When a fix
   changes something the plan stands on — a mechanism or scope boundary —
   every statement that depends on it is brought into line in the same
@@ -528,11 +525,6 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 
 ## Rationale
 
-- Freezing outcomes and protected guarantees preserves the prepared contract;
-  freezing implementation hypotheses prevents the builder from resolving code
-  reality within its own authority. The grounding path set describes the plan
-  at preparation time, while the actual diff exposes the implementation to
-  independent review without an unnecessary return to preparation.
 - Domain intelligence adds value only when it can widen the candidate target
   before scope is chosen, while inspectable premises and independent review
   prevent a generic recital from acquiring intent authority.
@@ -566,6 +558,13 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   keeps the useful lead instead of discarding it. See
   `project/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` for why a
   creation-time gate was rejected.
+- A plan is written before the code is opened, so its placement, names, and
+  decomposition are guesses the code can falsify (`general/principle/grounding`).
+  Binding the builder to them turns every code discovery into a plan defect and
+  moves a decision to prepare that only the builder has the evidence for.
+  Binding what the delivery must preserve keeps kickback for a prepared outcome,
+  contract, or reviewed decision that is wrong, and keeps the diff, not the
+  plan's forecast of it, as what build review judges.
 - Runtime log judgment belongs to the integrator after activation. Designing
   per-outcome evidence during preparation adds contracts and review work
   without improving that judgment.
@@ -580,6 +579,8 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
   `implementation-plan`, and readiness reports.
 - Applies to all agents creating or reviewing these artifacts: intake,
   architecture, plan, reviewers, and gate assessors.
+- Applies to builders, build reviewers, and work orchestrators where an
+  implementation meets the plan that anticipated it.
 
 ## Enforcement
 

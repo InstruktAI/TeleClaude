@@ -11,6 +11,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/sdlc/policy/quality-predicate-registry.md
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
+- @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -96,12 +97,15 @@ with the governing contract.
    structural rubrics. The defining test: would this code be unnecessary
    if the agent's briefing said the right thing?
 
-8. **Own the how inside frozen intent.** Apply
-   `sdlc/policy/preparation-artifact-quality` (Builder discretion within prepared
-   contracts) when code reality requires an implementation adaptation. Execute
-   the tasks' outcomes while preserving their binding guarantees, and record
-   a material adaptation and its reason on the existing work-phase result surface.
-   Never revise the plan to fit what you built. A material decision
+8. **Own the how inside frozen intent.** The approved intent, plan tasks, and
+   applicable quality gates bound the delivery; the implementation choices
+   inside them are yours, including file placement, helper names, and
+   decomposition, which a plan anticipates rather than binds
+   (`sdlc/policy/preparation-artifact-quality`). Record a departure from what
+   the plan names, with the code reality that forced it, in the todo `log`,
+   where the build reviewer reads it. Kick back to prepare when code reality invalidates
+   the contract or a reviewed decision — not whenever implementation differs
+   from prose. Never revise the plan to fit what you built. A material decision
    discovered during build — one
    whose alternatives change scope, ownership, contract, or risk — is a kickback
    trigger; `log` may record the evidence and reason for the kickback, never
