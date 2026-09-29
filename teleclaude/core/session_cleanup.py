@@ -13,14 +13,17 @@ This can happen when:
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from stat import S_ISDIR
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
@@ -135,6 +138,57 @@ async def cleanup_session_tmpdir(session_id: str) -> bool:
     await asyncio.to_thread(shutil.rmtree, session_tmpdir, onexc=_rmtree_ignore_vanished)
     logger.debug("Deleted session TMPDIR for %s", session_id)
     return True
+
+
+# Claude Code keeps per-session scratchpads and task outputs under
+# <temp base>/claude-<uid>/<project-slug>/<native session id>/.
+CLAUDE_TEMP_BASES = (Path("/private/tmp"), Path("/tmp"))
+CLAUDE_TEMP_DIR_PREFIX = "claude-"
+_CLAUDE_TMPDIR_REMOVED_EVENT = "session_close_claude_tmpdir_removed"
+_CLAUDE_TMPDIR_CLEANUP_FAILED_EVENT = "session_close_claude_tmpdir_cleanup_failed"
+
+
+def _claude_temp_root() -> Path | None:
+    """Return the current user's Claude Code temp root.
+
+    The world-writable parent lets anyone pre-create this path, so only a real
+    directory owned by the current user is accepted — never a symlink.
+    """
+    uid = os.getuid()
+    for base in CLAUDE_TEMP_BASES:
+        candidate = base / (CLAUDE_TEMP_DIR_PREFIX + str(uid))
+        try:
+            stat = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if S_ISDIR(stat.st_mode) and stat.st_uid == uid:
+            return candidate
+    return None
+
+
+async def cleanup_claude_session_tmpdir(session: Session) -> int:
+    """Delete Claude Code's temp directory for a closed Claude session.
+
+    Returns the number of directories removed.
+    """
+    native_session_id = session.native_session_id
+    if session.active_agent != AgentName.CLAUDE or not native_session_id or not _is_uuid_name(native_session_id):
+        return 0
+    root = _claude_temp_root()
+    if root is None:
+        return 0
+
+    removed = 0
+    for project_dir in root.iterdir():
+        if project_dir.is_symlink() or not project_dir.is_dir():
+            continue
+        candidate = project_dir / native_session_id
+        if candidate.is_symlink() or not candidate.is_dir():
+            continue
+        await asyncio.to_thread(shutil.rmtree, candidate, onexc=_rmtree_ignore_vanished)
+        removed += 1
+        logger.info(_CLAUDE_TMPDIR_REMOVED_EVENT, session_id=session.session_id, path=str(candidate))
+    return removed
 
 
 async def cleanup_orphan_session_tmpdirs(
@@ -375,6 +429,16 @@ async def _terminate_session_inner(
         except Exception as exc:
             logger.error(
                 "session_close_tmpdir_cleanup_failed",
+                session_id=session.session_id,
+                error=str(exc),
+                exc_info=True,
+            )
+
+        try:
+            await cleanup_claude_session_tmpdir(session)
+        except Exception as exc:
+            logger.error(
+                _CLAUDE_TMPDIR_CLEANUP_FAILED_EVENT,
                 session_id=session.session_id,
                 error=str(exc),
                 exc_info=True,
