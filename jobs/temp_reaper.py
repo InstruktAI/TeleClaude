@@ -35,6 +35,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from stat import S_ISDIR
 
 from instrukt_ai_logging import get_logger
 
@@ -63,14 +64,22 @@ _REAPED_MESSAGE_TEMPLATE = (
 
 
 def _find_claude_temp_dir() -> Path | None:
-    """Locate the Claude Code temp directory for the current user."""
+    """Locate the Claude Code temp directory for the current user.
+
+    The world-writable parent lets anyone pre-create this path, so only a real
+    directory owned by the current user is accepted — never a symlink.
+    """
     uid = os.getuid()
     candidates = [
         Path(f"/private/tmp/claude-{uid}"),  # macOS
         Path(f"/tmp/claude-{uid}"),  # Linux
     ]
     for candidate in candidates:
-        if candidate.is_dir():
+        try:
+            stat = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if S_ISDIR(stat.st_mode) and stat.st_uid == uid:
             return candidate
     return None
 
