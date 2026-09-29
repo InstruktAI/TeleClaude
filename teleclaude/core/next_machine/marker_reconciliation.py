@@ -20,11 +20,11 @@ from teleclaude.docs_reconcile import (
     ReconciliationPlan,
     ReconciliationWrite,
     apply_reconciliation_plan,
+    iter_reconciliation_roots,
     plan_snippet_reconciliation,
     restore_reconciliation_plan,
     reverse_reconciliation_plan,
 )
-from teleclaude.snippet_roots import iter_snippet_roots
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,6 @@ RECONCILIATION_REQUESTED_EVENT = "workflow.marker_reconciliation.requested"
 RECONCILIATION_FINISHED_EVENT = "workflow.marker_reconciliation.finished"
 GIT_STATUS_ARGS = ("status", "--porcelain", "--")
 GIT_SNIPPET_STATUS_ARGS = ("status", "--porcelain", "--untracked-files=all", "--no-renames", "--")
-GIT_SNIPPET_ROOT_PATHS = ("docs/global", "docs/project", "agents/docs")
 GIT_ADD_ARGS = ("add", "--")
 GIT_CACHED_NAME_ARGS = ("diff", "--cached", "--name-only", "--no-renames")
 GIT_RESTORE_STAGED_ARGS = ("restore", "--staged", "--")
@@ -391,9 +390,10 @@ def _reconciliation_transaction_plans(
     working_plan: ReconciliationPlan,
 ) -> tuple[ReconciliationPlan, ReconciliationPlan, tuple[_FoldResidue, ...]]:
     """Separate safe working-tree writes from this slug's committed-view residue."""
-    snippet_roots = iter_snippet_roots(project_root)
+    reconciliation_roots = iter_reconciliation_roots(project_root)
+    reconciliation_root_paths = tuple(str(root.relative_to(project_root)) for root in reconciliation_roots)
     status_code, status_output, status_error = _run_git_cmd(
-        [*GIT_SNIPPET_STATUS_ARGS, *GIT_SNIPPET_ROOT_PATHS], cwd=str(project_root)
+        [*GIT_SNIPPET_STATUS_ARGS, *reconciliation_root_paths], cwd=str(project_root)
     )
     if status_code != 0:
         reason = COMMITTED_VIEW_ERROR_TEMPLATE.format(
@@ -412,12 +412,12 @@ def _reconciliation_transaction_plans(
     try:
         with TemporaryDirectory() as temporary_directory:
             temporary_root = Path(temporary_directory)
-            for snippet_root in snippet_roots:
-                if snippet_root.is_symlink():
+            for reconciliation_root in reconciliation_roots:
+                if reconciliation_root.is_symlink():
                     continue
-                relative_root = snippet_root.relative_to(project_root)
+                relative_root = reconciliation_root.relative_to(project_root)
                 shutil.copytree(
-                    snippet_root,
+                    reconciliation_root,
                     temporary_root / relative_root,
                     dirs_exist_ok=True,
                     symlinks=True,

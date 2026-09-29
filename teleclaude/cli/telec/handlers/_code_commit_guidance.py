@@ -28,6 +28,20 @@ _GIT_DIFF_HEAD_REF = "HEAD"
 _GIT_STAT_FLAG = "--stat"
 _GIT_PATHSPEC_SEPARATOR = "--"
 _SCOPE_DIFFSTAT_LINE_SEPARATOR = "\n"
+_AGENT_ARTIFACT_LANE_MIXED = (
+    "a mix of authored agent artifacts (required doc-hygiene review) and incorporated skill packages (no review)"
+)
+_AGENT_ARTIFACT_LANE_AUTHORED = "authored agent artifacts, required: dispatch an independent doc-hygiene review"
+_AGENT_ARTIFACT_LANE_INCORPORATED = (
+    "only incorporated skill package bodies — no independent review; covered by the pre-adoption security gate"
+)
+_AGENT_ARTIFACT_LANE_NONE = "none — the pending scope touches no agent-artifact source"
+_UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE = (
+    "Malformed agent-artifact path(s) could not be classified: {paths}. "
+    "The commit card continues so the author can reach lint's finding. "
+    "Classified lane for other paths: {lane}."
+)
+_ARTIFACT_PATH_LIST_SEPARATOR = ", "
 
 __all__ = [
     "_NON_CODE_DOCUMENTATION_PATTERNS",
@@ -92,19 +106,30 @@ def _agent_artifact_review_lane(project_root: Path, pathspec: list[str]) -> str:
     security gate in ``general/procedure/skill-management``), using the
     matched registry record rather than the checkpoint binding's include list.
     """
-    sources = [agent_artifacts.classify_candidate(project_root, Path(path)) for path in pathspec]
+    sources: list[agent_artifacts.ArtifactSource | None] = []
+    unclassified_paths: list[Path] = []
+    for path in pathspec:
+        try:
+            sources.append(agent_artifacts.classify_candidate(project_root, Path(path)))
+        except agent_artifacts.UnclassifiedSourceError:
+            # Aborting here would hide lint's concrete finding and block access to the commit guidance.
+            unclassified_paths.append(Path(path))
+            sources.append(None)
     matched = [source for source in sources if source is not None]
     has_authored = any(source.authorship is agent_artifacts.ArtifactAuthorship.AUTHORED for source in matched)
     has_incorporated = any(source.authorship is agent_artifacts.ArtifactAuthorship.INCORPORATED for source in matched)
     if has_authored and has_incorporated:
-        return "a mix of authored agent artifacts (required doc-hygiene review) and incorporated skill packages (no review)"
-    if has_authored:
-        return "authored agent artifacts, required: dispatch an independent doc-hygiene review"
-    if has_incorporated:
-        return (
-            "only incorporated skill package bodies — no independent review; covered by the pre-adoption security gate"
-        )
-    return "none — the pending scope touches no agent-artifact source"
+        lane = _AGENT_ARTIFACT_LANE_MIXED
+    elif has_authored:
+        lane = _AGENT_ARTIFACT_LANE_AUTHORED
+    elif has_incorporated:
+        lane = _AGENT_ARTIFACT_LANE_INCORPORATED
+    else:
+        lane = _AGENT_ARTIFACT_LANE_NONE
+    if unclassified_paths:
+        paths = _ARTIFACT_PATH_LIST_SEPARATOR.join(str(path) for path in unclassified_paths)
+        return _UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE.format(paths=paths, lane=lane)
+    return lane
 
 
 def _resolved_scope_diffstat(project_root: Path, context_root: Path | None) -> str:

@@ -17,6 +17,8 @@ from teleclaude.snippet_scope import SnippetScope as SnippetScope
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _GENERATED_DOMAIN_BUNDLE_FILENAME = "domain-baseline-bundle.md"
+_MARKDOWN_SUFFIX = ".md"
+_COMPANION_NAME_SEPARATOR = "."
 
 
 class SnippetTaxonomy(StrEnum):
@@ -142,6 +144,19 @@ def validate_snippet_id_format(
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest), None
 
 
+def companion_shape(path: Path) -> tuple[str, str] | None:
+    """Return the parent stem and slug-shaped suffix, without checking the parent."""
+    if not path.name.endswith(_MARKDOWN_SUFFIX):
+        return None
+    base = path.name[: -len(_MARKDOWN_SUFFIX)]
+    if _COMPANION_NAME_SEPARATOR not in base:
+        return None
+    stem, slug = base.rsplit(_COMPANION_NAME_SEPARATOR, 1)
+    if not stem or not slug:
+        return None
+    return stem, slug
+
+
 def companion_slug(path: Path) -> str | None:
     """Sole owner of the companion filename grammar.
 
@@ -150,16 +165,21 @@ def companion_slug(path: Path) -> str | None:
     ``.md`` file whose name carries a dot before the extension; the segment before
     that final dot names the parent stem, the segment after names the delivering
     slug. Returns the slug when ``path`` is a companion, else ``None``. A companion
-    is the full next version of its parent and deliberately shares the parent's id,
-    so id↔path checks exempt it.
+    is either a replacement body or, when zero bytes, the retirement carrier for
+    its parent. Both deliberately share the parent's id, so id↔path checks exempt it.
     """
-    base = path.name[:-3] if path.name.endswith(".md") else path.name
-    if "." not in base:
+    shape = companion_shape(path)
+    if shape is None:
         return None
-    stem, slug = base.rsplit(".", 1)
-    if not slug or not (path.parent / f"{stem}.md").exists():
+    stem, slug = shape
+    if not (path.parent / (stem + _MARKDOWN_SUFFIX)).exists():
         return None
     return slug
+
+
+def is_retirement_companion(path: Path) -> bool:
+    """Whether a valid companion is the zero-byte retirement carrier for its parent."""
+    return companion_slug(path) is not None and path.is_file() and path.stat().st_size == 0
 
 
 def companion_parent(path: Path) -> Path | None:

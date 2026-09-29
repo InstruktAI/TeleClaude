@@ -11,6 +11,7 @@ from typing import Literal, TypedDict, cast
 
 import yaml
 
+from teleclaude import agent_artifacts
 from teleclaude.constants import TodoStatus
 from teleclaude.doc_body import (
     drop_planned_additions,
@@ -19,10 +20,23 @@ from teleclaude.doc_body import (
     strip_planned_markers,
 )
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
-from teleclaude.snippet_validation import companion_parent, companion_slug
+from teleclaude.snippet_validation import companion_parent, companion_slug, is_retirement_companion
 
 _PENDING_MARKER_PATTERN = re.compile(r"<!--[ \t]*/?planned(?:-change)?:(?P<slug>[a-z0-9-]+)[ \t]*-->")
 _MARKER_SLUG_GROUP = "slug"
+_UTF8_ENCODING = "utf-8"
+_LINE_SEPARATOR = "\n"
+_EMPTY_PATH = ""
+_RENAME_DESTINATION_REQUIRED_REASON = "rename requires a destination slug"
+_ORPHAN_COMPANION_REASON = "orphan companion"
+_COMPANION_DESTINATION_EXISTS_REASON = "companion destination exists"
+_COMPANION_FILENAME_TEMPLATE = "{stem}.{slug}.md"
+_COMPANION_SIBLING_GLOB_TEMPLATE = "{stem}.*.md"
+_RETIRING_PARENT_FOREIGN_MATERIAL_TEMPLATE = "retiring parent carries another slug's pending material ({slug})"
+_DELIVERY_RETIREMENT_REASON = "delivery retires parent and companion"
+_DELIVERY_REPLACEMENT_REASON = "delivery replaces parent with companion"
+_RENAME_COMPANION_REASON = "rename moves companion identity"
+_ABANDON_COMPANION_REASON = "abandon removes undelivered companion"
 
 
 class ReconciliationMode(StrEnum):
@@ -202,6 +216,19 @@ def _iter_snippet_files(project_root: Path) -> list[Path]:
     return sorted(files)
 
 
+def iter_reconciliation_roots(project_root: Path) -> list[Path]:
+    """Return existing snippet and command roots covered by lifecycle reconciliation."""
+    snippet_roots = iter_snippet_roots(project_root)
+    command_roots = [root for root in agent_artifacts.command_source_roots(project_root) if root.is_dir()]
+    return [*snippet_roots, *command_roots]
+
+
+def _iter_lifecycle_files(project_root: Path) -> list[Path]:
+    """Return snippet sources and registry-classified command retirement companions."""
+    command_companions = agent_artifacts.retirement_command_companions(project_root)
+    return sorted({*_iter_snippet_files(project_root), *(item.companion_path for item in command_companions)})
+
+
 def _relative_path(project_root: Path, path: Path) -> str:
     """Return the repository-relative form required in reconciliation evidence."""
     return str(path.relative_to(project_root))
@@ -266,34 +293,83 @@ def _render_mode(content: str, slug: str, mode: ReconciliationMode, new_slug: st
     return content
 
 
-def plan_snippet_reconciliation(
+def _plan_companion_reconciliation(
     project_root: Path,
+    files: list[Path],
+    contents: dict[Path, str],
     slug: str,
     mode: ReconciliationMode,
-    *,
-    new_slug: str | None = None,
-) -> ReconciliationPlan:
-    """Preflight every lifecycle carrier before any reconciliation source is written."""
-    if mode is ReconciliationMode.RENAME and new_slug is None:
-        raise ReconciliationFault(slug, "", 0, "rename requires a destination slug")
-    files = _iter_snippet_files(project_root)
-    contents = {path: path.read_text(encoding="utf-8") for path in files}
+    new_slug: str | None,
+) -> tuple[dict[Path, ReconciliationWrite], dict[Path, str]]:
+    """Plan lifecycle writes for this slug's companions and adjust parent content."""
     companion_writes: dict[Path, ReconciliationWrite] = {}
     for path in files:
         if companion_slug(path) != slug:
             continue
         parent = companion_parent(path)
         if parent is None:
-            raise ReconciliationFault(slug, _relative_path(project_root, path), 1, "orphan companion")
+            raise ReconciliationFault(slug, _relative_path(project_root, path), 1, _ORPHAN_COMPANION_REASON)
         destination = parent
         if mode is ReconciliationMode.RENAME and new_slug is not None:
-            destination = parent.with_name(f"{parent.stem}.{new_slug}.md")
+            destination = parent.with_name(_COMPANION_FILENAME_TEMPLATE.format(stem=parent.stem, slug=new_slug))
             if destination.exists() and destination != path:
                 raise ReconciliationFault(
-                    slug, _relative_path(project_root, destination), 1, "companion destination exists"
+                    slug, _relative_path(project_root, destination), 1, _COMPANION_DESTINATION_EXISTS_REASON
                 )
         if mode is ReconciliationMode.DELIVER:
             companion_content = contents.pop(path)
+            if is_retirement_companion(path):
+                parent_content = contents.pop(parent, None)
+                if parent_content is None:
+                    parent_content = parent.read_text(encoding=_UTF8_ENCODING)
+                conflicts: list[tuple[int, str]] = []
+                conflicts.extend(
+                    (
+                        parent_content.count(_LINE_SEPARATOR, 0, match.start()) + 1,
+                        match.group(_MARKER_SLUG_GROUP),
+                    )
+                    for match in _PENDING_MARKER_PATTERN.finditer(parent_content)
+                    if match.group(_MARKER_SLUG_GROUP) != slug
+                )
+                parsed = _split_frontmatter(parent_content)
+                delivered_by = _delivered_by(parsed[0]) if parsed is not None else []
+                conflicts.extend(
+                    (_first_line(parent_content, other_slug), other_slug)
+                    for other_slug in delivered_by
+                    if other_slug != slug
+                )
+                conflicts.extend(
+                    (1, other_slug)
+                    for sibling in sorted(parent.parent.glob(_COMPANION_SIBLING_GLOB_TEMPLATE.format(stem=parent.stem)))
+                    if sibling != path and (other_slug := companion_slug(sibling)) is not None and other_slug != slug
+                )
+                if conflicts:
+                    line, other_slug = min(conflicts)
+                    raise ReconciliationFault(
+                        slug,
+                        _relative_path(project_root, parent),
+                        line,
+                        _RETIRING_PARENT_FOREIGN_MATERIAL_TEMPLATE.format(slug=other_slug),
+                    )
+                companion_writes[path] = ReconciliationWrite(
+                    path=path,
+                    relative_path=_relative_path(project_root, path),
+                    original_content=companion_content,
+                    rendered_content=None,
+                    line=1,
+                    carrier=ReconciliationCarrier.COMPANION,
+                    reason=_DELIVERY_RETIREMENT_REASON,
+                )
+                companion_writes[parent] = ReconciliationWrite(
+                    path=parent,
+                    relative_path=_relative_path(project_root, parent),
+                    original_content=parent_content,
+                    rendered_content=None,
+                    line=1,
+                    carrier=ReconciliationCarrier.COMPANION,
+                    reason=_DELIVERY_RETIREMENT_REASON,
+                )
+                continue
             contents[parent] = companion_content
             companion_writes[path] = ReconciliationWrite(
                 path=path,
@@ -302,30 +378,46 @@ def plan_snippet_reconciliation(
                 rendered_content=None,
                 line=1,
                 carrier=ReconciliationCarrier.COMPANION,
-                reason="delivery replaces parent with companion",
+                reason=_DELIVERY_REPLACEMENT_REASON,
             )
         elif mode is ReconciliationMode.RENAME and new_slug is not None:
             contents[destination] = contents.pop(path)
             companion_writes[path] = ReconciliationWrite(
                 path=path,
                 relative_path=_relative_path(project_root, path),
-                original_content=path.read_text(encoding="utf-8"),
+                original_content=path.read_text(encoding=_UTF8_ENCODING),
                 rendered_content=None,
                 line=1,
                 carrier=ReconciliationCarrier.COMPANION,
-                reason="rename moves companion identity",
+                reason=_RENAME_COMPANION_REASON,
             )
         elif mode is ReconciliationMode.ABANDON:
             contents.pop(path, None)
             companion_writes[path] = ReconciliationWrite(
                 path=path,
                 relative_path=_relative_path(project_root, path),
-                original_content=path.read_text(encoding="utf-8"),
+                original_content=path.read_text(encoding=_UTF8_ENCODING),
                 rendered_content=None,
                 line=1,
                 carrier=ReconciliationCarrier.COMPANION,
-                reason="abandon removes undelivered companion",
+                reason=_ABANDON_COMPANION_REASON,
             )
+    return companion_writes, contents
+
+
+def plan_snippet_reconciliation(
+    project_root: Path,
+    slug: str,
+    mode: ReconciliationMode,
+    *,
+    new_slug: str | None = None,
+) -> ReconciliationPlan:
+    """Preflight snippet carriers and registered command retirements before any write."""
+    if mode is ReconciliationMode.RENAME and new_slug is None:
+        raise ReconciliationFault(slug, _EMPTY_PATH, 0, _RENAME_DESTINATION_REQUIRED_REASON)
+    files = _iter_lifecycle_files(project_root)
+    contents = {path: path.read_text(encoding=_UTF8_ENCODING) for path in files}
+    companion_writes, contents = _plan_companion_reconciliation(project_root, files, contents, slug, mode, new_slug)
     writes: list[ReconciliationWrite] = list(companion_writes.values())
     for path, original in contents.items():
         rendered = _render_mode(original, slug, mode, new_slug)
@@ -333,7 +425,7 @@ def plan_snippet_reconciliation(
         # parent carries the companion body here, not its own bytes, so comparing the two
         # in-memory values reports "no change" and drops the write that applies the
         # replacement — leaving the companion's delete as the only half that lands.
-        on_disk = path.read_text(encoding="utf-8") if path.exists() else None
+        on_disk = path.read_text(encoding=_UTF8_ENCODING) if path.exists() else None
         if rendered == on_disk:
             continue
         writes.append(
@@ -383,11 +475,11 @@ def find_marker_divergence(
     project_root: Path,
     todo_status_map: Mapping[str, str],
 ) -> list[MarkerDivergence]:
-    """Report settled slugs still represented by mechanical lifecycle carriers."""
+    """Report settled slugs retained in snippet carriers or command retirement companions."""
     settled = {TodoStatus.DELIVERED, TodoStatus.REMOVED, TodoStatus.HOLDER}
     settled_slugs = {slug for slug, status in todo_status_map.items() if status in settled}
     findings: list[MarkerDivergence] = []
-    for path in _iter_snippet_files(project_root):
+    for path in _iter_lifecycle_files(project_root):
         content = path.read_text(encoding="utf-8")
         parsed = _split_frontmatter(content)
         delivered_by = set(_delivered_by(parsed[0])) if parsed is not None else set()

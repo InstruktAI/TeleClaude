@@ -18,7 +18,7 @@ from teleclaude.hooks.checkpoint._git import (
     _split_shell_segments,
 )
 from teleclaude.shell_path_parser import executable_command_tokens, matches_command_prefix
-from teleclaude.snippet_validation import companion_parent, is_companion
+from teleclaude.snippet_validation import companion_parent, is_companion, is_retirement_companion
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 __all__ = [
@@ -313,7 +313,7 @@ def _check_blast_radius(git_files: list[str]) -> list[str]:
 
 
 def _check_companion_drift(git_files: list[str], project_path: str) -> list[str]:
-    """Return actions for parent snippet edits missing their pending companions."""
+    """Return mirror actions for parent edits with non-empty pending companions."""
     changed = {path.strip().replace("\\", "/") for path in git_files if path.strip()}
     if not changed:
         return []
@@ -335,13 +335,15 @@ def _check_companion_drift(git_files: list[str], project_path: str) -> list[str]
 
 
 def _pending_companions(parent_path: Path) -> list[Path]:
-    """Return pending companion siblings for a live parent snippet path."""
+    """Return non-retirement companion siblings for a live parent snippet path."""
     if not parent_path.exists():
         return []
     return sorted(
         candidate
         for candidate in parent_path.parent.glob(f"{parent_path.stem}.*.md")
-        if is_companion(candidate) and companion_parent(candidate) == parent_path
+        if is_companion(candidate)
+        and not is_retirement_companion(candidate)
+        and companion_parent(candidate) == parent_path
     )
 
 

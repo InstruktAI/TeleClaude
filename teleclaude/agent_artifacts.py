@@ -23,6 +23,7 @@ from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS, ArtifactKind
 from teleclaude.docs_publishers import git_common_root
 from teleclaude.domains import publishes_for_root
 from teleclaude.paths import REPO_ROOT
+from teleclaude.snippet_validation import companion_shape, is_retirement_companion
 
 __all__ = [
     "AGENT_ARTIFACT_ROOT_DIRNAME",
@@ -31,15 +32,18 @@ __all__ = [
     "ArtifactReach",
     "ArtifactSource",
     "ArtifactTier",
+    "CommandRetirementCompanion",
     "UnclassifiedSourceError",
     "all_sources",
     "boundary_violations",
     "classify_candidate",
+    "command_source_roots",
     "is_mother_project",
     "project_commands_root",
     "project_skills_root",
     "reach_ok",
     "reach_violation",
+    "retirement_command_companions",
 ]
 
 AGENT_ARTIFACT_ROOT_DIRNAME = "agents"
@@ -53,6 +57,7 @@ _COMMANDS_DIRNAME = "commands"
 _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _MARKDOWN_SUFFIX = ".md"
+_MALFORMED_COMMAND_SOURCE_TEMPLATE = "{path} is a malformed command source companion"
 _GENERAL_DOMAIN = "general"
 # Generated sibling output `_write_project_agents`/`compose_global_skill_catalog`
 # write next to `agents/AGENTS.master.md` itself — never an authored source, but
@@ -100,6 +105,15 @@ class ArtifactSource:
     reach: ArtifactReach
     kind: ArtifactKind | None = None
     domain: str | None = None
+
+
+@dataclass(frozen=True)
+class CommandRetirementCompanion:
+    """A zero-byte command companion and its command source identity."""
+
+    companion_path: Path
+    command_path: Path
+    slug: str
 
 
 class UnclassifiedSourceError(ValueError):
@@ -151,6 +165,40 @@ def project_commands_root(project_root: Path) -> Path:
     return _agents_root(project_root) / _PROJECT_DIRNAME / _COMMANDS_DIRNAME
 
 
+def command_source_roots(project_root: Path) -> tuple[Path, Path]:
+    """Return the global and project command roots owned by this registry."""
+    agents_root = _agents_root(project_root)
+    return agents_root / _GLOBAL_DIRNAME / _COMMANDS_DIRNAME, project_commands_root(project_root)
+
+
+def _global_command_directories(project_root: Path) -> Iterator[Path]:
+    global_root, _ = command_source_roots(project_root)
+    if global_root.is_dir():
+        yield from sorted((entry for entry in global_root.iterdir() if entry.is_dir()), key=lambda path: path.name)
+
+
+def retirement_command_companions(project_root: Path) -> list[CommandRetirementCompanion]:
+    """List valid retirement companions beside classified global and project commands."""
+    roots = [*_global_command_directories(project_root), project_commands_root(project_root)]
+    companions: list[CommandRetirementCompanion] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.iterdir(), key=lambda entry: entry.name):
+            shape = companion_shape(path)
+            if not path.is_file() or shape is None or not is_retirement_companion(path):
+                continue
+            stem, slug = shape
+            companions.append(
+                CommandRetirementCompanion(
+                    companion_path=path,
+                    command_path=root / (stem + _MARKDOWN_SUFFIX),
+                    slug=slug,
+                )
+            )
+    return companions
+
+
 def project_skills_root(project_root: Path) -> Path:
     """Return the project-tier skill source root the registry classifies."""
     return _agents_root(project_root) / _PROJECT_DIRNAME / _SKILLS_DIRNAME
@@ -196,10 +244,11 @@ def _iter_root_files(project_root: Path) -> Iterator[ArtifactSource]:
 def _iter_uniform_command_tree(
     root: Path, *, tier: ArtifactTier, reach: ArtifactReach, domain: str | None
 ) -> Iterator[ArtifactSource]:
+    """Enumerate command sources, excluding dotted companion-shaped siblings."""
     if not root.is_dir():
         return
     for entry in sorted(root.iterdir(), key=lambda path: path.name):
-        if entry.is_file() and entry.suffix == _MARKDOWN_SUFFIX:
+        if entry.is_file() and entry.suffix == _MARKDOWN_SUFFIX and companion_shape(entry) is None:
             yield ArtifactSource(
                 entrypoint=entry,
                 tier=tier,
@@ -251,15 +300,9 @@ def _iter_skill_package_tree(
 
 
 def _iter_global_commands(project_root: Path) -> Iterator[ArtifactSource]:
-    global_commands_root = _agents_root(project_root) / _GLOBAL_DIRNAME / _COMMANDS_DIRNAME
-    if global_commands_root.is_dir():
-        for domain_dir in sorted(global_commands_root.iterdir(), key=lambda path: path.name):
-            if not domain_dir.is_dir():
-                continue
-            reach = ArtifactReach.MOTHER_ONLY if domain_dir.name == _GENERAL_DOMAIN else ArtifactReach.DOMAIN
-            yield from _iter_uniform_command_tree(
-                domain_dir, tier=ArtifactTier.GLOBAL, reach=reach, domain=domain_dir.name
-            )
+    for domain_dir in _global_command_directories(project_root):
+        reach = ArtifactReach.MOTHER_ONLY if domain_dir.name == _GENERAL_DOMAIN else ArtifactReach.DOMAIN
+        yield from _iter_uniform_command_tree(domain_dir, tier=ArtifactTier.GLOBAL, reach=reach, domain=domain_dir.name)
 
 
 def _iter_global_skills(project_root: Path) -> Iterator[ArtifactSource]:
@@ -351,6 +394,23 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
     root = project_root.resolve()
     resolved = candidate if candidate.is_absolute() else root / candidate
     resolved = resolved.resolve(strict=False)
+    shape = companion_shape(resolved)
+    if shape is not None and resolved.parent in (
+        project_commands_root(root),
+        *_global_command_directories(root),
+    ):
+        source_path = resolved.parent / (shape[0] + _MARKDOWN_SUFFIX)
+        source = next(
+            (
+                item
+                for item in all_sources(root)
+                if item.kind is ArtifactKind.COMMAND and item.entrypoint.resolve(strict=False) == source_path
+            ),
+            None,
+        )
+        if source is not None and is_retirement_companion(resolved):
+            return source
+        raise UnclassifiedSourceError(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=resolved))
     for source in all_sources(root):
         entrypoint = source.entrypoint.resolve(strict=False)
         if source.kind is ArtifactKind.SKILL:
@@ -392,4 +452,12 @@ def boundary_violations(project_root: Path) -> list[str]:
             violation = _boundary_violation(root, entry.resolve(strict=False))
             if violation is not None:
                 violations.append(violation)
+    command_directories = [*_global_command_directories(root), project_commands_root(root)]
+    for command_root in command_directories:
+        if not command_root.is_dir():
+            continue
+        for entry in sorted(command_root.iterdir(), key=lambda path: path.name):
+            if entry.is_file() and entry.suffix == _MARKDOWN_SUFFIX and companion_shape(entry) is not None:
+                if not is_retirement_companion(entry):
+                    violations.append(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=entry))
     return violations

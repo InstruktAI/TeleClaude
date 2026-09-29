@@ -47,6 +47,7 @@ from teleclaude.snippet_validation import (
     derive_snippet_classification,
     generated_domain_bundle_domain,
     is_companion,
+    is_retirement_companion,
     load_domains,
     validate_inline_ref_format,
 )
@@ -311,6 +312,8 @@ def validate_snippet(
     Uncontained or unrecorded commits are tolerated; when ``None`` the snippet
     is validated for shape only (todo-agnostic callers).
     """
+    if is_retirement_companion(path):
+        return
     if _is_third_party_doc(path, project_root):
         validate_third_party_doc(path, content, project_root)
         return
