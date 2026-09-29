@@ -106,6 +106,20 @@ Then it refuses the request as malformed input, citing the expected digest shape
 And the refusal is distinct from the not-found refusal for a well-formed digest the artifact never had
 ```
 
+<!-- planned:container-artifact-remove-404 -->
+
+#### UC-WAV27: An artifact mutation addressed to a holder is refused as a holder mutation
+
+```gherkin
+Given a todo that is a structural holder with grouped children and retained artifacts
+When an agent removes or writes one of that holder's artifacts through "telec todo artifacts"
+Then the workflow service refuses the mutation with the holder refusal, which names the frozen-artifact rule and directs writes to the holder's children
+And the refusal is distinct from the not-found refusal for a slug with no todo
+And the holder's artifacts and their version history are unchanged
+```
+
+<!-- /planned:container-artifact-remove-404 -->
+
 ### Write authority
 
 Artifact writes consult the slug's claim. A todo whose `active_runner` names a
