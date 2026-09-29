@@ -185,7 +185,7 @@ And a dependency from a non-member todo onto the holder is still allowed
 
 ```gherkin
 Given "child-a" is an active todo with an "after" dependency on "parent-slug"
-When a caller runs `telec todo update child-a --group parent-slug`
+When a caller updates "child-a" to belong to "parent-slug"
 Then the request is refused with a conflict error stating that group membership and an "after" dependency on the same holder are mutually exclusive
 And "child-a"'s group membership and dependencies are left unchanged
 And the same refusal applies when "child-a" depends on any holder that "parent-slug" is itself grouped under

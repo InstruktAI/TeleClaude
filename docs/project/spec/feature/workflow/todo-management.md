@@ -404,7 +404,7 @@ And it carries every iced todo, whatever its age
 ```gherkin
 Given an agent is working with an active todo "moved" that belongs to no group
 And "epic" is a holder, or a live todo that has not yet reached prepared
-When the agent runs "telec todo update moved --group epic"
+When the agent updates "moved" to belong to "epic"
 Then "moved" becomes a child of "epic"
 And every todo listing renders "moved" under the "epic" label
 And "epic" counts "moved" when it decides whether all of its children are prepared or delivered
@@ -416,7 +416,7 @@ And an "epic" that was not yet a holder becomes one exactly as it would when a c
 
 ```gherkin
 Given an agent is working with an active todo "moved" that is a child of holder "old-epic"
-When the agent runs "telec todo update moved --group new-epic"
+When the agent updates "moved" to belong to "new-epic"
 Then "moved" becomes a child of "new-epic" and is no longer a child of "old-epic"
 And "old-epic" stays a holder, and renders nowhere once it has no live child
 ```
@@ -425,7 +425,7 @@ And "old-epic" stays a holder, and renders nowhere once it has no live child
 
 ```gherkin
 Given an agent is working with an active todo "moved" that is a child of holder "old-epic"
-When the agent runs 'telec todo update moved --group ""'
+When the agent updates "moved" to belong to no group
 Then "moved" belongs to no group and renders at its section root
 And "old-epic" stays a holder, and renders nowhere once it has no live child
 ```
@@ -435,7 +435,7 @@ And "old-epic" stays a holder, and renders nowhere once it has no live child
 ```gherkin
 Scenario Outline: the agent names a target that cannot hold the todo
 Given an agent is working with an active todo "moved"
-When the agent runs "telec todo update moved --group <target>"
+When the agent updates "moved" to belong to <target>
 Then the update is refused with an error naming why the target cannot hold "moved"
 And "moved"'s group membership and every other todo are left unchanged
 
@@ -450,7 +450,7 @@ Examples:
 
 ```gherkin
 Given an agent is working with an active todo "moved"
-When the agent runs "telec todo update moved --group epic"
+When the agent updates "moved" to belong to "epic"
 And "moved" is claimed by a live session outside the agent's claiming group
 Or "epic" is not yet a holder and is claimed by a live session outside the agent's claiming group
 Then the update is refused with an error naming the claiming session
