@@ -776,11 +776,7 @@ restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
     OLD_PID=""
-    if [ "$PLATFORM" = "macos" ]; then
-        local domain
-        domain="$(launchd_domain)"
-        OLD_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
-    elif [ -f "$PID_FILE" ]; then
+    if [ "$PLATFORM" != "macos" ] && [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE")
         if ps -p "$OLD_PID" > /dev/null 2>&1; then
             log_info "Killing daemon process (PID: $OLD_PID)..."
@@ -788,58 +784,23 @@ restart_daemon() {
         fi
     fi
 
-    # Use service manager restart (reliable and fast)
+    # Nothing may follow the service-manager restart; see daemon-availability.
     if [ "$PLATFORM" = "macos" ]; then
         local domain
         domain="$(launchd_domain)"
         # restart reaches no install path on its own; heal a missing managed
         # plist (e.g. cron) so `make restart` reinstalls it, matching start.
         ensure_launchd_managed_plists
-        KICKSTART_OUT=$(launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>&1) || {
-            log_error "launchctl kickstart failed: $KICKSTART_OUT"
-            return 1
-        }
         # Load-only: keep the periodic unit loaded without forcing an
         # off-schedule run (do not kickstart it).
         start_launchd_unit "$CRON_LABEL"
-
-        # PID may remain unchanged on some macOS restarts; verify via health instead.
-        NEW_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
-        if [ -n "$OLD_PID" ] && [ -n "$NEW_PID" ] && [ "$NEW_PID" = "$OLD_PID" ]; then
-            log_warn "launchctl kickstart pid unchanged ($NEW_PID); verifying health"
-        fi
+        exec launchctl kickstart -k "$domain/$SERVICE_LABEL"
     else
         # Linux has no managed-set self-heal; install/heal the cron timer
         # idempotently before restart so a missing timer is restored.
         install_systemd_cron_service
-        sudo systemctl restart "$SERVICE_LABEL"
+        exec sudo systemctl restart "$SERVICE_LABEL"
     fi
-
-    # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
-    if wait_for_daemon "$OLD_PID"; then
-        if [ "$PLATFORM" = "macos" ]; then
-            PID=$(launchctl print "$(launchd_domain)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
-        fi
-        if [ -z "${PID:-}" ] && [ -f "$PID_FILE" ]; then
-            PID=$(cat "$PID_FILE")
-        fi
-        log_info "Daemon restarted successfully (PID: ${PID:-unknown})"
-        EXIT_CODE=0
-    else
-        log_warn "Restart health check failed after kickstart; falling back to stop/start."
-        if stop_daemon && start_daemon; then
-            EXIT_CODE=0
-        else
-            log_error "Restart failed. Try: make kill to hard kill the daemon."
-            EXIT_CODE=1
-        fi
-    fi
-
-    # Always run a status check after restart
-    if status_daemon; then
-        return $EXIT_CODE
-    fi
-    return 1
 }
 
 # Kill daemon process (service manager will auto-restart)
