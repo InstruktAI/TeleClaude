@@ -19,11 +19,10 @@ in payload fields the event type declares.
 
 A subscription only ever delivers events the subscribing session may receive.
 Every event carries one scope — a company, a person, a project, or none for a
-platform event — and receipt follows it: a company event reaches members of that
-company, a person event reaches that person only, a project event reaches the
-project's owner, and a platform event reaches admin lineage only. Sessions under
-the system principal are entitled to every scope. A session working a company's
-business receives only that company's events.
+platform event — and receipt is decided by the platform's existing scope
+entitlement, the same decision that governs what a principal reads of each tier
+(`project/spec/feature/context/doc-selection-policy`). A session working a
+company's business receives only that company's events.
 
 A subscription belongs to the session that made it. The session can list and
 withdraw its own subscriptions and cannot see or touch another session's. The
@@ -147,40 +146,28 @@ Then only the session on that computer is woken by it
 
 #### UC-ES12
 
-#### UC-ES13: A company event reaches only that company's members
+#### UC-ES13
+
+#### UC-ES14
+
+#### UC-ES15
+
+#### UC-ES16
+
+#### UC-ES21: Receipt follows the principal's existing scope entitlement
 
 ```gherkin
-Given agent sessions working for members and for non-members of a company hold subscriptions to the same event type
-When an event of that type scoped to that company occurs
-Then only the sessions working for members of that company are woken by it
-```
+Given agent sessions working for different principals hold subscriptions to the same event type
+When an event of that type occurs with a given scope
+Then exactly the sessions whose principal may read that scope under the platform's scope entitlement are woken by it
+And no session whose principal may not read that scope is woken by it
 
-#### UC-ES14: A person event reaches only that person
-
-```gherkin
-Given agent sessions working for different persons, including an admin, hold subscriptions to the same event type
-When an event of that type scoped to one person occurs
-Then only the sessions working for that person are woken by it
-```
-
-#### UC-ES15: A project event reaches the project's owner
-
-```gherkin
-Given subscriptions to the same event type held by sessions working for different principals
-When an event of that type scoped to a project owned by a company occurs
-Then only the sessions working for members of that company are woken by it
-But when the project is owned by a person
-Then only the sessions working for that person are woken by it
-But when the project is owned by neither
-Then only sessions under admin lineage are woken by it
-```
-
-#### UC-ES16: A platform event reaches admin lineage only
-
-```gherkin
-Given subscriptions to the same event type held by sessions under admin lineage and by sessions working for other principals
-When an event of that type with no scope occurs
-Then only the sessions under admin lineage are woken by it
+Examples:
+  | event scope                  | woken                                                        |
+  | a company                    | members of that company, admins, and the system principal    |
+  | a person                     | that person, admins, and the system principal                |
+  | a project                    | principals reaching that project, admins, and the system principal |
+  | none (platform)              | admins and the system principal                              |
 ```
 
 #### UC-ES17: A session working a company's business receives only that company's events
@@ -192,13 +179,7 @@ Then the session is not woken by them
 And it is woken only by events scoped to its own company
 ```
 
-#### UC-ES20: A system-principal session receives events of every scope
-
-```gherkin
-Given a session with no human origin, running under the system principal and working no company's business, subscribes to an event type
-When events of that type scoped to a company, a person, a project, or the platform occur
-Then the session is woken by each of them
-```
+#### UC-ES20
 
 #### UC-ES18: A narrowing on an undeclared payload field is refused
 
