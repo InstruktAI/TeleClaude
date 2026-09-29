@@ -9,6 +9,7 @@ visibility: 'public'
 
 - @~/.teleclaude/docs/general/principle/breath.md
 - @~/.teleclaude/docs/general/spec/agent-shorthand.md
+- @~/.teleclaude/docs/general/procedure/scratchpad-workspace.md
 
 ## Purpose
 
@@ -18,11 +19,11 @@ work in parallel within the pair, converge, and emit one report.
 
 ## Inputs/Outputs
 
-| Component         | Receives                            | Produces                                  |
-| ----------------- | ----------------------------------- | ----------------------------------------- |
-| initiating agent  | topic or artifact set               | segment split, peer kickoff, final report |
-| peer agent        | assigned segment, shared scratchpad | segment findings, convergence signals     |
-| shared scratchpad | segment assignments and findings    | shared intermediate state for convergence |
+| Component        | Receives                           | Produces                                  |
+| ---------------- | ---------------------------------- | ----------------------------------------- |
+| initiating agent | topic or artifact set              | segment split, peer kickoff, final report |
+| peer agent       | assigned segment, shared workspace | segment findings, convergence signals     |
+| shared workspace | segment assignments and findings   | shared intermediate state for convergence |
 
 Primary output:
 
@@ -30,7 +31,8 @@ Primary output:
 
 Intermediate output:
 
-- one shared scratchpad at `/tmp/peer-discussion-{slug}.md`
+- one shared scratchpad workspace, indexed per
+  `general/procedure/scratchpad-workspace`
 
 ## Invariants
 
@@ -41,11 +43,10 @@ ownership does not convert the work into solo mode.
 
 ### Scratchpad convention
 
-Peer discussion uses exactly one shared scratchpad:
-
-`/tmp/peer-discussion-{slug}.md`
-
-Both agents write findings there under stable agent-owned sections.
+Peer discussion uses exactly one shared scratchpad workspace
+(`general/procedure/scratchpad-workspace`). Its index lists both participants
+and the segment assignments. Each agent writes findings only to its own files or
+its own stable sections.
 
 ### Single-emitter rule
 
@@ -64,17 +65,19 @@ the pair.
 ### Standard paired analysis
 
 1. Read the topic or artifact set and split it along a natural boundary.
-2. Create `/tmp/peer-discussion-{slug}.md` with segment assignments.
+2. Open the shared workspace and record both participants and the segment
+   assignments in its index.
 3. Establish the peer link with `telec sessions start ... --direct` or
    `telec sessions send <peer-session-id> "<intro>" --direct`, and state the
-   segment plus protocol line.
+   segment, the workspace path, and the protocol line.
 4. Both agents work their assigned segments in parallel and write findings into
-   the scratchpad.
+   the workspace.
 5. When an agent finishes its segment, it signals the other side with a hold
    marker pointing to the scratchpad.
-6. Both agents read the full scratchpad, converge in exhale, and extract the
+6. Both agents read the full workspace, converge in exhale, and extract the
    cross-segment picture.
-7. The designated emitter writes the final `L1` report to the user.
+7. The designated emitter records the converged decisions in the index and
+   writes the final `L1` report to the user.
 
 ### Signal sequence
 
@@ -89,7 +92,7 @@ Expected phase sequence:
 
 ### Peer silence or stall
 
-If the peer stops responding, inspect the scratchpad after a reasonable wait.
+If the peer stops responding, inspect the workspace after a reasonable wait.
 If usable findings exist, consolidate what is there and note the incomplete
 segment in the report rather than blocking indefinitely.
 
@@ -105,5 +108,5 @@ collapse it into a fake resolution just to finish the report.
 
 ### Missing scratchpad updates
 
-If a peer signals progress without updating the scratchpad, request the missing
+If a peer signals progress without updating the workspace, request the missing
 state once. If it still does not arrive, report the segment as incomplete.

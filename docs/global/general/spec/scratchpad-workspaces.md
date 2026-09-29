@@ -1,5 +1,5 @@
 ---
-description: Convention for disposable, activity-scoped working material that must not become a source of truth.
+description: Where the working files of design, brainstorming, analysis, investigation, and peer-convergence work live — one indexed, version-control-ignored directory per activity under the project's scratchpad/, never a harness- or session-private directory — and why that material stays non-authoritative, secret-free, and selectively promoted.
 ---
 
 # Scratchpad Workspaces — Spec
@@ -13,13 +13,18 @@ documentation or artifact layers prematurely.
 
 ## Canonical fields
 
-- Scratchpad workspaces live under `scratchpad/`, which the adopting project
-  excludes from version control.
-- Each multi-file activity owns one directory named
+- Scratchpad workspaces live under `scratchpad/` at the root of the project's
+  canonical checkout, which the adopting project excludes from version control.
+- A harness-provided scratch directory or a session's temporary directory is
+  not a scratchpad workspace, whatever the harness calls it: it is private to
+  its session, invisible to every other session, and removed with the session.
+- Each activity owns one directory named
   `scratchpad/YYYYMMDD-HHMMSS-<topic>/`, using the host's local time and a short
   kebab-case topic.
-- The procedure using the workspace defines its filenames. Related source,
-  notes, checkpoints, and temporary renders stay together in that directory.
+- Every activity directory carries an `index.md` whose content
+  `general/procedure/scratchpad-workspace` defines. The procedure using the
+  workspace names the other files. Related source, notes, checkpoints, and
+  temporary renders stay together in that directory.
 - Scratchpad content is disposable and non-authoritative. Durable docs,
   implementation, and workflow artifacts never cite it as a source of current
   truth.
@@ -27,21 +32,22 @@ documentation or artifact layers prematurely.
   enter a scratchpad.
 - Promotion is selective: the owning procedure distills the agreed material
   into its durable authority. It never copies the workspace wholesale.
-- Cleanup may remove any scratchpad whose activity is finished and whose useful
-  content has been promoted. Retention is convenience, not lifecycle state.
+- Cleanup may remove any scratchpad whose index shows the activity finished
+  and its useful content promoted. Retention is convenience, not lifecycle state.
 
 ## Allowed values
 
-- Directory timestamp: `YYYYMMDD-HHMMSS`.
+- Directory timestamp: `YYYYMMDD-HHMMSS`, all fourteen digits.
 - Topic: lowercase kebab-case naming the activity, not an agent or tool.
 - Contents: any files required by the owning procedure, provided they obey the
   non-authoritative and secret-free contract above.
 
 ## Known caveats
 
-- Single throwaway files may remain directly under `scratchpad/`; the activity
-  directory convention applies when the work has multiple related files or is
-  shared between participants.
+- A single throwaway file no other session will read — a one-off probe, a
+  scratch render — may sit directly under `scratchpad/`. Material from design,
+  brainstorming, analysis, investigation, or peer convergence, and any file that
+  gains a successor or a second reader, belongs in an activity directory.
 - A human agreement does not itself make scratchpad content current truth.
   Documentation and delivery rules still determine where and when the agreed
   result becomes authoritative.

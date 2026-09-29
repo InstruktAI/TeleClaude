@@ -8,7 +8,7 @@ activation_trigger: Use when the escalation test in general/procedure/visualizin
 ## Required reads
 
 @~/.teleclaude/docs/general/procedure/visualizing-for-humans.md
-@~/.teleclaude/docs/general/spec/scratchpad-workspaces.md
+@~/.teleclaude/docs/general/procedure/scratchpad-workspace.md
 @~/.teleclaude/docs/general/procedure/invoke-mcp-server-tools.md
 @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 
@@ -38,13 +38,13 @@ needs to see is cheaper and clearer as Mermaid source; see
   been read through `telec docs`.
 - The collaboration route is known: local browser by default, or an explicitly
   secured network route when another device such as an iPad participates.
-- The project provides a version-control-ignored `scratchpad/` root.
 
 ## Steps
 
-1. Create `scratchpad/YYYYMMDD-HHMMSS-<topic>/`. Use `notes.md` for unresolved
-   questions and decisions, `canvas.excalidraw` for the editable scene, and
-   `canvas.svg` only when a temporary rendered view is useful.
+1. Open a scratchpad workspace with its index
+   (`general/procedure/scratchpad-workspace`). Add `canvas.excalidraw` for the
+   editable scene, and `canvas.svg` only when a temporary rendered view is
+   useful.
 2. Run `npx -y mcp-excalidraw-server@1.1.0 start`. Retain the returned canvas
    URL and `spawned` value for this activity: `spawned: true` grants cleanup
    ownership; `spawned: false` means the process was inherited. Reuse an
@@ -62,8 +62,9 @@ needs to see is cheaper and clearer as Mermaid source; see
    the scene through the semantic API; screenshots supplement that reading only
    for layout, legibility, overlap, and visual-quality checks.
 6. Export the editable scene to the scratch workspace at meaningful
-   checkpoints and before any server shutdown. Keep open questions in
-   `notes.md`; do not encode unresolved prose only as shapes on the canvas.
+   checkpoints and before any server shutdown. Keep open questions and
+   decisions in the workspace index; do not encode unresolved prose only as
+   shapes on the canvas.
 7. When the human and agent agree on the architecture, classify each result:
    current durable architecture enters a live design snippet; undelivered
    architecture enters the existing pending-documentation lifecycle; tactics,
