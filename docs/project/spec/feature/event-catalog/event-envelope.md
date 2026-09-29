@@ -1,5 +1,5 @@
 ---
-description: Every platform event states where it came from and what it is about — its origin and its subject — and every catalog event type declares its subject kind and payload fields, so consumers can route, scope, and narrow on facts the event carries about itself.
+description: Every platform event states where it came from and what it is about — its origin and its subject — and every catalog event type declares its subject assignment and payload fields, so consumers can route, scope, and narrow on facts the event carries about itself.
 visibility: internal
 delivered_by:
   - event-origin-and-subject
@@ -28,10 +28,12 @@ automation acted on. Who may receive an event is decided on the receiving side
 from its subject (`project/spec/feature/agent_runtime/event-subscriptions` is
 one such consumer); this contract only guarantees the facts are there.
 
-Every event type in the catalog declares its subject kind — project, person,
-company, or none — and the payload fields its events carry. The declaration is
-the discovery surface for what a consumer may filter or narrow on; the events of
-that type carry what their type declares.
+Every event type in the catalog declares its subject assignment — what its
+events are about and the home kinds that subject can take, or none for a type
+about the platform itself — and the payload fields its events carry. The
+declaration is the discovery surface for what a consumer may filter or narrow
+on; each event carries a subject and payload consistent with its type's
+declaration.
 
 The origin and subject an event is emitted with travel with it unchanged to
 every computer it reaches, whether or not that computer knows the named home.
@@ -97,7 +99,7 @@ When an agent consuming platform events receives it
 Then the event states that it has no subject
 ```
 
-#### UC-EE6: Emission never consults consumers or registries
+#### UC-EE6: Emission decides nothing about consumers
 
 ```gherkin
 Given a producer emits a platform event whose subject names a home some computers do not know
@@ -115,14 +117,14 @@ Then it sees the same origin, subject, and subject owner the producer stated
 And this holds when the receiving computer does not know the named home
 ```
 
-#### UC-EE8: Every event type declares its subject kind and payload fields
+#### UC-EE8: Every event type declares its subject assignment and payload fields
 
 ```gherkin
 Given an agent reads the event catalog's declaration for any event type
 When it looks up what events of that type are about and what they carry
-Then the declaration states the type's subject kind as project, person, company, or none
+Then the declaration states what those events are about and which home kinds that subject can take, or that they are about the platform itself
 And it lists the payload fields events of that type carry
-And events of that type carry the subject kind and payload fields their type declares
+And every event of that type carries a subject and payload fields consistent with its type's declaration
 ```
 
 #### UC-EE9: Computers on different versions keep exchanging events
