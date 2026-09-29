@@ -56,7 +56,11 @@ procedure is ever dispatched.
 
 2. **Dispose of every finding, then remediate the fixes.** Each finding
    receives exactly one disposition, written before any remediation: **fix**,
-   **reject**, or **kick back**. A finding is fixed only when it cites a clause
+   **reject**, or **kick back**. Record each disposition in the findings artifact
+   before editing. For a fix, cite the governing clause and the source
+   observation that independently establish its applicability and the
+   contradiction; the reviewer's assertion is not that evidence (finding
+   validity: `sdlc/procedure/lifecycle/review`). A finding is fixed only when it cites a clause
    that applies, establishes the contradiction, and its closure stays within the
    frozen scope. One that does not establish its clause, or whose closure
    enlarges the horizon — new functionality, instrumentation, subsystems, or
@@ -78,17 +82,17 @@ procedure is ever dispatched.
      mechanism. You may not fold reviewer conjecture, or your own, into the artifact:
      every mechanism you add is defensible from authorized intent or from a
      principle applied to verified substrate, or it is invention.
-   - Verify after each fix: lint runs at the commit gate; run scenario-bound functional tests separately via `telec code test`.
+   - Verify after each fix: lint runs at the commit gate; run tests only as the project's testing contract binds them (`sdlc/policy/testing`).
    - Commit one fix per issue when the target is code. For artifact targets
      (`architecture`, `implementation-plan`, or legacy `requirements`),
      persist the updated artifact via
      `telec todo artifacts write {slug} {target_artifact_name} "<content>"`.
 
-3. **Update the findings artifact** with a "Dispositions" section recording,
-   per finding, its disposition and the evidence for it: for a fix, the change
-   and the commit hash (code) or artifact version timestamp (artifact); for a
-   rejection, the reason and the source it rests on; for a kickback, where it
-   was routed. Persist via
+3. **Update each disposition with its outcome** in the findings artifact's
+   "Dispositions" section: for a fix, the change and its commit hash (code) or
+   artifact version (artifact); for a rejection, the grounded reason and the
+   source it rests on; for a kickback, the destination and the unresolved
+   issue. Persist via
    `telec todo artifacts write {slug} {findings_artifact_name} "<content>"`.
 
 4. **Leave the verdict to the reviewer.** Do not change the verdict in the

@@ -480,8 +480,9 @@ docs/project/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The ta
 - Where the project opts into tests, each task that binds a scenario names the
   specific scenario-bound test. Do not name logger/config/native-shape/private-
   helper/wiring assertions as deliverables.
-- Tasks trace to PRD, architecture, or feature-spec scenarios. No orphan tasks
-  (gold-plating) and no orphan PRD criteria (coverage gaps).
+- Tasks trace to the approved intent artifact, architecture, or feature-spec
+  scenarios. No orphan tasks (gold-plating) and no orphan intent criteria
+  (coverage gaps).
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
 - The implementation plan declares exactly one ` ```referenced-paths ` fenced

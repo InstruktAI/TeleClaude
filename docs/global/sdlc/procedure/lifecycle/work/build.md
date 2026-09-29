@@ -38,6 +38,11 @@ Apply the artifact-discovery rule from `preparation-artifact-quality`
 artifacts below exist — read `log` when present, and any other present
 artifact relevant to executing this plan.
 
+Apply the testing contract (`sdlc/policy/testing`) and the project's testing
+ruling to every testing instruction below. Run retained tests where required;
+author or change tests only where permitted. When no tests apply, report `N/A`
+with the governing contract.
+
 1. Read the PRD artifact via `telec todo artifacts read {slug} prd` to confirm
    intent, success criteria, and scope constraints. If `prd` is absent but legacy
    `requirements` exists, read `requirements` as the legacy intent contract. If the
@@ -127,8 +132,8 @@ self-review.
 ### Pre-completion checklist
 
 1. Every implementation-plan task is delivered by a commit or explicitly recorded in `deferrals.md`.
-2. Tests pass: `telec code test`.
-3. Every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
+2. Where the project's testing contract binds tests (`sdlc/policy/testing`), they pass: `telec code test`.
+3. Where the project permits test authorship, every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
 4. No spec-bound assertion weakened or deleted; no in-scope spec has orphan bindings (run
    `tools/lint/spec_coverage.py` on demand to check).
 5. Every `TQ-*` predicate has builder evidence or a reasoned `N/A` in
@@ -156,7 +161,7 @@ BUILD COMPLETE: {slug}
 
 Tasks completed: {count}
 Commits made: {count}
-Tests: PASSING
+Tests: <result, or N/A with governing contract>
 Lint: PASSING
 
 Ready for review.

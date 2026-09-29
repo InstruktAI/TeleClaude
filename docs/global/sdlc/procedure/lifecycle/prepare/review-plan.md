@@ -29,7 +29,7 @@ it without guessing and a reviewer finds no surprises.
 - `telec todo artifacts read {slug} implementation-plan` exists.
 - The approved intent artifact resolves (see
   `sdlc/concept/approved-intent-artifact`): `prd` for a `feature`,
-  `input` for a `change`. For a `change`, the absence of a PRD is the intended
+  `input` for a `change` or `bug`. For a `change`, the absence of a PRD is the intended
   design — do NOT treat it as a defect or raise a finding for it. A `change`
   created via `--plan` has no `input` either: its seeded `implementation-plan`
   carries an _Intent & scope_ section that is the contract to review against, and
@@ -52,7 +52,7 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
   (`telec todo artifacts list {slug}`) — read `log` when present, and any
   other present artifact relevant to this review.
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
-- The approved intent artifact — `prd` for a `feature`, `input` for a `change`, or (for a `--plan` `change` with no `input`) the `implementation-plan`'s _Intent & scope_ — the contract the plan must satisfy.
+- The approved intent artifact — `prd` for a `feature`, `input` for a `change` or `bug`, or (for a `--plan` `change` with no `input`) the `implementation-plan`'s _Intent & scope_ — the contract the plan must satisfy.
 - `telec todo artifacts read {slug} architecture` — when present.
 - `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
   this; it holds the verified, code-grounded root cause — the causal mechanism —
@@ -77,9 +77,9 @@ Structural coverage ("a task exists for this requirement") is not sufficient.
 Produce a `Delivery analysis` section in `plan-review-findings.md` with one
 entry per requirement success criterion.
 
-For each success criterion in the approved intent artifact (`prd` for a `feature`; each goal/outcome stated in `input` for a `change`; or, for a `--plan` `change` with no `input`, each goal/outcome stated in the `implementation-plan`'s _Intent & scope_):
+For each success criterion in the approved intent artifact (`prd` for a `feature`; each goal/outcome stated in `input` for a `change` or `bug`; or, for a `--plan` `change` with no `input`, each goal/outcome stated in the `implementation-plan`'s _Intent & scope_):
 
-1. Reference the criterion by `@prd#section-header` — do not copy its text.
+1. Reference the criterion by `@<intent-artifact>#section-header` in the intent artifact named above — do not copy its text.
 2. Reference the task body (or multiple tasks' bodies) that delivers it by
    `@implementation-plan#task-header` — do not copy task text.
 3. State, in one sentence, how the referenced task delivers the referenced
@@ -97,8 +97,8 @@ Findings:
   the requirement's name whose body narrows the criterion is a
   Requirement-Violation regardless of whether the task exists.
 - Task references criteria it does not deliver -> Critical.
-- Orphan task (no PRD criterion, architecture constraint, or feature-spec scenario) -> Important (gold-plating risk).
-- Task contradicts PRD, architecture, or in-scope feature-spec scenarios -> Critical.
+- Orphan task (no intent criterion, architecture constraint, or feature-spec scenario) -> Important (gold-plating risk).
+- Task contradicts the intent artifact, architecture, or in-scope feature-spec scenarios -> Critical.
 - Task copy-pastes upstream text instead of referencing it by
   `@artifact#section-header` -> Important (per
   `policy/preparation-artifact-quality` §Referencing upstream intent).
@@ -167,9 +167,8 @@ Verify that:
   trigger, or are absent;
 - observable outcomes are established before the tasks select implementation.
 
-For a bug, the diagnosed root cause and reported symptom clamp the horizon.
-Adjacent hardening, capability, or refactoring remains out of scope even when a
-domain perspective recommends it.
+For a bug, the horizon is the bug-scope clamp and its structural-ratchet
+boundary (`sdlc/procedure/lifecycle/prepare/plan-draft`); §5a applies it.
 
 Reject any consequential product or business detail that exceeds what the
 input carries — a scope the plan added on its own authority.
@@ -302,13 +301,9 @@ recorded as re-verifiable facts) alongside its conclusion — and validate:
 - **The plan removes the cause.** The plan's tasks remove the diagnosed root
   cause and cover the reported `input` symptom. In a project that opts into
   tests, bind the regression scenario under its testing contract.
-- **The plan delivers the fix and nothing else.** Every task traces to removing
-  the diagnosed root cause or, where tests are opted into, its regression test.
-  A task that traces to neither — hardening, extra validation layers, defensive
-  defaults, adjacent refactors, new capability — is Critical (scope violation),
-  and tracing it to a scenario or doc snippet this same prepare pass authored
-  does not cure it: self-authored artifacts create no scope; the `diagnosis` and
-  the `input` symptom are the only scope authorities for a bug.
+- **Bug scope.** Verify every task against the bug-scope clamp and its
+  structural-ratchet boundary (`sdlc/procedure/lifecycle/prepare/plan-draft`).
+  A task outside that boundary is Critical.
 - **Scenario authoring is bounded to the regression scenario.** A bug plan
   authors at most one pending feature-spec scenario — the one encoding the
   reported symptom (plan-draft step 3c). A
@@ -328,17 +323,19 @@ quality policy. Produce a `Lane anticipation` section in
 `plan-review-findings.md` that verdicts **every** lane in the review-lanes
 catalog (`sdlc/policy/definition-of-done-lanes`): one line per
 lane, marking it satisfied (naming how), triggered-but-unmet (a finding), or
-`N/A` (with reason). A catalog lane with no line is itself an Important finding —
-silence is not coverage. For deliverable-producing lanes the line names the
-specific artifact the build-review lane will validate and the plan task that
-produces it; the key ones to pre-satisfy:
+`N/A` (with reason). Complete every review lane before stamping; §6a owns that
+execution gate. For each deliverable-producing lane, identify the artifact and
+its producing phase; name a plan task only when work produces it. The key ones
+to pre-satisfy:
 
 - **Tests**: name the governing project testing contract. Where the project
   opts into tests, name the task and scenario-bound test it delivers.
 - **Security**: name the validation point, the auth check, and the task that
   adds them.
-- **Documentation (hard gate)**: name the doc snippet id, the section, and the
-  task that updates it as a pending snippet (`delivered_by`). A `change` is the
+- **Documentation (hard gate)**: name the prepare-authored pending snippet and
+  section, or the plan's `doc_impact_none` or `doc_deferred` disposition
+  (`sdlc/procedure/lifecycle/prepare/plan-draft`); no work-phase documentation
+  task is required. A `change` is the
   high-risk case — it has no PRD, so its doc reflection lives only here: a
   behavioral delta with neither a snippet update nor an explicit
   `doc_impact_none: <reason>` is a Requirement-Violation (blocking), not a soft
@@ -400,9 +397,11 @@ produces it; the key ones to pre-satisfy:
   implements another context's rule locally. Pattern consistency in adjacent
   code cannot satisfy this lane.
 
-A catalog lane left without a verdict line — or triggered but unmet — is an
-Important finding. Record it and mark `needs_work`; the plan drafter owns the
-corrective task.
+A lane the plan's lane-coverage report omits, or claims satisfied when the plan
+does not satisfy it, is an Important finding against the plan; the plan drafter
+owns the correction. A lane missing from this review's own `Lane anticipation`
+section is an incomplete review, not a plan finding: complete it before stamping
+(§6a).
 
 ### 6a. Lane execution gate
 
@@ -441,7 +440,8 @@ Check the plan against:
   silently and corrupt the codebase faster than coupling violations
   because every implementation looks "well-typed and narrow."
 
-Policy violations are Critical findings.
+Classify each violation by the severity tiers in
+`sdlc/procedure/lifecycle/review`.
 
 ### 8. Preserve reviewer separation
 
@@ -457,11 +457,9 @@ routes the todo back through review.
 
 ### 8a. Forbidden reviewer moves
 
-The schema has two tiers for plan review: Critical, Important. There is no
-fourth tier. There is no Suggestion bucket.
+Severity tiers and verdict arithmetic are owned by
+`sdlc/procedure/lifecycle/review`; this phase adds none.
 
-- **Inventing a fourth tier.** No "Suggestion", "nit", "polish",
-  "non-blocking", or "follow-up" tier exists.
 - **Pre-existing-pattern dodge.** The reviewer evaluates the plan's
   resulting state, not how it differs from a prior version. If the current
   text violates a cited rule, the finding stands.
@@ -477,10 +475,11 @@ fourth tier. There is no Suggestion bucket.
   not reallocate ownership). A genuine gap in the approved intent is reported
   as exactly that, for the claimant to route to the intent's owner; it is never
   encoded as a blocking demand for the missing work.
-- **Re-opening passed text.** A re-review after remediation judges the changed
-  text and the resolution of the prior findings. A new finding against text the
-  prior pass reviewed unchanged must name why the prior pass missed it; absent
-  that, the finding is dropped. A premise the disposition records as changed is
+- **Re-opening passed text.** A re-review judges the changed text and the
+  resolution of the prior findings. A finding against text the prior pass
+  reviewed unchanged, and could have observed then, follows the late-finding
+  rule (`sdlc/procedure/lifecycle/review`); it is not appended to remediation.
+  A premise the disposition records as changed is
   part of that resolution: a statement still asserting the old premise, changed
   text or not, is a finding against the incomplete carry-through
   (`sdlc/policy/preparation-artifact-quality`).
@@ -513,7 +512,8 @@ Verdict rules:
   `approve` only at zero unresolved findings, or `needs_work` otherwise.
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
-before stamping, with severity levels (Critical, Important), full lane
+before stamping, with findings classified under
+`sdlc/procedure/lifecycle/review`, full lane
 anticipation, delivery analysis, the arithmetic verdict, and clean-pass evidence
 when no findings remain. Then stamp the verdict; the stamp binds the current
 implementation-plan and report digests.
@@ -537,7 +537,7 @@ Review artifact: plan-review-findings
 
 ## Recovery
 
-- If unresolved Critical or Important findings remain, mark `needs_work`. The
+- If any finding remains unresolved, mark `needs_work`. The
   state machine routes the findings while the loop runs; past the threshold, an
   assist watches it under the shared review procedure.
 - If upstream artifacts themselves are the problem (plan is correct but PRD,

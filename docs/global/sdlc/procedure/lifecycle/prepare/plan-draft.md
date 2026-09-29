@@ -1,5 +1,5 @@
 ---
-description: 'Plan drafting phase for prepare. Produces implementation plans from human-approved PRD and the optional reviewer-approved architecture (thin index artifact plus the doc snippets it points at).'
+description: 'Plan drafting phase for prepare. Produces implementation plans from the approved intent artifact and the optional reviewer-approved architecture (thin index artifact plus the doc snippets it points at).'
 visibility: 'public'
 ---
 
@@ -18,7 +18,7 @@ visibility: 'public'
 ## Goal
 
 Your focus this turn is the plan phase: produce an `implementation-plan`
-artifact from the human-approved PRD and the reviewer-approved architecture
+artifact from the approved intent artifact and the reviewer-approved architecture
 when present (the thin index artifact plus the doc snippets it points at); or
 split the todo into dependent child work items when planning shows the work is
 not atomic. The wider prepare lifecycle is still yours; this phase is one
@@ -26,19 +26,20 @@ focused part of it.
 
 ### Outcome
 
-Produce `implementation-plan` from the human-approved `prd` and the optional
-reviewer-approved `architecture` (the thin index artifact plus the
+Produce `implementation-plan` from the approved intent artifact (Preconditions 1)
+and the optional reviewer-approved `architecture` (the thin index artifact plus the
 domain-spec / design-doc snippets it points at); or split the todo into
-dependent child work items when planning shows the work is not atomic.
+dependent child work items when step 2 finds the work is not one coherent delivery.
 
 The plan must be detailed enough for a builder to execute without guessing, and
-review-aware enough that the reviewer finds no surprises. If that bar cannot be met
-for one builder session, this phase owns the split.
+review-aware enough that the reviewer finds no surprises. Whether the work stays
+one todo is the scope-and-size gate's decision
+(`sdlc/policy/definition-of-ready`), applied in step 2.
 
 ## Preconditions
 
 1. The approved intent artifact resolves — `prd` for a `feature`, `input` for a
-   `change` (see `sdlc/concept/approved-intent-artifact`). A
+   `change` or `bug` (see `sdlc/concept/approved-intent-artifact`). A
    `change` has no PRD by design; `input` is its intent. A `change` created via
    `--plan` has no `input` either — its seeded `implementation-plan` is the intent
    basis (see the `seeded` re-entry reason in step 1b). Drafts from a `feature`
@@ -104,8 +105,8 @@ Re-entry is the base case for plan drafting — fresh production is the special
 case (first time only). Every dispatch carries a `Dispatch reason: <reason>`
 header. Pick your behavior from the reason:
 
-- **`fresh`** — no prior implementation plan exists. Produce one from human-approved
-  PRD and the optional reviewer-approved architecture. This is the only path that uses the full atomicity
+- **`fresh`** — no prior implementation plan exists. Produce one from the approved
+  intent artifact and any reviewer-approved architecture. This is the only path that uses the full atomicity
   decision (step 2) and full draft (step 3).
 - **`seeded`** — a complete implementation plan was supplied at creation (the
   `--plan` create path) and is present as the `implementation-plan` artifact at
@@ -125,8 +126,10 @@ header. Pick your behavior from the reason:
   `telec todo artifacts read {slug} implementation-plan` and re-ground it against
   the changed code: re-derive the tasks whose grounding the drift invalidated and
   preserve every task the drift does not touch. Do not produce from scratch — the
-  plan exists and most of it is still valid. Skip the atomicity decision (step 2)
-  and proceed to step 5.
+  plan exists and most of it is still valid. This reason is distinct from
+  `upstream-changed`: the trigger is drifted code under referenced paths, not a
+  changed `prd`/`architecture` digest. Skip the atomicity decision (step 2) and
+  continue at step 4c.
 - **kickback context (rides `substantive-drift`)** — a `--kickback` stamp re-enters
   here with reason `substantive-drift`, but the trigger is an authored work-orchestrator
   invalidation rather than drifted code. The `input` artifact carries a delimited
@@ -137,58 +140,24 @@ header. Pick your behavior from the reason:
   the plan to satisfy the kickback reason, not only the code.
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
-  plan. Dispose of every finding in the findings artifact before editing the
-  plan; each finding receives exactly one disposition:
-  - **Fix** — the finding cites a clause that applies, establishes the
-    contradiction, and its closure stays inside the authorized outcome and the
-    behavior's established domain owner. Apply it, and when it changes a
-    premise the plan stands on, carry that premise through every dependent
-    statement in the same revision
-    (`sdlc/policy/preparation-artifact-quality`, Plan-specific
-    quality).
-  - **Reject** — the finding does not establish that its cited clause applies
-    here, including when a more specific contract on the same subject decides
-    the case otherwise (`sdlc/procedure/lifecycle/review`), or
-    its closure enlarges the horizon: new functionality, instrumentation,
-    verification tooling, subsystems, or scope beyond the authorized outcome.
-    A valid omission finding — a missing reflection or gate the policies
-    require on the authorized work — adds material within scope and is not
-    rejected on that ground (`sdlc/procedure/lifecycle/review`
-    §6). Record the rejection with its evidence. It stands rejected until the
-    reviewer overturns it on changed substrate or material new evidence. A
-    rejected finding is never fixed to shorten the loop: a finding that enlarges
-    the horizon is invalid under
-    `sdlc/policy/definition-of-done-lanes`, and complying with
-    one is how a bounded change grows.
-  - **Kick back** — the finding is valid, but its closure needs adjacent scope,
-    a different owner, or a boundary redraw. That is a kickback or blocker, not
-    authority to enlarge this plan.
-
-  Preserve every task not flagged by the findings. Skip the atomicity decision
-  (step 2) and proceed directly to step 5.
+  plan. Use the finding-validation, disposition and evidence-recording rules in
+  `sdlc/procedure/lifecycle/fix-review-findings`; this phase retains target
+  validation, artifact writing and advancement. Preserve unaffected tasks and
+  carry changed premises through their dependent statements
+  (`sdlc/policy/preparation-artifact-quality`). Skip the atomicity decision
+  (step 2) and continue at step 4c.
 
 - **`upstream-changed`** — the plan's recorded `upstream_digests` (`prd`
   and/or `architecture`) drifted from current. Run the `Changes since` diff commands
   listed in the dispatch. Identify the plan tasks whose grounding referenced the
   changed upstream content. Update only those tasks; preserve every task whose
-  grounding is unchanged. Skip the atomicity decision and proceed to step 5.
+  grounding is unchanged. Skip the atomicity decision and continue at step 4c.
 - **`provenance-missing`** — the plan exists but its upstream provenance is
   empty (legacy state). Read the existing plan via
   `telec todo artifacts read {slug} implementation-plan`. Verify each task's
   grounding against current `prd` and `architecture`. Update only
   tasks whose grounding has actually drifted; preserve tasks that still pin
-  the upstream artifact correctly. Skip the atomicity decision and proceed to step 5.
-
-- **`substantive-drift`** — a drift review judged the code under the plan's
-  referenced paths to have changed materially, and the plan's `plan_review` was
-  cleared by that substantive drift. The existing plan is present and
-  authoritative: read it via
-  `telec todo artifacts read {slug} implementation-plan`, re-ground each task
-  against the changed code, and update only the tasks whose grounding the drift
-  invalidates — preserve every task whose grounding still holds. This reason is
-  distinct from `upstream-changed`: the trigger is drifted code under referenced
-  paths, not a changed `prd`/`architecture` digest. Skip the atomicity decision
-  and proceed to step 5.
+  the upstream artifact correctly. Skip the atomicity decision and continue at step 4c.
 
 ### 1c. Situate the premise in the existing todo landscape (`fresh` only)
 
@@ -258,27 +227,16 @@ unspecified and outside _Intent & scope_.
 
 ### 2. Decide whether the todo is atomic
 
-**This step is mandatory and must produce an explicit verdict before any plan
-drafting begins.** Apply DOR Gate 2 (Scope & size) using the splitting heuristics
-in the Definition of Ready policy. Ground in the actual code — not the prose.
-
-Evaluate:
-
-- Does the work contain multiple independently shippable workstreams? If yes, split.
-- Count the phases, new modules, and distinct behavioral changes. A plan that spans
-  more than one coherent builder behavior must be split.
-- Apply the DOR coherence test, coordination cost, and detail-inverts-complexity
-  heuristics from the policy.
-- A todo may coordinate an atomic cross-context outcome, but its tasks and
-  contract changes remain partitioned by bounded-context owner. Atomicity is
-  not shared ownership.
+Apply the scope-and-size gate in `sdlc/policy/definition-of-ready` to the
+grounded change surface and record the verdict before drafting. That policy owns
+the splitting criteria.
 
 **If the work fails the scope/size gate, stop here.** Do not draft a plan for
 work that will fail gate validation. Group first:
 
-- read the parent's full approved scope (PRD and architecture artifacts)
+- read the parent's full authorized scope from its resolved intent artifact and any approved architecture context
 - create each child with `telec todo create <child> "<child-content>" --kind <k> --group <slug>`, partitioning the parent's existing scope — adding no functional or business scope absent from the parent
-- narrow each child's content to its own scope slice, drawing on the human-approved parent PRD and any reviewer-approved architecture-snippet slices
+- narrow each child to its scope slice, referencing that parent intent and any applicable approved architecture context
 - add dependency ordering between the children with `telec todo update <child> --after <dep>`
 - stop treating the parent as directly prepare/work-ready; it is now a structural holder
 
@@ -400,8 +358,9 @@ the briefing instead.
 
 A bug plan delivers the smallest change that removes the diagnosed root cause
 (`diagnosis#root-cause`), plus a scenario-bound regression test where the
-project opts into tests. Every task traces to one of those. A task that does
-not — hardening, extra validation layers, defensive defaults,
+project opts into tests. Except for a structural-ratchet deepening permitted
+below, every task traces to one of those. Any other task that does not —
+hardening, extra validation layers, defensive defaults,
 fallbacks, adjacent refactors, new capability, or any scenario beyond the single
 regression scenario below — is a scope violation to strike before the plan is
 written, regardless of how prudent it looks. Tracing a task to a scenario or
@@ -511,12 +470,18 @@ A change that alters documented behavior without a corresponding snippet update
 (and without a `doc_impact_none` justification or structurally complete
 `doc_deferred` record) is not plan-complete.
 
+### 4c. Validate a revision
+
+Before writing a revised plan, apply the task-composition and changed-premise
+rules in `sdlc/policy/preparation-artifact-quality`. Refresh the complete
+lane-coverage report and doc reflection under steps 4 and 4b.
+
 ### 5. Write artifacts
 
-If the todo stays atomic, write (using human-approved PRD and the optional reviewer-approved architecture — the thin index plus the snippets it points at — as inputs):
+If the todo stays one delivery, write (using the approved intent artifact and the optional reviewer-approved architecture — the thin index plus the snippets it points at — as inputs):
 
 - `telec todo artifacts write {slug} implementation-plan <content>` — the full plan with tasks, rationale, and verification.
-  Each task must reference which PRD criteria and, for Category A work, which feature-spec Gherkin scenarios it satisfies.
+  Each task references the intent criteria it delivers and, for Category A work, the feature-spec scenarios it satisfies (`sdlc/policy/preparation-artifact-quality`).
 
 Do not write grounding fields directly. The state machine owns grounding
 metadata and current worktree state.
@@ -525,7 +490,7 @@ If the todo is grouped instead:
 
 - Create each child with `telec todo create <child> "<child-content>" --kind <k> --group <slug>`, one per independently deliverable slice.
 - Treat the parent as a stateless holder once children group-reference it. Its retained input artifact is frozen source material; do not plan follow-up writes against the holder.
-- Each child's content carries the relevant subset of parent PRD and reviewer-approved architecture-snippet context.
+- Each child's content carries the relevant subset of the parent's intent artifact and reviewer-approved architecture-snippet context.
 - Treat only the children as prepare/work targets. The parent is a holder and must not be prepared or worked as an implementation item.
 
 ### 6. Enforce boundaries
@@ -566,13 +531,14 @@ or kick back — then advance again.
 
 ## Recovery
 
-1. If the PRD is ambiguous, note the ambiguity in the plan and derive the most
+1. If the intent artifact is ambiguous, note the ambiguity in the plan and derive the most
    likely interpretation where it stays within existing authority, marking it
    `[inferred]`. An ambiguous product or business choice the input does not
    settle is returned as a human-owned decision instead of inferred. For a
    `bug`, ambiguity resolves through the `diagnosis` or escalates to the human,
    never by inference (step 3c).
-2. If planning reveals the parent is not atomic, group or split it into children rather than stretching one
-   builder plan past the session-size limit.
+2. If planning reveals the work is not one coherent delivery under the
+   scope-and-size gate (`sdlc/policy/definition-of-ready`), group it into
+   children.
 3. If a file referenced in an upstream artifact does not exist, verify whether it should be
    created or whether the upstream artifact is stale.
