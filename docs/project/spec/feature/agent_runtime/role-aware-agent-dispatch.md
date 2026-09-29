@@ -56,10 +56,6 @@ supplies either. System role and job role remain identity and authority facts.
 
 | Command                | Ordered agents                  | Default thinking mode |
 | ---------------------- | ------------------------------- | --------------------- |
-<!-- planned-change:todo-kind-required-at-creation -->
-| `analyze-todo-input`   | Claude, Codex, Gemini, DeepSeek | `slow`                |
-<!-- change:todo-kind-required-at-creation -->
-<!-- /planned-change:todo-kind-required-at-creation -->
 | `build`                | Codex, Claude, Gemini, DeepSeek | `med`                 |
 | `review-build`         | Codex, Claude, Gemini, DeepSeek | `med`                 |
 | `review-prd`           | Codex, Claude, Gemini, DeepSeek | `slow`                |

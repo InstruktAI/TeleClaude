@@ -170,20 +170,11 @@ list {slug}` names each artifact's writers. Read every writer that is not
    the same turns against the new text; the comparison still holds, but it is
    this session checking its own compression and carries that much less weight.
 
-<!-- planned-change:todo-kind-required-at-creation -->
-4. Derive the work from that basis by kind — the outcome and constraints for
-   `feature` and `change`; the reported concern, symptom, and
-   expected-versus-observed behavior for `bug`, where causal and scope claims
-   remain hypotheses diagnosis still tests; the action boundary, result,
-   recipient, and timing for `task`; and the same for a kind-less todo before
-   classification.
-<!-- change:todo-kind-required-at-creation -->
 4. Derive the work from that basis by kind — the outcome and constraints for
    `feature` and `change`; the reported concern, symptom, and
    expected-versus-observed behavior for `bug`, where causal and scope claims
    remain hypotheses diagnosis still tests; and the action boundary, result,
    recipient, and timing for `task`.
-<!-- /planned-change:todo-kind-required-at-creation -->
 5. A technical choice needed for safe and correct delivery is plan and build's
    to make; it is not enlarged into product or business intent merely because
    the input mentions it. This is a scope discipline on derivation, not a test

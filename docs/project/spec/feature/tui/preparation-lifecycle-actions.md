@@ -53,14 +53,12 @@ terminal state, a reported error, or a successful termination whose result
 records a refusal — reaches the operator at error severity carrying the outcome
 the operation reported, never as a success message.
 
-<!-- planned:todo-kind-required-at-creation -->
 **The view decides nothing about the lifecycle.** A keypress is a request to
 the workflow, never a verdict. Whether a todo may be prepared or start work, and
 which lane it enters, are answered by the workflow from the todo's own data; the
 view submits the operation and reports that answer. Nothing the view renders is
 read back as state, per `sdlc/principle/architecture-boundary-purity`.
 
-<!-- /planned:todo-kind-required-at-creation -->
 
 ## Canonical fields
 
@@ -153,7 +151,6 @@ Then the new item is created in the project the TUI was started from
 And no item is created in any other project
 ```
 
-<!-- planned:todo-kind-required-at-creation -->
 #### UC-PLA-9: Start-work on a todo that is not ready reports the workflow's refusal
 
 ```gherkin
@@ -173,7 +170,6 @@ And the created todo carries the chosen kind and enters that kind's lane
 And the view creates no todo until a kind is chosen
 ```
 
-<!-- /planned:todo-kind-required-at-creation -->
 
 ## See Also
 
