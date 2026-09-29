@@ -1,5 +1,5 @@
 ---
-description: Agent sessions subscribe to catalog events and are woken with each matching event's content, once or every time, until they withdraw the subscription or their session ends.
+description: Agent sessions subscribe to catalog events and are woken with the content of each matching event their principal may receive, once or every time, until they withdraw the subscription or their session ends.
 delivered_by:
   - telec-events-subscribe-feat
 ---
@@ -14,12 +14,21 @@ the event itself — its type, identity, time, originating computer, and content
 as a wake, so it can react at the moment the fact happens instead of polling or
 guessing when to look again. A subscription is either single-delivery, spent by
 the first event it delivers, or every-time, live until it is withdrawn or its
-session ends. It may be narrowed to events whose content carries given values.
+session ends. It may be narrowed to events whose content carries given values
+in payload fields the event type declares.
+
+A subscription only ever delivers events the subscribing session may receive.
+Every event carries one scope — a company, a person, a project, or none for a
+platform event — and receipt follows it: a company event reaches members of that
+company, a person event reaches that person only, a project event reaches the
+project's owner, and a platform event reaches admin lineage only. A session
+working a company's business receives only that company's events.
 
 A subscription belongs to the session that made it. The session can list and
 withdraw its own subscriptions and cannot see or touch another session's. The
 event catalog listing is the discovery surface: it names the subscribable event
-types and tells its reader how to subscribe to them.
+types and tells its reader how to subscribe to them, and each event type's schema
+shows its scope kind and payload fields.
 
 Subscriptions consume the event catalog as it stands and change neither which
 events the platform emits nor what they carry. The wake rides the platform's
@@ -36,7 +45,7 @@ pending payloads.
 ```gherkin
 Given an agent session has subscribed once to an event type from the catalog
 When an event of that type occurs
-Then the agent is woken with that event's type, identity, time, originating computer, and content
+Then the agent is woken with that event's type, identity, time, originating computer, scope, and content
 And the subscription is spent
 And a later event of that type does not wake the agent
 ```
@@ -135,24 +144,74 @@ But when a local event of that type occurs on one computer
 Then only the session on that computer is woken by it
 ```
 
-#### UC-ES12: Only callers entitled to every tenant may subscribe
+#### UC-ES12
+
+#### UC-ES13: A company event reaches only that company's members
 
 ```gherkin
-Given an agent session acting for a person who holds the admin role, or running under the platform's system principal for no company
-When it asks to subscribe to a catalog event type
-Then the subscription is created
-But when the session acts for a person who is not an admin, or runs under the system principal for a company
-Then the request is refused and no subscription is created
+Given agent sessions working for members and for non-members of a company hold subscriptions to the same event type
+When an event of that type scoped to that company occurs
+Then only the sessions working for members of that company are woken by it
+```
+
+#### UC-ES14: A person event reaches only that person
+
+```gherkin
+Given agent sessions working for different persons, including an admin, hold subscriptions to the same event type
+When an event of that type scoped to one person occurs
+Then only the sessions working for that person are woken by it
+```
+
+#### UC-ES15: A project event reaches the project's owner
+
+```gherkin
+Given subscriptions to the same event type held by sessions working for different principals
+When an event of that type scoped to a project owned by a company occurs
+Then only the sessions working for members of that company are woken by it
+But when the project is owned by a person
+Then only the sessions working for that person are woken by it
+But when the project is owned by neither
+Then only sessions under admin lineage are woken by it
+```
+
+#### UC-ES16: A platform event reaches admin lineage only
+
+```gherkin
+Given subscriptions to the same event type held by sessions under admin lineage and by sessions working for other principals
+When an event of that type with no scope occurs
+Then only the sessions under admin lineage are woken by it
+```
+
+#### UC-ES17: A session working a company's business receives only that company's events
+
+```gherkin
+Given an agent session working a company's business, whose principal is entitled to other scopes too
+When events scoped to another company, to a person, or to the platform occur for a type it subscribes to
+Then the session is not woken by them
+And it is woken only by events scoped to its own company
+```
+
+#### UC-ES18: A narrowing on an undeclared payload field is refused
+
+```gherkin
+Given an agent session asks to subscribe to an event type narrowed on a payload field that event type does not declare
+When the request is made
+Then no subscription is created
+And the refusal names the field and points the agent to that event type's schema
+```
+
+#### UC-ES19: An event type's schema shows what an agent can subscribe on
+
+```gherkin
+Given an agent wants to subscribe to a catalog event type
+When it views that event type's schema
+Then it sees the event's metadata, its scope kind, and every payload field the event type declares
 ```
 
 ## Known caveats
 
 - A subscription observes events from the moment it is created. An event that
   occurred before it existed is never delivered to it.
-- Events carry no tenant scope, so a subscriber observes events belonging to any
-  company or person on the computers it is entitled to observe. The subscriber
-  audience is therefore limited to admin-rooted sessions and company-less system
-  sessions.
 - An every-time subscription to a high-frequency event type wakes its agent as
   often as the event occurs; control delivery batches what is pending at each
   boundary but does not rate-limit.
