@@ -41,10 +41,11 @@ wherever it is running. Half-wired is not a lesser version of the work; it is a
 different agent acting on a real mailbox.
 
 <!-- planned:personal-assistant-launch -->
-Getting to that workspace is a single call — `telec sessions run-pa`, carrying a
-brief and nothing else and deriving the person from whoever is calling. An agent
-that recognises personal work makes that call rather than pointing itself
-somewhere. No argument names a person, and none is accepted in any form.
+The shortest way to start an agent in a person's workspace is
+`telec sessions run-pa`, carrying a brief and nothing else and deriving the
+person from whoever is calling. An agent that
+recognises personal work makes that call rather than working out where to point
+a new session. No argument names a person, and none is accepted in any form.
 <!-- /planned:personal-assistant-launch -->
 
 An agent that looks for a way around any of these has already violated this
@@ -179,12 +180,13 @@ crossing. Prose alone cannot hold that line, since an agent convinced of an
 exception reads these same words and proceeds.
 
 <!-- planned:personal-assistant-launch -->
-What holds it is a launch call with no target to supply, which is why an agent
-that recognises personal work is given something to invoke rather than a rule to
-obey. A validated person argument would not be a weaker version of that; it would
-be an entirely different guarantee, since anything a caller can pass is something
-a caller can be talked into passing by content it was asked to read. The security
-property is the absence of the parameter, not the strictness of its checking.
+The launch call removes the step where such an argument usually starts: an agent
+that recognises personal work has something to invoke rather than a destination
+to work out. It takes no person because anything a caller can pass is something
+a caller can be talked into passing by content it was asked to read; a validated
+person argument would bring back the aiming the call exists to remove. The call
+is a route, not a wall — holding the line against an agent set on crossing it is
+the work of containing the personal agent, not of how it was launched.
 <!-- /planned:personal-assistant-launch -->
 
 Admin is the case that has to be named rather than assumed: platform

@@ -19,37 +19,37 @@ This design covers the dispatch journey. Storage internals for the listener regi
 
 <!-- planned:personal-assistant-launch -->
 
-### Producers that reach a person workspace
+### The personal-assistant launch
 
-Five paths create a session in a person's workspace. Two general verbs carry a
-destination the caller supplied. Three derive it from a person the platform
-already resolved: the Telegram private-chat handlers and the Discord
-direct-message handlers, from the person behind the conversation, and the
-personal-assistant launch, from the person behind the authenticated caller. All
-five converge on one session-creation command.
+`run-pa` is a third invocation beside `run` and `start`. It carries a brief and no
+target: the authenticated edge resolves which person the caller is through the
+identity contract, reads that person's workspace from the person registry, and
+creates the session there with no parent. The general verbs are unchanged and
+remain ordinary routes to any folder, a person's included; the launch is the
+route that removes aiming, not the only route. The inbound messaging adapters
+already derive a person's workspace the same way, from the person behind a
+conversation.
 
-The dispatch rule's ownership is stated in this cross-cutting design. The
-agent-runtime domain anchor carries no forward architecture.
+The launch's ownership is stated in this cross-cutting design. The agent-runtime
+domain anchor carries no forward architecture.
 
 ### Prior art for the derived subject
 
-The launch is a security boundary and takes an established shape rather than a
-new one. The failure it is designed against is the confused deputy, in which a
-trusted deputy applies its own authority to a target its caller named; a launch
-that accepted and validated a person argument would be that deputy. The remedy is
-to designate the subject by what the invoker already holds rather than by a name
-it supplies, which removes the step the attack needs.
+The failure the launch's shape is designed against is the confused deputy, in
+which a trusted deputy applies its own authority to a target its caller named; a
+launch that accepted and validated a person argument would be that deputy. The
+remedy is to designate the subject by what the invoker already holds rather than
+by a name it supplies, which removes the step the attack needs.
 
 The Kubernetes authorization API carries the same split in production:
-`SubjectAccessReview` accepts a subject and is privileged, while
-`SelfSubjectAccessReview` is a separate resource whose user and group fields must
-be empty because the subject is taken from the authenticated caller. `run-pa`
-stands in that relation to `run` and `start`, including the choice to be a
-distinct surface rather than a mode of the general one. The platform's own `self`
-surfaces are the internal precedent.
+`SubjectAccessReview` accepts a subject, while `SelfSubjectAccessReview` is a
+separate resource whose user and group fields must be empty because the subject
+is taken from the authenticated caller. `run-pa` is the self-form in that
+relation, including the choice to be a distinct surface rather than a mode of
+the general verbs. The platform's own `self` surfaces are the internal
+precedent.
 
-The decision is to adopt: no new authorization mechanism is introduced, the
-refusal reuses the existing creation path and its typed refusal reason, and the
+The decision is to adopt: no new authorization mechanism is introduced, and the
 launch reuses the existing session-creation command.
 
 <!-- /planned:personal-assistant-launch -->
@@ -86,13 +86,15 @@ launch reuses the existing session-creation command.
 <!-- planned:personal-assistant-launch -->
 - **A person is derived, never addressed.** `run-pa` resolves its target from the
   authenticated caller's identity. The surface exposes no parameter naming a
-  person, in any form.
+  person, in any form, and a request carrying an unexpected field is rejected
+  rather than stripped.
 - **A platform admin gets their own assistant.** The call has one form and
   elevation does not widen it.
-- **Person workspaces are unreachable through the general verbs.** `run` and
-  `start` refuse a path resolving inside one.
 - **No caller identity, no launch.** A caller resolving to no person is refused,
   never defaulted.
+- **Person workspaces stay ordinary destinations.** The general verbs start a
+  session in a person's folder exactly as in any other folder. Dispatch places no
+  gate on where a session lands.
 - **The launch pins no parent.** No initiator is recorded for the session it
   starts, so nothing holds authority over its ending and it ends itself. The
   caller's identity resolves the person; it does not become a parent link.
@@ -106,34 +108,16 @@ launch reuses the existing session-creation command.
   declares is done by that schedule and nothing else — belongs to the assistant's
   conduct contract, which already carries it. Dispatch owes the framing, not the
   refusal.
-- **Derivation and refusal sit at different layers.** The person is resolved where
-  the caller is authenticated. The destination is refused where every creation
-  path converges. The authenticated edge sees one route at a time; the convergence
-  point carries no caller identity.
-- **The refusal reads only the destination.** No caller is exempt from it, and no
-  caller identity is consulted to apply it.
-- **The destination checked is the composed one.** A project path and any
-  subdirectory beneath it resolve to a single destination before the check.
-- **A person workspace is reachable only from a derived destination.** Every
-  producer that creates a session in a person workspace resolves that destination
-  from an identity the platform already holds — the person behind an inbound
-  conversation, or the person behind the authenticated caller. A destination that
-  arrived as a caller-supplied argument never reaches one. The distinction is
-  carried on the internal command the daemon builds and on no request model, so
-  no caller can present a destination as derived.
 - **A declared job runs only through the scheduler.** A job declared in
   configuration is launched through the scheduled path, which derives its routing
   from that declaration and runs under a job runner's role. A brief names no job
   and the launch carries no command, so no brief reaches that path. This bounds
   the scheduler's own transport only; what an assistant does when asked directly
   for work of the same kind is settled by the conduct contract it loads.
-- **Containment is answered by the configuration owner.** Whether a destination
-  lies inside any person workspace is a published configuration query. Dispatch
-  consumes that query and never walks the person-directory layout itself.
-- **Person-workspace location and person resolution are consumed, not restated.**
-  Which paths are person workspaces is answered by the configuration owner; which
-  person a caller is resolves through the identity contract. Dispatch owns only
-  the rule that binds them.
+- **Person resolution and workspace location are consumed, not restated.** Which
+  person a caller is resolves through the identity contract; where that person's
+  workspace lives is read from the person registry. Dispatch owns only the launch
+  that binds them.
 <!-- /planned:personal-assistant-launch -->
 - **Initiator pinning records dispatch, not command.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. It is the canonical link from child to parent, it survives daemon restart, and it is what caller-scoped cleanup and the todo claiming group read. A standing role — the integrator, the project coordinator, a scheduled job runner — takes its work from a queue, a schedule, or the fleet, so no session is pinned for it through any door, including adoption of a session already running. The human identity the work runs under is copied onto the session at creation and does not depend on the link surviving.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
@@ -206,50 +190,30 @@ sequenceDiagram
 
 <!-- planned:personal-assistant-launch -->
 
-### 4a. A derived destination reaches a person workspace
+### 4a. The personal-assistant launch
 
 ```mermaid
 sequenceDiagram
     participant Caller as Any session
     participant API as Sessions API
     participant Identity as Identity contract
-    participant Config as Workspace classification
+    participant Registry as Person registry
     participant Create as Session creation
     participant PA as Assistant tmux
 
-    Caller->>API: run-pa { brief }<br/>authenticated caller only<br/>(inbound adapters derive the same way<br/>from the person behind a conversation)
+    Caller->>API: run-pa { brief }<br/>authenticated caller only
     API->>Identity: resolve person for this caller
     alt no person resolves
         Identity-->>API: none
         API-->>Caller: refused — no person for caller
     else person resolves
         Identity-->>API: person
-        API->>Config: workspace for this person
-        Config-->>API: destination
-        API->>Create: command carrying a derived destination<br/>and no parent
-        Create->>Create: destination is a person workspace,<br/>and it was derived → allowed
-        Create->>PA: spawn with the brief
+        API->>Registry: workspace for this person
+        Registry-->>API: destination
+        API->>Create: command with that destination,<br/>no parent, no listener
+        Create->>PA: spawn with the brief and its in-the-moment framing
         Create-->>API: session id
     end
-```
-
-### 4b. A supplied destination does not
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Run as run route
-    participant Start as start route
-    participant Create as Session creation
-    participant Config as Workspace classification
-
-    Caller->>Run: run { path, subfolder }
-    Caller->>Start: start { path }
-    Run->>Create: command carrying a supplied destination
-    Start->>Create: command carrying a supplied destination
-    Create->>Config: is the composed destination inside a person workspace?
-    Config-->>Create: yes
-    Create-->>Caller: refused — reach it with the personal-assistant launch
 ```
 
 <!-- /planned:personal-assistant-launch -->
@@ -275,29 +239,20 @@ sequenceDiagram
   guarantee reached more flexibly and is a different one: anything a caller can
   pass is something a caller can be talked into passing by content it was asked
   to read. The security property is that no such parameter exists.
-- **Shipping `run-pa` while `run` still accepts a person-workspace path.** The
-  new verb then sits beside an open door rather than replacing it, and the
-  boundary it exists to enforce is no more enforced than before.
-- **Refusing on one route only.** `run` and `start` are separate routes that do
-  not meet before a session is created. A refusal placed on either alone reads as
-  enforcement while the other stays open.
-- **Checking the project path and not the composed destination.** A permitted root
-  with a subdirectory naming a person workspace lands inside one while the check
-  reports a permitted path.
+- **Silently dropping an unexpected person field.** A request model or parser
+  that ignores what it does not recognise honours the brief while appearing to
+  accept the addressing attempt. The attempt is rejected.
 - **Treating existing detachment as absence of a parent.** Detachment and parentage
   are independent: a detached launch still records the caller that started it and
   only forgoes the dispatch-time subscription. A launch that reuses detachment
   alone produces an assistant with a parent that never listens, which is neither
   the governed shape nor the parentless one.
-- **Marking the derived destination on a request model.** Once the distinction is
-  something a caller can send, the derived launch is reduced to a convention and
-  the absence of a person parameter bounds nothing.
-- **Closing the inbound doors along with the caller-supplied ones.** The general
-  verbs are not the only producers that reach a person workspace: the Telegram
-  private-chat handlers and the Discord direct-message handlers each create a
-  session there from the person behind the conversation. A refusal that reads only
-  the destination, without asking how the destination was arrived at, removes
-  those surfaces while closing the two it was aimed at.
+- **Refusing person-folder destinations on the general verbs.** Making the launch
+  the only route turns a convenience into a gate. The inbound messaging adapters,
+  side projects nested in a person's folder, and person-scoped work all start
+  sessions there through the ordinary creation path, and a destination refusal
+  removes them along with the route it was aimed at. Containment of what an agent
+  in a person's folder may reach belongs to a sandbox, not to dispatch.
 <!-- /planned:personal-assistant-launch -->
 
 - **Worker session crashes before any turn completes.** No `agent_stop` ever fires for it; the listener row remains until caller cleanup or explicit unsubscribe. Diagnose via `telec sessions tail <worker_id>` and lifecycle status in the sessions table.

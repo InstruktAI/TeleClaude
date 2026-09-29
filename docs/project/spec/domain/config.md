@@ -58,12 +58,6 @@ TeleClaudeNext.
   first entry as the template default, and absent for a service that declares
   no voices — as a typed setting validated against the list it names. What the
   room does with it belongs to the TTS design.
-<!-- planned:personal-assistant-launch -->
-- **Also published:** person-workspace containment — whether a given path lies
-  inside any person's workspace, answered for the composed destination rather
-  than for a directory's own name. Consumers call it and never read the
-  person-directory layout themselves.
-<!-- /planned:personal-assistant-launch -->
 - **Also owns:** the company tier's organizational roster — which people belong
   to a company, the role each holds, and which of that company's projects each
   is assigned to — as a declared setting: its schema, its validation against
