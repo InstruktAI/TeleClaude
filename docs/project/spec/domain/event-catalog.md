@@ -73,11 +73,11 @@ concerned:
   Correlation keeps same-named entities under different subjects apart, so each
   degradation concerns one subject.
 - signal ingest, clustering, and synthesis: no subject while signal sources are
-  machine configuration that no registered home declares;
-- the company business domains the platform hosts (marketing, creative
-  production, customer relations): the company whose business the event
-  records. A feed event bridged from a signal event carries that signal event's
-  subject.
+  machine configuration that no registered home declares.
+
+The company business domains the platform hosts state their own subjects
+(`project/spec/domain/marketing`, `project/spec/domain/creative_production`).
+Hosting their handlers confers no ownership of their subjects.
 
 <!-- /planned:event-origin-and-subject -->
 ### Ownership boundary
