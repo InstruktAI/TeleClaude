@@ -1,5 +1,5 @@
 ---
-description: 'Documentation leads, implementation catches up. Snippets declare pending deliveries via delivered_by: so the gap stays honest and the design stays shareable.'
+description: 'Documentation leads, implementation catches up. Pending material names the delivery that makes it current, so the gap stays honest and the design stays shareable.'
 visibility: 'public'
 ---
 
@@ -11,9 +11,7 @@ Documentation is the source of truth for what the system is AND what it is becom
 
 “First” orders the documentation before implementation; it does not put a tracked document before the design has formed. Conversation and scratchpad work may shape an outcome, but they are not the contract. The document becomes that contract only after the active participants converge and the authoring context releases the agreed outcome for materialization.
 
-For this to work without becoming a fiction, a snippet's `delivered_by:` field carries the honesty signal. When `delivered_by:` is present, the snippet describes intended state — it lists the delivery slugs that will close the gap between the design and the current implementation. When `delivered_by:` is absent, the snippet describes the current platform contract.
-
-When the delivery slugs in `delivered_by:` reach `delivered`, the integrator clears the field. The reconciliation is enforced by the system, not left to memory.
+For this to work without becoming a fiction, pending documentation distinguishes intended behavior from the current contract and identifies the delivery that makes it current. Its representation and authoring mechanics are owned by `general/spec/snippet-authoring-schema` and `general/procedure/doc-snippet-authoring`. Delivery resolves the pending material without erasing unrelated current or pending contracts. The reconciliation is enforced by the system, not left to memory.
 
 ## Rationale
 
@@ -23,11 +21,11 @@ The alternative on the other side — refusing to update docs until code lands �
 
 Doc-first resolves both by making the design space first-class:
 
-- **Shareable.** A pending snippet (with `delivered_by:` set) is a URL all agents can reach. The design lives in one place, not five.
-- **Honest.** The `delivered_by:` field prevents confusion. When present, it declares the snippet describes intended state; when absent, it describes current behavior. A reader knows what they are looking at.
+- **Shareable.** Pending material is a URL all agents can reach. The design lives in one place, not five.
+- **Honest.** Pending material declares intended state and names its delivery; unmarked text describes current behavior. A reader knows what they are looking at.
 - **Reviewable.** Pending snippets get the same review surface as code — pull requests, lint, validation. Bad design gets caught at doc time, before implementation costs are spent.
 - **Aligned.** The orchestrator dispatching three related builds points all three at the same pending snippet. The builders read the same design. Their outputs converge.
-- **Reconciled.** When delivery lands, the integrator clears `delivered_by:`. Stale "future" doesn't accumulate.
+- **Reconciled.** When delivery lands, its pending material becomes the current contract. Stale "future" doesn't accumulate.
 
 This is the same shape as TDD, schema-first API design, and ADRs. The discipline isn't new — what's new is naming it for documentation, encoding it in frontmatter, and making the reconciliation automatic.
 
@@ -35,7 +33,7 @@ This is the same shape as TDD, schema-first API design, and ADRs. The discipline
 
 The **enforceable rules** of this principle — doc-only work is never a todo,
 functionality work authors its snippets first, every behavioral delta is
-reflected, a stale current snippet is a defect, delivery clears `delivered_by:` —
+reflected, a stale current snippet is a defect, delivery resolves pending material —
 live in `general/policy/documentation-discipline`. The **authoring mechanics** —
 planned sections, companions, frontmatter, the publication pipeline — live in
 `general/procedure/doc-snippet-authoring`, and the **field shapes** in
@@ -48,9 +46,9 @@ consequences that shape how documentation is organized.
 
 A worker preparing or building a slug runs `telec docs index --target <slug>` to see exactly which snippets it owns. This is the canonical query that makes the doc-first discipline operational rather than aspirational: the worker asks the system what it has been put on the hook for, and the system answers.
 
-### 2. Domain specs carry `delivered_by:` when their context is being rewritten
+### 2. A context rewrite is pending material on its domain spec
 
-A per-context domain spec (see `sdlc/spec/domain-spec`) for a service that is being rewritten carries `delivered_by:` listing the slugs that will deliver the rewrite. Workers on the new implementation build against the pending spec. Build review checks the implementation against that spec. When the new implementation ships and cuts over, the integrator clears `delivered_by:`.
+A context rewrite is expressed as pending changes to its domain contract (see `sdlc/spec/domain-spec`). The current contract remains available until the rewrite is delivered; the authoring procedure owns its pending representation. Workers on the new implementation build against the pending contract. Build review checks the implementation against it. When the new implementation ships and cuts over, delivery makes it the current contract.
 
 This is the structural reason a service rewrite is safe under this discipline: the domain spec is the shared design anchor; both the old implementation (in its declining role) and the new one (in its ascending role) must satisfy it; the cutover happens when the new implementation satisfies the same spec the old one satisfies.
 
@@ -85,8 +83,8 @@ behavior. Silence on the classification
 question means unclassified — it is asked, never defaulted.
 
 A non-behavioral todo that produces a feature spec is a defect. The namespace
-becomes polluted with slug-named non-features, the `delivered_by` clear
-ceremony fires on docs nobody needed, and future readers can no longer tell
+becomes polluted with slug-named non-features, delivery reconciliation
+fires on docs nobody needed, and future readers can no longer tell
 which feature specs describe real capabilities.
 
 #### 3b. Concept-name derivation (behavioral work only)
@@ -115,14 +113,14 @@ has no clear answer, ask it of the intent owner rather than defaulting either
 way. A missing spec for true behavioral work surfaces as a gap that the next
 delivery in that capability fills naturally.
 
-**`delivered_by` is authorship provenance, not a dispatch gate.** A single delivery may shape multiple snippets; a single snippet may accumulate `delivered_by` entries from multiple independent deliveries as each shapes it over time. Each listed slug clears independently when its delivery lands; the field empties when every listed slug has delivered. `delivered_by` carries no scheduling or dispatch meaning — no core system or state machine reads it to gate work or coordinate deliveries.
+**Pending carriers are delivery association.** Pending carriers associate intended changes with their deliveries. One delivery may affect several snippets, and several deliveries may affect one snippet under the authoring procedure's ownership and ordering rules.
 
 **The architecture design lives in doc snippets; the `architecture` workflow.artifact is only a thin index/log.** Design decisions that survive delivery land in docs across two locations:
 
 - **Per-context architectural changes** (new aggregates, new events, refined invariants, internal model adjustments) → the affected domain spec snippet at `docs/project/spec/domain/<context>.md`
 - **Cross-cutting architectural changes** (new bounded context, communication patterns, transport rules, context-map shifts, deployment shape) → the architecture design docs at `docs/project/design/architecture/*.md`
 
-The doc-snippet updates ARE the design record — they are authoritative. The `architecture` workflow.artifact persists, but only as a thin per-todo audit log: which snippets the architecture phase touched, why, and the `delivered_by` slug set on them. It carries no design body and is never the source of truth. There is no `architecture` snippet kind. Decisions that don't survive (implementation tactic choices, library selection, internal sequencing) stay ephemeral in workflow.artifacts. The architecture phase routes per change: internal-to-context → domain spec; cross-cutting → design doc; or both when a change has both faces — and logs the routing in the thin artifact.
+The doc-snippet updates ARE the design record — they are authoritative. The `architecture` workflow.artifact persists, but only as a thin per-todo audit log: which snippets the architecture phase touched, why, and the pending carriers that name its slug. It carries no design body and is never the source of truth. There is no `architecture` snippet kind. Decisions that don't survive (implementation tactic choices, library selection, internal sequencing) stay ephemeral in workflow.artifacts. The architecture phase routes per change: internal-to-context → domain spec; cross-cutting → design doc; or both when a change has both faces — and logs the routing in the thin artifact.
 
 **PRDs do not survive as snippets.** The PRD captures work-guidance for one delivery (MoSCoW, Why, risks). It is scaffolding. It stays a workflow.artifact and retires after delivery. Only the behavioral contract (Gherkin in feature spec) and the design (updates in domain specs) become docs.
 
@@ -142,19 +140,19 @@ A feature whose acceptance scenarios cross multiple bounded contexts (pillars) g
 
 1. Intake identifies which contexts the feature touches (the pillars).
 2. If the per-pillar slices deliver independently (the typical case), intake creates a container todo and per-pillar children via `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child owns its own feature spec(s) 1:1 — there is no shared feature spec across children. Each child carries its own PRD workflow.artifact scoped to its slice.
-3. Children deliver independently. Each child's `delivered_by` on its own spec clears when that child delivers.
+3. Children deliver independently. Each child's pending material on its own spec resolves when that child delivers.
 4. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple owner-local feature specs and per-context commits. Atomic delivery coordinates the owners; it never collapses them into one shared contract. Independence is the discriminator.
 
 Grouping is an agent intelligence decision derived from the work's shape — there is no human approval gate. The agent partitions the parent's EXISTING scope into children; a child that needs scope absent from the parent is a NEW todo, not a grouped child.
 
 ## Tensions
 
-- **Pending snippets that never deliver.** The slug they point to may be deferred, frozen, or abandoned. The author must either revive the delivery path or clear `delivered_by:` and revert the snippet content to reflect current state — design that nobody is actually committing to deliver doesn't belong in the doc layer.
+- **Pending snippets that never deliver.** The slug they point to may be deferred, frozen, or abandoned. The author must either revive the delivery path or remove the pending material so the snippet reflects current state — design that nobody is actually committing to deliver doesn't belong in the doc layer.
 
 - **Design churn during prepare.** Pending snippets may go through revisions as the PRD iterates; only commit the snippet update when prepare converges on a stable design (typically after spec/plan review), not on every intermediate draft.
 
-- **Cross-context pending work.** A delivery spanning multiple bounded contexts updates multiple owner-local snippets and uses `delivered_by` on each. No behavioral or domain snippet spans ownership merely because the deliveries coordinate; cross-cutting design docs describe only the relationship among owners.
+- **Cross-context pending work.** A delivery spanning multiple bounded contexts updates multiple owner-local snippets, each through its own pending carrier. No behavioral or domain snippet spans ownership merely because the deliveries coordinate; cross-cutting design docs describe only the relationship among owners.
 
-- **Product owner anchor vs. agent ground.** Product owners reading pending snippets (with `delivered_by:` set) see forward state; agents making code decisions need current state. The ` (delivered by: …)` suffix in `telec docs index` keeps the distinction visible. When a human writes "in our system, X works like Y" as a pending snippet, the human asserts design; an agent reading later must check whether `delivered_by:` is present and not assume X works that way today.
+- **Product owner anchor vs. agent ground.** Product owners reading pending material see forward state; agents making code decisions need current state. The ` (delivered by: …)` and ` (superseded by: …)` suffixes in `telec docs index` keep the distinction visible. When a human writes "in our system, X works like Y" as pending material, the human asserts design; an agent reading later must check whether it is pending and not assume X works that way today.
 
-- **Doc-first vs. velocity.** Design that only becomes clear by touching the code: add `delivered_by:` to a snippet to mark it pending, attempt the work, revise as you learn, then deliver. The principle does not require omniscience at design time — it requires writing down what you learn AS you learn it, with honesty about what is current and what is intended. For trivial implementation-internal changes (a one-line bug fix with no contract change), the doc layer is not touched; doc-first scales with the size and reach of the change.
+- **Doc-first vs. velocity.** Design that only becomes clear by touching the code: author it as pending material, attempt the work, revise as you learn, then deliver. The principle does not require omniscience at design time — it requires writing down what you learn AS you learn it, with honesty about what is current and what is intended. For trivial implementation-internal changes (a one-line bug fix with no contract change), the doc layer is not touched; doc-first scales with the size and reach of the change.

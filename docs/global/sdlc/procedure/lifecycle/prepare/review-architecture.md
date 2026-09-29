@@ -35,7 +35,11 @@ First read the sdlc principles as listed in the sdlc baseline that apply to this
   (`telec todo artifacts list {slug}`) — read `log` when present, and any
   other present artifact relevant to this review.
 - `telec todo artifacts read {slug} prd` — the approved product contract.
-- `telec todo artifacts read {slug} architecture` — the artifact under review.
+- `telec todo artifacts read {slug} architecture` — the index of the design
+  under review.
+- Every indexed snippet in its pending view, `telec docs get <id> --target {slug}`,
+  compared with its current contract — the design under review is the pending
+  material, not the live text.
 - Relevant code paths and project architecture docs cited by the artifact.
 - Apply the domain-context loading rule from the preparation artifact quality
   policy before validating.
@@ -120,17 +124,16 @@ Review the architecture, not the implementation. Do not add scope, do not
 write the implementation plan, and do not silently repair architectural
 decisions that need the drafter or human to own them.
 
-- Every finding must cite the specific policy, DoD line, principle, or
-  spec it violates. A finding without a citation is not a finding — drop it.
-- The schema mirrors the plan-review and specs-review forbidden-moves block:
-  no fourth tier (no "Suggestion", "nit", "polish", "non-blocking",
-  "follow-up"); no pre-existing-pattern dodge; no uncited findings; no
-  severity-softening to reach approve.
+Apply finding validity, classification, verdict arithmetic and re-review
+boundaries from `sdlc/procedure/lifecycle/review`.
 
 ## Recovery
 
-- If the architecture is materially correct but PRD is ambiguous, flag a
-  blocker — the PRD must be re-engaged before the architecture can advance.
+- If the PRD is ambiguous about product intent, flag a blocker — the PRD must
+  be re-engaged before the architecture can advance. A technical realization
+  the architecture chose within an unambiguous outcome is judged against the
+  approved outcome, governing contracts and verified substrate, not blocked as
+  ambiguity.
 - If the architecture diverges from the defaults with an unstated rationale,
   mark `needs_work` rather than guessing the rationale.
 

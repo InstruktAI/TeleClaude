@@ -14,14 +14,16 @@ that dispatched this read — the procedure itself is artifact-agnostic.
 
 Typical phase/artifact combinations:
 
+- `prd-review-findings` → target: `prd`
 - `architecture-review-findings` → target: `architecture`
 - `plan-review-findings` → target: `implementation-plan`
 - `review-findings` → target: source code in the worktree
 
-Legacy todos may still reference `requirements-review-findings` → `requirements`.
-New prepare work uses human `prd_approved` rather than a requirements review phase.
+Legacy todos may still reference `requirements-review-findings` → `requirements`;
+current feature preparation reviews the PRD under
+`sdlc/procedure/lifecycle/prepare/overview`.
 
-The artifact targets (`architecture`, `implementation-plan`) are writable only
+The artifact targets (`prd`, `architecture`, `implementation-plan`) are writable only
 during the prepare review-fix loops, which the prepare orchestrator runs. In the
 work build-review loop the target is `review-findings` → code; a finding that
 implicates a prepare artifact is not fixed here — it bounces the todo to prepare.
@@ -91,7 +93,7 @@ procedure is ever dispatched.
      principle applied to verified substrate, or it is invention.
    - Verify after each fix: lint runs at the commit gate; run tests only as the project's testing contract binds them (`sdlc/policy/testing`).
    - Commit one fix per issue when the target is code. For artifact targets
-     (`architecture`, `implementation-plan`, or legacy `requirements`),
+     (`prd`, `architecture`, `implementation-plan`, or legacy `requirements`),
      persist the updated artifact via
      `telec todo artifacts write {slug} {target_artifact_name} "<content>"`.
 
@@ -122,7 +124,7 @@ procedure is ever dispatched.
 
 ## Outputs
 
-- Updated target artifact (code, `architecture`, `implementation-plan`,
+- Updated target artifact (code, `prd`, `architecture`, `implementation-plan`,
   or legacy `requirements`).
 - Updated findings artifact with a "Dispositions" section carrying the
   producer's evidence; its verdict remains reviewer-authored.

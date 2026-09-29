@@ -92,17 +92,16 @@ contract. Review the semantic outcome, not whether a ritual was performed.
 Re-run the questions to find supported omissions, but never convert the
 reviewer's own recommendations into authority over product intent.
 
-- Every finding cites the specific policy, Definition of Done line, principle,
-  or spec it violates. An observation that cannot carry that citation is an
-  investigation lead, not a finding, and does not block.
-- The severity schema has no fourth tier: no "Suggestion", "nit", "polish",
-  "non-blocking", or "follow-up" category, and no severity-softening to reach
-  `approve`.
+Apply the finding-validity, classification and verdict rules in
+`sdlc/procedure/lifecycle/review`.
 
 ## Recovery
 
 - If source intent is insufficient to determine the authorized horizon, record
-  the unresolved human-owned decision and return `needs_work`; do not invent it.
+  the unresolved human-owned decision; do not invent it. A PRD that omits or
+  contradicts an outcome the input authorizes is a finding under the shared
+  validity rules; an optional proposal needing fresh product judgment is an open
+  human decision, not a finding. The verdict follows the shared arithmetic.
 - If a desirable omission belongs to a different bounded context or requires a
   boundary redraw, record that ownership fact without making it a requirement
   of the PRD under review.

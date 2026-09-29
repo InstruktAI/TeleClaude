@@ -42,7 +42,8 @@ to prepare routing instead of producing feature-lane artifacts.
   feature spec(s) at
   `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named,
   NEVER slug-named. Contains the business value summary and the Gherkin
-  acceptance scenarios. Frontmatter `delivered_by` includes this slug.
+  acceptance scenarios. Author new and changed feature-spec material through
+  the pending carriers prescribed by `general/procedure/doc-snippet-authoring`.
   The Gherkin is authored here during intake — there is no separate
   test-specs phase.
   **Produced for every confirmed behavioral feature**, including behavior
@@ -136,7 +137,8 @@ Two cases determine where the PRD's basis comes from:
   may be a human dump or an agent-authored handoff; either is the authorized
   basis. Assess whether that basis is rich enough to write the PRD directly
   without elicitation — if the intent, scope, and success criteria are already
-  clear, skip to step 5. If it is sparse or ambiguous, elicit from the human in
+  clear, omit unnecessary elicitation and continue through the applicable
+  preparation steps. If it is sparse or ambiguous, elicit from the human in
   the conversation before writing. With no human in the conversation, author no
   PRD: surface the gap against `@input` and stop, rather than inventing the
   product detail the input never carried.
@@ -344,7 +346,7 @@ form, or implementation outline.
 
 The BA states routing decisions in the user's register — does not ask the user to make technical choices they have no basis for. Example phrasings:
 
-- "I can start drafting the implementation plan directly without a separate architecture step — this is a single-file change in the existing pipeline. Confirm?"
+- "This work needs no separate architecture phase. After PRD review and your approval, preparation proceeds to planning."
 - "This feels like a lot to tackle in one go. Let me propose breaking it into smaller pieces we can tackle one at a time."
 - "I think we have what we need. Let me write the PRD and you can review."
 
@@ -356,7 +358,7 @@ As the conversation progresses, the BA senses the size and nature of the work an
 
 - **Small work** (single-file change, copy edit, simple modification) → BA may stamp `architecture_skipped` with reason at the end of intake. Downstream goes from PRD straight to plan.
 - **Standard work** (typical feature) → full chain: PRD → Architecture → Plan.
-- **Large / epic work** → BA proposes breakdown to the PO in plain register ("this feels like a lot for one work item; let me break it into parts we can tackle independently"). Creates a container todo, then one child per part using `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child gets its own prepare/work track.
+- **Large / epic work** → the BA decides the breakdown under the scope-and-size gate (`sdlc/policy/definition-of-ready`) and orients the PO in plain register before acting (`general/policy/leadership`). Creates a container todo, then one child per part using `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child gets its own prepare/work track.
 
 Skip stamps carry a `reason` field describing why the phase isn't needed for this work.
 
@@ -383,12 +385,18 @@ routes to a dispatched `/review-prd` worker before human approval.
 
 The reviewer reads the input and PRD. It checks that the PRD's product and
 business scope stays within what the input carries rather than inflating beyond
-it, and re-runs the shaping questions to probe for omissions. It writes
-`prd-review-findings` only when findings exist and stamps the digest-bound
-`prd_review` verdict.
+it, and re-runs the shaping questions to probe for omissions. A complete
+`prd-review-findings` report accompanies every verdict, including clean passes,
+and the reviewer stamps the digest-bound `prd_review` verdict.
 
-- **`needs_work`** — read the findings, revise the PRD in intake, and advance
-  again. The rewrite invalidates the prior review.
+- **`needs_work`** — read `prd-review-findings` and apply the
+  finding-validation, disposition and evidence-recording rules in
+  `sdlc/procedure/lifecycle/fix-review-findings`; intake retains artifact
+  authoring and advancement. Apply only established fixes, preserve unaffected
+  intent, and recheck the revised PRD and its feature-spec reflection before
+  advancing. A demand for product intent the input does not carry returns to its
+  owner rather than becoming remediation. A revised PRD invalidates the prior
+  review.
 - **`approve`** — present the reviewed PRD, its authorized-horizon sentence,
   and genuine human-owned decisions. The human approves or refines product
   intent. A human refinement rewrites the PRD and therefore re-runs review
@@ -421,10 +429,10 @@ re-engages and stamps approval.
 - **`prd_review` verdict** — bound to the current PRD digest before human
   approval, either by independent review or by the narrowly bounded
   owner-directed literal-correction path.
-- **`prd-review-findings`** — written only when the draft needs work.
+- **`prd-review-findings`** — a complete report accompanying every verdict, including clean passes.
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure for every confirmed feature.
-- **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — produced for human-facing and agent/operator-facing behavioral features alike. Concept-named, never slug-named. Frontmatter `delivered_by` includes this slug.
+- **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — produced for human-facing and agent/operator-facing behavioral features alike. Concept-named, never slug-named. Its new or changed material is pending under this slug.
 - **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — when the behavioral feature also changes domain or cross-cutting design. The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
 - **No feature-lane artifacts for a non-behavioral kind mismatch** — reclassify to `change`, leave intake, and let prepare routing derive the change lane.
 - **`prd_approved` stamp** — recorded when the human confirms. The human always owns final approval.

@@ -50,7 +50,8 @@ delivery land in docs across two locations — route per change:
   to `project/spec/domain/event-catalog` AND may add a new context-map edge if
   the consumer set changes.
 
-Frontmatter `delivered_by` accumulates this slug on EVERY edited snippet.
+Author new and changed design material through the pending carriers prescribed
+by `general/procedure/doc-snippet-authoring`.
 
 When the architecture is explored through a shared visual canvas, activate
 `sdlc/procedure/architecture-canvas`. Its canvas
@@ -59,13 +60,14 @@ remain authoritative and carry the normal pending-delivery semantics.
 
 For decisions that DON'T survive delivery (implementation-tactic choices,
 library selection, internal sequencing within a build), keep them ephemeral.
-Add them to the next phase's `implementation-plan` workflow.artifact or to the
-PRD risks section — they're scaffolding, not contract.
+Record them in the thin `architecture` index for the planner; the approved PRD
+is not rewritten — they're scaffolding, not contract.
 
-The `architecture` workflow.artifact is a thin index/log of the doc-snippet
-edits: which snippets were touched, why, and the `delivered_by` slug set on
-them. The design content itself lives in the snippets — the snippets are
-authoritative; the artifact is a pure audit/index log, never the design body.
+The `architecture` workflow.artifact is a thin index of the doc-snippet edits:
+snippet ids, affected sections, their pending carriers and a brief reason each,
+plus the delivery reasoning named in step 2. The design content itself lives in
+the snippets — the snippets are authoritative; the artifact never restates the
+contract they carry.
 
 ### Outcome
 
@@ -74,8 +76,8 @@ services + event flows the work touches, which cross-cutting concerns are
 affected, which new components (if any) need to exist, and how the work
 decomposes architecturally. Author durable design decisions DIRECTLY into the
 appropriate doc snippets (domain spec, design doc, or both per the routing
-above). Note ephemeral tactic decisions on the implementation-plan artifact
-(next phase) or in the PRD's brownfield section.
+above). Record ephemeral tactic decisions in the thin `architecture` index for
+the planner.
 
 ## Preconditions
 
@@ -133,8 +135,13 @@ answer. Prior art may inform mechanism; it cannot invent product intent.
 
 Produce an architectural reading of the work, then author the durable parts
 DIRECTLY into the affected domain-spec or architecture design-doc snippets
-(per the routing above). The standard reasoning sections — captured in the
-snippets, not in the artifact:
+(per the routing above). The standard sections split two ways. The resulting
+contract — affected services, responsibility ownership, event flow, surface and
+state changes — is authored into the snippets. The delivery reasoning — target
+preservation, current and intended state, brownfield reconciliation, platform
+defaults, prior art and adopt-vs-build, decomposition, open questions — goes to
+the thin `architecture` index, where the planner and reviewer read it. Neither
+restates the other; live contracts are not decision journals:
 
 | Section | What it captures |
 | ------- | ---------------- |
@@ -151,38 +158,30 @@ snippets, not in the artifact:
 
 | **Prior art & adopt-vs-build** | When the design introduces unfamiliar infrastructure or a security boundary: the reference implementations, current vendor documentation, and at least one comparable production architecture surveyed, and the adopt-vs-build decision with its reason. Bespoke infrastructure or a custom security mechanism with no prior-art evidence is a blocking finding (`general/principle/grounding`). |
 | **Decomposition** | If the work is non-trivial, a decomposition into architectural units. Each unit is something a plan task can hang off. |
-| **Open architectural questions** | Things that couldn't be resolved from PRD + code + defaults; surface to the human for decision. |
+| **Open architectural questions** | Resolve technical uncertainty through evidence and independent challenge; route only human-owned consequences to the human (`general/policy/human-contract`). An unresolved product-intent gap returns to intake. |
 
-### 3. Code-intelligence-driven brownfield analysis
+### 3. Brownfield blast radius
 
-For brownfield work specifically: apply **code-intelligence grounding** when
-the codebase is large enough that human eyes would miss connections. This
-means querying the code-intelligence layer (when available) for:
-
-- Which paths depend on the modified surface
-- Which event consumers will see the new event types
-- Which tests cover the affected code
-- Implicit cross-service dependencies
-
-When the code-intelligence blueprint is not yet delivered, fall back to manual
-grounding (read the source files referenced in PRD, trace imports / event
-subscribers / event publishers manually). Note which dependencies you're
-confident about and which you're inferring.
+For brownfield work, derive the affected surface — dependents, event
+consumers, implicit cross-service dependencies — under
+`sdlc/procedure/blast-radius-discovery`, which owns tool applicability,
+freshness and fallback. Keep confirmed dependencies distinct from inferred
+ones.
 
 ### 4. Write the thin architecture index artifact
 
-Author the design content into the affected snippets first (add this slug
-to `delivered_by` on every edited snippet).
+Author the design content into the affected snippets first, each through a
+pending carrier naming this slug.
 Then write the thin index artifact:
 
 ```
 telec todo artifacts write {slug} architecture <content>
 ```
 
-The artifact is ONLY an index/log: a list of every snippet touched, a
-one-line reason per snippet (which architectural change it carries), and the
-`delivered_by` slug set on them. It does NOT restate the design body — that
-lives in the snippets and is the authoritative record. Snippets whose section
+The artifact is an index: every snippet id touched with its affected sections,
+its pending carrier and a one-line reason (which architectural change it
+carries), plus the delivery reasoning from step 2. It does NOT restate the
+design body — that lives in the snippets and is the authoritative record. Snippets whose section
 doesn't apply (e.g., no "Event flow changes" for purely-UI work) simply aren't
 touched; the index records only what changed.
 
@@ -206,19 +205,20 @@ telec todo prepare {slug}
 The state machine routes the next action. It will direct you to dispatch the
 architecture reviewer and tail it. On `approve` it advances to the next phase.
 On `needs_work` it routes you back here. Read
-`telec todo artifacts read {slug} architecture-review-findings`, then follow
-`sdlc/procedure/lifecycle/fix-review-findings` with target
-`architecture`: disposition every finding before changing the owned snippets or
-thin index, remediate only the fixes, then advance again.
+`architecture-review-findings` and apply the finding-validation, disposition
+and evidence-recording rules in `sdlc/procedure/lifecycle/fix-review-findings`
+to the indexed design and its thin `architecture` artifact. Architecture
+retains snippet and index authoring, revision validation and advancement. Then
+advance again.
 
 ## Outputs
 
 - **Domain-spec / architecture design-doc snippet updates** — the
-  code-grounded design, authored directly into the affected snippets with
-  this slug added to `delivered_by`.
+  code-grounded design, authored directly into the affected snippets, each
+  through a pending carrier naming this slug.
 - **Thin `architecture` index artifact** — written via
-  `telec todo artifacts write {slug} architecture <content>`; logs which
-  snippets were touched and why, NOT the design body.
+  `telec todo artifacts write {slug} architecture <content>`; indexes the
+  touched snippets and carries the delivery reasoning, NOT the design body.
 - **`architecture_review` verdict `approve`** is stamped by the reviewer (not
   by this procedure).
 
@@ -228,10 +228,8 @@ Treat status-quo absorption as an architectural defect: a technically coherent
 design is still wrong when it quietly narrows the reviewed product target to
 what the current modules already make easy.
 
-Follow the discipline procedure: load domain specs before producing or
-modifying any artifact, apply the leakage discriminator, respect
-auto-remediation boundaries, verify against loaded specs (not memory), walk
-the Definition of Done as your review-awareness checklist.
+Ground and check the architecture under
+`sdlc/policy/preparation-artifact-quality`.
 
 Treat unresolved ownership as a design blocker. Do not choose the caller,
 adapter, daemon, scheduler, shared utility, or current file location as a
@@ -239,13 +237,12 @@ default owner; resolve the domain meaning first.
 
 ## Recovery
 
-- **PRD is ambiguous about architectural implications.** Draft the architecture
-  with the most likely interpretation, mark `[inferred-from-prd-gap]` on each
-  contested decision, surface the gaps in the artifact's Open architectural
-  questions section.
-- **Code-intelligence not yet available.** Fall back to manual grounding. Note
-  confidence level per major architectural claim. The reviewer pays extra
-  attention to claims marked as inferred.
+- **PRD is ambiguous.** Resolve the ambiguity against the approved intent and
+  its sources before deriving further. An unresolved product-intent question
+  returns to intake. Technical realization within established intent remains
+  architecture's responsibility; ground the choice and record its material
+  reason in the architecture index, while the affected snippets carry the
+  resulting contract.
 - **Architecture would require a flavor that doesn't exist.** This is a
 
 design fork. Establish whether the approved target requires a reusable
