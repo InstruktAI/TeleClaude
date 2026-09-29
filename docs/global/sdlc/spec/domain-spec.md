@@ -91,7 +91,11 @@ Example:
   - An artifact's version history is append-only.
   - An SDLC todo cannot move to `delivered` stage without a non-empty `delivery_commit`.
 - **Identifier:** slug (kebab-case, unique per project)
+<!-- planned-change:todo-kind-required-at-creation -->
 - **Lifecycle:** Created via `telec todo create <slug> <content> [--kind <kind>]` (content required; kind may be omitted only for kind-less intake). Reaches terminal `delivered` after integration for SDLC kinds. Frozen aggregates move to icebox.
+<!-- change:todo-kind-required-at-creation -->
+- **Lifecycle:** Created via `telec todo create <slug> <content> --kind <kind>` (content and kind required). Reaches terminal `delivered` after integration for SDLC kinds. Frozen aggregates move to icebox.
+<!-- /planned-change:todo-kind-required-at-creation -->
 ```
 
 #### Domain events emitted

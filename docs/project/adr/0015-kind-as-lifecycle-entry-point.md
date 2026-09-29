@@ -7,6 +7,12 @@ visibility: 'public'
 
 # ADR-0015: Kind as Lifecycle Entry Point — ADR
 
+## Status
+
+Superseded in part by ADR-0104: kind is required at creation, and the
+optional-kind intake with autonomous classification no longer holds. The kind
+vocabulary and entry-point model stand.
+
 ## Context
 
 The todo `kind` vocabulary had drifted to seven values across four layers, with the CLI silently ignoring kind. Several values were not routing decisions: `todo` carried no signal; `refactor`/`migration` routed identically to a generic change; `prepped` was evidence (a plan exists); `draft` was a parked state. Separately, the prepare/work procedures were PRD-centric and treated a missing PRD as a defect, so no-PRD work drew spurious findings.

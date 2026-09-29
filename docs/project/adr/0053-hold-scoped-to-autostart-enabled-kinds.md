@@ -12,7 +12,8 @@ description: Hold applies only while a todo kind's autostart policy is enabled; 
 Superseded in part by ADR-0061. Hold persistence, rendering, and autonomous
 dispatch effect are no longer scoped to autostart-enabled work-lane todos; this
 record remains the historical rationale for the discarded autostart-scoped
-model.
+model. Superseded in part by ADR-0104: kindless todos no longer exist, so the
+kindless parking hold has no subject.
 
 ## Context
 

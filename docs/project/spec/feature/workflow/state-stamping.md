@@ -1,5 +1,5 @@
 ---
-description: 'The `telec todo stamp` command and the validated state-write boundary it goes through — kind assignment, approvals, review verdicts, skip stamps, drift-reviewed acknowledgments, build-complete and finalize-ready handoffs.'
+description: 'The `telec todo stamp` command and the validated state-write boundary it goes through — approvals, review verdicts, skip stamps, drift-reviewed acknowledgments, build-complete and finalize-ready handoffs.'
 visibility: 'public'
 ---
 
@@ -7,7 +7,11 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:todo-kind-required-at-creation -->
 `telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: an analyzer's kind assignment, a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the kind-assignment, approvals, and review managers are the typed owners for kind-shaped, approval-shaped, and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
+<!-- change:todo-kind-required-at-creation -->
+`telec todo stamp` is the single domain surface every caller — human operator, Worker session, or Orchestrator — uses to record a fact about a Todo: a reviewer's Verdict, a human PRD approval, an architecture skip with reason, a drift-reviewed acknowledgment, a worker's `build_complete` claim, or a worker's `finalize_ready` handoff. Every stamp routes through a single validated state-write boundary: the workflow service re-validates the full Todo state against its typed model before any commit, and the approvals and review managers are the typed owners for approval-shaped and verdict-shaped mutations. The stamp records the fact; the state machine reads the fact on its next dispatch and advances the canonical `lifecycle_phase` accordingly. There is no path that writes Todo state outside this boundary.
+<!-- /planned-change:todo-kind-required-at-creation -->
 
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`, and, for the `implementation-plan` only, `dependency_artifact_digests` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
 
@@ -15,6 +19,7 @@ The same state-write boundary owns artifact-write provenance capture. On every `
 
 ### Use cases
 
+<!-- planned-change:todo-kind-required-at-creation -->
 #### UC-WSS1: Task kind assignment routes to task-plan drafting
 
 ```
@@ -46,6 +51,8 @@ Then the stamp is refused before any write because kind is assigned exactly once
 And no partial kind, task-plan, or phase mutation lands
 ```
 
+<!-- change:todo-kind-required-at-creation -->
+<!-- /planned-change:todo-kind-required-at-creation -->
 ```
 Given a Todo with a written PRD artifact and an existing prd-review verdict of "approve"
 When a human runs "telec todo stamp my-slug --prd-approved"
@@ -284,13 +291,19 @@ And no other project's documentation is read or changed by the delivery
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
 - `agent_runtime` — worker sessions and work-orchestrator sessions invoke `telec todo stamp` at phase boundaries (`--build-complete`, `--finalize-ready`, `--verdict … --phase build_review`); the build-complete ownership check reads the caller's `working_slug` and `system_role` from the agent_runtime sessions table to accept either the owning worker or the work orchestrator.
+<!-- planned-change:todo-kind-required-at-creation -->
 - `workflow` — `/sdlc/analyze-todo-input` assigns a kind-less Todo's kind autonomously through `--kind-assign`; there is no separate human approval stamp.
+<!-- change:todo-kind-required-at-creation -->
+<!-- /planned-change:todo-kind-required-at-creation -->
 
 ## Known caveats
 
 - The stamp is the **natural worker-completion authority** for build and finalize phases. The state machine does not advance into review or integration until the stamp lands; conversely, the stamp does not run the gates itself — it records the claim and lets the state machine run gates on its next dispatch. This split prevents long-running stamp calls and the zombie processes a synchronous gate run would create.
+<!-- planned-change:todo-kind-required-at-creation -->
 - Kind assignment is **autonomous and one-shot**. `--kind-assign <kind>` fixes `kind` exactly once and moves the todo straight to that kind's `KIND_ENTRY_PHASE`; there is no proposal phase and no human approval stamp between classification and the lane. A Todo whose kind is already fixed refuses the stamp.
 - No kind-assignment stamp writes a plan artifact. `--kind-assign task` records kind + entry phase only (routing to `task_plan_drafting`); `/sdlc/prepare-task` authors the `task-plan`. SDLC assignments likewise record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
+<!-- change:todo-kind-required-at-creation -->
+<!-- /planned-change:todo-kind-required-at-creation -->
 - `--build-complete` is **worker- or orchestrator-owned and locked**: the caller must be either the owning worker (`working_slug == <slug>`) or a work orchestrator (`system_role == orchestrator`). Operators still cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the caller is neither accepted shape.
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
 
