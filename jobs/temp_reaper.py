@@ -5,28 +5,32 @@
 #     "instruktai-python-logger",
 # ]
 # ///
-"""Reap stale Claude Code temp files.
+"""Reap idle Claude Code temp directories.
 
-Claude Code writes background task outputs and tool results to
-/tmp/claude-{UID}/ (Linux) or /private/tmp/claude-{UID}/ (macOS).
-These files are never cleaned up by Claude Code itself, and macOS
+Claude Code writes per-session scratchpads and background task outputs to
+/tmp/claude-{UID}/ (Linux) or /private/tmp/claude-{UID}/ (macOS), laid out as
+``<project-slug>/<session-id>/``. Claude Code never cleans these up, and macOS
 does not auto-clean /tmp while the system is running. In multi-agent
 environments this can accumulate to 100GB+ in days.
 
-This job finds and removes files older than a configurable threshold.
-It runs hourly and is safe to run while sessions are active — only
-files older than the threshold are removed, and empty directories
-are pruned afterward.
+The reaping unit is a whole directory two levels below the temp root — a
+session directory, or an entry of another tool directory. A unit is removed
+only once it has been idle for longer than ``_MAX_IDLE_SECONDS``, where
+activity is the newest mtime anywhere in the unit and, for a Claude session,
+the mtime of its transcript. A live session's scratchpad is therefore never
+touched, however old the individual files in it are.
 
 Integration:
-- Called by the cron runner (scripts/cron_runner.py) on an hourly schedule.
-- Config key: ``jobs.temp_reaper`` in teleclaude.yml.
+- Called by the cron runner (scripts/cron_runner.py); cadence is owned by the
+  ``temp-reaper`` entry in teleclaude.yml.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -41,9 +45,21 @@ from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 
 logger = get_logger(__name__)
 
-# Files older than this (in seconds) are reaped. 1 hour is safe —
-# active sessions write continuously, so their files stay fresh.
-_MAX_AGE_SECONDS = 3600
+# A unit untouched for this long belongs to an ended session. The transcript
+# check keeps an idle-but-open session alive for this whole window.
+_MAX_IDLE_SECONDS = 24 * 3600
+
+# <root>/<project-slug>/<session-id> for sessions, <root>/<tool>/<entry> otherwise.
+_UNIT_GLOB = "*/*"
+_CLAUDE_TRANSCRIPTS_DIR = Path.home() / ".claude" / "projects"
+_TRANSCRIPT_SUFFIX = ".jsonl"
+
+_REAPING_MESSAGE = "Reaping units idle longer than %ds from %s"
+_UNIT_REAP_FAILED_MESSAGE = "Could not reap %s: %s"
+_NOTHING_TO_REAP_MESSAGE = "Nothing to reap"
+_REAPED_MESSAGE_TEMPLATE = (
+    "Reaped {units} idle units ({mb:.1f}MB), pruned {dirs} empty dirs, removed {sockets} orphaned sockets"
+)
 
 
 def _find_claude_temp_dir() -> Path | None:
@@ -59,46 +75,76 @@ def _find_claude_temp_dir() -> Path | None:
     return None
 
 
-def _reap_stale_files(root: Path, max_age: int) -> tuple[int, int]:
-    """Remove files older than max_age seconds under root.
+def _tree_stats(unit: Path) -> tuple[float, int]:
+    """Return (newest mtime, total file bytes) over unit and everything beneath it.
 
-    Returns (files_removed, bytes_freed).
+    Directory mtimes count as activity, so a freshly created empty scratchpad
+    keeps its unit alive.
     """
-    cutoff = time.time() - max_age
-    files_removed = 0
+    latest = unit.lstat().st_mtime
+    size = 0
+    for dirpath, dirnames, filenames in os.walk(unit):
+        for name in dirnames:
+            with contextlib.suppress(FileNotFoundError):
+                latest = max(latest, (Path(dirpath) / name).lstat().st_mtime)
+        for name in filenames:
+            with contextlib.suppress(FileNotFoundError):
+                stat = (Path(dirpath) / name).lstat()
+                latest = max(latest, stat.st_mtime)
+                size += stat.st_size
+    return latest, size
+
+
+def _transcript_mtime(unit: Path) -> float | None:
+    """Return the mtime of the Claude transcript for a session unit, if one exists."""
+    transcript = _CLAUDE_TRANSCRIPTS_DIR / unit.parent.name / (unit.name + _TRANSCRIPT_SUFFIX)
+    try:
+        return transcript.stat().st_mtime
+    except FileNotFoundError:
+        return None
+
+
+def _reap_idle_units(root: Path, max_idle: int) -> tuple[int, int]:
+    """Remove every unit under root that has been idle for longer than max_idle seconds.
+
+    Returns (units_removed, bytes_freed).
+    """
+    cutoff = time.time() - max_idle
+    units_removed = 0
     bytes_freed = 0
 
-    for dirpath, _, filenames in os.walk(root):
-        for filename in filenames:
-            filepath = Path(dirpath) / filename
-            try:
-                stat = filepath.stat()
-                if stat.st_mtime < cutoff:
-                    size = stat.st_size
-                    filepath.unlink()
-                    files_removed += 1
-                    bytes_freed += size
-            except (OSError, FileNotFoundError):
-                continue
-
-    return files_removed, bytes_freed
-
-
-def _prune_empty_dirs(root: Path) -> int:
-    """Remove empty directories under root (bottom-up). Does not remove root itself."""
-    dirs_removed = 0
-    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
-        path = Path(dirpath)
-        if path == root:
+    for unit in root.glob(_UNIT_GLOB):
+        if unit.is_symlink() or not unit.is_dir():
             continue
-        if not filenames and not dirnames:
-            try:
-                path.rmdir()
-                dirs_removed += 1
-            except OSError:
+        try:
+            latest, size = _tree_stats(unit)
+            transcript_mtime = _transcript_mtime(unit)
+            if transcript_mtime is not None:
+                latest = max(latest, transcript_mtime)
+            if latest >= cutoff:
                 continue
-        # Update parent's dirnames list for accurate emptiness check
-        dirnames[:] = [d for d in dirnames if (Path(dirpath) / d).exists()]
+            shutil.rmtree(unit)
+        except OSError as exc:
+            logger.warning(_UNIT_REAP_FAILED_MESSAGE, unit, exc)
+            continue
+        units_removed += 1
+        bytes_freed += size
+
+    return units_removed, bytes_freed
+
+
+def _prune_empty_parents(root: Path) -> int:
+    """Remove empty directories directly under root. Units below them are never pruned."""
+    dirs_removed = 0
+    for child in root.iterdir():
+        if child.is_symlink() or not child.is_dir():
+            continue
+        try:
+            child.rmdir()
+        except OSError:
+            # Not empty, or a unit was created concurrently: leave it.
+            continue
+        dirs_removed += 1
     return dirs_removed
 
 
@@ -134,35 +180,35 @@ def _reap_orphaned_sockets() -> int:
 
 
 class TempReaperJob(Job):
-    """Reap stale Claude Code temp files and orphaned sockets."""
+    """Reap idle Claude Code temp directories and orphaned sockets."""
 
     def run(self, context: JobRunContext | None = None) -> JobResult:
-        """Find and remove stale temp files."""
+        """Find and remove idle temp directories."""
         del context
         temp_dir = _find_claude_temp_dir()
 
-        files_removed = 0
+        units_removed = 0
         bytes_freed = 0
         dirs_removed = 0
         sockets_removed = 0
 
         if temp_dir:
-            logger.info("Reaping stale files from %s (max age: %ds)", temp_dir, _MAX_AGE_SECONDS)
-            files_removed, bytes_freed = _reap_stale_files(temp_dir, _MAX_AGE_SECONDS)
-            dirs_removed = _prune_empty_dirs(temp_dir)
+            logger.info(_REAPING_MESSAGE, _MAX_IDLE_SECONDS, temp_dir)
+            units_removed, bytes_freed = _reap_idle_units(temp_dir, _MAX_IDLE_SECONDS)
+            dirs_removed = _prune_empty_parents(temp_dir)
 
         sockets_removed = _reap_orphaned_sockets()
 
-        total_items = files_removed + dirs_removed + sockets_removed
+        total_items = units_removed + dirs_removed + sockets_removed
 
         if total_items == 0:
-            return JobResult(success=True, message="Nothing to reap", items_processed=0)
+            return JobResult(success=True, message=_NOTHING_TO_REAP_MESSAGE, items_processed=0)
 
-        mb_freed = bytes_freed / (1024 * 1024)
-        msg = (
-            f"Reaped {files_removed} files ({mb_freed:.1f}MB), "
-            f"pruned {dirs_removed} empty dirs, "
-            f"removed {sockets_removed} orphaned sockets"
+        msg = _REAPED_MESSAGE_TEMPLATE.format(
+            units=units_removed,
+            mb=bytes_freed / (1024 * 1024),
+            dirs=dirs_removed,
+            sockets=sockets_removed,
         )
         logger.info(msg)
         return JobResult(success=True, message=msg, items_processed=total_items)
