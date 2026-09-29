@@ -161,8 +161,8 @@ async def write_artifact(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     todos_db = await _get_todos_db_from_cwd(project_root)
-    await require_slug_in_todo(todos_db, slug)
     await _refuse_holder_mutation(todos_db, slug)
+    await require_slug_in_todo(todos_db, slug)
     await refuse_foreign_claim(todos_db, identity, slug)
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
@@ -211,10 +211,10 @@ async def remove_artifact(
     """Remove a todo artifact and its version history."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    await _refuse_holder_mutation(todos_db, slug)
     if name == ARTIFACT_INPUT:
         raise HTTPException(status_code=400, detail="input artifact cannot be removed")
     await require_slug_in_todo(todos_db, slug)
-    await _refuse_holder_mutation(todos_db, slug)
 
     try:
         result = await todos_db.delete_artifact(slug, name)
