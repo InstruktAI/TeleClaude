@@ -3,7 +3,7 @@ description: Agent sessions subscribe to catalog events and are woken with the c
   of each matching event their principal may receive, once or every time, until they
   withdraw the subscription or their session ends.
 delivered_by:
-- event-origin-and-subject
+  - event-subscriptions
 ---
 
 # Event Subscriptions — Spec
@@ -20,11 +20,11 @@ session ends. It may be narrowed to events whose content carries given values
 in payload fields the event type declares.
 
 A subscription only ever delivers events the subscribing session may receive.
-Every event carries one scope — a company, a person, a project, or none for a
-platform event — and receipt is decided by the platform's existing scope
-entitlement, the same decision that governs what a principal reads of each tier
-(`project/spec/feature/context/doc-selection-policy`). A session working a
-company's business receives only that company's events.
+Each event states its subject — the project, person, or company it is about, or
+none for a platform event — and receipt is decided at delivery, on the receiving
+computer, by the subscribing principal's central reach. Admins and the system
+principal receive every event. A session working a company's business receives
+only that company's events.
 
 A subscription belongs to the session that made it. The session can list and
 withdraw its own subscriptions and cannot see or touch another session's. The
@@ -156,19 +156,19 @@ Then only the session on that computer is woken by it
 
 #### UC-ES16
 
-#### UC-ES21: Receipt follows the principal's existing scope entitlement
+#### UC-ES21: Receipt follows the principal's central reach
 
 ```gherkin
 Given agent sessions working for different principals hold subscriptions to the same event type
-When an event of that type occurs with a given scope
-Then exactly the sessions whose principal may read that scope under the platform's scope entitlement are woken by it
-And no session whose principal may not read that scope is woken by it
+When an event of that type occurs with a given subject
+Then exactly the sessions whose principal's reach admits that subject are woken by it
+And no session whose principal's reach does not admit it is woken by it
 
 Examples:
-  | event scope                  | woken                                                        |
+  | event subject                | woken                                                        |
   | a company                    | members of that company, admins, and the system principal    |
   | a person                     | that person, admins, and the system principal                |
-  | a project                    | principals reaching that project, admins, and the system principal |
+  | a project                    | principals whose reach includes that project, admins, and the system principal |
   | none (platform)              | admins and the system principal                              |
 ```
 
