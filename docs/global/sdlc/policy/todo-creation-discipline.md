@@ -62,7 +62,9 @@ description: Decide whether a todo should exist, audit that decision at preparat
   participant agreed the outcome and the human released the edit supplies
   authority. Human presence alone supplies none. Importance does not decide
   this boundary; remaining judgment does. A small change whose correctness is
-  genuinely contested still belongs in the lifecycle.
+  genuinely contested still belongs in the lifecycle. A `change` todo created
+  despite meeting these criteria may still take the in-context path at prepare
+  entry (`sdlc/procedure/lifecycle/prepare/overview`).
 - **Use the todo's `log` artifact for a breadcrumb.** A minimal FYI that
   changes neither scope nor a decision does not justify a new todo or a rewrite
   of `input`, `prd`, or `implementation-plan`.

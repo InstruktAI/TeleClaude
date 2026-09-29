@@ -260,6 +260,34 @@ If the recorded kind does not match the intent, reclassify it with `telec todo
 update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
 force an intent through the wrong lane to preserve an already chosen kind.
 
+### 1c. Settled small change
+
+At audited entry, before drafting or review starts, the owning prepare session
+may apply the in-context criteria in `sdlc/policy/todo-creation-discipline` to a
+`change`. This path requires an explicit `doc_impact_none` basis, no pending
+documentation or uncommitted delivery fold for the slug, and no prior build work
+or unresolved review to bypass. Otherwise continue through ordinary
+preparation. A `bug` never takes this path, and is never reclassified to reach
+it.
+
+Execute on canonical `main`, commit and resolve independent review under
+`sdlc/policy/commits`. Record the eligibility basis, delivery commits, review
+reference and remaining publication obligation in the todo's `log`.
+
+The integrator retains direct-main publication and its maintenance obligations.
+Keep ownership of delivery bookkeeping while publication is pending; use the
+reminder service and yield. Before delivery, refresh remote state, confirm the
+recorded completion commit is contained in `origin/main`, and re-establish that
+the reviewed outcome remains delivered and that cleanup would discard no
+slug-owned work or pending material and commit nothing new. Then run
+`telec todo deliver {slug} --commit <recorded-completion-sha>`, verify the
+terminal state, and perform terminal session cleanup.
+
+If eligibility fails before execution, enter the ordinary change lane. If a
+later finding requires preparation, retain the commits and unresolved evidence
+and route the remaining work through normal recovery; do not mark the todo
+delivered.
+
 ### 2. Call the state machine
 
 For `feature`, `change`, and `bug`, call `telec todo prepare {slug}`. The
