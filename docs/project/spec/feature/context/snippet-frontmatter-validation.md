@@ -223,6 +223,20 @@ Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status
 ```
 
+<!-- planned:fold-retires-whole-files -->
+#### UC-SFV5: An empty companion is accepted as a retirement
+
+```
+Given a live snippet has a zero-byte sibling companion naming a slug
+When snippet validation runs
+Then the companion receives no frontmatter, title-suffix, or section finding
+And the parent is validated as the live snippet
+Given a companion that is not zero bytes
+When snippet validation runs on it
+Then it is validated as a full snippet
+```
+<!-- /planned:fold-retires-whole-files -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

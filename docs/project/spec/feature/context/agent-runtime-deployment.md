@@ -291,6 +291,20 @@ Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/comman
   And a destination file with no ownership record is preserved
 ```
 
+<!-- planned:fold-retires-whole-files -->
+#### UC-ARD40: A retiring command stays deployed until its delivery folds
+
+```
+Scenario: UC-ARD40 A command with a retirement companion deploys unchanged and is retracted after the fold
+  Given a command source with an empty retirement companion beside it
+  When a deploy-mode sync runs
+  Then the command deploys to the corpus exactly as it would without the companion
+  And no corpus entry is produced for the companion
+  When the delivery fold deletes the command and its companion and a deploy-mode sync runs again
+  Then the deployed command is retracted as a deleted source
+```
+<!-- /planned:fold-retires-whole-files -->
+
 
 
 #### UC-ARD33: The corpus is reached only through the composed loader

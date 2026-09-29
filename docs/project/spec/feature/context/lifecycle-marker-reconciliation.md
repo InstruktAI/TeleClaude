@@ -6,10 +6,18 @@ description: Lifecycle marker resolution across todo fate changes, identity move
 
 ## What it is
 
+<!-- planned-change:fold-retires-whole-files -->
 Lifecycle marker reconciliation keeps a todo's pending documentation material
 and lifecycle state coherent as one logical transition. Pending material
 includes `delivered_by` ownership, planned additions, planned replacements,
 and companion files.
+<!-- change:fold-retires-whole-files -->
+Lifecycle marker reconciliation keeps a todo's pending documentation material
+and lifecycle state coherent as one logical transition. Pending material
+includes `delivered_by` ownership, planned additions, planned replacements,
+companion files, and retirement companions — empty companions beside a snippet
+or beside a command artifact under the repository's agent-artifact sources.
+<!-- /planned-change:fold-retires-whole-files -->
 
 Three closed classes of lifecycle moment touch pending material:
 
@@ -28,6 +36,7 @@ line, and reason. A lifecycle movement never silently diverges from its pending
 documentation state and never turns mechanical reconciliation into a human
 task.
 
+<!-- planned-change:fold-retires-whole-files -->
 Delivery reconciliation promotes each planned addition, selects the replacement
 side of each planned change, replaces each parent with its companion, and clears
 the delivered slug from `delivered_by`. Abandonment reconciliation selects the
@@ -35,6 +44,18 @@ current side of each planned change and removes material owned only by the
 abandoned slug. Every operation is slug-scoped: unrelated pending material stays
 byte-identical, and repeating a completed reconciliation makes no further
 change.
+<!-- change:fold-retires-whole-files -->
+Delivery reconciliation promotes each planned addition, selects the replacement
+side of each planned change, replaces each parent with its non-empty companion,
+deletes each parent together with its retirement companion, and clears the
+delivered slug from `delivered_by`. A retirement whose parent still carries
+another slug's pending material faults instead of deleting it. Abandonment
+reconciliation selects the current side of each planned change and removes
+material owned only by the abandoned slug, discarding a retirement companion
+and leaving its parent live. Every operation is slug-scoped: unrelated pending
+material stays byte-identical, and repeating a completed reconciliation makes
+no further change.
+<!-- /planned-change:fold-retires-whole-files -->
 
 For integrated candidates, repository-root main is the sole documentation
 reconciliation surface. The integration worktree publishes candidate code but
@@ -189,6 +210,24 @@ And the affected sources in the working tree match the recorded commit
 And the lifecycle movement proceeds as after any successful reconciliation
 And a repeated reconciliation for the same slug makes no further change
 ```
+
+<!-- planned:fold-retires-whole-files -->
+#### UC-LMR12: Delivery retires a whole file through its empty companion
+
+```gherkin
+Given a live snippet or command artifact has an empty companion naming the current candidate
+And the candidate removes the capability that file describes or the last dispatcher of that command
+When delivery reconciliation runs for the current candidate
+Then the parent file and its empty companion are both deleted
+And the folded repository root carries neither file
+And a second reconciliation run makes no further change
+But when the parent still carries pending material owned by another slug
+Then the caller receives a fault naming the slug, source path, line, and reason
+And neither file is deleted
+When a lifecycle caller abandons the candidate instead
+Then the empty companion is discarded and the parent stays live unchanged
+```
+<!-- /planned:fold-retires-whole-files -->
 
 ### Cross-context references
 

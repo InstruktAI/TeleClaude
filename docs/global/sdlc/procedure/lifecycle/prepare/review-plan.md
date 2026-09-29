@@ -354,6 +354,14 @@ produces it; the key ones to pre-satisfy:
   drift and routes the todo back to plan drafting. A `doc_deferred` record that
   fails any condition is a Requirement-Violation; do not accept an undeclared
   collision, a nested marker, or an untracked wait as deferral.
+<!-- planned:fold-retires-whole-files -->
+  When the delivery removes a capability that a whole live snippet describes,
+  or the last dispatcher of a command artifact, the plan names each retiring
+  file and verifies its empty companion was authored on `main` under this slug
+  (`general/procedure/doc-snippet-authoring` step 12). A retiring file with no
+  companion, a task that deletes it, or a removal left to an act after
+  delivery is a Requirement-Violation.
+<!-- /planned:fold-retires-whole-files -->
 - **ADR discipline (hard gate)**: any ADR the plan schedules, or that prepare
   authored on `main`, is held to `general/policy/adr-discipline` and
   `general/procedure/adr-authoring`. It must record one real, contestable
