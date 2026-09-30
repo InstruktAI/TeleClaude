@@ -42,27 +42,30 @@ actually did the work recorded there.
 
 1. Invoke the state machine (`telec todo work {slug}`, `telec todo prepare [slug]`, or `telec todo design [slug]`) with the current target. Work orchestration is slug-scoped; do not call bare `telec todo work` to pick up unrelated work.
 2. Receive the instruction block.
-3. Execute the instructions verbatim. The state machine output is a linear script — follow it top-to-bottom without branching or decision-making.
+3. Execute the machine-owned lifecycle commands in their returned order. Before execution and after each worker observation, reconcile the script with current human input and evidence under `general/procedure/ai-to-ai-operations` and `general/policy/human-contract`; apply the recovery sections below when the observed condition prevents that execution.
 4. When a notification arrives OR `orchestration-watch` fires, assess it under the corresponding section below. Re-enter the state machine when that assessment calls for continuation; attention is not itself a completed worker turn.
-5. Repeat until the state machine emits a terminal cleanup script that includes `telec sessions end self`.
+5. Repeat until the state machine emits a terminal handoff or cleanup script. Terminal completion closes the workflow assignment; the session's remaining obligations and departure follow `general/principle/session-lifecycle`.
 
-The state machine owns execution: dispatch, session ending, phase transitions,
-fix relay and terminal cleanup. Execute its returned script; enact
-`telec sessions end self` through `session-departure` rather than inline.
-At a halt, the orchestrator owns classification and recovery routing under
-`sdlc/procedure/lifecycle/review` and
-`general/policy/human-contract`, alongside reminder management and tailing.
+The state machine owns lifecycle sequencing, dispatch, phase transitions, fix
+relay, and terminal worker cleanup. The orchestrator owns current-evidence
+assessment, recovery routing, and the remaining obligations of its own session
+under `general/procedure/ai-to-ai-operations`,
+`general/principle/session-lifecycle`, and `general/policy/human-contract`.
 That judgment never substitutes for an independent verdict or authorizes a
-state mutation outside the supported lifecycle surface.
+lifecycle mutation outside the supported surface.
 
 ### Terminal Child Cleanup
 
 At a true terminal state, the state-machine script invokes bare `telec sessions
-end` before self-departure. That operation owns caller-scoped enumeration and
+end` as terminal worker cleanup. That operation owns caller-scoped enumeration and
 closes every live direct child across computers; the orchestrator never expands
 it into listing prose, remembered worker ids, or per-child commands. A failure
 blocks self-departure, while a non-terminal handoff or resume emits no bulk
-cleanup so the sessions needed for continuing work remain live.
+cleanup so the sessions needed for continuing work remain live. Successful
+worker cleanup leaves the orchestrator to assess every remaining session
+obligation before departure. An unfinished human conversation keeps that
+session open; a terminal workflow script settles only its assignment
+(`general/principle/session-lifecycle`, `general/principle/attunement`).
 
 ### Container Slug Handling
 
@@ -86,14 +89,12 @@ live-pane observations are separate evidence:
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
 
-
 Respond by `agent_status`:
 
 - `active` or `unknown`: keep waiting for the next event.
 - `idle`: the turn ended; continue the loop.
 - `blocked`: handle it under When Worker Needs Help; the same turn continues once the wait is resolved.
 - `stalled`: handle it under Agent Degradation Handling; the turn does not continue on its own.
-
 
 ### When Notification Arrives
 
@@ -194,7 +195,10 @@ For a worker whose session is `stalled`:
    failure handling.
 6. When the prose establishes a non-quota cause (a permission prompt, a wedged
    process, an unrelated error), handle it under the normal worker-help and
-   escalation rules instead.
+   escalation rules instead. Workspace-trust prompts follow
+   `sdlc/policy/ai-agent-security` §Workspace-trust prompts; other permission
+   requests are assessed within the existing mandate and applicable safety
+   gates under `general/procedure/ai-to-ai-operations`.
 
 For direct evidence that explicitly establishes provider-wide quota, rate-limit,
 credit, or instability:

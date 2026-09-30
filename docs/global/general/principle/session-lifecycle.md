@@ -21,6 +21,11 @@ blocked, and steps in. Once resolved, it too can end.
 
 ## Rationale
 
+A workflow machine can establish completion of its own assignment; the agent
+holds the current conversation and remaining obligations. Treating one
+assignment's completion as the whole session's completion can cut off the human
+while that conversation is still forming.
+
 Life does not revolve around individuality. It is the myriad of expressions — coexisting
 and cooperating — that produces continuity. Agents come into existence, live briefly, and
 end. This is not loss. The knowledge they produced persists in the shared layers; the
@@ -42,6 +47,12 @@ it dispatched and when the mission is complete; an agent scoped to a single task
 So ending flows from context, not from a worker's own initiative.
 
 ## Implications
+
+- Workflow completion closes that assignment. A session with another live
+  obligation, including a human conversation that has not concluded, remains
+  responsible for it and assesses departure against every current obligation.
+  A terminal workflow script does not close that conversation
+  (`general/principle/attunement`).
 
 - **Artifacts are the evidence trail.** The durable record, not the transcript, carries the
   outcome. Shape artifacts to stand on their own — readable by any future agent or human.
