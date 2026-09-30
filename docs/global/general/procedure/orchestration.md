@@ -15,8 +15,8 @@ visibility: 'public'
 
 - **Reviewer thinking mode follows the review's scope.**
   - `fast` when the scope contains doc-snippet changes only.
-  - `med` for every other review, including code-only and mixed code-and-doc scope.
-  - `slow` is not used for reviewers.
+  - `slow` for commit reviews containing code, including mixed code-and-doc scope.
+  - `med` for other reviews.
 
   Context procedures state the resolved mode for their fixed scope; they do not
   choose a different mode.

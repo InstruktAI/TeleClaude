@@ -226,8 +226,8 @@ async def find_live_commit_reviewer_for_initiator(
     rather than a second in-process pass.
 
     Mode belongs to the subject because the review lanes differ in cost and in
-    what they read: doc-hygiene runs at ``fast`` over snippet conformance, code
-    review at ``med`` over behavior. A mode-blind subject collapses them, so the
+    what they read: doc-hygiene and code review use different modes over snippet
+    conformance and behavior. A mode-blind subject collapses them, so the
     cheap lane is refused as a duplicate of the expensive one and its work lands
     on the wrong reviewer. Two live reviewers at the same mode remain one
     subject and still dedup.

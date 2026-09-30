@@ -220,8 +220,8 @@ async def _guard_reviewer_start(
     ``/review-architecture``) is keyed by exact ``(project, slug, command)``;
     commit review (``/review-commits``, no todo slug) is keyed by
     ``(project, initiating driver, command, thinking mode)`` — mode is part of
-    that subject because the doc-hygiene lane runs at ``fast`` and the code lane
-    at ``med``, and a mode-blind subject refuses the cheap lane as a duplicate of
+    that subject because doc-hygiene and code review use different thinking
+    modes, and a mode-blind subject refuses the cheap lane as a duplicate of
     the expensive one. Silent no-op only when the
     command cannot be resolved — a slugless subject with no caller identity is
     refused rather than silently admitted, since a caller with no session

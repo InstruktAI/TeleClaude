@@ -42,6 +42,16 @@ _UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE = (
     "Classified lane for other paths: {lane}."
 )
 _ARTIFACT_PATH_LIST_SEPARATOR = ", "
+_COMMIT_REVIEW_REUSE_GUIDANCE = (
+    "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
+    "   gets its own reviewer (--mode fast for doc-hygiene, --mode slow for code review):\n"
+)
+_COMMIT_REVIEW_START_GUIDANCE = (
+    "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode slow for code review):\n"
+)
+_COMMIT_REVIEW_DISPATCH_TEMPLATE = (
+    "     telec sessions run --command {command} --args '<sha1,sha2,...>' --mode <fast|slow>\n"
+)
 
 __all__ = [
     "_NON_CODE_DOCUMENTATION_PATTERNS",
@@ -177,16 +187,13 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
             for session_id, mode in open_reviewers
         )
         review_dispatch = (
-            "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
-            "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
-            f"     telec sessions run --command {SlashCommand.REVIEW_COMMITS.value} "
-            "--args '<sha1,sha2,...>' --mode <fast|med>\n" + already_open
+            _COMMIT_REVIEW_REUSE_GUIDANCE
+            + _COMMIT_REVIEW_DISPATCH_TEMPLATE.format(command=SlashCommand.REVIEW_COMMITS.value)
+            + already_open
         )
     else:
-        review_dispatch = (
-            "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
-            f"     telec sessions run --command {SlashCommand.REVIEW_COMMITS.value} "
-            "--args '<sha1,sha2,...>' --mode <fast|med>\n"
+        review_dispatch = _COMMIT_REVIEW_START_GUIDANCE + _COMMIT_REVIEW_DISPATCH_TEMPLATE.format(
+            command=SlashCommand.REVIEW_COMMITS.value
         )
     scope_diffstat = _resolved_scope_diffstat(project_root, context_root)
     print(
