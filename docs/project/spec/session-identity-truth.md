@@ -47,8 +47,17 @@ Current runtime rule:
   detached. Ownership fails closed: a socket path that cannot be parsed or resolved
   counts as TeleClaude's own, so a dying managed session keeps its attribution
   rather than minting a headless session from its final hooks.
+<!-- planned-change:gemini-subagent-overwrites-primary-session -->
 - A valid marker with pane attachment is a managed-primary invocation. Its native
   identity may refresh the session's canonical native binding.
+<!-- change:gemini-subagent-overwrites-primary-session -->
+- A valid marker with pane attachment is a managed-primary invocation unless the
+  adapter identifies the emitting execution as a provider-native child of another
+  execution. A native child shares its parent's marker and pane, so neither
+  distinguishes it; its own provider ancestry record does. Such a child is a
+  managed-descendant invocation. A managed-primary invocation's native identity may
+  refresh the session's canonical native binding.
+<!-- /planned-change:gemini-subagent-overwrites-primary-session -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
   hook envelope, and never mints a session or replaces the parent's canonical

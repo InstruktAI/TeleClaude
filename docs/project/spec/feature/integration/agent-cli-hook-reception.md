@@ -220,6 +220,21 @@ And Antigravity PreInvocation and PostInvocation context uses injection steps wi
 And the delivered context is observable in the agent transcript or the next model turn
 ```
 
+<!-- planned:gemini-subagent-overwrites-primary-session -->
+#### UC-R12: A native subagent inside a managed pane never becomes the primary execution
+
+```gherkin
+Given an Antigravity conversation runs as the managed primary of a TeleClaude session
+And it spawns a native subagent conversation that inherits the session's identity marker and pane
+When the subagent's hooks reach the receiver carrying the subagent's own native session id
+Then each subagent invocation is attributed to the owning session as a managed descendant
+And the subagent's session start is dropped before it can change the owning session's status, context, or binding
+And the owning session's canonical native session id and transcript path remain the primary conversation's
+And the subagent's handled activity reaches the owning session carrying the subagent's native session id
+And an orchestrating agent reading the owning session sees the primary conversation as its native identity
+```
+<!-- /planned:gemini-subagent-overwrites-primary-session -->
+
 ### Cross-context references
 
 - Primary home is `agent_runtime` per `docs/project/spec/domain/context-map.md`
