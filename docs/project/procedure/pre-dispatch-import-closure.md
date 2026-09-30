@@ -27,10 +27,9 @@ the startup cost it imposes on every CLI command as evidence.
    or probe-execution failure is evidence about that probe, not about whether the
    import belongs in the closure.
 2. Trace an unexpected import edge through package initializers and its
-   third-party dependencies. Establish whether the pre-dispatch auth gate needs
-   the dependency. Keep command-specific work behind handler dispatch and
-   preserve the gate's independence from machine configuration, the ORM, and the
-   daemon API client.
+   third-party dependencies, then assess whether the pre-dispatch auth gate
+   needs it against the gate's dependency boundary
+   (`project/design/architecture/cli-invocation-boundary`).
 3. When the dependency is necessary before dispatch, compare fresh-process
    startup of the same cheap CLI command from the base and candidate on the same
    host. Inspect the import and initialization delta that explains any shared
