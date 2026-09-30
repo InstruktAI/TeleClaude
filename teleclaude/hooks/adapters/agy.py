@@ -221,6 +221,8 @@ class AgyAdapter(HookAdapter):
         """Serialize Antigravity's native success response for each installed hook."""
         if raw_event_type == _PRE_INVOCATION_EVENT:
             return json.dumps({})
-        if raw_event_type in {_PRE_TOOL_USE_EVENT, _POST_TOOL_USE_EVENT, _STOP_EVENT}:
+        if raw_event_type in {_PRE_TOOL_USE_EVENT, _STOP_EVENT}:
             return json.dumps({_DECISION_FIELD: AgyDecision.ALLOW})
+        if raw_event_type == _POST_TOOL_USE_EVENT:
+            return json.dumps({})
         return None
