@@ -446,7 +446,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     "default": [],
                 },
                 "exec_subcommand": "",
-                "interactive_flag": "-i",
+                "interactive_flag": "",
                 "non_interactive_flag": "-p",
                 "resume_template": "{base_cmd} --conversation {session_id}",
                 "continue_template": "{base_cmd} --continue",

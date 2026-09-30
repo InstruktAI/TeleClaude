@@ -161,9 +161,6 @@ def get_agent_command(
 
         >>> get_agent_command("claude", native_session_id="abc123")
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' --resume abc123'
-
-        >>> get_agent_command("gemini", thinking_mode="med", interactive=True)
-        'agy --dangerously-skip-permissions -i'
     """
     agent_cfg = _get_agent_config(agent)
     base_cmd = agent_cfg.get_command(profile).strip()
