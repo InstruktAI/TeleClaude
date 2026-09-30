@@ -31,6 +31,39 @@ Sub-agents communicate with each other and the parent asynchronously, preventing
 2. **Reactive Wakeups**: The system automatically schedules background turns. The parent agent does **not** need to poll in a loop; the CLI automatically signals a reactive wakeup when a sub-agent responds or finishes its task.
 3. **Lifecycle Controls**: Parent agents can query active workers or terminate branches via the `manage_subagents` tool (supporting actions like `list`, `kill`, and `kill_all`).
 
+## Local Sub-Agent Records (observed, CLI 1.2.13)
+
+The public hook schema carries no parent, ancestry, or sub-agent field: a sub-agent's
+hooks present only its own `conversationId` and `transcriptPath`, exactly like a
+primary conversation's. Ancestry is recorded only in the CLI's local conversation
+store, whose layout is undocumented. The following was observed on CLI 1.2.13 on a
+single host and is not a published vendor guarantee.
+
+- Every conversation, primary or sub-agent, has its own directory
+  `~/.gemini/antigravity-cli/brain/<conversationId>/`. Its transcript lives under
+  `.system_generated/logs/`. In both retained cases examined, one primary and one
+  sub-agent, the directory existed before that conversation's first hook.
+- The parent records each spawned sub-agent at
+  `.system_generated/subagents/<childConversationId>.json`, carrying the child
+  `conversationId`, a `subagentDescriptor`, a lifecycle `state`, and the parent's
+  `spawnStepIndex`.
+- The sub-agent's task arrives as a message record in its own
+  `.system_generated/messages/<messageId>.json`. The record's `sender` is the parent
+  `conversationId`. Its `sourceMetadata.tool` carries the parent `conversationId`, the
+  parent `stepIndex`, and a `toolCall` whose `name` is `invoke_subagent`. In the
+  retained case, this record was written before the sub-agent's first hook fired.
+- Later records in the same directory come from the sub-agent's own background tasks
+  (`sender` of the form `<conversationId>/task-<n>`). They carry no `invoke_subagent`
+  source.
+- Of 352 local conversations:
+  - all 9 parent-indexed sub-agents carried the `invoke_subagent` message record;
+  - no other conversation carried one;
+  - 232 had no `messages` directory at all, the normal state for a primary
+    conversation that never received a message.
+- **Gaps:** the layout is unversioned and may change on upgrade. A sub-agent spawned
+  by another mechanism, if any exists, was not observed. Record timing is established
+  for one sub-agent, not guaranteed.
+
 ## Sources
 
 - https://antigravity.google/docs/sub-agents
