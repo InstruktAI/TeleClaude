@@ -89,16 +89,10 @@ design owns only the path that connects them.
    at module scope that one of those commands does not need. The daemon API client is
    loaded only by commands that act through the daemon, and carries no history,
    summarizer or LLM dependency.
-7. **Pre-dispatch import cost is shared.** Every module loaded before handler dispatch
-   adds cost to commands that never use it. The declared import closure and its guardrail
-   catch new imports before that cost can spread silently; an undeclared import is a
-   prompt to investigate, not proof that the module itself is forbidden or slow. A
-   command whose own work is trivial completes in roughly 200 ms from the shell; the
-   figure is the target that shows invariants 4–6 hold, not a limit a change is graded
-   against. Expanding the closure relaxes its guardrail and requires explicit approval
-   from an independent reviewer with no stake in the change
-   (`general/policy/agent-artifact-governance`). Evidence for a necessary pre-dispatch
-   dependency is established under `project/procedure/pre-dispatch-import-closure`.
+7. **The pre-dispatch path is closed.** The set of modules the path before dispatch may
+   import is declared, and a guardrail rejects a change that widens it. A command whose
+   own work is trivial completes in roughly 200 ms from the shell; the figure is the
+   target that shows invariants 4–6 hold, not a limit a change is graded against.
 
 ## Primary flows
 
@@ -151,7 +145,7 @@ one, whose code is delivered code; that behavior is verified after delivery
 | Worktree code started                                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                   |
 | The worktree's home is missing                         | Refused at startup, naming the home; nothing is created.                                                                             |
 | Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                |
-| A change imports a new module on the pre-dispatch path | The guardrail refuses the undeclared edge; invariant 7 describes it as a shared-cost tripwire.                                       |
+| A change imports a new module on the pre-dispatch path | The guardrail rejects it before it lands.                                                                                            |
 
 ## See Also
 

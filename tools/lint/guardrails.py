@@ -166,12 +166,6 @@ _PRE_DISPATCH_THIRD_PARTY_ROOTS = frozenset(
     }
 )
 _PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS = frozenset({"_virtualenv"})
-_PRE_DISPATCH_CLOSURE_GUIDANCE = (
-    "Inspect the reported failure and read "
-    "project/design/architecture/cli-invocation-boundary. For an undeclared import "
-    "edge, trace its chain and shared startup cost before moving command-specific "
-    "work behind dispatch or proposing a closure update."
-)
 _CALLER_IDENTITY_MODULE = "teleclaude.caller_identity"
 _IDENTITY_INTERNAL_ROLE_NAMES = frozenset(
     {
@@ -363,7 +357,7 @@ def _check_pre_dispatch_import_closure(repo_root: Path) -> None:
             detail = (result.stderr or result.stdout).strip()
             failures.append(f"{label} failed: {detail}")
     if failures:
-        _fail("\n".join([*failures, _PRE_DISPATCH_CLOSURE_GUIDANCE]))
+        _fail("\n".join(failures))
 
 
 def _check_identity_role_imports(repo_root: Path) -> None:
