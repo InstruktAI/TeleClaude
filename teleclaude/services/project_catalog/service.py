@@ -24,6 +24,7 @@ class ProjectCatalogService:
         self._manifest_path = manifest_path or PROJECTS_MANIFEST_PATH
         self._projects: list[ProjectNode] | None = None
         self._entries: list[ProjectCatalogEntry] | None = None
+        self._unresolved_roots: list[Path] | None = None
 
     # -- Loading ----------------------------------------------------------
 
@@ -45,6 +46,7 @@ class ProjectCatalogService:
         """Invalidate the cached project list; next access reloads from disk."""
         self._projects = None
         self._entries = None
+        self._unresolved_roots = None
 
     # -- Queries ----------------------------------------------------------
 
@@ -57,15 +59,24 @@ class ProjectCatalogService:
     def list_entries(self, *, include_in_transit: bool = True) -> list[ProjectCatalogEntry]:
         """Return present registry entries in adoption order."""
         if not include_in_transit:
-            return self._load_entries(include_in_transit=False)
-        if self._entries is None:
-            self._entries = self._load_entries(include_in_transit=True)
-        return list(self._entries)
+            return self._load_entries(include_in_transit=False)[0]
+        return list(self._load_cached_entries()[0])
 
-    def _load_entries(self, *, include_in_transit: bool) -> list[ProjectCatalogEntry]:
+    def list_unresolved_roots(self) -> list[Path]:
+        """Return present registry folders whose own configuration yields no entry."""
+        return list(self._load_cached_entries()[1])
+
+    def _load_cached_entries(self) -> tuple[list[ProjectCatalogEntry], list[Path]]:
+        """Return the cached transit-inclusive entries and the present folders that failed to hydrate."""
+        if self._entries is None or self._unresolved_roots is None:
+            self._entries, self._unresolved_roots = self._load_entries(include_in_transit=True)
+        return self._entries, self._unresolved_roots
+
+    def _load_entries(self, *, include_in_transit: bool) -> tuple[list[ProjectCatalogEntry], list[Path]]:
         """Hydrate registry entries with an explicit transit-document read policy."""
         people_by_slug = {person.slug: person for person in load_global_config().people if person.slug is not None}
         entries: list[ProjectCatalogEntry] = []
+        unresolved_roots: list[Path] = []
         for registry_entry in load_registered_entries(
             self._manifest_path,
             include_in_transit=include_in_transit,
@@ -73,7 +84,9 @@ class ProjectCatalogService:
             entry = load_catalog_entry(registry_entry, people_by_slug=people_by_slug)
             if entry is not None:
                 entries.append(entry)
-        return entries
+            elif registry_entry.is_present:
+                unresolved_roots.append(registry_entry.path)
+        return entries, unresolved_roots
 
     def get_by_slug(self, slug: str) -> ProjectNode | None:
         """Return the project registered under ``slug``, or ``None``."""
