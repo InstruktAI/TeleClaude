@@ -221,17 +221,16 @@ And the delivered context is observable in the agent transcript or the next mode
 ```
 
 <!-- planned:gemini-subagent-overwrites-primary-session -->
-#### UC-R12: A native subagent inside a managed pane never becomes the primary execution
+#### UC-R12: Native subagent invocation is blocked in a managed Antigravity session
 
 ```gherkin
 Given an Antigravity conversation runs as the managed primary of a TeleClaude session
-And it spawns a native subagent conversation that inherits the session's identity marker and pane
-When the subagent's hooks reach the receiver carrying the subagent's own native session id
-Then each subagent invocation is attributed to the owning session as a managed descendant
-And the subagent's session start is dropped before it can change the owning session's status, context, or binding
+When it attempts to invoke a provider-native subagent
+Then the invocation is denied before the child execution starts
+And no native child is adopted or forwarded as session activity
 And the owning session's canonical native session id and transcript path remain the primary conversation's
-And the subagent's handled activity reaches the owning session carrying the subagent's native session id
-And an orchestrating agent reading the owning session sees the primary conversation as its native identity
+And the primary conversation's ordinary lifecycle hooks continue to be processed
+And explicitly dispatched TeleClaude worker sessions remain available
 ```
 <!-- /planned:gemini-subagent-overwrites-primary-session -->
 
