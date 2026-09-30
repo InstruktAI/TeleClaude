@@ -357,7 +357,7 @@ def _check_pre_dispatch_import_closure(repo_root: Path) -> None:
             detail = (result.stderr or result.stdout).strip()
             failures.append(f"{label} failed: {detail}")
     if failures:
-        _fail("\n".join(failures))
+        _fail(NEWLINE.join(failures))
 
 
 def _check_identity_role_imports(repo_root: Path) -> None:
