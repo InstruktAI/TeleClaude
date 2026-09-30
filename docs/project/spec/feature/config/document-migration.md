@@ -245,6 +245,18 @@ And the omitted capabilities remain unsubscribed
 And the stored document is unchanged
 ```
 
+<!-- planned:release-pipeline-blocked-by-red-ci -->
+#### UC-CFG-MIG-16: A failed installation migration names what failed
+
+```gherkin
+Given a machine being installed
+And one configuration document the installation's migration run covers fails to migrate
+When the installation's migration step ends
+Then the installation's output names that document's subject and the reason it failed
+And installation stops before validating configuration
+```
+<!-- /planned:release-pipeline-blocked-by-red-ci -->
+
 ### Cross-context references
 
 - Commit-boundary maintenance selects and runs the migration run as one of its
