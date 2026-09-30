@@ -42,6 +42,18 @@ class _CodexFooterRowToken(StrEnum):
     WARNING_DETAIL_HINT = "f2 to view"
 
 
+class _GeminiFooterRowToken(StrEnum):
+    """Closed vocabulary for Gemini's shortcut and model-effort footer row."""
+
+    SHORTCUTS_HINT = "? for shortcuts"
+    COMPOSER_MARKER = ">"
+    MODEL_NAME_PREFIX = "gemini "
+    FIELD_SEPARATOR = "·"
+    LOW_EFFORT = "low"
+    MEDIUM_EFFORT = "medium"
+    HIGH_EFFORT = "high"
+
+
 class ReadinessSignal(StrEnum):
     """Which detector opened the readiness gate."""
 
@@ -473,8 +485,19 @@ def _extract_complete_gemini_bordered_live_region(lines: list[str]) -> str | Non
 
 def _live_region_has_input(live_region: str, agent: AgentName) -> bool:
     """Return whether a complete composer contains operator-authored input."""
-    for raw_line in live_region.splitlines():
-        if _is_prompt_chrome_line(raw_line, agent):
+    lines = live_region.splitlines()
+    for index, raw_line in enumerate(lines):
+        if _is_prompt_chrome_line(raw_line, agent) or (
+            agent is AgentName.GEMINI
+            and index == len(lines) - 1
+            and index > 1
+            and _is_horizontal_rule_line(lines[index - 1])
+            and any(
+                strip_ansi_codes(candidate).strip() == _GeminiFooterRowToken.COMPOSER_MARKER
+                for candidate in lines[: index - 1]
+            )
+            and _is_gemini_footer_chrome_line(raw_line)
+        ):
             continue
         input_part = _strip_live_prompt_marker(raw_line, agent)
         input_part = _strip_generated_segments(input_part)
@@ -484,6 +507,25 @@ def _live_region_has_input(live_region: str, agent: AgentName) -> bool:
         if normalized:
             return True
     return False
+
+
+def _is_gemini_footer_chrome_line(line: str) -> bool:
+    """Recognize only the terminal Gemini shortcut row with its model-effort gauge."""
+    normalized = _fold_prompt_whitespace(strip_ansi_codes(line)).lower()
+    if not normalized.startswith(_GeminiFooterRowToken.SHORTCUTS_HINT):
+        return False
+    gauge = normalized[len(_GeminiFooterRowToken.SHORTCUTS_HINT) :].strip()
+    if not gauge.startswith(_GeminiFooterRowToken.MODEL_NAME_PREFIX):
+        return False
+    model_and_effort = gauge[len(_GeminiFooterRowToken.MODEL_NAME_PREFIX) :]
+    model_name, separator, effort = model_and_effort.rpartition(_GeminiFooterRowToken.FIELD_SEPARATOR)
+    if not separator or not model_name.strip():
+        return False
+    return effort.strip() in {
+        _GeminiFooterRowToken.LOW_EFFORT,
+        _GeminiFooterRowToken.MEDIUM_EFFORT,
+        _GeminiFooterRowToken.HIGH_EFFORT,
+    }
 
 
 def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
