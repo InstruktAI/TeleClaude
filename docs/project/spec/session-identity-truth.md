@@ -53,10 +53,12 @@ Current runtime rule:
 <!-- change:gemini-subagent-overwrites-primary-session -->
 - A valid marker with pane attachment is a managed-primary invocation unless the
   adapter identifies the emitting execution as a provider-native child of another
-  execution. A native child shares its parent's marker and pane, so neither
-  distinguishes it; its own provider ancestry record does. Such a child is a
-  managed-descendant invocation. A managed-primary invocation's native identity may
-  refresh the session's canonical native binding.
+  execution, or reports that it cannot establish whether it is one. A native child
+  shares its parent's marker and pane, so neither distinguishes it; its own provider
+  ancestry record does. Either case is a managed-descendant invocation: lineage is
+  proven by the marker, and an execution identity that is a child or unproven never
+  refreshes the binding. A managed-primary invocation's native identity may refresh
+  the session's canonical native binding.
 <!-- /planned-change:gemini-subagent-overwrites-primary-session -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
