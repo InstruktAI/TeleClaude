@@ -5,8 +5,9 @@ Handles guild resolution, channel/category/forum creation, and config persistenc
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import replace
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -26,6 +27,7 @@ from teleclaude.core.integration.discord_admin_state import (
     DiscordReflectionScope,
     DiscordScopeKind,
     project_forum_key,
+    session_launcher_key,
 )
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry
@@ -33,6 +35,27 @@ from teleclaude.services.project_catalog.models import ProjectCatalogEntry
 logger = get_logger(__name__)
 
 _PROJECT_FORUM_TOPIC = "Sessions for {name}"
+_ID_ATTR = "id"
+_NAME_ATTR = "name"
+_DELETE_ATTR = "delete"
+_FETCH_CHANNELS_ATTR = "fetch_channels"
+_FETCH_CHANNELS_LABEL = "guild.fetch_channels"
+_FORUM_DELETE_LABEL = "project forum delete"
+_PRUNE_SKIPPED_EVENT = "discord.project_forum_prune.skipped"
+_PRUNE_FORUM_DELETED_EVENT = "discord.project_forum_prune.forum_deleted"
+_PRUNE_FORUM_FAILED_EVENT = "discord.project_forum_prune.forum_delete_failed"
+_PRUNE_RECORD_CLEARED_EVENT = "discord.project_forum_prune.record_cleared"
+
+
+class _ProjectForumPruneSkip(StrEnum):
+    """Why a reconciliation pass removed no unbacked project forum."""
+
+    UNRESOLVED_ENTRY = "unresolved_registry_entry"
+    CATCH_ALL_UNRESOLVED = "catch_all_forum_unresolved"
+    CATEGORY_UNRESOLVED = "category_unresolved"
+    LISTING_UNAVAILABLE = "channel_listing_unavailable"
+    LISTING_FAILED = "channel_listing_failed"
+
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
 discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
@@ -96,6 +119,7 @@ class ProvisioningMixin:
         async def _build_project_forum_map(self) -> None: ...
 
         _project_category_id: int | None
+        _all_sessions_channel_id: int | None
 
     async def resolve_guild(self) -> object | None:
         """Public wrapper for guild resolution used by infrastructure callers."""
@@ -240,6 +264,80 @@ class ProvisioningMixin:
 
         if project_changes:
             await self._persist_project_forum_ids(project_changes)
+
+        backed_forum_keys = frozenset(current_records) | frozenset(provisioned_forum_ids)
+        if backed_forum_keys != frozenset(checked_forum_keys):
+            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.UNRESOLVED_ENTRY.value)
+            return
+        await self._prune_unbacked_project_forums(guild, category, frozenset(claimed_forum_ids), backed_forum_keys)
+
+    async def _prune_unbacked_project_forums(
+        self,
+        guild: object,
+        category: object,
+        backed_forum_ids: frozenset[int],
+        backed_forum_keys: frozenset[str],
+    ) -> None:
+        """Delete project-category forums and project-forum records that no registry entry backs.
+
+        The catch-all forum is part of the category's desired shape and is kept.
+        Deletion reads the category from Discord's REST listing, never from the
+        gateway cache, so an unpopulated cache cannot make a backed forum look stray.
+        """
+        catch_all_id = self._all_sessions_channel_id
+        if catch_all_id is None:
+            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.CATCH_ALL_UNRESOLVED.value)
+            return
+        if self._parse_optional_int(getattr(category, _ID_ATTR, None)) is None:
+            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.CATEGORY_UNRESOLVED.value)
+            return
+        fetch_fn = getattr(guild, _FETCH_CHANNELS_ATTR, None)
+        if not callable(fetch_fn):
+            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_UNAVAILABLE.value)
+            return
+        try:
+            fetched = await self._require_async_callable(fetch_fn, label=_FETCH_CHANNELS_LABEL)()
+        except discord_operation_exceptions as exc:
+            logger.warning(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_FAILED.value, error=str(exc))
+            return
+        if not isinstance(fetched, Iterable):
+            logger.warning(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_FAILED.value)
+            return
+
+        kept_forum_ids = backed_forum_ids | {catch_all_id}
+        for forum in self._unbacked_category_forums(fetched, category, kept_forum_ids):
+            await self._delete_unbacked_project_forum(forum)
+
+        for record in await db.list_discord_reflections():
+            if record.logical_key.startswith(PROJECT_FORUM_KEY_PREFIX) and record.logical_key not in backed_forum_keys:
+                await db.delete_discord_reflection(record.logical_key)
+                logger.info(_PRUNE_RECORD_CLEARED_EVENT, logical_key=record.logical_key, forum_id=record.provider_id)
+
+    def _unbacked_category_forums(
+        self, channels: Iterable[object], category: object, kept_forum_ids: frozenset[int]
+    ) -> list[object]:
+        """Return the category's forums whose IDs are outside the kept set."""
+        return [
+            channel
+            for channel in channels
+            if self._is_forum_channel(channel)
+            and self._channel_matches_category(channel, category)
+            and self._parse_optional_int(getattr(channel, _ID_ATTR, None)) not in kept_forum_ids
+        ]
+
+    async def _delete_unbacked_project_forum(self, forum: object) -> None:
+        """Delete one unbacked forum and the launcher record that belonged to it."""
+        forum_id = self._parse_optional_int(getattr(forum, _ID_ATTR, None))
+        forum_name = getattr(forum, _NAME_ATTR, None)
+        if forum_id is None:
+            return
+        try:
+            await self._require_async_callable(getattr(forum, _DELETE_ATTR, None), label=_FORUM_DELETE_LABEL)()
+        except discord_operation_exceptions as exc:
+            logger.warning(_PRUNE_FORUM_FAILED_EVENT, forum_id=forum_id, forum_name=forum_name, error=str(exc))
+            return
+        await db.delete_discord_reflection(session_launcher_key(forum_id))
+        logger.info(_PRUNE_FORUM_DELETED_EVENT, forum_id=forum_id, forum_name=forum_name)
 
     async def _resolve_guild(self) -> object | None:
         """Resolve the configured guild by ID."""

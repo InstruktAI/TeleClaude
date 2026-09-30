@@ -28,7 +28,12 @@ on the machine's project registry — projects and person or company homes alike
 with its identity, display name, and registry order, and configured people
 (`project/spec/feature/config/project-registry`). A project forum is keyed by its
 entry's identity, and the forums in a machine's project category follow registry
-order. Discord provider IDs are not desired-state configuration. They are
+order. A machine's project category holds exactly its registry entries' forums
+and its catch-all forum for sessions outside every entry; any other forum there,
+and every project-forum reflection record no registry entry backs, is removed.
+Removal runs only in a pass where every registry entry holds its forum and
+Discord conclusively lists the category's forums. Discord provider IDs are not
+desired-state configuration. They are
 observed external state returned by the Discord adapter boundary, and the
 database stores them as reflection records.
 
@@ -260,6 +265,25 @@ When the Discord reconciler runs at startup or after the registry changes
 Then an operator reading Discord sees those forums in registry order
 ```
 
+#### UC-DARS-17: The project category shows only forums the registry backs
+
+```gherkin
+Given the machine's project category in Discord holds a forum that no entry on the machine's project registry is assigned
+And every registry entry holds its forum in that category
+When the Discord reconciler runs at startup or after the registry changes
+Then an operator reading Discord no longer sees that forum
+And the database holds no reflection record for it
+And the operator still sees every registry entry's forum and the machine's catch-all forum
+```
+
+#### UC-DARS-18: Removal waits until every registry entry holds its forum
+
+```gherkin
+Given a registry entry whose forum could not be assigned in a reconciliation pass
+And the machine's project category holds a forum that no registry entry is assigned
+When that reconciliation pass completes
+Then an operator reading Discord still sees that forum
+```
 
 ### Cross-context references
 
