@@ -245,7 +245,6 @@ And the omitted capabilities remain unsubscribed
 And the stored document is unchanged
 ```
 
-<!-- planned:release-pipeline-blocked-by-red-ci -->
 #### UC-CFG-MIG-16: A failed installation migration names what failed
 
 ```gherkin
@@ -255,7 +254,6 @@ When the installation's migration step ends
 Then the installation's output names that document's subject and the reason it failed
 And installation stops before validating configuration
 ```
-<!-- /planned:release-pipeline-blocked-by-red-ci -->
 
 ### Cross-context references
 
