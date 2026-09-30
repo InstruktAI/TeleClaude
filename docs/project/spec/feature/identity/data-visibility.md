@@ -103,6 +103,7 @@ Then only records about their own person home are shown
 Given two principals with different reach
 When each views the same platform data through any surface that shows it
 Then each sees exactly the records their reach admits, the same set on every surface
+And documentation published as public and notifications addressed to one person follow their own audience instead
 
 Examples:
   | surface                                                  |
