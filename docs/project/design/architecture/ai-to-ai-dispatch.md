@@ -82,6 +82,9 @@ domain anchor carries no forward architecture.
   Parentage is distinct from the listener suppression that `detach` expresses
   elsewhere in this design: suppression decides who is notified, parentage
   decides who may end the session, and neither implies the other.
+- **The launch carries no company.** A launch is not work the caller delegates,
+  so the caller's company is not carried into it; the session is constituted as
+  the inbound messaging adapters constitute a person's assistant session.
 - **The brief is carried as a request made in the moment, and the launch says so.**
   What `run-pa` starts serves that request, and the launch states that framing
   alongside the brief rather than leaving the assistant to infer which kind of
