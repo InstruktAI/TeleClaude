@@ -61,7 +61,7 @@ supplies either. System role and job role remain identity and authority facts.
 | `review-prd`           | Codex, Claude, Gemini, DeepSeek | `slow`                |
 | `review-plan`          | Codex, Claude, Gemini, DeepSeek | `slow`                |
 | `review-architecture`  | Codex, Claude, Gemini, DeepSeek | `slow`                |
-| `review-commits`       | Codex, Claude, Gemini, DeepSeek | `med`                 |
+| `review-commits`       | Codex, Claude, Gemini, DeepSeek | `slow`                |
 | `finalize`             | Gemini, Claude, Codex, DeepSeek | `fast`                |
 | `prepare-intake`       | Claude, Codex, Gemini, DeepSeek | `slow`                |
 | `prepare-architecture` | Claude, Codex, Gemini, DeepSeek | `slow`                |
@@ -86,7 +86,7 @@ policy defect.
 ### Thinking-mode resolution
 
 Run-session dispatch reads the same command matrix. An explicit caller mode
-overrides the command default. `/review-commits` resolves to `med` when its
+overrides the command default. `/review-commits` resolves to `slow` when its
 caller omits the mode; a doc-only commit review passes explicit `fast`.
 
 When a run-session request has no command-matrix row and no explicit thinking mode,

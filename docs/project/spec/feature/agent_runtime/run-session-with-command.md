@@ -465,7 +465,7 @@ Commit review carries no todo slug — its subject is a commit series whose SHA 
 every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
 by the project, the driver that opened the review, and the thinking mode the review runs
 at. Mode belongs to that subject because the review lanes differ in cost and in what they
-read: doc-hygiene runs at `fast` over snippet conformance, code review at `med` over
+read: doc-hygiene runs at `fast` over snippet conformance, code review at `slow` over
 behavior. A mode-blind subject collapses them, so the cheap lane is refused as a duplicate
 of the expensive one and its work lands on the wrong reviewer. Two starts at the same mode
 remain one subject and still dedup.
@@ -633,7 +633,7 @@ And a menu or ambiguous screen is left unchanged
 
 
 
-- **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `review-commits` defaults to `med`; doc-only commit review explicitly supplies `fast`.
+- **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `review-commits` defaults to `slow`; doc-only commit review explicitly supplies `fast`.
 
 
 ## Known caveats
