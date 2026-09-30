@@ -31,8 +31,10 @@ entry's identity, and the forums in a machine's project category follow registry
 order. A machine's project category holds exactly its registry entries' forums
 and its catch-all forum for sessions outside every entry; any other forum there,
 and every project-forum reflection record no registry entry backs, is removed.
-Removal runs only in a pass where every registry entry holds its forum and
-Discord conclusively lists the category's forums. Discord provider IDs are not
+Removal runs only in a pass where every present registry folder's configuration
+loads, every registry entry holds its forum, and Discord conclusively lists the
+category's forums. A stored forum whose lookup was inconclusive keeps its
+reflection record and is never replaced in that pass. Discord provider IDs are not
 desired-state configuration. They are
 observed external state returned by the Discord adapter boundary, and the
 database stores them as reflection records.
@@ -283,6 +285,15 @@ Given a registry entry whose forum could not be assigned in a reconciliation pas
 And the machine's project category holds a forum that no registry entry is assigned
 When that reconciliation pass completes
 Then an operator reading Discord still sees that forum
+```
+
+#### UC-DARS-19: A registry folder whose configuration fails to load keeps its forum
+
+```gherkin
+Given a registry folder is present on the machine but its configuration fails to load
+And that folder's forum is in the machine's project category
+When the Discord reconciler runs
+Then an operator reading Discord still sees that folder's forum
 ```
 
 ### Cross-context references

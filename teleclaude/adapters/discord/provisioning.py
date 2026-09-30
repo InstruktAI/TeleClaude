@@ -47,10 +47,19 @@ _PRUNE_FORUM_FAILED_EVENT = "discord.project_forum_prune.forum_delete_failed"
 _PRUNE_RECORD_CLEARED_EVENT = "discord.project_forum_prune.record_cleared"
 
 
+class _StoredForumVerdict(StrEnum):
+    """What one verification pass established about a stored project forum."""
+
+    CURRENT = "current"
+    GONE = "gone"
+    UNVERIFIED = "unverified"
+
+
 class _ProjectForumPruneSkip(StrEnum):
     """Why a reconciliation pass removed no unbacked project forum."""
 
     UNRESOLVED_ENTRY = "unresolved_registry_entry"
+    UNRESOLVED_REGISTRY_FOLDER = "unresolved_registry_folder"
     CATCH_ALL_UNRESOLVED = "catch_all_forum_unresolved"
     CATEGORY_UNRESOLVED = "category_unresolved"
     LISTING_UNAVAILABLE = "channel_listing_unavailable"
@@ -216,10 +225,13 @@ class ProvisioningMixin:
             logger.warning("Skipping project forum provisioning: Projects category is unavailable")
             return
 
-        entries = get_project_catalog_service().list_entries()
+        catalog = get_project_catalog_service()
+        entries = catalog.list_entries()
+        category_forums = await self._list_category_forums(guild, category)
         legacy_keys_by_root = self._legacy_project_forum_keys_by_root()
         project_changes: list[tuple[str, int | None]] = []
         current_records: dict[str, DiscordReflectionRecord] = {}
+        unverified_forum_keys: set[str] = set()
         claimed_forum_ids: set[int] = set()
         checked_forum_keys: set[str] = set()
 
@@ -231,7 +243,14 @@ class ProvisioningMixin:
                 continue
             checked_forum_keys.add(forum_key)
             record = await db.get_discord_reflection(forum_key)
-            if record is None or not await self._project_forum_is_current(record.provider_id, category):
+            if record is None:
+                continue
+            verdict = await self._stored_forum_verdict(record.provider_id, category, category_forums)
+            if verdict is _StoredForumVerdict.GONE:
+                continue
+            if verdict is _StoredForumVerdict.UNVERIFIED:
+                unverified_forum_keys.add(forum_key)
+                claimed_forum_ids.add(record.provider_id)
                 continue
             if record.provider_id in claimed_forum_ids:
                 await db.delete_discord_reflection(forum_key)
@@ -245,7 +264,11 @@ class ProvisioningMixin:
             forum_key = self._project_forum_key(entry, legacy_keys_by_root)
             if forum_key is None:
                 continue
-            if current_records.get(forum_key) is not None or forum_key in provisioned_forum_ids:
+            if (
+                current_records.get(forum_key) is not None
+                or forum_key in provisioned_forum_ids
+                or forum_key in unverified_forum_keys
+            ):
                 continue
             stale_cleared = await db.get_discord_reflection(forum_key) is not None
             forum_id = await self._find_or_create_forum(
@@ -266,71 +289,94 @@ class ProvisioningMixin:
             await self._persist_project_forum_ids(project_changes)
 
         backed_forum_keys = frozenset(current_records) | frozenset(provisioned_forum_ids)
+        if category_forums is None:
+            return
         if backed_forum_keys != frozenset(checked_forum_keys):
             logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.UNRESOLVED_ENTRY.value)
             return
-        await self._prune_unbacked_project_forums(guild, category, frozenset(claimed_forum_ids), backed_forum_keys)
+        unresolved_roots = catalog.list_unresolved_roots()
+        if unresolved_roots:
+            logger.info(
+                _PRUNE_SKIPPED_EVENT,
+                reason=_ProjectForumPruneSkip.UNRESOLVED_REGISTRY_FOLDER.value,
+                folders=[str(root) for root in unresolved_roots],
+            )
+            return
+        await self._prune_unbacked_project_forums(category_forums, frozenset(claimed_forum_ids), backed_forum_keys)
+
+    async def _list_category_forums(self, guild: object, category: object) -> dict[int, object] | None:
+        """Return the category's forums by ID from Discord's REST listing, or None when it is unavailable.
+
+        The REST listing is the conclusive view of the category: the gateway cache
+        and single-channel lookups can miss a forum that exists.
+        """
+        if self._parse_optional_int(getattr(category, _ID_ATTR, None)) is None:
+            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.CATEGORY_UNRESOLVED.value)
+            return None
+        fetch_fn = getattr(guild, _FETCH_CHANNELS_ATTR, None)
+        if not callable(fetch_fn):
+            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_UNAVAILABLE.value)
+            return None
+        try:
+            fetched = await self._require_async_callable(fetch_fn, label=_FETCH_CHANNELS_LABEL)()
+        except discord_operation_exceptions as exc:
+            logger.warning(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_FAILED.value, error=str(exc))
+            return None
+        if not isinstance(fetched, Iterable):
+            logger.warning(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_FAILED.value)
+            return None
+        forums: dict[int, object] = {}
+        for channel in fetched:
+            channel_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
+            if (
+                channel_id is not None
+                and self._is_forum_channel(channel)
+                and self._channel_matches_category(channel, category)
+            ):
+                forums[channel_id] = channel
+        return forums
+
+    async def _stored_forum_verdict(
+        self, forum_id: int, category: object, category_forums: Mapping[int, object] | None
+    ) -> _StoredForumVerdict:
+        """Decide whether a stored project forum is current, gone, or could not be verified."""
+        if category_forums is not None:
+            return _StoredForumVerdict.CURRENT if forum_id in category_forums else _StoredForumVerdict.GONE
+        channel = await self._get_channel(forum_id)
+        if channel is None:
+            return _StoredForumVerdict.UNVERIFIED
+        if self._is_forum_channel(channel) and self._channel_matches_category(channel, category):
+            return _StoredForumVerdict.CURRENT
+        return _StoredForumVerdict.GONE
 
     async def _prune_unbacked_project_forums(
         self,
-        guild: object,
-        category: object,
+        category_forums: Mapping[int, object],
         backed_forum_ids: frozenset[int],
         backed_forum_keys: frozenset[str],
     ) -> None:
         """Delete project-category forums and project-forum records that no registry entry backs.
 
         The catch-all forum is part of the category's desired shape and is kept.
-        Deletion reads the category from Discord's REST listing, never from the
-        gateway cache, so an unpopulated cache cannot make a backed forum look stray.
         """
         catch_all_id = self._all_sessions_channel_id
         if catch_all_id is None:
             logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.CATCH_ALL_UNRESOLVED.value)
             return
-        if self._parse_optional_int(getattr(category, _ID_ATTR, None)) is None:
-            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.CATEGORY_UNRESOLVED.value)
-            return
-        fetch_fn = getattr(guild, _FETCH_CHANNELS_ATTR, None)
-        if not callable(fetch_fn):
-            logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_UNAVAILABLE.value)
-            return
-        try:
-            fetched = await self._require_async_callable(fetch_fn, label=_FETCH_CHANNELS_LABEL)()
-        except discord_operation_exceptions as exc:
-            logger.warning(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_FAILED.value, error=str(exc))
-            return
-        if not isinstance(fetched, Iterable):
-            logger.warning(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.LISTING_FAILED.value)
-            return
 
         kept_forum_ids = backed_forum_ids | {catch_all_id}
-        for forum in self._unbacked_category_forums(fetched, category, kept_forum_ids):
-            await self._delete_unbacked_project_forum(forum)
+        for forum_id, forum in category_forums.items():
+            if forum_id not in kept_forum_ids:
+                await self._delete_unbacked_project_forum(forum_id, forum)
 
         for record in await db.list_discord_reflections():
             if record.logical_key.startswith(PROJECT_FORUM_KEY_PREFIX) and record.logical_key not in backed_forum_keys:
                 await db.delete_discord_reflection(record.logical_key)
                 logger.info(_PRUNE_RECORD_CLEARED_EVENT, logical_key=record.logical_key, forum_id=record.provider_id)
 
-    def _unbacked_category_forums(
-        self, channels: Iterable[object], category: object, kept_forum_ids: frozenset[int]
-    ) -> list[object]:
-        """Return the category's forums whose IDs are outside the kept set."""
-        return [
-            channel
-            for channel in channels
-            if self._is_forum_channel(channel)
-            and self._channel_matches_category(channel, category)
-            and self._parse_optional_int(getattr(channel, _ID_ATTR, None)) not in kept_forum_ids
-        ]
-
-    async def _delete_unbacked_project_forum(self, forum: object) -> None:
+    async def _delete_unbacked_project_forum(self, forum_id: int, forum: object) -> None:
         """Delete one unbacked forum and the launcher record that belonged to it."""
-        forum_id = self._parse_optional_int(getattr(forum, _ID_ATTR, None))
         forum_name = getattr(forum, _NAME_ATTR, None)
-        if forum_id is None:
-            return
         try:
             await self._require_async_callable(getattr(forum, _DELETE_ATTR, None), label=_FORUM_DELETE_LABEL)()
         except discord_operation_exceptions as exc:
