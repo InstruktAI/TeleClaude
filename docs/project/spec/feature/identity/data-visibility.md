@@ -47,6 +47,15 @@ Command clearance — whether a caller may run a command against a target — is
 separate, up-front decision (`project/spec/feature/identity/command-clearance`)
 and is not changed by this contract.
 
+Two audience facts a record states about itself sit beside reach, and reach
+neither widens nor narrows them. A documentation snippet its author published
+`public` is readable by every caller; reach decides only which tiers a principal
+reads in full (`project/spec/feature/context/doc-selection-policy`). A
+notification addressed to one person reaches only that person, through their own
+channel, and appears on no shared surface, for platform reach too
+(`project/design/architecture/notification-delivery`); reach governs broadcast
+notifications.
+
 ## Canonical fields
 
 ### Use cases
@@ -56,7 +65,7 @@ and is not changed by this contract.
 ```gherkin
 Given a person holding the platform administrator role, or an agent session whose lineage roots at the system principal
 When it lists or receives platform data on any computer
-Then every record is eligible, whatever its subject
+Then every record is eligible, whatever its subject, except a notification addressed to another person
 And records with no subject are included
 And records whose subject the showing computer does not know are included
 ```
@@ -67,7 +76,7 @@ And records whose subject the showing computer does not know are included
 Given a person who is not a platform administrator
 When the person, or an agent session rooted at them, lists or receives platform data
 Then a record is shown only when its subject is one their reach admits
-And no record outside that reach is shown, counted, or distinguishable from an absent one
+And no record outside that reach is shown, counted, or distinguishable from an absent one, apart from documentation its author published as public
 
 Examples:
   | record's subject                        | shown to                                             |
@@ -150,6 +159,24 @@ Given sessions, conversation history, operations, and notifications that were st
 When the platform has been upgraded
 Then each such record is visible to the principals whose reach admits the subject it is derived to have
 And a record whose subject cannot be derived is visible only to a platform administrator and the system principal
+```
+
+#### UC-DV10: Published documentation stays readable outside reach
+
+```gherkin
+Given a documentation tier the caller's reach does not admit
+When an agent session reads documentation from that tier
+Then it receives the snippets their author published as public
+And it receives none of that tier's other snippets
+```
+
+#### UC-DV11: An addressed notification stays with its recipient
+
+```gherkin
+Given a notification addressed to one person
+When any other principal, a platform administrator included, views the shared notification list or receives live notification pushes in the TUI or web console
+Then that notification is not shown to them
+And the addressed person receives it through their own channel
 ```
 
 ## Known caveats
