@@ -280,22 +280,6 @@ And a named session that is not retained, or that the caller's role does not rea
 
 
 
-<!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
-
-#### UC-SL28: A session is never presented as an active agent while its agent CLI is still gated
-
-```
-Given a session is about to launch an agent CLI in a working directory that resolves under a configured trusted root
-When agent_runtime dispatches the agent command
-Then the agent's own directory-trust state is consulted using that agent's documented resolution rules
-And a trust decision the human already made for a configured root is carried forward to that agent wherever the agent supports being written to, so the CLI starts without presenting its directory-trust gate
-And a trust store that publishes no supported write surface is left untouched, and the unsatisfied gate is recorded as structured evidence naming the session, the agent, and the directory
-And a working directory resolving under no configured trusted root has no trust store consulted for a write, none modified, and the refusal recorded
-And until an activity hook proves the agent live, the session reports `lifecycle_status="initializing"` with derived `agent_status` `unknown`
-And host-pane output alone never raises that projection to `active`
-```
-
-<!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
 #### UC-SL33: A completed native command leaves the agent idle
 
