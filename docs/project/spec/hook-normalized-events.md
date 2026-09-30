@@ -52,12 +52,8 @@ Current raw-to-normalized lifecycle mapping:
 | Antigravity | `PreInvocation` where `invocationNum == 0`                                                                                              | `session_start`      | forwarded  |
 | Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user`                                                          | `user_prompt_submit` | forwarded  |
 | Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present                                                             | (none)               | dropped    |
-<!-- planned-change:gemini-subagent-overwrites-primary-session -->
-| Antigravity | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
-<!-- change:gemini-subagent-overwrites-primary-session -->
 | Antigravity | `PreToolUse` for a native subagent invocation from a managed source | (none) | dropped |
 | Antigravity | Other `PreToolUse` invocations | `pre_tool_use` | forwarded |
-<!-- /planned-change:gemini-subagent-overwrites-primary-session -->
 | Antigravity | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
 | Antigravity | `PostInvocation`                                                                                                                        | `post_tool_use`      | forwarded  |
 | Antigravity | `Stop` where `error` is a non-empty string                                                                                              | `agent_turn_failed`  | forwarded  |

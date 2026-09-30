@@ -220,7 +220,6 @@ And Antigravity PreInvocation and PostInvocation context uses injection steps wi
 And the delivered context is observable in the agent transcript or the next model turn
 ```
 
-<!-- planned:gemini-subagent-overwrites-primary-session -->
 #### UC-R12: Native subagent invocation is blocked in a managed Antigravity session
 
 ```gherkin
@@ -232,7 +231,6 @@ And the owning session's canonical native session id and transcript path remain 
 And the primary conversation's ordinary lifecycle hooks continue to be processed
 And explicitly dispatched TeleClaude worker sessions remain available
 ```
-<!-- /planned:gemini-subagent-overwrites-primary-session -->
 
 ### Cross-context references
 
