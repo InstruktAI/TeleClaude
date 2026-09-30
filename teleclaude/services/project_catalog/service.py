@@ -62,9 +62,10 @@ class ProjectCatalogService:
             return self._load_entries(include_in_transit=False)[0]
         return list(self._load_cached_entries()[0])
 
-    def list_unresolved_roots(self) -> list[Path]:
-        """Return present registry folders whose own configuration yields no entry."""
-        return list(self._load_cached_entries()[1])
+    def list_entries_with_unresolved_roots(self) -> tuple[list[ProjectCatalogEntry], list[Path]]:
+        """Return entries and the present registry folders that yield no entry, from one observation."""
+        entries, unresolved_roots = self._load_cached_entries()
+        return list(entries), list(unresolved_roots)
 
     def _load_cached_entries(self) -> tuple[list[ProjectCatalogEntry], list[Path]]:
         """Return the cached transit-inclusive entries and the present folders that failed to hydrate."""

@@ -225,8 +225,7 @@ class ProvisioningMixin:
             logger.warning("Skipping project forum provisioning: Projects category is unavailable")
             return
 
-        catalog = get_project_catalog_service()
-        entries = catalog.list_entries()
+        entries, unresolved_roots = get_project_catalog_service().list_entries_with_unresolved_roots()
         category_forums = await self._list_category_forums(guild, category)
         legacy_keys_by_root = self._legacy_project_forum_keys_by_root()
         project_changes: list[tuple[str, int | None]] = []
@@ -294,7 +293,6 @@ class ProvisioningMixin:
         if backed_forum_keys != frozenset(checked_forum_keys):
             logger.info(_PRUNE_SKIPPED_EVENT, reason=_ProjectForumPruneSkip.UNRESOLVED_ENTRY.value)
             return
-        unresolved_roots = catalog.list_unresolved_roots()
         if unresolved_roots:
             logger.info(
                 _PRUNE_SKIPPED_EVENT,
