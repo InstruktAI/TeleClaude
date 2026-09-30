@@ -19,9 +19,7 @@ Each entry is tied to a Todo by durable identity and active slug. Creation goes 
 
 Visual hierarchy within a section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. A holder is an explicit row status, entered once when the first child is grouped under a parent and never left; a holder is exempt from the todo lifecycle and exists to bind its artifacts as evidence of the split and to label its children wherever they render. Children reference their holder by durable row id, and every surface renders the holder label as context joined from that row — the holder has no row-presence of its own in any band. Gaining an `after`-child never makes a node a holder; a node keeps its own row state while nesting its dependents.
 
-<!-- planned:todo-update-regroup -->
 Group membership is set when a todo is created under a parent and can be changed later through the update facade: a live todo moves into a group, into a different group, or out of any group. The move changes only which holder labels the todo and which holder's roll-up counts it; the todo keeps its own lifecycle state, artifacts, and dependencies. Moving into a parent that is not yet a holder makes it one through the same transition group creation uses, and a holder that loses its last live child stays a holder that renders nowhere.
-<!-- /planned:todo-update-regroup -->
 
 Removal and delivery are lifecycle transitions on the same aggregate. `telec todo remove` soft-removes a todo while retaining its state, artifacts, version history, and identity-addressed recovery metadata for the retention window. `telec todo deliver` stamps delivery metadata, moves the todo to delivered history, and runs delivered-slug cleanup.
 
@@ -398,7 +396,6 @@ Then it carries the todos delivered within `RECENTLY_DELIVERED_HOURS` and no ear
 And it carries every iced todo, whatever its age
 ```
 
-<!-- planned:todo-update-regroup -->
 #### UC-WM36: An agent moves a live todo into a group
 
 ```gherkin
@@ -457,7 +454,6 @@ Then the update is refused with an error naming the claiming session
 And neither "moved" nor "epic" is changed
 But a move by a session inside the claiming group proceeds
 ```
-<!-- /planned:todo-update-regroup -->
 
 ### Cross-context references
 

@@ -180,7 +180,6 @@ And the same refusal applies when the requested dependency is any ancestor holde
 And a dependency from a non-member todo onto the holder is still allowed
 ```
 
-<!-- planned:todo-update-regroup -->
 #### UC-WDG9: A todo cannot join a group it depends on
 
 ```gherkin
@@ -191,7 +190,6 @@ And "child-a"'s group membership and dependencies are left unchanged
 And the same refusal applies when "child-a" depends on any holder that "parent-slug" is itself grouped under
 And the same refusal applies when one update both joins the group and adds the dependency
 ```
-<!-- /planned:todo-update-regroup -->
 
 #### UC-WDG6: A task parent clears the prepare gate only on delivery
 
