@@ -2,7 +2,7 @@ name: Release Automation
 
 on:
   workflow_run:
-    workflows: ['Lint and Test']
+    workflows: ['Lint']
     branches: [main]
     types:
       - completed

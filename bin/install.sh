@@ -230,8 +230,6 @@ setup_agents_interactive() {
     print_header "Interactive Agent Configuration"
 
     assert_agent_install_coverage
-    ensure_config_yml
-
     local current_default_agent
     current_default_agent=$(get_current_default_agent "claude")
     if [ "$current_default_agent" = "agy" ]; then
@@ -1607,6 +1605,7 @@ main() {
 
     install_system_deps
     install_python_deps
+    ensure_config_yml
     install_blueprint_engine
     if [ "$CI_MODE" = false ]; then
         install_log_runtime

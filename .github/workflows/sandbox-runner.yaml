@@ -3,7 +3,7 @@ name: Sandbox Runner Image
 on:
   workflow_run:
     # prettier-ignore
-    workflows: ["Lint and Test"]
+    workflows: ["Lint"]
     branches: [main]
     types:
       - completed

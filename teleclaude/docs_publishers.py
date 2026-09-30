@@ -12,7 +12,7 @@ from typing import NamedTuple
 import yaml
 
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR, REPO_ROOT, ConfigFileName
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
@@ -166,9 +166,15 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     Any other case, including a reference into a different tier, is left
     unresolved so the caller's existence check reports it.
     """
-    try:
-        relative_path = candidate.expanduser().relative_to(GLOBAL_DOCS_DIR)
-    except ValueError:
+    expanded_candidate = candidate.expanduser()
+    relative_path = None
+    for docs_root in GLOBAL_DOCS_ROOTS:
+        try:
+            relative_path = expanded_candidate.relative_to(docs_root)
+            break
+        except ValueError:
+            continue
+    if relative_path is None:
         return candidate
     if not relative_path.parts or is_generated_global_doc_artifact(relative_path):
         return candidate

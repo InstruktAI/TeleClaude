@@ -14,7 +14,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.docs_publishers import DocsPublisherResolutionError, resolve_global_doc_source
-from teleclaude.paths import GLOBAL_DOCS_DIR
+from teleclaude.paths import GLOBAL_DOCS_ROOTS
 from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._markers import (
     validate_marker_structure,
@@ -460,21 +460,21 @@ def _is_global_doc(path: Path) -> bool:
     return "global" in path.parts
 
 
-def _global_docs_prefixes() -> tuple[str, str]:
-    home_docs = str(GLOBAL_DOCS_DIR)
-    return "~/.teleclaude/docs/", f"{home_docs}/"
+def _global_docs_prefixes() -> tuple[str, ...]:
+    absolute_prefixes = tuple(f"{root}/" for root in GLOBAL_DOCS_ROOTS)
+    return ("~/.teleclaude/docs/", *absolute_prefixes)
 
 
 def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
     """Resolve a See Also soft reference to an absolute path for existence check."""
     if ref.startswith("~"):
         expanded = str(Path(ref).expanduser())
-        home_prefix = str(GLOBAL_DOCS_DIR) + "/"
-        if expanded.startswith(home_prefix):
+        absolute_prefixes = _global_docs_prefixes()[1:]
+        if expanded.startswith(absolute_prefixes):
             return resolve_global_doc_source(project_root, Path(expanded))
         return Path(expanded).resolve()
-    _, absolute_prefix = _global_docs_prefixes()
-    if ref.startswith(absolute_prefix):
+    absolute_prefixes = _global_docs_prefixes()[1:]
+    if ref.startswith(absolute_prefixes):
         return resolve_global_doc_source(project_root, Path(ref))
     if ref.startswith("docs/"):
         return (project_root / ref).resolve()
@@ -490,10 +490,10 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
         return
 
     is_global = _is_global_doc(path)
-    tilde_prefix, absolute_prefix = _global_docs_prefixes()
+    prefixes = _global_docs_prefixes()
 
     if is_global:
-        if not raw.startswith((tilde_prefix, absolute_prefix)):
+        if not raw.startswith(prefixes):
             _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
@@ -502,7 +502,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
             )
             return
     else:
-        if not raw.startswith("docs/") and not raw.startswith((tilde_prefix, absolute_prefix)):
+        if not raw.startswith("docs/") and not raw.startswith(prefixes):
             _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),

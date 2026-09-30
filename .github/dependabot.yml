@@ -1,7 +1,7 @@
 # Dependabot configuration.
 #
 # Version updates: majors ignored (manual review only), minor/patch grouped per
-# ecosystem and auto-merged once "Lint and Test" passes — see the
+# ecosystem and auto-merged once "Lint" passes — see the
 # dependabot-auto-merge job in .github/workflows/lint-test.yaml.
 #
 # Security updates: enabled at the repo level (automated-security-fixes) and
@@ -10,109 +10,109 @@
 # `applies-to: security-updates` groups batch those advisory PRs per ecosystem.
 version: 2
 updates:
-  - package-ecosystem: "uv"
-    directory: "/"
+  - package-ecosystem: 'uv'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "deps"
-      include: "scope"
+      prefix: 'deps'
+      include: 'scope'
     ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       python:
         applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+        patterns: ['*']
+        update-types: ['minor', 'patch']
       python-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "deps"
-      include: "scope"
+      prefix: 'deps'
+      include: 'scope'
     ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       npm-root:
         applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+        patterns: ['*']
+        update-types: ['minor', 'patch']
       npm-root-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
-  - package-ecosystem: "npm"
-    directory: "/frontend"
+  - package-ecosystem: 'npm'
+    directory: '/frontend'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "deps"
-      include: "scope"
+      prefix: 'deps'
+      include: 'scope'
     ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       npm-frontend:
         applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+        patterns: ['*']
+        update-types: ['minor', 'patch']
       npm-frontend-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
-  - package-ecosystem: "cargo"
-    directory: "/"
+  - package-ecosystem: 'cargo'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "deps"
-      include: "scope"
+      prefix: 'deps'
+      include: 'scope'
     ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       cargo:
         applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+        patterns: ['*']
+        update-types: ['minor', 'patch']
       cargo-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "ci"
-      include: "scope"
+      prefix: 'ci'
+      include: 'scope'
     groups:
       actions:
         applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+        patterns: ['*']
+        update-types: ['minor', 'patch']
       actions-security:
         applies-to: security-updates
-        patterns: ["*"]
+        patterns: ['*']
