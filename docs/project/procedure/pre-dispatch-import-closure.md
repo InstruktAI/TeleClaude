@@ -8,6 +8,7 @@ description: Investigate pre-dispatch import-closure refusals and justify requir
 
 - @docs/project/design/architecture/cli-invocation-boundary.md
 - @~/.teleclaude/docs/general/policy/agent-artifact-governance.md
+- @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 
 ## Goal
 
@@ -34,10 +35,12 @@ the startup cost it imposes on every CLI command as evidence.
    startup of the same cheap CLI command from the base and candidate on the same
    host. Inspect the import and initialization delta that explains any shared
    startup cost.
-4. Record the shared-cost evidence and reason for the pre-dispatch dependency in
-   the change description before changing the declared closure. Do not add a
-   module merely to silence the guardrail or hide its import behind a local
-   import without accounting for when it runs.
+4. Before changing the declared closure, record the same-host startup comparison,
+   import and initialization delta, material reason for the shared pre-dispatch
+   cost, and before-and-after guarantee in the change description or RFC, as
+   required by `sdlc/policy/process-change-authority`. Do not add a module merely
+   to silence the guardrail or hide its import behind a local import without
+   accounting for when it runs.
 5. Treat a closure expansion as a relaxation of a quality guardrail. It requires
    explicit approval from an independent reviewer with no stake in the change
    (`general/policy/agent-artifact-governance`).
@@ -46,7 +49,7 @@ the startup cost it imposes on every CLI command as evidence.
 
 - The import edge is moved behind dispatch, or a closure update is supported by
   same-host startup comparison, import and initialization evidence, and a
-  documented reason before independent review.
+  documented reason and before-and-after guarantee before independent review.
 
 ## Recovery
 
