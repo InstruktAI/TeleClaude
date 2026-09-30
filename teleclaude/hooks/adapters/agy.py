@@ -27,11 +27,15 @@ from teleclaude.hooks.adapters.contracts import (
     HookResponseIntent,
     HookResponseKind,
     NativeHookSpec,
+    NativeToolDenial,
+    NativeToolIntent,
 )
 
 _INVOCATION_NUM_FIELD = "invocationNum"
 _STEP_IDX_FIELD = "stepIdx"
 _TOOL_CALL_ID_FIELD = "tool_call_id"
+_TOOL_NAME_FIELD = "tool_name"
+_TOOL_INPUT_FIELD = "tool_input"
 _FULLY_IDLE_FIELD = "fullyIdle"
 _ERROR_FIELD = "error"
 _DECISION_FIELD = "decision"
@@ -47,6 +51,7 @@ _INVALID_FULLY_IDLE = "Antigravity Stop requires a boolean fullyIdle"
 _CONTEXT_SEPARATOR = "\n\n"
 _UNSUPPORTED_DELIVERY_EVENT = "Antigravity event does not support control delivery"
 _CONTINUATION_EVENT_REQUIRED = "Antigravity continuation requires a Stop event"
+_TOOL_DENIAL_EVENT_REQUIRED = "Antigravity tool denial requires a PreToolUse event"
 
 
 class AgyHookEvent(StrEnum):
@@ -64,6 +69,21 @@ class AgyDecision(StrEnum):
 
     ALLOW = "allow"
     CONTINUE = "continue"
+    DENY = "deny"
+
+
+class AgyToolCallField(StrEnum):
+    """Structured fields used by Antigravity tool-call hooks."""
+
+    ARGS = "args"
+    NAME = "name"
+    TOOL_CALL = "toolCall"
+
+
+class AgyToolName(StrEnum):
+    """Antigravity tool names with TeleClaude-owned behavior."""
+
+    INVOKE_SUBAGENT = "invoke_subagent"
 
 
 class AgyInvocationKind(StrEnum):
@@ -150,14 +170,14 @@ class AgyAdapter(HookAdapter):
             transcript_path = normalized.get("transcriptPath")
             if isinstance(transcript_path, str) and transcript_path:
                 normalized["transcript_path"] = transcript_path
-        tool_call = normalized.get("toolCall")
+        tool_call = normalized.get(AgyToolCallField.TOOL_CALL)
         if isinstance(tool_call, dict):
-            tool_name = tool_call.get("name")
-            tool_input = tool_call.get("args")
+            tool_name = tool_call.get(AgyToolCallField.NAME)
+            tool_input = tool_call.get(AgyToolCallField.ARGS)
             if isinstance(tool_name, str) and tool_name:
-                normalized["tool_name"] = tool_name
+                normalized[_TOOL_NAME_FIELD] = tool_name
             if isinstance(tool_input, dict):
-                normalized["tool_input"] = tool_input
+                normalized[_TOOL_INPUT_FIELD] = tool_input
         step_idx = normalized.get(_STEP_IDX_FIELD)
         if isinstance(step_idx, int) and not isinstance(step_idx, bool):
             normalized[_TOOL_CALL_ID_FIELD] = str(step_idx)
@@ -170,6 +190,25 @@ class AgyAdapter(HookAdapter):
             return None
         role = _latest_transcript_role(transcript_path)
         return AgyInvocationKind.PROMPT_ACCEPTED if role == "user" else AgyInvocationKind.MID_TURN
+
+    def native_tool_intent(self, raw_event_type: str, data: JsonDict) -> NativeToolIntent | None:
+        """Declare native subagent invocation intent from structured tool fields."""
+        if raw_event_type != _PRE_TOOL_USE_EVENT:
+            return None
+        tool_call = data.get(AgyToolCallField.TOOL_CALL)
+        if not isinstance(tool_call, dict):
+            return None
+        tool_name = tool_call.get(AgyToolCallField.NAME)
+        if isinstance(tool_name, str) and tool_name == AgyToolName.INVOKE_SUBAGENT:
+            return NativeToolIntent.DENY_NATIVE_SUBAGENT
+        return None
+
+    def render_tool_denial(self, raw_event_type: str, denial: NativeToolDenial) -> HookEmission:
+        """Render one native tool denial at Antigravity's PreToolUse boundary."""
+        if raw_event_type != _PRE_TOOL_USE_EVENT:
+            raise ValueError(_TOOL_DENIAL_EVENT_REQUIRED)
+        payload = json.dumps({_DECISION_FIELD: AgyDecision.DENY, _REASON_FIELD: denial.reason})
+        return HookEmission(payload, HookResponseKind.TOOL_DENY, HookResponseFormat.JSON)
 
     def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
         """Apply Antigravity lifecycle predicates before shared receiver work."""

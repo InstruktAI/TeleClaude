@@ -86,6 +86,7 @@ from teleclaude.hooks.receiver._session import (
     _write_session_map_atomic,
     get_outbox_session,
 )
+from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS, _canonical_tool_name
@@ -223,6 +224,7 @@ class ReceiverDropReason(StrEnum):
 
     CODEX_SUBAGENT = "codex_subagent"
     MANAGED_DESCENDANT_SESSION_START = "managed_descendant_session_start"
+    NATIVE_SUBAGENT_DENIED = "native_subagent_denied"
     SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
     UNHANDLED_EVENT = "unhandled_event"
 
@@ -995,6 +997,44 @@ def _emit_hook_emission(
     )
 
 
+def _handle_native_tool_admission(
+    *,
+    adapter: HookAdapter,
+    raw_event_type: str,
+    data: JsonDict,
+    provider: str,
+    receiver_ingress_id: str,
+    native_session_id: str | None,
+) -> bool:
+    """Deny declared native-tool intents on managed sources before resolution."""
+    intent = adapter.native_tool_intent(raw_event_type, data)
+    if intent is None:
+        return False
+    marker_state, _ = inspect_session_identity_marker()
+    source_kind = _classify_hook_source(marker_state, _in_own_tmux_pane())
+    denial = native_tool_denial_for_source(intent, source_kind)
+    if denial is None:
+        return False
+
+    _log_normalization_decision(
+        receiver_ingress_id=receiver_ingress_id,
+        provider=provider,
+        raw_event_type=raw_event_type,
+        outcome=HookNormalizationOutcome.DROPPED,
+        reason=ReceiverDropReason.NATIVE_SUBAGENT_DENIED,
+        event_type=None,
+        native_session_id=native_session_id,
+    )
+    _emit_hook_emission(
+        adapter.render_tool_denial(raw_event_type, denial),
+        provider=provider,
+        raw_event_type=raw_event_type,
+        receiver_ingress_id=receiver_ingress_id,
+        session_id=None,
+    )
+    return True
+
+
 def _success_response_kind(
     event_type: str | None,
     reason: HookNormalizationReason,
@@ -1570,6 +1610,16 @@ def main() -> None:
             error=str(exc),
         )
         sys.exit(1)
+
+    if _handle_native_tool_admission(
+        adapter=adapter,
+        raw_event_type=raw_event_type,
+        data=data,
+        provider=args.agent,
+        receiver_ingress_id=receiver_ingress_id,
+        native_session_id=raw_native_session_id,
+    ):
+        return
 
     event_type = normalization.event_type
     if event_type is None:

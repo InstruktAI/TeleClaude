@@ -17,6 +17,8 @@ from teleclaude.hooks.adapters.contracts import (
     HookPurpose,
     HookResponseIntent,
     NativeHookSpec,
+    NativeToolDenial,
+    NativeToolIntent,
 )
 
 
@@ -150,6 +152,16 @@ class HookAdapter:
         """Return optional provider diagnostic metadata about the execution process."""
         del data
         return None
+
+    def native_tool_intent(self, raw_event_type: str, data: JsonDict) -> NativeToolIntent | None:
+        """Declare a provider-independent intent for one native tool call, if any."""
+        del raw_event_type, data
+        return None
+
+    def render_tool_denial(self, raw_event_type: str, denial: NativeToolDenial) -> HookEmission:
+        """Render a typed native-tool denial in the provider's wire format."""
+        del raw_event_type, denial
+        raise NotImplementedError
 
     def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
         """Render one legal provider response for a closed semantic intent."""

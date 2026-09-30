@@ -9,6 +9,7 @@ from teleclaude.core.events import AgentHookEventType
 
 _EMPTY_CONTEXT_ERROR = "Hook context must be non-empty"
 _EMPTY_REASON_ERROR = "Hook continuation reason must be non-empty"
+_EMPTY_TOOL_DENIAL_REASON_ERROR = "Native tool denial reason must be non-empty"
 _EMPTY_EMISSION_ERROR = "Hook emission payload must be non-empty"
 
 
@@ -44,6 +45,13 @@ class HookResponseKind(StrEnum):
     STARTUP_CONTEXT = "startup_context"
     STOP_ALLOW = "stop_allow"
     TOOL_ALLOW = "tool_allow"
+    TOOL_DENY = "tool_deny"
+
+
+class NativeToolIntent(StrEnum):
+    """Provider-independent native-tool intents declared by adapters."""
+
+    DENY_NATIVE_SUBAGENT = "deny_native_subagent"
 
 
 @dataclass(frozen=True)
@@ -92,6 +100,17 @@ class ContinueWithContext:
 
 
 type HookResponseIntent = DeliverContext | ContinueWithReason | ContinueWithContext
+
+
+@dataclass(frozen=True)
+class NativeToolDenial:
+    """One receiver-authorized native tool denial for a provider adapter to render."""
+
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise ValueError(_EMPTY_TOOL_DENIAL_REASON_ERROR)
 
 
 @dataclass(frozen=True)
