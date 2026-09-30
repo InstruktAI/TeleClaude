@@ -33,25 +33,6 @@ conversation.
 The launch's ownership is stated in this cross-cutting design. The agent-runtime
 domain anchor carries no forward architecture.
 
-### Prior art for the derived subject
-
-The failure the launch's shape is designed against is the confused deputy, in
-which a trusted deputy applies its own authority to a target its caller named; a
-launch that accepted and validated a person argument would be that deputy. The
-remedy is to designate the subject by what the invoker already holds rather than
-by a name it supplies, which removes the step the attack needs.
-
-The Kubernetes authorization API carries the same split in production:
-`SubjectAccessReview` accepts a subject, while `SelfSubjectAccessReview` is a
-separate resource whose user and group fields must be empty because the subject
-is taken from the authenticated caller. `run-pa` is the self-form in that
-relation, including the choice to be a distinct surface rather than a mode of
-the general verbs. The platform's own `self` surfaces are the internal
-precedent.
-
-The decision is to adopt: no new authorization mechanism is introduced, and the
-launch reuses the existing session-creation command.
-
 <!-- /planned:personal-assistant-launch -->
 
 ## Inputs/Outputs
