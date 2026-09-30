@@ -55,7 +55,7 @@ Current raw-to-normalized lifecycle mapping:
 <!-- planned-change:gemini-subagent-overwrites-primary-session -->
 | Antigravity | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
 <!-- change:gemini-subagent-overwrites-primary-session -->
-| Antigravity | `PreToolUse` for a native subagent invocation from a managed source | (none) | dropped; invocation denied |
+| Antigravity | `PreToolUse` for a native subagent invocation from a managed source | (none) | dropped |
 | Antigravity | Other `PreToolUse` invocations | `pre_tool_use` | forwarded |
 <!-- /planned-change:gemini-subagent-overwrites-primary-session -->
 | Antigravity | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
