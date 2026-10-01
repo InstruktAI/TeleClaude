@@ -24,7 +24,12 @@ from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import FileEventContext, SessionLifecycleContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
-from teleclaude.core.help_desk_relay import divert_visitor_file, divert_visitor_input, is_visitor_input
+from teleclaude.core.help_desk_relay import (
+    RelayDeliveryFailed,
+    divert_visitor_file,
+    divert_visitor_input,
+    is_visitor_input,
+)
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
 from teleclaude.core.inbound_media import fetch_media_ref
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
@@ -511,8 +516,8 @@ async def handle_file(
         cmd.file_path, cmd.filename, cmd.file_size = str(fetched), fetched.name, fetched.stat().st_size
     relaying = await db.get_session(cmd.session_id)
     if relaying is not None and is_visitor_input(relaying, cmd.actor_id, None):
-        await divert_visitor_file(relaying, cmd.filename)
-        return
+        if await divert_visitor_file(relaying, cmd.filename):
+            return
 
     async def _send_notice(
         session_id: str,
@@ -892,6 +897,16 @@ def _canonical_caller_content(cmd: ProcessMessageCommand) -> tuple[str, int | No
     )
 
 
+async def _diverted(session: Session, cmd: ProcessMessageCommand) -> bool:
+    """Relay a visitor's message to the escalation's admins; ``False`` when the relay has just ended."""
+    try:
+        return await divert_visitor_input(session, cmd.text, cmd.actor_name)
+    except RelayDeliveryFailed as exc:
+        raise SessionMessageRejectedError(
+            session_id=session.session_id, reason=SessionMessageRejectionReason.UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+
 async def process_message(
     cmd: ProcessMessageCommand,
     client: "AdapterClient",
@@ -908,8 +923,7 @@ async def process_message(
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
-    if is_visitor_input(session, cmd.actor_id, cmd.caller_session_id):
-        await divert_visitor_input(session, cmd.text, cmd.actor_name)
+    if is_visitor_input(session, cmd.actor_id, cmd.caller_session_id) and await _diverted(session, cmd):
         return
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.UNAVAILABLE)

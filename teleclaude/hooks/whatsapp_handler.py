@@ -82,6 +82,7 @@ _SESSION_ID_FIELD = "session_id"
 _THINKING_MODE = "slow"
 _REPLY_PURPOSE = "reply"
 _INBOUND_PURPOSE = "inbound"
+_NO_TEXT = ""
 
 
 def _normalize_phone_number(phone_number: str | None) -> str:
@@ -223,8 +224,8 @@ def _media_command(
         )
     return HandleFileCommand(
         session_id=session_id,
-        file_path="",
-        filename="",
+        file_path=_NO_TEXT,
+        filename=_NO_TEXT,
         media_ref=media_ref,
         origin=InputOrigin.WHATSAPP.value,
         actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
@@ -352,7 +353,7 @@ async def _reply(phone_number: str, text: str) -> None:
 
 def _relay_reply(event: HookEvent, phone_number: str, message_id: str) -> AdminReply | None:
     """What a message answers when it replies to an earlier message of the conversation."""
-    replied_id = str(event.properties.get(CONTEXT_MESSAGE_ID_PROPERTY) or "")
+    replied_id = str(event.properties.get(CONTEXT_MESSAGE_ID_PROPERTY) or _NO_TEXT)
     if not replied_id or not message_id:
         return None
     sender = get_identity_resolver().resolve(InputOrigin.WHATSAPP.value, {WHATSAPP_KEY_FIELD: phone_number})
@@ -361,7 +362,7 @@ def _relay_reply(event: HookEvent, phone_number: str, message_id: str) -> AdminR
         target=phone_number,
         replied_message_id=replied_id,
         admin_message_id=message_id,
-        admin_name=(sender.person_name or "").strip() or phone_number,
+        admin_name=(sender.person_name or _NO_TEXT).strip() or phone_number,
     )
 
 

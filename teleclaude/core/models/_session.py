@@ -310,13 +310,14 @@ class RelayTarget:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object]) -> "RelayTarget | None":
-        """Deserialize a stored record; one missing an address is no target."""
+        """Deserialize a stored record; one missing an address or with malformed message ids is no target."""
         person, channel, target = (raw.get(key) for key in _RELAY_TARGET_ADDRESS_FIELDS)
         if not (isinstance(person, str) and isinstance(channel, str) and isinstance(target, str)):
             return None
-        ids = raw.get(RelayRecordField.MESSAGE_IDS.value)
-        message_ids = tuple(item for item in ids if isinstance(item, str)) if isinstance(ids, list) else ()
-        return cls(person=person, channel=channel, target=target, message_ids=message_ids)
+        ids = raw.get(RelayRecordField.MESSAGE_IDS.value, [])
+        if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+            return None
+        return cls(person=person, channel=channel, target=target, message_ids=tuple(ids))
 
 
 _RELAY_TARGET_ADDRESS_FIELDS = (RelayRecordField.PERSON, RelayRecordField.CHANNEL, RelayRecordField.TARGET)
@@ -361,24 +362,49 @@ def encode_relay_exchange(exchange: tuple[RelayExchangeEntry, ...]) -> str:
     return json.dumps([entry.to_dict() for entry in exchange])
 
 
-def _decoded_records(raw: object) -> list[Mapping[str, object]]:
+_NO_RECORDS_TEXT = ""
+
+
+class MalformedRelayRecord(ValueError):
+    """A session's stored relay record is present but not a valid relay record."""
+
+
+_MALFORMED_RELAY_RECORD = "malformed {field} record: {reason}"
+_NOT_A_LIST = "not a list of records"
+_INVALID_ENTRY = "an entry is not a valid record"
+
+
+def _decoded_records(raw: object, field: SessionField) -> list[Mapping[str, object]]:
+    """The records of a stored relay field; absent is none, anything present must be a list of records."""
+    if raw is None or raw == _NO_RECORDS_TEXT:
+        return []
     if isinstance(raw, str):
         try:
-            raw = json.loads(raw or "[]")
-        except json.JSONDecodeError:
-            return []
-    return [item for item in raw if isinstance(item, Mapping)] if isinstance(raw, list) else []
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise MalformedRelayRecord(_MALFORMED_RELAY_RECORD.format(field=field.value, reason=str(exc))) from exc
+    if not isinstance(raw, list) or not all(isinstance(item, Mapping) for item in raw):
+        raise MalformedRelayRecord(_MALFORMED_RELAY_RECORD.format(field=field.value, reason=_NOT_A_LIST))
+    return list(raw)
 
 
 def decode_relay_targets(raw: object) -> tuple[RelayTarget, ...]:
-    """A relay's targets from their stored text or list."""
-    decoded = (RelayTarget.from_dict(item) for item in _decoded_records(raw))
+    """A relay's targets from their stored text or list; a malformed record raises ``MalformedRelayRecord``."""
+    decoded = [RelayTarget.from_dict(item) for item in _decoded_records(raw, SessionField.RELAY_TARGETS)]
+    if any(target is None for target in decoded):
+        raise MalformedRelayRecord(
+            _MALFORMED_RELAY_RECORD.format(field=SessionField.RELAY_TARGETS.value, reason=_INVALID_ENTRY)
+        )
     return tuple(target for target in decoded if target is not None)
 
 
 def decode_relay_exchange(raw: object) -> tuple[RelayExchangeEntry, ...]:
-    """A relay's exchange from its stored text or list."""
-    decoded = (RelayExchangeEntry.from_dict(item) for item in _decoded_records(raw))
+    """A relay's exchange from its stored text or list; a malformed record raises ``MalformedRelayRecord``."""
+    decoded = [RelayExchangeEntry.from_dict(item) for item in _decoded_records(raw, SessionField.RELAY_EXCHANGE)]
+    if any(entry is None for entry in decoded):
+        raise MalformedRelayRecord(
+            _MALFORMED_RELAY_RECORD.format(field=SessionField.RELAY_EXCHANGE.value, reason=_INVALID_ENTRY)
+        )
     return tuple(entry for entry in decoded if entry is not None)
 
 

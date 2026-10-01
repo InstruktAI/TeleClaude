@@ -316,6 +316,9 @@ class ResumeAgentCommand(InternalCommand):
 # ingress so identity-content is constructible with its required receipt key.
 OCCURRENCE_KEY = "occurrence_key"
 
+_ORIGIN_PAYLOAD_KEY = "origin"
+_ACTOR_ID_PAYLOAD_KEY = "actor_id"
+
 
 @dataclass(kw_only=True)
 class ProcessMessageCommand(InternalCommand):
@@ -599,9 +602,9 @@ class HandleFileCommand(InternalCommand):
         if self.caption is not None:
             payload["caption"] = self.caption
         if self.origin is not None:
-            payload["origin"] = self.origin
+            payload[_ORIGIN_PAYLOAD_KEY] = self.origin
         if self.actor_id is not None:
-            payload["actor_id"] = self.actor_id
+            payload[_ACTOR_ID_PAYLOAD_KEY] = self.actor_id
         return payload
 
 

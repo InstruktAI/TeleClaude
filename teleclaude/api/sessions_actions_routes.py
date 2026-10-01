@@ -122,6 +122,8 @@ _AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
 _SINCE_FIELD = "since"
 _INCLUDE_TOOLS_FIELD = "include_tools"
 _INCLUDE_THINKING_FIELD = "include_thinking"
+_ESCALATE_NOTIFIED_KEY = "notified"
+_ESCALATE_WARNING_KEY = "warning"
 _TAIL_CHARS_FIELD = "tail_chars"
 _TAIL_SCOPE_FIELD = "tail_scope"
 _REMOTE_AGENT_STATUS_INVALID_DETAIL = "Remote session returned an invalid agent status"
@@ -983,7 +985,8 @@ async def escalate_session(
             content={
                 "status": "success",
                 "thread_id": result.get("thread_id") if isinstance(result, dict) else None,  # type: ignore[union-attr]
-                "notified": result.get("notified") if isinstance(result, dict) else None,  # type: ignore[union-attr]
+                _ESCALATE_NOTIFIED_KEY: result.get(_ESCALATE_NOTIFIED_KEY) if isinstance(result, dict) else None,  # type: ignore[union-attr]
+                _ESCALATE_WARNING_KEY: result.get(_ESCALATE_WARNING_KEY) if isinstance(result, dict) else None,  # type: ignore[union-attr]
             },
         )
     except ValueError as e:

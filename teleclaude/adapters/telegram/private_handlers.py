@@ -148,7 +148,7 @@ def _relay_reply(update: Update) -> AdminReply | None:
         target=str(chat.id),
         replied_message_id=str(replied.message_id),
         admin_message_id=str(message.message_id),
-        admin_name=(user.full_name if user is not None else "") or _UNKNOWN_USER_NAME,
+        admin_name=(user.full_name if user is not None else None) or _UNKNOWN_USER_NAME,
     )
 
 

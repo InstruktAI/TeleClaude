@@ -24,6 +24,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _AGENT_TAG = "@agent"
 _RELAY_CHANNEL_ID_FIELD = "relay_channel_id"
+_SEND_ATTR = "send"
+_THREAD_SEND_LABEL = "relay thread send"
+_CHANNEL_ATTR = "channel"
+_ID_ATTR = "id"
+_AUTHOR_ATTR = "author"
+_DISPLAY_NAME_ATTR = "display_name"
+_USER_ATTR = "user"
+_NO_TEXT = ""
 _MENTION_TEMPLATE = "<@{user_id}>"
 _ADMIN_FALLBACK_NAME = "Admin"
 _REASON_TEMPLATE = "**Reason:** {reason}"
@@ -128,7 +136,7 @@ class AdminReflectionMixin:
                 logger.error(_THREAD_NOT_FOUND_EVENT, thread_id=thread_id)
                 return
             send_fn = cast_async_callable(
-                self._require_async_callable, getattr(thread, "send", None), label="relay thread send"
+                self._require_async_callable, getattr(thread, _SEND_ATTR, None), label=_THREAD_SEND_LABEL
             )
             await send_fn(_THREAD_POST_TEMPLATE.format(name=sender_label, text=text))
         except recoverable_errors as exc:
@@ -140,18 +148,18 @@ class AdminReflectionMixin:
 
     async def _handle_relay_thread_message(self, message: object, text: str) -> None:
         """Hand an admin post in an escalation thread to the core relay; any post answers."""
-        channel = getattr(message, "channel", None)
-        thread_id = str(getattr(channel, "id", ""))
+        channel = getattr(message, _CHANNEL_ATTR, None)
+        thread_id = str(getattr(channel, _ID_ATTR, None) or _NO_TEXT)
         session = await db.get_session_by_field(_RELAY_CHANNEL_ID_FIELD, thread_id, include_initializing=True)
         if not session:
             return  # Orphaned thread, a relay already closed, or a session on another computer
-        author = getattr(message, "author", None)
-        admin_name = getattr(author, "display_name", None) or _ADMIN_FALLBACK_NAME
+        author = getattr(message, _AUTHOR_ATTR, None)
+        admin_name = getattr(author, _DISPLAY_NAME_ATTR, None) or _ADMIN_FALLBACK_NAME
         await answer_in_thread(session, admin_name, text, self._is_agent_tag(text))
 
     def _is_agent_tag(self, text: str) -> bool:
         """Whether a post tags the agent: the literal tag or a mention of this bot."""
         if _AGENT_TAG in text.lower():
             return True
-        bot_id = getattr(getattr(self._client, "user", None), "id", None) if self._client else None
+        bot_id = getattr(getattr(self._client, _USER_ATTR, None), _ID_ATTR, None) if self._client else None
         return bool(bot_id) and _MENTION_TEMPLATE.format(user_id=bot_id) in text

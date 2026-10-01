@@ -103,6 +103,7 @@ _ESCALATE_SESSION_ID_REQUIRED = "escalate_session always carries the caller's se
 _ESCALATE_CUSTOMER_FIELD = "customer_name"
 _ESCALATE_REASON_FIELD = "reason"
 _ESCALATE_SUMMARY_FIELD = "context_summary"
+_NO_TEXT = ""
 
 
 class UnsubscribeSessionPayload(TypedDict):
@@ -450,8 +451,8 @@ class CommandService:
             raise ValueError(f"Session {cmd.session_id} not found")
         data = cmd.data or {}
         request = EscalationRequest(
-            customer_name=str(data.get(_ESCALATE_CUSTOMER_FIELD, "")),
-            reason=str(data.get(_ESCALATE_REASON_FIELD, "")),
-            summary=str(data.get(_ESCALATE_SUMMARY_FIELD) or ""),
+            customer_name=str(data.get(_ESCALATE_CUSTOMER_FIELD) or _NO_TEXT),
+            reason=str(data.get(_ESCALATE_REASON_FIELD) or _NO_TEXT),
+            summary=str(data.get(_ESCALATE_SUMMARY_FIELD) or _NO_TEXT),
         )
         return await escalate(session, request)

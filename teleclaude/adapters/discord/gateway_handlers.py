@@ -85,6 +85,8 @@ _CUSTOM_ID_FIELD = "custom_id"
 _DM_USER_ID_FIELD = "user_id"
 _DM_DISCORD_USER_ID_FIELD = "discord_user_id"
 _DM_PLATFORM_FIELD = "platform"
+_REFERENCE_ATTR = "reference"
+_MESSAGE_ID_ATTR = "message_id"
 _PROCESS_MESSAGE_EVENT = "process_message"
 
 
@@ -522,7 +524,7 @@ class GatewayHandlersMixin:
     @staticmethod
     def _dm_relay_reply(message: object, user_id: str, message_id: str, actor_name: str) -> AdminReply | None:
         """What a direct message answers when it replies to an earlier message of the conversation."""
-        replied_id = getattr(getattr(message, "reference", None), "message_id", None)
+        replied_id = getattr(getattr(message, _REFERENCE_ATTR, None), _MESSAGE_ID_ATTR, None)
         if replied_id is None or not message_id:
             return None
         return AdminReply(

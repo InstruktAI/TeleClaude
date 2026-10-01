@@ -54,6 +54,8 @@ KEY_COMMANDS = {
     "ctrl",
 }
 
+_ORIGIN_PAYLOAD_KEY = "origin"
+_ACTOR_ID_PAYLOAD_KEY = "actor_id"
 _SOURCE_FEATURE_BY_ORIGIN = {
     InputOrigin.TELEGRAM.value: InjectedTextSourceFeature.TELEGRAM,
     InputOrigin.DISCORD.value: InjectedTextSourceFeature.DISCORD,
@@ -243,8 +245,8 @@ class CommandMapper:
                     filename=str(payload.get("filename", "")),
                     caption=cast(str | None, payload.get("caption")),
                     file_size=cast(int, payload.get("file_size", 0)),
-                    origin=cast(str | None, payload.get("origin")) or metadata.origin,
-                    actor_id=cast(str | None, payload.get("actor_id")) or metadata.actor_id,
+                    origin=cast(str | None, payload.get(_ORIGIN_PAYLOAD_KEY)) or metadata.origin,
+                    actor_id=cast(str | None, payload.get(_ACTOR_ID_PAYLOAD_KEY)) or metadata.actor_id,
                 ),
                 computer,
             )

@@ -68,6 +68,8 @@ _ID_FIELD = "id"
 _SESSION_ID_FIELD = "session_id"
 _DISCORD_USER_ID_FIELD = "discord_user_id"
 _USER_ID_FIELD = "user_id"
+_AUTHOR_ATTR = "author"
+_NO_TEXT = ""
 _PLATFORM_FIELD = "platform"
 _DISCORD_PLATFORM = "discord"
 _SLOW_THINKING_MODE = "slow"
@@ -374,7 +376,7 @@ class InputHandlersMixin:
 
         # Get text caption for the first attachment only (to avoid duplication)
         caption = getattr(message, "content", None)
-        sender_id = str(getattr(getattr(message, "author", None), "id", "")).strip()
+        sender_id = str(getattr(getattr(message, _AUTHOR_ATTR, None), _ID_FIELD, None) or _NO_TEXT).strip()
         sender_key = resolve_binding_key(InputOrigin.DISCORD.value, {_USER_ID_FIELD: sender_id}) if sender_id else None
         if not isinstance(caption, str) or not caption.strip():
             caption = None

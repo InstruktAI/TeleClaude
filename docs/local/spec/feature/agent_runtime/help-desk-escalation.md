@@ -190,3 +190,15 @@ And tagging the agent in that thread hands the conversation back
   configuration on the escalating computer resolves.
 - An admin whose preferred channel cannot carry a reply, such as email, is
   notified but cannot answer through the relay.
+- While any live computer does not yet run this relay, a company or project
+  desk's escalation is refused as not available for that desk yet, and a
+  platform desk's escalation reaches the platform's admins only through the
+  shared escalation thread. Once every live computer runs it, escalation
+  behaves as described above.
+- A platform desk escalation whose shared thread cannot be opened is still
+  accepted when admins were notified in their own conversations, and its
+  result tells the agent that the thread is missing.
+- A visitor message that no notified admin could receive is refused back to
+  the visitor's adapter rather than dropped or handed to the agent; an admin
+  answer that could not reach the visitor is reported to that admin, who can
+  resend it.
