@@ -40,9 +40,10 @@ other permission; granting stays with a person or a managed device profile.
 - **Signing store.** The keychain that holds the signing authority and nothing
   the operator uses for anything else. A signing run unlocks it for a bounded
   window that covers that run, after which it locks again on its own.
-- **Step deadlines.** Every keychain operation and every signature in a signing
-  run carries its own deadline, independent of the store's unlock window. A
-  step that reaches its deadline fails the run.
+- **Step deadlines.** Every keychain-tool invocation and every code-signing-tool
+  invocation in a signing run — whether it signs, verifies or inspects a
+  signature — carries its own deadline, independent of the store's unlock
+  window. A step that reaches its deadline fails the run.
 - **Unlock secret.** The machine-local secret that opens the signing store. It
   is readable by installation and maintenance after logout or reboot, is never
   stored inside the store it opens, and never appears in output, logs or a
@@ -52,9 +53,11 @@ other permission; granting stays with a person or a managed device profile.
   require. A launcher set is complete when each launcher carries a valid
   strict signature by the signing authority and its own stable identifier.
 - **Authority creation.** Happens only when the signing store holds no
-  authority. A locked store, an unavailable unlock secret, a signing run that
-  runs out of time, or a launcher set that fails verification never causes a
-  new authority to be created; each fails the run instead. Deliberately
+  authority. A store that is locked is opened with the unlock secret and signs
+  as usual. A store that cannot be opened, an unavailable or rejected unlock
+  secret, a signing run that runs out of time, or a launcher set that fails
+  verification never causes a new authority to be created; each fails the run
+  instead. Deliberately
   replacing an authority remains a separate operator act outside installation;
   it voids every grant bound to the old authority
   (`sdlc/procedure/macos-stable-code-signing`).
