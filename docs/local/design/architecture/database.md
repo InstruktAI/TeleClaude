@@ -177,7 +177,7 @@ holds them. Reconciliation reads a stored `provider_id`, verifies it against
 Discord, and reuses it when it still names the expected artifact; only a
 conclusive provider not-found clears or replaces a record, and an inconclusive
 lookup leaves the record untouched. The contract the table serves is
-`projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
+`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
 
 ### Shared Discord child ownership
 

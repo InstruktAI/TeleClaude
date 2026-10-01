@@ -358,4 +358,4 @@ And the resolved session may be the same agent implementation the earlier sessio
 - A restart that asks for a handoff is the one continuation that may select a
   different agent. It runs this contract's fresh-session resolution for the
   session's command as it is, owns no eligibility or exclusion logic of its own,
-  and is specified by `projects/teleclaude/spec/feature/agent_runtime/agent-handoff`.
+  and is specified by `local/projects/teleclaude/spec/feature/agent_runtime/agent-handoff`.

@@ -12,7 +12,7 @@ description: A record the platform writes on a caller's behalf takes who made it
 ## What it is
 
 When a command records who made something, it takes the answer from the platform's
-resolution of its caller (`projects/teleclaude/spec/identity-and-auth` §6): inside a session, the
+resolution of its caller (`local/projects/teleclaude/spec/identity-and-auth` §6): inside a session, the
 session record its identity document names; outside any session, the person the
 terminal's login names. It never takes a principal copied into the identity document,
 and never a terminal login from inside a session. A content inbox entry's author and a
@@ -21,7 +21,7 @@ known-issue suppression's creation provenance name the resolved principal:
 terminal login names them, and the carried system principal for work with no human
 origin. A known-issue suppression, a sealed commit and a content inbox entry resolve their
 caller in the CLI process. A sealed
-commit takes its author under the rules `projects/teleclaude/spec/feature/agent_runtime/sealed-commit`
+commit takes its author under the rules `local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`
 owns.
 
 A caller the platform cannot identify has nothing recorded under a
@@ -31,8 +31,8 @@ explicitly for the record — a content author credited by `--author` — is aut
 content, not attribution, and is recorded as given.
 
 Each owning feature states its own attribution scenario: suppressions in
-`projects/teleclaude/spec/feature/workflow/known-issue-suppression`, sealed commits in
-`projects/teleclaude/spec/feature/agent_runtime/sealed-commit`. This spec carries the content inbox, which
+`local/projects/teleclaude/spec/feature/workflow/known-issue-suppression`, sealed commits in
+`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`. This spec carries the content inbox, which
 has no other owning spec.
 
 ## Canonical fields
@@ -77,8 +77,8 @@ And no inbox entry is created in the subdirectory or the worktree
 
 ### Cross-context references
 
-- **workflow** — suppression provenance (`projects/teleclaude/spec/feature/workflow/known-issue-suppression`).
-- **agent_runtime** — sealed-commit author resolution (`projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
+- **workflow** — suppression provenance (`local/projects/teleclaude/spec/feature/workflow/known-issue-suppression`).
+- **agent_runtime** — sealed-commit author resolution (`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
 
 ## Known caveats
 

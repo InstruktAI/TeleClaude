@@ -23,7 +23,7 @@ A checkout's own `bin/telec` runs that checkout's code. That is how an agent exe
 its own change by hand, calling the wrapper and nothing more. From a slug worktree the
 wrapper never runs against the live home: the worktree's code runs against the home
 repository clone the worktree was provisioned with
-(`projects/teleclaude/spec/feature/agent_runtime/isolated-home`), whatever home its caller names and
+(`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`), whatever home its caller names and
 whoever invokes it, and refuses when that home is missing. The wrapper creates no home of
 its own.
 
@@ -40,7 +40,7 @@ guardrail lane runs through one installation-supplied process entry that
 confirms it loaded the worktree's code before running exactly that lane.
 
 The path this behavior sits on is described in
-`projects/teleclaude/design/architecture/cli-invocation-boundary`.
+`local/projects/teleclaude/design/architecture/cli-invocation-boundary`.
 
 ## Canonical fields
 
@@ -117,7 +117,7 @@ And grading reports their outcome without an unidentified-caller refusal from it
 - A worktree or named home moves only the state rooted in the home. A checkout's todo store and
   the running daemon do not follow it: a probe of a command that writes project state
   or acts through the daemon reaches the live one, which is why such behavior is
-  verified after delivery (`projects/teleclaude/policy/test-moratorium`).
+  verified after delivery (`local/projects/teleclaude/policy/test-moratorium`).
 
 ## See Also
 

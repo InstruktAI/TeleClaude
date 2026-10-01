@@ -27,9 +27,9 @@ A `telec` command invoked from inside a slug worktree acts on one of two sides:
 
 This design states, per command group, which side a command acts on. Which checkout's
 code runs is a separate question, owned by
-`projects/teleclaude/spec/feature/agent_runtime/checkout-code-selection`. How the tier declaration
+`local/projects/teleclaude/spec/feature/agent_runtime/checkout-code-selection`. How the tier declaration
 and the shared-state root are resolved is owned by
-`projects/teleclaude/design/architecture/config-tier-resolution`; this design names which of those
+`local/projects/teleclaude/design/architecture/config-tier-resolution`; this design names which of those
 answers each command uses.
 
 ## Inputs/Outputs
@@ -70,7 +70,7 @@ flowchart LR
    and `agents` switches, and the tier they are declared under, that decide which
    checks a worktree's commit runs are read from the worktree's own declaration: they
    describe the change. A gate the daemon evaluates for the live project is not a
-   command and follows `projects/teleclaude/design/architecture/config-tier-resolution`.
+   command and follows `local/projects/teleclaude/design/architecture/config-tier-resolution`.
 4. **A split is stated.** A command that acts on both roots names which part acts on
    which.
 5. **One resolution.** Every command obtains its root from the one scope resolution;
@@ -141,8 +141,8 @@ flowchart LR
 
 The platform home is a commit-boundary root without being a project. Its installed
 hooks drain maintenance on the home itself
-(`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`, UC-RPC7;
-`projects/teleclaude/spec/feature/integration/post-commit-maintenance`, UC-PCM10), so the
+(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`, UC-RPC7;
+`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`, UC-PCM10), so the
 project-root refusal under Failure modes does not apply to them there.
 
 ## Failure modes

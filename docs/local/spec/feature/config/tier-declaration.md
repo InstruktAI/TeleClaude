@@ -43,7 +43,7 @@ answers two separate questions:
   commit into the home repository, not repositories of their own.
 
 An established configuration file reaches the declared state through the
-configuration migration list (`projects/teleclaude/spec/feature/config/document-migration`).
+configuration migration list (`local/projects/teleclaude/spec/feature/config/document-migration`).
 A document that has not passed the declaring migration obtains an absent tier
 from the registries that define the tiers — the designated locations for the
 home's own configuration, person, and company files, and the project registry
@@ -275,9 +275,9 @@ And the written content is identical to what any other machine writes for the sa
 ### Cross-context references
 
 - How a document reaches its current shape, including its declaration, is
-  specified in `projects/teleclaude/spec/feature/config/document-migration`.
+  specified in `local/projects/teleclaude/spec/feature/config/document-migration`.
 - The layered overlay composition this declaration dispatches is specified in
-  `projects/teleclaude/spec/feature/config/layered-overlay-resolution.md`; the declared
+  `local/projects/teleclaude/spec/feature/config/layered-overlay-resolution.md`; the declared
   tier replaces path-shape detection as the dispatch signal.
 - The tier model — designated locations, the project manifest, tier
   relationships, and read authorization — is consolidated in
@@ -285,7 +285,7 @@ And the written content is identical to what any other machine writes for the sa
   declaration-driven resolution assertions.
 - Directories with no anchoring declaration ancestor land in no home: the docs
   surfaces read the caller's default read set without one
-  (`projects/teleclaude/design/architecture/context-selection`).
+  (`local/projects/teleclaude/design/architecture/context-selection`).
 
 ## Allowed values
 

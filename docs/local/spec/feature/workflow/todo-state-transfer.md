@@ -35,7 +35,7 @@ target through the project's remote.
 - **Reach:** admin only — an admin at a terminal, or a session an admin started
   without an agent role. A session carrying an agent role, or acting for the
   platform's principal, is refused
-  (`projects/teleclaude/design/cli-authorization-matrix`).
+  (`local/projects/teleclaude/design/cli-authorization-matrix`).
 - **Addressing:** a target is named by its computer name and reached as the
   user and host it announces in the cluster's peer registry, over key-based
   SSH. A target that is not online in the registry, or is the origin itself,
@@ -47,7 +47,7 @@ target through the project's remote.
   repeated transfer of a large todo state moves little data. Both computers'
   todo state may be in use while it runs. The transfer tool is provisioned on
   every computer by the installer
-  (`projects/teleclaude/spec/feature/reconciliation/sqlite-sync-tool-provisioning`).
+  (`local/projects/teleclaude/spec/feature/reconciliation/sqlite-sync-tool-provisioning`).
 - **Verification:** after the copy, the target checks its copy's integrity and
   reports the result.
 - **Outcome report:** one outcome per project and target — transferred,

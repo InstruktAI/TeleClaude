@@ -151,7 +151,7 @@ Then the resolved identity includes the stored Discord avatar URL for downstream
 Given the global config lists a person who declares no platform role
 When the resolver is queried by that person's email
 Then the returned identity names that person and carries person_role "customer"
-And the person's company roles are not folded into person_role; they are answered as the person's effective role for an object (`projects/teleclaude/design/architecture/scoped-roles`)
+And the person's company roles are not folded into person_role; they are answered as the person's effective role for an object (`local/projects/teleclaude/design/architecture/scoped-roles`)
 ```
 
 #### UC-HIR-TELEGRAM-CUSTOMER: An unknown Telegram user resolves as customer
@@ -167,8 +167,8 @@ And it names no person
 
 - Reads from the `config` bounded context: the `people` list in global config and per-person config files together form the operator's source of truth for who exists in the system.
 - Consumed by `agent_runtime`'s session-creation pipeline to stamp `sessions.human_email` and `sessions.human_role` at creation time. Those stamped columns then feed `feature/identity/session-access-visibility` and `feature/identity/principal-resolution`.
-- Consumed by the client-side caller resolution (`projects/teleclaude/spec/identity-and-auth` §6) — a caller at a terminal or in the TUI resolves to a person and role through the resolver.
-- The `customer`-role fallback for unknown Telegram / Discord / WhatsApp users is the mechanism that lets conversation entry accept inbound messages from people who are not on the operator's `people` list (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). Whether such a message opens a session is decided there, not by the resolver.
+- Consumed by the client-side caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) — a caller at a terminal or in the TUI resolves to a person and role through the resolver.
+- The `customer`-role fallback for unknown Telegram / Discord / WhatsApp users is the mechanism that lets conversation entry accept inbound messages from people who are not on the operator's `people` list (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). Whether such a message opens a session is decided there, not by the resolver.
 - v2 replaces this resolver with a `Principal` aggregate materialized from the same config sources but with explicit `identity.principal.created` events on first observation; the v2 domain spec captures the upgrade.
 
 ## Known caveats

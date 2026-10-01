@@ -21,8 +21,8 @@ project.
 - The project is onboarded and carries a `teleclaude.yml` (`ProjectConfig`).
 - The quality-configuration assessment procedure (`/projects-assess-config`) is available and is started explicitly with `telec sessions run --command /projects-assess-config --path <project-root>`.
 - The platform-universal base and the `ProjectConfig.checkpoint` overlay surface
-  exist (`projects/teleclaude/design/architecture/checkpoint-system`,
-  `projects/teleclaude/spec/domain/config`).
+  exist (`local/projects/teleclaude/design/architecture/checkpoint-system`,
+  `local/projects/teleclaude/spec/domain/config`).
 
 ## Steps
 
@@ -33,7 +33,7 @@ project.
    convention (`make install` / `make test` / `make lint` work by convention).
 2. Before declaring any inferred action, or an action id an existing binding
    already names, check it against the platform's base registries
-   (`projects/teleclaude/design/architecture/checkpoint-system`'s base checkpoint and
+   (`local/projects/teleclaude/design/architecture/checkpoint-system`'s base checkpoint and
    maintenance ids; `general/principle/grounding`). An id that already
    resolves there is reused as-is. For each action still needing a
    project-level declaration, the assessor decides which registry declares it,
@@ -52,7 +52,7 @@ project.
 3. The assessor writes the result into `ProjectConfig.checkpoint` via
    `telec config project patch --revision <rev> [--yaml <patch> | --from-file
 <path>]` — never a direct edit of `teleclaude.yml`. The file's mutation is
-   owned exclusively by the sealed config writer (`projects/teleclaude/spec/domain/config`:
+   owned exclusively by the sealed config writer (`local/projects/teleclaude/spec/domain/config`:
    read-lock, validate the complete candidate, atomic replace); a direct edit
    bypasses both and only appears to converge when a later
    `telec config project init` happens to re-canonicalize the file. The merged
@@ -68,7 +68,7 @@ project.
 ### Step 5 — Capability projection
 
 Assessment also writes the project's three capability toggles
-(`projects/teleclaude/spec/feature/config/project-capability-manifest`) inferred from repo
+(`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) inferred from repo
 shape: a make contract or language trees → `code`; snippet frontmatter under
 `docs/` → `docs`; authored artifacts under `agents/` → `agents`, never `.agents/`. The initial
 toggles are written by `telec config project init` before any
@@ -95,7 +95,7 @@ a binding (Steps 1–3) and remove the project hook so plumbing installs
 TeleClaude's in its slot; this is the default outcome. If the logic has no
 equivalent at all, leave the hook in place unmodified — plumbing never
 overwrites a hook it did not write
-(`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`). Only
+(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`). Only
 when neither holds — logic with no equivalent that must still coexist with
 TeleClaude's own dispatch — hand-author the hook without the sentinel, having
 it itself call `telec code <hook-name>` alongside the project's own steps, and

@@ -18,7 +18,7 @@ caller carries — the principal of its session, or the person resolved for it a
 terminal — never from a terminal signal inside a session and never from a stored
 role copy. A person's role is their effective role for the project each mirror
 was recorded in, resolved when the scope is decided
-(`projects/teleclaude/design/architecture/scoped-roles`). A caller's system role is not an
+(`local/projects/teleclaude/design/architecture/scoped-roles`). A caller's system role is not an
 input: it governs which operations the caller may run, not whose conversations it
 may read.
 

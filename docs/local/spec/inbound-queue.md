@@ -9,7 +9,7 @@ visibility: 'public'
 
 The inbound queue provides guaranteed delivery of user messages to their agent sessions. Adapters enqueue messages and return immediately. Successful enqueue is the accepted-input boundary for non-terminal UI input: core records accepted session metadata after durable insert and before typing callbacks, worker start, or projection-visible wakeups. A per-session worker drains the queue, delivering messages to the tmux session with FIFO ordering and exponential backoff retry.
 
-For non-terminal input, the successful enqueue boundary is also the accepted-input boundary. After a queue insert succeeds, core records the accepted session metadata before any typing callback, worker start, or projection-visible wakeup can observe the session. Terminal input bypasses the inbound queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `projects/teleclaude/spec/session-projection`.
+For non-terminal input, the successful enqueue boundary is also the accepted-input boundary. After a queue insert succeeds, core records the accepted session metadata before any typing callback, worker start, or projection-visible wakeup can observe the session. Terminal input bypasses the inbound queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `local/projects/teleclaude/spec/session-projection`.
 
 ## Canonical fields
 
@@ -203,7 +203,7 @@ If `enqueue_inbound` returns `None` because `(origin, source_message_id)` dedup 
 7. On `process_text` returning False: raise `RuntimeError` (triggers retry)
 8. On success: update `last_activity`, start polling
 
-Delivery is not the primary UI-origin acceptance boundary. Delivery may preserve compatibility for old queued rows, but it must not be the first writer for newly accepted UI input and must never advance `last_projected_at`. Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `projects/teleclaude/spec/session-projection`.
+Delivery is not the primary UI-origin acceptance boundary. Delivery may preserve compatibility for old queued rows, but it must not be the first writer for newly accepted UI input and must never advance `last_projected_at`. Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `local/projects/teleclaude/spec/session-projection`.
 
 ### Acceptance Metadata
 
@@ -216,7 +216,7 @@ The accepted metadata consists of:
 - `last_input_origin` — canonical input origin (`telegram`, `discord`, `whatsapp`)
 - origin metadata — typed adapter metadata persisted for the origin when provided
 
-Acceptance code must not write `last_projected_at`. That field is projector-owned, as defined in `projects/teleclaude/spec/session-projection`.
+Acceptance code must not write `last_projected_at`. That field is projector-owned, as defined in `local/projects/teleclaude/spec/session-projection`.
 
 ### Deduplication
 

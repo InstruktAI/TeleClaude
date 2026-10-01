@@ -34,7 +34,7 @@ shows its scope kind and payload fields.
 
 Subscriptions consume the event catalog as it stands and change neither which
 events the platform emits nor what they carry. The wake rides the platform's
-control-delivery surface (`projects/teleclaude/spec/feature/agent_runtime/control-delivery`),
+control-delivery surface (`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`),
 which owns in-turn delivery, idle waking, batching, and session-close cleanup of
 pending payloads.
 

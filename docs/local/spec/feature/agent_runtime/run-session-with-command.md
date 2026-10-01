@@ -381,7 +381,7 @@ Then dispatch is permitted — tasker may spawn worker sessions, same grant as i
 Given a caller carrying the tasker system role
 When it dispatches an orchestrator-role command (/prepare, /work)
 Then it is rejected — the tasker's dispatch grant is worker-only
-And the tasker drives no todo state machine, which only an orchestrator runs (`projects/teleclaude/design/cli-authorization-matrix`)
+And the tasker drives no todo state machine, which only an orchestrator runs (`local/projects/teleclaude/design/cli-authorization-matrix`)
 ```
 
 

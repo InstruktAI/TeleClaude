@@ -17,14 +17,14 @@ through its domain handlers.
 
 - **Event vocabulary:** its `domain.creative-production.*` registrations in the event catalog;
   operators discover them with `telec events list`.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`.
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`.
 
 ### Ownership boundary
 
 - **Owns:** the meaning of its event names and payloads, their emission
   invariants, and its handlers' reactions.
 - **Does not own:** the event envelope, the catalog registry, or the pipeline
-  that hosts its handlers, which belong to `projects/teleclaude/spec/domain/event-catalog`;
+  that hosts its handlers, which belong to `local/projects/teleclaude/spec/domain/event-catalog`;
   or the company facts behind a company subject, which belong to config and
   identity.
 

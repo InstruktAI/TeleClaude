@@ -1,5 +1,5 @@
 ---
-id: 'projects/teleclaude/spec/feature/config/schema-driven-config-tui'
+id: 'local/projects/teleclaude/spec/feature/config/schema-driven-config-tui'
 type: 'spec'
 domain: 'sdlc'
 scope: 'project'
@@ -271,7 +271,7 @@ wizard shows, declared per field in code. The `tier` marker is the opt-in form o
 the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to show,
 rather than a flag to hide — so the rendered set is the inverse of the retired
 exclusion list, not a reduction of it. The governing rule lives in
-`projects/teleclaude/policy/config-public-surface`.
+`local/projects/teleclaude/policy/config-public-surface`.
 
 ### Current hand-patched surfaces to retire
 
@@ -299,15 +299,15 @@ blacklist is retired as the authority.
 
 ### Cross-context references
 
-- `projects/teleclaude/spec/domain/config` owns the typed overlay schemas and the
+- `local/projects/teleclaude/spec/domain/config` owns the typed overlay schemas and the
   `PersonConfig.settings.output_visibility` value object.
-- `projects/teleclaude/spec/teleclaude-config` names the files, keys, env vars, and
+- `local/projects/teleclaude/spec/teleclaude-config` names the files, keys, env vars, and
   ownership boundaries the TUI must honor.
-- `projects/teleclaude/spec/feature/config/setup-wizard` owns the broader wizard
+- `local/projects/teleclaude/spec/feature/config/setup-wizard` owns the broader wizard
   guarantees: single setup surface, idempotent re-runs, persisted-state resume,
   and write-then-read rendering after edits.
 
-- `projects/teleclaude/spec/feature/agent_runtime/lazy-mcp-runtime` owns personal MCP credential requirements and owner-scoped lease behavior; the People view projects its registry requirements without becoming their source of truth.
+- `local/projects/teleclaude/spec/feature/agent_runtime/lazy-mcp-runtime` owns personal MCP credential requirements and owner-scoped lease behavior; the People view projects its registry requirements without becoming their source of truth.
 
 ## Allowed values
 

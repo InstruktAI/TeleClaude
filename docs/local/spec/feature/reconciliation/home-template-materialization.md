@@ -24,7 +24,7 @@ remains eligible for the home's regular-file-only retained history.
 Materialization runs on every machine installation, upgrades included, so every
 home converges to the current templates. What a target keeps across
 installations is decided by the template's name (the create-once marker in
-`projects/teleclaude/spec/feature/reconciliation/template-installation`): an
+`local/projects/teleclaude/spec/feature/reconciliation/template-installation`): an
 <!-- planned-change:install-records-own-writes -->
 `AGENTS.master.md` is the rendering of its template and is refreshed whenever it
 differs, while a local baseline manifest is created once and then belongs to the
@@ -49,7 +49,7 @@ refreshed retained file never leaves the home's working tree dirty.
 A project's help desk lives in that project's repository, and machine
 installation never writes into a project's working tree; it converges when the
 project's initialization enables its help desk
-(`projects/teleclaude/spec/feature/config/kind-addressed-configuration`).
+(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`).
 
 ## Canonical fields
 
@@ -67,7 +67,7 @@ project's initialization enables its help desk
 
 - **No documentation layer for the TeleClaude home.** The home's `docs/` is the
   published documentation generation
-  (`projects/teleclaude/spec/teleclaude-home-layout`); no template is ever
+  (`local/projects/teleclaude/spec/teleclaude-home-layout`); no template is ever
   materialized into it.
 - **Declared, not participating.** A person or company home is a target when
   its declaration exists, whether or not it participates in documentation

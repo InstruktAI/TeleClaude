@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`projects/teleclaude/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. This is the v1 binding between a real person at a real terminal and the identity context's authorization model.
+The v1 surface that lets a human authenticate to TeleClaude from an interactive terminal — outside of any agent session — by binding an email address to the controlling TTY. `telec auth login <email>` writes a small structured document scoped to the current TTY, and nothing else: there is no machine-global login record. Subsequent `telec` invocations from the same TTY — or from a process with no terminal of its own whose nearest terminal-bearing ancestor runs on that TTY — read the document, and the client resolves the email against the configured `people` list to derive the caller's Principal and role; the resolved person is the identity the client clears and carries on its requests (`local/projects/teleclaude/spec/identity-and-auth` §6). While exactly one person is registered, a terminal with no document of its own resolves to that person. A process inside a session — one whose session identity document is present — reads no terminal login at all: a session carries its own identity, and the terminal login serves only callers arriving from outside. Logout removes the per-TTY document. This is the v1 binding between a real person at a real terminal and the identity context's authorization model.
 
 ## Canonical fields
 
@@ -117,7 +117,6 @@ And the caller resolves to no person
 And this holds for the daemon and for every process it spawns with no terminal
 ```
 
-
 ```
 Given a process with no terminal on fd 0/1/2 and no SSH_TTY, and no session identity document
 And an ancestor process runs on a terminal (e.g. an agent CLI started from /dev/ttys003 running a detached tool shell)
@@ -154,7 +153,7 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 
 ### Cross-context references
 
-- Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Caller resolution from the login happens in the client that serves the caller — see `projects/teleclaude/spec/identity-and-auth` §6.
+- Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Caller resolution from the login happens in the client that serves the caller — see `local/projects/teleclaude/spec/identity-and-auth` §6.
 - Writes operator-local filesystem state under the session-auth directory. No identity-context state is touched by login itself.
 - Coordinates with the TUI launcher: a successful login is the precondition for `feature/identity/tui-multi-user-login-gate` when more than one person is configured.
 - The TUI launcher carries the identity it resolved in the outer terminal into the `tc_tui` tmux session alongside the TUI runtime marker, and the reader honours that carried identity only where the marker is present. The marker reaches that session and no other: it is absent from the environment filters that build agent sessions.

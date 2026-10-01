@@ -67,7 +67,7 @@ failed-run notification. Job configuration carries no availability data of its
 own.
 
 The scheduling contract is the `when` block alone (see
-`projects/teleclaude/spec/feature/config/job-schedule-contract`); a declaration carries no
+`local/projects/teleclaude/spec/feature/config/job-schedule-contract`); a declaration carries no
 legacy schedule or preferred-timing fields, no execution-class discriminator, and
 no agent-prompt override field. Job declarations are validated as stored: a
 mapping-valued `jobs` block, a scalar `agent`, or an unknown field is refused.

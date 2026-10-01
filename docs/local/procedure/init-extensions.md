@@ -27,7 +27,7 @@ local repository and the canonical `project_slug` only; there is no
 
 Remote provisioning is an **agent procedure** run during project onboarding. The
 agent resolves the project's company (the active project's `company:` field → the
-company profile's `git` org; see `projects/teleclaude/spec/domain/config`), derives
+company profile's `git` org; see `local/projects/teleclaude/spec/domain/config`), derives
 `<org>/<project_slug>`, and establishes `origin` by judgment — `gh repo create`
 when it can, otherwise handing the org link to the human conversationally — then
 `git remote add origin` (idempotent; skip when `origin` already exists). The
@@ -160,7 +160,7 @@ Source: `bin/install.sh:install_log_runtime()`
 
 `make install` publishes every configuration schema into the TeleClaude home
 before converging this checkout's plumbing. The act and its guarantees are
-`projects/teleclaude/spec/feature/reconciliation/config-schema-publication`. The step is
+`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`. The step is
 skipped in CI mode and in the deps-only install a git worktree resolves to.
 
 Source: `teleclaude/core/reconciliation/config_schemas.py`

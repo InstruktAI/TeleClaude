@@ -24,7 +24,7 @@ Set up a distributed TeleClaude deployment across multiple computers.
 3. Configure `computer_name`, `telegram.is_master` (exactly one master), and `redis_url`, then adopt each project on that machine with `telec config project init` from its folder, or from the TUI's new-project action.
 4. Configure SSH keychain using the ssh-agent-keychain procedure. Verify each peer can `ssh user@peerhost` without a prompt before continuing — the TUI's remote-attach path requires it.
 5. Verify `make status` on all nodes.
-6. Use `telec computers list` to confirm network discovery. Each peer should appear with non-null `user` and `host` from the heartbeat payload (see `projects/teleclaude/adr/0013-unified-cluster-events`).
+6. Use `telec computers list` to confirm network discovery. Each peer should appear with non-null `user` and `host` from the heartbeat payload (see `local/projects/teleclaude/adr/0013-unified-cluster-events`).
 7. From the TUI on any peer, **sessions** from every other peer appear automatically via the live `cluster.session.*` event stream. Projects and todos appear after the daemon's bootstrap snapshot completes (within a few seconds of connect). No subscription action required for any category.
 
 ## Outputs

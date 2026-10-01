@@ -13,7 +13,7 @@ Platform data shown to a principal is filtered by one rule: the principal's
 **reach** over the **subject** each record is about. A subject is a registered
 project, person, or company, or none for data about the platform itself; a
 project subject also names its owner, as resolved where the record was made
-(`projects/teleclaude/spec/feature/event-catalog/event-envelope`).
+(`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`).
 
 Identity resolves each principal's reach once and publishes it. The rule lives
 only there:
@@ -32,7 +32,7 @@ A platform administrator and the system principal reach everything
 unconditionally, including records with no subject and subjects the receiving
 computer does not know. A platform role below administrator grants no reach of
 its own. An agent session is judged by the principal at the root of its lineage
-(`projects/teleclaude/spec/feature/identity/principal-resolution`).
+(`local/projects/teleclaude/spec/feature/identity/principal-resolution`).
 
 Beside the subject, reach admits a principal's own records wherever they are:
 conversations recorded under that principal, its own spawned chains included;
@@ -51,18 +51,18 @@ person. Stored records carry their subject from the moment they are written;
 records that existed before subjects were recorded receive theirs once.
 
 Command clearance — whether a caller may run a command against a target — is a
-separate, up-front decision (`projects/teleclaude/spec/feature/identity/command-clearance`)
+separate, up-front decision (`local/projects/teleclaude/spec/feature/identity/command-clearance`)
 and is not changed by this contract.
 
 Three audience facts a record states about itself sit beside reach, and reach
 neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
-reads in full (`projects/teleclaude/spec/feature/context/doc-selection-policy`). A
+reads in full (`local/projects/teleclaude/spec/feature/context/doc-selection-policy`). A
 person's private local documentation is readable only by that person and the
 system principal, platform administrators included (same contract). A
 notification addressed to one person reaches only that person, through their own
 channel, and appears on no shared surface, for platform reach too
-(`projects/teleclaude/design/architecture/notification-delivery`); reach governs broadcast
+(`local/projects/teleclaude/design/architecture/notification-delivery`); reach governs broadcast
 notifications.
 
 ## Canonical fields

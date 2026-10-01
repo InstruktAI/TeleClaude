@@ -45,7 +45,7 @@ Gateway connection and exactly one owner of the voice connection.
    Discord structure — owns the connection. A peer that receives the same
    provider event performs no voice side effect — no join, move, receive, or
    playback. This extends the fleet rule in
-   `projects/teleclaude/spec/feature/integration/discord-interaction-ownership` to a
+   `local/projects/teleclaude/spec/feature/integration/discord-interaction-ownership` to a
    resource with no forum ancestry. Which node is the master is a published
    fact of fleet discovery owned by the reconciliation context; the thread
    owner resolves it there, and a peer that predates the advertisement cannot

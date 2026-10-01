@@ -149,7 +149,7 @@ owned by their declaring contexts; the reach rule stays here.
 <!-- change:subject-scope-reach -->
 Source assembly is preceded by resolving the caller. The stage takes the
 resolved person and organizational membership and the caller's visibility reach
-from identity (`projects/teleclaude/spec/domain/identity`), and a project's
+from identity (`local/projects/teleclaude/spec/domain/identity`), and a project's
 declared owning company from configuration, and answers two things: the depth
 the caller reads any tier at, and the default read set — the tiers assembled
 when the caller names none, each paired with its depth. Depth converts
@@ -204,7 +204,7 @@ names is read in full.
 
 <!-- planned-change:subject-scope-reach -->
 **Depth follows the effective role.** A person's depth on a tier is decided by
-their effective role for it (`projects/teleclaude/design/architecture/scoped-roles`). An
+their effective role for it (`local/projects/teleclaude/design/architecture/scoped-roles`). An
 `admin` effective role reads the tier in full; a company administrator therefore
 reads their company, every project it owns, and the platform's shared
 documentation in full, as a platform administrator reads every tier. Any other
@@ -214,7 +214,7 @@ role reaches is read at public-only depth.
 <!-- change:subject-scope-reach -->
 **Depth follows visibility reach.** A person's depth on a tier is decided by
 identity's visibility reach over that tier as a subject
-(`projects/teleclaude/spec/feature/identity/data-visibility`): a tier the reach
+(`local/projects/teleclaude/spec/feature/identity/data-visibility`): a tier the reach
 admits is read in full. A platform administrator therefore reads every tier; a
 company administrator reads their company, every project it owns, and the
 platform's shared documentation in full; any other person reads their company

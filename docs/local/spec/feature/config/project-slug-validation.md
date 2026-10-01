@@ -14,7 +14,7 @@ visibility: 'public'
 
 The project overlay's `project_slug` is the canonical machine identity for a registered
 project. It is the key used by the log namespace
-(`instrukt-ai-logs {project_slug}`), the `projects/<slug>/…` documentation
+(`instrukt-ai-logs {project_slug}`), the `local/projects/<slug>/…` documentation
 identities of the project's local snippets, and any
 service-level project lookup. The field is optional (defaults to None) and
 validated at load time on every project overlay load.
@@ -29,7 +29,7 @@ returned; anything that fails the pattern raises a validation error and the
 schema layer surfaces the failure on the `project_slug` field.
 
 The slug is _populated_ — not validated — by project adoption, the sole writer
-of `~/.teleclaude/projects.yaml` (`projects/teleclaude/spec/feature/config/project-registry`).
+of `~/.teleclaude/projects.yaml` (`local/projects/teleclaude/spec/feature/config/project-registry`).
 Existing project files whose
 `project_slug` is still missing or empty load successfully as `None`; init then
 fills the value during registration.
@@ -111,7 +111,7 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
 - **Consumed by the logging bounded context** — `project_slug` selects
   the per-project log namespace.
 - **Consumed by the knowledge bounded context (docs indexing)** — the slug
-  is the second segment of every `projects/<slug>/…` identity the project owns.
+  is the second segment of every `local/projects/<slug>/…` identity the project owns.
 - **Written by `telec config project init`** — the sole writer of the project
   registry; also fills `project_slug` in the project's own
   `teleclaude.yml` when missing.

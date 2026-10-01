@@ -1,5 +1,5 @@
 ---
-id: projects/teleclaude/spec/feature/workflow/domain-ownership-enforcement
+id: local/projects/teleclaude/spec/feature/workflow/domain-ownership-enforcement
 type: spec
 domain: project
 scope: project

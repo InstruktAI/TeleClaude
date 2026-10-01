@@ -38,8 +38,8 @@ so an out-of-reach source can neither pass validation nor be built.
 ## Canonical fields
 
 Side-project reach and the refusal of out-of-reach sources are bound by
-`UC-ARD23` in `projects/teleclaude/spec/feature/context/agent-runtime-deployment` and
-`UC-AAV2` in `projects/teleclaude/spec/feature/context/agent-artifact-validation`; this
+`UC-ARD23` in `local/projects/teleclaude/spec/feature/context/agent-runtime-deployment` and
+`UC-AAV2` in `local/projects/teleclaude/spec/feature/context/agent-artifact-validation`; this
 spec references those scenarios rather than restating them.
 
 ### Use cases

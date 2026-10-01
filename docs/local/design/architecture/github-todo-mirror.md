@@ -25,15 +25,15 @@ Inputs:
   owner of the repo. There is no auto-detection, capability probe, or prompt.
 - `workflow.todo.*` mutation events (`created`, `phase_advanced`, `delivered`, `updated`,
   `renamed`) emitted at the centralized workflow write boundary (see
-  `projects/teleclaude/spec/domain/workflow#workflowtodo-events`), delivered asynchronously to the projector
+  `local/projects/teleclaude/spec/domain/workflow#workflowtodo-events`), delivered asynchronously to the projector
   downstream of that write-path seam.
 - Todo truth read at projection time from the centralized workflow store (status, kind,
   lifecycle phase, hold, delivered commit, dependency edges, group/children), scoped to the
   todo's owning `project` row (see
-  `projects/teleclaude/design/architecture/database#todo-store-distribution`).
+  `local/projects/teleclaude/design/architecture/database#todo-store-distribution`).
 - The project's GitHub origin, taken from the `ProjectRef`-resolved `project` row's origin
   metadata and classified through the git-transport regime (see
-  `projects/teleclaude/spec/domain/workflow#project-identity-projectref`) — never a re-probed inline
+  `local/projects/teleclaude/spec/domain/workflow#project-identity-projectref`) — never a re-probed inline
   `git remote get-url origin`.
 - The machine's existing `gh` authentication (scopes `repo` + `project`).
 - A rebuildable cache of GitHub-generated identifiers (board node id, field option ids,

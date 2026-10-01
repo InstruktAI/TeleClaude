@@ -87,7 +87,7 @@ Run this top to bottom; the first match wins:
 
 Machine installation writes TeleClaude's templates into the home, into every
 declared person and company home, and into every enabled help desk among them
-(`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
 
 - Each home's `AGENTS.master.md`, and each help desk's, is refreshed from its
   template on every installation, so an edit made in place does not last
@@ -123,7 +123,7 @@ company's root master, and each declared company's
 `companies/<slug>/help-desk/AGENTS.master.md`. The home's retained set admits
 every one of them, so an edit to a master is committed in the home's history
 and owes the publication that inflates it
-(`projects/teleclaude/spec/feature/context/agents-master-inflation`). A master
+(`local/projects/teleclaude/spec/feature/context/agents-master-inflation`). A master
 anywhere else in a home, including under a home's docs, is not compiled, so no
 generated entrypoint ever lands in a retained subtree. The `AGENTS.md` beside
 each master is generated: it is never retained, never edited, and never a

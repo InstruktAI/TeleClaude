@@ -107,7 +107,7 @@ status vocabulary:
 - **Session-status truth is the stored agent status.** The stalled state and
   its reason are members of the agent status the agent_runtime context
   persists on each transition
-  (`projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). This design reads
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). This design reads
   that status and never recomputes it from timestamps.
 
 ## Primary flows

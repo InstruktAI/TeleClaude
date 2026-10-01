@@ -161,7 +161,7 @@ And that action instructs the authoring session to dispatch the commit(s) to ind
 And waits for REVIEW COMPLETE before reporting completion
 And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `general/policy/commits`
 And the authored-main-commit marker is consumed
-(The authored-main-commit marker triggers only the review gate; owed maintenance is recorded and started at the commit boundary — see `projects/teleclaude/spec/feature/integration/post-commit-maintenance`.)
+(The authored-main-commit marker triggers only the review gate; owed maintenance is recorded and started at the commit boundary — see `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.)
 
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path

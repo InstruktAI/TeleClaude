@@ -60,7 +60,7 @@ for machine-emitted procedure loads), which instructs the session to read the
 corpus document directly. The corpus is the `~/.teleclaude/commands/`
 directory, reusable across projects. The shape of a canonical command name and
 how the loader resolves it are the agent runtime's contract
-(`projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`).
+(`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`).
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
 catalog the master points at; they reach no runtime home. Tier-local skills — the
@@ -133,12 +133,12 @@ no-deploy mode is for developers/CI inspecting build output.
 ## Canonical fields
 
 Deployment is scoped to projects subscribing the `agents` capability
-(`projects/teleclaude/spec/feature/config/project-capability-manifest`). For a project that
+(`local/projects/teleclaude/spec/feature/config/project-capability-manifest`). For a project that
 does not subscribe it, neither transpilation phase nor artifact deployment runs;
 documentation publication is governed independently by the `docs` capability.
 
 The behavioral contract is `UC-CFG-CAP-18` in
-`projects/teleclaude/spec/feature/config/project-capability-manifest`; this spec references that scenario
+`local/projects/teleclaude/spec/feature/config/project-capability-manifest`; this spec references that scenario
 rather than restating it.
 
 ### Use cases

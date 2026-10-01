@@ -26,11 +26,11 @@ TeleClaude uses one identity model across API, TUI, and adapters:
 
 ### 1) Person source of truth
 
-| Field   | Type   | Description                                                                                                                                                                                                                                                       |
-| ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`  | string | Display name used in UI and logs.                                                                                                                                                                                                                                 |
-| `email` | string | Canonical email address used for OTP authentication.                                                                                                                                                                                                              |
-| `role`  | enum   | Optional platform role — one of `admin`, `member`, `contributor`, `newcomer`; absent when the person holds no role at platform scope. A person's authority for an object is their effective role for it (`projects/teleclaude/design/architecture/scoped-roles`). |
+| Field   | Type   | Description                                                                                                                                                                                                                                                             |
+| ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`  | string | Display name used in UI and logs.                                                                                                                                                                                                                                       |
+| `email` | string | Canonical email address used for OTP authentication.                                                                                                                                                                                                                    |
+| `role`  | enum   | Optional platform role — one of `admin`, `member`, `contributor`, `newcomer`; absent when the person holds no role at platform scope. A person's authority for an object is their effective role for it (`local/projects/teleclaude/design/architecture/scoped-roles`). |
 
 People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
@@ -147,18 +147,18 @@ the client sends any request:
   terminal login, and the TUI from the identity it was launched with,
 - a session's principal resolves through the principal-resolution capability; its
   person role for a command is that person's effective role at the command's scope
-  (`projects/teleclaude/design/architecture/scoped-roles`), read from the people registry and
+  (`local/projects/teleclaude/design/architecture/scoped-roles`), read from the people registry and
   company rosters when the command runs, so a changed role applies from the
   session's next command, and a gate grants a session no role its principal does
   not resolve to; a session acting for a person is also bounded by that role,
 - every request a `telec` command sends to the daemon is cleared as that command,
-  against its verb band (`projects/teleclaude/design/cli-authorization-matrix`), once, before
+  against its verb band (`local/projects/teleclaude/design/cli-authorization-matrix`), once, before
   the first request leaves the process that runs it; the TUI clears each action
   against the verb of the command that action performs; for a command that acts
   on an object another computer holds, that clearance establishes the caller's
   identity and, for a session caller, the command's agent band, and the computer
   holding the object decides the person band
-  (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
 - a caller that resolves to no person and no system principal is refused before
   any request is sent; a role outside the band is refused with the not-permitted
   failure naming the role and the verb,
@@ -166,7 +166,7 @@ the client sends any request:
   verifies no caller and applies no verb band of its own to a request from its
   own clients; a daemon deciding an act another computer relays to it resolves
   the relayed principal against its own registries and applies that act's person
-  band (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+  band (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
 - the daemon applies the rules that scope an act to its objects — a session acts
   on no session above it, a reminder belongs to its session, a session's result,
   file, and escalation act for that session, a claimed todo is written only by its

@@ -90,7 +90,7 @@ declares it. The remaining XDG names are not captured.
 
 These values arrive in the session's inherited environment. Provenance for
 environment values that no `.env` layer may carry is owned by
-`projects/teleclaude/spec/feature/config/agent-env-allow-list`.
+`local/projects/teleclaude/spec/feature/config/agent-env-allow-list`.
 
 ## Known caveats
 

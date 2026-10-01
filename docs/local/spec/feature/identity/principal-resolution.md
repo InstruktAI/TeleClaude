@@ -64,7 +64,7 @@ And every session with no human origin shares that one principal, distinguished 
 
 ### Cross-context references
 
-- Consumer: the client-side caller resolution (`projects/teleclaude/spec/identity-and-auth` §6) resolves a session caller's principal through this capability.
+- Consumer: the client-side caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) resolves a session caller's principal through this capability.
 - No domain events are emitted by this capability directly. In v2 it corresponds to the materialization of a `Principal` aggregate, which DOES emit `identity.principal.created` on first issuance.
 
 ## Known caveats

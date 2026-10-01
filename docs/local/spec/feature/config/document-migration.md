@@ -75,7 +75,7 @@ whatever the documents' versions, so the first run
 on an installation removes them even when every document is already current.
 
 The authoring rules every migration obeys are
-`projects/teleclaude/policy/configuration-migrations`.
+`local/projects/teleclaude/policy/configuration-migrations`.
 
 ## Canonical fields
 
@@ -258,14 +258,14 @@ And installation stops before validating configuration
 ### Cross-context references
 
 - Commit-boundary maintenance selects and runs the migration run as one of its
-  owed actions: `projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
+  owed actions: `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
 - Which files are same-named tier documents and how their declared tier is
-  supplied: `projects/teleclaude/spec/feature/config/tier-declaration`.
+  supplied: `local/projects/teleclaude/spec/feature/config/tier-declaration`.
 - Registration writes the project registry:
-  `projects/teleclaude/spec/feature/config/project-registry`.
+  `local/projects/teleclaude/spec/feature/config/project-registry`.
 - The retired Discord provider identifiers leave the machine configuration
   through the config-owned hand-off; their import is
-  `projects/teleclaude/spec/feature/integration/discord-admin-reflection-state` UC-DARS-2.
+  `local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state` UC-DARS-2.
 
 ## Known caveats
 

@@ -25,7 +25,7 @@ don't even know their event will produce a webhook entry. The delivery
 worker drains asynchronously, and the contract subscriber may see
 retries until the delivery succeeds or the attempt budget is exhausted.
 
-For the canonical aggregate shape, see `projects/teleclaude/spec/domain/integration.md`.
+For the canonical aggregate shape, see `local/projects/teleclaude/spec/domain/integration.md`.
 
 ## Canonical fields
 

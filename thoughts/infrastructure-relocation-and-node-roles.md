@@ -160,6 +160,6 @@ global "master" — consistent with C5 and the existing `is_ingress_node` preced
   detection/liveness only.
 - **itsup project (separate repo)** — `SSH_HOST`/`ITSUP_HOST` → runtime infra-host. Must be
   read there to ground C2/C3; not present in TeleClaude.
-- Stale docs to retire when A ships: `projects/teleclaude/concept/master-bot`,
-  `projects/teleclaude/policy/master-bot-registration` (describe a `telegram.is_master`-gated
+- Stale docs to retire when A ships: `local/projects/teleclaude/concept/master-bot`,
+  `local/projects/teleclaude/policy/master-bot-registration` (describe a `telegram.is_master`-gated
   `setMyCommands` that exists in neither config nor code — Telegram-as-admin-adapter is dead).

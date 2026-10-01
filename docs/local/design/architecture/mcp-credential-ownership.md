@@ -45,7 +45,7 @@ child-process or remote-request construction.
 ## Invariants
 
 - Identity is resolved once, in the client that serves the caller, and carried
-  on the request (`projects/teleclaude/spec/identity-and-auth` §6). The protected API edge
+  on the request (`local/projects/teleclaude/spec/identity-and-auth` §6). The protected API edge
   turns the carried identity into a typed invocation context carrying either a
   canonical person slug or explicit absence; downstream components receive only
   that context, and client session files and tool arguments never select the

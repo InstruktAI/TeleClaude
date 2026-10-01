@@ -40,24 +40,24 @@ Every one of the four files carries a `kind` key naming its own tier —
 of each tier's model, and each model accepts only its own value, so a file
 declaring another tier fails validation rather than loading as that tier.
 Resolution reads this key; it never infers a tier from where the file sits. The
-resolution contract is `projects/teleclaude/spec/feature/config/tier-declaration`.
+resolution contract is `local/projects/teleclaude/spec/feature/config/tier-declaration`.
 
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution. It declares `kind: computer`,
 which addresses the file and is never a tier
-(`projects/teleclaude/spec/feature/config/machine-config-load`).
+(`local/projects/teleclaude/spec/feature/config/machine-config-load`).
 
 One JSON Schema per tier is generated from the same models the runtime
 validates against and published, with the MCP registry schema, into the
 TeleClaude home. No repository carries a schema file; publication is specified
-in `projects/teleclaude/spec/feature/reconciliation/config-schema-publication`.
+in `local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`.
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline. The reference is relative and fixed by the file's tier alone, derived
 in one place by the configuration writer (`teleclaude/config/declaration.py`),
 and written on every write of the file. A home-tree file names the home's
 published schemas; a project file names them through its root's machine-local
-schema link (`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+schema link (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 The same document therefore produces the same bytes on every machine, with no
 network fetch and no machine-local path. The modeline serves the editor only:
 loading reads `kind` alone, and a file whose modeline does not resolve loads
@@ -69,7 +69,7 @@ position in the configuration migration list. It is a declared internal field of
 each tier's model and of the machine configuration's input vocabulary, removed
 before the machine aggregate is built, and never an operator setting. How a
 document reaches the current version, and what reads and writes it, is
-`projects/teleclaude/spec/feature/config/document-migration`.
+`local/projects/teleclaude/spec/feature/config/document-migration`.
 
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach
@@ -97,7 +97,7 @@ Machine-config fields (`config.yml` / `TeleclaudeConfig`) declare an editability
 A field may additionally be declared sensitive, and its environment variable is
 derived from its path. A generated machine configuration carries a sensitive
 field's reference rather than its value. The full rule lives in
-`projects/teleclaude/policy/config-public-surface`.
+`local/projects/teleclaude/policy/config-public-surface`.
 
 **The project config is a regular file committed to the repository.** It is never a
 symlink. Replacing it with a symlink to the global config breaks validation because
@@ -119,7 +119,7 @@ business:
   publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
     - slug: string # required: the published domain
       trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
-jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (projects/teleclaude/spec/feature/config/job-declaration-model)
+jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (local/projects/teleclaude/spec/feature/config/job-declaration-model)
 hooks:
   inbound: mapping[string, InboundSourceConfig]
   subscriptions: list[SubscriptionConfig]
@@ -129,7 +129,7 @@ channel_subscriptions: list[ChannelSubscription]
 The project also declares which platform capabilities it subscribes to. Each block
 is optional, and an omitted block or one without an `enabled` value is
 unsubscribed, so only an explicit value claims a capability
-(`projects/teleclaude/spec/feature/config/project-capability-manifest`):
+(`local/projects/teleclaude/spec/feature/config/project-capability-manifest`):
 
 ```yaml
 code:
@@ -144,7 +144,7 @@ A project, the global configuration, and a company each declare whether that
 home keeps a help desk. An omitted block, or one without an `enabled` value,
 keeps none. `telec config <kind> init --help-desk` sets it under administrator
 authority and scaffolds the help desk
-(`projects/teleclaude/spec/feature/config/kind-addressed-configuration`). The
+(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`). The
 block's shape is owned by the `help_desk` field of the project, global and
 company declaration models (`HelpDeskConfig` in `teleclaude/config/schema.py`).
 
@@ -156,7 +156,7 @@ them. An action id belongs to exactly one of the two, across the platform base a
 project's overlay together, and a declaration claiming an id the opposite registry already
 owns is rejected at validation. The declared shape, the eligibility rule that decides which
 registry an action belongs in, and the binding table that maps paths to action ids are
-specified in `projects/teleclaude/design/architecture/checkpoint-system`; the overlay is authored by
+specified in `local/projects/teleclaude/design/architecture/checkpoint-system`; the overlay is authored by
 config assessment rather than by hand.
 
 These are project-level capability toggles and are unrelated to the machine
@@ -166,20 +166,20 @@ no wizard or TUI entry — the operator changes a subscription by re-running
 assessment, and the runtime reads only the written declaration. Task tracking
 carries no toggle: a project holding a `teleclaude.yml` subscribes it by that fact
 alone. The full contract is
-`projects/teleclaude/spec/feature/config/project-capability-manifest`.
+`local/projects/teleclaude/spec/feature/config/project-capability-manifest`.
 
 `ProjectConfig` additionally carries an optional `company` key — `company: string`
 — an at-most-one, kebab-case, validated company slug. It is the project's company
 membership and determines which company's documentation the project surfaces.
 It never gives a session a company or injects a company profile.
-Ownership/validation is authoritative in `projects/teleclaude/spec/domain/config`.
+Ownership/validation is authoritative in `local/projects/teleclaude/spec/domain/config`.
 
 `PersonConfig` carries a `slug` key — `slug: string` — the declared identity
 claim naming the registered person the workspace belongs to, kebab-case and
 format-validated by the model. Whether the claim binds the context to that
 person is resolved by the identity context against the person registry, fails
 closed on unknown, ambiguous, or disagreeing claims, and is never a load-time
-grant; the contract is `projects/teleclaude/spec/feature/identity/person-context-binding`.
+grant; the contract is `local/projects/teleclaude/spec/feature/identity/person-context-binding`.
 
 `ProjectConfig` alternatively carries an optional `person` key —
 `person: string` — a kebab-case, validated person slug declaring a person as
@@ -188,7 +188,7 @@ configuration declaring both is invalid and refused at the model. Declaring
 neither remains valid and composes no company. A declared owner naming a
 company or person that no registry knows refuses composition with a clear
 result naming the unresolved owner; no partial owner state reaches consumers.
-The contract is `projects/teleclaude/spec/feature/config/project-ownership`.
+The contract is `local/projects/teleclaude/spec/feature/config/project-ownership`.
 
 `env_allow_list` is an explicit pass-through list for agent sessions. It is the
 authorization/filter surface: a name not listed in the effective allow list must
@@ -220,7 +220,7 @@ jobs: list[JobScheduleConfig] # the registry of published jobs with their defaul
 
 There is no `company_profile` key on the global overlay. Company configuration is
 its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
-the value-object contract lives in `projects/teleclaude/spec/domain/config`), not a field of
+the value-object contract lives in `local/projects/teleclaude/spec/domain/config`), not a field of
 this global `teleclaude.yml`.
 
 The company config file (`~/.teleclaude/companies/<slug>/teleclaude.yml`, model
@@ -238,7 +238,7 @@ the `load_company_credentials(slug)` seam.
 `ProjectConfig` gains an optional `company` key — a kebab-case, validated,
 at-most-one company slug — which determines the company documentation the
 project surfaces and never a session's company. Ownership, location, and
-validation are authoritative in `projects/teleclaude/spec/domain/config`.
+validation are authoritative in `local/projects/teleclaude/spec/domain/config`.
 
 The hook receiver injects a **company header** into agent session-start context —
 the company-scoped twin of the human-profile header — rendered **before** the
@@ -355,7 +355,7 @@ lookup, nor lease fingerprints.
 Registry authors omit default-valued properties; the runtime model and the
 registry schema provide the defaults. The registry schema is published with the
 configuration schemas
-(`projects/teleclaude/spec/feature/reconciliation/config-schema-publication`), and a
+(`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`), and a
 committed registry file references it relatively through its root's
 machine-local schema link, so JSON Schema aware editors validate and
 autocomplete it without network access and without a machine-local path.
@@ -485,7 +485,7 @@ Installation produces the runtime file from the configuration schema when the ho
 carries none, writing each sensitive field as its derived environment reference. A host
 that already carries a runtime file is never regenerated; installation applies the
 configuration migrations the file has not yet passed
-(`projects/teleclaude/spec/feature/config/document-migration`). The TUI, daemon, and installer
+(`local/projects/teleclaude/spec/feature/config/document-migration`). The TUI, daemon, and installer
 read and write only the runtime
 file. `make install` writes opted-in agents' `enabled`
 
@@ -693,12 +693,12 @@ Discord provider IDs are not config. `config.yml` carries only the desired setup
 inputs a machine declares — `computer.name`, `computer.is_master`,
 `discord.enabled`, and `discord.guild_id` (the operator's own guild identifier,
 never provider-returned reflection state); the project forums a machine reflects
-follow its project registry (`projects/teleclaude/spec/feature/config/project-registry`).
+follow its project registry (`local/projects/teleclaude/spec/feature/config/project-registry`).
 Category, channel, forum, thread, and message IDs the Discord provider returns are durable
 reflection records in the runtime database, and the daemon never writes them back
 to `config.yml`. Project forum bindings, launcher threads, and launcher starter
 messages are read from and written to that reflection state; see
-`projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
+`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
 
 
 ### Maintenance
@@ -724,10 +724,10 @@ projects:
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
 through `ProjectCatalogService`. Adoption is the sole writer of the registry
-(`projects/teleclaude/spec/feature/config/project-registry`); publication never registers
+(`local/projects/teleclaude/spec/feature/config/project-registry`); publication never registers
 projects. `project_slug` is the
 canonical machine identity used for the log namespace
-(`instrukt-ai-logs {project_slug}`), the `projects/<slug>/…` documentation
+(`instrukt-ai-logs {project_slug}`), the `local/projects/<slug>/…` documentation
 identities, and service-level project lookup. `project_name` remains display-only.
 
 <!-- planned:github-todo-mirror -->

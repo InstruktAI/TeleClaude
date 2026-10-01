@@ -18,9 +18,9 @@ file.
 
 A home-tree configuration file references the published schemas directly; a
 project configuration reaches them through its root's machine-local schema
-link (`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`). The
+link (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`). The
 reference each file carries is fixed by its tier
-(`projects/teleclaude/spec/feature/config/tier-declaration`).
+(`local/projects/teleclaude/spec/feature/config/tier-declaration`).
 
 ## Canonical fields
 

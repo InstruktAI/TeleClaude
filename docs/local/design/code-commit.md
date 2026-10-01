@@ -108,7 +108,7 @@ tmux session. `telec code commit` runs on top of these guarantees.
 Every row below presupposes the git invocation targets a sealed repository. A
 telec-registered project that subscribes `code` or `docs` — a working tree under
 a checkout carrying `teleclaude.yml` whose manifest subscribes at least one of
-`code` or `docs` (`projects/teleclaude/spec/feature/config/project-capability-manifest`) — is
+`code` or `docs` (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) — is
 one; the commit-interception rows follow that `code ∨ docs` condition, while the
 worktree and branch-discipline rows additionally require `code`. A repository
 whose own root is a declared non-project invocation context is also one, and
@@ -129,7 +129,7 @@ declaration's sibling `.env`, and its tier and capability blocks are read with
 the runtime's own models. The wrapper keeps that answer until a file it was
 read from changes or the installation's code advances, so a read after either
 starts an interpreter and later reads reuse the kept answer; the whole-second
-limit on keeping an answer is stated with the contract (`projects/teleclaude/spec/feature/config/project-capability-manifest`). A
+limit on keeping an answer is stated with the contract (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`). A
 project declaration carries the capability blocks: a block that is absent, or
 present without an `enabled` value, leaves that capability unsubscribed. A
 global or person declaration carries no subscriptions: the repository is sealed
@@ -146,12 +146,12 @@ substitutes no capability state. The wrapper and the runtime's capability
 answer both read only the tier and the capability blocks, so they answer alike
 for every declaration; a declaration that fails validation elsewhere in the
 overlay is refused only where the full overlay is loaded
-(`projects/teleclaude/spec/feature/config/project-capability-manifest`).
+(`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
 
 The role the matrix reads is resolved from the caller's session record through the
-shared caller resolution (`projects/teleclaude/spec/identity-and-auth` §6), never from the
+shared caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6), never from the
 session identity document, which carries only the session id
-(`projects/teleclaude/spec/feature/identity/session-identity-file`). The wrapper resolves it
+(`local/projects/teleclaude/spec/feature/identity/session-identity-file`). The wrapper resolves it
 only where a row depends on role: a push to main, and a replay that produces a
 commit on main.
 
@@ -294,12 +294,12 @@ todo worktree, a successful commit also publishes the todo's branch to
    the installation or is not a TeleClaude checkout. For any other TeleClaude
    checkout exactly the selected checks run in that checkout's own code — a slug
    worktree against the worktree's home
-   (`projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
+   (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
    against a fresh scratch home — so a change is graded by the rules it carries
    and undelivered code never runs against the live home; a checkout that cannot
    run the selected checks in its own code, or a slug worktree whose home is
    missing, is refused rather than graded by installed rules
-   (`projects/teleclaude/design/architecture/cli-invocation-boundary`).
+   (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`).
    Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
@@ -309,7 +309,7 @@ todo worktree, a successful commit also publishes the todo's branch to
    Whether the gate runs, and which checks it runs, follow the owning home of
    each staged path, never the directory the commit started from, under the
    capability rule in
-   `projects/teleclaude/spec/feature/config/project-capability-manifest`: the
+   `local/projects/teleclaude/spec/feature/config/project-capability-manifest`: the
    gate runs where that home carries `code` or `docs`, a global, person, or
    company home counting as `docs` and `agents` by its kind, and each capability contributes
    only its own checks — `code` the native toolchain and TeleClaude's code
@@ -327,12 +327,12 @@ todo worktree, a successful commit also publishes the todo's branch to
    checkout under commit is the installation or is not a TeleClaude checkout.
    For any other TeleClaude checkout exactly the selected checks run in that
    checkout's own code — a slug worktree against the worktree's home
-   (`projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
+   (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
    against a fresh scratch home — so a change is graded by the rules it carries
    and undelivered code never runs against the live home; a checkout that cannot
    run the selected checks in its own code, or a slug worktree whose home is
    missing, is refused rather than graded by installed rules
-   (`projects/teleclaude/design/architecture/cli-invocation-boundary`).
+   (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`).
    Deletion-only commits
    (empty `quality_paths`) skip formatting and the native leg; the documentation
    and agent-artifact validators still grade each owning home of a deleted path.

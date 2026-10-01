@@ -11,7 +11,7 @@ This spec defines the routing contract for session messages across origin UX and
 
 Core decides delivery scope and targeted recipients accordingly. Adapters decide how to present messages (threaded, edit-in-place, multi-placement) and how to route them internally (admin channels, origin UX, suppression).
 
-Projection ordering, cursors, and origin gating are defined in `projects/teleclaude/spec/session-projection`.
+Projection ordering, cursors, and origin gating are defined in `local/projects/teleclaude/spec/session-projection`.
 This spec owns recipient selection only.
 
 ### Mental model: three lanes
@@ -152,7 +152,7 @@ absence of a UI surface is distinct from any of those values.
 
 ### Projection ownership
 
-Transcript/file truth is the sole source of conversational truth in v1. `session_ledger` blocks are the target source of truth in v2. The full projection contract lives in `projects/teleclaude/spec/session-projection`.
+Transcript/file truth is the sole source of conversational truth in v1. `session_ledger` blocks are the target source of truth in v2. The full projection contract lives in `local/projects/teleclaude/spec/session-projection`.
 
 | Field                  | Owner                | Purpose                                           |
 | ---------------------- | -------------------- | ------------------------------------------------- |

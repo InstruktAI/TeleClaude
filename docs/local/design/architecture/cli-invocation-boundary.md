@@ -12,8 +12,8 @@ visibility: internal
 Give every change that touches the `telec` entry path one account of what happens
 between a shell and a command's handler: which checkout's code runs, what may run
 before dispatch, and where the caller is authorized. Per-command access lives in
-`projects/teleclaude/design/cli-authorization-matrix`; caller identity and its carriage live in
-`projects/teleclaude/spec/identity-and-auth`; the command catalog lives in `CLI_SURFACE`. This
+`local/projects/teleclaude/design/cli-authorization-matrix`; caller identity and its carriage live in
+`local/projects/teleclaude/spec/identity-and-auth`; the command catalog lives in `CLI_SURFACE`. This
 design owns only the path that connects them.
 
 ## Inputs/Outputs
@@ -47,7 +47,7 @@ design owns only the path that connects them.
 2. **Worktree code never runs against the live home.** Code loaded from a
    slug worktree runs against the worktree's home — a clone of the home
    repository the platform provisions with the worktree
-   (`projects/teleclaude/spec/feature/agent_runtime/isolated-home`) — whatever
+   (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`) — whatever
    `TELECLAUDE_HOME` says, and refuses at startup, naming that home, when it
    is missing. The worktree's `bin/telec` creates no home. The integration
    worktree is not a slug worktree.
@@ -58,7 +58,7 @@ design owns only the path that connects them.
    home is missing; any other checkout's grading code runs against a fresh scratch
    home holding a copy of the machine configuration, discarded when grading ends.
    Neither runs against the live home. Grading runs exactly the checks the acting
-   invocation context selects (`projects/teleclaude/design/code-commit`), no more and no fewer.
+   invocation context selects (`local/projects/teleclaude/design/code-commit`), no more and no fewer.
    A worktree that cannot run the selected checks in its own code is refused,
    never graded by installed rules instead. Bookkeeping commands run installed
    code and read and write the live home as usual.
@@ -81,7 +81,7 @@ design owns only the path that connects them.
    command's person-band clearance on the exact directory it will use, before
    the command's project operation or any daemon request. An unknown name is
    checked at platform scope before available names are shown. A command declared
-   independent of its caller (`projects/teleclaude/design/cli-authorization-matrix`) passes
+   independent of its caller (`local/projects/teleclaude/design/cli-authorization-matrix`) passes
    the gate without any caller resolution.
 6. **A command pays only for its own dependencies.** Configuration, the ORM, the daemon
    API client, history, mirrors, summarizers and the LLM SDKs load inside the handler
@@ -126,14 +126,14 @@ anywhere else. To drive its own change by hand — a help path, a probe of a com
 changed — it calls the worktree's `bin/telec` and nothing more. That process runs the
 worktree's code against the worktree's home, a Git clone of the home repository
 the platform provisions with the worktree
-(`projects/teleclaude/spec/feature/agent_runtime/isolated-home`): configuration, database
+(`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`): configuration, database
 and state rooted in the home follow it. The home carries no session record, so
 a caller-gated command run this way is refused; a probe that needs more state
 than the tracked configuration is verified after delivery. State rooted in the
 project — a checkout's todo store — and the daemon do not move with the home.
 A command that writes project state or acts through the daemon reaches the live
 one, whose code is delivered code; that behavior is verified after delivery
-(`projects/teleclaude/policy/test-moratorium`).
+(`local/projects/teleclaude/policy/test-moratorium`).
 
 ## Failure modes
 

@@ -21,7 +21,7 @@ the sessions recorded in it, and acts on nothing it finds.
 
 - **Current behavior:** `docs/local/spec/feature/session_mirrors/`.
 - **Implementation roots:** `teleclaude/mirrors/` and history API/CLI surfaces.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. Replacement session-history design
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement session-history design
   belongs to TeleClaudeNext.
 
 ### Ownership boundary
@@ -31,7 +31,7 @@ the sessions recorded in it, and acts on nothing it finds.
 - **Does not own:** live-session lifecycle, input delivery, process control, or
   mutation of the sessions represented in history — the transcript this domain
   indexes is written only by the agent CLI process, never by this platform
-  (`projects/teleclaude/design/architecture/session-lifecycle`).
+  (`local/projects/teleclaude/design/architecture/session-lifecycle`).
 - **Published contracts:** mirror records and history search/read queries;
   agent runtime supplies facts but retains live-session authority.
 

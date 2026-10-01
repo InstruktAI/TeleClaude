@@ -25,7 +25,7 @@ registered for whatsapp → handler) → **internal handler** (session
 resolution + command dispatch).
 
 Every computer receives each message, and the mesh master alone decides where
-it goes (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A message whose text is exactly an entry identifier is an
+it goes (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A message whose text is exactly an entry identifier is an
 entry: the core resolves it, the master records the number's binding, and a new
 session is created at that endpoint on its hosting computer. Any other message
 goes to the session the number's binding names, on its host; with no binding, the

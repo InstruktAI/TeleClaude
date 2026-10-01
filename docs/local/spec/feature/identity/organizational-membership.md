@@ -22,7 +22,7 @@ projects of the platform, expressed as two facts:
 
 This spec owns what those facts mean and what resolving them reports. The
 file-backed declaration through which they are stated, validated, and maintained
-is owned by `projects/teleclaude/spec/feature/config/organizational-membership`; resolution
+is owned by `local/projects/teleclaude/spec/feature/config/organizational-membership`; resolution
 reads the declared facts through that contract and reinterprets nothing.
 
 Belonging to a company confers no project assignment. The single exception is a
@@ -41,7 +41,7 @@ that decision itself.
 
 A company role is a person role held at that company's scope. It is drawn from
 the same vocabulary as the platform role and means the same thing; the scope
-bounds what it reaches (`projects/teleclaude/design/architecture/scoped-roles`). Declaring,
+bounds what it reaches (`local/projects/teleclaude/design/architecture/scoped-roles`). Declaring,
 changing, or withdrawing a membership never changes the person's platform role,
 and holding a platform role confers no membership.
 

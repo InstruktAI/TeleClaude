@@ -21,7 +21,7 @@ the help desk of the company or project with that slug. The core keeps the
 endpoints and is the only party that resolves an identifier. Resolution yields
 the endpoint's working folder and the computer hosting it. An invitation token
 also binds the person's platform account the first time it is used (owned by
-`projects/teleclaude/procedure/member-onboarding`); a help-desk identifier binds
+`local/projects/teleclaude/procedure/member-onboarding`); a help-desk identifier binds
 no identity. The platform help desk has no identifier: it is reached by role.
 
 **Conversations.** A conversation is one adapter's private channel with one
@@ -110,7 +110,7 @@ reply. The unavailability behaviour above applies from activation on.
 platform's shared Discord guild. Company and project help-desk sessions appear
 in none of its forums — a project's own forum included — so no tenant's
 customer conversation is visible to another
-(`projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
+(`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
 
 ## Canonical fields
 
@@ -425,19 +425,19 @@ Scenario Outline: <case>
 - **integration** — each adapter recognises and carries the identifier; a
   per-computer adapter keeps its session lookup by origin metadata, and the
   others hand every message to the mesh master; none resolves anything itself
-  (`projects/teleclaude/spec/domain/integration`).
+  (`local/projects/teleclaude/spec/domain/integration`).
 - **config** — whether a home runs a desk (`help_desk.enabled`,
-  `projects/teleclaude/spec/teleclaude-config`) and which computers hold the
+  `local/projects/teleclaude/spec/teleclaude-config`) and which computers hold the
   home.
 - **identity** — resolves the sender; an unregistered sender on any
   conversation adapter resolves as a customer
-  (`projects/teleclaude/spec/feature/identity/human-identity-resolution`). The
+  (`local/projects/teleclaude/spec/feature/identity/human-identity-resolution`). The
   links command's standing is configuration target clearance
-  (`projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
+  (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
 - **context** — what a help-desk session reads
-  (`projects/teleclaude/spec/feature/context/doc-selection-policy`).
+  (`local/projects/teleclaude/spec/feature/context/doc-selection-policy`).
 - Placement of restricted sessions:
-  `projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`.
+  `local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`.
 
 ## Known caveats
 

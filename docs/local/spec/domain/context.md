@@ -19,7 +19,7 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Implementation roots:** `teleclaude/context_selector.py`,
   `teleclaude/docs/`, `teleclaude/resource_validation/`, and distribution code
   under `teleclaude/install/`.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. No replacement context architecture is
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement context architecture is
   authored here.
 
 ### Ownership boundary
@@ -40,7 +40,7 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Also owns:** the resolved read scope — which documentation tiers are
   assembled for a caller, how deeply each is read, and the authorization of the
   selectors that name a tier explicitly. Depth converts `identity`'s visibility
-  reach (`projects/teleclaude/spec/domain/identity`): a tier it admits is read in
+  reach (`local/projects/teleclaude/spec/domain/identity`): a tier it admits is read in
   full. Which tiers a caller may read in full is that reach, decided by
   `identity`; assembly, public-only depth, and the `public` and person-local
   audience facts are documentation rules and resolve here.

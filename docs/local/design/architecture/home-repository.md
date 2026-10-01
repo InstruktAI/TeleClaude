@@ -56,7 +56,7 @@ Consumers invoke the published predicate; none restates it.
 - A **refusal** when the activation this context performs would itself record a
   path the predicate does not return `retained` for.
 
-The predicate is the published contract. `projects/teleclaude/spec/feature/agent_runtime/sealed-commit`
+The predicate is the published contract. `local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`
 consumes it as the retained set a repository's owner publishes; a repository that
 publishes none is valid there, so the predicate is asked, never assumed. The
 predicate reports membership and nothing more: what a consumer does with a
@@ -96,7 +96,7 @@ boundary that performs it, which consults the predicate under its own contract.
 
 <!-- planned:commit-gate-in-hook -->
 The activation's own record also passes the commit gate every other commit
-passes (`projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
+passes (`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
 Activation converges the TeleClaude-owned hook set before it records, so the
 gate that judges the record is the current one on a first activation and after
 an upgrade alike. A gate refusal refuses that activation as the predicate does:
@@ -109,11 +109,11 @@ findings as its own outcome, distinct from a retained-set refusal.
 ### Activation records only its own writes
 
 Activation records nothing it did not write in that run. It holds the lock the sealed commit holds
-(`projects/teleclaude/design/code-commit`, Invariant 1) from before it reads
+(`local/projects/teleclaude/design/code-commit`, Invariant 1) from before it reads
 the home's state until after it has recorded, so no commit interleaves with
 it. Under that lock it reads which retained template targets carry an
 unrecorded change and holds them
-(`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 Its candidate set is exactly the retained targets it then wrote. It enumerates
 no untracked material, whether or not a record already exists: material present
 before the history is created is someone's unrecorded work like any other.

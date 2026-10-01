@@ -18,8 +18,8 @@ Give every caller one answer to _which configuration and documentation context
 governs this invocation_, and a separate answer to _where does this project's
 shared state live_, so that no caller infers a tier from a path shape or from
 the presence of a repository. The behavioral contract lives in
-`projects/teleclaude/spec/feature/config/tier-declaration`; the file locations, keys, and
-published schemas live in `projects/teleclaude/spec/teleclaude-config`. This design states
+`local/projects/teleclaude/spec/feature/config/tier-declaration`; the file locations, keys, and
+published schemas live in `local/projects/teleclaude/spec/teleclaude-config`. This design states
 the resolver decomposition, who owns it, which consumers ask which question,
 and how existing installations reach the declared state.
 
@@ -146,7 +146,7 @@ The `telec code` capability gate reads the declaration of the context the
 invocation acts in. From a slug worktree that is the worktree's own declaration:
 its tier and its subscriptions describe the change the worktree carries, so the
 code grading the change and the declaration it reads come from the same checkout
-(`projects/teleclaude/design/architecture/command-scope`). The checkpoint's project-support
+(`local/projects/teleclaude/design/architecture/command-scope`). The checkpoint's project-support
 gate is evaluated by the daemon, on the installed code, for the live project; it
 reads the declaration of the checkout that owns the worktree, so the installed
 code and the declaration it reads again come from the same checkout.
@@ -162,7 +162,7 @@ the four tier models. Generating from the model is what keeps a published
 schema from drifting from the shape it describes.
 
 Reconciliation owns the writing
-(`projects/teleclaude/spec/feature/reconciliation/config-schema-publication`). It
+(`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`). It
 publishes the four tier schemas, together with the MCP registry schema the MCP
 context authors, into the TeleClaude home's schema directory: a real directory
 it alone writes, content-gated, at machine installation and at the canonical
@@ -181,7 +181,7 @@ different on another machine.
 **Migrating stored files.** A same-named configuration file reaches its
 declared state through the configuration migration list, the one mechanism that
 moves every configuration document's stored shape forward
-(`projects/teleclaude/spec/feature/config/document-migration`). The declaring migration
+(`local/projects/teleclaude/spec/feature/config/document-migration`). The declaring migration
 supplies what an older file lacks — its tier declaration — and every stored
 write supplies the schema association, so a file carrying a valid declaration
 and no association gains the association the next time it is stored and a file
@@ -250,7 +250,7 @@ model-inconsistent value fails rather than being replaced.
 - **No declaration anywhere on the ancestor chain.** Not an error: the docs
   read surfaces offer the caller's default read set with no landed home —
   their own person tier, the companies they belong to, and global documentation
-  (`projects/teleclaude/design/architecture/context-selection`) — and any home
+  (`local/projects/teleclaude/design/architecture/context-selection`) — and any home
   the caller names.
 - **Invocation from inside a company folder.** Not an error: the walk
   terminates and the invocation behaves as one with no context root.

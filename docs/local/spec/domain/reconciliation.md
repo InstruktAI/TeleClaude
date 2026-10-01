@@ -17,7 +17,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   that require this anchor.
 - **Implementation roots:** `teleclaude/core/reconciliation/` and sanctioned
   installation/service-control surfaces.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. Replacement fleet design belongs to
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement fleet design belongs to
   TeleClaudeNext.
 
 ### Ownership boundary

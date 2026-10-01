@@ -50,13 +50,13 @@ earlier transcripts beside the current one, and every transcript in that chain i
 attributed to the session, not only the current one.
 
 The principal is the one the platform's session principal resolution yields for
-the record (`projects/teleclaude/spec/identity-and-auth`); the mirror service never derives a
+the record (`local/projects/teleclaude/spec/identity-and-auth`); the mirror service never derives a
 principal of its own. The registered project is the project the project catalog
 registers at the session's project path; a path the catalog does not register
 yields no project.
 
 The mirror store is the durable history domain and the session record lives in an
-operational store that may be pruned (`projects/teleclaude/policy/single-database`), so
+operational store that may be pruned (`local/projects/teleclaude/policy/single-database`), so
 attribution is recorded when the mirror is written and never looked up when it is
 read. The reconciliation loop and the event fanout write every fact through the
 same path. A write that finds no session record, or a record that lacks a value,

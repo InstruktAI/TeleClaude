@@ -24,7 +24,7 @@ The docs-watch unit is not among the declared units. A host may still carry it
 deployed and loaded. Installation withdraws it from any host that does.
 
 Operating a deployed unit — starting, restarting, and reporting its status — belongs
-to `projects/teleclaude/policy/agent-service-control` and never to installation.
+to `local/projects/teleclaude/policy/agent-service-control` and never to installation.
 
 ## Canonical fields
 

@@ -19,7 +19,7 @@ Restart the daemon with minimal downtime.
 
 ## Steps
 
-1. Run `make restart` as the final action of the sequence. Nothing follows it in the same sequence, and its success means only that the service manager accepted the restart (`projects/teleclaude/policy/daemon-availability`).
+1. Run `make restart` as the final action of the sequence. Nothing follows it in the same sequence, and its success means only that the service manager accepted the restart (`local/projects/teleclaude/policy/daemon-availability`).
 
 ## Outputs
 

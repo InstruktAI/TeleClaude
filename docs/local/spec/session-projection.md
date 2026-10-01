@@ -197,7 +197,7 @@ Per-person preferences control two configurable categories:
 - `tool_calls` — tool invocation blocks, never tool result bodies.
 
 Defaults are role-sensitive: a recipient whose effective role for the session's
-project is `admin` (`projects/teleclaude/design/architecture/scoped-roles`) sees
+project is `admin` (`local/projects/teleclaude/design/architecture/scoped-roles`) sees
 `system_messages` and `tool_calls` on mobile and full-surface projection unless
 their per-person config says otherwise; every other recipient sees neither by
 default.
@@ -206,7 +206,7 @@ Some source categories are not configurable. Tool result bodies are TUI-only.
 Checkpoint messages and agent-CLI side-channel artifacts are dropped from every
 projected surface. Control headers — `[TeleClaude Notification]`, `[TeleClaude Input
 Request]`, `[TeleClaude Checkpoint]` — are never projected to a human surface under
-any per-person setting; `projects/teleclaude/spec/message-headers` governs their vocabulary and
+any per-person setting; `local/projects/teleclaude/spec/message-headers` governs their vocabulary and
 this policy is unconditional, not a default that a preference can override. Peer
 cross-share content remains visible on every projected surface because it is
 conversational substance, not infrastructure chatter. The TUI continues to show the
@@ -221,7 +221,7 @@ sentinel governs the turn's content, never the fact that the turn ended: a
 passive listener is still told the turn finished, when it stops, and that
 notice states the `NOOP` outcome in place of an instruction to inspect whenever
 the output read at that moment is `NOOP`
-(`projects/teleclaude/spec/feature/agent_runtime/session-subscriptions`). The raw transcript
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-subscriptions`). The raw transcript
 retains the turn.
 
 ### Reminder lifecycle visibility

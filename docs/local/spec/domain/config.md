@@ -22,7 +22,7 @@ TeleClaudeNext.
   through YAML placeholder expansion at the load boundary, and consumers read
   the resolved values only from the typed configuration aggregate. Consumers
   neither consult the process environment nor invent fallback values.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. File-backed configuration is not
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. File-backed configuration is not
   extended for vNext needs.
 
 ### Ownership boundary
@@ -63,7 +63,7 @@ TeleClaudeNext.
   is assigned to — as a declared setting: its schema, its validation against
   registered companies and projects, and its operator mutation. Owning the
   declaration is not owning what the facts mean; resolution belongs to
-  `projects/teleclaude/spec/domain/identity`.
+  `local/projects/teleclaude/spec/domain/identity`.
 - **Also published:** the context-root resolver — which tier governs an
   invocation, read from the nearest ancestor configuration file's own
   declaration. Consumers call it and never walk the ancestor chain or read a
@@ -76,21 +76,21 @@ TeleClaudeNext.
   is parsed as another tier's shape to answer any of the three. Consumers ask
   this contract and never derive a permission from a path, a repository, or a
   foreign tier's default. The behavioral contract is
-  `projects/teleclaude/spec/feature/config/tier-permissions`.
+  `local/projects/teleclaude/spec/feature/config/tier-permissions`.
 - **Also owns:** two further declarations and their validation: the person
   overlay's identity claim naming the registered person its workspace belongs
   to, and the project overlay's declared owner — a company or a person, at
   most one, with no owner a valid state. Owning the declarations is not owning
   what they mean: what an accepted person binding confers belongs to
-  `projects/teleclaude/spec/domain/identity`, and no permission follows from ownership.
+  `local/projects/teleclaude/spec/domain/identity`, and no permission follows from ownership.
   The behavioral contracts are
-  `projects/teleclaude/spec/feature/identity/person-context-binding` and
-  `projects/teleclaude/spec/feature/config/project-ownership`.
+  `local/projects/teleclaude/spec/feature/identity/person-context-binding` and
+  `local/projects/teleclaude/spec/feature/config/project-ownership`.
 - **Also does not own:** where a project's shared state lives. That rule reads
   the checkout-and-worktree relation rather than any configuration, and belongs
   to the context that creates linked worktrees and defines what they share.
   Carrying a configuration file is not an ownership basis. The decomposition is
-  `projects/teleclaude/design/architecture/config-tier-resolution`.
+  `local/projects/teleclaude/design/architecture/config-tier-resolution`.
 - **Also owns:** the canonical `general/run-job` command name and every
   scheduler emission of it, because the command executes the configured job
   declaration and changes when that job model changes. `agent_runtime` consumes
@@ -104,7 +104,7 @@ TeleClaudeNext.
   and the boundary reaches every model reachable from a configuration
   aggregate — including those a neighbouring context declares. Consumers never
   supply strictness as a validation argument. The behavioral contract is
-  `projects/teleclaude/spec/feature/config/unknown-key-warning`.
+  `local/projects/teleclaude/spec/feature/config/unknown-key-warning`.
 
 
 <!-- planned-change:procedure-activation-gated-on-company -->
@@ -114,8 +114,8 @@ TeleClaudeNext.
   computer, whether a company is configured there, which every computer
   consults before activating anything for that company. Owning the declarations
   is not owning what a company context means, which belongs to
-  `projects/teleclaude/spec/domain/identity`, or what a session does with it, which belongs
-  to `projects/teleclaude/spec/domain/agent_runtime`.
+  `local/projects/teleclaude/spec/domain/identity`, or what a session does with it, which belongs
+  to `local/projects/teleclaude/spec/domain/agent_runtime`.
 <!-- change:procedure-activation-gated-on-company -->
 - **Also owns:** an inbound event source's activation-scope declaration — the
   one registered company, person, or project its events belong to — validated
@@ -125,8 +125,8 @@ TeleClaudeNext.
   and where its home is — the company's home, the person's folder, or the
   project's checkout — which every computer consults before activating anything
   for that scope. Owning the declarations is not owning what a company context
-  means, which belongs to `projects/teleclaude/spec/domain/identity`, or what a session does
-  with a scope, which belongs to `projects/teleclaude/spec/domain/agent_runtime`.
+  means, which belongs to `local/projects/teleclaude/spec/domain/identity`, or what a session does
+  with a scope, which belongs to `local/projects/teleclaude/spec/domain/agent_runtime`.
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
 #### Use cases (index of feature specs)
@@ -159,7 +159,7 @@ project's declared owner. A change applied through `telec config` or edited in
 the backing file is noticed alike. The notice names no consumer and carries no
 interpretation; identity invalidates every reach a long-lived consumer holds on
 it, so the next listing and every later live push read the changed declaration
-(`projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
+(`local/projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
 reach per request and needs no notice.
 
 <!-- /planned:subject-scope-reach -->

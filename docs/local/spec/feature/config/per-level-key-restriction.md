@@ -131,14 +131,14 @@ And subsequent schema parsing produces its own type error against the actual sch
 
 - **Bound to the layered-overlay-resolution feature** — these validators
   run inside the project, global, and per-person overlay load entry
-  points. See `projects/teleclaude/spec/feature/config/layered-overlay-resolution.md`.
+  points. See `local/projects/teleclaude/spec/feature/config/layered-overlay-resolution.md`.
 - **Machine `config.yml` runtime check** — invoked by the machine config
   loader; the `config` domain spec describes the runtime configuration
   aggregate that carries this contract. The disallowed-runtime-keys check
   is the enforcement seam.
 - **Ubiquitous-language alignment** — the layer names (global / project /
   person) and the per-layer ownership of `creds`, `business`, `people`,
-  etc. match the overlay definitions in `projects/teleclaude/spec/domain/config.md`.
+  etc. match the overlay definitions in `local/projects/teleclaude/spec/domain/config.md`.
 
 ## Allowed values
 

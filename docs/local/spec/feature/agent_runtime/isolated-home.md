@@ -155,7 +155,7 @@ And the live home is unchanged
 - The clone carries no session record, so a caller-gated command run through a
   worktree's own wrapper is refused. Help is served before the gate, and
   behavior that acts through the daemon is verified after delivery
-  (`projects/teleclaude/policy/test-moratorium`).
+  (`local/projects/teleclaude/policy/test-moratorium`).
 - Between dispatches the clone is a snapshot: a tracked live edit made while a
   session works reaches the worktree's code at the worktree's next dispatch.
 

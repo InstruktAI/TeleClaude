@@ -18,7 +18,7 @@ implementation remain the current appliance contract.
 - **Implementation roots:** `teleclaude/adapters/`,
   `teleclaude/core/integration/`, `teleclaude/core/inbound/`, and
   `teleclaude/events/delivery/`.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. No replacement transport design is
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement transport design is
   authored here.
 
 ### Ownership boundary
@@ -113,7 +113,7 @@ implementation remain the current appliance contract.
   in what a person sent — however the adapter carries it — and handing it to the
   core; on a per-computer adapter, keeping its lookup of a person's latest
   session by origin metadata; and delivering to the endpoint the core returns
-  (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
 - **Does not own (conversation entry):** resolving an identifier to an endpoint,
   the endpoint registry, the neutral reply, which computer acts, or the
   escalation relay — the core's (`agent_runtime`); whether a home runs a desk

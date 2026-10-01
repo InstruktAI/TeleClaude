@@ -1,5 +1,5 @@
 ---
-id: 'projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination'
+id: 'local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination'
 type: 'spec'
 domain: 'sdlc'
 scope: 'project'

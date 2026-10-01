@@ -107,7 +107,7 @@ domain anchor carries no forward architecture.
 - **Tmux is the delivery surface.** Listener notifications are injected via `deliver_listener_message` into the Initiator's tmux session, identified by `caller_tmux_session` on the listener row.
 - **Suppression while linked.** When a direct link is active between the Initiator and the Worker, listener notifications for that Initiator are skipped. The link's cross-delivery channel carries the relevant signal. See `session-subscriptions` for the canonical rule.
 
-- **Authority runs downward and sideways only.** A session never messages, opens or closes a direct conversation with, unsubscribes from, ends, or restarts a session above it in the dispatch chain. The Worker's completed turn already wakes the Initiator, so the result belongs in the Worker's own output. Peers, downward acts, and a session with nothing above it are unaffected. See `projects/teleclaude/spec/feature/agent_runtime/session-authority` for the canonical rule.
+- **Authority runs downward and sideways only.** A session never messages, opens or closes a direct conversation with, unsubscribes from, ends, or restarts a session above it in the dispatch chain. The Worker's completed turn already wakes the Initiator, so the result belongs in the Worker's own output. Peers, downward acts, and a session with nothing above it are unaffected. See `local/projects/teleclaude/spec/feature/agent_runtime/session-authority` for the canonical rule.
 
 ## Primary flows
 

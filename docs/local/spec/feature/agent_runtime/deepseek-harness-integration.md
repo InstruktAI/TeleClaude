@@ -22,7 +22,7 @@ The runtime's own surface — profiles, plugin management, launcher flags, the
 headless one-shot contract, and the hook executor's compatibility limits — is
 the vendor's, and is documented against the installed binary in
 `third-party/deepseek-dsh/runtime-surface` and `third-party/deepseek-dsh/hooks`.
-Provisioning steps belong to `projects/teleclaude/procedure/onboard-agent-harness` and to
+Provisioning steps belong to `local/projects/teleclaude/procedure/onboard-agent-harness` and to
 the installer itself.
 
 ## Canonical fields

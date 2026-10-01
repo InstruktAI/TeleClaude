@@ -27,13 +27,13 @@ or a project's help desk, and its escalation, is reflected into no forum of the
 guild — not the help-desk forum, not the escalation forum, not the all-sessions
 forum, and not the forum of the project that holds the desk — so no tenant's
 customer conversation is visible to another
-(`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
 
 The desired operational shape comes from configuration and the project
 registry: machine identity, master/non-master role, enabled agents, every entry
 on the machine's project registry — projects and person or company homes alike —
 with its identity, display name, and registry order, and configured people
-(`projects/teleclaude/spec/feature/config/project-registry`). A project forum is keyed by its
+(`local/projects/teleclaude/spec/feature/config/project-registry`). A project forum is keyed by its
 entry's identity, and the forums in a machine's project category follow registry
 order. A machine's project category holds exactly its registry entries' forums
 and its catch-all forum for sessions outside every entry; any other forum there,

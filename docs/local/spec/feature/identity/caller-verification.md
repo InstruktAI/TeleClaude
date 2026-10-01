@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-Caller verification is the identity context's single intake capability at the daemon's request surface: it turns the identity an inbound call carries into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`) before any business logic runs. The client that sent the call has already resolved and cleared its caller in its own process (`projects/teleclaude/spec/identity-and-auth` §6) and carries the result — the caller's session, principal, system role, person role, person email, entry point, and session company when present (`projects/teleclaude/spec/identity-and-auth` §2). Caller verification takes those values as given. It loads no session to confirm them, resolves no terminal signal, compares no tmux session, validates no session token, and applies no role band; a call that carries no identity yields a `CallerIdentity` with none, and the operation it reaches decides what a caller without identity may do. The one credential it checks is the daemon's own process-local credential, which resolves the daemon's calls to its system principal.
+Caller verification is the identity context's single intake capability at the daemon's request surface: it turns the identity an inbound call carries into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`) before any business logic runs. The client that sent the call has already resolved and cleared its caller in its own process (`local/projects/teleclaude/spec/identity-and-auth` §6) and carries the result — the caller's session, principal, system role, person role, person email, entry point, and session company when present (`local/projects/teleclaude/spec/identity-and-auth` §2). Caller verification takes those values as given. It loads no session to confirm them, resolves no terminal signal, compares no tmux session, validates no session token, and applies no role band; a call that carries no identity yields a `CallerIdentity` with none, and the operation it reaches decides what a caller without identity may do. The one credential it checks is the daemon's own process-local credential, which resolves the daemon's calls to its system principal.
 
 ## Canonical fields
 
@@ -99,14 +99,14 @@ And the returned CallerIdentity is the identity the call carries, or none
 ### Cross-context references
 
 - Consumed by every operation on the daemon's request surface. An operation that scopes an act to its objects — the session authority rule, reminder ownership, the claiming-group rule, person-bound service selection — evaluates that rule against the returned `CallerIdentity`.
-- The identity it takes is produced by the client-side caller resolution and clearance in `projects/teleclaude/spec/identity-and-auth` §6 and `feature/identity/command-clearance`; session principals resolve there through `feature/identity/principal-resolution`.
+- The identity it takes is produced by the client-side caller resolution and clearance in `local/projects/teleclaude/spec/identity-and-auth` §6 and `feature/identity/command-clearance`; session principals resolve there through `feature/identity/principal-resolution`.
 - Reads nothing from the `agent_runtime` or `config` bounded contexts: the carried identity already names the session and the person.
 - A remote peer receives the caller the local daemon took, carried on the relay — see `feature/session_mirrors/cross-computer-history-federation`.
 - In v2 this collapses into `identity.resolve(headers)` returning a typed `Principal` (or Anonymous).
 
 ## Known caveats
 
-- A carried identity is not proven. Any process that can reach the daemon's local socket can carry any identity; the daemon's request surface is not an isolation boundary between local processes (`projects/teleclaude/spec/identity-and-auth`, Known caveats).
+- A carried identity is not proven. Any process that can reach the daemon's local socket can carry any identity; the daemon's request surface is not an isolation boundary between local processes (`local/projects/teleclaude/spec/identity-and-auth`, Known caveats).
 - The daemon credential is the one value caller verification checks, because it is minted in the daemon's own memory and no other process can produce it.
 
 ## See Also

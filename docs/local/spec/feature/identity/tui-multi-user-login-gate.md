@@ -97,7 +97,7 @@ And the in-process TUI loop runs directly (no nested tmux session is spawned)
 ### Cross-context references
 
 - Reads `config.people` to count registered persons; the count is the sole gate criterion.
-- Producer of the trusted-TUI marker (the TUI runtime marker inside tmux session `tc_tui`) consumed by the client-side caller resolution (`projects/teleclaude/spec/identity-and-auth` §6) — the TUI's launched identity is honoured only where the marker is present.
+- Producer of the trusted-TUI marker (the TUI runtime marker inside tmux session `tc_tui`) consumed by the client-side caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) — the TUI's launched identity is honoured only where the marker is present.
 - Coordinates with `agent_runtime` insofar as the TUI runs inside a tmux session the launcher creates; the `tc_tui` session is distinct from agent-session tmux names (`tc_<session_id_short>`) and is not part of the managed session table.
 - Depends on `feature/identity/terminal-email-login` as its prerequisite: the gate is satisfied only when that flow has previously written a live auth document for the current TTY.
 - No v1 domain event is emitted by the gate. The behavior is local launcher policy, not an identity-context state change.

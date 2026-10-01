@@ -116,7 +116,7 @@ stateDiagram-v2
   tool calls, thinking, system reminders. Nothing in this platform edits,
   rewrites, or truncates the native transcript file in place. `session_mirrors`'
   indexing, search, extraction, and projection are read-only derivations from
-  it (`projects/teleclaude/spec/domain/session_mirrors`).
+  it (`local/projects/teleclaude/spec/domain/session_mirrors`).
 
 ## Primary flows
 

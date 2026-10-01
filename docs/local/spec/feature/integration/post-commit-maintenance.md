@@ -22,12 +22,12 @@ existing, so a person committing by hand and an integrator delivery receive the
 same maintenance.
 
 The owed set is resolved by the shared scope matcher from the merged registry
-pair and bindings (`projects/teleclaude/design/architecture/checkpoint-system`, Invariant
+pair and bindings (`local/projects/teleclaude/design/architecture/checkpoint-system`, Invariant
 25). This surface consumes the maintenance registry and recreates no location
 rule or second table of paths, actions, or commands.
 
 Which hooks a project has installed, and when they are installed, belongs to
-`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`. This
+`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`. This
 contract governs only what happens when maintenance runs.
 
 ## Canonical fields

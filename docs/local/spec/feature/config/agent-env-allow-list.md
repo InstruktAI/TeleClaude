@@ -73,7 +73,7 @@ And starts or restarts the agent session
 ### Environment values outside the allow list
 
 The XDG base directories (`XDG_DATA_HOME`, `XDG_CACHE_HOME`) enter a session
-through the host-shell capture owned by `projects/teleclaude/spec/agent-shell-path`. The
+through the host-shell capture owned by `local/projects/teleclaude/spec/agent-shell-path`. The
 DeepSeek Harness CLI accepts `XDG_*` only from the inherited environment and
 refuses any `.env` layer that declares one (`dsh-app-boot` bootstrap-name rule).
 Authorizing these names here does not change that delivery.
@@ -96,5 +96,5 @@ Authorizing these names here does not change that delivery.
   appearing in process-argument surfaces. It does not decide which variables
   are allowed; the allow list does.
 - Wizard editing for the global allow list is described in
-  `projects/teleclaude/spec/feature/config/setup-wizard`; the contract here is the
+  `local/projects/teleclaude/spec/feature/config/setup-wizard`; the contract here is the
   config/schema/agent-runtime delivery contract.

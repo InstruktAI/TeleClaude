@@ -28,11 +28,11 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 ### Referenced doc snippets
 
-| Snippet ID                                          | Content                                     |
-| --------------------------------------------------- | ------------------------------------------- |
-| `sdlc/procedure/lifecycle-overview`                 | Full lifecycle phases and handoffs          |
-| `general/procedure/orchestration`                   | Orchestration loop and dispatch rules       |
-| `projects/teleclaude/spec/integration-orchestrator` | Integration contract (events, lease, queue) |
+| Snippet ID                                                | Content                                     |
+| --------------------------------------------------------- | ------------------------------------------- |
+| `sdlc/procedure/lifecycle-overview`                       | Full lifecycle phases and handoffs          |
+| `general/procedure/orchestration`                         | Orchestration loop and dispatch rules       |
+| `local/projects/teleclaude/spec/integration-orchestrator` | Integration contract (events, lease, queue) |
 
 ## Inputs/Outputs
 

@@ -172,13 +172,13 @@ And tagging the agent in that thread hands the conversation back
 ### Cross-context references
 
 - **identity** — the escalate command's person bands
-  (`projects/teleclaude/design/cli-authorization-matrix`) and the owning
+  (`local/projects/teleclaude/design/cli-authorization-matrix`) and the owning
   home's admins: a company roster's admins, a project's owner, the platform's
-  admins (`projects/teleclaude/design/architecture/scoped-roles`).
+  admins (`local/projects/teleclaude/design/architecture/scoped-roles`).
 - Within agent_runtime: the help-desk session and its placement
-  (`projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`), how a
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`), how a
   desk is entered
-  (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`); the
+  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`); the
   hand-back arrives through the normal message pipeline.
 - **integration** — targeted per-person delivery to each admin's preferred
   channel, delivery of a relayed reply through the visitor's adapter, and the

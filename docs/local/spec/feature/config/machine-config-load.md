@@ -36,7 +36,7 @@ machine configuration without the declaration loads unchanged.
 Every stored machine configuration comes to declare `kind: computer`.
 Installation creates a new machine configuration declared, and a stored one
 without the declaration gains it through the configuration migration list
-(`projects/teleclaude/spec/feature/config/document-migration`). A load supplies the absent
+(`local/projects/teleclaude/spec/feature/config/document-migration`). A load supplies the absent
 declaration in memory and writes nothing.
 
 ## Canonical fields
@@ -210,7 +210,7 @@ And every other rejected value is shown as written
 ### Cross-context references
 
 - The config bounded context does not emit the `config.effective.updated`
-  event described in `projects/teleclaude/spec/domain/config.md` for machine-config
+  event described in `local/projects/teleclaude/spec/domain/config.md` for machine-config
   load. The initial machine config is read once at process start. While the
   runtime is up, the config bounded context watches the file for changes
   and hot-reloads the live aggregate in place (or self-restarts for
@@ -224,7 +224,7 @@ And every other rejected value is shown as written
 - The optional `experiments.yml` side-file feeds the experiments list,
   consumed at runtime startup and by the experiment resolver — see
   `experiment-matching.md` for resolution rules.
-- The `config` bounded context (`projects/teleclaude/spec/domain/config.md`) carries
+- The `config` bounded context (`local/projects/teleclaude/spec/domain/config.md`) carries
   the overlay-computation and cache-invalidation event model. Until that
   model is fully realised, `config.yml` and the `teleclaude.yml` overlays
   (see `layered-overlay-resolution.md`) coexist as two unrelated
@@ -236,7 +236,7 @@ And every other rejected value is shown as written
   load and reload, the stored document is brought to the current shape in
   memory by the configuration migration list before it reaches raw input
   validation, and the load never writes it
-  (`projects/teleclaude/spec/feature/config/document-migration`). A retired field whose
+  (`local/projects/teleclaude/spec/feature/config/document-migration`). A retired field whose
   destination belongs to another bounded context leaves the view the same way;
   a migration run stores the document only after delivering that value to its
   config-owned hand-off, from which the destination owner imports it. Raw edit

@@ -19,13 +19,13 @@ and runtime-bound continuation. Callers describe the job and dispatch intent; th
 agent-runtime core chooses from configured, enabled, operator-available agents.
 
 The ordered role policy and observable deterministic outcomes live in
-`projects/teleclaude/spec/feature/agent_runtime/role-aware-agent-dispatch`. This design owns where
+`local/projects/teleclaude/spec/feature/agent_runtime/role-aware-agent-dispatch`. This design owns where
 selection executes and which context crosses each boundary.
 
 <!-- planned:adaptive-usage-routing -->
 Provider-neutral quota state extends automatic preference only after deterministic
 eligibility. Its observable outcomes live in
-`projects/teleclaude/spec/feature/agent_runtime/usage-aware-agent-dispatch`.
+`local/projects/teleclaude/spec/feature/agent_runtime/usage-aware-agent-dispatch`.
 <!-- /planned:adaptive-usage-routing -->
 
 ## Inputs/Outputs

@@ -166,13 +166,13 @@ And the user has no surface to override these binary paths
   for this validation today; validation failures surface as load-time errors
   at process start and are not propagated as a config event. Generalising
   this signal into the effective-configuration event taxonomy is described
-  in `projects/teleclaude/spec/domain/config.md`.
+  in `local/projects/teleclaude/spec/domain/config.md`.
 - Consumed by the `agent_runtime` context and any caller that spawns an
   agent: the resolved agent binary is what launches the process, and the
   enabled inventory constrains fresh-session eligibility. The declared default remains
   a required configuration invariant but does not resolve an omitted fresh-session
   agent; role-aware dispatch owns that choice.
-- The `config` bounded context (`projects/teleclaude/spec/domain/config.md`) carries
+- The `config` bounded context (`local/projects/teleclaude/spec/domain/config.md`) carries
   the same invariants — "default agent must be known and enabled, binaries
   are runtime policy" — at the domain level.
 

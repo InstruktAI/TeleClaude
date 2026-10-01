@@ -17,16 +17,16 @@ visibility: internal
 The TUI's Sessions and Preparation views show, under each computer, the
 projects that computer's daemon lists: every entry on that machine's project
 registry, under its display name, in registry order
-(`projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
+(`local/projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
 list changes, whether or not any session changed with it: a project the daemon
 adds, renames, or drops is shown as it now is.
 <!-- change:subject-scope-reach -->
 The TUI's Sessions and Preparation views show, under each computer, the
 projects that computer's daemon lists to the viewer: every entry on that
 machine's project registry the viewer's reach admits
-(`projects/teleclaude/spec/feature/identity/data-visibility`), under its display
+(`local/projects/teleclaude/spec/feature/identity/data-visibility`), under its display
 name, in registry order
-(`projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
+(`local/projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
 list changes, whether or not any session changed with it: a project the daemon
 adds, renames, or drops is shown as it now is.
 <!-- /planned-change:subject-scope-reach -->

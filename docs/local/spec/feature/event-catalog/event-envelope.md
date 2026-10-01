@@ -31,7 +31,7 @@ decide, assume, or check who will receive an event, and emission refuses nothing
 on the strength of these facts. Platform automation has no home of its own; its
 events carry no session origin, and their subject is the home of what the
 automation acted on. Who may receive an event is decided on the receiving side
-from its subject (`projects/teleclaude/spec/feature/agent_runtime/event-subscriptions` is
+from its subject (`local/projects/teleclaude/spec/feature/agent_runtime/event-subscriptions` is
 one such consumer); this contract only guarantees the facts are there.
 
 Every event type in the catalog declares its subject assignment — what its

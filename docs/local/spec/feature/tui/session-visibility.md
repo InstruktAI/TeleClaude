@@ -9,7 +9,7 @@ description: The TUI Sessions view reflects authoritative session state — a se
 ## What it is
 
 The TUI Sessions view is a projection of the authoritative session state the
-viewer's role reaches (`projects/teleclaude/design/architecture/scoped-roles`), not a ledger
+viewer's role reaches (`local/projects/teleclaude/design/architecture/scoped-roles`), not a ledger
 of the live events it happened to receive. Every open session in the
 authoritative session store whose project the viewer's effective role reaches
 above `customer` is visible, regardless of lifecycle status or human ownership,

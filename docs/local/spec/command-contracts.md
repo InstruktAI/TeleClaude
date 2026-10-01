@@ -17,7 +17,7 @@ visibility: 'public'
 
 - Commands are rejected when the target session is missing or closed, except where the spec marks the command as idempotent (see `unsubscribe_session`).
 
-- Subscription state semantics for caller-target pairs are defined in `projects/teleclaude/spec/session-subscriptions`. Verbs in this spec mutate that state — refer to that spec for the canonical state model.
+- Subscription state semantics for caller-target pairs are defined in `local/projects/teleclaude/spec/session-subscriptions`. Verbs in this spec mutate that state — refer to that spec for the canonical state model.
 
 ## Canonical fields
 

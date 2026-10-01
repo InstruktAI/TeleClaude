@@ -69,7 +69,7 @@ runtime configuration aggregate, and adapter / API credentials persist
 through the env-file writer under the environment variables the machine-config
 schema's sensitivity declarations derive. Every
 persisted surface the wizard writes is documented in
-`projects/teleclaude/spec/teleclaude-config`.
+`local/projects/teleclaude/spec/teleclaude-config`.
 
 ## Canonical fields
 
@@ -337,7 +337,7 @@ the computer-name wizard step is the task that adds the writer.
 
 Wizard writes do **not** publish `config.effective.updated`. That
 event is part of the `config` bounded context's domain contract (per
-`projects/teleclaude/spec/domain/config.md`); the current machine-config-load and
+`local/projects/teleclaude/spec/domain/config.md`); the current machine-config-load and
 layered-overlay-resolution contracts have no filesystem watcher and
 no cluster-visible config event.
 
@@ -469,23 +469,23 @@ rendering concern, not a state concern.
 
 ### Cross-context references
 
-- `projects/teleclaude/spec/teleclaude-config` is the authoritative surface for the
+- `local/projects/teleclaude/spec/teleclaude-config` is the authoritative surface for the
   config files and env vars the wizard persists. Every new persisted
   field added by a wizard step is documented there.
-- `projects/teleclaude/spec/feature/config/stable-channel-pinning-rule` is the
+- `local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule` is the
   validation contract UC-WIZ-7 references. The wizard surfaces the
   rule's outcome; the rule itself is invariant of the wizard.
-- `projects/teleclaude/spec/feature/config/atomic-project-config-write` is the
+- `local/projects/teleclaude/spec/feature/config/atomic-project-config-write` is the
   persistence contract the wizard's release-channel step traverses
   (project YAML).
-- `projects/teleclaude/spec/feature/config/agent-env-allow-list` is the
+- `local/projects/teleclaude/spec/feature/config/agent-env-allow-list` is the
   authorization contract the wizard's agent environment access step
   traverses (project YAML).
-- `projects/teleclaude/spec/feature/config/machine-config-write` is the
+- `local/projects/teleclaude/spec/feature/config/machine-config-write` is the
   persistence contract the wizard's system-identity step traverses
   (machine `config.yml`). Authored alongside this delivery; both
   specs are joint-delivered.
-- `projects/teleclaude/spec/feature/config/atomic-env-file-write` is the
+- `local/projects/teleclaude/spec/feature/config/atomic-env-file-write` is the
   persistence contract the wizard's adapter / API-key / env-override
   steps traverse (`.env` file). The env-file writer is promoted to the
   atomic-replace pattern by this delivery so UC-WIZ-3 and UC-WIZ-5

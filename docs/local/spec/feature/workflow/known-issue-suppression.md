@@ -38,7 +38,7 @@ the registering caller. A caller the platform cannot identify registers nothing.
 
 Listing the ledger is a governed read: `telec bugs suppressions` is cleared
 against its verb band in the process that runs it
-(`projects/teleclaude/spec/feature/identity/command-clearance`, Local read clearance). A
+(`local/projects/teleclaude/spec/feature/identity/command-clearance`, Local read clearance). A
 job-runner session is admitted, so the log bug hunter reads the ledger it
 subtracts before filing. A caller the platform cannot identify lists nothing.
 

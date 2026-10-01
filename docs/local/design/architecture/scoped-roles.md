@@ -17,14 +17,14 @@ A person holds a role, and a role is held at a scope. The role says what its
 holder may do; the scope says where. This design owns the scopes, what each
 scope contains, and how a person's effective role for one object is resolved.
 What each role may do stays with the surfaces that decide it: command bands in
-`projects/teleclaude/design/cli-authorization-matrix` and the scope a command is judged at
-in `projects/teleclaude/spec/feature/identity/command-clearance`, configuration standing in
-`projects/teleclaude/spec/feature/identity/configuration-target-clearance`, documentation
-depth in `projects/teleclaude/design/architecture/context-selection`, history reach in
-`projects/teleclaude/spec/feature/session_mirrors/role-scoped-history-access`, a new
+`local/projects/teleclaude/design/cli-authorization-matrix` and the scope a command is judged at
+in `local/projects/teleclaude/spec/feature/identity/command-clearance`, configuration standing in
+`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`, documentation
+depth in `local/projects/teleclaude/design/architecture/context-selection`, history reach in
+`local/projects/teleclaude/spec/feature/session_mirrors/role-scoped-history-access`, a new
 session's role and its help-desk confinement in
-`projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`, and operation status in
-`projects/teleclaude/design/architecture/operation-receipts`.
+`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`, and operation status in
+`local/projects/teleclaude/design/architecture/operation-receipts`.
 
 ## Inputs/Outputs
 
@@ -33,7 +33,7 @@ session's role and its help-desk confinement in
 - The person's platform role, from the person registry, when one is declared.
 - The person's company memberships, each carrying a role, and their project
   assignments, as identity resolves them
-  (`projects/teleclaude/spec/feature/identity/organizational-membership`).
+  (`local/projects/teleclaude/spec/feature/identity/organizational-membership`).
 - The object an operation acts on, and the scope that object belongs to.
 
 **Outputs.**
@@ -81,7 +81,7 @@ session's role and its help-desk confinement in
    calling and carries only the caller's principal over the daemon relay — a
    command the daemon forwards on its own account carries the daemon's system
    principal — as remote history search already does
-   (`projects/teleclaude/spec/feature/session_mirrors/cross-computer-history-federation`).
+   (`local/projects/teleclaude/spec/feature/session_mirrors/cross-computer-history-federation`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
    request is never an input. The caller's computer decides only what it alone
@@ -94,7 +94,7 @@ session's role and its help-desk confinement in
    decision of the computer holding them, so they are judged at platform scope,
    except that a session sees its own direct children, whose parent link the
    holding computer recorded when it admitted their start
-   (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
 <!-- change:subject-scope-reach -->
 9. **The computer holding the object decides.** A command that acts on an
    object another computer holds — a session running there, a session to start
@@ -104,7 +104,7 @@ session's role and its help-desk confinement in
    calling and carries only the caller's principal over the daemon relay — a
    command the daemon forwards on its own account carries the daemon's system
    principal — as remote history search already does
-   (`projects/teleclaude/spec/feature/session_mirrors/cross-computer-history-federation`).
+   (`local/projects/teleclaude/spec/feature/session_mirrors/cross-computer-history-federation`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
    request is never an input. The caller's computer decides only what it alone
@@ -118,14 +118,14 @@ session's role and its help-desk confinement in
    subject's owner as the computer that produced them resolved them; the
    receiving computer admits them by the caller's reach over those facts, and a
    caller still sees the records recorded under its own principal
-   (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
 <!-- /planned-change:subject-scope-reach -->
 <!-- planned:subject-scope-reach -->
 10. **Seeing reads reach, not the effective role.** Which records a person may
     see in a listing, search, push, or documentation read is read from
     identity's reach over the record's subject, never from the effective role
-    (`projects/teleclaude/spec/domain/identity`,
-    `projects/teleclaude/spec/feature/identity/data-visibility`). A platform
+    (`local/projects/teleclaude/spec/domain/identity`,
+    `local/projects/teleclaude/spec/feature/identity/data-visibility`). A platform
     administrator reaches every record. Below that, reach follows company
     membership, project assignment, project ownership, and the person's own
     home, the company scope's shared-documentation lineage reaches a company

@@ -34,7 +34,7 @@ guarantees:
    blocks. The capability blocks are the exception: `code`, `docs` and
    `agents` are always written with their `enabled` value, because a
    capability is claimed or declined only by an explicit value
-   (`projects/teleclaude/spec/feature/config/project-capability-manifest`).
+   (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
 
 The helper is sync, takes a path and a validated project overlay instance,
 and returns on success. There is no read-modify-write helper at this
@@ -113,7 +113,7 @@ And the responsibility for invariants (e.g., stable-channel pinning) lies with t
   for global or per-person overlays today.
 - The atomic-replace contract is one of the inputs into the `config`
   domain's `config.effective.updated` event (see
-  `projects/teleclaude/spec/domain/config.md`): a filesystem watcher that observes an
+  `local/projects/teleclaude/spec/domain/config.md`): a filesystem watcher that observes an
   atomic-replace inode change can rely on the new file being complete, not
   partially written.
 

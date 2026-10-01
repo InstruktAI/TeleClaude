@@ -34,7 +34,7 @@ The Integration state machine is the **only role authorized to push canonical `m
 | Snippet ID                                             | Content                                                    |
 | ------------------------------------------------------ | ---------------------------------------------------------- |
 | `sdlc/procedure/lifecycle/integration` | Integration procedure with agent actions                   |
-| `projects/teleclaude/spec/integration-orchestrator`                | Full integrator contract (events, lease, queue, lifecycle) |
+| `local/projects/teleclaude/spec/integration-orchestrator`                | Full integrator contract (events, lease, queue, lifecycle) |
 | `sdlc/policy/version-control-safety`   | Git safety rules for all agents                            |
 | `general/policy/commits`                  | Commit format and attribution                              |
 
@@ -553,11 +553,11 @@ flowchart LR
 After the candidate push is confirmed, the machine synchronizes repository-root
 `main` by classifying it against `origin/main`, and fast-forwards it only when no
 uncommitted path overlaps the incoming change
-(`projects/teleclaude/spec/feature/workflow/integration-state-machine`, UC-WISM27 and
+(`local/projects/teleclaude/spec/feature/workflow/integration-state-machine`, UC-WISM27 and
 UC-WISM28). Split history, a blocking dirty path, or a Git operation failure
 returns a typed decision instead of mutating the working tree,
 and the confirmed candidate stays current until repository-root finalization
 succeeds. The integrator resolves the decision under
 `sdlc/procedure/lifecycle/integrate` (**REPO ROOT SYNC REQUIRED**) and re-enters
 `telec todo integrate`. The Git wrapper blocks `git stash` for every role
-(`projects/teleclaude/design/code-commit`), so no recovery path stashes.
+(`local/projects/teleclaude/design/code-commit`), so no recovery path stashes.

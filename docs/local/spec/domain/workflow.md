@@ -17,7 +17,7 @@ feature specs remain the current contract.
 - **Implementation roots:** `teleclaude/core/todos_db/`,
   `teleclaude/core/next_machine/`, `teleclaude/core/integration/`, and todo CLI
   handlers.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. Replacement work never uses this store or
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement work never uses this store or
   lifecycle.
 
 ### Ownership boundary
@@ -37,7 +37,7 @@ feature specs remain the current contract.
   contract and never interpret git metadata themselves.
 - **Also published:** which checkouts are slug worktrees and where a slug
   worktree's home lives, given the worktree root
-  (`projects/teleclaude/spec/feature/agent_runtime/isolated-home`). The contract loads no
+  (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`). The contract loads no
   other part of the platform, so runtime home resolution can ask it before
   anything else loads. Consumers ask this contract and never restate the
   layout.

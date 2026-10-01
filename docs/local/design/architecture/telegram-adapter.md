@@ -242,7 +242,7 @@ sequenceDiagram
 
 ### 9. Private-Chat Entry
 
-A private chat is one person's conversation with this computer's bot. The adapter carries the entry identifier as the `/start` parameter (`third-party/telegram/deep-linking`); it recognises the identifier, hands it to the core, and otherwise finds the person's latest session by its origin metadata, as for every adapter (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). It holds no routing rules of its own.
+A private chat is one person's conversation with this computer's bot. The adapter carries the entry identifier as the `/start` parameter (`third-party/telegram/deep-linking`); it recognises the identifier, hands it to the core, and otherwise finds the person's latest session by its origin metadata, as for every adapter (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). It holds no routing rules of its own.
 
 ```mermaid
 flowchart TD

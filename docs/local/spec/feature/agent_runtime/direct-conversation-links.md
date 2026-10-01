@@ -16,7 +16,7 @@ visibility: public
 
 A **conversation link** is the agent_runtime aggregate that turns two (or more) sessions into peers whose subsequent turn-complete outputs are delivered to one another automatically, without re-issuing `telec sessions send` per turn.
 
-The link is established by a single act of _ignition_: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. A member severs the link with `--close-link`, which closes it for all members at once; a member whose peer sits above it in the dispatch chain cannot, because no session acts on the session above it (`projects/teleclaude/spec/feature/agent_runtime/session-authority`).
+The link is established by a single act of _ignition_: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. A member severs the link with `--close-link`, which closes it for all members at once; a member whose peer sits above it in the dispatch chain cannot, because no session acts on the session above it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
 
 The link is an associative aggregate of a link record and its member records, persisted durably by agent_runtime; it survives service restarts and is the canonical record of "these sessions are currently talking to each other."
 

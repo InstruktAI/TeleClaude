@@ -110,7 +110,7 @@ And the call returns successfully
 
 ### Cross-context references
 
-- The setup wizard (per `projects/teleclaude/spec/feature/config/setup-wizard`) is the
+- The setup wizard (per `local/projects/teleclaude/spec/feature/config/setup-wizard`) is the
   primary consumer that depends on this atomicity contract via UC-WIZ-3
   and UC-WIZ-5.
 - A parallel env-file writer used by the `telec config env set` surface

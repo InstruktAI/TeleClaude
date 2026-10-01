@@ -20,7 +20,7 @@ TeleClaudeNext.
   `teleclaude/session_identity.py`, `teleclaude/api/auth.py`, and
   `teleclaude/cli/telec/auth.py`.
 
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. New tenancy, RBAC, and secrets
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. New tenancy, RBAC, and secrets
   architecture belongs to TeleClaudeNext.
 
 ### Ownership boundary
@@ -38,7 +38,7 @@ TeleClaudeNext.
   itself is config's; identity reads it and reinterprets nothing, and an
   accepted binding is an identity fact that grants no authority of its own.
   The behavioral contract is
-  `projects/teleclaude/spec/feature/identity/person-context-binding`.
+  `local/projects/teleclaude/spec/feature/identity/person-context-binding`.
 - **Does not own:** provider payload parsing, message delivery, session action,
   or workflow transitions merely because they carry a principal.
 - **Published contracts:** resolved-principal and authentication-evidence types
@@ -94,7 +94,7 @@ TeleClaudeNext.
   their records carry and their own audience facts — public and person-local
   documentation, addressed notifications — and never add, relax, or re-derive
   reach. The behavioral contract is
-  `projects/teleclaude/spec/feature/identity/data-visibility`.
+  `local/projects/teleclaude/spec/feature/identity/data-visibility`.
 <!-- /planned:subject-scope-reach -->
 
 ## See Also

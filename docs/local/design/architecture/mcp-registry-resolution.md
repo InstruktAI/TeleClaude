@@ -7,7 +7,7 @@ description: How the effective MCP registry is resolved per invocation project â
 
 ## Purpose
 
-Resolve one effective MCP catalog per invocation context so a project's own registry declarations serve that project's invocations through the standard `telec mcp` surface, while every other context keeps the machine-wide catalog. The behavioral contract lives in `projects/teleclaude/spec/feature/agent_runtime/lazy-mcp-runtime`; the registry file and schema contract lives in `projects/teleclaude/spec/teleclaude-config`.
+Resolve one effective MCP catalog per invocation context so a project's own registry declarations serve that project's invocations through the standard `telec mcp` surface, while every other context keeps the machine-wide catalog. The behavioral contract lives in `local/projects/teleclaude/spec/feature/agent_runtime/lazy-mcp-runtime`; the registry file and schema contract lives in `local/projects/teleclaude/spec/teleclaude-config`.
 
 ## Inputs/Outputs
 

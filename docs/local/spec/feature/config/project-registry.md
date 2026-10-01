@@ -9,7 +9,7 @@ visibility: internal
 
 The project registry is the machine's one list of the places agent sessions
 work. No other list of projects exists on a machine. Its shape and location are
-config's, stated in `projects/teleclaude/spec/teleclaude-config`.
+config's, stated in `local/projects/teleclaude/spec/teleclaude-config`.
 
 Every entry is an adopted folder whose own configuration declares what it is. A
 folder declaring the project tier is a project. A folder declaring the person or
@@ -57,7 +57,7 @@ field is absent. The Discord reflection hand-off binds each former-name key to
 the folder that received threads from that forum before the fold. When several
 entries shared one former name, every present folder is adopted, but only that
 prior routing owner inherits the existing forum; the other entries receive
-separate identity-keyed forums (`projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). A listed
+separate identity-keyed forums (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). A listed
 folder that no longer exists is dropped and named in the migration run's
 structured record. A listed folder whose
 identity another entry already holds is a conflict: the machine configuration
@@ -65,7 +65,7 @@ keeps its list and its version, and the run reports the conflict.
 
 Until the machine configuration is stored past that migration, the consumers
 that place sessions also see the folders the list still holds
-(`projects/teleclaude/policy/configuration-migrations`); a folder not yet adopted is not a
+(`local/projects/teleclaude/policy/configuration-migrations`); a folder not yet adopted is not a
 project to the project-acting consumers.
 
 ## Canonical fields

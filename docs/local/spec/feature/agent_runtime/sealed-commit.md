@@ -14,7 +14,7 @@ visibility: 'public'
 
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
 
-The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `projects/teleclaude/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`projects/teleclaude/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
+The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `local/projects/teleclaude/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
 
 The contract resolves four classes of file state at commit time:
 
@@ -362,7 +362,7 @@ And the session's effective scope is the same as for a bare invocation of the sa
 
 `telec code commit` runs the gates the acting invocation context root's declared
 tier carries, read from that tier's published answers
-(`projects/teleclaude/spec/feature/config/tier-permissions`). Whether the gate runs follows
+(`local/projects/teleclaude/spec/feature/config/tier-permissions`). Whether the gate runs follows
 the tier: a tier carrying project subscriptions, or whose material participates
 in documentation, is gated; a tier carrying neither is not, no check is applied
 in its place, and the commit proceeds directly. Which checks run follows what the
@@ -383,10 +383,10 @@ The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs, for every
 route into a commit, the checks each staged path's owning home carries, never
 selected by the directory the commit started from. Whether the gate runs, and
 which checks it runs, follow the capability rule in
-`projects/teleclaude/spec/feature/config/project-capability-manifest`: the gate
+`local/projects/teleclaude/spec/feature/config/project-capability-manifest`: the gate
 runs where the owning home carries `code` or `docs`, a global, person, or
 company home counting as `docs` and `agents` by its kind
-(`projects/teleclaude/spec/feature/config/tier-permissions`), and each capability
+(`local/projects/teleclaude/spec/feature/config/tier-permissions`), and each capability
 contributes only its own checks. A home carrying neither is not gated, no check
 is applied in its place, and the commit proceeds directly. The checks run
 against the commit's staged file set, after the partial-staging guard.

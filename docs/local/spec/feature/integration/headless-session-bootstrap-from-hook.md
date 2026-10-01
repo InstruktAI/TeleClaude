@@ -129,7 +129,7 @@ And provider-supplied data cannot opt into headless bootstrap
   Bootstrap remains a property of session creation, not of integration.
 - Reads identity context (caller email) via the auth subsystem;
   resolution rules live in `identity`.
-- Reads the project registry's entries from `config` (`projects/teleclaude/spec/feature/config/project-registry`).
+- Reads the project registry's entries from `config` (`local/projects/teleclaude/spec/feature/config/project-registry`).
 - Publishes a session-started event with cluster visibility; downstream
   consumers include the API server, frontends, and any notification
   dispatcher.

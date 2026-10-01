@@ -16,7 +16,7 @@ History queries are scoped to the caller, so no one reads a conversation
 without the authority to. The scope derives from the identity the caller carries
 — the principal of its session, or the person resolved for it at a terminal —
 never from a terminal signal inside a session and never from a stored role copy.
-It is the caller's reach (`projects/teleclaude/spec/feature/identity/data-visibility`),
+It is the caller's reach (`local/projects/teleclaude/spec/feature/identity/data-visibility`),
 resolved when the scope is decided, applied to two facts each mirror carries: the
 subject its session landed in — a project, person, or company home, or none —
 with that subject's owner, and the principal it is recorded under. A caller's

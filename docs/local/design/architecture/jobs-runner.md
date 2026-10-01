@@ -168,8 +168,8 @@ and the walk continues.
 
 The project-root `teleclaude.yml` registers a project's jobs as a list under the `jobs:` key.
 Every entry carries a required `name` (lowercase kebab-case), which is the job's identity
-(see `projects/teleclaude/spec/feature/config/job-declaration-model`). A job declares WHEN it runs
-through the `when` block (see `projects/teleclaude/spec/feature/config/job-schedule-contract`) and WHAT
+(see `local/projects/teleclaude/spec/feature/config/job-declaration-model`). A job declares WHEN it runs
+through the `when` block (see `local/projects/teleclaude/spec/feature/config/job-schedule-contract`) and WHAT
 it runs through exactly one execution pointer — `script` (path, in-process job) or `job`
 (procedure snippet ID, agent job). The pointer present IS the execution class; there is no
 separate discriminator field. The remaining execution fields are `agent` (a non-empty ordered
@@ -276,7 +276,7 @@ from an earlier run cannot close its successor.
 A job runs on the cadence declared in its `when` block — an interval (`every`, e.g.
 `60m`/`2h`/`1d`) or one or more wall-clock times (`at`, optionally filtered by `weekdays`).
 Exactly one of `every`/`at` is set. The full scheduling contract is
-`projects/teleclaude/spec/feature/config/job-schedule-contract`. Jobs that have never run wait for the
+`local/projects/teleclaude/spec/feature/config/job-schedule-contract`. Jobs that have never run wait for the
 first scheduled occurrence after discovery.
 
 ### Run lifecycle persistence

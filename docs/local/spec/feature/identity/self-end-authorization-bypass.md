@@ -16,7 +16,7 @@ visibility: public
 
 `telec sessions end` is normally restricted to the orchestrator/integrator system band — worker-role agent sessions are excluded. But a runner-dispatched driver session (an analyzer, a prepare/work orchestrator) is authorization-classified as a `worker`, holds the todo's `active_runner` lease, and must end itself to release that lease and wake the runner. Command clearance for `telec sessions end` therefore recognises a "self-end" shape — a caller resolved to a session, ending that same session, whose session record names no orchestrating parent (`initiator_session_id is None`) — and admits it without consulting the verb allowlist. Every other shape falls through to the standard rule: a sub-worker self-end (parent set) and a cross-session end are evaluated against the normal band, and a worker is refused there. The decision is made in the CLI process before any request is sent (`feature/identity/command-clearance`); the daemon performs the end it receives.
 
-The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-set session state, populated when an orchestrator dispatches a child that takes its work from that dispatcher; runner-dispatched drivers, human-started sessions, and standing roles — the integrator, the project coordinator, a scheduled job runner — carry `None`, because their work arrives from a queue, a schedule, or the fleet rather than from whoever started them (`projects/teleclaude/spec/feature/agent_runtime/session-authority`). Clearance reads it from the caller's own session record, never from a value the caller supplies, so a sub-worker cannot claim a parentless row to widen its own authority. This mirrors the self-restart carve-out, which grants a worker the right to restart only itself.
+The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-set session state, populated when an orchestrator dispatches a child that takes its work from that dispatcher; runner-dispatched drivers, human-started sessions, and standing roles — the integrator, the project coordinator, a scheduled job runner — carry `None`, because their work arrives from a queue, a schedule, or the fleet rather than from whoever started them (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`). Clearance reads it from the caller's own session record, never from a value the caller supplies, so a sub-worker cannot claim a parentless row to widen its own authority. This mirrors the self-restart carve-out, which grants a worker the right to restart only itself.
 
 ## Canonical fields
 
@@ -75,9 +75,9 @@ And admin/member callers end the session; others are refused before any request 
 ### Cross-context references
 
 - This is the session-end flow leaning on command clearance for a single carve-out, the end-path counterpart of `feature/identity/self-restart-authorization-bypass`.
-- The carve-out relies on the client-side caller resolution (`projects/teleclaude/spec/identity-and-auth` §6) having resolved the caller to its session record — terminal callers cannot self-end via the carve-out and go through the standard human band.
+- The carve-out relies on the client-side caller resolution (`local/projects/teleclaude/spec/identity-and-auth` §6) having resolved the caller to its session record — terminal callers cannot self-end via the carve-out and go through the standard human band.
 - `initiator_session_id` is the same driver-vs-sub-worker discriminator the session-lifecycle contract relies on (drivers hold the `active_runner` and are reaped on close; sub-workers are reaped by their orchestrator).
-- The session authority rule the daemon applies to the end it performs is unchanged by this carve-out: a session never ends a session above it (`projects/teleclaude/spec/feature/agent_runtime/session-authority`).
+- The session authority rule the daemon applies to the end it performs is unchanged by this carve-out: a session never ends a session above it (`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`).
 
 ## Known caveats
 

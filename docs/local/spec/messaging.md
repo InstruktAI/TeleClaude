@@ -35,13 +35,13 @@ Use this when you need to:
 delivers a message to a **person**, decoupled from any session origin. The CLI
 handler posts the request over the daemon socket; a core person-messaging
 service resolves the recipient and dispatches through the existing outbound
-provider primitives (`projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
+provider primitives (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
 — the same layer the invitation flow uses. No new transport exists.
 
 **Channel resolution — the recipient owns routing.** The person is resolved by
 slug through the identity layer. The delivery channel is `--channel` when
 supplied, otherwise the `preferred_channel` in the person's own config file
-(`projects/teleclaude/spec/teleclaude-config`, per-person keys; default `email` when
+(`local/projects/teleclaude/spec/teleclaude-config`, per-person keys; default `email` when
 unset). The resolved channel requires a usable credential on the person's
 config — Telegram `chat_id`, Discord `user_id`, WhatsApp `phone_number`; email
 uses the person's configured email address and the global SMTP configuration.
@@ -68,7 +68,7 @@ caller can discover the addressable identifier.
 TeleClaude session and the resolved channel is discord, the delivered message
 ends with that session's native Discord jump link, constructed by the Discord
 session-backlink capability
-(`projects/teleclaude/spec/feature/integration/discord-session-backlink`). A supplied
+(`local/projects/teleclaude/spec/feature/integration/discord-session-backlink`). A supplied
 origin that cannot be resolved to a Discord destination is recorded as a
 structured miss and the message is delivered without a backlink. Other
 channels render no backlink.
@@ -197,6 +197,6 @@ TTL behavior:
 
 - Expired contracts are excluded from matching immediately but only deactivated in the database every 60 seconds by the sweep loop.
 - `send_result` and `send_file` require a valid `session_id` from `TMPDIR/teleclaude_session_id`.
-- `escalate` is accepted only from a session running in a help desk; the recipients, the relay and the hand-back are `projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`.
+- `escalate` is accepted only from a session running in a help desk; the recipients, the relay and the hand-back are `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`.
 - Hook contract delivery to external URLs uses HMAC-SHA256 with the contract's `secret` field for authentication.
 - The hook API is on the internal Unix socket only; it is not exposed publicly.

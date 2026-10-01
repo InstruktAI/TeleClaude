@@ -27,7 +27,7 @@ invitation is a separate explicit action.
 
 For a person, a company, or a project, `init` also scaffolds that home from the
 platform's templates
-(`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 A person or company home receives its kind's `AGENTS.master.md` and its local
 baseline manifests; a project that subscribes `docs` receives its local
 baseline manifests. A master is brought to its template's rendering on every
@@ -55,7 +55,7 @@ below `admin` in a company also lists the projects the person is assigned to
 there; an `admin` entry lists none, since it reaches every project that company
 owns. Those facts remain sourced only from the person registry and company
 rosters, and the projection authorizes nothing
-(`projects/teleclaude/design/architecture/scoped-roles`).
+(`local/projects/teleclaude/design/architecture/scoped-roles`).
 
 `patch` targets one kind and instance. Mapping keys merge into the latest
 document and an array supplied by the caller replaces that array in full.
@@ -252,16 +252,16 @@ And the company declaration and home are unchanged
 
 - The config context owns kind resolution, initialization, validated mutation,
   and persistence. The identity context owns caller and target clearance.
-- `projects/teleclaude/spec/feature/config/organizational-membership` owns roster
+- `local/projects/teleclaude/spec/feature/config/organizational-membership` owns roster
   validity; this surface changes how an administrator reaches that declaration.
-- `projects/teleclaude/spec/feature/identity/organizational-membership` owns the meaning of
+- `local/projects/teleclaude/spec/feature/identity/organizational-membership` owns the meaning of
   membership and assignment, which this surface reports without reinterpreting.
-- `projects/teleclaude/spec/feature/config/machine-config-write` owns the machine file's
+- `local/projects/teleclaude/spec/feature/config/machine-config-write` owns the machine file's
   transaction and validation guarantee.
 - The reconciliation context owns the template layers and what each target
   keeps across runs
-  (`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`,
-  `projects/teleclaude/spec/feature/reconciliation/template-installation`);
+  (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`,
+  `local/projects/teleclaude/spec/feature/reconciliation/template-installation`);
   `init` applies them to the addressed home.
 
 ## Known caveats

@@ -126,7 +126,7 @@ And both feature_x and feature_y become queryable via the experiment resolver
 - Consumed wherever feature gating exists. Sample query pattern: a
   capability queries the experiment resolver for "feature_x" with the
   current agent name before branching.
-- The `config` bounded context (`projects/teleclaude/spec/domain/config.md`) folds
+- The `config` bounded context (`local/projects/teleclaude/spec/domain/config.md`) folds
   experiments into the effective configuration aggregate; a config event
   will eventually fire when the experiments overlay changes — that event
   is not emitted today.

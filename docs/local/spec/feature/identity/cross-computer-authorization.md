@@ -17,18 +17,18 @@ visibility: internal
 A person or agent on one computer can act on objects another computer holds: a
 session running there, a session to start there, an operation it owns, the
 sessions it can list, and the history it can search or show. Such a command is
-decided by the computer that holds the object (`projects/teleclaude/design/architecture/scoped-roles`): that
+decided by the computer that holds the object (`local/projects/teleclaude/design/architecture/scoped-roles`): that
 computer resolves the caller's roles from its own person registry, company rosters,
 and project registry, reads the object's scope from its own records, and applies the
 command's person band and the object's rules as one decision
-(`projects/teleclaude/spec/feature/identity/command-clearance`).
+(`local/projects/teleclaude/spec/feature/identity/command-clearance`).
 
 The caller's computer establishes who is calling and carries only the caller's
 principal across. It never carries a role or a scope, and a session identity is a
 handle local to the computer that holds that session, never authority on another. What it decides itself is what only it knows about its own
 caller: that the caller is identified, that a session caller's agent role is admitted
 by the command's agent band, and that the caller's dispatch chain permits the act
-(`projects/teleclaude/spec/feature/agent_runtime/session-authority`). Each of these narrows; none
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`). Each of these narrows; none
 widens what the holding computer decides.
 
 A session listing or a history read sent to another computer reaches objects whose
@@ -144,5 +144,5 @@ And an operation the person's command started there is returned to them, recogni
 ## Known caveats
 
 - A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, closing a session another computer runs, peer synchronization — carries the daemon's system principal and keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other.
-- A direct conversation with a session another computer holds reaches that computer only as the daemon's own forwarding, so that computer does not decide it; a `telec sessions send` that opens or closes one naming another computer is judged at platform scope on the caller's computer (`projects/teleclaude/spec/feature/identity/command-clearance`).
-- Sessions another computer shares with this one are listed here under `projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`, not by this contract.
+- A direct conversation with a session another computer holds reaches that computer only as the daemon's own forwarding, so that computer does not decide it; a `telec sessions send` that opens or closes one naming another computer is judged at platform scope on the caller's computer (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+- Sessions another computer shares with this one are listed here under `local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`, not by this contract.

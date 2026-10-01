@@ -23,7 +23,7 @@ session of that project currently running on it; `O` on an open session row
 opens a handoff form containing only the successor selector. Closed rows receive
 no handoff request. The view reports request acceptance as started, never as
 completed, and the handoff itself remains owned by
-`projects/teleclaude/spec/feature/agent_runtime/agent-handoff`.
+`local/projects/teleclaude/spec/feature/agent_runtime/agent-handoff`.
 
 Close and revive are distinct destinations that must not fire from one gesture.
 The fast-close chord routes to the session-close funnel; the headless-revive

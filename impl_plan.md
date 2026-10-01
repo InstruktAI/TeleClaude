@@ -25,7 +25,7 @@ the upstream contract. Tasks reference it as `@input#<section>`.
 - **Layer ownership.** The primitive lives in core (`adapter_client/_remote.py`)
   and must raise _domain_ errors, never `HTTPException`. The api layer
   (`session_remote.py`) catches those and translates to HTTP status. Core
-  decides; the edge translates (projects/teleclaude/policy/adapter-boundaries;
+  decides; the edge translates (local/projects/teleclaude/policy/adapter-boundaries;
   sdlc/principle/architectural-defaults §5 layered ownership).
 - **Error propagation preserved** (`@input#notes--constraints`): target errors
   surface through the existing envelope path

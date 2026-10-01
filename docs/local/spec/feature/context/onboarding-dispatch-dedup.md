@@ -9,7 +9,7 @@ description: Onboarding holds no dispatch subject; whether an analysis or assess
 
 Project and company onboarding start no worker session, so no onboarding step
 resolves whether an analysis or assessment session already holds a root
-(`projects/teleclaude/spec/feature/agent_runtime/explicit-session-dispatch`). The caller
+(`local/projects/teleclaude/spec/feature/agent_runtime/explicit-session-dispatch`). The caller
 that starts such a session through the sessions surface decides whether one is
 already running, from the session list it can read.
 

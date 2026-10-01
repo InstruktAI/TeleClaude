@@ -18,7 +18,7 @@ to. This spec owns the declaration itself — where it is stated, what makes it
 valid, and the operator surface that writes it.
 
 It does not own what those facts mean or what resolving them reports. That is
-`projects/teleclaude/spec/feature/identity/organizational-membership`, which reads the
+`local/projects/teleclaude/spec/feature/identity/organizational-membership`, which reads the
 declarations this contract persists and reinterprets nothing. The crossing runs
 one way: this contract publishes validated declarations, and the identity
 contract resolves them.

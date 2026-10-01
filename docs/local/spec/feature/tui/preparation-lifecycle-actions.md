@@ -34,7 +34,7 @@ viewing a file read-only, and reactivating the todo; a delivered todo and its
 files offer expanding and collapsing and viewing a file read-only. The workflow
 holds the same rule for every action addressed to a todo's durable identity: it
 refuses an action the todo's state does not allow and names the way forward
-(`projects/teleclaude/spec/feature/workflow/todo-management`). A row whose todo changed
+(`local/projects/teleclaude/spec/feature/workflow/todo-management`). A row whose todo changed
 state after the view drew it therefore reports that refusal and acts on no
 other todo.
 

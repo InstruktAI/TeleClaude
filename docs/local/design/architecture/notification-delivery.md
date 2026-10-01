@@ -187,7 +187,7 @@ action is delivered once and only a material escalation can interrupt again.
   subject's owner. The notification list a TUI or web-console client receives
   and every live push to it carry only the broadcast notifications whose subject
   the viewing principal's reach admits
-  (`projects/teleclaude/spec/feature/identity/data-visibility`); a platform
+  (`local/projects/teleclaude/spec/feature/identity/data-visibility`); a platform
   administrator and the system principal receive every broadcast notification.
   The external DM admin fan-out keeps its audience, the platform administrators.
 <!-- /planned-change:subject-scope-reach -->

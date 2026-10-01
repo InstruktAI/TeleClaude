@@ -139,7 +139,7 @@ And the resolved WhatsApp config's enabled is True even though credentials are m
 - Consumed by the WhatsApp adapter in the `integration` bounded context
   for outbound messaging and webhook verification. The adapter relies on
   the loader-computed `enabled` flag to decide whether to start.
-- The `config` bounded context (`projects/teleclaude/spec/domain/config.md`)
+- The `config` bounded context (`local/projects/teleclaude/spec/domain/config.md`)
   standardises env-var precedence across all integration credentials via
   the effective-configuration model. The per-field manual env-overrides-yaml
   pattern is the convention until that generalization lands.

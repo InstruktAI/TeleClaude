@@ -18,9 +18,9 @@ computer scoping narrows the lookup when callers supply a host name.
 
 A local `telec history show` is answered in the CLI process by the
 session_mirrors service's history detail capability, for the caller the
-platform's shared caller resolution yields (`projects/teleclaude/spec/identity-and-auth` §6)
+platform's shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6)
 and after that caller clears the verb
-(`projects/teleclaude/spec/feature/identity/command-clearance`, Local read clearance). That
+(`local/projects/teleclaude/spec/feature/identity/command-clearance`, Local read clearance). That
 capability resolves the identifier — a TeleClaude id through the session
 registry, a native id directly — applies the caller's history scope, and returns
 the same structured answer `telec history show --json` prints: both identifiers

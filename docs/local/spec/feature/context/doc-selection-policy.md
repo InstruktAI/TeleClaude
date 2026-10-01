@@ -17,7 +17,7 @@ filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
 baseline-manifest anchoring, target-slug filtering, and the tier selectors all
 flow through one place. Visibility is resolved against the caller's effective
-role for each tier (`projects/teleclaude/design/architecture/scoped-roles`): an `admin`
+role for each tier (`local/projects/teleclaude/design/architecture/scoped-roles`): an `admin`
 effective role reads the tier in full; any other role reads its own company, its
 reached projects, and its own person tier in full and the platform's shared
 documentation at public-only depth; and where no role reaches a tier, the
@@ -31,7 +31,7 @@ filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
 baseline-manifest anchoring, target-slug filtering, and the tier selectors all
 flow through one place. Visibility is resolved against the caller's visibility reach
-for each tier (`projects/teleclaude/spec/feature/identity/data-visibility`): a
+for each tier (`local/projects/teleclaude/spec/feature/identity/data-visibility`): a
 tier that reach admits is read in full — every tier for a platform administrator,
 and for a company administrator also the platform's shared documentation — and
 the shared documentation is otherwise read at public-only depth; where reach does

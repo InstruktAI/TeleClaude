@@ -16,7 +16,7 @@ description: "The installer provisions SQLite's database sync tool on macOS and 
 The behavioral contract for how an installation obtains `sqlite3_rsync`,
 SQLite's tool for copying a live database to another computer over SSH while
 sending only what differs. Todo state transfer
-(`projects/teleclaude/spec/feature/workflow/todo-state-transfer`) runs it on both ends of
+(`local/projects/teleclaude/spec/feature/workflow/todo-state-transfer`) runs it on both ends of
 every transfer, so every computer in the fleet carries it.
 
 The installer places the tool in the user tool location the installer already

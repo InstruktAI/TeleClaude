@@ -27,7 +27,7 @@ The owning human is resolved from data already present: a todo's
 mapped to a person — and thus to initials and chip colors — through the identity
 resolver. A session's work slug is its `working_slug`, present for orchestrator
 and worker roles alike. The chip's colors come from the per-person overlay
-schema documented in `projects/teleclaude/spec/feature/config/person-chip-color`; this spec
+schema documented in `local/projects/teleclaude/spec/feature/config/person-chip-color`; this spec
 governs how those cells are rendered, including the theme-derived defaults for
 unset cells. The resting chip is a low-contrast fill — the theme `subtle`
 background (the stop nearest the terminal background) under `highlight` text.

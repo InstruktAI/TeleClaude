@@ -204,7 +204,7 @@ And the global overlay loader raises on the slug field before the app config is 
   per-person config overlay, not on the person entry itself. The entry is
   identity-only; runtime preferences live alongside the person's
   workspace.
-- The `config` bounded context (`projects/teleclaude/spec/domain/config.md`)
+- The `config` bounded context (`local/projects/teleclaude/spec/domain/config.md`)
   preserves the person-entry shape; the effective-configuration merge
   keeps the same identity fields exposed to downstream consumers.
 

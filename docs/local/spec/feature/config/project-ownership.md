@@ -98,9 +98,9 @@ And the project is left with no owner rather than a partial one
 - What a project root permits — whether it is an invocation context, whether its
   material participates in a surface, and which subscriptions it carries — is
   answered from the declared tier and is owned by
-  `projects/teleclaude/spec/feature/config/tier-permissions.md`. Ownership grants none of it.
+  `local/projects/teleclaude/spec/feature/config/tier-permissions.md`. Ownership grants none of it.
 - Who may work in a project is declared separately and owned by
-  `projects/teleclaude/spec/feature/config/organizational-membership.md`.
+  `local/projects/teleclaude/spec/feature/config/organizational-membership.md`.
 
 ## See Also
 

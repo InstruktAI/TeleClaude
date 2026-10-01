@@ -117,7 +117,7 @@ facts so a consumer may read one without the other.
 through a patch of its company's configuration resource, and configuration
 target clearance admits that patch only for a caller with platform-administrator
 standing, decided for the resolved caller before the config owner validates
-anything (`projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
+anything (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
 An agent's system role narrows that standing and never supplies it.
 
 **The two inert declarations are deleted, not migrated.** `PersonConfig.companies`

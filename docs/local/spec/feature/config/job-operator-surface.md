@@ -9,8 +9,8 @@ delivered_by:
 ## What it is
 
 The `telec jobs` command group is the operator- and agent-facing front door to the
-declarative job model (`projects/teleclaude/spec/feature/config/job-declaration-model`) and the
-runner's closed-loop run state (`projects/teleclaude/design/architecture/jobs-runner`). It
+declarative job model (`local/projects/teleclaude/spec/feature/config/job-declaration-model`) and the
+runner's closed-loop run state (`local/projects/teleclaude/design/architecture/jobs-runner`). It
 answers, from the CLI, the three questions that job handling otherwise left
 unanswerable without reading config files and state JSON by hand: what is
 configured and available, how is each job doing at runtime, and let me turn one on

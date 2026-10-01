@@ -82,7 +82,7 @@ And validation passes (alpha + empty pin is valid)
 ### Cross-context references
 
 - The `deployment` block currently lives on the project config. The
-  `config` domain spec (`projects/teleclaude/spec/domain/config.md`) flags this as a
+  `config` domain spec (`local/projects/teleclaude/spec/domain/config.md`) flags this as a
   misplacement and relocates the deployment block to the runtime
   configuration aggregate. The current contract is "deployment is
   per-project" until that move lands.

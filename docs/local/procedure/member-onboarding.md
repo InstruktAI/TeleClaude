@@ -93,7 +93,7 @@ The bot receives `/start {invite_token}` in a private chat (not the supergroup).
 7. Creates a session in the person's workspace folder (`~/.teleclaude/people/{name}/workspace/`), with `human_role` and `human_email` from config.
 8. The personal assistant greets them by name.
 
-An invitation token is the entry identifier of the member's own assistant; the core resolves every entry identifier (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A help desk's identifier resolves to that desk instead and binds no identity, and an unregistered person without an identifier gets the neutral reply. An unrecognised invitation token keeps the reply in step 3.
+An invitation token is the entry identifier of the member's own assistant; the core resolves every entry identifier (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A help desk's identifier resolves to that desk instead and binds no identity, and an unregistered person without an identifier gets the neutral reply. An unrecognised invitation token keeps the reply in step 3.
 
 #### Discord DM flow
 

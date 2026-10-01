@@ -22,7 +22,7 @@ window, a new emit for the same key overwrites the prior unclaimed
 entry in place (payload + timestamp updated, attempt count reset, last
 error cleared) instead of inserting. Claimed entries are never replaced.
 
-For the canonical aggregate shape, see `projects/teleclaude/spec/domain/integration.md`.
+For the canonical aggregate shape, see `local/projects/teleclaude/spec/domain/integration.md`.
 
 ## Canonical fields
 

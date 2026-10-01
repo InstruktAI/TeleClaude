@@ -16,7 +16,7 @@ operation set but cannot grant an operation the principal lacks.
 The decision runs in the process that performs the configuration operation,
 before it reads governed configuration or persists a change. That process
 resolves the caller through the shared principal-resolution capability
-(`projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
+(`local/projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
 applies this target decision. An unidentified caller holds no role and is
 refused before any configuration is read.
 
@@ -25,19 +25,19 @@ through an agent. Person-registry identity fields, including platform role,
 remain platform-administrator-maintained. A company, its roster included, is
 read and changed through that company's configuration resource by a caller whose
 effective role for that company is `admin`
-(`projects/teleclaude/design/architecture/scoped-roles`); a platform administrator holds
+(`local/projects/teleclaude/design/architecture/scoped-roles`); a platform administrator holds
 that role for every company. Machine and global configuration writes remain
 platform-administrator operations. Project writes require the `admin` effective
 role for that project and also respect their repository's ownership and commit
 boundary; naming a project in the CLI never grants authority over it.
 
 A caller whose principal is a system principal carries no person
-(`projects/teleclaude/spec/identity-and-auth` §8). It holds no standing that belongs to a
+(`local/projects/teleclaude/spec/identity-and-auth` §8). It holds no standing that belongs to a
 person or to a platform administrator, whatever its system role permits.
 
 Computer configuration is the daemon's own startup input and stays repairable
 while it is invalid
-(`projects/teleclaude/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7).
+(`local/projects/teleclaude/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7).
 Deciding its clearance needs no running daemon, and resolving the caller does
 not depend on the machine configuration being valid.
 
@@ -150,11 +150,11 @@ Then the operation is refused and the machine configuration is unchanged
 
 - The config context identifies the kind, instance, fields, and validated
   candidate. The identity context owns clearance for that target.
-- `projects/teleclaude/spec/feature/config/kind-addressed-configuration` owns the
+- `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration` owns the
   addressed CLI resource and its mutation semantics.
-- `projects/teleclaude/spec/feature/config/organizational-membership` owns roster
+- `local/projects/teleclaude/spec/feature/config/organizational-membership` owns roster
   declaration validity, not caller clearance.
-- `projects/teleclaude/spec/identity-and-auth` owns caller verification and the verb's role
+- `local/projects/teleclaude/spec/identity-and-auth` owns caller verification and the verb's role
   band this decision follows.
 
 #### UC-CTC9: A company administrator maintains their own company

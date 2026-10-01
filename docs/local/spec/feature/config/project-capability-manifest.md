@@ -85,7 +85,7 @@ Derivation rules:
   never runs a code check. A full run widens the files, never the checks.
 - A global, person, or company home declares no capability blocks. For these
   checks it counts as `docs` and `agents` by its kind
-  (`projects/teleclaude/spec/feature/config/tier-permissions`), and never as
+  (`local/projects/teleclaude/spec/feature/config/tier-permissions`), and never as
   `code`.
 <!-- /planned-change:commit-gate-in-hook -->
 - The sealed-commit surface (`telec code commit` / `add`) and the git wrapper's
@@ -102,7 +102,7 @@ Derivation rules:
   the git hooks and the git wrapper — resolves the toggles through the runtime's
   own reading of the repository root's own declaration: brought to its current
   shape by the configuration migration list
-  (`projects/teleclaude/spec/feature/config/document-migration`); and its tier and each
+  (`local/projects/teleclaude/spec/feature/config/document-migration`); and its tier and each
   capability block read the way the runtime's loader reads them — environment
   references resolved from the declaration's sibling `.env` — and validated with
   the runtime's own models. The two readers therefore
@@ -122,7 +122,7 @@ Derivation rules:
   it never answers for an input state or an installation it was not resolved
   from. A global or person declaration carries no capability
   blocks; what the plumbing decides at such a repository root is the seal, per
-  `projects/teleclaude/design/code-commit`. Because the declaration is a file the project
+  `local/projects/teleclaude/design/code-commit`. Because the declaration is a file the project
   tracks, a clone carries the project's real capability state before any
   TeleClaude command has run against it.
 
@@ -134,7 +134,7 @@ Derivation rules:
   the driver absent the `.gitattributes` line is inert, because git treats a
   filter attribute whose driver is undefined as a no-op. Converging the installed
   driver and hooks to this declaration is reconciliation's act, contracted in
-  `projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`; this
+  `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`; this
   declaration is what that act reads. The safety guarantee — TeleClaude never
   rewrites a project-owned file on a toggle — holds by construction, not by a
   runtime guard.
@@ -143,7 +143,7 @@ Derivation rules:
   After onboard, a toggle takes effect on the plumbing's next invocation because
   the plumbing reads the declaration itself; what that convergence installs,
   withdraws, or refreshes is contracted in
-  `projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
+  `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
   ever rewrites a project-tracked file.
 
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no

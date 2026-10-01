@@ -67,7 +67,7 @@ engines over the mirror store. The read-only engines are only constructed
 after the writable engine has confirmed the schema exists. Session-record
 facts are not read through an engine of the mirror store's own: they come
 from the session record's published queries (`mirror-identity-enrichment`),
-because the session record belongs to agent runtime (`projects/teleclaude/spec/domain/context-map`).
+because the session record belongs to agent runtime (`local/projects/teleclaude/spec/domain/context-map`).
 
 ## Canonical fields
 

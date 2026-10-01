@@ -19,7 +19,7 @@ TeleClaudeNext repository.
 - **Implementation roots:** `teleclaude/core/session_*`,
   `teleclaude/core/tmux_bridge/`, `teleclaude/cli/tool_commands/sessions.py`,
   and `teleclaude/hooks/`.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. No forward architecture is
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No forward architecture is
   authored into this domain anchor.
 - **Agent CLI hook contracts:** each supported runtime's hook surface — event
   vocabulary, payload shapes, per-event context-injection and activity
@@ -41,8 +41,8 @@ TeleClaudeNext repository.
   adapters whose messages reach every computer; the rule that a conversation goes
   to its latest session, the role fallback and the neutral reply; and the
   help-desk escalation relay
-  (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`,
-  `projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
+  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`,
+  `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
   Adapters carry identifiers, and per-computer adapters look up sessions by
   origin metadata; they hold no routing rules.
 - **Does not own:** provider transport or presentation, caller-identity policy,

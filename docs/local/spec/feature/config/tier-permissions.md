@@ -40,7 +40,7 @@ Per tier:
 - A **project** is an invocation context, its material participates in the
   surfaces its subscriptions enable, and it is the one tier governed by optional
   project subscriptions. Those subscriptions and everything derived from them
-  are specified in `projects/teleclaude/spec/feature/config/project-capability-manifest.md`.
+  are specified in `local/projects/teleclaude/spec/feature/config/project-capability-manifest.md`.
 - A **person** is an invocation context. Its material participates in
   documentation. It carries no project subscriptions and no project lifecycle
   behavior.
@@ -141,7 +141,7 @@ And the person whose personal space contains the project is not its owner
 - This contract states which tier is asked which question and what each tier
   answers. What a project's subscriptions mean, how they are declared, and what
   plumbing each one gates remain owned by
-  `projects/teleclaude/spec/feature/config/project-capability-manifest.md`.
+  `local/projects/teleclaude/spec/feature/config/project-capability-manifest.md`.
 - Answering truthfully for a tier is not a grant. Any operation beyond what the
   tier model already establishes for the global, person, and company tiers
   requires its own product authority and is not conferred here.

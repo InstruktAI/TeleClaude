@@ -54,7 +54,7 @@ and Gemini currently declare single-entry chains, so no fallback exists for them
 Chain contents are declared per-agent policy: the platform ships defaults, and the
 operator configuration may override them per agent and mode. The declaration
 surface, its schema, and startup validation are owned by the configuration
-contract (`projects/teleclaude/spec/teleclaude-config`); chain resolution consumes the
+contract (`local/projects/teleclaude/spec/teleclaude-config`); chain resolution consumes the
 validated policy and never invents a model or substitutes another agent.
 
 Chain resolution applies at every computed launch of an agent process — fresh

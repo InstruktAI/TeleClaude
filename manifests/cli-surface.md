@@ -400,7 +400,7 @@ Query documentation snippets
 - Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.
 - Omitting --areas and/or --domains returns all values for that dimension; pass a comma-separated subset to filter.
 - Example phase 1: telec docs index --areas policy,procedure --domains sdlc
-- Example phase 2: telec docs get sdlc/policy/testing projects/teleclaude/spec/command-surface
+- Example phase 2: telec docs get sdlc/policy/testing local/projects/teleclaude/spec/command-surface
 
 ### `telec docs index`
 

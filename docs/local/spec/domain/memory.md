@@ -16,7 +16,7 @@ describes the current appliance only.
 - **Current behavior:** `docs/local/spec/feature/memory/` and memory-related
   feature specs that require this anchor.
 - **Implementation roots:** `teleclaude/memory/`.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. Replacement storage and authorization
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement storage and authorization
   design belongs to TeleClaudeNext.
 
 ### Ownership boundary
@@ -33,7 +33,7 @@ describes the current appliance only.
   project concerns, with that project's owner, or unknown when save cannot
   establish it — and the principal of the session it was extracted from. Every
   read that serves a caller admits observations through `identity`'s reach over
-  those facts (`projects/teleclaude/spec/domain/identity`); memory decides no
+  those facts (`local/projects/teleclaude/spec/domain/identity`); memory decides no
   visibility of its own. Observations saved before subjects were recorded
   receive one once, from the project they name, or unknown.
 <!-- /planned:subject-scope-reach -->

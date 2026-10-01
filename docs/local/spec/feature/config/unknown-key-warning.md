@@ -30,7 +30,7 @@ repair the source instead of discovering later that a typo was ignored.
 
 Recognized older shapes in stored local configuration are brought to the
 current shape by the configuration migration list before validation
-(`projects/teleclaude/spec/feature/config/document-migration`). A read applies them in
+(`local/projects/teleclaude/spec/feature/config/document-migration`). A read applies them in
 memory and never writes; a migration run or a writer persists them, preserving
 the represented value, unrelated content, comments, and identity claims.
 
@@ -133,7 +133,7 @@ And the operator reads that guidance rather than the generic undeclared-key fail
 - Runtime and adapter consumers receive only configuration that has passed its
   owning load boundary; they do not implement secondary unknown-key handling.
 - Section-declared machine-config inputs are part of the machine-load contract
-  in `projects/teleclaude/spec/feature/config/machine-config-load`.
+  in `local/projects/teleclaude/spec/feature/config/machine-config-load`.
 
 ## Allowed values
 

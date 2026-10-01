@@ -28,7 +28,7 @@ tombstone is cleared and the worker reprocesses the file — a new turn may
 have arrived. Successful mirror generation always clears any prior
 tombstone for that `source_identity`.
 
-See `projects/teleclaude/spec/domain/session_mirrors.md` for the canonical tombstone
+See `local/projects/teleclaude/spec/domain/session_mirrors.md` for the canonical tombstone
 field set.
 
 ## Canonical fields

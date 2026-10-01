@@ -32,7 +32,7 @@ with the session's guild id unset.
 
 A direct message that is exactly an entry identifier is an entry: the core resolves
 it and creates a new session at that endpoint, and the DM channel's latest session is
-then that one (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A help desk's identifier therefore moves the DM to that
+then that one (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A help desk's identifier therefore moves the DM to that
 desk, and the person's own invitation token moves it back to their personal assistant.
 
 Every computer receives each direct message. Until that spec's master-routing

@@ -88,7 +88,7 @@ The **dependency-artifact** class tracks an implementation-plan's reliance on th
 contracts of the Todos it depends on, since a plan's reading of a dependency is a
 copy that goes stale when its source moves (`general/principle/grounding`). It is
 scoped to a dependency's artifacts, never to the `after` edges themselves, which
-stay gate-only (`projects/teleclaude/spec/feature/workflow/dependency-graph`):
+stay gate-only (`local/projects/teleclaude/spec/feature/workflow/dependency-graph`):
 
 | Class                   | Evidence checked                                                                                                                                                                                                                                                       | When pending                                                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -252,7 +252,7 @@ The lifecycle runner dispatches a Todo it would otherwise route to the work
 lane to the prepare lane when that Todo's implementation-plan derives
 `dependency-artifact` drift `pending`; the prepare call then routes the drift
 as above. The prepare-lane dependency gate still applies
-(`projects/teleclaude/spec/feature/workflow/dependency-graph`): while a dependency does not
+(`local/projects/teleclaude/spec/feature/workflow/dependency-graph`): while a dependency does not
 count as prepared, the Todo stays dependency-blocked. A drift-reviewed stamp
 whose `dependency_digests_at_review` matches the current dependency digests
 ends the re-entry.
@@ -494,7 +494,7 @@ Scenario: work entry accepts a prepared bug when diagnosis upstream evidence mat
 ```gherkin
 Scenario: owned-snippet drift on a target architecture snippet
   Given a Todo at lifecycle_phase=plan_review with an approved architecture
-  And the architecture index recorded owned_snippet_digests["projects/teleclaude/spec/domain/workflow"] = "<digest-A>"
+  And the architecture index recorded owned_snippet_digests["local/projects/teleclaude/spec/domain/workflow"] = "<digest-A>"
   And a sibling delivery has since edited docs/local/spec/domain/workflow.md, producing "<digest-B>"
   When the orchestrator calls "telec todo prepare my-feature"
   Then the machine reports drift.architecture = pending (class: owned-snippet)
@@ -506,8 +506,8 @@ Scenario: owned-snippet drift on a target architecture snippet
 
 ```gherkin
 Scenario: upstream-snippet drift on a referenced domain spec
-  Given a Todo whose implementation-plan references "@docs/local/spec/domain/context.md" (validator-accepted project reference resolving to canonical snippet ID "projects/teleclaude/spec/domain/context")
-  And the plan recorded referenced_snippet_digests["projects/teleclaude/spec/domain/context"] = "<digest-A>"
+  Given a Todo whose implementation-plan references "@docs/local/spec/domain/context.md" (validator-accepted project reference resolving to canonical snippet ID "local/projects/teleclaude/spec/domain/context")
+  And the plan recorded referenced_snippet_digests["local/projects/teleclaude/spec/domain/context"] = "<digest-A>"
   And docs/local/spec/domain/context.md has since been edited, producing "<digest-B>"
   When the orchestrator calls "telec todo prepare my-feature"
   Then the machine reports drift.implementation-plan = pending (class: upstream-snippet)

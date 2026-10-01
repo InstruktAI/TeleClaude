@@ -57,7 +57,7 @@ Three kinds exist:
 | Company  | a company home      | that company's external customers | `hd-company-<slug>`    |
 | Project  | a project           | that project's external customers | `hd-project-<slug>`    |
 
-A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`projects/teleclaude/spec/teleclaude-config`); enabling and scaffolding are described under Help Desk Scaffolding below. The concepts are `general/concept/help-desk/overview` and its per-kind siblings.
+A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`local/projects/teleclaude/spec/teleclaude-config`); enabling and scaffolding are described under Help Desk Scaffolding below. The concepts are `general/concept/help-desk/overview` and its per-kind siblings.
 
 The help desk is a folder of the home that owns it, never a repository of its own: the platform help desk is `help-desk/` in the TeleClaude home, a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain and the runtime artifacts its sessions produce, and no documentation of its own.
 
@@ -69,7 +69,7 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 
 #### Entry and routing
 
-Entry is owned by the core, in `projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
+Entry is owned by the core, in `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
 
 - An **endpoint** is a routable destination: a person's assistant in their home, or a home's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder and hosting computer; the platform desk has no identifier.
 - A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) the session is the binding; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, because a session lives only on its host. Adapters only recognise and carry the identifier; they keep no routing rules.
@@ -95,28 +95,28 @@ flowchart TD
 
 #### Session placement
 
-A session whose role is below member and that carries no system role runs only inside an enabled help desk: a customer's at the desk its entry resolved to, or for a returning customer the desk of their latest session; a contributor's or newcomer's in the platform desk. A request naming no enabled desk is refused; nothing is silently redirected (`projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
+A session whose role is below member and that carries no system role runs only inside an enabled help desk: a customer's at the desk its entry resolved to, or for a returning customer the desk of their latest session; a contributor's or newcomer's in the platform desk. A request naming no enabled desk is refused; nothing is silently redirected (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`local/projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
 
 **Identity key format:** `{platform}:{platform_user_id}` — e.g., `discord:999001`, `telegram:12345678`, `whatsapp:31612345678`. It is derived from the session's origin metadata at query time, not stored as a denormalized column on the session, and the memory system receives it as an opaque string.
 
 #### Tool access for help-desk visitors
 
-A help-desk session below admin is confined to its desk: below member by its recorded role (`projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL48), and a member who entered the desk by the endpoint it was created at (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry` UC-CE22):
+A help-desk session below admin is confined to its desk: below member by its recorded role (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL48), and a member who entered the desk by the endpoint it was created at (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry` UC-CE22):
 
 - It reads files only inside its desk folder and its own session's uploads, never another session's uploads.
-- It runs only the desk commands its recorded role admits, which the CLI surface declares (`projects/teleclaude/design/cli-authorization-matrix`): for a customer `telec version`, `telec docs index`, `telec docs get`, `telec auth whoami` and `telec sessions escalate`.
+- It runs only the desk commands its recorded role admits, which the CLI surface declares (`local/projects/teleclaude/design/cli-authorization-matrix`): for a customer `telec version`, `telec docs index`, `telec docs get`, `telec auth whoami` and `telec sessions escalate`.
 - No documentation corpus is mounted for it; it reads documentation only through `telec docs` at its own depth and through its desk master.
-- Its agent is chosen by availability from the dispatch order for desk sessions (`projects/teleclaude/design/architecture/agent-dispatch`), like every other session kind; that order holds only agents that carry a desk confinement profile. When no agent in it is available, no session is created and the visitor receives the neutral reply.
+- Its agent is chosen by availability from the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), like every other session kind; that order holds only agents that carry a desk confinement profile. When no agent in it is available, no session is created and the visitor receives the neutral reply.
 
 #### Documentation reach
 
-A desk agent reads documentation at its visitor's depth (`projects/teleclaude/spec/feature/context/doc-selection-policy`). A customer holds no relationship to the home, so a project desk offers that project's public snippets, a company desk the public snippets of the company and every project it owns, and both the public shared documentation, the help-desk documentation among it. Snippets declare `visibility: public` to be served there. A desk's master inlines no internal documentation of its home.
+A desk agent reads documentation at its visitor's depth (`local/projects/teleclaude/spec/feature/context/doc-selection-policy`). A customer holds no relationship to the home, so a project desk offers that project's public snippets, a company desk the public snippets of the company and every project it owns, and both the public shared documentation, the help-desk documentation among it. Snippets declare `visibility: public` to be served there. A desk's master inlines no internal documentation of its home.
 
 ### Help Desk Scaffolding
 
-`telec config <kind> init --help-desk` enables a home's help desk and scaffolds it; it requires administrator authority over the home (`projects/teleclaude/spec/feature/config/kind-addressed-configuration`). Each kind has its own template in the TeleClaude repository — `templates/help-desk-platform/`, `templates/help-desk-company/`, and `templates/help-desk-project/` — carrying that kind's operator brain; the project template also carries the ignore declaration for the runtime directories.
+`telec config <kind> init --help-desk` enables a home's help desk and scaffolds it; it requires administrator authority over the home (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`). Each kind has its own template in the TeleClaude repository — `templates/help-desk-platform/`, `templates/help-desk-company/`, and `templates/help-desk-project/` — carrying that kind's operator brain; the project template also carries the ignore declaration for the runtime directories.
 
-- The platform and company help desks are folders inside the TeleClaude home, so every machine installation converges them while their home enables them (`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+- The platform and company help desks are folders inside the TeleClaude home, so every machine installation converges them while their home enables them (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 - A project help desk lives in the project's working tree, so only the project's `init --help-desk` converges it, and the project commits the result.
 - Scaffolding initializes no repository, runs no project initialization, and makes no commit of its own.
 - A help desk's master requires only documentation every reader of that desk may read, never its home's local documentation (`general/policy/agent-artifact-governance`).
@@ -139,7 +139,7 @@ The command reads the doc-snippet-authoring procedure and snippet-authoring-sche
 
 ### Escalation Tool
 
-`telec sessions escalate` is how a desk agent asks for a person (`projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). It is accepted from a session running in a help desk and refused elsewhere; admins are its target and never escalate.
+`telec sessions escalate` is how a desk agent asks for a person (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). It is accepted from a session running in a help desk and refused elsewhere; admins are its target and never escalate.
 
 **Parameters:**
 

@@ -17,7 +17,7 @@ and from the feature specs that bind observable behavior.
   `teleclaude/events/catalog.py`.
 - **Operator discovery:** `telec events list`.
 - **Delivery implementation:** `teleclaude/events/`.
-- **Maintenance stance:** see `projects/teleclaude/spec/domain/glossary`. No replacement event model is
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement event model is
   authored here.
 
 <!-- planned:event-origin-and-subject -->
@@ -80,7 +80,7 @@ concerned:
   machine configuration that no registered home declares.
 
 The company business domains the platform hosts state their own subjects
-(`projects/teleclaude/spec/domain/marketing`, `projects/teleclaude/spec/domain/creative_production`).
+(`local/projects/teleclaude/spec/domain/marketing`, `local/projects/teleclaude/spec/domain/creative_production`).
 Hosting their handlers confers no ownership of their subjects.
 
 <!-- /planned:event-origin-and-subject -->

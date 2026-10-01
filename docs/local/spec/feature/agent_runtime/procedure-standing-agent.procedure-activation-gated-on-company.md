@@ -27,7 +27,7 @@ A standing agent works in its scope's home: a company's home, a person's
 folder, or a project's checkout on that computer. An agent for a company scope
 has the session's company set to that company; an agent for a person or a
 project has no company, because location never supplies one
-(`projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
+(`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
 
 A standing agent is started by an event, so it runs under the platform's system
 principal with the scope mapped from the event's source. The principal is

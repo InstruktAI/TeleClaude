@@ -1,4 +1,4 @@
-<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. Knowledge additions/modifications MUST go to the source docs/** snippets, never here. Agents edit only on explicit human override. Rule: projects/teleclaude/policy/agent-artifact-governance. -->
+<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. Knowledge additions/modifications MUST go to the source docs/** snippets, never here. Agents edit only on explicit human override. Rule: local/projects/teleclaude/policy/agent-artifact-governance. -->
 
 # AGENTS.md
 

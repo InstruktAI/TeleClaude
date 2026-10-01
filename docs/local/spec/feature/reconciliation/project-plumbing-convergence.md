@@ -21,13 +21,13 @@ hooks under the git directory and the `teleclaude-docs` filter driver in the
 repository's own git config. Neither is tracked by the project, so a clone
 carries neither. The `pre-merge-commit` hook runs the same commit gate as
 `pre-commit`, so a merge commit git creates without a separate `git commit`
-passes that gate too (`projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
+passes that gate too (`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
 <!-- /planned-change:commit-gate-in-hook -->
 
 The project's configuration-schema link is machine state in the same way: a
 symbolic link in the project's machine-local state directory, which the project
 never tracks, pointing at the TeleClaude home's published schemas
-(`projects/teleclaude/spec/feature/reconciliation/config-schema-publication`). A project's
+(`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`). A project's
 committed configuration files reference their schemas through that link, so the
 same committed reference resolves on every machine that carries its own link.
 The link's location is the one the configuration writer's project-tier
@@ -37,7 +37,7 @@ Convergence is the act of comparing that observed machine state against the
 project's capability declaration and performing the sanctioned actions that
 close the gap. It is reconciliation's rule. The declaration it reads is
 `config`'s published contract
-(`projects/teleclaude/spec/feature/config/project-capability-manifest`), consumed at the
+(`local/projects/teleclaude/spec/feature/config/project-capability-manifest`), consumed at the
 crossing and never restated here; what the converged plumbing then does — what
 the hooks check, what the docs pipeline processes — belongs to the contexts that
 own those behaviors.
