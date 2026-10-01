@@ -214,9 +214,7 @@ And the work state machine reports a worktree setup failure stating that the Tod
 - filesystem — prep marker at `<worktree>/.teleclaude/worktree-prep-state.json`; archive root under the long-term storage directory; workspace symlink at `<project_root>/workspace/<slug>/`.
 - `workflow` — delivery cleanup is invoked from the integration state machine's cleanup phase and from any code path that observes a delivered status.
 - `reconciliation` — owns the configuration-schema link; ensuring a worktree invokes its published link operation for the worktree root (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-<!-- planned:agy-trusts-platform-worktrees -->
 - `agent_runtime` — owns agent runtimes' workspace trust for slug worktrees; ensuring a worktree, renaming its todo, and delivered-slug cleanup invoke its published add, move, and remove operations for the worktree path, and none of them fails the worktree step (`local/projects/teleclaude/spec/feature/agent_runtime/worktree-workspace-trust`).
-<!-- /planned:agy-trusts-platform-worktrees -->
 
 ## Known caveats
 

@@ -2,8 +2,6 @@
 description: Antigravity trusts each slug worktree of a repository whose main checkout
   it already trusts while the worktree exists; the platform adds and removes worktree
   paths only and touches no other trust entry.
-delivered_by:
-  - agy-trusts-platform-worktrees
 ---
 
 # Worktree Workspace Trust — Spec
