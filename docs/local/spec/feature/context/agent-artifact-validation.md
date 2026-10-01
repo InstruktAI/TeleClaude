@@ -163,6 +163,7 @@ Scenario: An agent commits a retirement companion beside a command
   Then the agent receives a finding naming the file as a malformed command source
 ```
 
+<!-- planned-change:full-lint-tracked-material -->
 #### UC-AAV6: A file git ignores under agents/ is not an artifact source
 
 ```
@@ -174,6 +175,20 @@ Scenario: An agent runs full lint with an ignored file and a stray file under ag
   And the untracked file is refused with a finding naming it
   And that finding appears in the lint output the agent reads
 ```
+<!-- change:full-lint-tracked-material -->
+#### UC-AAV6: A full lint grades only the agents/ entries git tracks
+
+```
+Scenario: An agent runs full lint with ignored, untracked and tracked stray files under agents/
+  Given git ignores a file directly under agents/, such as operating-system folder metadata
+  And a file git does not ignore sits untracked directly under agents/
+  And a stray file git tracks sits directly under agents/
+  When the agent runs lint across the whole repository
+  Then neither the ignored nor the untracked file produces an artifact finding
+  And the tracked stray file is refused with a finding naming it
+  And that finding appears in the lint output the agent reads
+```
+<!-- /planned-change:full-lint-tracked-material -->
 
 <!-- planned:commit-gate-in-hook -->
 #### UC-AAV7: A company or person home's own artifact sources are validated in their flat layout
