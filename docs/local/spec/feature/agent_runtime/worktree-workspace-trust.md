@@ -112,7 +112,12 @@ And Antigravity's settings are left as they were
   without breaking a session, because the prompt and its acceptance remain the
   fallback.
 - A grant lost to a concurrent rewrite by Antigravity itself is restored at the
-  worktree's next dispatch.
+  worktree's next dispatch. If the same path is accepted at Antigravity's prompt
+  before then, the store carries no provenance that tells it apart from the
+  platform's grant, and it is withdrawn with the worktree.
+- A grant the platform wrote but could not record, because its own bookkeeping
+  failed or was interrupted, is treated like an entry the platform did not add and
+  stays until removed by hand.
 - Worktree entries that predate the platform's record, including paths of
   worktrees already gone, were not granted by the platform and stay until removed
   by hand.
