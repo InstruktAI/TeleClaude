@@ -13,7 +13,7 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Use repo-local telec
         run: python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
@@ -43,7 +43,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           persist-credentials: false
