@@ -32,8 +32,8 @@ can add to it.
 The binding is an edge identity, like the terminal login, and it ranks below a
 session: a process inside a session always acts as its session, and the door
 refuses to bind inside one. For the program it launched, it ranks above the
-terminal login. It lives only as long as that program and only within that
-program's process tree; nothing a later or unrelated process could read is
+terminal login. It reaches that program and every process it starts, for as long as each of
+them runs, and nothing else; nothing a process outside that tree could read is
 written anywhere.
 
 Selecting a person is not authenticating them. A process running as the same
@@ -130,7 +130,7 @@ Then it acts as the identity its own session carries
 And the binding is not consulted
 ```
 
-#### UC-LPI8: A binding reaches only its own program, and only while it runs
+#### UC-LPI8: A binding reaches only its own program's process tree
 
 ```gherkin
 Given one program bound through the person-launch door to one registered person, and a concurrent program bound to another
