@@ -485,15 +485,16 @@ async def _ordinary_turn(
             if outcome is ConversationOutcome.SESSION_STARTED:
                 _log(ConversationDecision.TURN_RETURNING_CUSTOMER, turn, host=desk.host)
             return outcome
+    elif turn.conversation.reaches_every_computer:
+        outstanding = await changeover_exports_outstanding(env)
+        if outstanding:
+            # Unbound is not absent while a computer's sessions are not bound yet: the
+            # conversation may be open there, whoever the sender is.
+            _log(ConversationDecision.TURN_FALLBACK_HELD, turn, computers=outstanding)
+            return await _unavailable(turn, env)
     endpoint = _role_endpoint(turn, env)
     if endpoint is None:
         return await _miss(turn, env)
-    if turn.conversation.reaches_every_computer:
-        outstanding = await changeover_exports_outstanding(env)
-        if outstanding:
-            # The conversation may be open on a computer whose sessions are not bound yet.
-            _log(ConversationDecision.TURN_FALLBACK_HELD, turn, computers=outstanding)
-            return await _unavailable(turn, env)
     outcome = await _start_at(turn, env, endpoint)
     if outcome is ConversationOutcome.SESSION_STARTED:
         _log(ConversationDecision.TURN_ROLE_FALLBACK, turn, role=_sender_role(turn), endpoint=endpoint.kind.value)

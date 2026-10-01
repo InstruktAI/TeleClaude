@@ -102,9 +102,9 @@ computer's export once more and binds each conversation to its newest open
 session. A message reaching the master in between waits for the start rather
 than being handled twice. A computer away at the start has its sessions bound
 once it returns and has announced it; until then a conversation with no
-binding may be one of its own, so a message there starts no session by role
-and gets the temporarily-unavailable reply. The unavailability behaviour above
-applies from activation on.
+binding may be one of its own, so a message there, whoever sends it, starts no
+session and gets the temporarily-unavailable reply instead of the neutral
+reply. The unavailability behaviour above applies from activation on.
 
 **Reflection.** Only platform help-desk sessions are reflected into the
 platform's shared Discord guild. Company and project help-desk sessions appear
@@ -417,7 +417,7 @@ Scenario Outline: <case>
     | newer session          | a computer opened a newer session for the conversation after its first export                  | at the start the conversation is bound to that newer session and the message reaches it                  |
     | still handling         | a computer arms while a message it took on itself is still being handled                       | it announces the cutover only after that message finishes, and the master starts routing only then       |
     | publication unreadable | a computer that has not armed cannot read the publication and sees no computer announcing it   | it handles nothing on its own and the lowest-named live computer sends the temporarily-unavailable reply |
-    | source away at start   | a computer named in the adoption run is away when routing starts and the conversation is unbound | no session starts by role and the temporarily-unavailable reply is sent until that computer returns    |
+    | source away at start   | a computer named in the adoption run is away when routing starts and the conversation is unbound | whoever sends it, no session starts and the temporarily-unavailable reply is sent until that computer returns |
 ```
 
 ### Cross-context references
