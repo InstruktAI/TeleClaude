@@ -1863,19 +1863,29 @@ def _code_span_content(span: str, run: int) -> str:
 def _mask_code_spans(inline: Token) -> str:
     """Return an inline run's raw source with its code spans masked.
 
-    The spans found in the source must match the lexer's own code spans one for
-    one; otherwise nothing is masked, so a disagreement fails closed.
+    The spans found in the source must match the lexer's own code spans, at any
+    nesting depth, one for one; otherwise nothing is masked, so a disagreement
+    fails closed.
     """
     source = inline.content
     ranges = _code_span_ranges(source)
     found = [_code_span_content(source[start:end], _run_length(source, start)) for start, end in ranges]
-    lexed = [child.content for child in inline.children or [] if child.type == _INLINE_CODE_TOKEN_TYPE]
+    lexed = [token.content for token in _descendants(inline) if token.type == _INLINE_CODE_TOKEN_TYPE]
     if found != lexed:
         return source
     masked = source
     for start, end in reversed(ranges):
         masked = masked[:start] + _MASK * (end - start) + masked[end:]
     return masked
+
+
+def _descendants(token: Token) -> list[Token]:
+    """Return every token nested under ``token`` in source order (image alt text holds its own children)."""
+    found: list[Token] = []
+    for child in token.children or []:
+        found.append(child)
+        found.extend(_descendants(child))
+    return found
 
 
 def _run_length(source: str, start: int) -> int:
