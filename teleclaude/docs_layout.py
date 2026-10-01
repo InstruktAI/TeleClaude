@@ -592,60 +592,101 @@ def _prune_empty_directories(directory: Path) -> None:
         directory.rmdir()
 
 
+def _changed_index_paths(
+    repository: Repo, touched: Sequence[str], index_snapshots: Sequence[dict[str, str]]
+) -> set[str]:
+    """Touched paths whose index entry equals none this run observed: another writer staged them."""
+    current_index = _index_entries(repository, touched)
+    return {
+        path
+        for path in touched
+        if not any(current_index.get(path) == snapshot.get(path) for snapshot in index_snapshots)
+    }
+
+
+def _restore_conflicts(
+    root: Path,
+    moved: dict[str, _MovedFile],
+    written: dict[str, tuple[bytes, bytes]],
+    changed_index: set[str],
+) -> set[str]:
+    """Establish, before anything is mutated, every path restoration must leave as found.
+
+    A file conflicts when its bytes are not the ones this run left, when its
+    original path is occupied again, or when the index entry of its current or
+    original path was changed by another writer.
+    """
+    conflicts: set[str] = set()
+    for written_path, (_, rewritten) in written.items():
+        if written_path in moved:
+            continue
+        written_file = root / written_path
+        if not written_file.is_file() or written_file.read_bytes() != rewritten or written_path in changed_index:
+            conflicts.add(written_path)
+    for new_path, record in moved.items():
+        current = root / new_path
+        if not current.exists() and not current.is_symlink():
+            original = root / record.retired_path
+            never_moved = original.is_file() and _digest(original.read_bytes()) == record.digest
+            if not never_moved:
+                conflicts.add(new_path)
+            continue
+        expected = written.get(new_path)
+        current_bytes = current.read_bytes()
+        bytes_unchanged = (
+            current_bytes == expected[1] if expected is not None else _digest(current_bytes) == record.digest
+        )
+        destination = root / record.retired_path
+        if (
+            not bytes_unchanged
+            or destination.exists()
+            or destination.is_symlink()
+            or new_path in changed_index
+            or record.retired_path in changed_index
+        ):
+            conflicts.add(new_path)
+    return conflicts
+
+
 def _restore_files(
     root: Path,
     plan: _MovePlan,
     moved: dict[str, _MovedFile],
     directories: Sequence[str],
     written: dict[str, tuple[bytes, bytes]],
+    conflicts: set[str],
 ) -> list[str]:
-    """Move this run's own files back one by one; return the paths left where they are.
+    """Move this run's own files back one by one, skipping every established conflict.
 
-    A file stays at its current path, and is named, when another writer changed
-    it, created it, or occupies its original path. Moving files individually
-    means a preserved file is never relocated by restoring its directory.
+    Returns the conflicts plus any file under a new directory that this run did
+    not move. A preserved file keeps its bytes and address: moving files
+    individually means it is never relocated by restoring its directory.
     """
-    conflicts: list[str] = []
-    for written_path, (original, rewritten) in written.items():
-        if written_path in moved:
+    left: list[str] = sorted(conflicts)
+    for written_path, (original, _) in written.items():
+        if written_path in moved or written_path in conflicts:
             continue
-        written_file = root / written_path
-        if written_file.is_file() and written_file.read_bytes() == rewritten:
-            written_file.write_bytes(original)
-        else:
-            conflicts.append(written_path)
+        (root / written_path).write_bytes(original)
     for relative in directories:
         (root / relative).mkdir(parents=True, exist_ok=True)
     for new_path, record in moved.items():
         current = root / new_path
-        if not current.exists() and not current.is_symlink():
-            conflicts.append(new_path)
+        if new_path in conflicts or (not current.exists() and not current.is_symlink()):
             continue
         expected = written.get(new_path)
-        current_bytes = current.read_bytes()
         if expected is not None:
-            if current_bytes != expected[1]:
-                conflicts.append(new_path)
-                continue
             current.write_bytes(expected[0])
-        elif _digest(current_bytes) != record.digest:
-            conflicts.append(new_path)
-            continue
-        destination = root / record.retired_path
-        if destination.exists() or destination.is_symlink():
-            conflicts.append(new_path)
-            continue
-        os.rename(current, destination)
+        os.rename(current, root / record.retired_path)
     for _, target in plan.moves:
         target_dir = root / target
         if target_dir.is_dir():
-            conflicts.extend(
+            left.extend(
                 str(path.relative_to(root))
                 for path in sorted(target_dir.rglob("*"))
                 if not path.is_dir() and str(path.relative_to(root)) not in moved
             )
             _prune_empty_directories(target_dir)
-    return conflicts
+    return left
 
 
 def _restore_own_changes(
@@ -660,18 +701,19 @@ def _restore_own_changes(
 ) -> tuple[str, ...]:
     """Reverse only convergence's own delta; return the paths left as found.
 
-    A touched path's index entry is reset only when it still equals one this run
-    observed (before its effects or after its own staging).
+    Every conflict is established before anything is mutated. A conflicting
+    file keeps its bytes, its address and the index entries of both its current
+    and its original path; every other touched path is reset to the committed
+    entry only when its entry still equals one this run observed.
     """
-    conflicts = _restore_files(root, plan, moved, directories, written)
-    current_index = _index_entries(repository, touched)
-    restorable = [
-        path for path in touched if any(current_index.get(path) == snapshot.get(path) for snapshot in index_snapshots)
-    ]
-    conflicts.extend(path for path in touched if path not in restorable)
+    changed_index = _changed_index_paths(repository, touched, index_snapshots)
+    conflicts = _restore_conflicts(root, moved, written, changed_index)
+    protected = set(changed_index) | conflicts | {moved[path].retired_path for path in conflicts if path in moved}
+    left = _restore_files(root, plan, moved, directories, written, conflicts)
+    restorable = [path for path in touched if path not in protected]
     if restorable:
         repository.git.reset(*_RESET_ARGS, _PATHSPEC_SEPARATOR, *restorable)
-    return tuple(sorted(set(conflicts)))
+    return tuple(sorted(set(left) | changed_index))
 
 
 def _incomplete_paths(repository: Repo, root: Path) -> tuple[str, ...]:
