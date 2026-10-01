@@ -58,6 +58,15 @@ other permission; granting stays with a person or a managed device profile.
 - **Launcher set.** Every launcher the installed agent registry and tmux
   require. A launcher set is complete when each launcher carries a valid
   strict signature by the signing authority and its own stable identifier.
+- **Launcher inputs.** Everything a launcher is built from: its source, the
+  per-launcher configuration the build derives, and the agent roster that
+  decides which launchers exist. A run rebuilds, re-signs and redeploys the
+  launcher set only when those inputs changed since the installed launchers
+  were built, when an installed launcher is missing or does not match what the
+  inputs produce, or when the signing authority is new. Otherwise it neither
+  opens the signing store nor signs, and leaves the installed launchers
+  untouched, in the same way installation leaves an unchanged launch-service
+  definition alone.
 - **Authority creation.** Happens only when the signing store holds no
   authority. A store that is locked is opened with the unlock secret and signs
   as usual. A store that cannot be opened, an unavailable or rejected unlock
@@ -149,6 +158,16 @@ And it exits unsuccessfully naming the launcher and the mismatch
 Given a machine whose launchers were installed and signed by its signing authority
 When an operator rebuilds the launchers manually, or post-commit maintenance reinstalls them, with no person present
 Then the launchers are signed by the same authority without a dialog
+```
+
+#### UC-LCI9: An install with nothing to rebuild does not sign
+
+```gherkin
+Given a machine whose installed launchers were built from the current launcher inputs and signed by its current signing authority
+When the installer runs again, as an operator install or as post-commit maintenance for an unrelated change
+Then it does not open the signing store and signs nothing
+And every installed launcher is byte-identical to what it was before the run
+And a run after any launcher input changes rebuilds, re-signs and reinstalls the launcher set
 ```
 
 ## Known caveats
