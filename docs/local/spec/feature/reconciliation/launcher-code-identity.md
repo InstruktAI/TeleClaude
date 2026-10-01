@@ -180,7 +180,7 @@ Then the launcher set is rebuilt, signed by the machine's signing authority and 
 ```gherkin
 Given an installation enrolled on a release channel, with no person present
 When it updates itself to a release that changes what its launchers are built from
-Then its installed launchers are rebuilt, signed by the machine's signing authority and installed as part of that update
+Then an operator inspecting the machine afterwards finds its installed launchers rebuilt from that release and signed by the machine's signing authority
 ```
 
 ## Known caveats
