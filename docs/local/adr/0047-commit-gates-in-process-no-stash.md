@@ -23,3 +23,7 @@ The pre-commit framework is retired — its config becomes an empty stub, and th
 - Gates check exactly what is committed; there is no staging-vs-working-tree mismatch.
 - Deletion-only commits skip format and lint.
 - `make install` deploys the thin hook; generated projects receive it via the skeleton deployer.
+
+## Status
+
+Superseded by ADR-0108

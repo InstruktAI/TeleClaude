@@ -357,16 +357,25 @@ And the session's effective scope is the same as for a bare invocation of the sa
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
+<!-- planned-change:commit-gate-in-hook -->
 ### Commit-time gates — in-process, no framework stash
 
 `telec code commit` runs the gates the acting invocation context root's declared
 tier carries, read from that tier's published answers
+<!-- change:commit-gate-in-hook -->
+### Commit-time gates — the pre-commit hook, no framework stash
+
+The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs the gates
+the acting invocation context root's declared tier carries, for every route into
+a commit, read from that tier's published answers
+<!-- /planned-change:commit-gate-in-hook -->
 (`projects/teleclaude/spec/feature/config/tier-permissions`). Whether the gate runs follows
 the tier: a tier carrying project subscriptions, or whose material participates
 in documentation, is gated; a tier carrying neither is not, no check is applied
 in its place, and the commit proceeds directly. Which checks run follows what the
 tier carries, never where its root sits: the native toolchain leg runs where the
 tier carries `code`, and TeleClaude's guardrails lane runs wherever the gate
+<!-- planned-change:commit-gate-in-hook -->
 runs. Both run in-process against `quality_paths` (the commit pathspec filtered
 to existing files) before `git commit --no-verify`, in that order where both
 apply. A tier participating in documentation that carries no project
@@ -375,6 +384,19 @@ toolchain contract at its root — by no separate mechanism. No framework stash
 occurs; files outside the pathspec are not touched. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
+<!-- change:commit-gate-in-hook -->
+runs. Both run against the commit's staged file set, after the partial-staging
+guard, in that order where both apply. Formatting is checked and never
+rewritten. Validators that resolve across files read the staged content against
+the rest of each owning home as committed, never against another session's
+uncommitted files. A tier participating in documentation that carries no
+project subscriptions is gated, runs the guardrails lane, and requires no native
+toolchain contract at its root — by no separate mechanism. `telec code commit`
+formats `quality_paths` (the commit pathspec filtered to existing files) and
+then runs `git commit` without `--no-verify`, so it passes the same hook as a
+raw `git commit`. No framework stash occurs; files outside the pathspec are not
+touched.
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
@@ -384,6 +406,7 @@ When agent invokes telec code commit --approved "<bad-message>"
 Then SystemExit(1) before format/lint/git-commit invoked
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 #### UC-CGIP-2 — Gates run format-before-lint against quality_paths
 
 ```
@@ -393,6 +416,18 @@ When agent invokes telec code commit --approved "<msg>"
 Then quality_paths = pathspec filtered to existing files only
 And handle_format(quality_paths) is called before handle_lint(quality_paths)
 ```
+<!-- change:commit-gate-in-hook -->
+#### UC-CGIP-2 — Format runs on quality_paths before the hook lints
+
+```
+Given the acting invocation context's tier carries project subscriptions
+And pathspec contains existing and deleted files
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths = pathspec filtered to existing files only
+And handle_format(quality_paths) runs before git commit is invoked
+And the pre-commit hook lints the staged file set after formatting
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
 
@@ -400,6 +435,7 @@ And handle_format(quality_paths) is called before handle_lint(quality_paths)
 Given pathspec contains only a deleted file
 When agent invokes telec code commit --approved "<msg>"
 Then quality_paths is empty
+<!-- planned-change:commit-gate-in-hook -->
 And neither handle_format nor handle_lint is invoked
 And git commit --no-verify proceeds
 ```
@@ -412,6 +448,21 @@ When agent invokes telec code commit --approved "<msg>"
 Then repo.git.commit is called with "--no-verify" in its args
 And no framework stash occurs
 ```
+<!-- change:commit-gate-in-hook -->
+And handle_format is not invoked
+And git commit proceeds, and the pre-commit hook has nothing to lint
+```
+
+#### UC-CGIP-4 — Clean commit passes through the pre-commit hook
+
+```
+Given format passes on quality_paths and lint passes on the staged file set
+When agent invokes telec code commit --approved "<msg>"
+Then repo.git.commit is called without "--no-verify"
+And the pre-commit hook runs and exits 0
+And no framework stash occurs
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-5 — Format failure blocks commit
 
@@ -421,6 +472,7 @@ When agent invokes telec code commit --approved "<msg>"
 Then SystemExit(1) before repo.git.commit invoked
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 #### UC-CGIP-6 — Lint failure blocks commit
 
 ```
@@ -428,6 +480,16 @@ Given lint fails on quality_paths (after format passed)
 When agent invokes telec code commit --approved "<msg>"
 Then SystemExit(1) before repo.git.commit invoked
 ```
+<!-- change:commit-gate-in-hook -->
+#### UC-CGIP-6 — Lint failure blocks commit
+
+```
+Given lint fails on the staged file set (after format passed)
+When agent invokes telec code commit --approved "<msg>"
+Then the pre-commit hook exits non-zero naming each finding
+And git produces no commit, and telec code commit exits non-zero
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-48 — A repository's first commit passes through the same gates
 
@@ -441,6 +503,7 @@ And when every gate passes, the first commit lands carrying exactly the declared
 And when a gate fails, no commit is created and the repository still has no commits
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 #### UC-CGIP-7 — Lock releases cleanly on gate failure
 
 ```
@@ -448,6 +511,15 @@ Given handle_lint raises SystemExit(1)
 When telec code commit --approved "<msg>" is invoked
 Then main_branch_lock __exit__ is called (lock released)
 ```
+<!-- change:commit-gate-in-hook -->
+#### UC-CGIP-7 — Lock releases cleanly on gate failure
+
+```
+Given the pre-commit hook rejects the commit
+When telec code commit --approved "<msg>" is invoked
+Then main_branch_lock __exit__ is called (lock released)
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-8 — Bare commit surfaces the gate and exits 0
 
@@ -484,9 +556,15 @@ Given MERGE_HEAD is present (an active merge, resolved via repo.git_dir so it ho
 And the repository's own root is not a declared non-project invocation context
 And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
 When agent invokes telec code commit --approved "<msg>"
+<!-- planned-change:commit-gate-in-hook -->
 Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
 And the gates the acting tier carries run over the full merge diff, and a tier carrying none runs no gate
 And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
+<!-- change:commit-gate-in-hook -->
+Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
+And format runs over quality_paths, and the pre-commit hook grades the full staged merge result; a tier carrying no gate runs none
+And repo.git.commit is called without "--no-verify" and with no trailing "--" pathspec
+<!-- /planned-change:commit-gate-in-hook -->
 And the resulting commit records origin/main as a merge parent
 ```
 
@@ -875,7 +953,11 @@ Then the wrapper refuses rather than passing through to the real git binary
 And the repository's history is not mutated by that invocation
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 ### Thin hook backstop
+<!-- change:commit-gate-in-hook -->
+### Pre-commit hook gate
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-TH-1 — Thin hook partial-staging backstop
 
@@ -887,6 +969,7 @@ And exits non-zero naming the partially staged paths
 And no INSTALL_PYTHON is present in .git/hooks/pre-commit
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 #### UC-TH-2 — Thin hook passes clean commits
 
 ```
@@ -895,6 +978,17 @@ When raw git commit is attempted
 Then .git/hooks/pre-commit exits 0
 And the commit proceeds (gates were enforced in-process by telec code commit)
 ```
+<!-- change:commit-gate-in-hook -->
+#### UC-TH-2 — The hook passes clean commits
+
+```
+Given working tree has no partially staged files
+And the staged file set passes every gate the acting tier carries
+When raw git commit is attempted
+Then .git/hooks/pre-commit exits 0
+And the commit proceeds
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-TH-3 — Thin hook fails closed on git status probe failure
 
@@ -905,6 +999,47 @@ Then the hook exits nonzero immediately
 And the commit is aborted
 And the partial-staging check is NOT silently bypassed
 ```
+
+<!-- planned:commit-gate-in-hook -->
+#### UC-TH-4 — A raw git commit and telec code commit get the same verdict
+
+```gherkin
+Given two identical file sets in the same context root
+When one is committed with raw git commit from a terminal
+And the other with telec code commit --approved
+Then the pre-commit hook runs the same checks over both staged file sets
+And both commits land, or both are refused with the same findings
+```
+
+#### UC-TH-5 — Another session's uncommitted file does not decide a commit
+
+```gherkin
+Given a nested home in which one session holds an uncommitted invalid snippet
+And another session stages a valid snippet change in the same home
+When the second session commits
+Then the hook grades the staged snippet against the home as committed
+And the commit lands
+And the first session's uncommitted file stays dirty and unjudged
+```
+
+#### UC-TH-6 — A context without code is still gated for its documentation
+
+```gherkin
+Given a person or company home whose tier carries no code capability
+When an invalid snippet in that home is committed by any route
+Then the pre-commit hook refuses the commit, naming the finding
+And no commit is created
+```
+
+#### UC-TH-7 — The hook checks formatting and never rewrites a file
+
+```gherkin
+Given a staged file that its formatter would change
+When raw git commit is attempted
+Then the hook refuses the commit and names the format command for that file
+And the file on disk and in the index is unchanged
+```
+<!-- /planned:commit-gate-in-hook -->
 
 #### UC-CGIP-49 — A file written through an edit tool is committed without an explicit declaration
 

@@ -37,9 +37,17 @@ The staging model is asymmetric and follows git's data model:
   are staged internally via `_stage_files` so the integrator's conflict
   resolution flow runs through the same sealed path.
 
+<!-- planned-change:commit-gate-in-hook -->
 `telec code commit` runs the gates carried by the acting invocation context's
 declared tier, in-process against `quality_paths` (the commit pathspec filtered
 to existing files) before `git commit --no-verify`.
+<!-- change:commit-gate-in-hook -->
+`telec code commit` formats `quality_paths` (the commit pathspec filtered to
+existing files), then runs `git commit`, which runs the installed
+`.git/hooks/pre-commit`. The hook applies the gates carried by the acting
+invocation context's declared tier to the commit's staged file set, so every
+route into a commit, a raw `git commit` included, passes the same gate.
+<!-- /planned-change:commit-gate-in-hook -->
 
 **Whether** the gate runs follows the tier: a tier carrying project
 subscriptions, or whose material participates in documentation, is gated. A tier
@@ -54,10 +62,18 @@ The platform home, and the person and company homes inside it, participate in
 documentation and carry no project subscriptions. They are gated, they run the
 guardrails lane, and they require no native toolchain contract at their root —
 by no separate mechanism.
+<!-- planned-change:commit-gate-in-hook -->
 No framework stash, no working-tree reset
 outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owned
 guard that performs only a partial-staging check as a backstop for raw
 `git commit` invocations.
+<!-- change:commit-gate-in-hook -->
+No framework stash, no working-tree reset
+outside the pathspec. The hook applies the partial-staging guard first, then
+grades the staged files against the rest of each owning home as committed,
+never against another session's uncommitted files. It checks formatting and
+never rewrites a file.
+<!-- /planned-change:commit-gate-in-hook -->
 
 The git wrapper redirects raw `git commit` (and `git add`) to this command
 for tmux callers.
@@ -260,6 +276,7 @@ todo worktree, a successful commit also publishes the todo's branch to
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
+<!-- planned-change:commit-gate-in-hook -->
 4. **The gates the acting tier carries run before `git commit --no-verify`.**
    Whether the gate runs follows the acting invocation context's declared tier:
    a tier carrying project subscriptions, or whose material participates in
@@ -269,6 +286,22 @@ todo worktree, a successful commit also publishes the todo's branch to
    `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
    run against `quality_paths` (the commit pathspec filtered to existing files)
    before `git commit --no-verify`, in that order where both apply. A tier that
+<!-- change:commit-gate-in-hook -->
+4. **The pre-commit hook runs the gates the acting tier carries.**
+   Whether the gate runs follows the acting invocation context's declared tier:
+   a tier carrying project subscriptions, or whose material participates in
+   documentation, is gated; a tier carrying neither is not, and nothing is
+   applied in its place. Which checks run follows what that tier carries, never
+   where its root sits: the native toolchain leg runs where the tier carries
+   `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
+   run from `.git/hooks/pre-commit` (`telec code pre-commit`) against the
+   commit's staged file set, after the partial-staging guard, in that order
+   where both apply. Formatting is checked, never rewritten; validators that
+   resolve across files read the staged content against the rest of each owning
+   home as committed. `telec code commit` formats `quality_paths` (the commit
+   pathspec filtered to existing files) before staging and passes no
+   `--no-verify`, so its commits pass the same hook as a raw `git commit`. A tier that
+<!-- /planned-change:commit-gate-in-hook -->
    participates in documentation and carries no project subscriptions is gated,
    runs the guardrails lane, and requires no native toolchain contract at its
    root. The selected checks run in-process when the checkout under commit is
@@ -282,9 +315,13 @@ todo worktree, a successful commit also publishes the todo's branch to
    missing, is refused rather than graded by installed rules
    (`projects/teleclaude/design/architecture/cli-invocation-boundary`).
    Deletion-only commits
+<!-- planned-change:commit-gate-in-hook -->
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
    not re-run format or lint.
+<!-- change:commit-gate-in-hook -->
+   (empty `quality_paths`) skip both steps wherever they would otherwise run.
+<!-- /planned-change:commit-gate-in-hook -->
 
 5. **Commit-first gate on main.** Non-integrator agents on main use the bare
    `telec code commit` invocation to surface commit-first and post-commit
@@ -299,9 +336,15 @@ todo worktree, a successful commit also publishes the todo's branch to
    to `telec code commit`. The wrapper retains all other safety blocks
    (stash, checkout, restore, clean, reset, push on main).
 
+<!-- planned-change:commit-gate-in-hook -->
 8. **Real git bypass for the inner commit.** The final `git commit --no-verify`
    call uses the real git binary (via GitPython) so the wrapper's redirect does
    not loop back into telec.
+<!-- change:commit-gate-in-hook -->
+8. **Real git bypass for the inner commit.** The final `git commit` call uses
+   the real git binary (via GitPython) so the wrapper's redirect does not loop
+   back into telec; git still runs the installed hooks.
+<!-- /planned-change:commit-gate-in-hook -->
 
 9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary where the tree has
    one owner.** When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a
@@ -312,9 +355,15 @@ todo worktree, a successful commit also publishes the todo's branch to
    project checkout — Invariant 3's pathspec boundary therefore does not apply:
    `telec code commit` requires every unmerged path already resolved
    (`telec code add`-ed) — it errors out listing any that remain rather than
+<!-- planned-change:commit-gate-in-hook -->
    committing an unresolved conflict — then runs the acting tier's gates over the
    full merge diff (not the caller's pathspec) and commits with no pathspec at
    all: `git commit -F <msg> --no-verify` with no trailing `-- <pathspec>`.
+<!-- change:commit-gate-in-hook -->
+   committing an unresolved conflict — then commits with no pathspec at all:
+   `git commit -F <msg>` with no trailing `-- <pathspec>`. The hook grades the
+   full staged merge result, not the caller's pathspec.
+<!-- /planned-change:commit-gate-in-hook -->
 
    In a repository whose own root is a declared non-project
    invocation context the tree has more than one owner: such a tree is multi-context and concurrently dirty by design, so the
@@ -395,6 +444,7 @@ telec code commit --approved "feat(scope): subject"
   → drop untracked-new files from pathspec (require explicit declaration)
   → stage ONLY untracked-or-unmerged files that are in pathspec
     (modified-tracked files are NOT staged — they ride the pathspec)
+<!-- planned-change:commit-gate-in-hook -->
   → partial-staging guard: block if any pathspec file has both staged
     and unstaged changes
   → quality_paths = pathspec filtered to existing files
@@ -403,6 +453,18 @@ telec code commit --approved "feat(scope): subject"
   → real git commit --no-verify -F <msg> -- <pathspec>
   → lock released
   → slug worktree with an origin remote → publish the branch (Invariant 13)
+<!-- change:commit-gate-in-hook -->
+  → partial-staging guard: block if any pathspec file has both staged
+    and unstaged changes
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)                     (before staging, no stash)
+  → real git commit -F <msg> -- <pathspec>
+    → .git/hooks/pre-commit → telec code pre-commit
+      → partial-staging guard
+      → lint the staged file set (format checked, never rewritten)
+  → lock released
+  → slug worktree with an origin remote → publish the branch (Invariant 13)
+<!-- /planned-change:commit-gate-in-hook -->
     → success: done
     → failure: report git's reason; the commit stands; exit status unchanged
 ```
@@ -415,11 +477,19 @@ telec code commit --approved "chore(docs): update snippets [skip ci]"
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
   → pathspec = scope minus untracked-not-staged
+<!-- planned-change:commit-gate-in-hook -->
   → modified-tracked docs ride the pathspec unstaged
   → quality_paths = pathspec filtered to existing files
   → handle_format(quality_paths)                     (in-process, no stash)
   → handle_lint(quality_paths)                       (in-process, no stash)
   → real git commit --no-verify -F <msg> -- <pathspec>
+<!-- change:commit-gate-in-hook -->
+  → modified-tracked docs ride the pathspec unstaged
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)                     (before staging, no stash)
+  → real git commit -F <msg> -- <pathspec>
+    → .git/hooks/pre-commit → telec code pre-commit (same gate as raw git commit)
+<!-- /planned-change:commit-gate-in-hook -->
   → lock released
 ```
 
@@ -433,11 +503,19 @@ telec code commit --approved "fix(scope): subject" --include path/to/extra.py
   → pathspec = scope ∪ {path/to/extra.py}
   → stage extra.py only if it's untracked or unmerged
   → assert extra.py contributes a change (else error)
+<!-- planned-change:commit-gate-in-hook -->
   → partial-staging guard runs against the merged pathspec
   → quality_paths = pathspec filtered to existing files
   → handle_format(quality_paths)
   → handle_lint(quality_paths)
   → real git commit --no-verify -F <msg> -- <pathspec>
+<!-- change:commit-gate-in-hook -->
+  → partial-staging guard runs against the merged pathspec
+  → quality_paths = pathspec filtered to existing files
+  → handle_format(quality_paths)
+  → real git commit -F <msg> -- <pathspec>
+    → .git/hooks/pre-commit → telec code pre-commit
+<!-- /planned-change:commit-gate-in-hook -->
   → lock released
 ```
 
@@ -469,11 +547,19 @@ telec code commit --approved "chore(<slug>): reconcile with origin/main"
      — otherwise the eligible set is preserved, or the commit is refused
   → assert no remaining unmerged paths (all conflicts telec code add-ed)
      — error, no commit, if any remain
+<!-- planned-change:commit-gate-in-hook -->
   → quality_paths = full merge diff (merge-base..MERGE_HEAD), not the pathspec
 
   → handle_format(quality_paths)                     (in-process, no stash)
   → handle_lint(quality_paths)                        (in-process, no stash)
   → real git commit --no-verify -F <msg>              (no pathspec — full index)
+<!-- change:commit-gate-in-hook -->
+  → quality_paths = full merge diff (merge-base..MERGE_HEAD), not the pathspec
+
+  → handle_format(quality_paths)                     (before committing, no stash)
+  → real git commit -F <msg>                          (no pathspec — full index)
+    → .git/hooks/pre-commit → telec code pre-commit over the full staged index
+<!-- /planned-change:commit-gate-in-hook -->
   → lock released
 ```
 
@@ -492,12 +578,21 @@ agent did not declare is precisely what the pathspec boundary prevents.
 changes. Exit code 2 — the agent's declaration must match reality; we don't
 quietly drop unreachable claims.
 
+<!-- planned-change:commit-gate-in-hook -->
 **In-process gate failure.** A gate the acting tier carries fails on
 `quality_paths` before `git commit --no-verify` is invoked — format or lint,
 where that tier carries project subscriptions. `telec code commit` exits non-zero
 with the gate output. No commit is produced; files remain in their current state
 for the agent to fix and retry. A tier carrying no project subscriptions runs no
 gate, so this failure mode does not arise there.
+<!-- change:commit-gate-in-hook -->
+**Hook gate failure.** A gate the acting tier carries fails on the staged file
+set inside `.git/hooks/pre-commit`, whichever route started the commit. git
+aborts the commit, and the hook output names each finding; an unformatted file
+is named with the format command that fixes it. No commit is produced; files
+remain in their current state for the author to fix and retry. A tier that
+carries no gate runs none, so this failure mode does not arise there.
+<!-- /planned-change:commit-gate-in-hook -->
 
 **Forgotten commit gate.** A non-integrator agent on main passes a message
 without `--approved`. Exit with commit-first guidance and no commit. The agent
@@ -519,7 +614,11 @@ integrates them; the report names that reason each time.
 
 ## See also
 
+<!-- planned-change:commit-gate-in-hook -->
 - docs/local/adr/0047-commit-gates-in-process-no-stash.md
+<!-- change:commit-gate-in-hook -->
+- docs/local/adr/0108-the-git-pre-commit-hook-is-the-only-commit-gate.md
+<!-- /planned-change:commit-gate-in-hook -->
 - docs/global/sdlc/design/workspace-scoping.md
 - docs/global/sdlc/policy/version-control-safety.md
 - docs/local/adr/0065-integrator-parks-and-drains-with-integrity-only-gating.md — why a slug worktree's only baseline is `origin/main`: the integrator inspects and squashes against it.

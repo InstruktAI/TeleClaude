@@ -50,11 +50,19 @@ and runs the guardrails lane over the same scoped paths. A `make lint` with no
 `FILES_FROM` runs the whole suite. There is no `telec code → make → telec code`
 cycle.
 
+<!-- planned-change:commit-gate-in-hook -->
 `telec code commit` runs format then lint in-process against `quality_paths`
 (the declared set filtered to existing files) before `git commit --no-verify`.
 No framework stash, no working-tree reset outside the declared set. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
+<!-- change:commit-gate-in-hook -->
+`telec code commit` formats `quality_paths` (the declared set filtered to
+existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
+runs `telec code pre-commit`, which is the commit gate for every route into a
+commit: the partial-staging guard, then lint over the staged file set. No
+framework stash, no working-tree reset outside the declared set.
+<!-- /planned-change:commit-gate-in-hook -->
 
 Tool invocation is separate from file scoping. `telec code` decides which files
 are in play; the `make` recipes own how the native tools run, and the guardrails
@@ -166,10 +174,20 @@ answer from session history.
    from linting or committing other agents' in-progress work.
 4. **Explicit files override everything.** When the caller passes files as
    arguments, scoping is skipped and those files drive both legs.
+<!-- planned-change:commit-gate-in-hook -->
 5. **Commit gates run in-process, no stash.** `telec code commit` runs format
    then lint against `quality_paths` before `git commit --no-verify`; the thin
    `.git/hooks/pre-commit` performs only a partial-staging backstop. No
    framework stash, no working-tree reset outside the declared set.
+<!-- change:commit-gate-in-hook -->
+5. **The pre-commit hook is the commit gate, no stash.** `telec code commit`
+   formats `quality_paths`, then runs `git commit`, and git runs
+   `.git/hooks/pre-commit`. The hook applies the partial-staging guard, then
+   lints the staged file set, the same way for every route into a commit. It
+   checks formatting and never rewrites a file. Validators that resolve across
+   files read the staged content against the rest of each owning home as
+   committed. No framework stash, no working-tree reset outside the declared set.
+<!-- /planned-change:commit-gate-in-hook -->
 
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
@@ -229,9 +247,15 @@ telec code commit (worktree detected)
   → resolve dirty paths once
   → git add dirty paths, including deletions
   → quality_paths = staged set filtered to existing files
+<!-- planned-change:commit-gate-in-hook -->
   → handle_format(quality_paths)                          (in-process, no stash)
   → handle_lint(quality_paths)                            (in-process, no stash)
   → git commit --no-verify
+<!-- change:commit-gate-in-hook -->
+  → handle_format(quality_paths)                          (before committing, no stash)
+  → git commit
+    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
+<!-- /planned-change:commit-gate-in-hook -->
 ```
 
 ### Shared branch flow (session available)
@@ -250,9 +274,16 @@ telec code commit (not a worktree, session identity present)
   → declared set = live declarations ∩ dirty paths  (--only narrows it)
   → git add the declared set, including deletions
   → quality_paths = declared set filtered to existing files
+<!-- planned-change:commit-gate-in-hook -->
   → handle_format / handle_lint                           (in-process, no stash)
   → git commit --no-verify
   → clear the declarations this commit carried
+<!-- change:commit-gate-in-hook -->
+  → handle_format(quality_paths)                          (before committing, no stash)
+  → git commit
+    → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
+  → clear the declarations this commit carried
+<!-- /planned-change:commit-gate-in-hook -->
 ```
 
 ### Shared branch flow (no session)
@@ -270,6 +301,7 @@ telec code lint <files...>
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 ### Thin hook flow
 
 ```
@@ -279,6 +311,19 @@ raw git commit (partial-staging backstop)
   → exits non-zero if staged + unstaged overlap detected
   → quality gates NOT re-run (they ran in-process via telec code commit)
 ```
+<!-- change:commit-gate-in-hook -->
+### Hook gate flow
+
+```
+git commit (raw, or invoked by telec code commit)
+  → .git/hooks/pre-commit → telec code pre-commit
+  → partial-staging check: exits non-zero if staged + unstaged overlap detected
+  → lint the staged file set with the checks the acting tier carries
+    (formatting checked, never rewritten; cross-file validators read the
+    staged content against the rest of each owning home as committed)
+  → exits non-zero on any finding; git produces no commit
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 ### Full-run flow
 
