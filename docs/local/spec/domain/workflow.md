@@ -93,6 +93,7 @@ concerned:
 ## See Also
 
 <!-- planned:event-origin-and-subject -->
-- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned, and no subject only when it concerns the platform itself.
+- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+- docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 <!-- /planned:event-origin-and-subject -->
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

@@ -33,21 +33,25 @@ nothing about its consumers:
   whether the request is served directly or as a durable operation. Automation
   with no caller session states only the computer.
 - **Subject:** a registered project, person, or company, named in the
-  configuration-subject vocabulary, or none when the event is about the platform
-  itself. A project subject also carries its owner as the emitting computer
+  configuration-subject vocabulary; none when the event concerns no registered
+  home; or unknown when the producer acted on something that belongs to a
+  registered home but cannot establish which on the emitting computer. A project
+  subject also carries its owner as the emitting computer
   resolves it: the declared company or person, declared ownerless, or
   unresolved when that computer cannot read the project's ownership declaration.
   Unresolved is never reported as ownerless.
 
 The producer supplies the subject: the envelope cannot be built without one,
-and none must be stated explicitly. The emission boundary adds origin and
+and none and unknown must be stated explicitly. None is a claim that the event
+concerns no registered home; unknown makes no claim, and a producer never states
+none or a guessed home in its place. The emission boundary adds origin and
 owner. Which subject an event states, including for an event derived from
 earlier events, is the producing context's emission invariant. Emission refuses
 and alters nothing on the strength of these facts.
 
 The facts are additive envelope fields under the schema version. A reader treats
-an event without them as having no session origin, no origin home, and no
-subject. Internal event bus envelopes are not platform stream events; they state
+an event without them as having no session origin, no origin home, and an
+unknown subject. Internal event bus envelopes are not platform stream events; they state
 no subject.
 
 ### Type declarations
@@ -55,7 +59,7 @@ no subject.
 Every registered event type declares:
 
 - its **subject assignment**: what its events are about, and the home kinds that
-  subject can take, or none for a type about the platform itself;
+  subject can take, or none for a type whose events concern no registered home;
 - its **payload fields**: each field's name and JSON value kind.
 
 The catalog owns the declaration's shape. The producing context authors its
@@ -70,7 +74,8 @@ concerned:
   entries, processor worker crashes): no subject;
 - entity degradation: the subject of the failing events it correlates.
   Correlation keeps same-named entities under different subjects apart, so each
-  degradation concerns one subject.
+  degradation concerns one subject. Failures with an unknown subject are
+  correlated together, and their degradation states an unknown subject.
 - signal ingest, clustering, and synthesis: no subject while signal sources are
   machine configuration that no registered home declares.
 
@@ -91,6 +96,7 @@ reaction. Catalog registration does not transfer either responsibility.
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md
 <!-- planned:event-origin-and-subject -->
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md
+- docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md
 - docs/local/spec/feature/event-catalog/event-envelope.md
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's handlers confers no ownership of its event subjects.
 <!-- /planned:event-origin-and-subject -->

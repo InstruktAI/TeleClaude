@@ -128,8 +128,9 @@ contracts and never creates shared ownership.
 
 <!-- planned:event-origin-and-subject -->
 - Every context that emits onto the platform event stream states each event's
-  subject — the registered home its act concerned, or none when the event is
-  about the platform itself — and owns that choice as part of its emission
+  subject — the registered home its act concerned, none when the event concerns
+  no registered home, or unknown when that home cannot be established — and owns
+  that choice as part of its emission
   invariant. `event-catalog` composes the rest of the envelope at emission from
   the owners' published answers. From `identity`, it takes the caller session
   resolved at the request boundary for the request that produced the event,

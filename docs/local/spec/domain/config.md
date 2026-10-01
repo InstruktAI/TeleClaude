@@ -152,10 +152,9 @@ directly.
 
 Every platform event config emits states as its subject what its act concerned:
 
-- a job run's outcome: the registered home the run executes for. For a job run
-  in a project, including a globally published job run in a subscribing
-  project, that is the project. A run executing for no registered home has no
-  subject.
+- a job run's outcome: the project the run executes for, including a globally
+  published job run in a subscribing project. Every job run executes for a
+  registered project.
 - an effective configuration change: the project whose configuration changed.
   A machine or global configuration change has no subject.
 
@@ -164,7 +163,8 @@ Every platform event config emits states as its subject what its act concerned:
 ## See Also
 
 <!-- planned:event-origin-and-subject -->
-- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned, and no subject only when it concerns the platform itself.
+- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+- docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 <!-- /planned:event-origin-and-subject -->
 - docs/local/spec/teleclaude-config.md
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md
