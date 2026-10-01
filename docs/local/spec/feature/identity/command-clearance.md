@@ -371,6 +371,17 @@ Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
 ```
 
+<!-- planned:worker-message-gate -->
+#### UC-CCR6: A worker sends no message to a person
+
+```
+Given an agent inside a session whose resolved system role is `worker`
+When it runs `telec message` for any person
+Then the command is refused with the not-permitted failure naming `worker` and the verb
+And no message is delivered
+```
+<!-- /planned:worker-message-gate -->
+
 ### Local read clearance
 
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`projects/teleclaude/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
