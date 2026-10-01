@@ -104,6 +104,7 @@ _PARTIAL_COMMIT_MESSAGE = (
     "Error: {message}{request}\nThe affected files may be in a mixed state — read them back before retrying."
 )
 _PROJECT_INIT_COMPLETE = "telec config project init complete."
+_SLUG_FIELD = "slug"
 _REDACTED_VALUE = "<redacted: platform administrator required>"
 
 _KIND_TO_SUBJECT: dict[str, ConfigSubjectKind] = {
@@ -402,7 +403,7 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
                 fields[key] = value
     else:
         if company_slug is not None:
-            fields["slug"] = company_slug
+            fields[_SLUG_FIELD] = company_slug
         if help_desk:
             fields[HELP_DESK_SECTION] = True
     _run_init(

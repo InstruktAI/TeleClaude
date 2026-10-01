@@ -49,6 +49,10 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
+_KIND_KEY = "kind"
+_DECLARATION_ENCODING = "utf-8"
+_UNREGISTERED_PROJECT_DECLARATION = "Project configuration is not registered: {path}"
+_PROJECT_DECLARATION_NOT_MAPPING = "Project configuration must be a YAML mapping: {path}"
 _GLOBAL_TIER_REFUSAL = "A global configuration cannot be adopted as a project."
 _IDENTITY_CONFLICT = "Project identity '{identity}' is already held by {holding_root}."
 _PROJECT_INITIALIZED_EVENT = "project_initialization_completed"
@@ -127,14 +131,14 @@ def _update_project_declaration(project_root: Path, mutate: _DeclarationMutation
     manifest_path = project_root / ConfigFileName.OVERLAY
     subject = registered_subject(manifest_path)
     if subject is None or subject.kind is not ConfigSubjectKind.PROJECT:
-        raise ValueError(f"Project configuration is not registered: {manifest_path}")
+        raise ValueError(_UNREGISTERED_PROJECT_DECLARATION.format(path=manifest_path))
     with file_transaction(manifest_path) as transaction:
-        stored = round_trip_yaml().load(transaction.read_text(encoding="utf-8"))
+        stored = round_trip_yaml().load(transaction.read_text(encoding=_DECLARATION_ENCODING))
         if not isinstance(stored, dict):
-            raise ValueError(f"Project configuration must be a YAML mapping: {manifest_path}")
+            raise ValueError(_PROJECT_DECLARATION_NOT_MAPPING.format(path=manifest_path))
         raw = dict(upcast(stored, subject))
         if mutate(raw):
-            ProjectConfig.model_validate({**raw, "kind": ConfigKind.PROJECT.value})
+            ProjectConfig.model_validate({**raw, _KIND_KEY: ConfigKind.PROJECT.value})
             carry_pending(stored, subject, delivered=_ignore_migration_delivery)
             transaction.replace_text(render_declared_config(ConfigKind.PROJECT, raw))
 

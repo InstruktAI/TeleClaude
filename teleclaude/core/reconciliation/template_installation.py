@@ -166,6 +166,7 @@ _NUL = "\0"
 _LS_FILES_NUL_OPTION = "-z"
 _PATHSPEC_SEPARATOR = "--"
 _TEMPLATE_ENCODING = "utf-8"
+_EXCLUSIVE_CREATE_MODE = "xb"
 _CONFLICT_MESSAGE = "{kind}: {path}"
 _COLLISION_MESSAGE = "{kind}: {target} (from {source}) conflicts with {other_target} (from {other_source})"
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
@@ -440,14 +441,15 @@ def _write_if_changed(content: bytes, target: Path) -> HomeTemplateDisposition:
 
 
 def _write_if_absent(content: bytes, target: Path) -> HomeTemplateDisposition:
+    """Create ``target`` exclusively; a file another writer created first is kept as it is."""
     try:
-        mode = target.lstat().st_mode
-    except FileNotFoundError:
-        target.write_bytes(content)
-        return HomeTemplateDisposition.WRITTEN
-    if not stat.S_ISREG(mode):
-        raise HomeTemplateMaterializationConflict(HomeTemplateConflictKind.TARGET_FILE, target)
-    return HomeTemplateDisposition.PRESERVED
+        with target.open(_EXCLUSIVE_CREATE_MODE) as created:
+            created.write(content)
+    except FileExistsError:
+        if not stat.S_ISREG(target.lstat().st_mode):
+            raise HomeTemplateMaterializationConflict(HomeTemplateConflictKind.TARGET_FILE, target) from None
+        return HomeTemplateDisposition.PRESERVED
+    return HomeTemplateDisposition.WRITTEN
 
 
 __all__ = [

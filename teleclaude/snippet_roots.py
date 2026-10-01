@@ -7,8 +7,12 @@ from pathlib import Path
 from teleclaude.capabilities import PermissionSurface, resolve_tier_permissions
 from teleclaude.config.loader import list_company_config_paths
 from teleclaude.config.schema import ConfigKind
-from teleclaude.paths import ConfigFileName
+from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName
 from teleclaude.snippet_validation import is_generated_domain_artifact_source
+
+_COMPANIES_DIRECTORY = COMPANIES_ROOT.name
+_PEOPLE_DIRECTORY = PEOPLE_DIR.name
+_TIER_DECLARATION_GLOB = f"*/{ConfigFileName.OVERLAY}"
 
 
 def is_excluded_snippet_path(path: Path, snippets_root: Path) -> bool:
@@ -65,13 +69,13 @@ def iter_declared_tier_roots(home: Path) -> list[tuple[Path, ConfigKind]]:
     come first, then persons in slug order.
     """
     roots: list[tuple[Path, ConfigKind]] = [
-        (config_path.parent, ConfigKind.COMPANY) for config_path in list_company_config_paths(home / "companies")
+        (config_path.parent, ConfigKind.COMPANY)
+        for config_path in list_company_config_paths(home / _COMPANIES_DIRECTORY)
     ]
-    people_root = home / "people"
+    people_root = home / _PEOPLE_DIRECTORY
     if people_root.exists():
         roots.extend(
-            (config_path.parent, ConfigKind.PERSON)
-            for config_path in sorted(people_root.glob(f"*/{ConfigFileName.OVERLAY}"))
+            (config_path.parent, ConfigKind.PERSON) for config_path in sorted(people_root.glob(_TIER_DECLARATION_GLOB))
         )
     return roots
 

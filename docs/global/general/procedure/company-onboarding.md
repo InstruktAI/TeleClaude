@@ -43,8 +43,10 @@ the company tree and starts no session:
 On re-onboard:
 
 - Verify the company directory exists; `telec config company init` converges missing
-  structure and brings the company master back to its template, without
-  changing any other existing file.
+  structure. It brings the company master back to its template, and the master
+  of the company's help desk too while the company enables one; it creates
+  absent local baseline manifests and keeps existing ones as the company left
+  them. The content of every other existing file stays as it is.
 - Read `meta.yaml` for processing history.
 
 ### 2. Detect input material
