@@ -23,7 +23,8 @@ adds, renames, or drops is shown as it now is.
 <!-- change:subject-scope-reach -->
 The TUI's Sessions and Preparation views show, under each computer, the
 projects that computer's daemon lists to the viewer: every entry on that
-machine's project registry the viewer's reach admits
+machine's project registry — a project, a person home, or a company home —
+whose subject the viewer's reach admits
 (`local/projects/teleclaude/spec/feature/identity/data-visibility`), under its display
 name, in registry order
 (`local/projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
@@ -46,8 +47,9 @@ sees the daemon's reason.
   folder, in registry order.
 <!-- change:subject-scope-reach -->
 - **Listing.** Per computer, the daemon's project listing for the viewer: display
-  name and folder, in registry order, of the registered projects the viewer's
-  reach admits, with the todos each shows.
+  name and folder, in registry order, of the registry entries whose subject the
+  viewer's reach admits, with the todos each shows. Live updates about an entry
+  reach only viewers whose reach admits it.
 <!-- /planned-change:subject-scope-reach -->
 - **Redraw.** Any change to a computer's listing redraws both views.
 - **New-project input.** A folder path. Missing folders are created by the
