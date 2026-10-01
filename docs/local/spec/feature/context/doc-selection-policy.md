@@ -364,7 +364,8 @@ When the session runs documentation discovery without a selector
 Then a project desk offers that project's public snippets
 And a company desk offers the public snippets of that company and of every project it owns
 And both offer the public snippets of the platform's shared documentation, the help-desk documentation among them
-And no internal snippet of any home is included
+And no internal snippet of an offered home the visitor holds no relationship to is included
+And the visitor's own tiers are read at the depth their relationships grant
 ```
 
 ### Cross-context references

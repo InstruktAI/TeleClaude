@@ -15,7 +15,9 @@ visibility: public
 
 A project help desk sits in the project and serves that project's external
 customers. They arrive through the project desk's entry link. Internal users
-never use it: they ask the platform help desk.
+are normally served elsewhere — members and admins by their own assistants,
+contributors and newcomers by the platform help desk — but anyone who follows
+this desk's entry link is served here until they enter elsewhere.
 
 The agent answers from the project's public documentation and the public
 help-desk documentation. Nothing internal to the project is available to it on

@@ -31,9 +31,12 @@ last used. A registered person who follows a desk link is served by that desk
 until they use their own assistant's link again. The platform desk has no entry
 identifier: its visitors reach it by the role they hold.
 
-A conversation that names no desk, names one that does not exist, or names one
-that is not enabled receives one fixed neutral reply and no session. The reply
-is the same in all three cases and names no organisation.
+An identifier that names no existing or enabled desk, and a message from an
+unregistered person whose conversation has no session, receive one fixed
+neutral reply and no session. The reply is the same in every case and names no
+organisation. Any other message without an identifier goes to the
+conversation's latest session, or, for a registered person without one, to the
+endpoint their role reaches.
 
 A desk agent reads documentation at the depth its visitor holds. A customer
 holds no relationship to the home, so the agent reads that desk's public
