@@ -81,10 +81,8 @@ tooling.
     documentation: the commit gate validates the batch, commit or merge
     maintenance publishes the committed result, and `telec sync`, run from a
     home's own directory, republishes that home's committed state. No path
-    publishes a working tree. Keep
-    regenerated index files with the eventual commit — they are build outputs
-    and reflect the committed truth of the docs directory. This step supplies
-    neither authoring nor commit authority.
+    publishes a working tree. This step supplies neither authoring nor commit
+    authority.
 <!-- /planned-change:home-publication-sync -->
 10. Do not edit `docs/index.yaml` directly; the internal committed-state index build owns it.
 

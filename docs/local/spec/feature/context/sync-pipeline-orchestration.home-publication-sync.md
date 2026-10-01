@@ -72,16 +72,16 @@ There is no working-tree entrypoint and no bypass.
 
 Each per-project publication phase runs only when the committed declaration
 subscribes the capability that owns it
-(`projects/teleclaude/spec/feature/config/project-capability-manifest`). Snippet index
+(`local/projects/teleclaude/spec/feature/config/project-capability-manifest`). Snippet index
 building and documentation publication run only under a subscribed `docs`;
 agent-artifact transpilation and deployment run only under a subscribed
 `agents`. A project subscribing neither runs no per-project phase.
 
 Project-setup convergence is not a publication phase; it is contracted in
-`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`.
+`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`.
 
 The behavioral contract for this gating lives in
-`projects/teleclaude/spec/feature/config/project-capability-manifest` — `UC-CFG-CAP-17` (an unsubscribed
+`local/projects/teleclaude/spec/feature/config/project-capability-manifest` — `UC-CFG-CAP-17` (an unsubscribed
 `docs` capability leaves the snippet pipeline idle) and `UC-CFG-CAP-18` (an unsubscribed `agents`
 capability leaves artifact distribution idle). Those scenarios are the single inventory for this
 behavior; this spec references them rather than restating them.
