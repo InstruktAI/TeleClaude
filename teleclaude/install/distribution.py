@@ -20,6 +20,8 @@ import yaml
 from frontmatter import Post
 from frontmatter.default_handlers import BaseHandler, YAMLHandler
 from instrukt_ai_logging import get_logger
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
 from typing_extensions import TypedDict
 
 from teleclaude import agent_artifacts
@@ -70,10 +72,17 @@ Transform = Callable[[Post], str]
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 # The agent runtime's import grammar (third-party/claude-code/instruction-files):
 # an ``@`` starting a word, followed by any path up to the first unescaped
-# whitespace; a quoted path is not an import.
+# whitespace; a quoted path is not an import. Code is told apart from prose by
+# a CommonMark lexer, so fences and code spans follow Markdown's own rules.
 _RUNTIME_IMPORT_RE = re.compile(r"(?<!\S)@(?![\"'])((?:\\ |\S)+)")
-_CODE_SPAN_RE = re.compile(r"(`+).+?\1")
-_CODE_FENCE_RE = re.compile(r"^ {0,3}(```|~~~)")
+_MARKDOWN_LEXER = MarkdownIt("commonmark")
+_FENCE_TOKEN_TYPE = "fence"
+_BLOCK_PROSE_TOKEN_TYPES = frozenset({"code_block", "html_block"})
+_INLINE_TOKEN_TYPE = "inline"
+_INLINE_CODE_TOKEN_TYPE = "code_inline"
+_INLINE_TEXT_TOKEN_TYPES = frozenset({"text", "html_inline"})
+_LINE_BREAK_TOKEN_TYPES = frozenset({"softbreak", "hardbreak"})
+_WORD_BOUNDARY = " "
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
 MCP_INDEX_DIRECTIVE_RE = re.compile(r"<!--\s*@mcp-index\s*-->")
 LOCK_SENTINEL_RE = re.compile(r"^[ \t]*<!--\s*/?LOCKED_FILE\b.*?-->[ \t]*\n?", re.MULTILINE | re.DOTALL)
@@ -1800,23 +1809,39 @@ def _strip_lock_sentinels(content: str) -> str:
     return f"{collapsed}\n" if collapsed else ""
 
 
+def _inline_prose(inline: Token) -> str:
+    """Rebuild an inline run's source text with its code spans blanked out."""
+    parts: list[str] = []
+    for child in inline.children or []:
+        if child.type in _INLINE_TEXT_TOKEN_TYPES:
+            parts.append(child.content)
+        elif child.type in _LINE_BREAK_TOKEN_TYPES:
+            parts.append(_NEWLINE)
+        elif child.type == _INLINE_CODE_TOKEN_TYPE:
+            parts.append(_WORD_BOUNDARY)
+        else:
+            parts.append(child.markup)
+    return _EMPTY_STRING.join(parts)
+
+
 def runtime_imports(text: str) -> list[str]:
     """Return every import token the agent runtime would load from ``text``.
 
     Follows the runtime's grammar (``third-party/claude-code/instruction-files``):
-    Markdown code spans and fenced code blocks are skipped.
+    Markdown code spans and fenced code blocks are skipped, with their
+    boundaries decided by a CommonMark lexer. Any other block, an indented code
+    block included, is read as prose, so an import there fails rather than
+    surviving unchecked.
     """
-    tokens: list[str] = []
-    in_fence = False
-    for line in text.splitlines():
-        if _CODE_FENCE_RE.match(line):
-            in_fence = not in_fence
+    prose: list[str] = []
+    for token in _MARKDOWN_LEXER.parse(text):
+        if token.type == _FENCE_TOKEN_TYPE:
             continue
-        if in_fence:
-            continue
-        prose = _CODE_SPAN_RE.sub(_EMPTY_STRING, line)
-        tokens.extend(match.group(0) for match in _RUNTIME_IMPORT_RE.finditer(prose))
-    return tokens
+        if token.type == _INLINE_TOKEN_TYPE:
+            prose.append(_inline_prose(token))
+        elif token.type in _BLOCK_PROSE_TOKEN_TYPES:
+            prose.append(token.content)
+    return [match.group(0) for block in prose for match in _RUNTIME_IMPORT_RE.finditer(block)]
 
 
 def assert_self_contained(text: str, *, entrypoint: Path) -> None:
