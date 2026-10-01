@@ -20,8 +20,14 @@ refs, wrong H1 type suffixes, or wrong taxonomy sections. Validation enforces
 presence of the authored `description`, correct Required-reads placement,
 inline-ref scoping, H1 type-suffix consistency, and per-type section shape —
 where the type is derived from the path, not from frontmatter.
+<!-- planned-change:tier-validation-misses-authored-scope -->
 `id`/`type`/`scope` are path-derived and are no longer authored or validated, so
 there is no id-to-path check.
+<!-- change:tier-validation-misses-authored-scope -->
+`id`/`type`/`scope`/`domain` are path-derived and never authored, so there is no
+id-to-path check. A person or company tier source that authors any of them
+receives a finding naming each authored field.
+<!-- /planned-change:tier-validation-misses-authored-scope -->
 
 Frontmatter shape is always validated: `delivered_by`, when present, must be a
 non-empty list of slug strings; absence means the snippet is current. No
@@ -245,8 +251,15 @@ And the live snippet is still validated in full
   ignored.
 - `activation_trigger` is allowed only on procedure snippets and is rejected
   on any other taxonomy type.
+<!-- planned-change:tier-validation-misses-authored-scope -->
 - `id`/`type`/`scope` are no longer authored or validated — they are derived
   from the Source's path, so no id-to-path mismatch check exists.
+<!-- change:tier-validation-misses-authored-scope -->
+- `id`/`type`/`scope`/`domain` are derived from the Source's path, so no
+  id-to-path mismatch check exists. An authored classification field is
+  reported only on a person or company tier source; a project or global source
+  that authors one is accepted and the index build ignores the authored value.
+<!-- /planned-change:tier-validation-misses-authored-scope -->
 
 ## See Also
 
