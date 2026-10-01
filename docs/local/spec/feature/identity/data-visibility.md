@@ -54,10 +54,12 @@ Command clearance — whether a caller may run a command against a target — is
 separate, up-front decision (`projects/teleclaude/spec/feature/identity/command-clearance`)
 and is not changed by this contract.
 
-Two audience facts a record states about itself sit beside reach, and reach
+Three audience facts a record states about itself sit beside reach, and reach
 neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
 reads in full (`projects/teleclaude/spec/feature/context/doc-selection-policy`). A
+person's private local documentation is readable only by that person and the
+system principal, platform administrators included (same contract). A
 notification addressed to one person reaches only that person, through their own
 channel, and appears on no shared surface, for platform reach too
 (`projects/teleclaude/design/architecture/notification-delivery`); reach governs broadcast
@@ -72,7 +74,7 @@ notifications.
 ```gherkin
 Given a person holding the platform administrator role, or an agent session whose lineage roots at the system principal
 When it lists or receives platform data on any computer
-Then every record is eligible, whatever its subject, except a notification addressed to another person
+Then every record is eligible, whatever its subject, except another person's private local documentation and a notification addressed to another person
 And records with no subject are included
 And records whose subject the showing computer does not know are included
 ```
