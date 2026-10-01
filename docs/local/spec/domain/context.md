@@ -31,10 +31,20 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Published contracts:** validated snippet and artifact packages, publication
   indexes, and context-selection results.
 
+<!-- planned-change:subject-scope-reach -->
 - **Also owns:** the resolved read scope — which documentation tiers a caller
   may reach, how deeply each is read, and the authorization of the selectors
   that name a tier explicitly. These are rules about documentation reach, so
   they resolve here rather than to the contexts that supply their inputs.
+<!-- change:subject-scope-reach -->
+- **Also owns:** the resolved read scope — which documentation tiers are
+  assembled for a caller, how deeply each is read, and the authorization of the
+  selectors that name a tier explicitly. Depth converts `identity`'s visibility
+  reach (`projects/teleclaude/spec/domain/identity`): a tier it admits is read in
+  full. Which tiers a caller may read in full is that reach, decided by
+  `identity`; assembly, public-only depth, and the `public` and person-local
+  audience facts are documentation rules and resolve here.
+<!-- /planned-change:subject-scope-reach -->
 - **Also does not own:** the relationships those rules read. Which person a call
   resolves to, which companies that person belongs to, and which projects they
   are assigned to are resolved facts belonging to `identity`; which company owns
@@ -42,9 +52,15 @@ replacement architecture is authoritative only in TeleClaudeNext.
   through their published contracts and restates neither.
 
 **Resolved read scope** — for one caller, the set of documentation tiers in
+<!-- planned-change:subject-scope-reach -->
 reach paired with the depth each is read at. Depth is one of two values: a tier
 the caller holds a declared relationship to is read in full, and a tier they
 hold none to is read at whatever its snippets declare about themselves. Depth is
+<!-- change:subject-scope-reach -->
+reach paired with the depth each is read at. Depth is one of two values: a tier
+`identity`'s visibility reach admits is read in full, and any other tier is read
+at whatever its snippets declare about themselves. Depth is
+<!-- /planned-change:subject-scope-reach -->
 a property of the caller, never of the invocation's location; the location sets
 only which home the default read set offers, and a named home is reached from
 any location.

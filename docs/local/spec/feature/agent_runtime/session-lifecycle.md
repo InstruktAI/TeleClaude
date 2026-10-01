@@ -294,13 +294,13 @@ And a named session that is not retained, or that the caller's role does not rea
 
 <!-- planned:subject-scope-reach -->
 
-#### UC-SL49: A session records the owner of the project it landed in
+#### UC-SL50: A session records the owner of the project it landed in
 
 ```
 Given a session is created in a folder whose configuration subject is a registered project
 When the session record is written
 Then it also records that project's owner as this computer resolves it at that moment: the owning company, the owning person, or no owner
-And a session whose subject is a person or company home, or that records no subject, records no owner
+And a session whose subject is a person or company home, that records no subject, or whose subject was not established records no owner
 And the session as another computer receives it carries its subject and that owner, so the receiving computer can decide who sees it
 And sessions recorded before owners were recorded receive the owner of their subject once
 ```

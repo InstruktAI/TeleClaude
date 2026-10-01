@@ -7,7 +7,11 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:subject-scope-reach -->
 Every memory observation may carry an optional `identity_key` — an opaque string that tags the observation with an identity scope at save time. At query time, callers that supply an `identity_key` see observations tagged with that key PLUS observations with no identity scope. Callers that omit `identity_key` see all observations regardless of scope. Identity semantics live inside the `memory` bounded context: the key is recorded as-supplied with no centralized identity service, and no authorization is enforced beyond the inclusion rule. The CLI does not surface an `--identity-key` option; identity scoping is reachable only through the programmatic save/search path and through the context-injection consumer used at session start.
+<!-- change:subject-scope-reach -->
+Every memory observation may carry an optional `identity_key` — an opaque string that tags the observation with an identity scope at save time. At query time, callers that supply an `identity_key` see observations tagged with that key PLUS observations with no identity scope. Callers that omit `identity_key` see every observation their reach admits, regardless of scope. Every read that serves a caller — search, listing, and timeline — returns only observations the caller's reach admits by the subject each observation records (`projects/teleclaude/spec/feature/identity/data-visibility`), applied before the result limit; `identity_key` only narrows within that. The key is memory's own narrowing, recorded as-supplied; it grants nothing. The CLI does not surface an `--identity-key` option; identity scoping is reachable only through the programmatic save/search path and through the context-injection consumer used at session start.
+<!-- /planned-change:subject-scope-reach -->
 
 ## Canonical fields
 

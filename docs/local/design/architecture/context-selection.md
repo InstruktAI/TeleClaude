@@ -134,6 +134,7 @@ snippet, not a scope of its own, and the ordering never treats it as one.
 
 ### 5. Caller-Scope Resolution
 
+<!-- planned-change:subject-scope-reach -->
 Source assembly is preceded by resolving the caller. The stage takes the
 resolved person and the resolved organizational membership from identity, and a
 project's declared owning company from configuration, and answers two things:
@@ -145,6 +146,22 @@ tiers the stage named, and the include predicate applies the depth it assigned.
 
 The stage is the only place the two inputs meet. The relationship facts stay
 owned by their declaring contexts; the reach rule stays here.
+<!-- change:subject-scope-reach -->
+Source assembly is preceded by resolving the caller. The stage takes the
+resolved person and organizational membership and the caller's visibility reach
+from identity (`projects/teleclaude/spec/domain/identity`), and a project's
+declared owning company from configuration, and answers two things: the depth
+the caller reads any tier at, and the default read set — the tiers assembled
+when the caller names none, each paired with its depth. Depth converts
+visibility reach: a tier it admits is read in full. Nothing downstream re-derives
+reach: assembly loads the tiers the stage named, and the include predicate
+applies the depth it assigned.
+
+The stage is the only place these inputs meet. Which tiers a caller may read in
+full is identity's visibility reach; which tiers are assembled, the
+public-only depth of the rest, and the person-local and `public` audience facts
+stay here.
+<!-- /planned-change:subject-scope-reach -->
 
 The projects a caller reaches are the projects the roster's resolution reports
 for them — explicit assignments and, for a company's administrative role, every
@@ -195,15 +212,15 @@ role reads its own company tier, the projects it reaches, and its own person tie
 in full, and the platform's shared documentation at public-only depth. A tier no
 role reaches is read at public-only depth.
 <!-- change:subject-scope-reach -->
-**Depth follows reach.** A person's depth on a tier is decided by identity's
-reach over that tier as a subject
+**Depth follows visibility reach.** A person's depth on a tier is decided by
+identity's visibility reach over that tier as a subject
 (`projects/teleclaude/spec/feature/identity/data-visibility`): a tier the reach
 admits is read in full. A platform administrator therefore reads every tier; a
 company administrator reads their company, every project it owns, and the
 platform's shared documentation in full; any other person reads their company
 tiers, the projects they are assigned to or own, and their own person tier in
-full, and the platform's shared documentation at public-only depth. A tier reach
-does not admit is read at public-only depth.
+full, and the platform's shared documentation at public-only depth. A tier
+visibility reach does not admit is read at public-only depth.
 <!-- /planned-change:subject-scope-reach -->
 
 **A person's local half is owner-only.** Its depth is not decided by effective
@@ -233,10 +250,16 @@ relationship to choose what to load has taken the reach decision.
 
 **Naming a tier.** One rule covers every selector that names a tier's half — a
 person, a company, or a project, published or local — and every snippet identity
+<!-- planned-change:subject-scope-reach -->
 that names one: the named half is assembled at the depth the caller's effective
 role for its tier grants — in full where that role grants it, at what its
 snippets declare public where it does not — and a caller whose effective role
 for the named tier is `admin` reads it in full. A person's local half is the one
+<!-- change:subject-scope-reach -->
+that names one: the named half is assembled at the depth the caller's
+visibility reach grants for its tier — in full where reach admits the tier, at
+what its snippets declare public where it does not. A person's local half is the one
+<!-- /planned-change:subject-scope-reach -->
 exception, decided by ownership as stated above. Naming adds the half to what is
 assembled; it grants nothing about how deeply it is read. A selector naming a
 half that yields nothing at the caller's depth returns the same empty answer as

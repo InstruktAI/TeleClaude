@@ -147,6 +147,23 @@ and preserve every unrelated key and line. Runtime and TUI consumers use this
 published contract and never parse the store or consult the process environment
 directly.
 
+<!-- planned:subject-scope-reach -->
+
+### Membership declaration changes
+
+The config context publishes, inside each daemon, a notice whenever a
+declaration that identity's reach is built from changes on this computer: the
+global person registry and its platform roles, a company's roster and its
+project assignments, a person's declaration, the project registry, and a
+project's declared owner. A change applied through `telec config` or edited in
+the backing file is noticed alike. The notice names no consumer and carries no
+interpretation; identity invalidates every reach a long-lived consumer holds on
+it, so the next listing and every later live push read the changed declaration
+(`projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
+reach per request and needs no notice.
+
+<!-- /planned:subject-scope-reach -->
+
 <!-- planned:event-origin-and-subject -->
 ### Event subjects
 

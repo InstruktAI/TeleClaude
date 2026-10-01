@@ -43,7 +43,7 @@ landed.
 Every surface that lists or pushes platform data to a principal applies that
 reach and holds no visibility rule of its own: session listings and live session
 updates, conversation history, operation status, documentation depth,
-notifications, and project listings. Filtering happens on the computer that
+notifications, project listings, and memory observations. Filtering happens on the computer that
 shows the data, never on the computer that produced it. Records received from
 another computer carry their subject and its owner, so a receiving computer that
 does not know a project can still admit the owning company's people or the owning
@@ -125,6 +125,7 @@ Examples:
   | documentation, read in full only for reached tiers       |
   | notifications, both the initial list and live pushes     |
   | the project listing and the todos shown per project      |
+  | memory observations: search, listing, and timeline       |
 ```
 
 #### UC-DV5: A page is filled with visible records only

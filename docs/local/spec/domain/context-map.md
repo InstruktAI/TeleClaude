@@ -77,8 +77,9 @@ contracts and never creates shared ownership.
   under — built from its own membership facts and `config`'s project ownership.
   The surfaces that show records to principals consume it: `agent_runtime`
   (session listings, live session updates, and operation status),
-  `session_mirrors` (history), `context` (documentation depth), the event platform's
-  notifications, and `config`'s project listing. Each consumer owns which facts
+  `session_mirrors` (history), `memory` (observation reads), `context`
+  (documentation depth), the event platform's notifications, and `config`'s
+  project listing. Each consumer owns which facts
   its records carry and its own audience facts, such as public and
   person-local documentation or addressed notifications; none adds, relaxes, or
   re-derives reach, and `identity` never decides a consumer's audience facts.

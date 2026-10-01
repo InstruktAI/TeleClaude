@@ -57,7 +57,8 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
   one whose command the caller's principal started.
 <!-- change:subject-scope-reach -->
 - Operation rows are keyed to the caller session and record the subject the operation runs in —
-  the subject of its working folder, or of the session it acts on. A caller may inspect its own,
+  the subject of its working folder, or of the session it acts on — with that subject's owner as
+  resolved when the operation is created. A caller may inspect its own,
   and any operation whose subject its reach admits
   (`projects/teleclaude/spec/feature/identity/data-visibility`). A read from another computer
   carries no session (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
@@ -142,9 +143,15 @@ sequenceDiagram
   `running` until the heartbeat window expires and then becomes `stale`, which delivers.
 - **Caller session gone at delivery:** The wake is dropped without retry and the row is
   unchanged. The outcome remains answerable by any later reader.
+<!-- planned-change:subject-scope-reach -->
 - **Caller mismatch:** A caller whose effective role for the operation's project is not
   `admin`, attempting to access an operation that is not its own, receives a 404 (not a 403) to
   avoid session ID enumeration.
+<!-- change:subject-scope-reach -->
+- **Caller mismatch:** A caller whose reach does not admit the operation's subject, attempting
+  to access an operation that is not its own, receives a 404 (not a 403) to avoid session ID
+  enumeration.
+<!-- /planned-change:subject-scope-reach -->
 - **Event fires, row not yet terminal:** Trust the row. The event is a convenience
   signal; the DB row is authoritative.
 

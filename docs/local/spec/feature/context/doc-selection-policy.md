@@ -30,9 +30,9 @@ The Selection policy is the single pure-function composition point for every
 filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
 baseline-manifest anchoring, target-slug filtering, and the tier selectors all
-flow through one place. Visibility is resolved against the caller's reach for each
-tier (`projects/teleclaude/spec/feature/identity/data-visibility`): a tier the
-caller's reach admits is read in full — every tier for a platform administrator,
+flow through one place. Visibility is resolved against the caller's visibility reach
+for each tier (`projects/teleclaude/spec/feature/identity/data-visibility`): a
+tier that reach admits is read in full — every tier for a platform administrator,
 and for a company administrator also the platform's shared documentation — and
 the shared documentation is otherwise read at public-only depth; where reach does
 not admit a tier, the snippet's own public-or-internal declaration is the only
@@ -452,8 +452,13 @@ Then the result is identical to the same request without --scope
 
 - **identity** — the resolved caller: a person with their platform role and
   the company relationships and project reach that resolution reports, a system
+<!-- planned-change:subject-scope-reach -->
   principal, or no identity, received from the command edge, and the person's
   effective role for each tier, which identity answers. Read depth is derived
+<!-- change:subject-scope-reach -->
+  principal, or no identity, received from the command edge, and the caller's
+  visibility reach, which identity answers. Read depth is derived
+<!-- /planned-change:subject-scope-reach -->
   from these resolved answers; this policy owns neither the resolution nor the
   declarations beneath it.
 - **config** — supplies the registered publishers' `business.publishes`
