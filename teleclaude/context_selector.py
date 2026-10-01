@@ -702,7 +702,7 @@ def _apply_baseline_filter(
     # without a manifest contributes nothing; an existing manifest that cannot
     # be read fails the selection.
     for domain in sorted(valid_domains()):
-        domain_manifest = global_root / domain / _BASELINE_MANIFEST_FILENAME
+        domain_manifest = GLOBAL_DOCS_DIR / domain / _BASELINE_MANIFEST_FILENAME
         if not domain_manifest.exists():
             continue
         baseline_ids.update(
