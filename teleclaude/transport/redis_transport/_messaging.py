@@ -20,6 +20,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import command_handlers
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
@@ -74,6 +75,9 @@ _STATUS_FIELD = "status"
 _ERROR_FIELD = "error"
 _DATA_FIELD = "data"
 _SUCCESS_STATUS = "success"
+_ERROR_STATUS = "error"
+_EXPORT_REFUSED_EVENT = "conversation_export_refused"
+_EXPORT_REFUSED_DETAIL = "conversation sessions are exported only to another computer's daemon"
 _LIST_PROJECTS_COMMAND = "list_projects"
 _LIST_PROJECTS_WITH_TODOS_COMMAND = "list_projects_with_todos"
 _GET_SESSION_FINAL_OUTPUT_COMMAND = "get_session_final_output"
@@ -364,6 +368,16 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             if cmd_name == EXPORT_CONVERSATION_SESSIONS_COMMAND:
+                # Conversation keys, session ids and endpoints are this computer's private
+                # records: only another daemon, forwarding on its own account, may read them.
+                if parsed.caller_principal != SYSTEM_DAEMON_PRINCIPAL:
+                    logger.warning(_EXPORT_REFUSED_EVENT, caller_principal=parsed.caller_principal)
+                    refusal: JsonDict = {
+                        _STATUS_FIELD: _ERROR_STATUS,
+                        _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: _EXPORT_REFUSED_DETAIL},
+                    }
+                    await self.send_response(message_id, json.dumps(refusal))
+                    return
                 conversation = (
                     ConversationRef(
                         origin=InputOrigin(cmd_args[0]),
