@@ -38,8 +38,11 @@ other permission; granting stays with a person or a managed device profile.
   sign every launcher. It is identified by its fingerprint, never by its name:
   another certificate carrying the same name is not this authority.
 - **Signing store.** The keychain that holds the signing authority and nothing
-  the operator uses for anything else. It is unlocked for the duration of a
-  signing run and locks again on its own afterwards.
+  the operator uses for anything else. A signing run unlocks it for a bounded
+  window that covers that run, after which it locks again on its own.
+- **Step deadlines.** Every keychain operation and every signature in a signing
+  run carries its own deadline, independent of the store's unlock window. A
+  step that reaches its deadline fails the run.
 - **Unlock secret.** The machine-local secret that opens the signing store. It
   is readable by installation and maintenance after logout or reboot, is never
   stored inside the store it opens, and never appears in output, logs or a
