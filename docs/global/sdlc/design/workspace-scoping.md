@@ -184,9 +184,12 @@ answer from session history.
    formats `quality_paths`, then runs `git commit`, and git runs
    `.git/hooks/pre-commit`. The hook applies the partial-staging guard, then
    lints the staged file set, the same way for every route into a commit. It
-   checks formatting and never rewrites a file. Validators that resolve across
-   files read the staged content against the rest of each owning home as
-   committed. No framework stash, no working-tree reset outside the declared set.
+   checks formatting and never rewrites a file, and selects checks by each
+   staged path's owning home. The documentation and agent-artifact validators
+   read the staged content against the rest of each owning home as committed;
+   the native leg runs on disk over the staged files, which the partial-staging
+   guard makes identical to what is staged. No framework stash, no working-tree
+   reset outside the declared set.
 <!-- /planned-change:commit-gate-in-hook -->
 
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
@@ -318,9 +321,10 @@ raw git commit (partial-staging backstop)
 git commit (raw, or invoked by telec code commit)
   → .git/hooks/pre-commit → telec code pre-commit
   → partial-staging check: exits non-zero if staged + unstaged overlap detected
-  → lint the staged file set with the checks the acting tier carries
-    (formatting checked, never rewritten; cross-file validators read the
-    staged content against the rest of each owning home as committed)
+  → lint the staged file set with the checks each path's owning home carries
+    (formatting checked, never rewritten; documentation and agent-artifact
+    validators read the staged content against the rest of each owning home
+    as committed; the native leg runs on disk over the staged files)
   → exits non-zero on any finding; git produces no commit
 ```
 <!-- /planned-change:commit-gate-in-hook -->

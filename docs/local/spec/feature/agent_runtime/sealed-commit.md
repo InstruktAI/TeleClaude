@@ -365,9 +365,10 @@ tier carries, read from that tier's published answers
 <!-- change:commit-gate-in-hook -->
 ### Commit-time gates — the pre-commit hook, no framework stash
 
-The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs the gates
-the acting invocation context root's declared tier carries, for every route into
-a commit, read from that tier's published answers
+The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs, for every
+route into a commit, the gates that each staged path's owning home's declared
+tier carries, never selected by the directory the commit started from, read
+from that tier's published answers
 <!-- /planned-change:commit-gate-in-hook -->
 (`projects/teleclaude/spec/feature/config/tier-permissions`). Whether the gate runs follows
 the tier: a tier carrying project subscriptions, or whose material participates
@@ -387,9 +388,10 @@ partial-staging check as a backstop for raw `git commit` invocations.
 <!-- change:commit-gate-in-hook -->
 runs. Both run against the commit's staged file set, after the partial-staging
 guard, in that order where both apply. Formatting is checked and never
-rewritten. Validators that resolve across files read the staged content against
-the rest of each owning home as committed, never against another session's
-uncommitted files. A tier participating in documentation that carries no
+rewritten. The documentation and agent-artifact validators read the staged
+content against the rest of each owning home as committed, never against
+another session's uncommitted files; the native leg runs on disk over the staged
+files, which the partial-staging guard makes identical to what is staged. A tier participating in documentation that carries no
 project subscriptions is gated, runs the guardrails lane, and requires no native
 toolchain contract at its root — by no separate mechanism. `telec code commit`
 formats `quality_paths` (the commit pathspec filtered to existing files) and

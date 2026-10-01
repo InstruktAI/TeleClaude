@@ -44,9 +44,9 @@ to existing files) before `git commit --no-verify`.
 <!-- change:commit-gate-in-hook -->
 `telec code commit` formats `quality_paths` (the commit pathspec filtered to
 existing files), then runs `git commit`, which runs the installed
-`.git/hooks/pre-commit`. The hook applies the gates carried by the acting
-invocation context's declared tier to the commit's staged file set, so every
-route into a commit, a raw `git commit` included, passes the same gate.
+`.git/hooks/pre-commit`. The hook applies to each staged path the gates its
+owning home's declared tier carries, so every route into a commit, a raw
+`git commit` included, passes the same gate.
 <!-- /planned-change:commit-gate-in-hook -->
 
 **Whether** the gate runs follows the tier: a tier carrying project
@@ -69,10 +69,12 @@ guard that performs only a partial-staging check as a backstop for raw
 `git commit` invocations.
 <!-- change:commit-gate-in-hook -->
 No framework stash, no working-tree reset
-outside the pathspec. The hook applies the partial-staging guard first, then
-grades the staged files against the rest of each owning home as committed,
-never against another session's uncommitted files. It checks formatting and
-never rewrites a file.
+outside the pathspec. The hook applies the partial-staging guard first. The
+documentation and agent-artifact validators then grade the staged files against
+the rest of each owning home as committed, never against another session's
+uncommitted files; the native toolchain leg runs on disk over the staged files,
+which the partial-staging guard makes identical to what is staged. The hook
+checks formatting and never rewrites a file.
 <!-- /planned-change:commit-gate-in-hook -->
 
 The git wrapper redirects raw `git commit` (and `git add`) to this command
@@ -287,8 +289,9 @@ todo worktree, a successful commit also publishes the todo's branch to
    run against `quality_paths` (the commit pathspec filtered to existing files)
    before `git commit --no-verify`, in that order where both apply. A tier that
 <!-- change:commit-gate-in-hook -->
-4. **The pre-commit hook runs the gates the acting tier carries.**
-   Whether the gate runs follows the acting invocation context's declared tier:
+4. **The pre-commit hook runs the gates each staged path's owning home carries.**
+   Whether the gate runs follows the declared tier of each staged path's owning
+   home, never the directory the commit started from:
    a tier carrying project subscriptions, or whose material participates in
    documentation, is gated; a tier carrying neither is not, and nothing is
    applied in its place. Which checks run follows what that tier carries, never
@@ -296,9 +299,10 @@ todo worktree, a successful commit also publishes the todo's branch to
    `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
    run from `.git/hooks/pre-commit` (`telec code pre-commit`) against the
    commit's staged file set, after the partial-staging guard, in that order
-   where both apply. Formatting is checked, never rewritten; validators that
-   resolve across files read the staged content against the rest of each owning
-   home as committed. `telec code commit` formats `quality_paths` (the commit
+   where both apply. Formatting is checked, never rewritten. The documentation
+   and agent-artifact validators read the staged content against the rest of
+   each owning home as committed; the native leg runs on disk over the staged
+   files. `telec code commit` formats `quality_paths` (the commit
    pathspec filtered to existing files) before staging and passes no
    `--no-verify`, so its commits pass the same hook as a raw `git commit`. A tier that
 <!-- /planned-change:commit-gate-in-hook -->
