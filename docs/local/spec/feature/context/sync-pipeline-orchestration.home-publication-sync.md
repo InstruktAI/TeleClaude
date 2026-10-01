@@ -24,8 +24,8 @@ Two entry points run the same routine:
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
 - **`telec sync`** — an operator command that publishes the home at the
-  invocation directory and every nested home beneath it in the committed tree,
-  whatever its kind. It runs only when the invocation directory itself holds a
+  invocation directory and every nested home beneath it in the committed tree:
+  in the global home, its company and person homes. It runs only when the invocation directory itself holds a
   `teleclaude.yml`; it never resolves a home from a parent directory, and
   anywhere else it refuses and names that requirement. It is an agent command,
   reached by every agent role except the worker, and admits members and admins
