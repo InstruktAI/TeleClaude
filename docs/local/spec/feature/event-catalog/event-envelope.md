@@ -159,6 +159,16 @@ Then an agent consuming platform events sees that the event's subject is unknown
 And the event states neither no subject nor a guessed home
 ```
 
+## Known caveats
+
+- **The subject is as truthful as the declarations it is resolved from.** None
+  can be relied on while the declaration governing the act is valid, which the
+  commit gate guarantees wherever its hooks are installed
+  (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
+  An invalid declaration is outside this contract: in a registered project that
+  carries no commit-gate hooks, or in a working copy broken mid-edit, an event
+  about that project may state none.
+
 ## See Also
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why events state origin and subject as facts about themselves, why access follows the subject, why a project subject carries its owner, and why emission validates nothing.
