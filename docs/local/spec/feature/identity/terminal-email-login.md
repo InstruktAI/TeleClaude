@@ -109,7 +109,6 @@ And the operator is told that login is required before the command can proceed
 
 #### UC-TEL7: A process with no terminal presents no human identity
 
-<!-- planned-change:headless-person-binding -->
 ```
 Given a process with no detectable TTY (no ttyname on fd 0/1/2, no SSH_TTY, and no ancestor process with a terminal)
 When it resolves its caller
@@ -117,16 +116,6 @@ Then the session-auth reader returns no email
 And the caller resolves to no person
 And this holds for the daemon and for every process it spawns with no terminal
 ```
-<!-- change:headless-person-binding -->
-```
-Given a process with no detectable TTY (no ttyname on fd 0/1/2, no SSH_TTY, and no ancestor process with a terminal)
-And no person-launch binding
-When it resolves its caller
-Then the session-auth reader returns no email
-And the caller resolves to no person
-And this holds for the daemon and for every process it spawns with no terminal
-```
-<!-- /planned-change:headless-person-binding -->
 
 
 ```
@@ -177,11 +166,7 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 - A process with no terminal of its own borrows the terminal of its nearest terminal-bearing ancestor. An agent CLI started from a terminal runs its tool shells detached from that terminal, yet it acts for the person who started it, so it inherits that terminal's login and loses it when the terminal closes. The daemon itself is rooted in the service manager and has no terminal-bearing ancestor. A session the daemon spawns runs in a tmux pane, which is a terminal, but no process inside a session reads a terminal login: the session carries its identity, so the pane's terminal never answers for it (UC-TEL8). A process that the daemon's own launcher started from a terminal in the foreground would inherit that operator's login; that is the operator at their own keyboard.
 - A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation token and is treated as unauthenticated.
 - The terminal-device allocation token is the recycling discriminator, and it is platform-specific because each platform keeps a different attribute stable for exactly one allocation. On macOS it is the device node's inode: devfs issues a fresh inode each time a pty is allocated, while the node's ctime moves on every write to the terminal and so cannot identify an allocation. On Linux it is the device node's ctime: devpts derives the inode from the pty index, so a reused terminal keeps it, while terminal I/O leaves ctime untouched. On Linux, anything that touches the device node's metadata — `mesg y`, for instance — moves ctime; the cost is one re-login on a terminal that is still open. The alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
-<!-- planned-change:headless-person-binding -->
 - A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
-<!-- change:headless-person-binding -->
-- A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no terminal login. It acts as a person only by launching its program through the person-launch door (`projects/teleclaude/spec/feature/identity/launched-program-identity`), which binds a registered person to that program without any terminal.
-<!-- /planned-change:headless-person-binding -->
 
 - A document that records no device allocation token cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation token instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
 - Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the client tries to match it against `people`.

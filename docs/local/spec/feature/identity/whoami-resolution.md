@@ -14,10 +14,6 @@ visibility: 'public'
 
 `telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI answers it in its own process from the identity context's shared caller resolution (`projects/teleclaude/spec/identity-and-auth` §6) — the same resolution every caller-dependent command applies — and sends no request to the daemon. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role the session's record resolves to, and never reads the terminal login; a document that is present but identifies no open session on this computer is reported as carrying no usable identity. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path. The Role is the one that authorizes the caller: a person's effective role at the scope of the project the command runs in (`projects/teleclaude/design/architecture/scoped-roles`), or a system caller's system role as derived from its session record. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
 
-<!-- planned:headless-person-binding -->
-A program launched through the person-launch door, outside any session, is answered for the person it is bound to: whoami prints that person's Email and Role and states that the identity comes from a headless binding, in place of a TTY and a login document (`projects/teleclaude/spec/feature/identity/launched-program-identity`). The terminal's login is not printed, even when the program was started from a logged-in terminal.
-
-<!-- /planned:headless-person-binding -->
 The identity context's whoami capability answers the same question for clients of the daemon's API. It answers from the identity the request carries. The daemon has no invocation directory, so it reads a person's Role for the project of the caller's session, and at platform scope for a caller with no session (`projects/teleclaude/design/architecture/scoped-roles`). Its answer therefore agrees with the CLI's for a session invoking inside its own project and for a terminal outside any registered project.
 
 Inside a session it also prints the session's company context, which is how a tool running in the session — in any language — reads it. The CLI resolves that context in its own process from the session record the identity document's session id names, together with the person's company memberships (`projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`); the document itself carries no company fact. The Principal line already tells human-directed work (`human:`) from system-principal work (`system:`), so the company context adds one line: the resolved company, `none` when the session has no company, or `ambiguous` with the eligible companies and how to select one. Outside a session there is no session company, and no Company line is printed.
@@ -53,34 +49,12 @@ Then the CLI prints that no identity is established for the current TTY, with th
 
 #### UC-WHO4: No terminal and no session is an error
 
-<!-- planned-change:headless-person-binding -->
 ```
 Given an environment outside any session with no detectable TTY
 When the operator runs `telec auth whoami`
 Then the CLI prints `Error: no terminal session detected (TTY unavailable).` and exits with a failure status
 ```
-<!-- change:headless-person-binding -->
-```
-Given an environment outside any session with no detectable TTY and no person-launch binding
-When the operator runs `telec auth whoami`
-Then the CLI prints `Error: no terminal session detected (TTY unavailable).` and exits with a failure status
-```
-<!-- /planned-change:headless-person-binding -->
 
-<!-- planned:headless-person-binding -->
-#### UC-WHO-HEADLESS: A program launched as a person reports its person and its headless binding
-
-```gherkin
-Given a program started with no terminal through the person-launch door for `ada@example.com`
-And the `people` registry holds `ada@example.com` with no role grant where the program runs
-When the program runs `telec auth whoami`
-Then it prints `Email: ada@example.com` and `Role: customer`
-And it states that the identity comes from a headless binding
-And it prints no TTY and no session auth file
-And it exits with success
-```
-
-<!-- /planned:headless-person-binding -->
 
 #### UC-WHO-SESSION-CARRIED: Inside a session, whoami reports the identity the session carries
 
