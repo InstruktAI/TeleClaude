@@ -156,28 +156,26 @@ normal cases plus the anomaly:
 - **Case 1 — `AGENTS.master.md` exists.** The existing artifact source is
   authoritative. The enrichment writer does not modify it.
 - **Case 2 — Hand-authored `AGENTS.md` exists, no master.** The enrichment
-
-writer promotes it: the existing `AGENTS.md` content is moved into a new
-`AGENTS.master.md`. Subsequent artifact distribution regenerates `AGENTS.md`
-(possibly with baseline additions) and writes the `CLAUDE.md` shim. By
-convention `CLAUDE.md` is a shim or absent in this case.
+  writer promotes it: the existing `AGENTS.md` content is moved into a new
+  `AGENTS.master.md`. Subsequent artifact distribution regenerates `AGENTS.md`
+  (possibly with baseline additions) and nothing else. A `CLAUDE.md` in this
+  case is absent or only imports `AGENTS.md`; distribution deletes it only when
+  it is untracked and holds nothing but that import.
 
 - **Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** The
   enrichment writer does not create a master. A substantive standalone
   `CLAUDE.md` is a deliberate Claude-Code-only signal. Promotion is possible
   only as an explicit human-driven step.
 - **Case 4 (greenfield) — none of the above.** The enrichment writer generates
+  a minimal project-specific `AGENTS.master.md` (tech stack, key directories,
+  primary conventions). Normal artifact inflation then produces `AGENTS.md` at
+  sync time.
 
-a minimal project-specific `AGENTS.master.md` (tech stack, key directories,
-primary conventions). Normal artifact inflation then produces `AGENTS.md`
-and the `CLAUDE.md` shim at sync time.
-
-**Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
-
-contradicts the shim convention. The enrichment writer halts and flags the
-conflict for human inspection. It does not auto-promote: a subsequent
-distribution run would overwrite `CLAUDE.md` with the shim and silently destroy
-its content.
+**Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** Claude
+Code loads both files into the same session, so two authored instruction
+sources compete. The enrichment writer halts and flags the conflict for human
+inspection. It does not auto-promote: which file is authoritative, and whether
+the `CLAUDE.md` content moves into the master, is the human's call.
 
 ### Validation Contract
 

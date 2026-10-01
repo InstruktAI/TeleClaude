@@ -6,6 +6,7 @@ import subprocess
 from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
 
@@ -20,6 +21,15 @@ from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier
 _SNIPPETS_DIR = "snippets"
 #: A tier's published half; its deployed address maps back here.
 _TIER_PUBLISHED_DOCS = Path("docs") / "global"
+
+
+class DocsResolutionMode(StrEnum):
+    """Where a deployed global-doc address is read from during one expansion."""
+
+    #: A registered publisher's source tree (its working checkout).
+    SOURCE = "source"
+    #: The deployed corpus, which holds only activated contributions.
+    DEPLOYED = "deployed"
 
 
 class DocsPublisherResolutionError(ValueError):
@@ -42,6 +52,7 @@ class PublisherRegistry(NamedTuple):
 
 
 _PUBLISHER_REGISTRY: ContextVar[PublisherRegistry | None] = ContextVar("publisher_registry", default=None)
+_RESOLUTION_MODE: ContextVar[DocsResolutionMode] = ContextVar("docs_resolution_mode", default=DocsResolutionMode.SOURCE)
 
 
 def project_slug(project_root: Path) -> str:
@@ -145,6 +156,21 @@ def publisher_resolution(
         _PUBLISHER_REGISTRY.reset(token)
 
 
+@contextmanager
+def deployed_resolution() -> Generator[None, None, None]:
+    """Resolve every deployed global-doc address to the deployed corpus for one expansion.
+
+    Only a tier's own published address, read from that tier's root, still
+    maps into the tier's source; the mode is ambient, so transitive reads
+    resolve the same way.
+    """
+    token = _RESOLUTION_MODE.set(DocsResolutionMode.DEPLOYED)
+    try:
+        yield
+    finally:
+        _RESOLUTION_MODE.reset(token)
+
+
 def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     """Map a deployed global-doc path to its registered publisher source.
 
@@ -160,6 +186,8 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     home; a validated tier snippet's Required reads name only its own tier.
     Any other case, including a reference into a different tier, is left
     unresolved so the caller's existence check reports it.
+
+    Under ``deployed_resolution`` every other address stays deployed.
     """
     expanded_candidate = candidate.expanduser()
     relative_path = None
@@ -177,6 +205,8 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     if root_name in (COMPANIES_ROOT.name, PEOPLE_DIR.name):
         if tier_root_kind(project_root) is not None and tail and tail[0] == project_root.name:
             return project_root.parent.parent / root_name / tail[0] / _TIER_PUBLISHED_DOCS / Path(*tail[1:])
+        return candidate
+    if _RESOLUTION_MODE.get() is DocsResolutionMode.DEPLOYED:
         return candidate
     registry = _PUBLISHER_REGISTRY.get()
     if registry is None:

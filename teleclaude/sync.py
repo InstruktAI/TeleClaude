@@ -7,17 +7,30 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
+from teleclaude.agent_artifacts import is_mother_project
+from teleclaude.artifact_ownership import retired_pointer_candidate, retract_retired_pointers
 from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.docs_index import build_all_indexes, build_tier_indexes, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
-from teleclaude.install.distribution import committed_retired_outputs, distribute_committed, distribute_committed_tiers
+from teleclaude.install.distribution import (
+    HomeEntrypoint,
+    HomeMasterInflationError,
+    committed_retired_outputs,
+    distribute_committed,
+    distribute_committed_tiers,
+    home_masters,
+    inflate_home_entrypoint,
+    inflate_home_entrypoints,
+)
 from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.resource_validation import (
     _error,
@@ -47,6 +60,11 @@ _STATE_DIRECTORY = ".teleclaude"
 _PUBLICATION_DIRECTORY = "publication"
 _PUBLISHED_GENERATION_FILENAME = "published_generation"
 _UNFINISHED_PUBLICATION_FILENAME = "unfinished_publication"
+#: The platform home's generation whose entrypoints home publication compiled.
+_ENTRYPOINTS_GENERATION_FILENAME = "entrypoints_generation"
+_HOME_MASTER_FINDING = "home_master_uncompilable: {master} ({cause})"
+_HOME_REFRESH_SKIPPED_EVENT = "home_entrypoint_refresh_skipped"
+_HOME_REFRESH_FAILED_EVENT = "home_entrypoint_refresh_failed"
 _PUBLICATION_SUPERSEDED = (
     "Publication superseded: a newer generation is already published; deployed output is unchanged."
 )
@@ -57,6 +75,9 @@ _PUBLICATION_GENERATION_UNSEEDED = (
     "Publication refused: no published generation is recorded; publish the current tip to seed it."
 )
 _PUBLICATION_UNRESOLVABLE_STATE = "Publication refused: could not resolve ancestry between {candidate} and {other}."
+_UTF8 = "utf-8"
+
+logger = get_logger(__name__)
 
 
 class PublicationOutcome(StrEnum):
@@ -80,6 +101,14 @@ class PublicationReason(StrEnum):
     VALIDATION_FAILED = "validation_failed"
     LEASE_UNAVAILABLE = "lease_unavailable"
     PUBLICATION_ERROR = "publication_error"
+    HOME_REFRESH_FAILED = "home_refresh_failed"
+
+
+class _HomeRefreshSkipReason(StrEnum):
+    """Why a Mother publication left the platform home's entrypoints as they are."""
+
+    NO_PUBLISHED_GENERATION = "no_published_generation"
+    GENERATION_NOT_COMPILED = "generation_not_compiled"
 
 
 @dataclass(frozen=True)
@@ -232,11 +261,27 @@ def _execute_publication(
                 tier_findings = _collect_tier_source_findings(snapshot_root)
                 if tier_findings:
                     return validation_failed()
+                try:
+                    home_entrypoints = inflate_home_entrypoints(snapshot_root)
+                except HomeMasterInflationError as exc:
+                    print(
+                        _HOME_MASTER_FINDING.format(
+                            master=exc.master.relative_to(snapshot_root).as_posix(), cause=exc.cause
+                        )
+                    )
+                    return validation_failed()
                 _write_publication_id(unfinished_path, after_sha)
                 written_tiers = build_tier_indexes(snapshot_root)
                 tier_index_outputs = _reroot_written_outputs(written_tiers, snapshot_root, canonical_root)
                 _install_canonical_files(snapshot_root, canonical_root, tier_index_outputs)
                 distribute_committed_tiers(snapshot_root)
+                _install_home_entrypoints(
+                    snapshot_root,
+                    canonical_root,
+                    home_entrypoints.entrypoints,
+                    retired_pointers=home_entrypoints.retired_pointers,
+                )
+                _write_publication_id(directory / _ENTRYPOINTS_GENERATION_FILENAME, after_sha)
                 return published()
             return PublicationResult(
                 PublicationOutcome.PUBLISHED, PublicationReason.PUBLISHED, published_generation, unfinished_publication
@@ -248,7 +293,7 @@ def _execute_publication(
         written = build_all_indexes(snapshot_root) if capabilities.docs else []
         index_outputs = _reroot_written_outputs(written, snapshot_root, canonical_root)
         _install_canonical_files(snapshot_root, canonical_root, index_outputs)
-        distribution_outputs = distribute_committed(
+        distribution = distribute_committed(
             snapshot_root,
             canonical_root,
             agents_enabled=capabilities.agents,
@@ -259,16 +304,92 @@ def _execute_publication(
             if capabilities.docs
             else []
         )
-        if distribution_outputs or retired_outputs:
+        if distribution.outputs or retired_outputs:
             _install_canonical_files(
                 snapshot_root,
                 canonical_root,
                 [
-                    *((source, source.read_bytes()) for source in distribution_outputs),
+                    *((source, source.read_bytes()) for source in distribution.outputs),
                     *((retired, None) for retired in retired_outputs),
                 ],
             )
-        return published()
+        retract_retired_pointers(
+            snapshot_root=snapshot_root, canonical_root=canonical_root, candidates=distribution.retired_pointers
+        )
+        result = published()
+        if capabilities.docs and is_mother_project(snapshot_root) and refresh_home_entrypoints(TELECLAUDE_HOME):
+            return PublicationResult(
+                PublicationOutcome.FAILED,
+                PublicationReason.HOME_REFRESH_FAILED,
+                published_generation,
+                unfinished_publication,
+            )
+        return result
+
+
+def refresh_home_entrypoints(home: Path) -> list[Path]:
+    """Recompile a platform home's entrypoints from its published generation; return the masters that failed.
+
+    Runs inside the Mother publication's docs lease, after the Mother's own
+    deployment. Only a generation whose entrypoints home publication compiled
+    is refreshed; otherwise nothing is owed and the refresh is skipped. Each
+    master inflates independently: a failing master keeps its previous
+    entrypoint and is reported, every other one is installed.
+    """
+    published_generation, _ = _read_publication_state(home)
+    if published_generation is None:
+        logger.info(_HOME_REFRESH_SKIPPED_EVENT, home=str(home), reason=_HomeRefreshSkipReason.NO_PUBLISHED_GENERATION)
+        return []
+    compiled_generation = _read_publication_id(_publication_directory(home) / _ENTRYPOINTS_GENERATION_FILENAME)
+    if compiled_generation != published_generation:
+        logger.info(
+            _HOME_REFRESH_SKIPPED_EVENT,
+            home=str(home),
+            reason=_HomeRefreshSkipReason.GENERATION_NOT_COMPILED,
+            published_generation=published_generation,
+            entrypoints_generation=compiled_generation,
+        )
+        return []
+    failed: list[Path] = []
+    with _recorded_snapshot(home, published_generation) as snapshot_root:
+        masters = home_masters(snapshot_root)
+        entrypoints: list[HomeEntrypoint] = []
+        for master, root in masters:
+            try:
+                entrypoints.append(inflate_home_entrypoint(master, project_root=root, observation=None))
+            except HomeMasterInflationError as exc:
+                relative = master.relative_to(snapshot_root)
+                logger.error(
+                    _HOME_REFRESH_FAILED_EVENT,
+                    home=str(home),
+                    published_generation=published_generation,
+                    master=relative.as_posix(),
+                    cause=str(exc.cause),
+                )
+                failed.append(relative)
+        _install_home_entrypoints(
+            snapshot_root,
+            home,
+            entrypoints,
+            retired_pointers=[retired_pointer_candidate(master.parent) for master, _ in masters],
+        )
+    return failed
+
+
+def _install_home_entrypoints(
+    snapshot_root: Path,
+    canonical_root: Path,
+    entrypoints: Iterable[HomeEntrypoint],
+    *,
+    retired_pointers: Iterable[Path],
+) -> None:
+    """Install compiled home entrypoints, then retract retired pointers beside their masters."""
+    _install_canonical_files(
+        snapshot_root,
+        canonical_root,
+        [(entrypoint.output, entrypoint.text.encode(_UTF8)) for entrypoint in entrypoints],
+    )
+    retract_retired_pointers(snapshot_root=snapshot_root, canonical_root=canonical_root, candidates=retired_pointers)
 
 
 def _is_platform_home(canonical_root: Path) -> bool:

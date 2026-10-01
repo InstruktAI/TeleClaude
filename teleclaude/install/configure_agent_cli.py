@@ -13,7 +13,7 @@ import re
 import shlex
 import shutil
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -136,6 +136,11 @@ RECEIVER_AGY_FILE = "receiver_agy.py"
 MATCHER_KEY = "matcher"
 MATCHER_ALL = "*"
 HOOKS_KEY = "hooks"
+_CLAUDE_MD_EXCLUDES_KEY = "claudeMdExcludes"
+#: Instruction-file exclusions TeleClaude once deployed into Claude's user
+#: settings. Install retracts exactly these values; any other entry is the
+#: user's own and stays.
+_RETIRED_CLAUDE_MD_EXCLUDES: tuple[str, ...] = ("*/**/AGENTS.md",)
 _RECEIVER_SCRIPT_PARTS = ("teleclaude", "hooks", "receiver", "__main__.py")
 HOOK_TYPE_KEY = "type"
 HOOK_COMMAND_KEY = "command"
@@ -500,12 +505,32 @@ def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str])
     return pruned
 
 
+def _prune_retired_claude_md_excludes(settings: dict[str, object]) -> dict[str, object]:
+    """Drop the instruction-file exclusions TeleClaude itself deployed; keep every other entry.
+
+    The settings merge is additive, so an exclusion TeleClaude no longer ships
+    would otherwise stay deployed and suppress every generated ``AGENTS.md``.
+    An opaque (non-list) value is the user's and is left as it is.
+    """
+    excludes = settings.get(_CLAUDE_MD_EXCLUDES_KEY)
+    if not isinstance(excludes, list):
+        return settings
+    kept = [entry for entry in excludes if entry not in _RETIRED_CLAUDE_MD_EXCLUDES]
+    pruned = dict(settings)
+    if kept:
+        pruned[_CLAUDE_MD_EXCLUDES_KEY] = kept
+    else:
+        del pruned[_CLAUDE_MD_EXCLUDES_KEY]
+    return pruned
+
+
 def _configure_json_agent_hooks(
     repo_root: Path,
     agent: str,
     settings_path: Path,
     hook_map_builder: Any,
     enable_hooks_flag: bool = False,
+    prune_retired_settings: Callable[[dict[str, object]], dict[str, object]] | None = None,
 ) -> None:
     """Configure hooks for JSON-based agent CLIs (Claude, Gemini).
 
@@ -515,6 +540,8 @@ def _configure_json_agent_hooks(
         settings_path: Path to settings.json
         hook_map_builder: Function that returns hook map
         enable_hooks_flag: If True, set tools.enableHooks = True (for Gemini)
+        prune_retired_settings: Removes settings values TeleClaude once deployed
+            and no longer ships, before the static overrides merge
     """
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
@@ -552,6 +579,9 @@ def _configure_json_agent_hooks(
         # Normalize to wildcard to enable all configured hook matchers.
         hooks_cfg["enabled"] = [MATCHER_ALL]
         settings["hooks"] = hooks_cfg
+
+    if prune_retired_settings is not None:
+        settings = prune_retired_settings(settings)
 
     # Apply static settings overrides from settings/{agent}.json. Hook blocks are
     # TeleClaude-owned and compose with the generated set; routing them through the
@@ -621,6 +651,7 @@ def configure_claude(repo_root: Path) -> None:
         "claude",
         settings_path,
         _claude_hook_map,
+        prune_retired_settings=_prune_retired_claude_md_excludes,
     )
     _ensure_json_mcp_servers(
         Path.home() / ".claude.json",

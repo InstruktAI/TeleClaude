@@ -16,6 +16,7 @@ visibility: 'public'
 - Every skill entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
 - The mother alone owns the skill catalog master at `agents/global/skills/AGENTS.master.md` and every global skill folder beside it. A side project's global skill folders and catalog master are refused at validation; a portable skill a side project authors is contributed to the mother, which is the curation step.
 - The Mother-owned skill catalog master is a thin orientation wrapper for the catalog directory. It carries no index and no executable directives; the catalog listing is rendered on demand by `general/procedure/skill-use`.
+- This repository owns the agent runtime settings TeleClaude deploys, and with them the Claude Code project-instructions setting that makes every generated `AGENTS.md` load beside any `CLAUDE.md` in its directory or above. That setting is user-scope only, so the deployed Claude user settings are its one carrier; no repository and no home reaches Claude Code's `AGENTS.md` reading through a generated `CLAUDE.md`.
 - Every repository carries `agents/{global,local}/{commands,skills}`. This repository, as the mother, fills `agents/global/` in full; a side project fills `agents/local/` freely and `agents/global/commands/<domain>/` only for domains it publishes. `.agents/` is a delivery location, never a source, under the separation the global policy states. The global master and the addenda are not artifact kinds and are not tiered: they stay at the artifact root as `agents/AGENTS.global.md` and `agents/<AGENT>.addendum.md`.
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts. Its baseline is the `general` domain's generated bundle, named as a Required read like any other domain bundle; the general baseline index and the general activatable procedures reach every global agent configuration through that bundle.
 
@@ -33,6 +34,7 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 
 - A single mother-owned catalog definition prevents split-brain global instructions, and routing every global skill through the mother's own folders makes the catalog the one curation surface rather than a merge of publishers.
 - Rendering the catalog after assembling its links lets the human-authored source describe the real deployed catalog without preloading that catalog into every agent baseline.
+- Whether a runtime reads the generated entrypoint at all is decided by that runtime's own settings. Carrying the deciding setting in the settings this repository deploys keeps one entrypoint per directory working under every ancestor layout, without editing files the human or another repository owns.
 - Addenda are confined to this repo because agent-specific failure-mode tuning belongs with the agent-artifact sources, not with adopting projects.
 - `general` is declared, not implied, so one ownership rule covers every domain: publication, bundle generation, command reach and the domain roster all read the declaration, and no code path carries a named exception that can drift from it.
 

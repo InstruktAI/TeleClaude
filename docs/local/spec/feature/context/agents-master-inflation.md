@@ -20,8 +20,24 @@ self-contained document an agent CLI can read without resolving a tree of
 refs at runtime.
 
 Inflation runs as a Sync step. The Source authors hold the canonical content;
-inflation produces the Deployed copies under each project root plus the
-per-agent shim (`CLAUDE.md` points at `AGENTS.md`).
+inflation produces the Deployed `AGENTS.md` beside each master, and that
+`AGENTS.md` is the only file it writes there — no per-agent companion such as
+a `CLAUDE.md` pointer. A project's masters inflate during that project's sync.
+The home masters are a fixed set: the platform home's root `AGENTS.master.md`,
+the platform help desk's `help-desk/AGENTS.master.md`, each declared person's
+and company's root master, and each declared company's
+`help-desk/AGENTS.master.md`. They inflate when the platform home's recorded
+source is published, and again whenever the Mother's global publication
+replaces documentation they inline; a refresh that cannot recompile one
+reports the Mother's publication as failed, so a lagging home entrypoint is
+always a visible, replayable failure. That refresh recompiles only a home
+generation whose entrypoints the home's own publication compiled; an earlier
+generation is left to the home's next publication. A master anywhere else in a home,
+including under a home's docs, is not compiled, so no generated entrypoint
+ever lands in a retained subtree. A home entrypoint inlines only activated,
+deployed documentation — never a publisher's unpublished source — apart from
+the home's own recorded tier source. Every Deployed `AGENTS.md` is fully
+inlined: it carries no `@` import for an agent CLI to resolve.
 
 Only the repository-root `AGENTS.master.md` is a project entrypoint. Its
 generated `AGENTS.md` receives the project-wide progressive baseline index and
@@ -40,7 +56,7 @@ Scenario: Mother project sync inflates the global baseline
   When the sync step inflates agent baselines
   Then the inflater recursively inlines every @-ref to a depth of at most 20
   And the resulting AGENTS.md is emitted at the Mother project root
-  And a CLAUDE.md shim is emitted alongside it pointing at AGENTS.md
+  And no CLAUDE.md is emitted alongside it
 ```
 
 ```
@@ -50,7 +66,7 @@ Scenario: Non-mother project skips the global source
   When the sync step inflates agent baselines
   Then AGENTS.global.md is not processed
   And only the project's own AGENTS.master.md is inflated
-  And the project's AGENTS.md and CLAUDE.md shim are emitted under the project root
+  And only the project's AGENTS.md is emitted under the project root
 ```
 
 #### UC-AMI3: Progressive baseline expansion respects agent-output scope
@@ -165,12 +181,101 @@ Scenario: The roster lists every declared domain the global configuration does n
   And person and company tier entries contribute no line and fail nothing
 ```
 
+#### UC-AMI10: Every home master compiles into its home's entrypoint
+
+```
+Scenario: Home publication inflates the fixed home master set
+  Given the platform home's recorded source holds its root AGENTS.master.md and the platform help desk's help-desk/AGENTS.master.md
+  And a declared person home and a declared company home each hold a root AGENTS.master.md, and the company home a help-desk/AGENTS.master.md
+  When committed-state publication activates that recorded source
+  Then an AGENTS.md is written beside each of those masters
+  And each AGENTS.md carries its master's expanded authored content and required reads, with no @ import left in it
+  And every documentation read it inlines comes from the deployed documentation, except the home's own recorded tier source
+  And no AGENTS.md written there carries a project baseline index or activatable-procedure catalog
+  And no CLAUDE.md is written beside any of them
+  And the home's working tree holds no change the home's history would record
+```
+
+```
+Scenario: A master outside the fixed home master set is not compiled
+  Given a home holds an AGENTS.master.md at a path other than the home root, the platform help desk, a declared person's or company's root, or a declared company's help desk
+  And that path may lie under a home's docs
+  When committed-state publication activates the platform home's recorded source
+  Then no AGENTS.md is written beside that master
+  And no generated entrypoint lands in a retained subtree
+```
+
+#### UC-AMI11: The Mother's global publication refreshes home entrypoints
+
+```
+Scenario: A republished bundle reaches every home entrypoint that inlines it
+  Given a home master requires a domain bundle the Mother publishes
+  When the Mother's global publication replaces that bundle
+  Then the home's AGENTS.md is recompiled from its unchanged master
+  And it carries the replaced bundle's content
+  And no commit in the platform home is needed for it
+```
+
+```
+Scenario: A home master that no longer inflates fails the refresh visibly
+  Given the Mother's publication replaced a bundle
+  And one home master no longer inflates against it
+  When the refresh runs
+  Then every other home entrypoint is recompiled
+  And the failing master's previous entrypoint is left in place
+  And the Mother's publication reports failed, naming home refresh as the reason, after its own deployment completed
+  And recovery replays that publication, which retries the refresh
+```
+
+```
+Scenario: A home generation its own publication never compiled is not refreshed
+  Given the platform home's published generation was published without compiling its home entrypoints
+  When the Mother's global publication completes
+  Then no home entrypoint is written or removed
+  And the Mother's publication does not fail on the home's account
+```
+
+#### UC-AMI12: A leftover generated pointer is removed; an authored CLAUDE.md is kept
+
+```
+Scenario: Only the retired generated pointer is retracted
+  Given a directory holds an AGENTS.master.md
+  And beside it a CLAUDE.md, tracked neither at the recorded commit nor in the repository's current HEAD and absent from its index, whose entire content is the pointer import of AGENTS.md
+  And another directory with a master holds a CLAUDE.md with any other content, or one its repository tracks
+  And a third holds a pointer CLAUDE.md the recorded commit lacks but the repository's current HEAD tracks or its index stages
+  And another holds a pointer the repository's current HEAD tracks although it is removed from the index
+  When sync inflates those masters
+  Then the untracked pointer CLAUDE.md is deleted
+  And the other CLAUDE.md is left byte-identical
+  And the HEAD-tracked or index-staged pointer is left byte-identical
+  And the pointer HEAD tracks but the index no longer holds is left byte-identical
+  And each directory's AGENTS.md is written
+```
+
+#### UC-AMI13: Claude Code reads the entrypoint beneath an ancestor CLAUDE.md
+
+```
+Scenario: The deployed Claude user settings make AGENTS.md load beside CLAUDE.md
+  Given TeleClaude has deployed its Claude user settings on the machine
+  And a directory above a project root holds a CLAUDE.md the human authored
+  When a Claude Code session starts in that project root
+  Then the project's generated AGENTS.md is among the loaded instruction files
+  And the ancestor CLAUDE.md still loads
+  And an AGENTS.md that some CLAUDE.md already imports is loaded once
+```
+
 ### Cross-context references
 
 - **config** — Provides the project root list and the Mother project identity
   consulted at gating time.
-- **agent_runtime** — Consumes the Deployed `AGENTS.md` (and `CLAUDE.md` shim)
-  at agent CLI startup. The inflated file is the runtime baseline.
+- **agent_runtime** — Consumes the Deployed `AGENTS.md` at agent CLI startup.
+  The inflated file is the runtime baseline. Claude Code reads it through the
+  project-instructions setting TeleClaude's deployed Claude user settings
+  carry (`third-party/claude-code/instruction-files`).
+- **reconciliation** — The home's retained set admits the home, platform help
+  desk, person, company, and company help desk masters and never a generated
+  `AGENTS.md`; a master commit in the
+  platform home owes the publication that inflates it.
 
 ## Known caveats
 

@@ -58,11 +58,10 @@ _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _MARKDOWN_SUFFIX = ".md"
 _MALFORMED_COMMAND_SOURCE_TEMPLATE = "{path} is a malformed command source companion"
-# Generated sibling output `_write_project_agents`/`compose_global_skill_catalog`
-# write next to `agents/AGENTS.master.md` itself — never an authored source, but
-# an expected, sanctioned presence, not a boundary violation. Both are gitignored.
+# The generated entrypoint `_write_project_agents` writes next to
+# `agents/AGENTS.master.md` — never an authored source, but an expected,
+# sanctioned presence, not a boundary violation. It is gitignored.
 _GENERATED_ROOT_ENTRYPOINT_FILENAME = "AGENTS.md"
-_GENERATED_ROOT_POINTER_FILENAME = "CLAUDE.md"
 
 
 class ArtifactTier(StrEnum):
@@ -371,7 +370,6 @@ def _boundary_violation(project_root: Path, resolved: Path) -> str | None:
         _GLOBAL_MASTER_FILENAME,
         _GLOBAL_BASELINE_FILENAME,
         _GENERATED_ROOT_ENTRYPOINT_FILENAME,
-        _GENERATED_ROOT_POINTER_FILENAME,
     ):
         return None
     if first in (_GLOBAL_DIRNAME, _LOCAL_DIRNAME):

@@ -16,8 +16,6 @@ _GLOBAL_DIRNAME = "global"
 _SKILLS_DIRNAME = "skills"
 _CATALOG_MASTER_FILENAME = "AGENTS.master.md"
 _CATALOG_OUTPUT_FILENAME = "AGENTS.md"
-_CATALOG_CLAUDE_FILENAME = "CLAUDE.md"
-_CATALOG_CLAUDE_CONTENT = "@./AGENTS.md\n"
 _NEXT_CATALOG_DIRNAME = ".skills.next"
 _PREVIOUS_CATALOG_DIRNAME = ".skills.previous"
 _ALL_GLOB = "*"
@@ -143,11 +141,8 @@ def compose_global_skill_catalog(
     try:
         rendered = render_catalog(catalog_master)
         source_catalog = catalog_master.parent / _CATALOG_OUTPUT_FILENAME
-        source_claude = catalog_master.parent / _CATALOG_CLAUDE_FILENAME
         source_catalog.write_text(rendered, encoding=_UTF8)
-        source_claude.write_text(_CATALOG_CLAUDE_CONTENT, encoding=_UTF8)
         (GLOBAL_SKILLS_DIR / _CATALOG_OUTPUT_FILENAME).write_text(rendered, encoding=_UTF8)
-        (GLOBAL_SKILLS_DIR / _CATALOG_CLAUDE_FILENAME).write_text(_CATALOG_CLAUDE_CONTENT, encoding=_UTF8)
     except Exception:
         _remove_path(GLOBAL_SKILLS_DIR)
         if had_previous:
@@ -155,4 +150,4 @@ def compose_global_skill_catalog(
         raise
     _remove_path(previous)
     print(_COMPOSED_MESSAGE.format(target=GLOBAL_SKILLS_DIR, count=len(contributions)))
-    return [source_catalog, source_claude]
+    return [source_catalog]

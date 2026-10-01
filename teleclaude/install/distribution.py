@@ -23,7 +23,11 @@ from instrukt_ai_logging import get_logger
 from typing_extensions import TypedDict
 
 from teleclaude import agent_artifacts
-from teleclaude.artifact_ownership import reconcile_deployed_files, retract_retired_native_artifacts
+from teleclaude.artifact_ownership import (
+    reconcile_deployed_files,
+    retired_pointer_candidate,
+    retract_retired_native_artifacts,
+)
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.config.schema import ConfigKind
 from teleclaude.constants import ArtifactKind
@@ -32,7 +36,9 @@ from teleclaude.docs_index import reroot_index_document
 from teleclaude.docs_publication import publish_generation
 from teleclaude.docs_publishers import (
     DocsPublisherResolutionError,
+    DocsResolutionMode,
     Publisher,
+    deployed_resolution,
     gather_publishers,
     git_common_root,
     publisher_resolution,
@@ -47,7 +53,7 @@ from teleclaude.paths import (
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
-from teleclaude.snippet_roots import iter_tier_snippet_roots
+from teleclaude.snippet_roots import iter_declared_tier_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
     GENERATED_DOMAIN_BUNDLE_FILENAME,
     RETIRED_DOMAIN_BUNDLE_FILENAME,
@@ -62,6 +68,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
+# The agent runtime's import grammar (third-party/claude-code/instruction-files):
+# an ``@`` starting a word, followed by any path up to the first unescaped
+# whitespace; a quoted path is not an import.
+_RUNTIME_IMPORT_RE = re.compile(r"(?<!\S)@(?![\"'])((?:\\ |\S)+)")
+_CODE_SPAN_RE = re.compile(r"(`+).+?\1")
+_CODE_FENCE_RE = re.compile(r"^ {0,3}(```|~~~)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
 MCP_INDEX_DIRECTIVE_RE = re.compile(r"<!--\s*@mcp-index\s*-->")
 LOCK_SENTINEL_RE = re.compile(r"^[ \t]*<!--\s*/?LOCKED_FILE\b.*?-->[ \t]*\n?", re.MULTILINE | re.DOTALL)
@@ -131,8 +143,43 @@ _NON_DOMAIN_DEPLOY_DIRNAMES: frozenset[str] = frozenset(
     {_SNIPPETS_TREE_NAME, _TIER_COMPANY_DEPLOY_DIRNAME, _TIER_PERSON_DEPLOY_DIRNAME}
 )
 _EMPTY_STRING = ""
+_REQUIRED_READ_NOT_FOUND = "Required read not found: {ref}"
+_UNRESOLVED_IMPORT = "Generated entrypoint {entrypoint} is not self-contained; it carries imports: {tokens}"
+_GENERATED_ENTRYPOINT_FILENAME = "AGENTS.md"
+_HOME_MASTER_INFLATION_FAILED = "Home master {master} cannot be compiled: {cause}"
+_HELP_DESK_DIRNAME = "help-desk"
 
 logger = get_logger(__name__)
+
+
+class EntrypointCompositionError(ValueError):
+    """A generated agent entrypoint could not be composed from its sources."""
+
+
+class RequiredReadNotFoundError(EntrypointCompositionError):
+    """A required read named by a composed source does not resolve."""
+
+    def __init__(self, ref: str) -> None:
+        super().__init__(_REQUIRED_READ_NOT_FOUND.format(ref=ref))
+        self.ref = ref
+
+
+class HomeMasterInflationError(EntrypointCompositionError):
+    """A home master could not be compiled into its entrypoint."""
+
+    def __init__(self, master: Path, cause: EntrypointCompositionError) -> None:
+        super().__init__(_HOME_MASTER_INFLATION_FAILED.format(master=master, cause=cause))
+        self.master = master
+        self.cause = cause
+
+
+class UnresolvedImportError(EntrypointCompositionError):
+    """A generated entrypoint's final text still carries runtime import syntax."""
+
+    def __init__(self, entrypoint: Path, tokens: list[str]) -> None:
+        super().__init__(_UNRESOLVED_IMPORT.format(entrypoint=entrypoint, tokens=", ".join(tokens)))
+        self.entrypoint = entrypoint
+        self.tokens = tokens
 
 
 @dataclass(frozen=True)
@@ -155,13 +202,26 @@ class DistributionRequest:
     docs_enabled: bool | None = None
 
 
+@dataclass(frozen=True)
+class DistributionResult:
+    """What one distribution produced for the checkout it was run from.
+
+    ``outputs`` are files written under the project root for installation into
+    the canonical checkout; ``retired_pointers`` are the pointer paths beside
+    every compiled master, each a candidate for retraction.
+    """
+
+    outputs: tuple[Path, ...]
+    retired_pointers: tuple[Path, ...]
+
+
 def distribute_committed(
     project_root: Path,
     canonical_root: Path,
     *,
     agents_enabled: bool,
     docs_enabled: bool,
-) -> list[Path]:
+) -> DistributionResult:
     """Build and deploy artifacts from a caller-materialized committed snapshot."""
     original_directory = Path.cwd()
     try:
@@ -949,11 +1009,10 @@ def expand_inline_refs(
         for ref in required_refs:
             resolved = resolve_ref_path(ref, root_path=project_root, current_path=current_path)
             if not resolved or not resolved.exists():
-                message = f"Required read not found: {ref}"
                 if warn_only:
-                    print(f"WARNING: {message}")
+                    print(f"WARNING: {_REQUIRED_READ_NOT_FOUND.format(ref=ref)}")
                     continue
-                raise ValueError(message)
+                raise RequiredReadNotFoundError(ref)
             if resolved in seen:
                 continue
             seen.add(resolved)
@@ -1741,16 +1800,54 @@ def _strip_lock_sentinels(content: str) -> str:
     return f"{collapsed}\n" if collapsed else ""
 
 
-def _write_project_agents(
+def runtime_imports(text: str) -> list[str]:
+    """Return every import token the agent runtime would load from ``text``.
+
+    Follows the runtime's grammar (``third-party/claude-code/instruction-files``):
+    Markdown code spans and fenced code blocks are skipped.
+    """
+    tokens: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if _CODE_FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        prose = _CODE_SPAN_RE.sub(_EMPTY_STRING, line)
+        tokens.extend(match.group(0) for match in _RUNTIME_IMPORT_RE.finditer(prose))
+    return tokens
+
+
+def assert_self_contained(text: str, *, entrypoint: Path) -> None:
+    """Fail when a generated entrypoint's final text would still import a file at runtime."""
+    tokens = runtime_imports(text)
+    if tokens:
+        raise UnresolvedImportError(entrypoint, tokens)
+
+
+def inflate_master(
     master_path: Path,
     *,
     project_root: Path,
+    root_extras: bool,
     warn_only: bool,
     observation: DistributionObservation | None,
-) -> list[Path]:
-    """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
-    with publisher_resolution(project_root):
-        raw = master_path.read_text(encoding="utf-8")
+    resolution: DocsResolutionMode = DocsResolutionMode.SOURCE,
+) -> str:
+    """Compile one ``AGENTS.master.md`` into the fully inlined text of its ``AGENTS.md``.
+
+    Required reads expand under ``resolution``: a publisher's source tree, or
+    the deployed corpus. Only a root master (``root_extras``) gains the
+    progressive sibling sections and the project MCP index; the lock sentinels
+    never reach the output. Raises an ``EntrypointCompositionError`` when a
+    required read does not resolve or the result still carries an import.
+    """
+    resolution_scope = (
+        publisher_resolution(project_root) if resolution is DocsResolutionMode.SOURCE else deployed_resolution()
+    )
+    with resolution_scope:
+        raw = master_path.read_text(encoding=_UTF8)
         inflated = expand_inline_refs(
             raw,
             project_root=project_root,
@@ -1758,7 +1855,7 @@ def _write_project_agents(
             warn_only=warn_only,
             observation=observation,
         )
-        if master_path == project_root / _PROJECT_MASTER_FILENAME:
+        if root_extras:
             sections = _progressive_sibling_sections(
                 project_root / _PROJECT_DOCS_RELATIVE_PATH,
                 scope=ProjectScope(),
@@ -1772,11 +1869,99 @@ def _write_project_agents(
                 project_index = _render_mcp_index(load_project_declarations(canonical_project_root))
                 if project_index:
                     inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=project_index)
-    agents_path = master_path.parent / "AGENTS.md"
-    agents_path.write_text(_strip_lock_sentinels(inflated), encoding="utf-8")
-    claude_path = master_path.parent / "CLAUDE.md"
-    claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
-    return [agents_path, claude_path]
+    composed = _strip_lock_sentinels(inflated)
+    assert_self_contained(composed, entrypoint=master_path)
+    return composed
+
+
+def _write_project_agents(
+    master_path: Path,
+    *,
+    project_root: Path,
+    warn_only: bool,
+    observation: DistributionObservation | None,
+) -> Path:
+    """Generate the ``AGENTS.md`` next to a project ``AGENTS.master.md``, the only file written there."""
+    inflated = inflate_master(
+        master_path,
+        project_root=project_root,
+        root_extras=master_path == project_root / _PROJECT_MASTER_FILENAME,
+        warn_only=warn_only,
+        observation=observation,
+    )
+    agents_path = master_path.parent / _GENERATED_ENTRYPOINT_FILENAME
+    agents_path.write_text(inflated, encoding=_UTF8)
+    return agents_path
+
+
+@dataclass(frozen=True)
+class HomeEntrypoint:
+    """One home master's compiled entrypoint text, rooted in the home snapshot."""
+
+    master: Path
+    output: Path
+    text: str
+
+
+@dataclass(frozen=True)
+class HomeEntrypoints:
+    """Every compiled home entrypoint plus the pointer paths beside their masters."""
+
+    entrypoints: tuple[HomeEntrypoint, ...]
+    retired_pointers: tuple[Path, ...]
+
+
+def home_masters(home_snapshot: Path) -> list[tuple[Path, Path]]:
+    """Return the home masters present in a home snapshot, each with the root its reads resolve against.
+
+    The set is fixed: the home's own master and its platform desk master
+    (resolved against the home), then every declared tier's master and every
+    declared company's desk master (resolved against the tier). No other file
+    in a home is a home master.
+    """
+    candidates = [
+        (home_snapshot / _PROJECT_MASTER_FILENAME, home_snapshot),
+        (home_snapshot / _HELP_DESK_DIRNAME / _PROJECT_MASTER_FILENAME, home_snapshot),
+    ]
+    for tier_root, kind in iter_declared_tier_roots(home_snapshot):
+        candidates.append((tier_root / _PROJECT_MASTER_FILENAME, tier_root))
+        if kind is ConfigKind.COMPANY:
+            candidates.append((tier_root / _HELP_DESK_DIRNAME / _PROJECT_MASTER_FILENAME, tier_root))
+    return [(master, root) for master, root in candidates if master.is_file()]
+
+
+def inflate_home_entrypoint(
+    master: Path, *, project_root: Path, observation: DistributionObservation | None
+) -> HomeEntrypoint:
+    """Compile one home master against the deployed corpus; raise ``HomeMasterInflationError`` on failure.
+
+    A home entrypoint carries no root extras (no baseline index or catalog).
+    """
+    try:
+        text = inflate_master(
+            master,
+            project_root=project_root,
+            root_extras=False,
+            warn_only=False,
+            observation=observation,
+            resolution=DocsResolutionMode.DEPLOYED,
+        )
+    except EntrypointCompositionError as exc:
+        raise HomeMasterInflationError(master, exc) from exc
+    return HomeEntrypoint(master=master, output=master.parent / _GENERATED_ENTRYPOINT_FILENAME, text=text)
+
+
+def inflate_home_entrypoints(
+    home_snapshot: Path, *, observation: DistributionObservation | None = None
+) -> HomeEntrypoints:
+    """Compile every home master of a home snapshot, failing on the first that cannot be compiled."""
+    masters = home_masters(home_snapshot)
+    return HomeEntrypoints(
+        entrypoints=tuple(
+            inflate_home_entrypoint(master, project_root=root, observation=observation) for master, root in masters
+        ),
+        retired_pointers=tuple(retired_pointer_candidate(master.parent) for master, _ in masters),
+    )
 
 
 def _render_global_skill_catalog(
@@ -1787,16 +1972,13 @@ def _render_global_skill_catalog(
     observation: DistributionObservation | None,
 ) -> str:
     """Render the Mother-owned catalog through the normal inline directive pipeline."""
-    with publisher_resolution(mother_root):
-        raw = catalog_master.read_text(encoding=_UTF8)
-        inflated = expand_inline_refs(
-            raw,
-            project_root=mother_root,
-            current_path=catalog_master,
-            warn_only=warn_only,
-            observation=observation,
-        )
-        return _strip_lock_sentinels(inflated)
+    return inflate_master(
+        catalog_master,
+        project_root=mother_root,
+        root_extras=False,
+        warn_only=warn_only,
+        observation=observation,
+    )
 
 
 def _resolve_pipeline_capabilities(
@@ -1849,7 +2031,7 @@ def _global_command_reach_findings(project_root_path: Path) -> list[str]:
     return findings
 
 
-def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C901
+def main(request: DistributionRequest | None = None) -> DistributionResult:  # noqa: C901
     """Build agent artifacts for supported CLIs; deployment requires an internal request."""
     if request is None:
         parser = argparse.ArgumentParser(description="Validate and build agent outputs into dist/.")
@@ -1893,6 +2075,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
     is_mother_project = git_common_root(Path(project_root)).resolve() == Path(teleclaude_root).resolve()
     project_root_path = Path(project_root)
     checkout_local_outputs: list[Path] = []
+    retired_pointers: list[Path] = []
     agents_enabled, docs_enabled = _resolve_pipeline_capabilities(
         deploy=deploy,
         agents_enabled=args.agents_enabled,
@@ -1932,7 +2115,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
 
     if agents_enabled and deploy:
         for master_path in _iter_project_agent_masters(project_root_path):
-            checkout_local_outputs.extend(
+            checkout_local_outputs.append(
                 _write_project_agents(
                     master_path,
                     project_root=project_root_path,
@@ -1940,6 +2123,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
                     observation=observation,
                 )
             )
+            retired_pointers.append(retired_pointer_candidate(master_path.parent))
 
     validate_only = args.validate_only
     dist_dir = "dist"
@@ -2119,7 +2303,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
         if not args.warn_only:
             raise SystemExit(1)
     if validate_only:
-        return checkout_local_outputs
+        return DistributionResult(tuple(checkout_local_outputs), tuple(retired_pointers))
 
     dist_dir = "dist"
     if agents_enabled:
@@ -2236,6 +2420,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
                     if awareness:
                         combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
                 combined_agents_content = _strip_lock_sentinels(combined_agents_content)
+                assert_self_contained(combined_agents_content, entrypoint=Path(master_dest_path))
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:
@@ -2417,6 +2602,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
                 ),
             ),
         )
+        retired_pointers.append(retired_pointer_candidate(global_skill_source_root(project_root_path)))
         if agents_enabled:
             with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
                 if global_sources or global_command_files:
@@ -2472,7 +2658,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
                 scope_key=project_root,
             )
 
-    return checkout_local_outputs
+    return DistributionResult(tuple(checkout_local_outputs), tuple(retired_pointers))
 
 
 if __name__ == "__main__":

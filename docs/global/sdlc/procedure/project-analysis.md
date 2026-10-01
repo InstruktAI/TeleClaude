@@ -266,15 +266,16 @@ the matching case; do not improvise.
 **Case 1 — `AGENTS.master.md` exists.** Respect it. Do not modify. The
 existing source is authoritative.
 
-**Case 2 — Hand-authored `AGENTS.md` exists, no master.** Promote it. By
-convention `CLAUDE.md` is a shim (`@./AGENTS.md`) or absent in this case.
-Procedure:
+**Case 2 — Hand-authored `AGENTS.md` exists, no master.** Promote it. A
+`CLAUDE.md` in this case is absent or only imports `AGENTS.md`; leave it to
+artifact distribution, which deletes it only when it is untracked and holds
+nothing but that import. Procedure:
 
 - Move the content of `AGENTS.md` into a new `AGENTS.master.md`.
 
 - Verify the regenerated `AGENTS.md` (inflated from the master, possibly with
-  baseline additions) and the `CLAUDE.md` shim are produced. The original
-  content survives in `AGENTS.master.md`.
+  baseline additions) is produced. The original content survives in
+  `AGENTS.master.md`.
 
 **Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** Respect by
 default. Do not auto-create a master — a substantive standalone `CLAUDE.md`
@@ -284,16 +285,14 @@ analysis.
 
 **Case 4 (greenfield) — no `AGENTS.master.md`, no `AGENTS.md`, no
 substantive `CLAUDE.md`.** Generate a minimal project-specific
-
 `AGENTS.master.md` capturing tech stack, key directories, and primary
-conventions. Subsequent artifact distribution inflates `AGENTS.md` and writes the
-`CLAUDE.md` shim.
+conventions. Subsequent artifact distribution inflates `AGENTS.md`.
 
-**Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
-contradicts the shim convention. Halt automatic promotion and flag the
-
-conflict for human inspection. Do not auto-promote: a subsequent distribution run
-would overwrite `CLAUDE.md` with the shim and silently destroy its content.
+**Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** Claude
+Code loads both into the same session, so two authored instruction sources
+compete. Halt automatic promotion and flag the conflict for human inspection.
+Do not auto-promote: which file is authoritative, and whether the `CLAUDE.md`
+content moves into the master, is the human's call.
 
 The human must decide which file is authoritative before the analysis
 proceeds.

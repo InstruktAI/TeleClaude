@@ -699,8 +699,18 @@ AGENT_ARTIFACT_SOURCE_GLOBS: tuple[str, ...] = ("AGENTS.master.md", "agents/**")
 # agent-artifact scopes trigger sync, while the toolchain scope triggers install;
 # project-declared code scopes attach test and log-check separately.
 CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
-CHECKPOINT_HOME_DOCS_BINDING = CheckpointBinding(
-    scope=CheckpointScope(include=("people/*/docs/**", "companies/*/docs/**")),
+CHECKPOINT_HOME_PUBLICATION_BINDING = CheckpointBinding(
+    scope=CheckpointScope(
+        include=(
+            "people/*/docs/**",
+            "companies/*/docs/**",
+            "AGENTS.master.md",
+            "help-desk/AGENTS.master.md",
+            "people/*/AGENTS.master.md",
+            "companies/*/AGENTS.master.md",
+            "companies/*/help-desk/AGENTS.master.md",
+        )
+    ),
     actions=("sync",),
 )
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(

@@ -115,6 +115,20 @@ reattach. The distinguishing question is lifetime, not file type: a socket whose
 owner recreates it each boot may stay in `/tmp`; a socket whose owner must persist
 across boots belongs at the home root beside the pidfile.
 
+### Home entrypoints
+
+The home masters are a fixed set: the home root's `AGENTS.master.md`, the
+platform help desk's `help-desk/AGENTS.master.md`, each declared person's and
+company's root master, and each declared company's
+`companies/<slug>/help-desk/AGENTS.master.md`. The home's retained set admits
+every one of them, so an edit to a master is committed in the home's history
+and owes the publication that inflates it
+(`projects/teleclaude/spec/feature/context/agents-master-inflation`). A master
+anywhere else in a home, including under a home's docs, is not compiled, so no
+generated entrypoint ever lands in a retained subtree. The `AGENTS.md` beside
+each master is generated: it is never retained, never edited, and never a
+placement target. The home holds no generated `CLAUDE.md`.
+
 ### Invariants
 
 - `$TELECLAUDE_HOME` is read exactly once at process startup by

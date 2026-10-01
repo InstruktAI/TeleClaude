@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 
 from teleclaude.docs_publishers import git_common_root
@@ -26,6 +29,14 @@ _RETIRED_NATIVE_COMMAND_DESTINATIONS = (
     (Path(".dsh") / "commands", ".md"),
 )
 _LEGACY_GEMINI_MASTER_PATH = Path(".gemini") / "GEMINI.md"
+#: The pointer file distribution once generated beside every compiled master.
+GENERATED_POINTER_FILENAME = "CLAUDE.md"
+_GENERATED_POINTER_BYTES = b"@./AGENTS.md\n"
+_GIT_EXECUTABLE = "git"
+_GIT_HEAD_TREE_ENTRY_ARGS = ("ls-tree", "--name-only", "HEAD", "--")
+_GIT_INDEX_ENTRY_ARGS = ("ls-files", "--error-unmatch", "--")
+_GIT_SUCCESS = 0
+_GIT_UNMATCHED = 1
 
 # The versioned manifest shape: `{"version": 2, "owners": {scope_key: [path, ...]}}`.
 # An unversioned payload (the historical bare `{scope_key: [path, ...]}` shape) is
@@ -213,3 +224,68 @@ def retract_retired_native_artifacts(
             (destination / f"{Path(relative_path).stem}{extension}").unlink(missing_ok=True)
     if is_global_scope and replacement_master_written:
         (scope_root / _LEGACY_GEMINI_MASTER_PATH).unlink(missing_ok=True)
+
+
+def retired_pointer_candidate(master_dir: Path) -> Path:
+    """Return where a retired generated pointer would sit beside a compiled master."""
+    return master_dir / GENERATED_POINTER_FILENAME
+
+
+def _absent_from_canonical_head(canonical_root: Path, relative: str) -> bool:
+    # Tree membership has no Python API here; git is its only authority.
+    result = subprocess.run(
+        [_GIT_EXECUTABLE, *_GIT_HEAD_TREE_ENTRY_ARGS, relative],
+        cwd=canonical_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == _GIT_SUCCESS and not result.stdout.strip()
+
+
+def _absent_from_canonical_index(canonical_root: Path, relative: str) -> bool:
+    # Index membership has no Python API here; git is its only authority.
+    result = subprocess.run(
+        [_GIT_EXECUTABLE, *_GIT_INDEX_ENTRY_ARGS, relative],
+        cwd=canonical_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == _GIT_UNMATCHED
+
+
+def is_retired_pointer(*, snapshot_root: Path, canonical_root: Path, relative: Path) -> bool:
+    """Return whether a canonical file is a generated pointer nobody owns.
+
+    It must be a regular file whose bytes equal the pointer, absent from the
+    published snapshot, and neither in the canonical repository's current
+    ``HEAD`` tree nor in its index. A git query that fails counts as owned.
+    """
+    destination = canonical_root / relative
+    if destination.is_symlink() or not destination.is_file():
+        return False
+    if destination.read_bytes() != _GENERATED_POINTER_BYTES:
+        return False
+    if os.path.lexists(snapshot_root / relative):
+        return False
+    posix = relative.as_posix()
+    return _absent_from_canonical_head(canonical_root, posix) and _absent_from_canonical_index(canonical_root, posix)
+
+
+def retract_retired_pointers(*, snapshot_root: Path, canonical_root: Path, candidates: Iterable[Path]) -> list[Path]:
+    """Delete each canonical generated pointer that is still retired at the moment of deletion.
+
+    ``candidates`` are snapshot-rooted pointer paths beside compiled masters.
+    Every clause of :func:`is_retired_pointer` is evaluated immediately before
+    each unlink; a candidate failing any clause is left untouched. Returns the
+    canonical paths removed.
+    """
+    removed: list[Path] = []
+    for candidate in candidates:
+        relative = candidate.relative_to(snapshot_root)
+        if is_retired_pointer(snapshot_root=snapshot_root, canonical_root=canonical_root, relative=relative):
+            destination = canonical_root / relative
+            destination.unlink()
+            removed.append(destination)
+    return removed

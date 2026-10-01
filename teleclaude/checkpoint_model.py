@@ -23,7 +23,7 @@ from teleclaude.constants import (
     CHECKPOINT_BASE_CODE_BINDING,
     CHECKPOINT_BASE_DOCS_BINDING,
     CHECKPOINT_BASE_MAINTENANCE,
-    CHECKPOINT_HOME_DOCS_BINDING,
+    CHECKPOINT_HOME_PUBLICATION_BINDING,
     LOG_CHECK_ACTION_ID,
     CheckpointAction,
     CheckpointBinding,
@@ -324,7 +324,7 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
     else:
         model = checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
     if _is_teleclaude_home(root):
-        model = _append_home_docs_binding(model)
+        model = _append_home_publication_binding(model)
     return model
 
 
@@ -333,14 +333,14 @@ def _is_teleclaude_home(root: Path) -> bool:
     return root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
 
 
-def _append_home_docs_binding(model: CheckpointModel) -> CheckpointModel:
-    """Attach the platform-home tier documentation trigger once."""
-    if CHECKPOINT_HOME_DOCS_BINDING in model.bindings:
+def _append_home_publication_binding(model: CheckpointModel) -> CheckpointModel:
+    """Attach the platform-home publication trigger (tier docs and home masters) once."""
+    if CHECKPOINT_HOME_PUBLICATION_BINDING in model.bindings:
         return model
     return CheckpointModel(
         actions=model.actions,
         maintenance=model.maintenance,
-        bindings=(*model.bindings, CHECKPOINT_HOME_DOCS_BINDING),
+        bindings=(*model.bindings, CHECKPOINT_HOME_PUBLICATION_BINDING),
     )
 
 

@@ -9,6 +9,13 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
+  "pluginConfigs": {
+    "agents-md@builtin": {
+      "options": {
+        "instructionFiles": "claude-md-and-agents-md"
+      }
+    }
+  },
   "statusLine": {
     "type": "command",
     "command": "bunx -y ccstatusline@latest",
