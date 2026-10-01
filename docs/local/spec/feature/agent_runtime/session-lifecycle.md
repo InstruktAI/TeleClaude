@@ -300,7 +300,7 @@ And a named session that is not retained, or that the caller's role does not rea
 Given a session was created in a folder whose configuration subject is a registered project
 When an agent lists sessions, on that computer or on another computer that received the session
 Then the listed session names that project's owner as the creating computer resolved it when the session was created: the owning company, the owning person, or no owner
-And a listed session whose subject is a person or company home, that records no subject, or whose subject was not established names no owner
+And a listed session whose subject is a person or company home, or that records no subject, names no owner
 And a session created before owners were recorded names its subject's owner after the upgrade
 ```
 
