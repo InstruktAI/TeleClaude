@@ -214,7 +214,7 @@ class _RawSqlStep:
 
 @dataclass
 class _SourceValidationStep:
-    """Validate source artifacts selected by the active lint scope."""
+    """Validate selected sources, reporting findings to the CLI and log."""
 
     name: str = "source_validation"
     _project_root: Path = field(default_factory=Path)
@@ -230,6 +230,7 @@ class _SourceValidationStep:
             return
         for finding in findings:
             logger.error(finding)
+            sys.stderr.write(f"{finding}{os.linesep}")
         raise SystemExit(1)
 
 

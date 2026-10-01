@@ -14,14 +14,17 @@ writes to and other agent CLIs read from. Only paths under a project's
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from tempfile import TemporaryFile
 
 from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS, ArtifactKind
 from teleclaude.docs_publishers import git_common_root
 from teleclaude.domains import publishes_for_root
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.snippet_validation import companion_shape, is_retirement_companion
 
@@ -58,6 +61,9 @@ _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _MARKDOWN_SUFFIX = ".md"
 _MALFORMED_COMMAND_SOURCE_TEMPLATE = "{path} is a malformed command source companion"
+_GIT_CHECK_IGNORE_ARGUMENTS = ("-z", "--stdin")
+_GIT_CHECK_IGNORE_NOT_IGNORED_STATUS = 1
+_GIT_IGNORE_QUERY_FAILURE_TEMPLATE = "Could not determine ignored agent-artifact boundary entries: {error}"
 # The generated entrypoint `_write_project_agents` writes next to
 # `agents/AGENTS.master.md` — never an authored source, but an expected,
 # sanctioned presence, not a boundary violation. It is gitignored.
@@ -429,32 +435,51 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
 
 
 def boundary_violations(project_root: Path) -> list[str]:
-    """Return a violation message for every unrecognized entry under ``agents/``.
+    """Return a violation message for every unrecognized, non-ignored entry under ``agents/``.
 
     A repo-wide scan has no candidate path to probe with :func:`classify_candidate`,
     so an unrecognized kind directory (``agents/global/unknown-kind/``, for
     example) would otherwise never be discovered — nothing enumerates it as a
     source in the first place. This walks the fixed boundary levels the tiered
     layout defines (``agents/``, ``agents/global/``, ``agents/local/``)
-    directly, so a full scan sees the same violations a targeted probe would.
+    directly, skipping entries Git ignores so a full scan sees repository
+    boundary violations rather than local filesystem noise.
     """
     root = project_root.resolve()
     agents_root = _agents_root(root)
     if not agents_root.is_dir():
         return []
     violations: list[str] = []
-    for entry in sorted(agents_root.iterdir(), key=lambda path: path.name):
-        violation = _boundary_violation(root, entry.resolve(strict=False))
-        if violation is not None:
-            violations.append(violation)
+    boundary_entries = list(sorted(agents_root.iterdir(), key=lambda path: path.name))
     for tier_name in (_GLOBAL_DIRNAME, _LOCAL_DIRNAME):
         tier_root = agents_root / tier_name
         if not tier_root.is_dir():
             continue
-        for entry in sorted(tier_root.iterdir(), key=lambda path: path.name):
-            violation = _boundary_violation(root, entry.resolve(strict=False))
-            if violation is not None:
-                violations.append(violation)
+        boundary_entries.extend(sorted(tier_root.iterdir(), key=lambda path: path.name))
+    relative_entries = [entry.relative_to(root).as_posix() for entry in boundary_entries]
+    if relative_entries:
+        with TemporaryFile() as ignore_input:
+            ignore_input.write(b"\0".join(os.fsencode(path) for path in relative_entries))
+            ignore_input.seek(0)
+            try:
+                ignored_entries = set(
+                    Repo(root).git.check_ignore(*_GIT_CHECK_IGNORE_ARGUMENTS, istream=ignore_input).split("\0")
+                )
+            except GitCommandError as error:
+                if error.status == _GIT_CHECK_IGNORE_NOT_IGNORED_STATUS:
+                    ignored_entries = set()
+                else:
+                    return [_GIT_IGNORE_QUERY_FAILURE_TEMPLATE.format(error=error)]
+            except (InvalidGitRepositoryError, NoSuchPathError, OSError) as error:
+                return [_GIT_IGNORE_QUERY_FAILURE_TEMPLATE.format(error=error)]
+    else:
+        ignored_entries = set()
+    for entry, relative_entry in zip(boundary_entries, relative_entries):
+        if relative_entry in ignored_entries:
+            continue
+        violation = _boundary_violation(root, entry.resolve(strict=False))
+        if violation is not None:
+            violations.append(violation)
     command_directories = [*_global_command_directories(root), project_commands_root(root)]
     for command_root in command_directories:
         if not command_root.is_dir():
