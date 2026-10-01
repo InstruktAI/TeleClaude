@@ -12,11 +12,19 @@ settle. Without it every run re-reads the whole history to reach conclusions the
 last run already reached, which is the cost that makes an assistant not worth
 running.
 
+<!-- planned-change:personal-knowledge-taxonomy -->
+Run evidence remains private to the person's home. Retrieve person-owned run
+knowledge through `telec docs` in the person's scope under
+`general/policy/context-retrieval`. Durable conclusions belong in the person's
+documentation taxonomy under `personal/spec/person-knowledge`; the record retains
+the evidence of this particular run.
+<!-- change:personal-knowledge-taxonomy -->
 Run evidence remains private to the person's home. Retrieve person-owned run
 knowledge through `telec docs` in the person's scope under
 `general/policy/context-retrieval`. Durable conclusions belong in the person's
 local taxonomy under `personal/spec/person-knowledge`; the record retains the
 evidence of this particular run.
+<!-- /planned-change:personal-knowledge-taxonomy -->
 
 A record is opened when a run starts and closed when it ends. Records are only
 ever added, never revised by a later run.
