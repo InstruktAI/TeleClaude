@@ -64,8 +64,7 @@ other permission; granting stays with a person or a managed device profile.
   were built, when an installed launcher is missing or does not match what the
   inputs produce, or when the signing authority is new. Otherwise it neither
   opens the signing store nor signs, and leaves the installed launchers
-  untouched, in the same way installation leaves an unchanged launch-service
-  definition alone.
+  untouched.
 - **Authority creation.** Happens only when the signing store holds no
   authority. A store that is locked is opened with the unlock secret and signs
   as usual. A store that cannot be opened, an unavailable or rejected unlock
