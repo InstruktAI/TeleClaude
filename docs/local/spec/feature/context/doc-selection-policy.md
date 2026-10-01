@@ -356,6 +356,17 @@ Then internal snippets of that company's tier and of the projects the person is 
 And only public snippets of the platform's shared documentation are included
 ```
 
+#### UC-DSP37: A help-desk session offers its desk's reach
+
+```
+Given a help-desk session whose visitor holds no relationship to the desk's home
+When the session runs documentation discovery without a selector
+Then a project desk offers that project's public snippets
+And a company desk offers the public snippets of that company and of every project it owns
+And both offer the public snippets of the platform's shared documentation, the help-desk documentation among them
+And no internal snippet of any home is included
+```
+
 ### Cross-context references
 
 - **identity** — the resolved caller: a person with their platform role and

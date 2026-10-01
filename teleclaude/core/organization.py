@@ -162,6 +162,15 @@ def company_admin_slugs(company_slug: str, companies_root: Path | None = None) -
     return sorted(slug for slug, member in company.members.items() if member.role is CompanyRole.ADMIN)
 
 
+def company_project_slugs(company_slug: str) -> list[str]:
+    """The registered projects whose own declaration names ``company_slug`` as owner, in slug order."""
+    return sorted(
+        project.slug
+        for project in get_project_catalog_service().list_projects()
+        if project.config.company == company_slug
+    )
+
+
 def company_role(person_slug: str, company_slug: str) -> str | None:
     """Return a person's declared role in one company, if they belong to it."""
     membership = next(

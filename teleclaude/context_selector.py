@@ -15,7 +15,9 @@ from instrukt_ai_logging import get_logger
 from teleclaude.caller_identity import CliCaller, DocsTier, PersonCliCaller, RoleResolver, SystemCliCaller
 from teleclaude.config.schema import AppConfig, ConfigKind
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
-from teleclaude.core.organization import OrganizationalMembership, resolve_organization
+from teleclaude.core.endpoints import tenant_desk_for_folder
+from teleclaude.core.models import HelpDeskKind
+from teleclaude.core.organization import OrganizationalMembership, company_project_slugs, resolve_organization
 from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
@@ -615,17 +617,20 @@ def resolve_default_read_set(
     *,
     landed_home: TierKey | None,
     current_project_company: str | None,
+    desk_company: str | None = None,
     role_resolver: RoleResolver | None = None,
 ) -> dict[TierKey, TierDepth]:
     """Answer the tiers assembled when no tier is named, each paired with its depth.
 
     The default read set is the caller's own person tier, every company they
     belong to, global, and what the invocation offers — the home it lands in (a
-    project or a person, company or platform home) and the company a landed
-    project declares as its owner — the last two at whatever depth the
-    relationship grants. A caller with no resolvable identity contributes no
-    relationship-derived tier; what the invocation offers still enters the set,
-    read at public-only. Landing in no home offers nothing of its own.
+    project or a person, company or platform home), the company a landed
+    project declares as its owner, and, from a company's help desk, that
+    company and every project that names it as owner — each offered tier at
+    whatever depth the relationship grants. A caller with no resolvable
+    identity contributes no relationship-derived tier; what the invocation
+    offers still enters the set, read at public-only. Landing in no home
+    offers nothing of its own.
     """
     keys: list[TierKey] = [TierKey(SnippetScope.GLOBAL)]
     organization: OrganizationalMembership | None = None
@@ -637,6 +642,9 @@ def resolve_default_read_set(
         keys.append(landed_home)
     if current_project_company is not None:
         keys.append(TierKey(SnippetScope.COMPANY, current_project_company))
+    if desk_company is not None:
+        keys.append(TierKey(SnippetScope.COMPANY, desk_company))
+        keys.extend(TierKey(SnippetScope.PROJECT, slug) for slug in company_project_slugs(desk_company))
     resolver = role_resolver or RoleResolver()
     return {
         key: resolve_caller_read_depth(caller, key, organization=organization, role_resolver=resolver) for key in keys
@@ -1089,12 +1097,18 @@ class AssembledCandidates:
 
 @dataclass(frozen=True)
 class Landing:
-    """Where an invocation landed: its home's tier key, project slug and owning company."""
+    """Where an invocation landed: its home's tier key, project slug and owning company.
+
+    ``desk_company`` names the company whose help desk the invocation runs in;
+    a company desk lands in no home, because a company root is not an
+    invocation context.
+    """
 
     home: TierKey | None
     project_slug: str | None
     project_company: str | None
     root: Path | None = None
+    desk_company: str | None = None
 
     def catalog(self) -> HomeCatalog | None:
         """The landed home served from the landed root, or ``None`` outside any home."""
@@ -1117,6 +1131,10 @@ def resolve_landing(project_root: Path, *, landing_kind: ConfigKind | None, conf
         tier_kind = tier_root_kind(project_root)
         if tier_kind is not None:
             return Landing(TierKey(tier_kind, project_root.expanduser().resolve().name), None, None, project_root)
+    if landing_kind is None:
+        desk = tenant_desk_for_folder(project_root)
+        if desk is not None and desk.kind is HelpDeskKind.COMPANY:
+            return Landing(None, None, None, desk_company=desk.slug)
     return Landing(None, None, None)
 
 
@@ -1169,6 +1187,7 @@ def _resolve_reach(
             caller,
             landed_home=landing.home,
             current_project_company=landing.project_company,
+            desk_company=landing.desk_company,
             role_resolver=role_resolver,
         )
     else:

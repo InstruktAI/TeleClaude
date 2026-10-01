@@ -212,6 +212,13 @@ def assistant_endpoint(person_slug: str, folder: Path, host: str) -> Endpoint:
     return Endpoint(kind=EndpointKind.ASSISTANT, folder=folder, host=host, person=person_slug)
 
 
+def _enabled_desk_at(resolved: Path, roots: DeskRoots) -> tuple[DeskIdentifier, Path] | None:
+    for identifier, folder in _enabled_desks(roots):
+        if folder.expanduser().resolve() == resolved:
+            return identifier, folder
+    return None
+
+
 def desk_for_folder(path: str | Path, host: str, roots: DeskRoots = LIVE_ROOTS) -> Endpoint | None:
     """The enabled help desk whose folder is exactly ``path``, or ``None``.
 
@@ -222,10 +229,18 @@ def desk_for_folder(path: str | Path, host: str, roots: DeskRoots = LIVE_ROOTS) 
     platform = platform_desk_endpoint(host, roots)
     if platform is not None and platform.folder is not None and platform.folder.expanduser().resolve() == resolved:
         return platform
-    for identifier, folder in _enabled_desks(roots):
-        if folder.expanduser().resolve() == resolved:
-            return _desk_endpoint(identifier, folder, host)
-    return None
+    match = _enabled_desk_at(resolved, roots)
+    return _desk_endpoint(*match, host) if match is not None else None
+
+
+def tenant_desk_for_folder(path: str | Path, roots: DeskRoots = LIVE_ROOTS) -> DeskIdentifier | None:
+    """The enabled company or project desk whose folder is exactly ``path``, or ``None``.
+
+    Matches as :func:`desk_for_folder` does, for a caller that needs which desk
+    a folder is rather than an endpoint on a host.
+    """
+    match = _enabled_desk_at(Path(path).expanduser().resolve(), roots)
+    return match[0] if match is not None else None
 
 
 def desk_home_present(identifier: DeskIdentifier, roots: DeskRoots = LIVE_ROOTS) -> bool:
@@ -273,4 +288,5 @@ __all__ = [
     "project_help_desk_folder",
     "resolve_host",
     "stamp_desk_identifier",
+    "tenant_desk_for_folder",
 ]

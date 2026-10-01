@@ -55,22 +55,29 @@ _PUBLISHER_REGISTRY: ContextVar[PublisherRegistry | None] = ContextVar("publishe
 _RESOLUTION_MODE: ContextVar[DocsResolutionMode] = ContextVar("docs_resolution_mode", default=DocsResolutionMode.SOURCE)
 
 
+def declared_project_slug(project_root: Path) -> str | None:
+    """Return the project slug ``project_root`` declares in its own configuration, if any."""
+    config_file = project_root / ConfigFileName.OVERLAY
+    if not config_file.is_file():
+        return None
+    try:
+        payload = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    slug = payload.get("project_slug")
+    if isinstance(slug, str) and slug.strip():
+        return slug.strip()
+    name = payload.get("project_name")
+    if isinstance(name, str) and name.strip():
+        return normalize_slug(name)
+    return None
+
+
 def project_slug(project_root: Path) -> str:
     """Read the canonical project slug without importing the full config loader."""
-    config_file = project_root / ConfigFileName.OVERLAY
-    if config_file.is_file():
-        try:
-            payload = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-        except yaml.YAMLError:
-            payload = None
-        if isinstance(payload, dict):
-            slug = payload.get("project_slug")
-            if isinstance(slug, str) and slug.strip():
-                return slug.strip()
-            name = payload.get("project_name")
-            if isinstance(name, str) and name.strip():
-                return normalize_slug(name)
-    return normalize_slug(project_root.name)
+    return declared_project_slug(project_root) or normalize_slug(project_root.name)
 
 
 def git_common_root(project_root: Path) -> Path:
@@ -95,10 +102,18 @@ def git_common_root(project_root: Path) -> Path:
 
 
 def gather_publishers(project_root: Path, current_docs_global: Path) -> list[Publisher]:
-    """Collect every registered project that contributes global documentation."""
+    """Collect every registered project that contributes global documentation.
+
+    The invoking checkout is its own project's publisher: a registered root
+    carrying the slug ``project_root`` declares is skipped, whether it shares
+    the invoking checkout's git root (a linked worktree) or not (a standalone
+    clone). A root that declares no project slug, such as a tier home, skips
+    nothing.
+    """
     publishers = [
         Publisher(project_slug(project_root), current_docs_global, frozenset(publishes_for_root(project_root)))
     ]
+    own_slug = declared_project_slug(project_root)
     seen = {project_root.resolve(), git_common_root(project_root).resolve()}
     for root in load_roots():
         resolved = root.resolve()
@@ -106,8 +121,12 @@ def gather_publishers(project_root: Path, current_docs_global: Path) -> list[Pub
             continue
         seen.add(resolved)
         docs_global = root / "docs" / "global"
-        if docs_global.is_dir():
-            publishers.append(Publisher(project_slug(root), docs_global, frozenset(publishes_for_root(root))))
+        if not docs_global.is_dir():
+            continue
+        slug = project_slug(root)
+        if own_slug is not None and slug == own_slug:
+            continue
+        publishers.append(Publisher(slug, docs_global, frozenset(publishes_for_root(root))))
     return publishers
 
 
