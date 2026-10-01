@@ -20,6 +20,7 @@ from teleclaude.config import config
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,
+    SYSTEM_DAEMON_PRINCIPAL,
     WORKTREE_DIR,
     SlashCommand,
     is_standing_role,
@@ -190,7 +191,7 @@ async def resolve_session_creation_identity(
         initiator_session_id = initiator_computer = None
         human_email = human_role = principal = None
 
-    if not human_role and not cmd_system_role:
+    if not human_role and not cmd_system_role and principal != SYSTEM_DAEMON_PRINCIPAL:
         raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
 
     system_role = cmd_system_role

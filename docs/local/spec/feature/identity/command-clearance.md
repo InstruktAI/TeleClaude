@@ -22,6 +22,26 @@ action or daemon request. The name is never treated as a project slug.
 
 ## Canonical fields
 
+### Roleless platform caller
+
+A caller whose resolved principal is `system:daemon` and whose resolved system
+role is absent is admitted to every declared command. A caller with a system
+role retains that role's existing command restrictions, including when its
+principal is `system:daemon`. Person callers and unidentified callers retain
+their existing clearance rules. Object ownership and valid operation targets
+remain with their owning contracts (`general/principle/trust-and-guardrails`).
+
+#### UC-CCRD1: Platform authority without a system role
+
+```gherkin
+Given a caller whose resolved principal is system:daemon
+And its resolved system role is absent
+When it invokes a declared command
+Then command clearance admits the caller without a person-role substitute
+And when a system role is present its existing command restrictions apply
+And a caller with neither the platform principal nor an admitted role is refused
+```
+
 ### Use cases
 
 ```
@@ -370,7 +390,6 @@ When it runs `telec sessions list`, `telec sessions send` or `telec sessions sta
 Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
 ```
-
 
 ### Local read clearance
 

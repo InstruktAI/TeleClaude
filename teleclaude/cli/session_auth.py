@@ -33,7 +33,13 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.cli import CommandScope
 from teleclaude.config_roster import load_people_roster, read_local_computer_name
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOCAL_COMPUTER, LOGIN_REQUIRED_DETAIL, MarkerState
+from teleclaude.constants import (
+    HUMAN_ROLE_CUSTOMER,
+    LOCAL_COMPUTER,
+    LOGIN_REQUIRED_DETAIL,
+    SYSTEM_DAEMON_PRINCIPAL,
+    MarkerState,
+)
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.paths import MAIN_DB_PATH, invocation_cwd
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
@@ -424,6 +430,9 @@ def cli_clearance(
             identity=identity,
             refusal=_LOCAL_COMPUTER_UNRESOLVED_TEMPLATE.format(computer=target_computer),
         )
+
+    if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.system_role is None:
+        return CliClearance(identity=identity, refusal=None)
 
     action = {
         _SESSION_END_PATH: SessionAct.END,
