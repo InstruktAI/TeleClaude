@@ -19,8 +19,8 @@ company's member projects can discover its knowledge on demand.
 
 Process the company onboarding per the company-scaffolding spec: read the company
 `meta.yaml` and inbox, diff against the recorded SHA digest to find new and changed
-material, generate path-derived `companies/<slug>/<taxonomy>/<topic>` snippets under
-`companies/<slug>/docs/local/`, build the company index, and validate. Preserve
+material, generate snippets at `companies/<slug>/docs/local/<taxonomy>/<topic>.md`
+(their identities are path-derived), build the company index, and validate. Preserve
 human-authored sections when re-onboarding.
 
 ## Discipline
