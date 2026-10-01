@@ -125,7 +125,6 @@ _UNRECORDED_DOMAIN_TRIGGERS = (
 )
 _UNRECORDED_DOMAIN_ENTRY = "{domain} ({publishers})"
 _UNKNOWN_PUBLISHER = "unknown publisher"
-_IGNORE_RETIRED_BUNDLE = shutil.ignore_patterns(RETIRED_DOMAIN_BUNDLE_FILENAME)
 #: Deployed top-level trees that are not domains: the support fragments and the
 #: tier contributions.
 _NON_DOMAIN_DEPLOY_DIRNAMES: frozenset[str] = frozenset(
@@ -1192,12 +1191,29 @@ def _retire_carried_over_bundles(staged_root: Path, *, owned_domains: set[str]) 
             legacy.rename(bundle)
 
 
+def _copy_domain_without_retired_bundle(source_domain: Path, staged_domain: Path) -> None:
+    """Copy one domain tree into a generation, leaving out a retired-name bundle at its root.
+
+    A publisher checkout may still hold the retired generator's output — as an
+    ignored leftover or a tracked file — and it never enters a generation; a
+    file of that name deeper in the tree is an ordinary snippet.
+    """
+
+    def ignore_retired_bundle(directory: str, names: list[str]) -> list[str]:
+        if Path(directory) == source_domain and RETIRED_DOMAIN_BUNDLE_FILENAME in names:
+            return [RETIRED_DOMAIN_BUNDLE_FILENAME]
+        return []
+
+    shutil.copytree(source_domain, staged_domain, symlinks=False, ignore=ignore_retired_bundle)
+
+
 def committed_retired_outputs(project_root: Path) -> list[Path]:
     """Return the publisher-checkout outputs a retired generator wrote for a snapshot.
 
     Each is a ``docs/global/<domain>/`` legacy bundle the snapshot does not
-    track; the caller retracts them from the canonical checkout. A tracked file
-    of that name is the project's own and is never reported.
+    track; the caller retracts from the canonical checkout only those the
+    checkout holds as ignored, untracked files. A tracked file of that name is
+    the project's own and is never reported.
     """
     docs_global = project_root / _TIER_PUBLISHED_DOCS_RELATIVE_PATH
     if not docs_global.is_dir():
@@ -1219,9 +1235,7 @@ def materialize_docs_root(owner_by_domain: dict[str, Publisher], staged_root: Pa
         if not src.is_dir():
             continue
         staged_domain = staged_root / domain
-        # A live checkout may still hold the retired generator's leftovers;
-        # they never enter a generation.
-        shutil.copytree(src, staged_domain, symlinks=False, ignore=_IGNORE_RETIRED_BUNDLE)
+        _copy_domain_without_retired_bundle(src, staged_domain)
         triggers = triggers_by_publisher.setdefault(owner.slug, triggers_for_root(owner.docs_global.parent.parent))
         _write_domain_publisher_record(
             staged_domain,
@@ -1513,7 +1527,7 @@ def _materialize_committed_owner(
             shutil.rmtree(staged_domain)
         source_domain = current.docs_global / domain
         if domain in owner_by_domain and owner_by_domain[domain].slug == current.slug and source_domain.is_dir():
-            shutil.copytree(source_domain, staged_domain, symlinks=False)
+            _copy_domain_without_retired_bundle(source_domain, staged_domain)
             _write_domain_publisher_record(
                 staged_domain,
                 domain=domain,

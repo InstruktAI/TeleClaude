@@ -35,6 +35,8 @@ _GIT_MERGE_BASE_ANCESTOR_ARGS = ("merge-base", "--is-ancestor")
 _GIT_COMMIT_VERIFY_SUFFIX = "^{commit}"
 _GIT_WORKTREE_ADD_ARGS = ("worktree", "add", "--detach")
 _GIT_WORKTREE_REMOVE_ARGS = ("worktree", "remove", "--force")
+_GIT_IGNORED_UNTRACKED_ARGS = ("ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--")
+_GIT_PATH_SEPARATOR = "\0"
 _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _SNAPSHOT_DIRECTORY_PREFIX = "teleclaude-publication-"
 _SNAPSHOT_SOURCE_DIRECTORY = "source"
@@ -252,7 +254,11 @@ def _execute_publication(
             agents_enabled=capabilities.agents,
             docs_enabled=capabilities.docs,
         )
-        retired_outputs = committed_retired_outputs(snapshot_root) if capabilities.docs else []
+        retired_outputs = (
+            _retractable_outputs(snapshot_root, canonical_root, committed_retired_outputs(snapshot_root))
+            if capabilities.docs
+            else []
+        )
         if distribution_outputs or retired_outputs:
             _install_canonical_files(
                 snapshot_root,
@@ -310,6 +316,28 @@ def _recorded_snapshot(canonical_root: Path, after_sha: str) -> Iterator[Path]:
                 capture_output=True,
                 text=True,
             )
+
+
+def _retractable_outputs(snapshot_root: Path, canonical_root: Path, candidates: list[Path]) -> list[Path]:
+    """Keep the retired outputs the canonical checkout holds only as ignored, untracked files.
+
+    Snapshot absence does not establish ownership: a file the canonical index
+    tracks or stages, or an untracked file nothing ignores, belongs to a writer
+    and is never retracted.
+    """
+    if not candidates:
+        return []
+    relative = [candidate.relative_to(snapshot_root).as_posix() for candidate in candidates]
+    # Index and ignore state have no Python API; git is their only authority.
+    result = subprocess.run(
+        [_GIT_EXECUTABLE, *_GIT_IGNORED_UNTRACKED_ARGS, *relative],
+        cwd=canonical_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    eligible = set(result.stdout.split(_GIT_PATH_SEPARATOR))
+    return [candidate for candidate, path in zip(candidates, relative, strict=True) if path in eligible]
 
 
 def _canonical_head(canonical_root: Path) -> str | None:

@@ -97,8 +97,8 @@ And the valid domain set is the union of registered publishers' business.publish
 Given --baseline-only is set
 When the Selection policy applies baseline anchoring
 Then it loads every published domain's baseline.md manifest, general included, and the project's own manifest
-And --domains narrows the domain manifests to the requested domains
 And it keeps only IDs reachable via @-refs from the loaded manifests
+And --domains then narrows that set to snippets in the requested domains
 ```
 
 #### UC-DSP25: Target filter keeps only the named slug's snippets
