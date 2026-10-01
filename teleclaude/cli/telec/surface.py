@@ -21,6 +21,7 @@ from .surface_types import (
     CommandAuth,
     CommandDef,
     Flag,
+    FlagConditionedAuth,
     TelecCommand,
     strip_hidden_flag_tokens,
 )
@@ -76,6 +77,22 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
 
 
 _HELP_DESK_ADMIN_NOTE = "--help-desk requires administrator authority over the home."
+# Enabling a help desk is judged at the home it opens, at the admin band; plain init stays a
+# platform-scope member act.
+_HELP_DESK_COMPANY_INIT_AUTH = CommandAuth(
+    system=_AGENT_REACH,
+    human=_HR_MEMBER,
+    scope=CommandScope.PLATFORM,
+    when_flag=FlagConditionedAuth(
+        F.FLAG_HELP_DESK.long, CommandScope.NAMED_COMPANY, _HR_ADMIN, scope_flag=F.FLAG_COMPANY_SLUG.long
+    ),
+)
+_HELP_DESK_PROJECT_INIT_AUTH = CommandAuth(
+    system=_AGENT_REACH,
+    human=_HR_MEMBER,
+    scope=CommandScope.PLATFORM,
+    when_flag=FlagConditionedAuth(F.FLAG_HELP_DESK.long, CommandScope.INVOCATION, _HR_ADMIN),
+)
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
@@ -1260,7 +1277,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<name> [--slug <slug>] [--help-desk]",
                         flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG, F.FLAG_HELP_DESK],
                         notes=[_HELP_DESK_ADMIN_NOTE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
+                        auth=_HELP_DESK_COMPANY_INIT_AUTH,
                     ),
                     "patch": CommandDef(
                         desc="Patch one company's roster or fields",
@@ -1311,7 +1328,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Syncs no artifacts — documentation publication is commit-bound.",
                             _HELP_DESK_ADMIN_NOTE,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
+                        auth=_HELP_DESK_PROJECT_INIT_AUTH,
                     ),
                     "patch": CommandDef(
                         desc="Patch one project's configuration",

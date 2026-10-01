@@ -158,6 +158,16 @@ Then the command is refused at platform scope before listing available directory
 And a platform administrator receives the existing unknown-name listing
 ```
 
+#### UC-CCS11: Enabling a help desk is judged at the home it opens
+
+```
+Given a person holding no platform role and the admin role in one company
+When the person runs `telec config company init` with `--help-desk` naming that company
+Then the command passes clearance and proceeds to the company's configuration clearance
+But the same command naming another company is refused with the not-permitted failure naming `customer`
+And `telec config company init` without `--help-desk` is refused at platform scope as before
+```
+
 ### Cross-context references
 
 - The verb→Role allowlist data lives in the CLI surface schema, owned by the `config`/CLI-shape concern. The identity context owns only the gate logic.
@@ -475,6 +485,11 @@ supplies.
   company at that company, a project at that project, a person at that person.
   Machine and global configuration, and the listing, creation and management of
   people and companies, are judged at platform scope.
+- Initializing a company or a project with `--help-desk` is judged at the home
+  whose help desk it enables, under the administrator band: a company init at the
+  company it names (its `--slug`, otherwise its normalized name), a project init at
+  the project of the checkout it initializes. The same init without the flag stays
+  a platform-scope act.
 - A command that names a target session is judged at the project that session runs
   in.
 - A command that names a directory to act in is judged at the project containing

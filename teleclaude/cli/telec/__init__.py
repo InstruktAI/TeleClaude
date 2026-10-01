@@ -23,11 +23,13 @@ from teleclaude.cli.telec.help import (
 )
 from teleclaude.cli.telec.surface import (
     CLI_SURFACE,
+    CommandAuth,
     CommandDef,
     TelecCommand,
 )
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.paths import invocation_cwd
+from teleclaude.slug import normalize_slug
 
 from . import flags as F
 
@@ -75,15 +77,24 @@ def _resolve_and_enforce(cmd: str, args: list[str]) -> tuple[list[str], CommandD
     return path, node, remainder
 
 
+def _effective_auth(node: CommandDef, parsed: ParsedArgs) -> CommandAuth | None:
+    """Return the node's declaration, conditioned on whether its flag-conditioned flag is present."""
+    auth = node.auth
+    if auth is None or auth.when_flag is None:
+        return auth
+    flag = next((candidate for candidate in node.flags if candidate.long == auth.when_flag.flag), None)
+    return auth.conditioned(flag is not None and parsed.has(flag))
+
+
 def _role_target_for_command(
     path: list[str],
     node: CommandDef,
+    auth: CommandAuth | None,
     parsed: ParsedArgs,
     target_computer: str | None,
     direct_conversation: bool,
 ) -> RoleTarget | None:
     """Resolve the declared person-role object from the parsed command target."""
-    auth = node.auth
     if auth is None or auth.caller_independent:
         return None
     if classify_computer_target(target_computer) is ComputerTargetDisposition.REMOTE:
@@ -107,6 +118,8 @@ def _role_target_for_command(
         return Project(subject)
     if auth.scope is CommandScope.TARGET_SESSION:
         return None
+    if auth.scope is CommandScope.NAMED_COMPANY:
+        return _named_company_target(node, auth, parsed)
     if auth.scope is CommandScope.NAMED_TRUSTED_DIRECTORY:
         if auth.scope_flag is None:
             return Platform()
@@ -126,6 +139,15 @@ def _role_target_for_command(
             return ProjectPath(invocation_cwd())
         return ProjectPath(Path(target_value).expanduser())
     return ProjectPath(invocation_cwd())
+
+
+def _named_company_target(node: CommandDef, auth: CommandAuth, parsed: ParsedArgs) -> RoleTarget:
+    """Resolve the company a command names: its scope flag's value, else its normalized first positional."""
+    flag = next((candidate for candidate in node.flags if candidate.long == auth.scope_flag), None)
+    named = parsed.value(flag) if flag is not None else None
+    if named is None and parsed.positionals:
+        named = normalize_slug(parsed.positionals[0])
+    return Company(named.strip()) if named and named.strip() else Platform()
 
 
 def _handle_cli_command(argv: list[str]) -> None:
@@ -168,11 +190,12 @@ def _handle_cli_command(argv: list[str]) -> None:
     parsed = parse_command_args(node, remainder)
     target_computer = parsed.value(F.FLAG_COMPUTER) if F.FLAG_COMPUTER in node.flags else None
     direct_conversation = any(flag in node.flags and parsed.has(flag) for flag in _DIRECT_CONVERSATION_FLAGS)
-    role_target = _role_target_for_command(path, node, parsed, target_computer, direct_conversation)
+    auth = _effective_auth(node, parsed)
+    role_target = _role_target_for_command(path, node, auth, parsed, target_computer, direct_conversation)
     require_cli_clearance(
         command_path,
         target_session_id,
-        node.auth,
+        auth,
         role_target=role_target,
         target_computer=target_computer,
         direct_conversation=direct_conversation,

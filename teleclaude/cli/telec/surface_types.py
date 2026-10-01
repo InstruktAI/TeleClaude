@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, StrEnum
 
 from teleclaude.cli import CommandScope
@@ -55,6 +55,16 @@ class TelecCommand(str, Enum):
 
 
 @dataclass(frozen=True)
+class FlagConditionedAuth:
+    """The scope and person band a command is judged at when one of its flags is present."""
+
+    flag: str
+    scope: CommandScope
+    human: frozenset[str]
+    scope_flag: str | None = None
+
+
+@dataclass(frozen=True)
 class CommandAuth:
     """Caller-independent declaration or role allow-list for a CLI command."""
 
@@ -63,6 +73,19 @@ class CommandAuth:
     caller_independent: bool = False
     scope: CommandScope = CommandScope.INVOCATION
     scope_flag: str | None = None
+    when_flag: FlagConditionedAuth | None = None
+
+    def conditioned(self, flag_present: bool) -> CommandAuth:
+        """Return the declaration that applies: the flag-conditioned scope and band when its flag is present."""
+        if self.when_flag is None or not flag_present:
+            return self
+        return replace(
+            self,
+            scope=self.when_flag.scope,
+            human=self.when_flag.human,
+            scope_flag=self.when_flag.scope_flag,
+            when_flag=None,
+        )
 
     def allows(self, system_role: str | None, human_role: str | None) -> bool:
         """Check whether a caller with the given roles is authorized.
