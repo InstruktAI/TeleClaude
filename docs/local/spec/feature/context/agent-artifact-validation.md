@@ -151,6 +151,20 @@ Scenario: An agent commits a retirement companion beside a command
   Then the agent receives a finding naming the file as a malformed command source
 ```
 
+<!-- planned:guardrails-ignored-files-silent-failure -->
+#### UC-AAV6: A file git ignores under agents/ is not an artifact source
+
+```
+Scenario: An agent runs full lint with an ignored file and a stray file under agents/
+  Given git ignores a file directly under agents/, such as operating-system folder metadata
+  And a file git does not ignore sits untracked directly under agents/
+  When the agent runs lint across the whole repository
+  Then the ignored file produces no artifact finding
+  And the untracked file is refused with a finding naming it
+  And that finding appears in the lint output the agent reads
+```
+<!-- /planned:guardrails-ignored-files-silent-failure -->
+
 ### Cross-context references
 
 - agent_runtime — the deployed artifacts ultimately drive what the agent CLI
