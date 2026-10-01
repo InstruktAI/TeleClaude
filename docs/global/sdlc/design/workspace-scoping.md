@@ -208,7 +208,7 @@ answer from session history.
     leg first (ruff `--fix` may edit), then the guardrails lane; it exits
     non-zero if either leg fails. `make lint` carries no guardrails; the
     guardrails lane carries no native tools.
-<!-- planned-change:install-records-own-writes -->
+<!-- planned-change:full-lint-tracked-material -->
 11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
     make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
     paths; on full runs neither is scoped. Because the make leg's paths travel
@@ -216,7 +216,7 @@ answer from session history.
     metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
-<!-- change:install-records-own-writes -->
+<!-- change:full-lint-tracked-material -->
 11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
     make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
     paths; on full runs neither is scoped. Because the make leg's paths travel
@@ -229,7 +229,7 @@ answer from session history.
     content git ignores, and the content of another repository nested inside
     it, are never graded. Untracked files reach the lane through file-scoped
     runs and the commit gate.
-<!-- /planned-change:install-records-own-writes -->
+<!-- /planned-change:full-lint-tracked-material -->
 
 12. **Ownership is declared, never inferred.** A path with no live declaration is
     unowned — that is a fact about the record, not a judgment about the work.
@@ -346,19 +346,19 @@ git commit (raw, or invoked by telec code commit)
 
 ### Full-run flow
 
-<!-- planned-change:install-records-own-writes -->
+<!-- planned-change:full-lint-tracked-material -->
 ```
 telec code lint --all   (or CI, no-session shared branch)
   → make lint (no FILES_FROM) + guardrails lane (repo-wide)
   → doc-index cross-reference validation runs inside the guardrails lane
 ```
-<!-- change:install-records-own-writes -->
+<!-- change:full-lint-tracked-material -->
 ```
 telec code lint --all   (or CI, no-session shared branch)
   → make lint (no FILES_FROM) + guardrails lane (repo-wide over tracked files)
   → doc-index cross-reference validation runs inside the guardrails lane
 ```
-<!-- /planned-change:install-records-own-writes -->
+<!-- /planned-change:full-lint-tracked-material -->
 
 ## Failure modes
 
