@@ -146,11 +146,11 @@ checkpoint names the dirty paths that match the session's own shell activity in
 the current checkpoint cycle and that the session has not declared, and asks the
 session to declare the ones that are its own. A path matches when it is a write
 target of a successful shell command: a redirection destination, a path a
-file-writing command creates, modifies, or removes, or the destination of a
-recognized write call in an interpreter script, where a destination the script
-does not name as a literal leaves every known path the script names as a
-plausible destination. A path the command only reads or only carries as data
-matches nothing, and neither do
+file-writing command creates, modifies, or removes, or a path named in the
+destination expression of a recognized write call in an interpreter script,
+including the single assignment that binds a destination name. A path the
+command only reads or only carries as data, including write content, matches
+nothing, and neither do
 read-only commands and read-only tools. The question is advice: it adds
 nothing to scope, writes no declaration, and gates no commit. The session
 remains the only party that knows whether it wrote the file.
