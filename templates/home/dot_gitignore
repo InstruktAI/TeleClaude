@@ -16,6 +16,9 @@ people/*/*
 !people/*/docs/
 people/*/docs/*
 !people/*/docs/**
+!people/*/agents/
+people/*/agents/*
+!people/*/agents/**
 !companies/
 companies/*
 !companies/*/
@@ -29,3 +32,6 @@ companies/*/help-desk/*
 !companies/*/docs/
 companies/*/docs/*
 !companies/*/docs/**
+!companies/*/agents/
+companies/*/agents/*
+!companies/*/agents/**
