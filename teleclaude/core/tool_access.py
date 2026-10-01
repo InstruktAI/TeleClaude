@@ -12,6 +12,8 @@ from typing import TypedDict
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef
 
+_COMMAND_PATH_SEPARATOR = " "
+
 
 class ToolSpec(TypedDict, total=False):
     """Minimal tool spec used for filtering."""
@@ -41,9 +43,9 @@ def desk_command_paths(human_role: str | None) -> list[str]:
     agent, whatever the role's ordinary band admits.
     """
 
-    def _walk(surface: dict[str, CommandDef], prefix: str = "") -> Iterator[str]:
+    def _walk(surface: dict[str, CommandDef], prefix: str | None = None) -> Iterator[str]:
         for name, cmd in surface.items():
-            path = f"{prefix} {name}".strip() if prefix else name
+            path = _COMMAND_PATH_SEPARATOR.join((prefix, name)) if prefix else name
             if cmd.subcommands:
                 yield from _walk(cmd.subcommands, path)
             elif cmd.desk and is_command_allowed(path, None, human_role):

@@ -18,7 +18,7 @@ import os
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from hashlib import sha256
-from typing import NotRequired, TypedDict
+from typing import Final, NotRequired, TypedDict
 
 
 class AgentName(StrEnum):
@@ -304,12 +304,13 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         f' --settings \'{{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}}\''
                         f" {claude_mount}"
                     ),
-                    # Static half of the desk confinement; the launch settings
-                    # (permission mode, read fence, allow list, instruction
-                    # selection, plugin switch-off) and the session's own upload
+                    # Static half of the desk confinement: no user, project or
+                    # local settings source, no MCP, skills or extra tools. The
+                    # launch settings (permission mode, read fence, allow list,
+                    # instruction selection, hooks) and the session's own upload
                     # root are rendered per launch.
                     LaunchProfile.HELP_DESK: (
-                        "--strict-mcp-config --disable-slash-commands --tools Bash,Read,Glob,Grep"
+                        "--setting-sources '' --strict-mcp-config --disable-slash-commands --tools Bash,Read,Glob,Grep"
                     ),
                 },
                 "mode_chains": {
@@ -631,17 +632,19 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
 _LOG_STATE_ROOT = f"{os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')}/instrukt-ai"  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 RESTRICTED_MOUNT_DIRS: tuple[str, ...] = ("~/.teleclaude/docs", _LOG_STATE_ROOT)
 
+_PROFILES_KEY: Final = "profiles"
+_VERIFIED_WITHOUT_DESK_PROFILE = "Agent '{agent}' declares a verified desk confinement but has no '{profile}' profile"
+_UNVERIFIED_WITH_DESK_PROFILE = "Agent '{agent}' declares no desk confinement but has a '{profile}' profile"
+
 
 def _validate_desk_confinement(definitions: dict[AgentName, AgentDefinition]) -> dict[AgentName, AgentDefinition]:
     """Fail at import when a desk confinement declaration and its profile disagree."""
     for name, definition in definitions.items():
-        has_profile = LaunchProfile.HELP_DESK in definition.protocol["profiles"]
+        has_profile = LaunchProfile.HELP_DESK in definition.protocol[_PROFILES_KEY]
         verified = definition.desk_confinement is DeskConfinement.VERIFIED
         if verified != has_profile:
-            raise ValueError(
-                f"Agent '{name.value}' declares desk_confinement={definition.desk_confinement.value} "
-                f"but {'has' if has_profile else 'lacks'} a '{LaunchProfile.HELP_DESK.value}' profile"
-            )
+            template = _VERIFIED_WITHOUT_DESK_PROFILE if verified else _UNVERIFIED_WITH_DESK_PROFILE
+            raise ValueError(template.format(agent=name.value, profile=LaunchProfile.HELP_DESK.value))
     return definitions
 
 

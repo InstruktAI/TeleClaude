@@ -41,6 +41,7 @@ logger = get_logger(__name__)
 
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
+_DESK_PLACEMENT_LOG = "Restricted session placed at the help desk: origin=%s role=%s"
 _WORKTREE_SUBDIR_TEMPLATE = "{worktree_dir}/{slug}"
 _WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
@@ -194,7 +195,7 @@ async def resolve_session_creation_identity(
         else os.path.join(WORKING_DIR, "help-desk")
     )
     if is_desk_role(system_role or None, human_role):
-        logger.info("Restricted session placed at the help desk: origin=%s role=%s", origin, human_role)
+        logger.info(_DESK_PLACEMENT_LOG, origin, human_role)
         project_path = configured_help_desk_path
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = working_slug = None

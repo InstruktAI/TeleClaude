@@ -23,7 +23,7 @@ from teleclaude.core.tool_access import desk_command_paths
 
 _CLAUDE_HOME_DIR = ".claude"
 _CLAUDE_SETTINGS_FILE = "settings.json"
-_CLAUDE_ENABLED_PLUGINS_KEY = "enabledPlugins"
+_CLAUDE_HOOKS_KEY = "hooks"
 _DESK_INSTRUCTIONS_FILE = "AGENTS.md"
 _DESK_BASH_RULE_TEMPLATE = "Bash(telec {path} *)"
 _DESK_SETTINGS_FLAG = "--settings"
@@ -31,12 +31,14 @@ _DESK_ADD_DIR_FLAG = "--add-dir"
 _DESK_APPEND_PROMPT_FILE_FLAG = "--append-system-prompt-file"
 _NO_DESK_RENDERER_TEMPLATE = "Agent '{agent}' has no help-desk launch rendering"
 _INVALID_CLAUDE_SETTINGS_TEMPLATE = "Claude user settings at {path} are not a JSON object"
+_FLAG_SEPARATOR = " "
 
-# Launch settings for a Claude desk session. Don't-ask mode denies every tool
-# call that is not pre-approved, the read fence keeps the file tools inside the
-# working directories, only managed instructions load at startup, and memory
-# and web tools stay off. The allow list and plugin switch-off are added per
-# launch.
+# Launch settings for a Claude desk session. The desk profile loads no user,
+# project or local settings source, so these are the session's whole
+# permission set: don't-ask mode denies every tool call that is not
+# pre-approved here, the read fence keeps the file tools inside the working
+# directories, only managed instructions load at startup, and memory and web
+# tools stay off. The allow list and the deployed hooks are added per launch.
 _CLAUDE_DESK_SETTINGS: dict[str, object] = {  # guard: loose-dict - vendor settings document
     "forceLoginMethod": "claudeai",
     "enabledMcpjsonServers": [],
@@ -60,18 +62,21 @@ class SessionLaunchProfile:
     flags: str = ""
 
 
-def _claude_user_enabled_plugins() -> list[str]:
-    """Return the plugins the user's Claude settings enable."""
+def _claude_deployed_hooks() -> dict[str, object]:  # guard: loose-dict - vendor hook settings
+    """Return the hook blocks the deployed Claude user settings carry.
+
+    Hooks run outside the agent's tool permissions and never widen its
+    permissions or readable roots; the session's lifecycle reporting depends
+    on them, so a desk launch carries them although it loads no settings source.
+    """
     path = Path.home() / _CLAUDE_HOME_DIR / _CLAUDE_SETTINGS_FILE
     if not path.is_file():
-        return []
+        return {}
     settings = json.loads(path.read_text())
     if not isinstance(settings, dict):
         raise ValueError(_INVALID_CLAUDE_SETTINGS_TEMPLATE.format(path=path))
-    enabled = settings.get(_CLAUDE_ENABLED_PLUGINS_KEY)
-    if not isinstance(enabled, dict):
-        return []
-    return [str(plugin) for plugin, on in enabled.items() if on is True]
+    hooks = settings.get(_CLAUDE_HOOKS_KEY)
+    return hooks if isinstance(hooks, dict) else {}
 
 
 def _render_claude_desk_flags(session: Session) -> str:
@@ -79,18 +84,21 @@ def _render_claude_desk_flags(session: Session) -> str:
     settings = {
         **_CLAUDE_DESK_SETTINGS,
         _PERMISSIONS_KEY: {**_CLAUDE_DESK_PERMISSIONS, _ALLOW_KEY: allow},
-        _CLAUDE_ENABLED_PLUGINS_KEY: dict.fromkeys(_claude_user_enabled_plugins(), False),
+        _CLAUDE_HOOKS_KEY: _claude_deployed_hooks(),
     }
     parts = [
         _DESK_SETTINGS_FLAG,
         shlex.quote(json.dumps(settings)),
         _DESK_ADD_DIR_FLAG,
-        shlex.quote(str(get_session_output_dir(session.session_id))),
+        # The upload helper's root is relative to the daemon's working
+        # directory; the agent runs in its desk folder, so it gets the
+        # resolved host-side path.
+        shlex.quote(str(get_session_output_dir(session.session_id).resolve())),
     ]
     desk_instructions = Path(resolve_working_dir(session.project_path, session.subdir)) / _DESK_INSTRUCTIONS_FILE
     if desk_instructions.is_file():
         parts.extend((_DESK_APPEND_PROMPT_FILE_FLAG, shlex.quote(str(desk_instructions))))
-    return " ".join(parts)
+    return _FLAG_SEPARATOR.join(parts)
 
 
 # Agents with a verified desk confinement (`AgentDefinition.desk_confinement`)
