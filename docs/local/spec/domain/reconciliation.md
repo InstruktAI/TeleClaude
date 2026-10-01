@@ -22,9 +22,20 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 ### Ownership boundary
 
+<!-- planned-change:unattended-launcher-signing -->
 - **Owns:** comparison of declared installation capabilities with observed
   machine state and selection of sanctioned convergence actions, including the
   rule deciding which material the home's history retains.
+<!-- change:unattended-launcher-signing -->
+- **Owns:** comparison of declared installation capabilities with observed
+  machine state and selection of sanctioned convergence actions, including the
+  rule deciding which material the home's history retains; and each macOS
+  machine's launcher code identity — its signing authority, the signing store
+  that holds it, the unlock secret that opens that store, and the record of what
+  the installed launchers were built from. That state is created on the machine
+  it serves, is never shared with another machine, and lies outside the home's
+  retained set.
+<!-- /planned-change:unattended-launcher-signing -->
 - **Does not own:** service lifecycle mechanics, configuration schema, the
   application behavior of the capabilities it reconciles, or what a commit
   boundary does with a membership answer it is given.
@@ -47,6 +58,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **home-template-materialization** — `docs/local/spec/feature/reconciliation/home-template-materialization.md` — materializing repository-owned regular-file templates into the TeleClaude home before activation
 - **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
 - **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
+<!-- planned:unattended-launcher-signing -->
+- **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
+<!-- /planned:unattended-launcher-signing -->
 
 
 <!-- planned:event-origin-and-subject -->
