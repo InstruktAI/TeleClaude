@@ -153,7 +153,40 @@ only through the sanctioned recovery path. File a platform gap only when that
 path itself fails; never replace the investigation with automatic end and
 redispatch of a session that may encounter the same condition again.
 
-For a startup failure that produced no native transcript:
+For a non-quota startup failure whose command delivery has terminated:
+
+1. Cancel `orchestration-watch`. Preserve the session identity, owning computer,
+   and literal original `telec sessions run` command. Inspect the session,
+   native evidence, and delivery result under
+   `general/procedure/ai-to-ai-operations`; establish whether the command reached
+   the worker and whether startup delivery is still pending or has terminated.
+   A live process or visible composer does not establish a usable task dispatch.
+2. Resolve the established setup obstruction within the existing mandate.
+   Accept workspace trust under `sdlc/policy/ai-agent-security`; assess other
+   permission requests under `general/procedure/ai-to-ai-operations` and
+   `general/policy/human-contract`. Clearing a prompt completes setup only;
+   it does not establish command delivery or resume a terminated delivery.
+3. Before closing, inspect and preserve any work product, durable state, and
+   outstanding child obligations under `general/principle/session-lifecycle`.
+   If the command reached the worker and task execution began, use the
+   executing-worker recovery path instead. When the command was not delivered
+   and startup delivery has terminated, treat that dispatch as unusable even
+   if its process remains live.
+4. Run `telec sessions end <session_id>` on the owning computer and confirm
+   closure before creating a replacement. Repeat the original dispatch with
+   its command, arguments, project, subfolder, and thinking mode preserved;
+   apply an explicitly directed agent change when present. Keep the lifecycle
+   phase pending; replacement does not advance it.
+5. Save the replacement session identity and initialize its tail marker.
+   Arm `orchestration-watch` for the target slug before yielding, then assess
+   the replacement's events under the notification and tailing discipline.
+   Confirm actual task start from runtime evidence; dispatch acceptance alone
+   is not recovery completion (`general/procedure/ai-to-ai-operations`).
+6. If the replacement fails, reassess the new evidence and its next recovery
+   contribution under `general/policy/human-contract`; do not repeat an
+   unchanged failed recovery without resolving its cause.
+
+For a model-quota startup failure that produced no native transcript:
 
 1. Preserve the `session_id`, `tmux_session_name`, and literal original
    `telec sessions run` command returned or emitted at dispatch.
@@ -180,25 +213,25 @@ For a worker whose session is `stalled`:
 1. Read the notification's evidence first. A runtime-reported failure carries the
    provider's own payload, which often establishes the cause. When it does not,
    or the stall was inferred, capture the still-live pane with exactly:
-   `tmux capture-pane -p -J -S - -t '<tmux_session_name>'`. Do not end the session.
+   `tmux capture-pane -p -J -S - -t '<tmux_session_name>'`. Do not end the session
+   before this assessment.
 2. Read the evidence and classify. Only intelligence decides; silence alone
    establishes nothing.
 3. When model-specific exhaustion is established, record the model the session's
    launch resolved to as unavailable with
    `telec agents status <agent> --model <model> --status unavailable --reason <reason> --until <iso8601>`,
    using the provider's stated recovery window. Never touch the agent-wide status.
-4. Run `telec sessions restart <session_id>` once. The restart's computed launch
+4. For that model-specific exhaustion, run `telec sessions restart <session_id>`
+   once. The restart's computed launch
    resolves the next available chain model; the transcript and job context are
    preserved and the worker continues in place.
 5. If the restart fails or the session stalls again for the same cause, perform no
    further model-quota recovery for that job. Keep the work pending for normal
    failure handling.
 6. When the prose establishes a non-quota cause (a permission prompt, a wedged
-   process, an unrelated error), handle it under the normal worker-help and
-   escalation rules instead. Workspace-trust prompts follow
-   `sdlc/policy/ai-agent-security` §Workspace-trust prompts; other permission
-   requests are assessed within the existing mandate and applicable safety
-   gates under `general/procedure/ai-to-ai-operations`.
+   process, an unrelated error), distinguish failed startup delivery from an
+   executing worker's obstruction. Apply the terminated startup-delivery path
+   above when its conditions hold; otherwise use When Worker Needs Help.
 
 For direct evidence that explicitly establishes provider-wide quota, rate-limit,
 credit, or instability:
@@ -307,7 +340,8 @@ The loop terminates when the work state machine returns:
 
 ## Recovery
 
-- If the worker stalls or reports a recoverable process failure, its own procedure carries the recovery mechanics; do not compose guidance. Escalate when it cannot proceed from its own brief.
+- Route startup-dispatch failures through Agent Degradation Handling and
+  recovery inside an executing worker's brief through When Worker Needs Help.
 
 ## See Also
 
