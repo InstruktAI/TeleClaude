@@ -104,7 +104,7 @@ nothing is recorded, the index entries activation added are restored, entries
 it did not add are untouched, and the refusal is reported with the gate's
 findings as its own outcome, distinct from a retained-set refusal.
 <!-- /planned:commit-gate-in-hook -->
-<!-- planned:home-scoped-commits -->
+<!-- planned:install-records-own-writes -->
 
 ### Activation records only its own writes
 
@@ -126,7 +126,7 @@ wrote to its earlier content, or removes it when it was absent, provided the
 file still holds exactly what activation wrote. A file someone changed in the
 meantime is left as it is and reported.
 
-<!-- /planned:home-scoped-commits -->
+<!-- /planned:install-records-own-writes -->
 
 ### Path identity is canonical before any answer is given
 
@@ -184,7 +184,7 @@ with a record. Detection tests the home root itself and never walks upward.
 
 **Activation**
 
-<!-- planned-change:home-scoped-commits -->
+<!-- planned-change:install-records-own-writes -->
 ```mermaid
 flowchart TD
     A[Convergence reaches the home] --> B{Repository at the home root?}
@@ -206,7 +206,7 @@ flowchart TD
 
 Two orderings are contractual: the declaration precedes enumeration, and the
 validation gate `G` precedes the write this flow performs.
-<!-- change:home-scoped-commits -->
+<!-- change:install-records-own-writes -->
 ```mermaid
 flowchart TD
     A[Convergence reaches the home] --> B{Repository at the home root?}
@@ -236,7 +236,7 @@ flowchart TD
 Three orderings are contractual: the commit lock precedes reading the home's
 state and is released only after the record, the declaration precedes
 enumeration, and the validation gate `G` precedes the write this flow performs.
-<!-- /planned-change:home-scoped-commits -->
+<!-- /planned-change:install-records-own-writes -->
 
 **Membership query**
 
