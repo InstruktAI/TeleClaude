@@ -32,6 +32,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# The shared help-desk forum, which reflects platform-desk sessions and is no entry point,
+# and a forum this adapter does not recognize.
+_HELP_DESK_FORUM_TYPE = "help_desk"
+_UNKNOWN_FORUM_TYPE = "unknown"
+_UNRECOGNIZED_FORUM_WARNING = (
+    "Unrecognized forum parent_id=%s; ignoring the message. Known forums: help_desk=%s all_sessions=%s projects=%s"
+)
+
 DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE = "fetch_message"
 DISCORD_THREAD_ID_ATTRIBUTE = "id"
 ORPHAN_CANDIDATE_DELETION_EPOCH_THRESHOLD = 2
@@ -248,7 +256,7 @@ class ChannelOperationsMixin:
 
         if parent_id is not None and parent_id == self._help_desk_channel_id:
             # The shared help-desk forum reflects platform-desk sessions; it is no entry point.
-            return "help_desk", None
+            return _HELP_DESK_FORUM_TYPE, None
 
         if parent_id is not None and parent_id == self._all_sessions_channel_id:
             entries = get_project_catalog_service().list_entries()
@@ -261,14 +269,13 @@ class ChannelOperationsMixin:
 
         if parent_id is not None:
             logger.warning(
-                "Unrecognized forum parent_id=%s; ignoring the message. "
-                "Known forums: help_desk=%s all_sessions=%s projects=%s",
+                _UNRECOGNIZED_FORUM_WARNING,
                 parent_id,
                 self._help_desk_channel_id,
                 self._all_sessions_channel_id,
                 list(self._project_forum_map.values()),
             )
-        return "unknown", None
+        return _UNKNOWN_FORUM_TYPE, None
 
     def title_body(self, session: Session) -> str:
         """Discord-specific decoration: prefix the project short-name for the catch-all forum.

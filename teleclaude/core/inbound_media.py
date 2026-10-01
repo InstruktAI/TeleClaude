@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.config import config
+from teleclaude.core.db import db
+from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.services.whatsapp import fetch_whatsapp_media_bytes
 from teleclaude.types.media import MediaProvider, MediaRef
@@ -94,7 +97,18 @@ async def download_whatsapp_media(
 
 
 async def fetch_media_ref(media_ref: MediaRef, session_id: str) -> Path:
-    """Fetch referenced media into ``session_id``'s upload directory on this computer."""
+    """Fetch referenced media into ``session_id``'s upload directory on this computer.
+
+    Media is referenced only when the master forwards it, so a session that is
+    gone or closed refuses it before anything is fetched: the refusal fails the
+    forwarding request, and the master treats the session as closed (a returning
+    customer reopens their desk) instead of counting the media as delivered.
+    """
+    session = await db.get_session(session_id)
+    if session is None:
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
+    if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
     if media_ref.provider is MediaProvider.WHATSAPP:
         return await download_whatsapp_media(
             media_ref.media_id,

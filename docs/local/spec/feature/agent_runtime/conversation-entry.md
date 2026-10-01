@@ -82,6 +82,23 @@ record when it returns. On an
 adapter whose conversations belong to one computer's bot, that computer decides
 alone, and an endpoint's entry link names the hosting computer's bot.
 
+**Cutover.** Master routing on adapters whose messages reach every computer
+begins with an explicit, one-way cutover. Until it, every computer handles
+those conversations on its own, as it did before master routing: the master
+keeps no binding and no computer sends the temporarily-unavailable reply. The
+cutover starts once every computer named in the adoption run has exported its
+open conversation sessions: the mesh master then activates and publishes the
+activation in a shared, durable place. Every computer that learns of it — from
+that publication, or from any live computer announcing it — stops handling
+those conversations on its own before its next message, including a computer
+that was away and returns while the master is unavailable, and announces that
+it has. The master starts routing only when every live computer receiving those
+adapters has announced it; it then takes every such computer's export once
+more and binds each conversation to its newest open session. A message reaching
+the master in between waits for the start rather than being handled twice. A
+computer away at the start has its sessions bound once it returns and has
+announced it. The unavailability behaviour above applies from activation on.
+
 **Reflection.** Only platform help-desk sessions are reflected into the
 platform's shared Discord guild. Company and project help-desk sessions appear
 in none of its forums — a project's own forum included — so no tenant's
@@ -103,6 +120,8 @@ customer conversation is visible to another
   session was created at.
 - **Conversation binding** — on adapters that reach every computer, the mesh
   master's durable record of each conversation's endpoint and latest session.
+- **Adoption run** — the computers whose exports the cutover waits for, named on
+  the mesh master by the `teleclaude.entrypoints.conversation_adoption` module.
 - **Resolution result** — the endpoint's working folder and hosting computer.
 - **Help-desk entry links** — rendered by `telec config company help-desk-links <slug>`
   and `telec config project help-desk-links <slug>` on a computer hosting the
@@ -371,6 +390,24 @@ Given a registered member who entered a project desk with its identifier
 When the desk session's agent runs
 Then the session is confined to its desk exactly as a desk session below member is
 And the member's own role widens none of that confinement while the session stays at the desk
+```
+
+#### UC-CE23: Master routing begins at the cutover and never runs beside per-computer handling
+
+```gherkin
+Scenario Outline: <case>
+  Given several computers receive every Discord direct message
+  And <situation>
+  When a person sends a direct message
+  Then <outcome>
+
+  Examples:
+    | case                   | situation                                                                                      | outcome                                                                                                   |
+    | before the cutover     | the adoption run has not completed                                                             | every computer handles the message as before master routing and none sends the temporarily-unavailable reply |
+    | master away, before    | the adoption run has not completed and the mesh master is unavailable                          | every computer handles the message as before master routing                                               |
+    | changing over          | the master has activated and a live computer receiving the adapter has not announced it        | the master holds the message until routing starts and no computer handles it on its own                   |
+    | returning computer     | the master has activated and a computer returns while the master is unavailable                | that computer learns the activation before handling the message and does not handle it on its own        |
+    | newer session          | a computer opened a newer session for the conversation after its first export                  | at the start the conversation is bound to that newer session and the message reaches it                  |
 ```
 
 ### Cross-context references

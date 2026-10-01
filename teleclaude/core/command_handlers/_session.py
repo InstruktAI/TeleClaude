@@ -37,7 +37,7 @@ from teleclaude.core.db import db
 from teleclaude.core.endpoints import hosted_help_desks
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.inbound.adoption import shared_routing_activated
+from teleclaude.core.inbound.cutover import shared_routing_activated
 from teleclaude.core.inbound.fleet import local_conversation_adapters
 from teleclaude.core.models import (
     CONFINEMENT_PROFILE_KEY,

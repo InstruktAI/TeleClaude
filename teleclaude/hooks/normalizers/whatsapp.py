@@ -8,6 +8,7 @@ from teleclaude.hooks.webhook_models import HookEvent
 
 CONTEXT_MESSAGE_ID_PROPERTY = "context_message_id"
 _CONTEXT_ID_FIELD = "id"
+_CONTEXT_FIELD = "context"
 
 
 def _normalize_phone(raw_phone: object) -> str:
@@ -103,7 +104,7 @@ def _build_message_properties(
         if isinstance(text_payload, dict):
             properties["text"] = str(text_payload.get("body") or "")
     # A reply names the message it answers; relay answers are matched by it.
-    context_payload = message.get("context")
+    context_payload = message.get(_CONTEXT_FIELD)
     if isinstance(context_payload, dict) and context_payload.get(_CONTEXT_ID_FIELD):
         properties[CONTEXT_MESSAGE_ID_PROPERTY] = str(context_payload[_CONTEXT_ID_FIELD])
     properties.update(_extract_media_properties(message))

@@ -24,6 +24,12 @@ _MODULE_IMPORT_STARTED_AT = time.perf_counter()
 _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
 logger = get_logger("teleclaude.daemon")
 
+# The conversation upkeep task: its asyncio name, failure label, attribute and stop message.
+_CONVERSATION_UPKEEP_TASK_NAME = "conversation-upkeep"
+_CONVERSATION_UPKEEP_LABEL = "conversation_upkeep"
+_CONVERSATION_UPKEEP_ATTR = "conversation_upkeep_task"
+_CONVERSATION_UPKEEP_STOPPED = "Conversation upkeep stopped"
+
 if TYPE_CHECKING:
     from teleclaude.hooks.dispatcher import HookDispatcher
 
@@ -66,8 +72,8 @@ from teleclaude.config import (  # config.py loads .env at import time
     restart_required_sections,
 )
 from teleclaude.core.config_watcher import ConfigWatcher
-from teleclaude.core.inbound.adoption import run_conversation_upkeep
 from teleclaude.core.inbound.conversation_env import default_conversation_environment
+from teleclaude.core.inbound.cutover import run_conversation_upkeep
 
 _record_import_timing("teleclaude.config", _t)
 
@@ -931,9 +937,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
             self.conversation_upkeep_task = asyncio.create_task(
                 run_conversation_upkeep(default_conversation_environment(), self.shutdown_event),
-                name="conversation-upkeep",
+                name=_CONVERSATION_UPKEEP_TASK_NAME,
             )
-            self.conversation_upkeep_task.add_done_callback(self._log_background_task_exception("conversation_upkeep"))
+            self.conversation_upkeep_task.add_done_callback(
+                self._log_background_task_exception(_CONVERSATION_UPKEEP_LABEL)
+            )
             logger.info("WAL checkpoint task started (interval=300s)")
 
             self.monitoring_service.log_resource_snapshot("startup")
@@ -1011,7 +1019,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("resource_monitor_task", "Resource monitor stopped"),
             ("process_janitor_task", "Process janitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
-            ("conversation_upkeep_task", "Conversation upkeep stopped"),
+            (_CONVERSATION_UPKEEP_ATTR, _CONVERSATION_UPKEEP_STOPPED),
             ("launchd_watch_task", "Launchd watch task stopped"),
             ("_contract_sweep_task", "Contract sweep stopped"),
         ):

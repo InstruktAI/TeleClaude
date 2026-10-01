@@ -122,6 +122,10 @@ _HELP_DESK_LINKS_VERB = "help-desk-links"
 _DESK_NOT_ENABLED_ERROR = "Error: help desk of {kind} {slug} is not enabled{request}"
 _DESK_NOT_HOSTED_ERROR = "Error: this computer does not host the help desk of {kind} {slug}{request}"
 _FLEET_UNOBSERVABLE_ERROR = "Error: cannot observe the fleet: {error}{request}"
+# The keys of the help-desk links JSON answer.
+_LINKS_IDENTIFIER_KEY = "identifier"
+_LINKS_KEY = "links"
+_LINKS_REQUEST_ID_KEY = "request_id"
 _FLEET_LAGGING_ERROR = (
     "Error: help-desk entry is not served until every computer runs it; lagging: {computers}{request}"
 )
@@ -651,7 +655,7 @@ def _handle_help_desk_links(kind: str, subject_kind: ConfigSubjectKind, args: li
         render_help_desk_links(rendered, telegram_allowed=len(rendered) <= TELEGRAM_START_PARAMETER_MAX)
     )
     if use_json:
-        print(json.dumps({"identifier": rendered, "links": links, "request_id": request_id}))
+        print(json.dumps({_LINKS_IDENTIFIER_KEY: rendered, _LINKS_KEY: links, _LINKS_REQUEST_ID_KEY: request_id}))
         return
     available = {adapter: link for adapter, link in links.items() if link}
     if not available:

@@ -67,6 +67,8 @@ _KEY_FIELD = "user_id"
 _TELEGRAM_USER_ID_FIELD = "telegram_user_id"
 _PLATFORM_FIELD = "platform"
 _CHAT_TYPE_FIELD = "chat_type"
+# A start command carries no message text of its own.
+_NO_TEXT = ""
 _PRIVATE_CHAT_TYPE = "private"
 _UNKNOWN_USER_NAME = "unknown"
 _PROCESS_MESSAGE_EVENT = "process_message"
@@ -214,7 +216,7 @@ class PrivateHandlersMixin:
             gesture = EntryGesture.IDENTIFIER
         await self._route_private_turn(
             update,
-            text="",
+            text=_NO_TEXT,
             gesture=gesture,
             identifier=identifier,
             deliver=_no_content,

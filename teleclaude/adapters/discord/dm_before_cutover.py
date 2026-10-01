@@ -46,6 +46,30 @@ from teleclaude.types.commands import CreateSessionCommand, ProcessMessageComman
 
 logger = get_logger(__name__)
 
+# The attributes of a discord.py message this module reads.
+_AUTHOR_ATTR = "author"
+_CHANNEL_ATTR = "channel"
+_CONTENT_ATTR = "content"
+_ID_ATTR = "id"
+_NO_TEXT = ""
+_DISCORD = InputOrigin.DISCORD.value
+_USER_ID_FIELD = "user_id"
+_DISCORD_USER_ID_FIELD = "discord_user_id"
+_PLATFORM_FIELD = "platform"
+_SESSION_ID_FIELD = "session_id"
+_INVITE_TOKEN_PREFIX = "inv_"
+_THINKING_MODE = "slow"
+_PROCESS_MESSAGE_EVENT = "process_message"
+_UNKNOWN_ACCOUNT_REPLY = (
+    "I don't recognize your account. Send me your invite token to get started, or contact your admin."
+)
+_UNKNOWN_INVITE_REPLY = "I don't recognize this invite. Please contact your admin."
+_INVITE_CONFLICT_REPLY = "This invite is already associated with another account."
+_CREATE_FAILED_REPLY = "Failed to create session. Please contact your admin."
+_GREETING_TEMPLATE = "Hi {name}, I'm your personal assistant. What would you like to work on?"
+_CREATE_FAILED_LOG = "Discord DM session creation failed for %s"
+_CREATED_MISSING_LOG = "Session %s not found after creation for %s"
+
 
 def sender_role_for_session(identity: IdentityContext | None, session: Session) -> str | None:
     """The role a sender holds for a session's project; an unregistered sender is a customer."""
@@ -86,12 +110,12 @@ class DirectMessagesBeforeCutoverMixin:
         keeps its own DM sessions: invite token binding, or a bound user's
         messaging; an unknown account gets the onboarding reply.
         """
-        author = getattr(message, "author", None)
+        author = getattr(message, _AUTHOR_ATTR, None)
         if not author:
             return
 
-        user_id = str(getattr(author, "id", ""))
-        text = getattr(message, "content", None)
+        user_id = str(getattr(author, _ID_ATTR, _NO_TEXT))
+        text = getattr(message, _CONTENT_ATTR, None)
 
         if not isinstance(text, str) or not text.strip():
             return
@@ -99,23 +123,21 @@ class DirectMessagesBeforeCutoverMixin:
         text = text.strip()
 
         # Check if message is an invite token
-        if text.startswith("inv_"):
+        if text.startswith(_INVITE_TOKEN_PREFIX):
             await self._handle_discord_invite_token(message, user_id, text)
             return
 
         # Resolve identity
-        identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
+        identity = get_identity_resolver().resolve(_DISCORD, {_USER_ID_FIELD: user_id, _DISCORD_USER_ID_FIELD: user_id})
 
         if not identity or not identity.person_name:
             # Unknown user
-            channel = getattr(message, "channel", None)
+            channel = getattr(message, _CHANNEL_ATTR, None)
             if channel:
-                await channel.send(
-                    "I don't recognize your account. Send me your invite token to get started, or contact your admin."
-                )
+                await channel.send(_UNKNOWN_ACCOUNT_REPLY)
             return
 
-        person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
+        person_slug = identity.person_slug or normalize_slug(identity.person_name or _NO_TEXT)
         policy = self._build_dm_session_policy(message, user_id, person_slug, identity.person_name, first_message=text)
         await handle_inbound_message(policy)
 
@@ -123,17 +145,17 @@ class DirectMessagesBeforeCutoverMixin:
         """Handle invite token binding in Discord DM."""
         result = find_person_by_invite_token(token)
         if not result:
-            channel = getattr(message, "channel", None)
+            channel = getattr(message, _CHANNEL_ATTR, None)
             if channel:
-                await channel.send("I don't recognize this invite. Please contact your admin.")
+                await channel.send(_UNKNOWN_INVITE_REPLY)
             return
 
         person_slug, _person_config = result
         display_name = next((p.name for p in get_global_config().people if p.slug == person_slug), person_slug)
         if self._bind_discord_invite(message, user_id, person_slug) is BindOutcome.CONFLICT:
-            channel = getattr(message, "channel", None)
+            channel = getattr(message, _CHANNEL_ATTR, None)
             if channel:
-                await channel.send("This invite is already associated with another account.")
+                await channel.send(_INVITE_CONFLICT_REPLY)
             return
 
         # Find or create the DM-bound personal-assistant session — no first message here
@@ -141,15 +163,15 @@ class DirectMessagesBeforeCutoverMixin:
         policy = self._build_dm_session_policy(message, user_id, person_slug, display_name, first_message=None)
         session, _is_new = await resolve_or_create_bound_session(policy)
         if not session:
-            channel = getattr(message, "channel", None)
+            channel = getattr(message, _CHANNEL_ATTR, None)
             if channel:
-                await channel.send("Failed to create session. Please contact your admin.")
+                await channel.send(_CREATE_FAILED_REPLY)
             return
 
         # Send greeting
-        channel = getattr(message, "channel", None)
+        channel = getattr(message, _CHANNEL_ATTR, None)
         if channel:
-            await channel.send(f"Hi {display_name}, I'm your personal assistant. What would you like to work on?")
+            await channel.send(_GREETING_TEMPLATE.format(name=display_name))
 
     def _build_dm_session_policy(
         self,
@@ -166,14 +188,16 @@ class DirectMessagesBeforeCutoverMixin:
         this user) keeps a direct message from being absorbed into an unrelated guild
         session the same user also holds (team channel, project forum, launcher).
         """
-        dm_channel_id = self._parse_optional_int(getattr(getattr(message, "channel", None), "id", None))
+        dm_channel_id = self._parse_optional_int(getattr(getattr(message, _CHANNEL_ATTR, None), _ID_ATTR, None))
 
         async def _find() -> Session | None:
             if dm_channel_id is None:
                 return None
-            candidates = await db.get_sessions_by_origin_metadata("discord", "channel_id", dm_channel_id)
+            candidates = await db.get_sessions_by_origin_metadata(
+                _DISCORD, DiscordMetadataField.CHANNEL_ID, dm_channel_id
+            )
             for candidate in candidates:
-                discord_meta = DiscordAdapterMetadata.from_dict(candidate.get_origin_section("discord"))
+                discord_meta = DiscordAdapterMetadata.from_dict(candidate.get_origin_section(_DISCORD))
                 if discord_meta.user_id == user_id and discord_meta.guild_id is None:
                     return candidate
             return None
@@ -185,13 +209,13 @@ class DirectMessagesBeforeCutoverMixin:
                 initial_input=first_message,
                 origin=InputOrigin.DISCORD.value,
                 origin_metadata={
-                    "user_id": user_id,
-                    "discord_user_id": user_id,
-                    "platform": "discord",
+                    _USER_ID_FIELD: user_id,
+                    _DISCORD_USER_ID_FIELD: user_id,
+                    _PLATFORM_FIELD: _DISCORD,
                 },
                 launch_intent=SessionLaunchIntent(
                     kind=SessionLaunchKind.AGENT_THEN_MESSAGE if first_message else SessionLaunchKind.AGENT,
-                    thinking_mode="slow",
+                    thinking_mode=_THINKING_MODE,
                     message=first_message,
                     dispatch_mode=AgentDispatchMode.AUTOMATIC,
                 ),
@@ -199,39 +223,39 @@ class DirectMessagesBeforeCutoverMixin:
                 command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
             )
             result = await get_command_service().create_session(create_cmd)
-            session_id = str(result.get("session_id", ""))
+            session_id = str(result.get(_SESSION_ID_FIELD, _NO_TEXT))
             if not session_id:
-                logger.error("Discord DM session creation failed for %s", person_name)
+                logger.error(_CREATE_FAILED_LOG, person_name)
                 return None
 
             session = await db.get_session(session_id)
             if not session:
-                logger.error("Session %s not found after creation for %s", session_id, person_name)
+                logger.error(_CREATED_MISSING_LOG, session_id, person_name)
                 return None
             return session
 
         async def _reconcile(session: Session) -> Session:
             if dm_channel_id is None:
                 return session
-            discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
+            discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section(_DISCORD))
             if discord_meta.channel_id == dm_channel_id:
                 return session
             await db.update_origin_metadata(
-                session.session_id, "discord", {DiscordMetadataField.CHANNEL_ID: dm_channel_id}
+                session.session_id, _DISCORD, {DiscordMetadataField.CHANNEL_ID: dm_channel_id}
             )
             return await db.get_session(session.session_id) or session
 
         async def _dispatch(session: Session) -> None:
-            author = getattr(message, "author", None)
-            actor_id = resolve_binding_key("discord", {"user_id": user_id})
-            actor_name = (person_name or "").strip() or self._discord_actor_name(author, user_id)
+            author = getattr(message, _AUTHOR_ATTR, None)
+            actor_id = resolve_binding_key(_DISCORD, {_USER_ID_FIELD: user_id})
+            actor_name = (person_name or _NO_TEXT).strip() or self._discord_actor_name(author, user_id)
             actor_avatar_url = self._discord_actor_avatar_url(author)
-            sender_identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
-            message_id = str(getattr(message, "id", "")).strip()
+            sender_identity = get_identity_resolver().resolve(_DISCORD, {_USER_ID_FIELD: user_id})
+            message_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
             channel_id_str = str(dm_channel_id) if dm_channel_id is not None else None
             cmd = ProcessMessageCommand(
                 session_id=session.session_id,
-                text=first_message or "",
+                text=first_message or _NO_TEXT,
                 origin=InputOrigin.DISCORD.value,
                 text_kind=TranscriptEntryKind.ORDINARY,
                 source_feature=InjectedTextSourceFeature.DISCORD,
@@ -254,7 +278,7 @@ class DirectMessagesBeforeCutoverMixin:
                 session,
                 message_id or None,
                 metadata,
-                "process_message",
+                _PROCESS_MESSAGE_EVENT,
                 cmd.to_payload(),
                 lambda: get_command_service().process_message(cmd),
             )

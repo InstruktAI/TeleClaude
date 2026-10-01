@@ -13,6 +13,13 @@ from sqlmodel import select
 from teleclaude.core import db_models
 from teleclaude.core.models import EndpointStamp
 
+# The binding's conversation key, and the columns a newer binding replaces.
+_BINDING_KEY_COLUMNS = ("origin", "key_field", "conversation_key")
+_BINDING_REPLACED_COLUMNS = ("host", "session_id", "endpoint", "entered_at")
+_ADOPTION_SOURCE_KEY_COLUMN = "computer"
+_ORPHAN_KEY_COLUMN = "session_id"
+_INVALID_ENDPOINT_ERROR = "conversation binding for session {session_id} has no valid endpoint"
+
 
 @dataclass(frozen=True)
 class ConversationBinding:
@@ -67,13 +74,8 @@ class DbConversationBindingsMixin:
             entered_at=binding.entered_at,
         )
         statement = statement.on_conflict_do_update(
-            index_elements=["origin", "key_field", "conversation_key"],
-            set_={
-                "host": statement.excluded.host,
-                "session_id": statement.excluded.session_id,
-                "endpoint": statement.excluded.endpoint,
-                "entered_at": statement.excluded.entered_at,
-            },
+            index_elements=list(_BINDING_KEY_COLUMNS),
+            set_={column: statement.excluded[column] for column in _BINDING_REPLACED_COLUMNS},
         )
         async with self._session() as db_session:
             await db_session.exec(statement)
@@ -91,7 +93,7 @@ class DbConversationBindingsMixin:
                 await db_session.exec(
                     sqlite_insert(db_models.ConversationAdoptionSourceRow)
                     .values(computer=computer, answered_at=None)
-                    .on_conflict_do_nothing(index_elements=["computer"])
+                    .on_conflict_do_nothing(index_elements=[_ADOPTION_SOURCE_KEY_COLUMN])
                 )
             await db_session.commit()
 
@@ -119,7 +121,7 @@ class DbConversationBindingsMixin:
         statement = (
             sqlite_insert(db_models.ConversationBindingOrphanRow)
             .values(session_id=orphan.session_id, host=orphan.host, recorded_at=orphan.recorded_at)
-            .on_conflict_do_nothing(index_elements=["session_id"])
+            .on_conflict_do_nothing(index_elements=[_ORPHAN_KEY_COLUMN])
         )
         async with self._session() as db_session:
             await db_session.exec(statement)
@@ -149,7 +151,7 @@ def _to_binding(row: db_models.ConversationBindingRow) -> ConversationBinding:
     stored: object = json.loads(row.endpoint)
     endpoint = EndpointStamp.from_dict(stored) if isinstance(stored, dict) else None
     if endpoint is None:
-        raise ValueError(f"conversation binding for session {row.session_id} has no valid endpoint")
+        raise ValueError(_INVALID_ENDPOINT_ERROR.format(session_id=row.session_id))
     return ConversationBinding(
         origin=row.origin,
         key_field=row.key_field,

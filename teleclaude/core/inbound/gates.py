@@ -12,12 +12,13 @@ import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 
 # A miss's reply is sent at most once per conversation within this window.
 NEUTRAL_REPLY_COOLDOWN = 600.0
 # The most conversations whose reply cooldown is remembered at once.
 REPLY_GATE_MAX_KEYS = 10_000
-# The most idle conversation locks kept at once; held locks are never evicted.
+# The most unused conversation locks kept at once; a lock a turn holds or waits for is never evicted.
 CONVERSATION_LOCKS_MAX_KEYS = 10_000
 
 Clock = Callable[[], float]
@@ -51,29 +52,47 @@ class CooldownGate:
         return True
 
 
+@dataclass
+class _ConversationLock:
+    """A conversation's lock and how many turns hold it or wait for it."""
+
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    users: int = 0
+
+
 class ConversationLocks:
-    """One lock per conversation, so its turns are decided one at a time on this computer."""
+    """One lock per conversation, so its turns are decided one at a time on this computer.
+
+    A lock is shared by every turn that holds it or waits for it; only a lock
+    no turn uses can be evicted, so capacity pressure never splits one
+    conversation's turns across two locks.
+    """
 
     def __init__(self, *, max_keys: int = CONVERSATION_LOCKS_MAX_KEYS) -> None:
         self._max_keys = max_keys
-        self._locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
+        self._locks: OrderedDict[str, _ConversationLock] = OrderedDict()
 
     @asynccontextmanager
     async def hold(self, key: str) -> AsyncIterator[None]:
         """Hold ``key``'s lock for one turn."""
-        lock = self._locks.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[key] = lock
+        entry = self._locks.get(key)
+        if entry is None:
+            entry = _ConversationLock()
+            self._locks[key] = entry
+        entry.users += 1
         self._locks.move_to_end(key)
-        self._evict_idle()
-        async with lock:
-            yield
+        try:
+            self._evict_unused()
+            async with entry.lock:
+                yield
+        finally:
+            entry.users -= 1
+            self._evict_unused()
 
-    def _evict_idle(self) -> None:
+    def _evict_unused(self) -> None:
         if len(self._locks) <= self._max_keys:
             return
-        for key in [key for key, lock in self._locks.items() if not lock.locked()]:
+        for key in [key for key, entry in self._locks.items() if entry.users == 0]:
             if len(self._locks) <= self._max_keys:
                 return
             del self._locks[key]

@@ -18,6 +18,10 @@ from teleclaude.types.discord_thread_claims import (
 )
 from teleclaude.types.media import MediaRef
 
+# The nested wire blocks a command carries as typed values.
+_ENDPOINT_FIELD = "endpoint"
+_MEDIA_REF_FIELD = "media_ref"
+
 
 class CommandType(str, Enum):
     """Internal command types."""
@@ -965,9 +969,9 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             value = DiscordThreadClaimLifecycle(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
-        elif name == "endpoint" and isinstance(raw_value, dict):
+        elif name == _ENDPOINT_FIELD and isinstance(raw_value, dict):
             value = EndpointStamp.from_dict(raw_value)
-        elif name == "media_ref" and isinstance(raw_value, dict):
+        elif name == _MEDIA_REF_FIELD and isinstance(raw_value, dict):
             value = MediaRef.from_dict(raw_value)
         kwargs[name] = value
 

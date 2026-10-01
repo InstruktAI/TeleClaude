@@ -88,6 +88,11 @@ _DM_PLATFORM_FIELD = "platform"
 _REFERENCE_ATTR = "reference"
 _MESSAGE_ID_ATTR = "message_id"
 _PROCESS_MESSAGE_EVENT = "process_message"
+# The attributes of a discord.py message this module reads.
+_AUTHOR_ATTR = "author"
+_CHANNEL_ATTR = "channel"
+_ID_ATTR = "id"
+_NO_TEXT = ""
 
 
 class GatewayHandlersMixin:
@@ -429,17 +434,17 @@ class GatewayHandlersMixin:
         if not isinstance(text, str) or not text.strip():
             return
         text = text.strip()
-        channel = getattr(message, "channel", None)
-        dm_channel_id = self._parse_optional_int(getattr(channel, "id", None))
+        channel = getattr(message, _CHANNEL_ATTR, None)
+        dm_channel_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
         if dm_channel_id is None:
             return
         identifier = parse_entry_identifier(text)
-        message_id = str(getattr(message, "id", "")).strip()
+        message_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
         actor_id = resolve_binding_key(InputOrigin.DISCORD.value, {_DM_USER_ID_FIELD: user_id})
         sender = get_identity_resolver().resolve(
             InputOrigin.DISCORD.value, {_DM_USER_ID_FIELD: user_id, _DM_DISCORD_USER_ID_FIELD: user_id}
         )
-        actor_name = (sender.person_name or "").strip() or self._discord_actor_name(author, user_id)
+        actor_name = (sender.person_name or _NO_TEXT).strip() or self._discord_actor_name(author, user_id)
         actor_avatar_url = self._discord_actor_avatar_url(author)
 
         def _command(session_id: str, sender_role: str | None) -> ProcessMessageCommand:
@@ -541,8 +546,8 @@ class GatewayHandlersMixin:
         bound = person_config.creds.discord.user_id if person_config.creds.discord else None
         if bound:
             return BindOutcome.ACCEPTED if bound == user_id else BindOutcome.CONFLICT
-        avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))
-        binding_id = str(getattr(message, "id", "")).strip()
+        avatar_url = self._discord_actor_avatar_url(getattr(message, _AUTHOR_ATTR, None))
+        binding_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
         observe_discord_avatar_binding(
             binding_id=binding_id,
             outcome=DiscordAvatarBindingOutcome.ACCEPTED,

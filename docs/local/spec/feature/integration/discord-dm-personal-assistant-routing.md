@@ -35,6 +35,10 @@ it and creates a new session at that endpoint, and the DM channel's latest sessi
 then that one (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A help desk's identifier therefore moves the DM to that
 desk, and the person's own invitation token moves it back to their personal assistant.
 
+Every computer receives each direct message. Until that spec's master-routing
+cutover, each computer resolves and binds the DM on its own as described above;
+from the cutover on, the mesh master alone decides where it goes.
+
 ## Canonical fields
 
 ### Use cases

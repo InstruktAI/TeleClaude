@@ -204,6 +204,9 @@ def select_reflection_avatar(
 
 _GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
 _PEOPLE_DIR = PEOPLE_DIR
+_TELEGRAM_PLATFORM = "telegram"
+# Each person's own config file, relative to the people directory.
+_PERSON_CONFIG_PATTERN = f"*/{ConfigFileName.OVERLAY}"
 
 
 class IdentityResolver:
@@ -227,6 +230,7 @@ class IdentityResolver:
         self._registry_load_error: Exception | None = None
         self._config_mtime_ns: int | None = None
         self._people_mtime_ns: int | None = None
+        self._person_configs_signature: tuple[tuple[str, int], ...] | None = None
         self._load_config()
 
     @staticmethod
@@ -286,11 +290,33 @@ class IdentityResolver:
         except OSError:
             people_mtime = 0
 
-        if config_mtime == self._config_mtime_ns and people_mtime == self._people_mtime_ns:
+        person_configs = self._person_configs_signature_now()
+
+        if (
+            config_mtime == self._config_mtime_ns
+            and people_mtime == self._people_mtime_ns
+            and person_configs == self._person_configs_signature
+        ):
             return
         self._config_mtime_ns = config_mtime
         self._people_mtime_ns = people_mtime
+        self._person_configs_signature = person_configs
         self._load_config()
+
+    @staticmethod
+    def _person_configs_signature_now() -> tuple[tuple[str, int], ...]:
+        """Each person's own config file with its modification time.
+
+        A credential binding rewrites only that person's file, which changes
+        neither the global config nor the people directory itself.
+        """
+        signature: list[tuple[str, int]] = []
+        for person_config_path in sorted(_PEOPLE_DIR.glob(_PERSON_CONFIG_PATTERN)):
+            try:
+                signature.append((person_config_path.parent.name, person_config_path.stat().st_mtime_ns))
+            except OSError:
+                continue
+        return tuple(signature)
 
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
@@ -492,13 +518,13 @@ class IdentityResolver:
                             person_slug=person.slug,
                             person_role=self._normalize_role(person.role),
                             display_name_override=self._display_name_override_for(person),
-                            platform="telegram",
+                            platform=_TELEGRAM_PLATFORM,
                             platform_user_id=str(uid_int),
                             avatar_url=self._avatar_url_for(person),
                         )
                     return IdentityContext(
                         person_role=HUMAN_ROLE_CUSTOMER,
-                        platform="telegram",
+                        platform=_TELEGRAM_PLATFORM,
                         platform_user_id=str(uid_int),
                     )
                 except (ValueError, TypeError):

@@ -1,12 +1,14 @@
-"""Record the computers whose open conversation sessions seed the mesh master's bindings.
+"""Name the computers the master-routing cutover waits for, on the mesh master.
 
 Run on the mesh master once every Discord- or WhatsApp-enabled computer runs
 endpoint routing: ``python -m teleclaude.entrypoints.conversation_adoption
---sources <A,B,…>``. Routing on those adapters starts only after every named
-computer has exported its open conversation sessions; until then every message
-there gets the temporarily-unavailable reply. Re-running with a corrected list
-is the one way to change the expected set; a computer that already answered
-keeps its answer.
+--sources <A,B,…>``. Until every named computer has exported its open
+conversation sessions, every computer keeps handling those adapters'
+conversations on its own, as before master routing, and nobody sends the
+temporarily-unavailable reply. Once they have, the master activates and the
+cutover runs to its start (``teleclaude.core.inbound.cutover``). Re-running with
+a corrected list is the one way to change the expected set; a computer that
+already answered keeps its answer.
 """
 
 from __future__ import annotations

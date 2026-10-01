@@ -29,7 +29,9 @@ it goes (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A
 entry: the core resolves it, the master records the number's binding, and a new
 session is created at that endpoint on its hosting computer. Any other message
 goes to the session the number's binding names, on its host; with no binding, the
-master decides between the role fallback and the neutral reply.
+master decides between the role fallback and the neutral reply. Before the
+master-routing cutover in that spec, every computer instead handles the number
+on its own, as it did before master routing.
 
 ## Canonical fields
 

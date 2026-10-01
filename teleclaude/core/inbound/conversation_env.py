@@ -8,11 +8,14 @@ its reply gates and conversation locks are process-wide.
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from teleclaude.cli.config_handlers import get_global_config
@@ -33,16 +36,23 @@ from teleclaude.core.inbound.adoption import (
     parse_exported_sessions,
     utc_now_iso,
 )
+from teleclaude.core.inbound.cutover import CUTOVER_PUBLICATION_KEY
 from teleclaude.core.inbound.fleet import FleetView, observe_fleet
 from teleclaude.core.inbound.gates import ConversationLocks, CooldownGate
 from teleclaude.core.inbound.models import ConversationRef
 from teleclaude.core.models import MessageMetadata
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.invite import scaffold_personal_workspace
+from teleclaude.transport.redis_client import create_redis_client
 from teleclaude.types.commands import CreateSessionCommand, InternalCommand
+
+logger = get_logger(__name__)
 
 # How long the master waits for a peer's export answer.
 EXPORT_READ_TIMEOUT_S = 5.0
+_PUBLICATION_ENCODING = "utf-8"
+_CUTOVER_READ_FAILED_EVENT = "conversation_cutover_read_failed"
+_CUTOVER_PUBLISH_FAILED_EVENT = "conversation_cutover_publish_failed"
 
 ExportFrom = Callable[[str, ConversationRef | None], Awaitable[list[ExportedConversationSession] | None]]
 
@@ -62,10 +72,50 @@ class ConversationEnvironment:
     person_workspace: Callable[[str], Path]
     find_invite: Callable[[str], str | None]
     display_name: Callable[[str], str]
+    read_cutover: Callable[[], Awaitable[str | None]] = field(default=lambda: _read_cutover_publication())
+    publish_cutover: Callable[[str], Awaitable[None]] = field(default=lambda at: _publish_cutover(at))
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     now_iso: Callable[[], str] = utc_now_iso
+    changeover_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     neutral_gate: CooldownGate = field(default_factory=CooldownGate)
     unavailable_gate: CooldownGate = field(default_factory=CooldownGate)
     locks: ConversationLocks = field(default_factory=ConversationLocks)
+
+
+def _shared_store() -> Redis:
+    redis_config = config.redis
+    return create_redis_client(
+        redis_config.url,
+        password=redis_config.password,
+        max_connections=redis_config.max_connections,
+        socket_timeout=redis_config.socket_timeout,
+    )
+
+
+async def _read_cutover_publication() -> str | None:
+    """The master's published activation time, from the shared store; ``None`` when absent or unreadable."""
+    store = _shared_store()
+    try:
+        value = await store.get(CUTOVER_PUBLICATION_KEY)
+    except (RedisError, OSError) as exc:
+        logger.warning(_CUTOVER_READ_FAILED_EVENT, error=str(exc))
+        return None
+    finally:
+        await store.aclose()
+    if isinstance(value, bytes):
+        return value.decode(_PUBLICATION_ENCODING)
+    return value if isinstance(value, str) else None
+
+
+async def _publish_cutover(activated_at: str) -> None:
+    """Publish the activation under the shared key, without expiry."""
+    store = _shared_store()
+    try:
+        await store.set(CUTOVER_PUBLICATION_KEY, activated_at)
+    except (RedisError, OSError) as exc:
+        logger.warning(_CUTOVER_PUBLISH_FAILED_EVENT, error=str(exc))
+    finally:
+        await store.aclose()
 
 
 async def _observe_live_fleet() -> FleetView:

@@ -59,6 +59,8 @@ from teleclaude.types.media import MediaProvider, MediaRef
 logger = get_logger(__name__)
 
 _TEXT_EVENT_TYPE = "message.text"
+# A forwarded media command carries a reference, never a local path.
+_NO_LOCAL_PATH = ""
 _PHONE_NUMBER_PROPERTY = "phone_number"
 _MESSAGE_ID_PROPERTY = "message_id"
 _TEXT_PROPERTY = "text"
@@ -83,6 +85,12 @@ _THINKING_MODE = "slow"
 _REPLY_PURPOSE = "reply"
 _INBOUND_PURPOSE = "inbound"
 _NO_TEXT = ""
+
+
+def _property_text(event: HookEvent, name: str) -> str:
+    """An event property as text; absent or empty is no text."""
+    value = event.properties.get(name)
+    return str(value) if value else _NO_TEXT
 
 
 def _normalize_phone_number(phone_number: str | None) -> str:
@@ -194,10 +202,10 @@ def _text_command(
 
 
 def _media_ref(event: HookEvent, phone_number: str) -> MediaRef | None:
-    media_id = str(event.properties.get(_MEDIA_ID_PROPERTY) or "")
+    media_id = _property_text(event, _MEDIA_ID_PROPERTY)
     if not media_id:
         return None
-    mime_type = str(event.properties.get(_MIME_TYPE_PROPERTY) or "") or None
+    mime_type = _property_text(event, _MIME_TYPE_PROPERTY) or None
     return MediaRef(
         provider=MediaProvider.WHATSAPP,
         media_id=media_id,
@@ -214,7 +222,7 @@ def _media_command(
     if is_voice_event(media_ref.event_type):
         return HandleVoiceCommand(
             session_id=session_id,
-            file_path="",
+            file_path=_NO_LOCAL_PATH,
             origin=InputOrigin.WHATSAPP.value,
             message_id=message_id or None,
             actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
@@ -369,15 +377,15 @@ def _relay_reply(event: HookEvent, phone_number: str, message_id: str) -> AdminR
 async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
     """Hand one normalized WhatsApp message to the conversation seam."""
     del contract
-    phone_number = _normalize_phone_number(str(event.properties.get(_PHONE_NUMBER_PROPERTY) or ""))
+    phone_number = _normalize_phone_number(_property_text(event, _PHONE_NUMBER_PROPERTY))
     if not phone_number:
         logger.warning(_MISSING_PHONE_EVENT)
         return
     if not config.whatsapp.enabled:
         logger.info(_ADAPTER_DISABLED_EVENT, purpose=_INBOUND_PURPOSE)
-    message_id = str(event.properties.get(_MESSAGE_ID_PROPERTY) or "")
+    message_id = _property_text(event, _MESSAGE_ID_PROPERTY)
     is_text = event.type == _TEXT_EVENT_TYPE
-    text = str(event.properties.get(_TEXT_PROPERTY) or "") if is_text else ""
+    text = _property_text(event, _TEXT_PROPERTY) if is_text else _NO_TEXT
     media_ref = None if is_text else _media_ref(event, phone_number)
     if not is_text and media_ref is None:
         return

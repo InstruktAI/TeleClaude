@@ -61,6 +61,19 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _UPLOAD_PATH_REFUSED_EVENT = "upload_path_refused"
 _USER_ID_FIELD = "user_id"
+_NO_TEXT = ""
+_VOICE_TEMP_DIR = "teleclaude_voice"
+# Telegram voice notes are ogg/opus.
+_VOICE_FILE_TEMPLATE = "voice_{message_id}.ogg"
+_VOICE_TASK_TEMPLATE = "voice-{message_id}"
+_ACTOR_ID_TEMPLATE = "telegram:{user_id}"
+_TASK_REGISTRY_ATTR = "task_registry"
+_NO_TASK_REGISTRY_ERROR = "Telegram voice handling requires task_registry"
+_VOICE_INPUT_FAILED_EVENT = "telegram_voice_input_failed"
+_ATTACHMENT_INPUT_FAILED_EVENT = "telegram_attachment_input_failed"
+_VOICE_DOWNLOAD_FAILED_REPLY = "❌ Failed to download voice message."
+_UPLOAD_FAILED_TEMPLATE = "❌ Failed to upload {file_type}"
+_DEFAULT_FILE_SUBDIR = "files"
 
 
 class ConversationModality(StrEnum):
@@ -266,9 +279,9 @@ class InputHandlersMixin:
             voice_file = await voice.get_file()
 
             # Create temp file with .ogg extension (Telegram uses ogg/opus format)
-            temp_dir = Path(tempfile.gettempdir()) / "teleclaude_voice"
+            temp_dir = Path(tempfile.gettempdir()) / _VOICE_TEMP_DIR
             temp_dir.mkdir(exist_ok=True)
-            temp_file_path = temp_dir / f"voice_{message.message_id}.ogg"
+            temp_file_path = temp_dir / _VOICE_FILE_TEMPLATE.format(message_id=message.message_id)
 
             try:
                 await voice_file.download_to_drive(temp_file_path)
@@ -283,26 +296,31 @@ class InputHandlersMixin:
                     message_id=str(message.message_id),
                     message_thread_id=message.message_thread_id,
                     origin=host._metadata().origin,
-                    actor_id=f"telegram:{user.id}",
-                    actor_name=(user.username or user.full_name or user.first_name or f"telegram:{user.id}"),
+                    actor_id=_ACTOR_ID_TEMPLATE.format(user_id=user.id),
+                    actor_name=(
+                        user.username or user.full_name or user.first_name or _ACTOR_ID_TEMPLATE.format(user_id=user.id)
+                    ),
                 )
-                registry = getattr(self, "task_registry", None)
+                registry = getattr(self, _TASK_REGISTRY_ATTR, None)
                 if registry is None:
-                    raise RuntimeError("Telegram voice handling requires task_registry")
-                registry.spawn(get_command_service().handle_voice(cmd), name=f"voice-{message.message_id}")
+                    raise RuntimeError(_NO_TASK_REGISTRY_ERROR)
+                registry.spawn(
+                    get_command_service().handle_voice(cmd),
+                    name=_VOICE_TASK_TEMPLATE.format(message_id=message.message_id),
+                )
                 decision.accept()
             except (OSError, RuntimeError, TypeError, ValueError):
-                logger.error("telegram_voice_input_failed", source_message_id=str(message.message_id))
+                logger.error(_VOICE_INPUT_FAILED_EVENT, source_message_id=str(message.message_id))
                 await host.send_message(
                     session,
-                    "❌ Failed to download voice message.",
+                    _VOICE_DOWNLOAD_FAILED_REPLY,
                     metadata=MessageMetadata(parse_mode=None),
                 )
                 decision.reject(ConversationInputReason.DELIVERY_FAILED)
 
         await host._route_private_turn(
             update,
-            text="",
+            text=_NO_TEXT,
             gesture=EntryGesture.NONE,
             identifier=None,
             deliver=_deliver_voice,
@@ -363,7 +381,7 @@ class InputHandlersMixin:
         async def _deliver_file(session: Session) -> None:
             decision.bind_session(session)
             # Determine subdirectory based on file type
-            subdir = FILE_SUBDIR.get(incoming_type, "files")
+            subdir = FILE_SUBDIR.get(incoming_type, _DEFAULT_FILE_SUBDIR)
             session_workspace = get_session_output_dir(session.session_id) / subdir
             session_workspace.mkdir(parents=True, exist_ok=True)
             # The file must land inside this session's upload directory.
@@ -396,21 +414,21 @@ class InputHandlersMixin:
                 )
                 decision.accept()
             except (OSError, RuntimeError, TypeError, ValueError):
-                logger.error("telegram_attachment_input_failed", source_message_id=str(message.message_id))
+                logger.error(_ATTACHMENT_INPUT_FAILED_EVENT, source_message_id=str(message.message_id))
 
                 # Send user-friendly error message
                 message_id = await host.send_message(
                     session,
-                    f"❌ Failed to upload {incoming_type}",
+                    _UPLOAD_FAILED_TEMPLATE.format(file_type=incoming_type),
                     metadata=host._metadata(),
                 )
                 if message_id:
-                    await db.add_pending_deletion(session.session_id, "telegram", message_id)
+                    await db.add_pending_deletion(session.session_id, InputOrigin.TELEGRAM.value, message_id)
                 decision.reject(ConversationInputReason.DELIVERY_FAILED)
 
         await host._route_private_turn(
             update,
-            text="",
+            text=_NO_TEXT,
             gesture=EntryGesture.NONE,
             identifier=None,
             deliver=_deliver_file,

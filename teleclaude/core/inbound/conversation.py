@@ -52,14 +52,9 @@ from teleclaude.core.help_desk_relay import (
     answer_from_admin,
     claim_admin_reply,
 )
-from teleclaude.core.inbound.adoption import (
-    SharedRoutingState,
-    adoption_complete,
-    export_local_conversation_sessions,
-    is_superseded,
-    shared_routing_state,
-)
+from teleclaude.core.inbound.adoption import is_superseded
 from teleclaude.core.inbound.conversation_env import ConversationEnvironment, default_conversation_environment
+from teleclaude.core.inbound.cutover import SharedRoutingState, await_routing_start, shared_routing_state
 from teleclaude.core.inbound.fleet import FleetView
 from teleclaude.core.inbound.models import BindOutcome, ConversationTurn, EntryGesture, TurnModality
 from teleclaude.core.models import (
@@ -85,6 +80,8 @@ ASSISTANT_GREETING_TEMPLATE = "Hi {name}, I'm your personal assistant. What woul
 
 _THINKING_MODE = "slow"
 _REMOTE_PROJECT_PATH = ""
+# The field of a local create answer that carries the new session id.
+_CREATED_SESSION_ID_FIELD = "session_id"
 _ASSISTANT_ROLES = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER})
 _PLATFORM_DESK_ROLES = frozenset({HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER})
 
@@ -223,7 +220,7 @@ async def _create_at(
         except (AgentDispatchFailure, ValueError) as exc:
             _log(ConversationDecision.ENTRY_REFUSED, turn, endpoint=endpoint.kind.value, error=str(exc))
             return None
-        session_id = created.get("session_id")
+        session_id = created.get(_CREATED_SESSION_ID_FIELD)
         return session_id or None
     # The master chooses the id, so a create whose answer is lost is still known by it.
     session_id = str(uuid.uuid4())
@@ -310,37 +307,11 @@ async def _latest_shared(turn: ConversationTurn, env: ConversationEnvironment) -
     conversation = turn.conversation
     binding = await env.db.get_conversation_binding(conversation.origin.value, conversation.key_field, conversation.key)
     if binding is None:
-        binding = await _bind_local_open_session(turn, env)
-    if binding is None:
         return None
     session = await env.db.get_session(binding.session_id) if binding.host == env.host else None
     if binding.host == env.host and session is None:
         return _Latest(binding.session_id, binding.host, binding.endpoint)
     return _Latest(binding.session_id, binding.host, binding.endpoint, session)
-
-
-async def _bind_local_open_session(turn: ConversationTurn, env: ConversationEnvironment) -> ConversationBinding | None:
-    """Bind an unbound conversation to the master's own newest open session for it, if there is one.
-
-    Covers the master's sessions created after its adoption export, while it
-    still handled these conversations itself during the activation grace.
-    """
-    exported = await export_local_conversation_sessions(env.db, env.roots, turn.conversation)
-    if not exported:
-        return None
-    newest = max(exported, key=lambda session: session.created_at)
-    binding = ConversationBinding(
-        origin=newest.origin,
-        key_field=newest.key_field,
-        conversation_key=newest.key,
-        host=env.host,
-        session_id=newest.session_id,
-        endpoint=newest.endpoint,
-        entered_at=newest.created_at,
-    )
-    await env.db.put_conversation_binding(binding)
-    _log(ConversationDecision.BINDING_RECORDED, turn, session_id=binding.session_id, host=env.host)
-    return binding
 
 
 async def _latest(turn: ConversationTurn, env: ConversationEnvironment) -> _Latest | None:
@@ -566,7 +537,8 @@ async def handle_conversation_turn(
         async with environment.locks.hold(conversation.hashed_key):
             return await _decide(turn, environment, None)
     fleet = await environment.observe_fleet()
-    if await shared_routing_state(environment, fleet) is SharedRoutingState.BEFORE_CUTOVER:
+    state = await shared_routing_state(environment, fleet)
+    if state is SharedRoutingState.BEFORE_CUTOVER:
         return await _held_relay_reply(turn, fleet) or ConversationOutcome.BEFORE_CUTOVER
     router = fleet.routing_master(conversation.origin)
     if router is None:
@@ -579,9 +551,9 @@ async def handle_conversation_turn(
     held = await _held_relay_reply(turn, fleet)
     if held is not None:
         return held
+    if state is SharedRoutingState.CHANGING_OVER and not await await_routing_start(environment):
+        return await _unavailable(turn, environment)
     async with environment.locks.hold(conversation.hashed_key):
-        if not await adoption_complete(environment.db):
-            return await _unavailable(turn, environment)
         return await _decide(turn, environment, fleet)
 
 

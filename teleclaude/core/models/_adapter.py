@@ -11,7 +11,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Protocol
+from typing import Protocol, Self
 
 from teleclaude.types import SystemStats
 
@@ -298,7 +298,7 @@ class EndpointStamp:
         return self.is_help_desk and self.desk_kind is HelpDeskKind.PLATFORM
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, object]) -> "EndpointStamp | None":
+    def from_dict(cls, raw: Mapping[str, object]) -> Self | None:
         """Deserialize a stored section; a section without a known kind is no stamp."""
         try:
             kind = EndpointKind(str(raw.get(EndpointStampField.KIND)))
@@ -318,7 +318,7 @@ class EndpointStamp:
         )
 
     @classmethod
-    def from_session(cls, session: _OriginMetadataHolder) -> "EndpointStamp | None":
+    def from_session(cls, session: _OriginMetadataHolder) -> Self | None:
         """Read the root ``endpoint`` section a session was created with, if any."""
         section = session.origin_metadata.get(ENDPOINT_SECTION)
         return cls.from_dict(section) if isinstance(section, dict) else None
