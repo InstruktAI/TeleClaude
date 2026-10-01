@@ -17,7 +17,6 @@ from teleclaude.project_manifest import load_roots
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
 
-_DOMAIN_AGNOSTIC_DIR = "general"
 _SNIPPETS_DIR = "snippets"
 #: A tier's published half; its deployed address maps back here.
 _TIER_PUBLISHED_DOCS = Path("docs") / "global"
@@ -104,10 +103,10 @@ def gather_publishers(project_root: Path, current_docs_global: Path) -> list[Pub
 def mother_publisher(publishers: list[Publisher]) -> Publisher | None:
     """Identify the publisher whose docs source belongs to Mother's canonical checkout.
 
-    The cross-cutting ``general`` domain is Mother-owned, identified by comparing
-    git canonical roots rather than exact ``docs_global`` paths. ``REPO_ROOT``
-    can reflect a different linked worktree than a publisher's live source even
-    when both belong to Mother, so raw-path comparison would lose ownership.
+    Mother owns the ``snippets/`` support tree, identified by comparing git
+    canonical roots rather than exact ``docs_global`` paths. ``REPO_ROOT`` can
+    reflect a different linked worktree than a publisher's live source even when
+    both belong to Mother, so raw-path comparison would lose ownership.
     """
     mother_root = git_common_root(REPO_ROOT).resolve()
     for publisher in publishers:
@@ -116,12 +115,9 @@ def mother_publisher(publishers: list[Publisher]) -> Publisher | None:
     return None
 
 
-def domain_owners(publishers: list[Publisher], *, mother: Publisher | None = None) -> dict[str, Publisher]:
-    """Return one publisher per domain or raise for split ownership."""
+def domain_owners(publishers: list[Publisher]) -> dict[str, Publisher]:
+    """Return one publisher per declared domain or raise for split ownership."""
     owners: dict[str, Publisher] = {}
-    resolved_mother = mother if mother is not None else mother_publisher(publishers)
-    if resolved_mother is not None:
-        owners[_DOMAIN_AGNOSTIC_DIR] = resolved_mother
     for publisher in publishers:
         for domain in sorted(publisher.publishes):
             existing = owners.get(domain)
@@ -130,8 +126,6 @@ def domain_owners(publishers: list[Publisher], *, mother: Publisher | None = Non
                     f"split domain ownership: {domain} claimed by {existing.slug} and {publisher.slug}"
                 )
             owners[domain] = publisher
-    if resolved_mother is not None and not (resolved_mother.docs_global / _DOMAIN_AGNOSTIC_DIR).is_dir():
-        owners.pop(_DOMAIN_AGNOSTIC_DIR, None)
     return owners
 
 
@@ -143,8 +137,7 @@ def publisher_resolution(
     resolved_publishers = (
         publishers if publishers is not None else gather_publishers(project_root, project_root / "docs" / "global")
     )
-    mother = mother_publisher(resolved_publishers)
-    registry = PublisherRegistry(domain_owners(resolved_publishers, mother=mother), mother)
+    registry = PublisherRegistry(domain_owners(resolved_publishers), mother_publisher(resolved_publishers))
     token = _PUBLISHER_REGISTRY.set(registry)
     try:
         yield registry
@@ -188,8 +181,7 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     registry = _PUBLISHER_REGISTRY.get()
     if registry is None:
         publishers = gather_publishers(project_root, project_root / "docs" / "global")
-        mother = mother_publisher(publishers)
-        registry = PublisherRegistry(domain_owners(publishers, mother=mother), mother)
+        registry = PublisherRegistry(domain_owners(publishers), mother_publisher(publishers))
     if root_name == _SNIPPETS_DIR:
         if registry.mother is None:
             raise DocsPublisherResolutionError("Mother publisher is unavailable for global snippets")

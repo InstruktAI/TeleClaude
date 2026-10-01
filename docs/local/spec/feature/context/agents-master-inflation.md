@@ -36,7 +36,7 @@ body and required reads; it never receives either project-wide section.
 Scenario: Mother project sync inflates the global baseline
   Given the current process is running from the Mother project root
   And AGENTS.global.md exists at the Mother project root
-  And AGENTS.global.md contains @-refs to baseline snippet files
+  And AGENTS.global.md names the general domain's generated bundle as a Required read
   When the sync step inflates agent baselines
   Then the inflater recursively inlines every @-ref to a depth of at most 20
   And the resulting AGENTS.md is emitted at the Mother project root
@@ -58,17 +58,17 @@ Scenario: Non-mother project skips the global source
 ```
 Scenario: Each agent surface renders its progressive sibling by convention
   Given docs/local/baseline-progressive.md exists alongside docs/local/baseline.md
-  And docs/global/baseline-progressive.md exists alongside docs/global/baseline.md at the Mother project root
+  And every published domain, general included, carries docs/global/<domain>/baseline-progressive.md alongside docs/global/<domain>/baseline.md
   And no agent Source references either progressive file
-  When the inflater renders the project's AGENTS.md and the global agent configuration
-  Then each progressive sibling is detected by its location and rendered as a baseline index headed by its own scope — "Global", "Project", or "Domain"
+  When the inflater renders each domain bundle, the project's AGENTS.md, and the global agent configuration
+  Then each progressive sibling is detected by its location and rendered as a baseline index headed by its own scope — "Project" or "Domain"
   And procedures carrying an activation_trigger are auto-included in their scope's "## Activatable Procedures" section with no manifest listing required
   And each activatable entry renders the procedure's description together with its activation trigger
   And the project's own activatable procedures render in a project-scoped "## Activatable Procedures" section
-  And the global "## Activatable Procedures" section lists only domain-agnostic general-scope triggered procedures
-  And a domain-resident triggered procedure surfaces only in its domain's bundle, never in the global or project catalog
+  And every domain's triggered procedures, general's included, surface only in that domain's bundle, never in a project catalog
+  And the global agent configuration carries the general baseline index and the general activatable procedures only through the general bundle it inlines, and appends no progressive section of its own
   And the "## Published Domains" awareness section renders in the global agent configuration only, never in a project's AGENTS.md
-  And every published domain's required activation trigger from its owner's project configuration renders enriched on its Published Domains line
+  And every listed published domain's required activation trigger from its owner's project configuration renders enriched on its Published Domains line
   And a publishes entry whose trigger is missing, blank, multiline, or over-length fails config load and blocks the sync
   And @-ref expansion inlines every referenced snippet verbatim with no filename-based diversion
   And procedure bodies are NOT inlined into the project's AGENTS.md
@@ -150,6 +150,21 @@ Scenario: The catalogue offers only what an agent may start itself
   And that presentation names the events the procedure answers to
 ```
 
+#### UC-AMI9: The Published Domains roster follows the publishers' declarations
+
+```
+Scenario: The roster lists every declared domain the global configuration does not already carry
+  Given registered publishers declare their domains with triggers in business.publishes
+  And the global agent configuration names one of those domains' generated bundle as a Required read
+  And the deployed index also carries person and company tier entries and domain procedures declaring their own activation_trigger
+  When the inflater renders the "## Published Domains" section
+  Then the section lists each declared domain once, with the trigger its publisher recorded with that domain's published documents
+  And the mother's publication stops before replacing the deployed generation when a published domain carries no recorded trigger, naming that domain
+  And a domain whose bundle the global agent configuration inlines is not listed
+  And no snippet's activation_trigger is rendered as a domain's trigger
+  And person and company tier entries contribute no line and fail nothing
+```
+
 ### Cross-context references
 
 - **config** — Provides the project root list and the Mother project identity
@@ -161,9 +176,11 @@ Scenario: The catalogue offers only what an agent may start itself
 
 - `baseline-progressive.md` is a **location convention**, never a reference
   target: it exists as a sibling of its `baseline.md` and is detected and
-  appended by the inflater for each surface — domain bundle, project
-  `AGENTS.md`, global agent config — through one shared collection and
-  rendering path; only the scope of the activatable set differs per surface.
+  appended by the inflater for each surface — domain bundle and project
+  `AGENTS.md` — through one shared collection and rendering path; only the
+  scope of the activatable set differs per surface. The global agent
+  configuration has no progressive sibling of its own: it receives the general
+  domain's through the general bundle it names as a Required read.
   No Source references it, and `@`-ref expansion inlines every referenced
   snippet verbatim for every target agent (Claude, Codex, Gemini) with no
   filename-based diversion.
@@ -192,14 +209,27 @@ Scenario: The catalogue offers only what an agent may start itself
   entrypoint is never edited, so carrying the sentinel through would spend an
   agent's context on an instruction it cannot act on.
 - Activation is a coverage-gap device on an enforcement gradient at the
-  procedure level: domain-resident triggered procedures surface once, in
-  their domain's bundle, and the global catalog carries only domain-agnostic
-  general-scope procedures. At the domain level there is no gap to judge:
+  procedure level: triggered procedures surface once, in their domain's
+  bundle, and the general bundle's are always on because the global agent
+  configuration inlines it. At the domain level there is no gap to judge:
   every published domain carries a required activation trigger in its
   owner's project configuration, rendered enriched on its Published Domains
   line — with domain procedures out of the always-on catalog, that line is a
   domain's only always-on tripwire, so a publishes entry without a trigger
-  fails config load rather than delivering an undiscoverable domain.
+  fails config load rather than delivering an undiscoverable domain. A domain
+  whose bundle the global agent configuration already inlines needs no
+  tripwire and gets no line; its trigger is still required, because the
+  declaration is validated the same way for every domain.
+- The global agent configuration inlines the general bundle generated earlier
+  in the same deploy: documentation composition precedes transpilation, so the
+  global baseline tracks the general sources of the run that publishes it, and
+  a run that composes no documentation inlines the previously published bundle.
+- A domain's trigger enters the deployed generation with its publisher's own
+  publication of that domain's documents, so trigger and documents always come
+  from the same revision. The mother's publication requires a recorded trigger
+  for every published domain; when one is missing it stops before the deployed
+  generation is replaced, and it succeeds on replay once that domain's publisher
+  has published.
 
 - The depth limit of 20 is a static constant in the inflater. A legitimately
   deeper ref tree would fail without a configuration knob — the fix is to

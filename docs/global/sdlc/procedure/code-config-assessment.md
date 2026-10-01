@@ -11,7 +11,7 @@ visibility: 'public'
 @~/.teleclaude/docs/sdlc/policy/language-policy-ownership.md
 @~/.teleclaude/docs/general/policy/human-contract.md
 @~/.teleclaude/docs/general/policy/agent-artifact-governance.md
-@~/.teleclaude/docs/sdlc/policy/commits.md
+@~/.teleclaude/docs/general/policy/commits.md
 
 ## Goal
 

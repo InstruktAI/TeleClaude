@@ -12,12 +12,12 @@ visibility: 'public'
 ## Rules
 
 - The universal artifact-governance rules in `general/policy/agent-artifact-governance` apply in full. This policy adds only the mother-project specifics below and the addendum-authoring contract.
-- The TeleClaude repo is the mother project for global artifact governance. Only this repo publishes the global master, general commands, global skills, addenda, and catalog instructions; a domain-partitioned global command publishes from the one repository that declares its domain.
+- The TeleClaude repo is the mother project for global artifact governance. Only this repo publishes the global master, global skills, addenda, and catalog instructions. It publishes the `general` domain — its documentation and its commands — because it declares `general` in `business.publishes`, exactly as every domain-partitioned global command publishes from the one repository that declares its domain.
 - Every skill entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
 - The mother alone owns the skill catalog master at `agents/global/skills/AGENTS.master.md` and every global skill folder beside it. A side project's global skill folders and catalog master are refused at validation; a portable skill a side project authors is contributed to the mother, which is the curation step.
 - The Mother-owned skill catalog master is a thin orientation wrapper for the catalog directory. It carries no index and no executable directives; the catalog listing is rendered on demand by `general/procedure/skill-use`.
 - Every repository carries `agents/{global,local}/{commands,skills}`. This repository, as the mother, fills `agents/global/` in full; a side project fills `agents/local/` freely and `agents/global/commands/<domain>/` only for domains it publishes. `.agents/` is a delivery location, never a source, under the separation the global policy states. The global master and the addenda are not artifact kinds and are not tiered: they stay at the artifact root as `agents/AGENTS.global.md` and `agents/<AGENT>.addendum.md`.
-- The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
+- The global master file is `agents/AGENTS.global.md` and is only used for global artifacts. Its baseline is the `general` domain's generated bundle, named as a Required read like any other domain bundle; the general baseline index and the general activatable procedures reach every global agent configuration through that bundle.
 
 ### Agent addendum authoring
 
@@ -34,6 +34,7 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 - A single mother-owned catalog definition prevents split-brain global instructions, and routing every global skill through the mother's own folders makes the catalog the one curation surface rather than a merge of publishers.
 - Rendering the catalog after assembling its links lets the human-authored source describe the real deployed catalog without preloading that catalog into every agent baseline.
 - Addenda are confined to this repo because agent-specific failure-mode tuning belongs with the agent-artifact sources, not with adopting projects.
+- `general` is declared, not implied, so one ownership rule covers every domain: publication, bundle generation, command reach and the domain roster all read the declaration, and no code path carries a named exception that can drift from it.
 
 ## Scope
 
@@ -41,7 +42,7 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 
 ## Enforcement
 
-- General commands and global skills publish from this repository alone; a domain command publishes only from the repository that declares its domain. A global source outside a repository's reach is refused at validation with a finding naming the file and the reach it exceeds.
+- Global skills publish from this repository alone; a domain command, `general` included, publishes only from the repository that declares its domain. A global source outside a repository's reach is refused at validation with a finding naming the file and the reach it exceeds.
 - Side-project skill catalog masters and generated catalog entrypoints are excluded from publication; the Mother-owned catalog is the only catalog instruction source.
 - Published third-party skill package bodies and supporting Markdown are never rejected for failing TeleClaude artifact section or heading rules; their `SKILL.md` identity metadata is still required.
 

@@ -58,7 +58,6 @@ _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _MARKDOWN_SUFFIX = ".md"
 _MALFORMED_COMMAND_SOURCE_TEMPLATE = "{path} is a malformed command source companion"
-_GENERAL_DOMAIN = "general"
 # Generated sibling output `_write_project_agents`/`compose_global_skill_catalog`
 # write next to `agents/AGENTS.master.md` itself — never an authored source, but
 # an expected, sanctioned presence, not a boundary violation. Both are gitignored.
@@ -306,8 +305,9 @@ def _iter_skill_package_tree(
 
 def _iter_global_commands(project_root: Path) -> Iterator[ArtifactSource]:
     for domain_dir in _global_command_directories(project_root):
-        reach = ArtifactReach.MOTHER_ONLY if domain_dir.name == _GENERAL_DOMAIN else ArtifactReach.DOMAIN
-        yield from _iter_uniform_command_tree(domain_dir, tier=ArtifactTier.GLOBAL, reach=reach, domain=domain_dir.name)
+        yield from _iter_uniform_command_tree(
+            domain_dir, tier=ArtifactTier.GLOBAL, reach=ArtifactReach.DOMAIN, domain=domain_dir.name
+        )
 
 
 def _iter_global_skills(project_root: Path) -> Iterator[ArtifactSource]:

@@ -16,7 +16,7 @@ visibility: 'public'
   `Path.home()` at validation time; the unexpanded `@~/...` literal
   is NOT accepted by the validator.
 - A published domain's generated baseline bundle is a valid global Required Read at
-  `@<HOME>/.teleclaude/docs/<domain>/domain-baseline-bundle.md`. This exact generated-artifact
+  `@<HOME>/.teleclaude/docs/<domain>/bundle.md`. This exact generated-artifact
   shape is the sole exception to the taxonomy-segment requirement. Validation accepts it only
   for a published domain, and deploy mode generates it before agent-artifact transpilation.
 - A generated global documentation artifact resolves to the published generation, never to a

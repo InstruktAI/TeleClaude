@@ -8,6 +8,7 @@ from teleclaude.capabilities import PermissionSurface, resolve_tier_permissions
 from teleclaude.config.loader import list_company_config_paths
 from teleclaude.config.schema import ConfigKind
 from teleclaude.paths import ConfigFileName
+from teleclaude.snippet_validation import is_generated_domain_artifact_source
 
 
 def is_excluded_snippet_path(path: Path, snippets_root: Path) -> bool:
@@ -26,8 +27,7 @@ def snippet_files(snippets_root: Path, *, include_baseline: bool) -> list[Path]:
     files = [
         path
         for path in snippets_root.rglob("*.md")
-        if path.name not in ("index.yaml", "domain-baseline-bundle.md")
-        and not is_excluded_snippet_path(path, snippets_root)
+        if not is_generated_domain_artifact_source(path) and not is_excluded_snippet_path(path, snippets_root)
     ]
     if include_baseline:
         return files

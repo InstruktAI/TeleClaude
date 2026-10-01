@@ -8,7 +8,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/sdlc/domain-baseline-bundle.md
+- @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/general/concept/orchestrator.md
 - @~/.teleclaude/docs/general/procedure/orchestration.md
@@ -271,7 +271,7 @@ preparation. A `bug` never takes this path, and is never reclassified to reach
 it.
 
 Execute on canonical `main`, commit and resolve independent review under
-`sdlc/policy/commits`. Record the eligibility basis, delivery commits, review
+`general/policy/commits`. Record the eligibility basis, delivery commits, review
 reference and remaining publication obligation in the todo's `log`.
 
 The integrator retains direct-main publication and its maintenance obligations.

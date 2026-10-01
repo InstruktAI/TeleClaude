@@ -19,9 +19,9 @@ Deployment runs two phases:
 
 
 
-1. **Global phase** — sources from `agents/global/` (general commands and
-   skills from the mother alone; domain-partitioned commands
-   from every repository for the domains it publishes) are built under a
+1. **Global phase** — sources from `agents/global/` (domain-partitioned
+   commands from every repository for the domains it publishes, `general`
+   included, and global skills from the mother alone) are built under a
    transient distribution directory and deployed to the global consumers:
    the per-agent user-home roots, the global command corpus
    `~/.teleclaude/commands/<domain>/`, and the global skill catalog. A
@@ -83,6 +83,10 @@ the merged index and bundles, and atomically replaces the deployed root. Other
 repositories' contributions remain at their previously deployed revisions.
 The valid domains are the union of registered projects' `business.publishes`;
 TeleClaude holds no central domain allow-list.
+No domain is implicit: `general` enters the valid set, is materialized, and has
+its bundle generated only because a registered publisher declares it. Where no
+registered publisher declares a domain, identifiers and references naming it
+belong to no published domain.
 
 
 The registered-publisher set is maintained automatically: committed-state
@@ -106,9 +110,11 @@ the SessionStart hook, `telec docs`, and the index build — read one root
 unchanged.
 
 
-For each published domain the deploy inflates `baseline.md` and
-`baseline-progressive.md` into `domain-baseline-bundle.md` inside the staged
-generation. The bundle publishes with that generation and is single-source because
+For each published domain, `general` included, the deploy inflates the
+domain's `baseline.md` and its `baseline-progressive.md` sibling into
+`<domain>/bundle.md` inside the staged generation. The general bundle is the
+global agent configuration's baseline, named by the global master as a Required
+Read. The bundle publishes with that generation and is single-source because
 split detection permits one owner per domain. Documentation composition and bundle
 generation complete before agent artifacts are transpiled, so a procedure that
 needs the generated bundle names it as an explicit Required Read. The transpiler
@@ -177,7 +183,7 @@ Scenario: UC-ARD4 Sync composes the per-domain single-owner docs tree
   Given two publishers, each declaring in business.publishes a different domain it owns
   When the documentation deployment step runs
   Then ~/.teleclaude/docs remains a complete deployed snapshot throughout publication
-  And each published domain and general are materialized from their single owning source
+  And each published domain, general included, is materialized from its single owning source
   And ~/.teleclaude/docs/index.yaml is the union of every owners global index
   And each published domain baseline is generated inside the same staged snapshot
   And a snippet removed from a source domain is absent from the next deployed snapshot
@@ -200,7 +206,7 @@ Scenario: UC-ARD5 Distribution invoked directly builds and never deploys
 
 ```
 Scenario: UC-ARD13 A generated domain bundle resolves as an explicit Required Read
-  Given a procedure names ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md as a Required Read
+  Given a procedure names ~/.teleclaude/docs/<domain>/bundle.md as a Required Read
   And the domain has exactly one registered publisher
   When deploy mode runs
   Then documentation composition generates the current domain bundle before agent-artifact transpilation
@@ -213,7 +219,7 @@ Scenario: UC-ARD13 A generated domain bundle resolves as an explicit Required Re
 
 ```
 Scenario: UC-ARD39 A generated bundle reference resolves to the generation
-  Given a procedure names ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md as a Required Read
+  Given a procedure names ~/.teleclaude/docs/<domain>/bundle.md as a Required Read
   And the owning publisher's own docs tree holds no file at that domain's bundle path
   When agent artifacts are transpiled in deploy mode
   Then the reference resolves to the bundle inside the deployed generation
@@ -224,7 +230,7 @@ Scenario: UC-ARD39 A generated bundle reference resolves to the generation
 ```
 Scenario: UC-ARD6 A procedure carries its generated domain bundle explicitly
   Given a procedure requires a generated domain baseline bundle
-  And its Required reads name ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md
+  And its Required reads name ~/.teleclaude/docs/<domain>/bundle.md
   When agent artifacts are transpiled
   Then the bundle is expanded into the consuming artifact exactly once
   And the artifact does not depend on SessionStart command-domain selection
@@ -271,11 +277,11 @@ Scenario: The mother's skill folders publish globally by existence
 Scenario: UC-ARD9 A published domain's activatable procedures surface only in its domain bundle
   Given a published domain containing a procedure snippet that carries an activation_trigger
   And that domain's activatable procedures are present in the merged deploy index
-  When the deploy inflates the domain's domain-baseline-bundle.md and renders global and project agent configurations
-  Then the domain-baseline-bundle.md carries an "## Activatable Procedures" section auto-including that procedure with its description and activation trigger
-  And the global agent config's "## Activatable Procedures" section lists only domain-agnostic general-scope triggered procedures
-  And the domain-resident procedure appears in no global or project catalog
-  And every published domain's required activation trigger from its owner's project configuration renders enriched on its Published Domains line in the global output, which is the only output carrying that section
+  When the deploy inflates the domain's bundle.md and renders global and project agent configurations
+  Then the bundle.md carries an "## Activatable Procedures" section auto-including that procedure with its description and activation trigger
+  And the procedure appears in no project catalog
+  And the global agent config carries it only when its domain is general, through the general bundle the global master inlines, and appends no activatable catalog of its own
+  And every published domain whose bundle the global output does not inline renders the activation trigger its owner declares in business.publishes enriched on its Published Domains line in the global output, which is the only output carrying that section
   And no such procedure is dropped from its domain bundle
 ```
 
@@ -396,7 +402,8 @@ Scenario: UC-ARD23 Global commands are partitioned by published domain and gated
   When sync runs in deploy mode
   Then those commands deploy to the global corpus under that domain
   And a command under a domain the repository does not publish is refused with a message naming the file and the domain
-  And general commands and global skills from a repository that is not the mother are refused the same way
+  And a command under agents/global/commands/general/ is admitted or refused by the same rule as any other domain
+  And global skills from a repository that is not the mother are refused the same way
 ```
 
 #### UC-ARD24: A global command is deployed under its domain in the corpus

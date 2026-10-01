@@ -19,7 +19,15 @@ from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES, HOME_SCOPES, home_i
 from teleclaude.snippet_scope import SnippetScope as SnippetScope
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
-_GENERATED_DOMAIN_BUNDLE_FILENAME = "domain-baseline-bundle.md"
+#: The generated bundle the documentation pipeline writes into each published
+#: domain's deployed directory.
+GENERATED_DOMAIN_BUNDLE_FILENAME = "bundle.md"
+#: The bundle filename a retired generator wrote; recognised only so leftovers
+#: are retired rather than read as snippets.
+RETIRED_DOMAIN_BUNDLE_FILENAME = "domain-baseline-bundle.md"
+_GENERATED_DOMAIN_ARTIFACT_NAMES: frozenset[str] = frozenset(
+    {GENERATED_DOMAIN_BUNDLE_FILENAME, RETIRED_DOMAIN_BUNDLE_FILENAME}
+)
 _MARKDOWN_SUFFIX = ".md"
 _COMPANION_NAME_SEPARATOR = "."
 
@@ -39,9 +47,9 @@ class SnippetTaxonomy(StrEnum):
 #: Snippet-id prefixes reserved by the identity grammar, never a domain name:
 #: the home identity prefixes (``projects``, ``people``, ``companies``, owned by
 #: ``HOME_IDENTITY_PREFIXES``), the home-kind domain literals, and the structural
-#: markers that are not domains.
+#: markers that are not domains (``third-party``, ``baseline``).
 RESERVED_SNIPPET_ID_PREFIXES: frozenset[str] = (
-    frozenset({"general", "third-party", "baseline"})
+    frozenset({"third-party", "baseline"})
     | frozenset(HOME_IDENTITY_PREFIXES.values())
     | frozenset(scope.value for scope in HOME_SCOPES)
 )
@@ -125,7 +133,7 @@ def _split_parts(value: str) -> tuple[list[str], bool]:
 
 
 def _allowed_scopes(domains: Iterable[str]) -> set[str]:
-    return {"general", SnippetScope.PROJECT.value, SnippetScope.PERSON.value, SnippetScope.COMPANY.value, *domains}
+    return {SnippetScope.PROJECT.value, SnippetScope.PERSON.value, SnippetScope.COMPANY.value, *domains}
 
 
 def companion_shape(path: Path) -> tuple[str, str] | None:
@@ -405,13 +413,10 @@ def _expected_from_global(
     if len(parts) < 3:
         return None, "missing_global_scope"
     scope_segment = parts[2]
-    # Global root baseline: docs/global/baseline.md / baseline-progressive.md
-    if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "global":
-        return None, None
-    # Domain-level baseline: docs/global/<domain>/baseline.md (e.g.
-    # sdlc, creative). Treated as a manifest — no frontmatter
-    # required. The deploy pipeline inflates it into the composed docs root at
-    # ~/.teleclaude/docs/<domain>/domain-baseline-bundle.md for codex-readable consumption.
+    # Domain-level baseline: docs/global/<domain>/baseline.md (e.g. general,
+    # sdlc). Treated as a manifest — no frontmatter required. The deploy
+    # pipeline inflates it into the composed docs root at
+    # ~/.teleclaude/docs/<domain>/bundle.md for codex-readable consumption.
     if path.name in {"baseline.md", "baseline-progressive.md"} and path.parent.name == scope_segment:
         return None, None
     if scope_segment == "baseline":
@@ -424,8 +429,7 @@ def _expected_from_global(
     if scope_segment == "snippets":
         return None, None
 
-    scope = "general" if scope_segment == "general" else scope_segment
-    if scope not in _allowed_scopes(domains):
+    if scope_segment not in _allowed_scopes(domains):
         return None, "invalid_scope"
     if len(parts) < 5:
         return None, "missing_taxonomy"
@@ -435,7 +439,7 @@ def _expected_from_global(
     rest = _tail(parts, 4, path)
     if not rest:
         return None, "missing_slug"
-    return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest).value(), None
+    return SnippetIdParts(scope=scope_segment, taxonomy=taxonomy, rest=rest).value(), None
 
 
 def _expected_from_local(
@@ -615,12 +619,29 @@ def is_generated_global_doc_artifact(relative_path: Path) -> bool:
     Covers the two artifacts the documentation pipeline writes and that no
     publisher source tree owns: the merged index, matched by filename at any
     depth, and a domain's baseline bundle, matched as a two-segment
-    ``<domain>/domain-baseline-bundle.md`` path. Structural only — it does not
-    re-check domain publication, which the caller's own registry lookup settles.
+    ``<domain>/bundle.md`` path. Structural only — it does not re-check domain
+    publication, which the caller's own registry lookup settles.
     """
     if relative_path.name == "index.yaml":
         return True
-    return len(relative_path.parts) == 2 and relative_path.parts[1] == _GENERATED_DOMAIN_BUNDLE_FILENAME
+    return len(relative_path.parts) == 2 and relative_path.parts[1] == GENERATED_DOMAIN_BUNDLE_FILENAME
+
+
+def is_generated_domain_artifact_source(path: Path) -> bool:
+    """Whether a docs-tree file sits in a generated domain-bundle position.
+
+    The position is a Markdown file directly in a domain directory under a
+    ``global`` docs root (``<…>/global/<domain>/<name>``) carrying the generated
+    bundle name or the retired one. A file of that name under a taxonomy
+    directory — including a tier home's domainless ``docs/global/<taxonomy>/`` —
+    is an ordinary snippet.
+    """
+    return (
+        path.name in _GENERATED_DOMAIN_ARTIFACT_NAMES
+        and len(path.parts) >= 3
+        and path.parent.parent.name == _GLOBAL_HALF
+        and path.parent.name not in ALLOWED_TAXONOMIES
+    )
 
 
 def generated_domain_bundle_domain(ref: str, *, domains: Iterable[str]) -> str | None:
@@ -632,7 +653,7 @@ def generated_domain_bundle_domain(ref: str, *, domains: Iterable[str]) -> str |
         if has_empty or len(parts) != 2:
             return None
         domain, filename = parts
-        if filename != _GENERATED_DOMAIN_BUNDLE_FILENAME or domain not in set(domains):
+        if filename != GENERATED_DOMAIN_BUNDLE_FILENAME or domain not in set(domains):
             return None
         return domain
     return None
@@ -644,8 +665,6 @@ _TIER_ADDRESS_DIRNAMES: frozenset[str] = frozenset({COMPANIES_ROOT.name, PEOPLE_
 def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
-    if rel == "baseline.md":
-        return None
     if generated_domain_bundle_domain(ref, domains=domains) is not None:
         return None
     parts, has_empty = _split_parts(rel)
@@ -670,8 +689,7 @@ def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | No
         if taxonomy not in ALLOWED_TAXONOMIES:
             return "invalid_taxonomy"
     else:
-        scope = "general" if parts[0] == "general" else parts[0]
-        if scope not in _allowed_scopes(domains):
+        if parts[0] not in _allowed_scopes(domains):
             return "invalid_scope"
         taxonomy = parts[1]
         if taxonomy not in ALLOWED_TAXONOMIES:

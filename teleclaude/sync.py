@@ -17,7 +17,7 @@ from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.docs_index import build_all_indexes, build_tier_indexes, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
-from teleclaude.install.distribution import distribute_committed, distribute_committed_tiers
+from teleclaude.install.distribution import committed_retired_outputs, distribute_committed, distribute_committed_tiers
 from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.resource_validation import (
     _error,
@@ -252,11 +252,15 @@ def _execute_publication(
             agents_enabled=capabilities.agents,
             docs_enabled=capabilities.docs,
         )
-        if distribution_outputs:
+        retired_outputs = committed_retired_outputs(snapshot_root) if capabilities.docs else []
+        if distribution_outputs or retired_outputs:
             _install_canonical_files(
                 snapshot_root,
                 canonical_root,
-                [(source, source.read_bytes()) for source in distribution_outputs],
+                [
+                    *((source, source.read_bytes()) for source in distribution_outputs),
+                    *((retired, None) for retired in retired_outputs),
+                ],
             )
         return published()
 

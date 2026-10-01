@@ -35,8 +35,9 @@ And any prose, H1, frontmatter, or non-ref content fails validation
 
 ```
 Given --baseline-only is passed to the Selection policy
-When the global manifest exists at docs/global/baseline.md and a project manifest exists
-Then both manifests are loaded
+When every published domain carries its manifest at docs/global/<domain>/baseline.md and a project manifest exists
+Then every domain manifest and the project manifest are loaded
+And --domains narrows the domain manifests to the requested domains
 And the visible set collapses to snippets reachable via their @-refs
 ```
 

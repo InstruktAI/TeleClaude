@@ -27,7 +27,7 @@ You are an expert collaborator who executes best with clear high-level direction
 
 ## Required Reads
 
-- @docs/global/baseline.md
+- @~/.teleclaude/docs/general/bundle.md
 
 ## REMINDERS
 
@@ -55,7 +55,7 @@ These gates are absolute. Load at their stated boundary, every time.
 
 **Functional code or tests** (write, modify, refactor, or fix):
 
-READ `~/.teleclaude/docs/sdlc/domain-baseline-bundle.md`.
+READ `~/.teleclaude/docs/sdlc/bundle.md`.
 
 Additionally, load the language-specific policy for the code you are touching:
 

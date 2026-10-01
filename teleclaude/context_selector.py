@@ -57,6 +57,7 @@ ACTIVATION_CLOSURE_ROOT_ERROR = "ERROR: --closure requires one delivered taxonom
 ACTIVATION_CLOSURE_UNREADABLE_ERROR = "ERROR: Unable to read eligible required-read snippet: {}"
 _DOCS_DIRNAME = "docs"
 _LOCAL_HALF = "local"
+_BASELINE_MANIFEST_FILENAME = "baseline.md"
 _INDEX_FILENAME = "index.yaml"
 #: ``<prefix>/<slug>/<taxonomy>/<rest>`` — the shortest home-qualified identity.
 _HOME_IDENTITY_MIN_SEGMENTS = 4
@@ -251,9 +252,9 @@ def _load_baseline_ids(
         snippets_by_path: Mapping of resolved paths to snippets
         project_root: Project root for resolving relative paths
         required: When True, the manifest is part of a contract invariant
-            (e.g. the global baseline at ``REPO_ROOT/docs/global/baseline.md``).
-            Absence or read failure raises rather than degrading to an empty
-            set, so silent context drop becomes a hard error.
+            (e.g. a published domain's deployed ``<domain>/baseline.md`` that
+            exists). Absence or read failure raises rather than degrading to an
+            empty set, so silent context drop becomes a hard error.
 
     Returns:
         Set of snippet IDs referenced in the baseline manifest
@@ -696,22 +697,21 @@ def _apply_baseline_filter(
     if not baseline_only:
         return snippets
     baseline_ids: set[str] = set()
-    # The global manifest is owned by the TeleClaude mother repo at
-    # `docs/global/baseline.md` (per the baseline-snippet-manifests spec).
-    # Read it from `REPO_ROOT` rather than the deployed snippets dir; the
-    # latter intentionally does not carry the raw @-ref manifest.
-    baseline_ids.update(
-        _load_baseline_ids(
-            REPO_ROOT / "docs" / "global" / "baseline.md",
-            snippets_by_path,
-            project_root=global_root,
-            required=True,
+    # The baseline is the union of every published domain's manifest, read from
+    # the deployed corpus, which carries each domain's tree whole. A domain
+    # without a manifest contributes nothing; an existing manifest that cannot
+    # be read fails the selection.
+    for domain in sorted(valid_domains()):
+        domain_manifest = global_root / domain / _BASELINE_MANIFEST_FILENAME
+        if not domain_manifest.exists():
+            continue
+        baseline_ids.update(
+            _load_baseline_ids(domain_manifest, snippets_by_path, project_root=global_root, required=True)
         )
-    )
     for project_root in project_roots:
         baseline_ids.update(
             _load_baseline_ids(
-                project_root / _DOCS_DIRNAME / _LOCAL_HALF / "baseline.md",
+                project_root / _DOCS_DIRNAME / _LOCAL_HALF / _BASELINE_MANIFEST_FILENAME,
                 snippets_by_path,
                 project_root=project_root,
             )

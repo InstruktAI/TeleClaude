@@ -7,7 +7,7 @@ visibility: public
 
 ## Required reads
 
-- @~/.teleclaude/docs/sdlc/domain-baseline-bundle.md
+- @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/sdlc/procedure/debugging.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md

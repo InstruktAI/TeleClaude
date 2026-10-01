@@ -118,9 +118,10 @@ def _parse_scope(value: str, subcommand: str) -> SnippetScope:
 def _parse_domains(value: str, subcommand: str) -> list[str]:
     """Parse a ``--domains`` value against the published-domain set or fail fast.
 
-    Valid domains are exactly the published-domain union (``valid_domains()``);
-    structural scopes like ``general``/``project`` are not selectable here, mirroring
-    the phase-1 header's advertised choices.
+    Valid domains are exactly the published-domain union (``valid_domains()``),
+    ``general`` included; the home kinds ``project``, ``person`` and ``company``
+    are not domains and are not selectable here, mirroring the phase-1 header's
+    advertised choices.
     """
     from teleclaude.domains import valid_domains  # noqa: PLC0415 - deferred command-local dependency.
 

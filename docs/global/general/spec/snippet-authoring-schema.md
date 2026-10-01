@@ -27,8 +27,8 @@ Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path
   shorter or location-relative form.
 - `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
 - `domain` — **Derived** as the first path segment of the id. It holds either a
-  published knowledge domain (`sdlc` and its peers) or a
-  structural marker: `general`, `project`, `person`, or `company`. The last two
+  published knowledge domain (`general`, `sdlc`, and their peers) or a
+  structural marker: `project`, `person`, or `company`. The last two
   are the home kinds whose identities begin with `people` and `companies`; a
   structural marker is never a published domain. A home's snippet is the
   exception to the first-segment rule: its identity begins with the plural home
@@ -63,7 +63,7 @@ Frontmatter (optional, authored):
   internal default. Locality and audience are separate: visibility does not
   publish a local snippet or confer operational authority over its owner.
 <!-- /planned-change:personal-knowledge-taxonomy -->
-- `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
+- `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of its domain's generated bundle, or of the project's generated AGENTS.md for a project's own procedure, for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 - `subscriptions` — procedures only. A non-empty list of event type names, each the type a verified event carries as its own source names it — no registration in the platform event catalog is required — whose arrival activates the procedure through the platform's procedure-activation contract. A procedure declares `subscriptions` or `activation_trigger`, never both, because each names who is responsible for starting the work; a procedure used only as supporting knowledge declares neither. A procedure declaring `subscriptions` is excluded from the "Activatable Procedures" section and listed as a configured responsibility instead. Validation rejects this field on non-procedure snippet types, on a procedure published in a tier the procedure-activation contract does not route, and on a procedure declaring both activation fields.
 
 - `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `sdlc/principle/documentation-first-development` §10); source validation checks frontmatter shape and the index build records the source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
@@ -129,9 +129,8 @@ The half decides where a snippet is served from, never who may read it; reach
 and depth follow the reader's identity and the snippet's `visibility`
 (`general/design/configuration-tiers`).
 
-- `docs/global/baseline.md` — baseline manifest (curated required reads).
-- `docs/global/general/{taxonomy}/` — on-demand cross-domain documentation.
-- `docs/global/{domain}/{taxonomy}/` — domain-specific (e.g., `sdlc`).
+- `docs/global/{domain}/baseline.md` and `docs/global/{domain}/baseline-progressive.md` — a published domain's baseline manifests (curated required reads), generated into that domain's bundle; `general` is a domain like any other.
+- `docs/global/{domain}/{taxonomy}/` — a published domain's documentation (e.g., `general`, `sdlc`).
 - `docs/local/{taxonomy}/` — project-scoped documentation.
 
 <!-- planned-change:personal-knowledge-taxonomy -->

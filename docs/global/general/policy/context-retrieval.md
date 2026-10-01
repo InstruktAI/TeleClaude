@@ -10,7 +10,7 @@ visibility: 'public'
 - **Read a domain's baseline bundle once, at entry.** When a task enters a
   knowledge domain — writing or reviewing code or tests enters
   `sdlc` — read
-  `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md` in full, unless its
+  `~/.teleclaude/docs/<domain>/bundle.md` in full, unless its
   contracts are already loaded this session. The bundle is the domain's mandatory
   contract, pre-resolved for one pass; a procedure that always needs it names the
   bundle in its `## Required reads`.

@@ -92,8 +92,9 @@ CLAUDE.md
 # Generated build artifacts (never tracked)
 **/index.yaml
 bin/*.app/
-# Per-domain baseline bundle: regenerated into the owning publisher's source
-# dir each sync, resolved through the deployed per-domain symlink.
+# Retired per-domain bundle name: a former generator wrote it into publisher
+# source trees; publication now retracts those leftovers. Generated bundles
+# exist only in the deployed corpus.
 docs/global/*/domain-baseline-bundle.md
 
 # Blueprint engine working directory (graphify cache/output; the published

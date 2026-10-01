@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/sdlc/domain-baseline-bundle.md
+- @~/.teleclaude/docs/sdlc/bundle.md
 - @~/.teleclaude/docs/sdlc/policy/quality-predicate-registry.md
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md

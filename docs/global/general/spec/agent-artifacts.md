@@ -174,7 +174,7 @@ structure and are not checked against any section taxonomy. The universal `name`
   opaque to taxonomy validation. Every package uses the same rendering and
   target-transformation pipeline.
 - Scope is conveyed by location, mirroring the global and local halves of `docs/`:
-  - **Global scope**: `<repository>/agents/global/commands/<domain>/*.md` for a domain the repository publishes; `TeleClaude/agents/global/commands/general/*.md` and `TeleClaude/agents/global/skills/*/SKILL.md` from the mother alone
+  - **Global scope**: `<repository>/agents/global/commands/<domain>/*.md` for a domain the repository publishes, `general` included; `TeleClaude/agents/global/skills/*/SKILL.md` from the mother alone
   - **Local scope**: `<project>/agents/local/commands/*.md`, `<project>/agents/local/skills/*/SKILL.md`
   - `.agents/` is a delivery location and is never read as a source
 - Keep prompts concise to avoid bloated agent context.

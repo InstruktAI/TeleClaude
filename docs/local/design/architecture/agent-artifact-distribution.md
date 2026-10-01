@@ -31,7 +31,7 @@ own spec.
 The approved target it preserves: one tiered source shape at every repository
 root (`@prd#included`), global commands partitioned by declared domain and
 refused outside declared reach before commit (`@prd#sc-2-global-commands-publish-by-declared-domain-and-out-of-reach-sources-fail-before-commit`),
-general commands and global skills from the mother alone (`@prd#sc-6-the-global-skill-catalog-is-composed-from-the-mother-alone`),
+global skills from the mother alone (`@prd#sc-6-the-global-skill-catalog-is-composed-from-the-mother-alone`),
 `.agents/` as delivery output only (`@prd#sc-4-authored-input-and-generated-output-never-share-a-location`),
 domain-qualified command names everywhere the platform names one (`@prd#sc-3-a-global-command-is-named-by-its-domain-everywhere-the-platform-names-it`),
 and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`).
@@ -54,7 +54,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 **Outputs**
 
 - The global command corpus at `~/.teleclaude/commands/<domain>/<name>.md`,
-  one directory per published domain plus `general/`, composed from every
+  one directory per published domain, `general` included, composed from every
   publisher root's in-reach global command sources.
 - The global skill catalog at `~/.teleclaude/skills/`, composed from the
   mother's `agents/global/skills/<name>/` folders alone.
@@ -102,8 +102,8 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   preserves every other repository's manifest entries and deployed commands;
   it never reads another checkout to advance another owner's contribution.
 - **Reach is a registry attribute, resolved against `config`'s declaration.** A
-  global command record's reach is the set of domains the repository publishes;
-  the mother's reach additionally includes `general`. A global skill record's
+  global command record's reach is the set of domains the repository publishes,
+  `general` included when the repository declares it. A global skill record's
   reach is the mother alone. A project record's reach is the repository itself.
   The one-owner-per-domain resolution reuses the docs publisher registry
   (`teleclaude/docs_publishers.py`, `PublisherRegistry`): a domain has exactly
@@ -112,7 +112,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   ownership and corpus partition are separate coordinates. The command's
   governing contract owns its canonical name and every emission of that name;
   its first governing global-domain contract selects the corpus domain, with
-  `general` as the mother-only partition when the owner has no narrower
+  `general` as the partition when the owner has no narrower
   published global domain. The todo-lifecycle commands therefore belong to
   `workflow`, while the configured-job command and the scheduler emission of it
   belong to `config` even though that command publishes under `general`.
@@ -167,7 +167,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 
 - A source under `agents/global/commands/<domain>/` from a root that does not
   publish `<domain>` is a validation finding naming the file and the reach it
-  exceeds. `general/` from a non-mother root is refused the same way.
+  exceeds, `general` included.
 - A folder under `agents/global/skills/` from a non-mother root is refused.
 - A kind directory under `agents/global/` or `agents/local/` other than
   `commands/` or `skills/` is refused as outside the artifact model.
@@ -216,7 +216,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   command's own governing global-domain contract, never assumed from its name
   (`@prd#premises-and-assumptions`): a command publishes under the domain that
   owns the contract it executes, and a command whose contract is domain-agnostic
-  publishes under `general`, which is the mother's alone. One case is named
+  publishes under `general`, owned by the repository that declares it. One case is named
   here because the name misleads:
   `run-job` executes a configured job, and the job model is `config`'s —
   the declaration, the schedule contract, its canonical

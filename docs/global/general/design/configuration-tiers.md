@@ -43,8 +43,8 @@ sits flat beside the home's two documentation halves, `docs/global` and
 kinds; subagent definitions are not one — this platform's agents are general and
 take their role from the command document they load. Global commands are partitioned by the
 domains the repository publishes — `agents/global/commands/<domain>/` — under
-the same one-owner declaration that governs documentation domains; general
-commands and global skills are the mother's alone. A
+the same one-owner declaration that governs documentation domains, `general`
+included; global skills are the mother's alone. A
 repository that carries global artifacts outside its declared reach fails
 validation loudly. The open `.agents/` convention is never read as input.
 

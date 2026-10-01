@@ -1,6 +1,6 @@
 @~/.teleclaude/docs/sdlc/policy/no-semantic-validators.md
 @~/.teleclaude/docs/sdlc/policy/code-quality.md
-@~/.teleclaude/docs/sdlc/policy/commits.md
+@~/.teleclaude/docs/general/policy/commits.md
 @~/.teleclaude/docs/sdlc/policy/testing.md
 @~/.teleclaude/docs/sdlc/policy/code-quality-practices.md
 @~/.teleclaude/docs/sdlc/policy/linting-requirements.md

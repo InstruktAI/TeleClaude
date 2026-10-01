@@ -6,6 +6,9 @@ company: instrukt-ai
 env_allow_list: []
 business:
   publishes:
+    - slug: general
+      trigger: 'Always loaded: the platform-wide principles, policies and procedures
+        every agent works under.'
     - slug: sdlc
       trigger: Writing, reviewing, testing, refactoring, or debugging code or
         tests

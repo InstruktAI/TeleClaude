@@ -68,7 +68,8 @@ AGENTS.md
 CLAUDE.md
 
 \*_/index.yaml
-docs/global/_/domain-baseline-bundle.md
+# Retired per-domain bundle name; publication retracts the leftovers.
+docs/global/*/domain-baseline-bundle.md
 
 publications/inbox/\*
 !publications/inbox/.gitkeep

@@ -166,7 +166,7 @@ When the heuristic engine evaluates the turn window
 Then the result includes the post-commit review-gate surfacing action
 And that action instructs the authoring session to dispatch the commit(s) to independent review automatically
 And waits for REVIEW COMPLETE before reporting completion
-And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `sdlc/policy/commits`
+And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `general/policy/commits`
 And the authored-main-commit marker is consumed
 (The authored-main-commit marker triggers only the review gate; owed maintenance is recorded and started at the commit boundary — see `projects/teleclaude/spec/feature/integration/post-commit-maintenance`.)
 

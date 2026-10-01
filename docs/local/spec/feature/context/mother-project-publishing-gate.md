@@ -1,5 +1,5 @@
 ---
-description: "Global agent artifacts publish only within a repository's declared reach: general commands and global skills are the mother's alone, domain commands belong to the domain's one publisher, and a source outside that reach is refused at sync."
+description: "Global agent artifacts publish only within a repository's declared reach: domain commands, `general` included, belong to the domain's one declared publisher, global skills are the mother's alone, and a source outside that reach is refused at sync."
 visibility: 'public'
 ---
 
@@ -16,16 +16,18 @@ same authored layout, `agents/{global,local}/{commands,skills}`, and
 the gate decides which of a repository's `agents/global/` sources it may
 publish:
 
-- General commands and global skills publish from the mother repository
-  alone.
 - Domain-partitioned commands (`agents/global/commands/<domain>/`) publish from
   the single repository that declares that domain in `business.publishes` —
   the same one-owner-per-domain rule that governs documentation domains.
+  `general` is such a domain: its commands publish from the repository that
+  declares it, and the gate names no domain specially.
+- Global skills publish from the mother repository alone.
 - `agents/local/` is every repository's own and is never subject to the gate.
 
 Reach follows declaration and ownership, never location or the identity of
 the invoking checkout. The mother is identified as it is for documentation:
-the resolved canonical TeleClaude repository root.
+the resolved canonical TeleClaude repository root. Its identity bounds global
+skills only; its domain reach is its own `business.publishes` declaration.
 
 The gate refuses rather than skips. A source outside the repository's reach is
 a validation finding that names the file and the reach it exceeds, and it
@@ -45,9 +47,10 @@ spec references those scenarios rather than restating them.
 #### UC-MPG1: The mother publishes every global artifact class
 
 ```gherkin
-Scenario: The mother publishes general commands and global skills
+Scenario: The mother publishes its declared domains' commands and the global skills
   Given the project root equals the canonical TeleClaude repository root
-  And it carries general commands, global skills, and domain commands for domains it publishes under agents/global/
+  And it declares general among the domains it publishes
+  And it carries commands for the domains it publishes, general included, and global skills under agents/global/
   When sync runs in deploy mode
   Then every one of those sources is validated and published to its global consumer
 ```
@@ -61,6 +64,17 @@ Scenario: Mother project with empty global artifact directories
   When the distribution pipeline collects global sources
   Then no global artifact items are discovered from those directories
   And the pipeline proceeds without error
+```
+
+#### UC-MPG3: General commands follow the general declaration
+
+```gherkin
+Scenario: A repository's general commands are admitted by its declaration alone
+  Given a registered repository carries commands under agents/global/commands/general/
+  When sync runs in deploy mode
+  Then the commands publish when the repository declares general in business.publishes
+  And they are refused with a finding naming the file and the domain when it does not
+  And a second registered repository declaring general blocks the sync as split domain ownership
 ```
 
 ### Cross-context references

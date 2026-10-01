@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Rules
 
-- Agent artifacts carry the same tier shape documentation has. In a repository they live under `agents/{global,local}/{commands,skills}`; in a company or person home they live flat under `agents/{commands,skills}` beside `docs/`. Commands and skills are the artifact kinds and are treated equally; subagent definitions are not an artifact class. Global commands are partitioned by the domains the repository publishes, under the same one-owner declaration that governs documentation domains; general commands and global skills are the mother's alone, and global content outside a repository's declared reach fails validation.
+- Agent artifacts carry the same tier shape documentation has. In a repository they live under `agents/{global,local}/{commands,skills}`; in a company or person home they live flat under `agents/{commands,skills}` beside `docs/`. Commands and skills are the artifact kinds and are treated equally; subagent definitions are not an artifact class. Global commands are partitioned by the domains the repository publishes, `general` included, under the same one-owner declaration that governs documentation domains; global skills are the mother's alone, and global content outside a repository's declared reach fails validation.
 - Authored sources and generated output never share a location. `.agents/` is a delivery location — the open project-local convention agent runtimes read — and is never an authored source root. A directory that is written by the platform is not also read as input.
 - A machine-generated artifact reaches no further than the tier that produced it; promotion to a wider tier is a human act.
 

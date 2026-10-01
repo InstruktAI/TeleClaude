@@ -48,8 +48,9 @@ from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
 from teleclaude.snippet_roots import iter_tier_snippet_roots
-from teleclaude.snippet_scope import HOME_SCOPES
 from teleclaude.snippet_validation import (
+    GENERATED_DOMAIN_BUNDLE_FILENAME,
+    RETIRED_DOMAIN_BUNDLE_FILENAME,
     SnippetScope,
     derive_snippet_classification,
     generated_domain_bundle_domain,
@@ -90,11 +91,6 @@ _GENERATED_REQUIRED_READ_EXPANDED = "generated_required_read_expanded"
 _INLINE_REF_PREFIX = "@"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "local"
 _LOCAL_AGENTS_SOURCE_LABEL = "agents/local"
-#: Index ``domain`` values that name no published domain: structural markers and
-#: the home-kind literals of project, person and company snippets.
-_NON_DOMAIN_INDEX_DOMAINS: frozenset[str] = frozenset({"baseline", "general", ""}) | frozenset(
-    scope.value for scope in HOME_SCOPES
-)
 _TIER_PUBLISHED_DOCS_RELATIVE_PATH = Path("docs") / "global"
 _MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
 _MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
@@ -115,9 +111,26 @@ _TIER_COMPANY_DEPLOY_DIRNAME = "companies"
 _TIER_PERSON_DEPLOY_DIRNAME = "people"
 _TIER_SCOPE_VALUES = (SnippetScope.PERSON.value, SnippetScope.COMPANY.value)
 _COMMITTED_OWNER_COLLISION = "committed publication conflicts with an already deployed snippet id: {snippet_id}"
-_DEPLOYED_INDEX_DOMAIN_FIELD = "domain"
-_DEPLOYED_INDEX_TRIGGER_FIELD = "activation_trigger"
-_DEPLOYED_INDEX_SNIPPETS_FIELD = "snippets"
+#: The generated per-domain record of who published a deployed domain and the
+#: trigger that publisher declared in the published revision.
+_PUBLISHER_RECORD_FILENAME = "publisher.yaml"
+_PUBLISHER_RECORD_DOMAIN_KEY = "domain"
+_PUBLISHER_RECORD_PUBLISHER_KEY = "publisher"
+_PUBLISHER_RECORD_TRIGGER_KEY = "trigger"
+_MALFORMED_PUBLISHER_RECORD = "Malformed domain publisher record: {path}"
+_UNDECLARED_DOMAIN_TRIGGER = "Publisher '{publisher}' publishes domain '{domain}' without a declared trigger"
+_UNRECORDED_DOMAIN_TRIGGERS = (
+    "Published domain(s) without a recorded publisher trigger: {domains}; "
+    "each publisher must publish its own documentation before the mother's publication can replace the generation"
+)
+_UNRECORDED_DOMAIN_ENTRY = "{domain} ({publishers})"
+_UNKNOWN_PUBLISHER = "unknown publisher"
+_IGNORE_RETIRED_BUNDLE = shutil.ignore_patterns(RETIRED_DOMAIN_BUNDLE_FILENAME)
+#: Deployed top-level trees that are not domains: the support fragments and the
+#: tier contributions.
+_NON_DOMAIN_DEPLOY_DIRNAMES: frozenset[str] = frozenset(
+    {_SNIPPETS_TREE_NAME, _TIER_COMPANY_DEPLOY_DIRNAME, _TIER_PERSON_DEPLOY_DIRNAME}
+)
 _EMPTY_STRING = ""
 
 logger = get_logger(__name__)
@@ -248,15 +261,9 @@ class ProjectScope(NamedTuple):
     """Collect the project's own scope-local triggered procedures."""
 
 
-class GlobalScope(NamedTuple):
-    """Collect only domain-agnostic (general-scope) triggered procedures."""
-
-    deploy_root: Path
-
-
 # Tagged union discriminating which activatable procedures a surface collects:
-# a single domain's, the project's own, or the domain-agnostic global set.
-ActivatableScope = DomainScope | ProjectScope | GlobalScope
+# a single domain's, or the project's own.
+ActivatableScope = DomainScope | ProjectScope
 
 
 class AgentConfig(TypedDict):
@@ -546,9 +553,7 @@ def _scope_label(scope: ActivatableScope) -> str:
     """Human-facing name of the surface a rendered section belongs to."""
     if isinstance(scope, DomainScope):
         return "Domain"
-    if isinstance(scope, ProjectScope):
-        return "Project"
-    return "Global"
+    return "Project"
 
 
 def _render_progressive_index_section(entries: list[str], scope: ActivatableScope) -> str:
@@ -637,22 +642,12 @@ def _scope_filtered_source_entries(
     domain. ``ProjectScope`` filters the project's own index load to
     ``scope == "project"`` — that loader returns both project- and
     local-global-scoped entries, and unfiltered collection would leak the
-    latter. ``GlobalScope`` filters the deployed index to domain-agnostic
-    ``general``-scope entries only, so a domain-resident procedure never
-    reaches the global catalog.
+    latter.
     """
     if isinstance(scope, DomainScope):
         candidates = (entries_by_id or {}).values()
         return [entry for entry in candidates if entry.get("domain") == scope.domain]
-    if isinstance(scope, ProjectScope):
-        return [
-            entry for entry in _load_snippet_index_entries(project_root).values() if entry.get("scope") == "project"
-        ]
-    return [
-        entry
-        for entry in _load_index_entries(scope.deploy_root / "index.yaml").values()
-        if entry.get("domain") == _DOMAIN_AGNOSTIC_DIR
-    ]
+    return [entry for entry in _load_snippet_index_entries(project_root).values() if entry.get("scope") == "project"]
 
 
 def _discover_activatables(
@@ -768,8 +763,9 @@ def _progressive_sibling_sections(
     the manifest's curated Baseline index, then the scope's activatable
     procedures, then its configured responsibilities — both auto-collected
     from index declarations. This is the single routine every surface (domain
-    bundle, project ``AGENTS.md``, global agent config) calls; only the scope
-    differs per caller.
+    bundle, project ``AGENTS.md``) calls; only the scope differs per caller. A
+    global agent config receives the ``general`` domain's sections through its
+    inlined ``general`` bundle.
     """
     progressive_src = base_dir / "baseline-progressive.md"
     if not progressive_src.exists():
@@ -1087,19 +1083,152 @@ def _inflate_domain_baseline(
     return inflated
 
 
-# Cross-cutting top-level docs dir always contributed by every publisher that
-# has it (not gated by ``publishes``); domains are gated by ``publishes``.
-_DOMAIN_AGNOSTIC_DIR = "general"
+class DomainPublisherRecord(NamedTuple):
+    """Who published one deployed domain, and the trigger declared in that revision."""
+
+    domain: str
+    publisher: str
+    trigger: str
+
+
+class UnrecordedDomainTriggerError(ValueError):
+    """A published domain reached the mother's publication without a recorded trigger."""
+
+
+def _write_domain_publisher_record(staged_domain: Path, *, domain: str, publisher: Publisher, trigger: str) -> None:
+    """Write the record of a domain's publisher beside its staged bodies."""
+    (staged_domain / _PUBLISHER_RECORD_FILENAME).write_text(
+        yaml.safe_dump(
+            {
+                _PUBLISHER_RECORD_DOMAIN_KEY: domain,
+                _PUBLISHER_RECORD_PUBLISHER_KEY: publisher.slug,
+                _PUBLISHER_RECORD_TRIGGER_KEY: trigger,
+            },
+            sort_keys=False,
+            width=1000,
+            allow_unicode=True,
+        ),
+        encoding=_UTF8,
+    )
+
+
+def _declared_trigger(triggers: Mapping[str, str], *, domain: str, publisher: Publisher) -> str:
+    """Return the trigger a publisher declared for a domain it publishes, or fail fast."""
+    trigger = triggers.get(domain)
+    if trigger is None:
+        raise ValueError(_UNDECLARED_DOMAIN_TRIGGER.format(publisher=publisher.slug, domain=domain))
+    return trigger
+
+
+def _read_domain_publisher_records(docs_root: Path) -> dict[str, DomainPublisherRecord]:
+    """Read every domain's publisher record in one documentation generation."""
+    records: dict[str, DomainPublisherRecord] = {}
+    if not docs_root.is_dir():
+        return records
+    for record_path in sorted(docs_root.glob(f"*/{_PUBLISHER_RECORD_FILENAME}")):
+        payload = yaml.safe_load(record_path.read_text(encoding=_UTF8))
+        if not isinstance(payload, dict):
+            raise ValueError(_MALFORMED_PUBLISHER_RECORD.format(path=record_path))
+        domain = payload.get(_PUBLISHER_RECORD_DOMAIN_KEY)
+        publisher = payload.get(_PUBLISHER_RECORD_PUBLISHER_KEY)
+        trigger = payload.get(_PUBLISHER_RECORD_TRIGGER_KEY)
+        if (
+            not isinstance(domain, str)
+            or domain != record_path.parent.name
+            or not isinstance(publisher, str)
+            or not publisher
+            or not isinstance(trigger, str)
+            or not trigger.strip()
+        ):
+            raise ValueError(_MALFORMED_PUBLISHER_RECORD.format(path=record_path))
+        records[domain] = DomainPublisherRecord(domain=domain, publisher=publisher, trigger=trigger)
+    return records
+
+
+def _live_global_entries(docs_root: Path) -> list[SnippetIndexEntry]:
+    """Return a generation's non-pending global-scope merged-index entries."""
+    return [
+        entry
+        for entry in _load_index_entries(docs_root / _INDEX_FILE_NAME).values()
+        if entry.get(_INDEX_SCOPE_KEY) == SnippetScope.GLOBAL.value and not _is_pending(entry)
+    ]
+
+
+def _require_domain_publisher_records(staged_root: Path) -> None:
+    """Fail before replacing a generation when a published domain carries no record."""
+    records = _read_domain_publisher_records(staged_root)
+    unrecorded: dict[str, set[str]] = {}
+    for entry in _live_global_entries(staged_root):
+        domain = entry.get(_INDEX_DOMAIN_KEY)
+        if not isinstance(domain, str) or domain in records:
+            continue
+        publisher = entry.get(_SOURCE_PROJECT_KEY)
+        unrecorded.setdefault(domain, set()).add(publisher if isinstance(publisher, str) else _UNKNOWN_PUBLISHER)
+    if unrecorded:
+        named = ", ".join(
+            _UNRECORDED_DOMAIN_ENTRY.format(domain=domain, publishers=", ".join(sorted(unrecorded[domain])))
+            for domain in sorted(unrecorded)
+        )
+        raise UnrecordedDomainTriggerError(_UNRECORDED_DOMAIN_TRIGGERS.format(domains=named))
+
+
+def _retire_carried_over_bundles(staged_root: Path, *, owned_domains: set[str]) -> None:
+    """Retire the legacy bundle name in every domain this publication carries over.
+
+    A carried-over domain keeps the bytes its consumers read today: the legacy
+    file becomes the generated bundle when none exists, and is removed when one
+    does. The current publisher's domains are rebuilt from its snapshot.
+    """
+    for staged_domain in sorted(path for path in staged_root.iterdir() if path.is_dir()):
+        if staged_domain.name in owned_domains or staged_domain.name in _NON_DOMAIN_DEPLOY_DIRNAMES:
+            continue
+        legacy = staged_domain / RETIRED_DOMAIN_BUNDLE_FILENAME
+        if not legacy.is_file():
+            continue
+        bundle = staged_domain / GENERATED_DOMAIN_BUNDLE_FILENAME
+        if bundle.exists():
+            legacy.unlink()
+        else:
+            legacy.rename(bundle)
+
+
+def committed_retired_outputs(project_root: Path) -> list[Path]:
+    """Return the publisher-checkout outputs a retired generator wrote for a snapshot.
+
+    Each is a ``docs/global/<domain>/`` legacy bundle the snapshot does not
+    track; the caller retracts them from the canonical checkout. A tracked file
+    of that name is the project's own and is never reported.
+    """
+    docs_global = project_root / _TIER_PUBLISHED_DOCS_RELATIVE_PATH
+    if not docs_global.is_dir():
+        return []
+    return [
+        domain_dir / RETIRED_DOMAIN_BUNDLE_FILENAME
+        for domain_dir in sorted(path for path in docs_global.iterdir() if path.is_dir())
+        if not (domain_dir / RETIRED_DOMAIN_BUNDLE_FILENAME).exists()
+    ]
 
 
 def materialize_docs_root(owner_by_domain: dict[str, Publisher], staged_root: Path) -> None:
-    """Copy every registered domain into one staged documentation generation."""
+    """Copy every registered domain, with its publisher record, into one staged generation."""
     copied = 0
+    triggers_by_publisher: dict[str, dict[str, str]] = {}
     for domain in sorted(owner_by_domain):
-        src = owner_by_domain[domain].docs_global / domain
+        owner = owner_by_domain[domain]
+        src = owner.docs_global / domain
         if not src.is_dir():
             continue
-        shutil.copytree(src, staged_root / domain, symlinks=False)
+        staged_domain = staged_root / domain
+        # A live checkout may still hold the retired generator's leftovers;
+        # they never enter a generation.
+        shutil.copytree(src, staged_domain, symlinks=False, ignore=_IGNORE_RETIRED_BUNDLE)
+        triggers = triggers_by_publisher.setdefault(owner.slug, triggers_for_root(owner.docs_global.parent.parent))
+        _write_domain_publisher_record(
+            staged_domain,
+            domain=domain,
+            publisher=owner,
+            trigger=_declared_trigger(triggers, domain=domain, publisher=owner),
+        )
         copied += 1
     print(f"  Materialized docs root: {staged_root} ({copied} domain tree(s))")
 
@@ -1151,8 +1280,6 @@ def generate_domain_baselines(
     entries_by_id = _load_index_entries(staged_root / "index.yaml")
     failures: list[tuple[str, str]] = []
     for domain in sorted(owner_by_domain):
-        if domain == _DOMAIN_AGNOSTIC_DIR:
-            continue
         domain_src = staged_root / domain
         baseline_src = domain_src / "baseline.md"
         if not baseline_src.exists():
@@ -1164,7 +1291,7 @@ def generate_domain_baselines(
         except Exception as e:
             failures.append((domain, str(e)))
             continue
-        bundle_dst = domain_src / "domain-baseline-bundle.md"
+        bundle_dst = domain_src / GENERATED_DOMAIN_BUNDLE_FILENAME
         bundle_dst.parent.mkdir(parents=True, exist_ok=True)
         bundle_dst.write_text(header_template.format(name=domain) + inflated, encoding="utf-8")
         if observation is not None:
@@ -1219,66 +1346,52 @@ def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
 
 
 def _resolve_deployed_domain_triggers() -> dict[str, str]:
-    """Read publication triggers from the activated index, never from live roots."""
-    index_path = GLOBAL_DOCS_DIR / _INDEX_FILE_NAME
-    if not index_path.is_file():
-        return {}
-    payload = yaml.safe_load(index_path.read_text(encoding=_UTF8))
-    if not isinstance(payload, dict):
-        return {}
-    entries = payload.get(_DEPLOYED_INDEX_SNIPPETS_FIELD)
-    if not isinstance(entries, list):
-        return {}
-    triggers: dict[str, str] = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        domain = entry.get(_DEPLOYED_INDEX_DOMAIN_FIELD)
-        trigger = entry.get(_DEPLOYED_INDEX_TRIGGER_FIELD)
-        if isinstance(domain, str) and isinstance(trigger, str) and trigger.strip():
-            triggers[domain] = trigger
-    return triggers
+    """Read each domain's trigger from its publisher record in the activated generation.
 
-
-def _render_domain_awareness(deploy_docs_root: Path, *, triggers: dict[str, str]) -> str:
-    """Render one awareness line per published domain from the merged index.
-
-    Each line names the domain, its snippet count, its baseline bundle path,
-    and its owner's required activation trigger, so the global agent
-    configuration surfaces every published domain with on-demand depth and an
-    always-on tripwire. Counts come from the deployed merged ``index.yaml``,
-    excluding pending snippets; ``triggers`` carries the resolved publisher
-    declarations.
+    The record travels with the domain's published bodies, so the trigger is
+    the one its publisher declared in the published revision — never a live
+    declaration and never a snippet's own ``activation_trigger``.
     """
-    index_path = deploy_docs_root / "index.yaml"
-    if not index_path.exists():
-        return ""
-    payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        return ""
-    snippets = payload.get("snippets")
-    if not isinstance(snippets, list):
-        return ""
-    counts: dict[str, int] = {}
-    for item in snippets:
-        if not isinstance(item, dict):
-            continue
-        domain = item.get("domain")
-        if not isinstance(domain, str) or domain in _NON_DOMAIN_INDEX_DOMAINS:
-            continue
-        if _is_pending(item):
-            continue
-        counts[domain] = counts.get(domain, 0) + 1
-    if not counts:
+    return {domain: record.trigger for domain, record in _read_domain_publisher_records(GLOBAL_DOCS_DIR).items()}
+
+
+def _inlined_bundle_domains(master_text: str, *, domains: set[str]) -> set[str]:
+    """Return the domains whose generated bundle a master inlines as a Required read."""
+    required_refs, _ = extract_required_reads(master_text)
+    inlined: set[str] = set()
+    for ref in normalize_required_refs(required_refs):
+        domain = generated_domain_bundle_domain(f"{_INLINE_REF_PREFIX}{ref}", domains=domains)
+        if domain is not None:
+            inlined.add(domain)
+    return inlined
+
+
+def _render_domain_awareness(deploy_docs_root: Path, *, triggers: Mapping[str, str], inlined: set[str]) -> str:
+    """Render one awareness line per published domain the global configuration does not inline.
+
+    The listed domains are the recorded ones plus those carrying live
+    global-scope entries, minus ``inlined``. Each line names the domain, its
+    live global-scope snippet count (zero allowed), its bundle path, and the
+    trigger its publisher recorded, so the global agent configuration surfaces
+    every published domain with on-demand depth and an always-on tripwire.
+    Person, company and project entries are excluded by their recorded scope.
+    """
+    counts: dict[str, int] = dict.fromkeys(triggers, 0)
+    for entry in _live_global_entries(deploy_docs_root):
+        domain = entry.get(_INDEX_DOMAIN_KEY)
+        if isinstance(domain, str) and domain:
+            counts[domain] = counts.get(domain, 0) + 1
+    listed = sorted(domain for domain in counts if domain not in inlined)
+    if not listed:
         return ""
     lines: list[str] = []
-    for domain in sorted(counts):
+    for domain in listed:
         trigger = triggers.get(domain)
         if trigger is None:
             raise ValueError(f"Published domain '{domain}' has no discoverable activation trigger")
         lines.append(
             f"- `{domain}` — {counts[domain]} snippet(s); "
-            f"bundle: `~/.teleclaude/docs/{domain}/domain-baseline-bundle.md` — {trigger}"
+            f"bundle: `~/.teleclaude/docs/{domain}/{GENERATED_DOMAIN_BUNDLE_FILENAME}` — {trigger}"
         )
     header = "## Published Domains — load the relevant domain's bundle when needed\n\n"
     return header + "\n".join(lines)
@@ -1328,6 +1441,10 @@ def deploy_documentation(
                         observation,
                         mother=mother,
                     )
+                    if mother is not None and mother.slug == current.slug:
+                        # Only the mother's publication renders the domain roster,
+                        # so only it requires every published domain's record.
+                        _require_domain_publisher_records(staged_root)
                 else:
                     materialize_docs_root(owner_by_domain, staged_root)
                     materialize_global_snippets(mother, staged_root)
@@ -1356,7 +1473,14 @@ def _materialize_committed_owner(
     *,
     mother: Publisher | None,
 ) -> None:
-    """Replace one publisher's deployed contributions inside a copied generation."""
+    """Replace one publisher's deployed contributions inside a copied generation.
+
+    The publisher's domains are its old index rows, its current declaration and
+    every staged domain whose publisher record names it, so a domain it stopped
+    declaring leaves with its record even when it had no snippets. Each domain
+    it still owns is re-copied from the snapshot beside a fresh record carrying
+    the trigger the snapshot declares.
+    """
     if deployed_root.is_dir():
         shutil.copytree(deployed_root, staged_root, dirs_exist_ok=True, symlinks=False)
     deployed_index = deployed_root / _INDEX_FILE_NAME
@@ -1377,6 +1501,12 @@ def _materialize_committed_owner(
         if isinstance(domain, str):
             owned_domains.add(domain)
     owned_domains.update(current.publishes)
+    owned_domains.update(
+        domain
+        for domain, record in _read_domain_publisher_records(staged_root).items()
+        if record.publisher == current.slug
+    )
+    declared_triggers = triggers_for_root(project_root)
     for domain in sorted(owned_domains):
         staged_domain = staged_root / domain
         if staged_domain.is_dir():
@@ -1384,6 +1514,13 @@ def _materialize_committed_owner(
         source_domain = current.docs_global / domain
         if domain in owner_by_domain and owner_by_domain[domain].slug == current.slug and source_domain.is_dir():
             shutil.copytree(source_domain, staged_domain, symlinks=False)
+            _write_domain_publisher_record(
+                staged_domain,
+                domain=domain,
+                publisher=current,
+                trigger=_declared_trigger(declared_triggers, domain=domain, publisher=current),
+            )
+    _retire_carried_over_bundles(staged_root, owned_domains=owned_domains)
     if mother is not None and mother.slug == current.slug:
         staged_snippets = staged_root / _SNIPPETS_TREE_PATH
         if staged_snippets.is_dir():
@@ -2077,15 +2214,11 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
             if combined_agents_content:
                 combined_agents_content = combined_agents_content.rstrip() + addendum_suffix
                 if is_global_phase:
-                    sections = _progressive_sibling_sections(
-                        Path(docs_source_dir),
-                        scope=GlobalScope(GLOBAL_DOCS_DIR),
-                        project_root=Path(project_root),
-                        warn_only=args.warn_only,
+                    inlined = _inlined_bundle_domains(
+                        "\n\n".join(content for content in processed_contents if content),
+                        domains=load_domains(Path(project_root)),
                     )
-                    if sections:
-                        combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{sections}\n"
-                    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, triggers=domain_triggers)
+                    awareness = _render_domain_awareness(GLOBAL_DOCS_DIR, triggers=domain_triggers, inlined=inlined)
                     if awareness:
                         combined_agents_content = f"{combined_agents_content.rstrip()}\n\n---\n\n{awareness}\n"
                 combined_agents_content = _strip_lock_sentinels(combined_agents_content)

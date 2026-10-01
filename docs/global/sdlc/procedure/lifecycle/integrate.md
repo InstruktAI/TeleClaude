@@ -73,7 +73,7 @@ each decision point until the queue is drained.
    and a new log judgment; a successful log command alone is not a soundness
    verdict. A direct commit with no live-runtime log judgment is published after
    its owed maintenance succeeds. The committer owns review and remediation under
-   `sdlc/policy/commits`; the integrator does not inspect or wait for other
+   `general/policy/commits`; the integrator does not inspect or wait for other
    sessions' review verdicts. Uncommitted repo-root paths are not part of the
    push and do not block it. The candidate pre-push checks in step 5 do not gate
    direct-main publication.
@@ -114,7 +114,7 @@ The branch has been squash-merged; staged changes are ready.
    - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
    - Body: summarize what changed, key decisions, scope
    - Footer: none. Attribution and provenance are stamped by the sealed commit
-     surface, not composed here; `sdlc/policy/commits` is the
+     surface, not composed here; `general/policy/commits` is the
      canonical source and this procedure does not restate it.
 3. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 4. When the state machine reaches push, `telec code lint --all` and `telec code test --all` must already be green.

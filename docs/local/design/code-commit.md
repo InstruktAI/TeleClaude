@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-@~/.teleclaude/docs/sdlc/policy/commits.md
+@~/.teleclaude/docs/general/policy/commits.md
 
 ## Purpose
 
@@ -290,7 +290,7 @@ todo worktree, a successful commit also publishes the todo's branch to
    `telec code commit` invocation to surface commit-first and post-commit
    review-routing guidance. They then commit with `--approved`; the committed
    diff determines whether a post-commit review is required or recommended per
-   `sdlc/policy/commits`. This design owns the mechanics; the
+   `general/policy/commits`. This design owns the mechanics; the
    policy owns the behavioral rule.
 
 6. **Orchestrator restriction.** Orchestrators cannot commit on any branch.

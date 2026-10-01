@@ -48,6 +48,7 @@ from teleclaude.snippet_validation import (
     derive_snippet_classification,
     generated_domain_bundle_domain,
     is_companion,
+    is_generated_domain_artifact_source,
     is_half_root_baseline_manifest,
     is_retirement_companion,
     load_domains,
@@ -322,7 +323,7 @@ def validate_snippet(
     if _is_third_party_doc(path, project_root):
         validate_third_party_doc(path, content, project_root)
         return
-    if path.name == "domain-baseline-bundle.md":
+    if is_generated_domain_artifact_source(path):
         # Generated deploy artifact (one merged inflated bundle per domain),
         # not an authored snippet — no frontmatter or taxonomy contract applies.
         return
