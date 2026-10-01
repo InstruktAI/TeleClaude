@@ -1275,13 +1275,14 @@ def _load_reached_snippets(
 
     A home's published half arrives through the merged global index; its local
     half is loaded from the home's own local catalog. With named homes, global
-    material is limited to the domains a named project publishes as owner.
+    material is limited to the domains published by reached projects whose
+    published half is selected.
     """
     homes = [home for home in (resolver.resolve(key) for key in reach) if home is not None]
     owned_domains: set[str] = set()
     if named:
         for home in homes:
-            if home.tier.scope is SnippetScope.PROJECT:
+            if home.tier.scope is SnippetScope.PROJECT and HomeSnippetHalf.PUBLISHED in halves[home.tier]:
                 owned_domains |= publishes_for_root(home.root)
 
     snippets: list[SnippetMeta] = []
