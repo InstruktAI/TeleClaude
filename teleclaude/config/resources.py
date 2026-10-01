@@ -20,6 +20,7 @@ from typing import cast
 
 import teleclaude.config as _tc_config_module
 from teleclaude.company_setup.onboard_flow import scaffold_company
+from teleclaude.config import help_desk as help_desk_declaration
 from teleclaude.config._environment import (
     expand_environment_references,
     find_environment_references,
@@ -88,6 +89,7 @@ _SETTINGS_SECTION = "settings"
 _ORGANIZATION_SECTION = "organization"
 _COMPANY_SECTION = "company"
 _PROJECT_SECTION = "project"
+_HELP_DESK_HOME_REFUSAL = "a person or company home keeps its help desk through company or global init"
 _PERSON_IDENTITY_FIELDS = frozenset({"name", "email", "username", "role", "preferences", "expertise"})
 _DOCUMENT_MAPPING_ERROR = "Configuration document must be a mapping: {path}"
 _READ_ONLY_SCHEMA_VERSION_ERROR = "`schema_version` is read-only; the migration list owns its value."
@@ -372,15 +374,19 @@ def _init_computer(_ref: SubjectRef, _fields: Mapping[str, object] | None, evide
     return _read_computer(SubjectRef(ConfigSubjectKind.COMPUTER))
 
 
-def _init_global(ref: SubjectRef, _fields: Mapping[str, object] | None, evidence: OwnEvidence) -> SubjectView:
+def _init_global(ref: SubjectRef, fields: Mapping[str, object] | None, evidence: OwnEvidence) -> SubjectView:
     with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
         stored = load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
         current = dict(upcast(stored, ref))
+        if fields and fields.get(help_desk_declaration.HELP_DESK_KEY):
+            current = help_desk_declaration.with_help_desk_enabled(current)
         if not GLOBAL_CONFIG_PATH.exists() or current != stored:
             _validate_global_candidate(current)
             carry_resource_migrations(stored, ref, evidence)
             transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, current))
             evidence.mark(target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY))
+    evidence.enter_unobserved()
+    help_desk_declaration.converge_platform_help_desk(GLOBAL_CONFIG_PATH.parent)
     return _read_global(SubjectRef(ConfigSubjectKind.GLOBAL))
 
 
@@ -438,9 +444,8 @@ def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence
             )
             evidence.mark(target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY))
 
-    display_name = existing.get("name") if existing is not None else fields.get("name")
     evidence.enter_unobserved()
-    scaffold_personal_workspace(slug, str(display_name) if display_name else None)
+    scaffold_personal_workspace(slug)
     return _read_person(SubjectRef(ConfigSubjectKind.PERSON, slug))
 
 
@@ -452,6 +457,8 @@ def _init_company(_ref: SubjectRef, fields: Mapping[str, object] | None, evidenc
     slug = fields.get(_SLUG_KEY)
     evidence.enter_unobserved()
     company_dir = scaffold_company(str(name), str(slug) if slug else None)
+    if fields.get(help_desk_declaration.HELP_DESK_KEY):
+        help_desk_declaration.enable_company_help_desk(company_dir, evidence)
     evidence.mark(target_id(ConfigSubjectKind.COMPANY, company_dir.name, TargetDocument.ROSTER))
     return _read_company(SubjectRef(ConfigSubjectKind.COMPANY, company_dir.name))
 
@@ -929,6 +936,7 @@ def init_project_subject(
     *,
     request_id: str | None = None,
     trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
+    help_desk: bool = False,
 ) -> SubjectView:
     """Adopt the caller's folder and return its declared subject view.
 
@@ -942,6 +950,8 @@ def init_project_subject(
     config_path = root.expanduser().resolve() / ConfigFileName.OVERLAY
     kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
     subject_kind = ConfigSubjectKind(kind.value)
+    if help_desk and kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
+        raise InvalidCandidate(_HELP_DESK_HOME_REFUSAL)
     if kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
         identity = root.name
     elif kind is ConfigKind.PROJECT:
@@ -955,7 +965,7 @@ def init_project_subject(
     def _compute(evidence: OwnEvidence) -> SubjectView:
         nonlocal result
         evidence.enter_unobserved()
-        result = init_project(root, trigger=trigger)
+        result = init_project(root, trigger=trigger, help_desk=help_desk)
         ref = SubjectRef(ConfigSubjectKind(result.kind.value), result.identity)
         evidence.mark(target_id(ref.kind, ref.instance, TargetDocument.REGISTRY))
         if result.kind is ConfigKind.PROJECT:

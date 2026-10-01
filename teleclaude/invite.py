@@ -11,6 +11,7 @@ Provides:
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,8 @@ from teleclaude.core.identity import (
     DiscordAvatarBindingReason,
     observe_discord_avatar_binding,
 )
+from teleclaude.core.reconciliation.home_convergence import person_home_targets
+from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.paths import PEOPLE_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.services.email import send_email
 
@@ -122,23 +125,16 @@ def generate_invite_links(
 # --- Workspace Scaffolding ---
 
 
-def scaffold_personal_workspace(person_slug: str, display_name: str | None = None) -> Path:
-    """Ensure personal workspace directory exists and is ready.
+def scaffold_personal_workspace(person_slug: str, *, people_root: Path = _PEOPLE_DIR) -> Path:
+    """Ensure the person's home exists, is declared, and matches the person templates.
 
-    Returns the person's slug-keyed folder (~/.teleclaude/people/{slug}/).
-    ``display_name`` seeds the default AGENTS.master.md greeting; it falls back
-    to the slug when omitted.
+    Returns the person's slug-keyed folder (``<people_root>/{slug}/``). Writes the
+    person declaration when absent, then converges the home to its templates:
+    the person master is the template's rendering after every call, and the
+    local baseline manifests are created only when absent.
     """
-    person_path = _PEOPLE_DIR / person_slug
+    person_path = people_root / person_slug
     person_path.mkdir(parents=True, exist_ok=True)
-
-    greeting_name = display_name or person_slug
-
-    # Create default AGENTS.master.md only if absent (it normally lives here already)
-    agents_master = person_path / "AGENTS.master.md"
-    if not agents_master.exists():
-        agents_master.write_text(f"You are the personal assistant of {greeting_name}.\n", encoding="utf-8")
-        logger.info("Created default AGENTS.master.md for %s", person_slug)
 
     # Create minimal teleclaude.yml if not present
     workspace_config = person_path / ConfigFileName.OVERLAY
@@ -150,6 +146,7 @@ def scaffold_personal_workspace(person_slug: str, display_name: str | None = Non
         )
         logger.info("Created teleclaude.yml for %s workspace", person_slug)
 
+    materialize_template_targets(person_home_targets(person_path), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     return person_path
 
 

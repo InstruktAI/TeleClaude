@@ -10,17 +10,21 @@ description: Every repository-owned template TeleClaude installs onto a machine 
 ## What it is
 
 TeleClaude installs repository-owned templates in several places: service
-definitions during machine installation, the home template tree before home
-activation, TeleClaude-owned git hooks into project and home repositories,
-project skeleton files and the help desk workspace during project
-initialization. Each installation renders the template's placeholders and
-places the result under a name derived from the template's path. One rendering
-contract and one naming contract govern all of them, so a template behaves the
-same wherever it is installed.
+definitions during machine installation; the home template layers into the
+TeleClaude home, into every declared person and company home, and into every
+enabled help desk inside them, before home activation; TeleClaude-owned git
+hooks into project and home repositories; project skeleton files and a
+project's local documentation baselines during project initialization; and a
+help desk's folder when initialization enables it. Each installation renders
+the template's placeholders and places the result under a name derived from the
+template's path. One rendering contract and one naming contract govern all of
+them, so a template behaves the same wherever it is installed.
 
 What an installation does with the rendered result — refreshing a differing
 target, prompting before replacing a project-owned file, preserving a hook it
-does not own, reloading a service, or creating a workspace once — remains the installing surface's own contract.
+does not own, or reloading a service — remains the installing surface's own
+contract, except for a template whose name marks it create-once: every surface
+writes that template's target only while the target is absent.
 The shared rule is that the rendered content, never the raw template, is what
 the surface compares against its target, so an unchanged rendered result leaves
 the target untouched.
@@ -43,11 +47,25 @@ the target untouched.
   replaced.
 - **Dot marker.** Within a template tree installed as files, every path segment
   authored as `dot_<name>` — file or directory — is installed as `.<name>`.
-  Segments without the `dot_` prefix keep their names, including names that
-  begin with an underscore. A template tree carries no literal dot-prefixed
+  Segments carrying neither the `dot_` nor the `create_` marker keep their
+  names, including names that begin with an underscore or hold a dot after
+  their first character. A template tree carries no literal dot-prefixed
   segment. Templates installed from an explicit source-to-target file list are
   named by that list, and line fragments merged into another file are never
   installed as files.
+- **Create-once marker.** Within a template tree installed as files, a file
+  segment authored as `create_<name>` is installed as `<name>`, and its target
+  is written only while it is absent: an existing target is kept as it is,
+  whatever its content. The marker comes first on a segment that also carries
+  the dot marker, so `create_dot_<name>` installs as `.<name>`. A directory
+  segment carrying it fails the installation before any target is written. The
+  template is still rendered, so an unresolved placeholder in it fails the
+  installation even when its target already exists.
+- **Tracked sources.** A template tree installed as files consists of the files
+  the canonical checkout tracks under it. A file lying in the tree that the
+  checkout does not track — ignored or untracked, such as a file manager's
+  residue or a generated entrypoint — is never installed and never fails the
+  installation.
 - **Content comparison.** An installing surface compares the rendered content
   with its target. A target already equal to the rendered content is left
   untouched.
@@ -98,6 +116,28 @@ Given a template's target already holds exactly the content the template renders
 When an agent runs the installation that installs the template again
 Then the target is not rewritten
 And no action the installing surface performs only on a changed target occurs
+```
+
+#### UC-TIN6: A create-once template never replaces its target
+
+```gherkin
+Given a template tree carries two files whose names begin with "create_"
+And the first file's target is absent while the second file's target holds different content
+When an agent runs the installation that installs the tree
+Then the first target is written under its name without "create_", with the template's rendered content
+And the second target keeps its content byte for byte
+And no installed name begins with "create_"
+```
+
+#### UC-TIN7: Only tracked template files are installed
+
+```gherkin
+Given a template tree holds files the canonical checkout tracks
+And beside them a file the checkout ignores and a file it does not track
+When an agent runs the installation that installs the tree
+Then every tracked file is installed at its mapped name
+And neither the ignored nor the untracked file reaches any target
+And the installation does not fail on either of them
 ```
 
 ## Known caveats

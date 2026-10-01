@@ -124,7 +124,7 @@ class PrivateHandlersMixin:
             save_person_config(person_slug, person_config)
 
         # Scaffold personal workspace and create session
-        workspace_path = invite_module.scaffold_personal_workspace(person_slug, display_name)
+        workspace_path = invite_module.scaffold_personal_workspace(person_slug)
 
         # Create session in personal workspace
         create_cmd = CreateSessionCommand(
@@ -207,7 +207,6 @@ class PrivateHandlersMixin:
             result_dict = await self._create_private_session_for_identity(
                 user_id,
                 person_slug,
-                identity.person_name,
                 text,
             )
             session_id = str(result_dict.get("session_id", ""))
@@ -291,11 +290,10 @@ class PrivateHandlersMixin:
         self,
         user_id: str,
         person_slug: str,
-        display_name: str | None,
         text: str,
     ) -> dict[str, str]:
         """Create a private-chat session with the initial message bundled into launch_intent."""
-        workspace_path = invite_module.scaffold_personal_workspace(person_slug, display_name)
+        workspace_path = invite_module.scaffold_personal_workspace(person_slug)
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
             initial_input=text,

@@ -140,6 +140,14 @@ agents:
   enabled: bool # the project holds agent artifacts
 ```
 
+A project, the global configuration, and a company each declare whether that
+home keeps a help desk. An omitted block, or one without an `enabled` value,
+keeps none. `telec config <kind> init --help-desk` sets it under administrator
+authority and scaffolds the help desk
+(`projects/teleclaude/spec/feature/config/kind-addressed-configuration`). The
+block's shape is owned by the `help_desk` field of the project, global and
+company declaration models (`HelpDeskConfig` in `teleclaude/config/schema.py`).
+
 A project also declares its checkpoint maintenance overlay under `checkpoint`, holding two
 registries keyed by action id: `checkpoint.actions`, whose entries carry `run` and `evidence`
 and are obligations an agent is asked to discharge, and `checkpoint.maintenance`, whose

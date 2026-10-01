@@ -22,6 +22,7 @@ from teleclaude.caller_identity import (
     person_entries_for_email,
 )
 from teleclaude.cli.session_auth import ResolvedCliIdentity
+from teleclaude.config.help_desk import HELP_DESK_KEY
 from teleclaude.config.subjects import ConfigSubjectKind
 
 logger = get_logger(__name__)
@@ -29,6 +30,8 @@ logger = get_logger(__name__)
 _CONFIG_CLEARANCE_EVENT = "config_clearance"
 _ORGANIZATION_SECTION = "organization"
 _IDENTITY_SECTION = "identity"
+# The help-desk section opens a home to people outside it, so initializing with it needs the home's administrator.
+HELP_DESK_SECTION = HELP_DESK_KEY
 _SINGLETON_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL})
 
 # PrincipalKind is the identity-owned CliCallerKind vocabulary (person/system/none):
@@ -167,7 +170,7 @@ def _decide_person(standing: ConfigurationStanding, target: ConfigurationTarget)
 
 
 def _decide_company(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
-    if target.operation is ConfigurationOperation.INIT:
+    if target.operation is ConfigurationOperation.INIT and HELP_DESK_SECTION not in target.sections:
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
     if target.operation is ConfigurationOperation.LIST:
         if is_administrator(standing):
@@ -200,7 +203,9 @@ def _refuse_effective_admin_required(standing: ConfigurationStanding) -> Clearan
 
 
 def _decide_project(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
-    if target.operation in (ConfigurationOperation.LIST, ConfigurationOperation.GET, ConfigurationOperation.INIT):
+    if target.operation in (ConfigurationOperation.LIST, ConfigurationOperation.GET):
+        return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
+    if target.operation is ConfigurationOperation.INIT and HELP_DESK_SECTION not in target.sections:
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
     if _effective_role(standing, Project(target.instance or "")) == _ADMIN_ROLE:
         return ClearanceDecision(True, RequiredStanding.EFFECTIVE_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)

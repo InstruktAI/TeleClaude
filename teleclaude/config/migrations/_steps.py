@@ -14,6 +14,7 @@ from teleclaude.config.migrations import (
     v007_drop_business_domains,
     v008_declare_effective_capabilities,
     v009_fold_trusted_directories,
+    v010_declare_help_desk,
 )
 
 STEPS: Final = (
@@ -26,4 +27,5 @@ STEPS: Final = (
     v007_drop_business_domains,
     v008_declare_effective_capabilities,
     v009_fold_trusted_directories,
+    v010_declare_help_desk,
 )

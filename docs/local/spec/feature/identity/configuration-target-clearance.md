@@ -63,6 +63,8 @@ a refused read returns no configuration.
 | company              | init                                                                                    | none beyond the verb band                       |
 | project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
 | project              | patch                                                                                   | `admin` effective role for that project         |
+| company              | init with `--help-desk`                                                                 | `admin` effective role for that company         |
+| project              | init of the caller's checkout with `--help-desk`                                        | `admin` effective role for that project         |
 
 ### Use cases
 

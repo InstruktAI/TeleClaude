@@ -126,6 +126,9 @@ FLAG_REMINDER_CANCEL_ALL = Flag("--all", desc="Cancel all reminders owned by the
 # =============================================================================
 
 FLAG_COMPANY_SLUG = Flag("--slug", desc="Company slug (optional; derived from the name when omitted)", arity=VALUE)
+FLAG_HELP_DESK = Flag(
+    "--help-desk", desc="Enable this home's help desk and scaffold it (home administrator only)", arity=SWITCH
+)
 
 FLAG_AGENT_STATUS = Flag("--status", desc="Status: available, unavailable, degraded", arity=VALUE)
 FLAG_AGENT_STATUS_REASON = Flag("--reason", desc="Reason for status change", arity=VALUE)

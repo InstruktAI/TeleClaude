@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import os
-import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -13,18 +13,18 @@ from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
-from teleclaude.config import config
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.help_desk import with_help_desk_enabled
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
 from teleclaude.config.schema import ConfigKind, ProjectConfig
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.core.reconciliation.template_installation import materialize_template_tree
+from teleclaude.core.reconciliation.home_convergence import project_targets
+from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.file_transaction import file_transaction
-from teleclaude.git import Repo
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest_runtime import project_adoption_lock, register_root
 from teleclaude.project_root import resolve_project_root
@@ -52,6 +52,7 @@ _ENABLED_KEY = "enabled"
 _GLOBAL_TIER_REFUSAL = "A global configuration cannot be adopted as a project."
 _IDENTITY_CONFLICT = "Project identity '{identity}' is already held by {holding_root}."
 _PROJECT_INITIALIZED_EVENT = "project_initialization_completed"
+_DeclarationMutation = Callable[[dict[str, object]], bool]  # guard: loose-dict - raw YAML config
 
 
 @dataclass(frozen=True)
@@ -117,11 +118,12 @@ def _inferred_capabilities(project_root: Path) -> dict[CapabilityName, bool]:
     }
 
 
-def _declare_inferred_capabilities(
-    project_root: Path,
-    undeclared_capabilities: frozenset[CapabilityName],
-) -> Capabilities:
-    """Materialize missing capability declarations while preserving explicit edits."""
+def _update_project_declaration(project_root: Path, mutate: _DeclarationMutation) -> None:
+    """Apply ``mutate`` to the registered project declaration, writing only when it reports a change.
+
+    The current document is validated as ``ProjectConfig`` before it replaces
+    the stored one, and migrations pending on the stored document are carried.
+    """
     manifest_path = project_root / ConfigFileName.OVERLAY
     subject = registered_subject(manifest_path)
     if subject is None or subject.kind is not ConfigSubjectKind.PROJECT:
@@ -131,18 +133,39 @@ def _declare_inferred_capabilities(
         if not isinstance(stored, dict):
             raise ValueError(f"Project configuration must be a YAML mapping: {manifest_path}")
         raw = dict(upcast(stored, subject))
+        if mutate(raw):
+            ProjectConfig.model_validate({**raw, "kind": ConfigKind.PROJECT.value})
+            carry_pending(stored, subject, delivered=_ignore_migration_delivery)
+            transaction.replace_text(render_declared_config(ConfigKind.PROJECT, raw))
+
+
+def _declare_inferred_capabilities(
+    project_root: Path,
+    undeclared_capabilities: frozenset[CapabilityName],
+) -> Capabilities:
+    """Materialize missing capability declarations while preserving explicit edits."""
+    inferred = _inferred_capabilities(project_root)
+
+    def declare(raw: dict[str, object]) -> bool:  # guard: loose-dict - raw YAML config
         changed = False
-        inferred = _inferred_capabilities(project_root)
         for capability in undeclared_capabilities:
             if capability.value in raw:
                 continue
             raw[capability.value] = {_ENABLED_KEY: inferred[capability]}
             changed = True
-        if changed:
-            ProjectConfig.model_validate({**raw, "kind": ConfigKind.PROJECT.value})
-            carry_pending(stored, subject, delivered=_ignore_migration_delivery)
-            transaction.replace_text(render_declared_config(ConfigKind.PROJECT, raw))
+        return changed
+
+    _update_project_declaration(project_root, declare)
     return resolve_capabilities(project_root)
+
+
+def _enable_help_desk(raw: dict[str, object]) -> bool:  # guard: loose-dict - raw YAML config
+    """Set the declaration's help desk as enabled, reporting whether anything changed."""
+    enabled = with_help_desk_enabled(raw)
+    if enabled == raw:
+        return False
+    raw.update(enabled)
+    return True
 
 
 def _ensure_project_slug(project_root: Path) -> None:
@@ -225,6 +248,7 @@ def init_project(
     project_root: Path,
     *,
     trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
+    help_desk: bool = False,
 ) -> ProjectInitializationResult:
     """Adopt a folder through its declared configuration tier.
 
@@ -232,6 +256,11 @@ def init_project(
     registration. Person and company homes are registered in their declared
     tier without project setup. This operation asks nothing and is idempotent.
     It spawns no agent sessions and syncs no artifacts.
+
+    A project subscribing ``docs`` receives its local baseline manifests when
+    they are absent. With ``help_desk``, the project declaration records its
+    help desk as enabled and the project's help-desk folder is converged to the
+    project help-desk template; the files stay in the working tree, uncommitted.
 
     Mother-aware: when invoked inside the TeleClaude repo itself, skeleton
     deployment is skipped — it only makes sense for downstream projects.
@@ -242,10 +271,14 @@ def init_project(
     /projects-assess-config`` — never a side effect of this function.
     """
     with project_adoption_lock():
-        return _init_project_locked(project_root, trigger)
+        return _init_project_locked(project_root, trigger, help_desk)
 
 
-def _init_project_locked(project_root: Path, trigger: ProjectInitializationTrigger) -> ProjectInitializationResult:
+def _init_project_locked(
+    project_root: Path,
+    trigger: ProjectInitializationTrigger,
+    help_desk: bool,
+) -> ProjectInitializationResult:
     project_root = project_root.expanduser().resolve()
     config_path = project_root / ConfigFileName.OVERLAY
     kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
@@ -314,6 +347,11 @@ def _init_project_locked(project_root: Path, trigger: ProjectInitializationTrigg
         MigrationTrigger.REGISTRATION,
     )
     capabilities = _declare_inferred_capabilities(project_root, undeclared_capabilities)
+    if help_desk:
+        _update_project_declaration(project_root, _enable_help_desk)
+    templates = project_targets(project_root, docs=capabilities.docs, help_desk=help_desk)
+    if templates:
+        materialize_template_targets(templates, values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     if capabilities.docs:
         update_gitattributes(project_root)
     from teleclaude.project_setup.plumbing import converge_plumbing  # noqa: PLC0415 - avoids entrypoint preload.
@@ -338,62 +376,3 @@ def _init_project_locked(project_root: Path, trigger: ProjectInitializationTrigg
         trigger=trigger.value,
     )
     return result
-
-
-# ---------------------------------------------------------------------------
-# Help desk bootstrap (inlined to avoid circular import with init_flow)
-# ---------------------------------------------------------------------------
-
-
-def _resolve_help_desk_dir() -> Path:
-    """Resolve help desk directory from config or default sibling location."""
-    configured = config.computer.help_desk_dir
-    if configured:
-        return Path(configured).expanduser().resolve()
-    teleclaude_root = Path(__file__).resolve().parents[2]
-    return teleclaude_root.parent / "help-desk"
-
-
-def bootstrap_help_desk(project_root: Path) -> None:
-    """Scaffold the help desk workspace if it does not exist.
-
-    Idempotent: skips if the directory already exists. Calls ``init_project``
-    on the new directory, which is why this lives in init_flow rather than a
-    separate module. Project initialization does not invoke it.
-    """
-    help_desk_dir = _resolve_help_desk_dir()
-    if help_desk_dir.exists():
-        logger.info("help_desk_exists", path=str(help_desk_dir))
-        return
-
-    template_dir = project_root / "templates" / "help-desk"
-    if not template_dir.exists():
-        logger.warning("help_desk_template_missing", path=str(template_dir))
-        return
-
-    logger.info("help_desk_bootstrap_start", path=str(help_desk_dir))
-
-    help_desk_dir.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        help_desk_dir.mkdir()
-    except FileExistsError:
-        logger.info("help_desk_exists", path=str(help_desk_dir))
-        return
-
-    try:
-        materialize_template_tree(
-            template_dir,
-            help_desk_dir,
-            values={},
-            # guard: direct-env-read - allowed: configuration loading or interpolation
-            environ=os.environ,
-        )
-        repo = Repo.init(help_desk_dir)
-        init_project(help_desk_dir)
-        repo.git.add(".")
-        repo.index.commit("Initial help desk scaffold")
-    except Exception:
-        shutil.rmtree(help_desk_dir, ignore_errors=True)
-        raise
-
-    logger.info("help_desk_bootstrap_complete", path=str(help_desk_dir))

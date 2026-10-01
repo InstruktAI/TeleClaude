@@ -1,6 +1,7 @@
 """Deterministic company-onboarding primitives.
 
-``scaffold_company`` bootstraps the ``companies/<slug>/`` tree; ``compute_inbox_changes``
+``scaffold_company`` bootstraps the ``companies/<slug>/`` home and converges it to
+the company templates; ``compute_inbox_changes``
 diffs the inbox against the SHA digest recorded in ``meta.yaml`` so re-onboarding
 reprocesses only changed material. Analysis dispatch is an explicit, separate
 act (`telec sessions run`), never a side effect of scaffolding.
@@ -18,14 +19,16 @@ import yaml
 
 from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.schema import CompanyConfig, ConfigKind
+from teleclaude.core.reconciliation.home_convergence import company_home_targets
+from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.git import Repo
 from teleclaude.paths import COMPANIES_ROOT, ConfigFileName
 from teleclaude.slug import normalize_slug, validate_slug
 
-# The company doc taxonomies scaffolded under docs/local/ (the company-scaffolding spec
-# omits adr — companies carry no decision record tree).
-COMPANY_TAXONOMIES = ("principle", "concept", "policy", "procedure", "design", "spec")
-_COMPANY_LOCAL_DOCS = Path("docs") / "local"
+# Taxonomy directories earlier scaffolds created empty; removed while they are still empty.
+_LEGACY_TAXONOMIES = ("principle", "concept", "policy", "procedure", "design", "spec")
+_COMPANY_DOCS = Path("docs")
+_COMPANY_LOCAL_DOCS = _COMPANY_DOCS / "local"
 
 
 def _meta_path(company_dir: Path) -> Path:
@@ -56,18 +59,20 @@ def _iter_inbox_files(inbox: Path) -> list[Path]:
 def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path = COMPANIES_ROOT) -> Path:
     """Scaffold ``companies/<slug>/`` — idempotent deterministic plumbing only.
 
-    Creates the local docs taxonomy tree and a git-tracked inbox, writes a minimal
-    ``CompanyConfig`` overlay, seeds ``meta.yaml`` bookkeeping, and creates an
-    owner-only (``0600``) ``.env`` for service credentials. Re-running preserves
-    existing files (config, meta, populated inbox) rather than clobbering them.
+    Creates a git-tracked inbox, writes a minimal ``CompanyConfig`` overlay, seeds
+    ``meta.yaml`` bookkeeping, and creates an owner-only (``0600``) ``.env`` for
+    service credentials; re-running preserves those existing files. Removes empty
+    taxonomy directories earlier scaffolds left, then converges the home to the
+    company templates: the master (and an enabled help desk's master) is the
+    template's rendering after every call, and the local baseline manifests are
+    created only when absent.
     """
     resolved_slug = slug.strip() if slug else normalize_slug(name)
     validate_slug(resolved_slug)
 
     company_dir = companies_root / resolved_slug
-    docs = company_dir / _COMPANY_LOCAL_DOCS
-    for taxonomy in COMPANY_TAXONOMIES:
-        (docs / taxonomy).mkdir(parents=True, exist_ok=True)
+    company_dir.mkdir(parents=True, exist_ok=True)
+    _remove_empty_legacy_taxonomies(company_dir)
 
     inbox = company_dir / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
@@ -100,7 +105,17 @@ def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path
         env_path.touch()
     os.chmod(env_path, 0o600)
 
+    materialize_template_targets(company_home_targets(company_dir), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     return company_dir
+
+
+def _remove_empty_legacy_taxonomies(company_dir: Path) -> None:
+    """Remove each legacy taxonomy directory under either docs layout only while it is empty."""
+    for docs_root in (company_dir / _COMPANY_DOCS, company_dir / _COMPANY_LOCAL_DOCS):
+        for taxonomy in _LEGACY_TAXONOMIES:
+            directory = docs_root / taxonomy
+            if directory.is_dir() and not directory.is_symlink() and not any(directory.iterdir()):
+                directory.rmdir()
 
 
 def compute_inbox_changes(company_dir: Path) -> list[Path]:

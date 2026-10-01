@@ -49,6 +49,22 @@ re-infers from repository shape at runtime.
 Source: `teleclaude/project_setup/init_flow.py:_declare_inferred_capabilities()`
 and `teleclaude/project_setup/capability_markers.py:project_capabilities()`
 
+### 2b. Scaffold the local baseline manifests (`docs` only)
+
+For a project subscribing `docs`, creates the local baseline manifests under
+`docs/local/` from the platform's documentation template when they are absent.
+An existing manifest is never changed: it is the project's own curation
+(`projects/teleclaude/spec/feature/reconciliation/template-installation`).
+
+### 2c. Enable and scaffold the help desk (`--help-desk` only)
+
+With `--help-desk`, and only for a caller with administrator authority over the
+project, sets the project's help desk as enabled in `teleclaude.yml` and brings
+the project's `help-desk/` folder to the project help-desk template: its master
+is the template's rendering after every such run, and no other file in the
+folder is replaced. The files land in the working tree for the project to commit
+(`projects/teleclaude/spec/feature/config/kind-addressed-configuration`).
+
 ### 3. Update .gitattributes (`docs` only)
 
 Adds filter patterns so that `docs/**/*.md` and `agents/docs/**/*.md` use the
@@ -167,6 +183,8 @@ Source: `teleclaude/project_manifest.py:register_root()`
 - `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
 - Artifacts synced and indexes built.
 - Event domains seeded in global config (if not already populated).
+- The local baseline manifests, when the project subscribes `docs` and they were absent.
+- With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
 
 ## Recovery
 

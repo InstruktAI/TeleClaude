@@ -70,6 +70,7 @@ from teleclaude.config.roster import RosterOutcome, RosterRefused
 from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.core.configuration_clearance import (
+    HELP_DESK_SECTION,
     ConfigurationOperation,
     ConfigurationTarget,
     decide,
@@ -77,8 +78,10 @@ from teleclaude.core.configuration_clearance import (
     standing_for,
 )
 from teleclaude.core.organization import person_roles
+from teleclaude.docs_index import get_project_slug
 from teleclaude.invite import invite_person
 from teleclaude.project_root import resolve_invocation_roots
+from teleclaude.slug import normalize_slug
 
 _YAML = "yaml"
 _JSON = "json"
@@ -325,19 +328,22 @@ def _run_init(
 def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
     parsed = parse_command_args(_INIT_COMMAND_DEFS[kind], args)
     output_format = _output_format(None)
+    help_desk = F.FLAG_HELP_DESK in _INIT_COMMAND_DEFS[kind].flags and parsed.has(F.FLAG_HELP_DESK)
+    sections = frozenset({HELP_DESK_SECTION}) if help_desk else frozenset()
 
     if subject_kind is ConfigSubjectKind.PROJECT:
+        adoption_root = resolve_invocation_roots().adoption_root()
         _gate(
             kind,
             "init",
             subject_kind,
-            instance=None,
+            instance=get_project_slug(adoption_root) if help_desk else None,
             operation=ConfigurationOperation.INIT,
-            sections=frozenset(),
+            sections=sections,
             request_id=request_id,
         )
         _run_init(
-            lambda: init_project_subject(resolve_invocation_roots().adoption_root(), request_id=request_id),
+            lambda: init_project_subject(adoption_root, request_id=request_id, help_desk=help_desk),
             output_format,
             request_id,
             completion_line=_PROJECT_INIT_COMPLETE,
@@ -351,11 +357,14 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             subject_kind,
             instance=None,
             operation=ConfigurationOperation.INIT,
-            sections=frozenset(),
+            sections=sections,
             request_id=request_id,
         )
+        singleton_fields = {HELP_DESK_SECTION: True} if help_desk else None
         _run_init(
-            lambda: init_subject(SubjectRef(subject_kind, None), request_id=request_id), output_format, request_id
+            lambda: init_subject(SubjectRef(subject_kind, None), singleton_fields, request_id=request_id),
+            output_format,
+            request_id,
         )
         return
 
@@ -366,13 +375,14 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
         print(f"Error: {kind} init requires a name.")
         raise SystemExit(1)
     name = parsed.positionals[0]
+    company_slug = parsed.value(F.FLAG_COMPANY_SLUG) if subject_kind is ConfigSubjectKind.COMPANY else None
     _gate(
         kind,
         "init",
         subject_kind,
-        instance=None,
+        instance=(company_slug or normalize_slug(name)) if help_desk else None,
         operation=ConfigurationOperation.INIT,
-        sections=frozenset(),
+        sections=sections,
         request_id=request_id,
     )
     fields: dict[str, object] = {"name": name}  # guard: loose-dict - per-kind init payload, passed through as-is
@@ -391,9 +401,10 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             if value is not None:
                 fields[key] = value
     else:
-        slug = parsed.value(F.FLAG_COMPANY_SLUG)
-        if slug is not None:
-            fields["slug"] = slug
+        if company_slug is not None:
+            fields["slug"] = company_slug
+        if help_desk:
+            fields[HELP_DESK_SECTION] = True
     _run_init(
         lambda: init_subject(SubjectRef(subject_kind, None), fields, request_id=request_id),
         output_format,

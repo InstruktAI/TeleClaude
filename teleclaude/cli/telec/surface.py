@@ -75,6 +75,8 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
         _render_command(lines, f"{path} {sub_name}", sub_def, depth=min(depth + 1, 6))
 
 
+_HELP_DESK_ADMIN_NOTE = "--help-desk requires administrator authority over the home."
+
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
         desc="Manage agent sessions",
@@ -1151,7 +1153,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "init": CommandDef(
                         desc="Converge the global configuration without overwriting existing values",
-                        flags=[F.FLAG_HELP],
+                        args="[--help-desk]",
+                        flags=[F.FLAG_HELP, F.FLAG_HELP_DESK],
+                        notes=[_HELP_DESK_ADMIN_NOTE],
                         auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
@@ -1253,8 +1257,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "init": CommandDef(
                         desc="Scaffold a company without overwriting existing values",
-                        args="<name> [--slug <slug>]",
-                        flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
+                        args="<name> [--slug <slug>] [--help-desk]",
+                        flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG, F.FLAG_HELP_DESK],
+                        notes=[_HELP_DESK_ADMIN_NOTE],
                         auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
@@ -1299,10 +1304,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "init": CommandDef(
                         desc="Initialize project plumbing for the caller's checkout",
-                        flags=[F.FLAG_HELP],
+                        args="[--help-desk]",
+                        flags=[F.FLAG_HELP, F.FLAG_HELP_DESK],
                         notes=[
                             "Sets up git hooks, converges plumbing, and registers the project root.",
                             "Syncs no artifacts — documentation publication is commit-bound.",
+                            _HELP_DESK_ADMIN_NOTE,
                         ],
                         auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
                     ),

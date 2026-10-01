@@ -55,25 +55,35 @@ def iter_snippet_roots(project_root: Path) -> list[Path]:
     return roots
 
 
+def iter_declared_tier_roots(home: Path) -> list[tuple[Path, ConfigKind]]:
+    """Enumerate every declared company and person tier under ``home``.
+
+    ``home`` is the platform home explicitly — production callers pass the
+    runtime home, so tier roots are never bound at import. A candidate is a
+    folder holding a tier declaration (a ``teleclaude.yml`` naming the tier);
+    an undeclared tier-shaped folder is skipped rather than raising. Companies
+    come first, then persons in slug order.
+    """
+    roots: list[tuple[Path, ConfigKind]] = [
+        (config_path.parent, ConfigKind.COMPANY) for config_path in list_company_config_paths(home / "companies")
+    ]
+    people_root = home / "people"
+    if people_root.exists():
+        roots.extend(
+            (config_path.parent, ConfigKind.PERSON)
+            for config_path in sorted(people_root.glob(f"*/{ConfigFileName.OVERLAY}"))
+        )
+    return roots
+
+
 def iter_tier_snippet_roots(home: Path) -> list[tuple[Path, ConfigKind]]:
     """Enumerate declared, documentation-participating company and person tiers.
 
-    ``home`` is the platform home explicitly — production callers pass the
-    runtime home, so tier roots are never bound at import. Discovers candidates
-    by the presence of a tier declaration (a ``teleclaude.yml`` naming the tier)
-    under ``home``, then filters by the published participation query — an
-    undeclared tier-shaped folder is skipped rather than raising, and a declared
-    tier that does not participate contributes no root.
+    Filters ``iter_declared_tier_roots`` by the published participation query:
+    a declared tier that does not participate contributes no root.
     """
-    roots: list[tuple[Path, ConfigKind]] = []
-    for config_path in list_company_config_paths(home / "companies"):
-        root = config_path.parent
-        if resolve_tier_permissions(root).participates_in(PermissionSurface.DOCUMENTATION):
-            roots.append((root, ConfigKind.COMPANY))
-    people_root = home / "people"
-    if people_root.exists():
-        for config_path in sorted(people_root.glob(f"*/{ConfigFileName.OVERLAY}")):
-            root = config_path.parent
-            if resolve_tier_permissions(root).participates_in(PermissionSurface.DOCUMENTATION):
-                roots.append((root, ConfigKind.PERSON))
-    return roots
+    return [
+        (root, kind)
+        for root, kind in iter_declared_tier_roots(home)
+        if resolve_tier_permissions(root).participates_in(PermissionSurface.DOCUMENTATION)
+    ]

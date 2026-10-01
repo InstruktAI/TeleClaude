@@ -38,7 +38,7 @@ telec config person init "John Doe" --email john@example.com
 
 Initialization:
 
-1. Creates the PersonEntry in global config and the person's workspace directory with its declared overlay.
+1. Creates the PersonEntry in global config and the person's home with its declared overlay, the person `AGENTS.master.md` from the platform template, and the local baseline manifests.
 2. Prints the person's stable slug.
 
 It sends no invitation and grants no company membership or project assignment. Membership and assignments are declared on the company through `telec config company patch`.

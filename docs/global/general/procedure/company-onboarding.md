@@ -32,16 +32,19 @@ On first onboard, run `telec config company init <name> [--slug <slug>]`. It con
 the company tree and starts no session:
 
 - Derive slug from name (lowercase kebab-case).
-- Create `~/.teleclaude/companies/{slug}/` with subdirectories:
-  `inbox/`, `docs/global/`, `docs/local/`, and taxonomy directories under each
-  half.
+- Create `~/.teleclaude/companies/{slug}/` with its `inbox/` subdirectory.
 - Initialize `inbox/` as a git repository for change tracking.
 - Create `meta.yaml` with company name, slug, and creation timestamp.
+- Create the company's `AGENTS.master.md` and its local baseline manifests from
+  the platform's company templates. The master is brought back to its template
+  on every run and every installation; the baselines are created once and are
+  then the company's to curate.
 
 On re-onboard:
 
 - Verify the company directory exists; `telec config company init` converges missing
-  structure without changing existing files.
+  structure and brings the company master back to its template, without
+  changing any other existing file.
 - Read `meta.yaml` for processing history.
 
 ### 2. Detect input material

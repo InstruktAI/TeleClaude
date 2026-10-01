@@ -21,6 +21,7 @@ class ConfigFileName(StrEnum):
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
+HELP_DESK_DIRNAME = "help-desk"
 
 
 def invocation_cwd() -> Path:

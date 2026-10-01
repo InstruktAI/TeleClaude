@@ -9,6 +9,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.reconciliation.home_convergence import home_installation_targets
 from teleclaude.core.reconciliation.home_retained_set import (
     HomeMembership,
     historical_home_membership,
@@ -16,7 +17,11 @@ from teleclaude.core.reconciliation.home_retained_set import (
     home_retained_set_digest,
     home_retained_set_path,
 )
-from teleclaude.core.reconciliation.template_installation import materialize_template_tree
+from teleclaude.core.reconciliation.template_installation import (
+    HomeTemplateDisposition,
+    HomeTemplateOutcome,
+    materialize_template_targets,
+)
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import (
     BIN_DIR,
@@ -109,12 +114,19 @@ _DECLARATION_DIGEST_FIELD = "declaration_digest"
 _OUTCOME_FIELD = "outcome"
 _REASON_FIELD = "reason"
 _PATH_CLASSES_FIELD = "path_classes"
+_TEMPLATES_WRITTEN_FIELD = "templates_written"
+_TEMPLATES_PRESERVED_FIELD = "templates_preserved"
 
 
 def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResult:
-    """Establish or converge the local-only history rooted at ``home``."""
+    """Establish or converge the local-only history rooted at ``home``.
+
+    Every home and enabled help desk is first converged to its templates; the
+    activation commit then records untracked retained candidates together with
+    every retained file that convergence rewrote.
+    """
     home.mkdir(parents=True, exist_ok=True)
-    materialize_template_tree(values={}, environ=os.environ, target_root=home)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
+    outcomes = materialize_template_targets(home_installation_targets(home), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     repository, created_repository = _repository_at_home(home)
     _remove_remotes(repository)
     candidates = _activation_candidates(repository, home=home)
@@ -128,20 +140,32 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
             created_repository=created_repository,
             recorded_paths=0,
         )
-    if candidates:
-        repository.index.add([candidate.as_posix() for candidate in candidates])
+    recorded = tuple(sorted({*candidates, *_refreshed_retained_paths(outcomes, home=home)}))
+    if recorded:
+        repository.index.add([path.as_posix() for path in recorded])
         if _index_requires_commit(repository):
             repository.index.commit(_ACTIVATION_COMMIT_MESSAGE)
     install_code_hooks(home)
     ensure_git_filters(home, enabled=True)
     breach_paths = _recorded_breaches(repository, home=home)
-    _log_completion(candidates, breach_paths, home=home)
+    _log_completion(recorded, breach_paths, outcomes, home=home)
     return HomeActivationResult(
         status=HomeActivationStatus.ACTIVATED,
         refused_paths=(),
         breach_paths=breach_paths,
         created_repository=created_repository,
-        recorded_paths=len(candidates),
+        recorded_paths=len(recorded),
+    )
+
+
+def _refreshed_retained_paths(outcomes: tuple[HomeTemplateOutcome, ...], *, home: Path) -> tuple[Path, ...]:
+    """Home-relative retained targets that template convergence wrote."""
+    return tuple(
+        outcome.target.relative_to(home)
+        for outcome in outcomes
+        if outcome.disposition is HomeTemplateDisposition.WRITTEN
+        and outcome.target.is_relative_to(home)
+        and home_membership(outcome.target, home=home) is HomeMembership.RETAINED
     )
 
 
@@ -243,13 +267,21 @@ def _log_refusal(refused_paths: tuple[Path, ...], *, home: Path) -> None:
     )
 
 
-def _log_completion(candidates: tuple[Path, ...], breach_paths: tuple[Path, ...], *, home: Path) -> None:
+def _log_completion(
+    recorded: tuple[Path, ...],
+    breach_paths: tuple[Path, ...],
+    outcomes: tuple[HomeTemplateOutcome, ...],
+    *,
+    home: Path,
+) -> None:
     _LOGGER.info(
         _ACTIVATION_EVENT,
         extra={
             _ACTIVATION_EVENT: _ACTIVATION_EVENT,
-            _COUNT_FIELD: len(candidates),
+            _COUNT_FIELD: len(recorded),
             _BREACH_COUNT_FIELD: len(breach_paths),
+            _TEMPLATES_WRITTEN_FIELD: _count_disposition(outcomes, HomeTemplateDisposition.WRITTEN),
+            _TEMPLATES_PRESERVED_FIELD: _count_disposition(outcomes, HomeTemplateDisposition.PRESERVED),
             _DECLARATION_DIGEST_FIELD: home_retained_set_digest(),
             _OUTCOME_FIELD: HomeActivationStatus.ACTIVATED,
             _REASON_FIELD: HomeActivationReason.CONVERGED,
@@ -267,6 +299,10 @@ def _log_completion(candidates: tuple[Path, ...], breach_paths: tuple[Path, ...]
                 _PATH_CLASSES_FIELD: tuple(_path_class(path, home=home) for path in breach_paths),
             },
         )
+
+
+def _count_disposition(outcomes: tuple[HomeTemplateOutcome, ...], disposition: HomeTemplateDisposition) -> int:
+    return sum(1 for outcome in outcomes if outcome.disposition is disposition)
 
 
 def _path_class(path: Path, *, home: Path) -> HomePathClass:

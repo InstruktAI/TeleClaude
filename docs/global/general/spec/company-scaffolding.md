@@ -26,17 +26,28 @@ scope, storage location, and input surface.
 
 ```
 ~/.teleclaude/companies/{company}/
+  teleclaude.yml                    # the company's declaration
   meta.yaml                         # company metadata and onboard history
+  AGENTS.master.md                  # from the platform's company template
   inbox/                            # input material (git-tracked)
   docs/
     global/                         # what the company publishes
-      principle/ concept/ policy/ procedure/ design/ spec/
+      <taxonomy>/…
     local/                          # generated doc snippets, never published
-      principle/ concept/ policy/ procedure/ design/ spec/
+      baseline.md                   # local baseline manifests, created once
+      baseline-progressive.md
+      <taxonomy>/…
+  help-desk/                        # when the company's help desk is enabled
 ```
 
 The `inbox/` directory is a git repository initialized by the onboard command.
 This enables `git diff` for smart re-processing on subsequent onboard runs.
+
+`telec config company init` creates this home and every installation keeps it
+current (`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
+the company's master and its help desk's master are brought back to their
+templates, the local baseline manifests are created once and then curated by
+the company, and a taxonomy directory appears when its first snippet is written.
 
 The analysis session writes every generated snippet into `docs/local/`.
 `docs/global/` holds what the company deliberately publishes, including every

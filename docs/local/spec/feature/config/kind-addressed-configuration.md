@@ -25,6 +25,26 @@ already set. It starts no agent and sends no invitation. Analysis is invoked
 through an activatable procedure in an explicitly started session; an
 invitation is a separate explicit action.
 
+For a person, a company, or a project, `init` also scaffolds that home from the
+platform's templates
+(`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+A person or company home receives its kind's `AGENTS.master.md` and its local
+baseline manifests; a project that subscribes `docs` receives its local
+baseline manifests. A master is brought to its template's rendering on every
+run, while a baseline is created only when absent and otherwise stays as its
+home keeps it. No documentation taxonomy directory is created.
+
+`init --help-desk` on `global`, `company`, or `project` enables that home's help
+desk: it sets the home's `help_desk.enabled` and scaffolds the help desk from
+the kind's help-desk template, in the TeleClaude home's `help-desk/`, a company
+home's `help-desk/`, or a project repository's `help-desk/`. A person has no
+help desk. A help desk admits people outside its home, so `help_desk` is an
+administrator field: the caller holds the platform administrator role, or the
+administrator role in the company that owns the home. Running it again
+converges the help desk's master to its template. A help desk's master never
+requires its home's local documentation
+(`general/policy/agent-artifact-governance`).
+
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a
 subsequent write. A person view joins the identity entry in global
@@ -177,6 +197,57 @@ Then the declaration, plumbing, and registration are those of the repository's o
 And no declaration or plumbing is written into the subdirectory or the worktree
 ```
 
+#### UC-KAC12: Initializing a person or company scaffolds its home
+
+```gherkin
+Given a person or company that has no home folder yet
+When an administrator initializes it
+Then its home holds its kind's AGENTS.master.md and the local baseline manifests
+And no documentation taxonomy directory is created
+And no help desk folder is created
+```
+
+#### UC-KAC13: Initializing again converges the master and keeps the baselines
+
+```gherkin
+Given a person or company home whose AGENTS.master.md differs from its kind's template
+And whose local baseline manifests carry edits its owner made
+When an agent initializes that subject again
+Then the master equals the rendering of its kind's template
+And each local baseline manifest keeps its content byte for byte
+```
+
+#### UC-KAC14: Enabling a company help desk scaffolds it inside the company home
+
+```gherkin
+Given an administrator of a company whose declaration does not enable a help desk
+When they initialize the company with --help-desk
+Then the company declaration records its help desk as enabled
+And values already set in the declaration are preserved
+And the company home holds a help-desk folder whose master is the rendering of the company help-desk template
+And that master requires none of the company's local documentation
+```
+
+#### UC-KAC15: A project help desk is scaffolded in the project's repository
+
+```gherkin
+Given an administrator of the company that owns a project
+When they initialize the project with --help-desk
+Then the project declaration records its help desk as enabled
+And the project's help-desk folder holds the rendering of the project help-desk template
+And the master there requires none of the project's local documentation
+And no file outside the project's declaration and its help-desk folder is written for the help desk
+```
+
+#### UC-KAC16: Enabling a help desk requires administrator authority
+
+```gherkin
+Given a caller who belongs to a company without holding its administrator role
+When they initialize the company with --help-desk
+Then the command is refused before any write
+And the company declaration and home are unchanged
+```
+
 ### Cross-context references
 
 - The config context owns kind resolution, initialization, validated mutation,
@@ -187,6 +258,11 @@ And no declaration or plumbing is written into the subdirectory or the worktree
   membership and assignment, which this surface reports without reinterpreting.
 - `projects/teleclaude/spec/feature/config/machine-config-write` owns the machine file's
   transaction and validation guarantee.
+- The reconciliation context owns the template layers and what each target
+  keeps across runs
+  (`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`,
+  `projects/teleclaude/spec/feature/reconciliation/template-installation`);
+  `init` applies them to the addressed home.
 
 ## Known caveats
 

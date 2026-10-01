@@ -263,7 +263,7 @@ class InputHandlersMixin:
 
             if identity.person_name:
                 person_slug = identity.person_slug or normalize_slug(identity.person_name)
-                project_path = str(scaffold_personal_workspace(person_slug, identity.person_name))
+                project_path = str(scaffold_personal_workspace(person_slug))
             else:
                 # Ensure a deterministic workspace path exists for legacy team channels.
                 if project_path:

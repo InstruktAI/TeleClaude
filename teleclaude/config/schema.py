@@ -21,7 +21,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 
 def normalize_env_allow_list(value: list[str]) -> list[str]:
@@ -564,6 +564,12 @@ class CapabilityConfig(ClosedModel):
     enabled: bool = False
 
 
+class HelpDeskConfig(ClosedModel):
+    """Whether a home keeps a help desk; an omitted block keeps none."""
+
+    enabled: bool = False
+
+
 class ProjectConfig(ClosedModel):
     """Project-level configuration: per-project ``teleclaude.yml`` overlay.
 
@@ -591,6 +597,7 @@ class ProjectConfig(ClosedModel):
     code: CapabilityConfig = CapabilityConfig()
     docs: CapabilityConfig = CapabilityConfig()
     agents: CapabilityConfig = CapabilityConfig()
+    help_desk: HelpDeskConfig = HelpDeskConfig()
 
     @field_validator("jobs")
     @classmethod
@@ -676,6 +683,7 @@ class GlobalConfig(ClosedModel):
     interests: list[str] = []
     event_domains: DomainsConfig | None = None
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
+    help_desk: HelpDeskConfig = HelpDeskConfig()
 
     @field_validator("jobs")
     @classmethod
@@ -775,6 +783,7 @@ class CompanyConfig(ClosedModel):
     description: str | None = None
     erp_id: str | None = None
     members: dict[str, CompanyMember] = Field(default_factory=dict)
+    help_desk: HelpDeskConfig = HelpDeskConfig()
 
     @field_validator("slug")
     @classmethod

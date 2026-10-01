@@ -546,7 +546,7 @@ class GatewayHandlersMixin:
             return None
 
         async def _create() -> Session | None:
-            workspace_path = scaffold_personal_workspace(person_slug, person_name)
+            workspace_path = scaffold_personal_workspace(person_slug)
             create_cmd = CreateSessionCommand(
                 project_path=str(workspace_path),
                 initial_input=first_message,
