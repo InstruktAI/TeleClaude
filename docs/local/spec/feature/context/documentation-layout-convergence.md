@@ -28,7 +28,9 @@ with no attributable commit party — no agent session and no terminal login —
 changes no root and defers every root that would converge. The layout of the checkout is its own completion
 record: a root with neither `docs/project` nor `agents/project` is current, so
 every run is idempotent and a convergence that arrived by pull is recognized
-without bookkeeping.
+without bookkeeping. A root whose recorded tree still tracks a retired
+directory that is gone from the checkout is an interrupted migration: it is
+reported blocked, never current.
 
 A convergence consists of:
 
@@ -124,15 +126,15 @@ Then the repository is left unchanged
 And the root is reported as blocked by both layouts being present
 ```
 
-#### UC-DLC8: A refused commit reverses only convergence's own changes
+#### UC-DLC8: A refused commit or a failed write reverses only convergence's own changes
 
 ```gherkin
 Given a registered repository that UC-DLC1 would converge
-And the sealed commit refuses the convergence commit
+And the sealed commit refuses the convergence commit, or a move, write or staging step fails after convergence began changing the repository
 When layout convergence runs
-Then convergence reverses only its own changes: each rewritten file whose bytes still equal what convergence wrote gets its original bytes back, the moved directories are renamed back, and each touched path whose index entry still equals the one convergence staged returns to the committed entry
-And a rewritten file whose bytes changed since convergence wrote them, a touched path whose index entry changed since convergence staged it, or a retired directory (docs/project or agents/project) that exists again when the restore begins, is left exactly as found and named
-And the root is reported as a restore conflict when any such path exists, and otherwise as restored after a refused commit, with the repository's files and index equal to their state before the run
+Then convergence reverses only its own changes: each rewritten file whose bytes still equal what convergence wrote gets its original bytes back, each moved file whose bytes are still the ones convergence left returns to its original path, and each touched path whose index entry still equals one convergence observed returns to the committed entry
+And a file whose bytes changed since convergence left them, a file convergence did not move, a moved file whose original path is occupied again, or a touched path whose index entry changed, is left exactly where and as found and named there
+And the root is reported as a restore conflict when any such path exists, and otherwise as restored after a refused commit or as failed after a failed write, with the repository's files and index equal to their state before the run
 ```
 
 #### UC-DLC9: Published-half mentions and records are reported, not guessed

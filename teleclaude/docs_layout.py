@@ -16,6 +16,7 @@ The contract is ``projects/teleclaude/spec/feature/context/documentation-layout-
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
@@ -93,6 +94,9 @@ _WORKTREE_LINE_PREFIX: Final = "worktree "
 _MENTION_TEMPLATE: Final = "{path}:{line}"
 
 _LOG_ROOT_EVENT: Final = "docs_layout_convergence_root"
+_LOG_EFFECT_FAILED_EVENT: Final = "docs_layout_convergence_effect_failed"
+_HEAD_REF: Final = "HEAD"
+_LS_TREE_RECURSIVE_ARGS: Final = ("-r", "--name-only", "-z")
 
 
 class LayoutConvergenceOutcome(StrEnum):
@@ -107,6 +111,7 @@ class LayoutConvergenceOutcome(StrEnum):
     BLOCKED_DIRTY = "blocked_dirty"
     RESTORED_AFTER_REFUSED_COMMIT = "restored_after_refused_commit"
     RESTORE_CONFLICT = "restore_conflict"
+    BLOCKED_INCOMPLETE = "blocked_incomplete"
     DEFERRED_NO_IDENTITY = "deferred_no_identity"
     UNAVAILABLE = "unavailable"
     FAILED = "failed"
@@ -120,6 +125,7 @@ FAILING_OUTCOMES: Final[frozenset[LayoutConvergenceOutcome]] = frozenset(
         LayoutConvergenceOutcome.BLOCKED_DIRTY,
         LayoutConvergenceOutcome.RESTORED_AFTER_REFUSED_COMMIT,
         LayoutConvergenceOutcome.RESTORE_CONFLICT,
+        LayoutConvergenceOutcome.BLOCKED_INCOMPLETE,
         LayoutConvergenceOutcome.DEFERRED_NO_IDENTITY,
         LayoutConvergenceOutcome.FAILED,
     }
@@ -169,6 +175,14 @@ class _RewritePlan:
 
     rewrites: dict[str, tuple[bytes, bytes]] = field(default_factory=dict)
     published_mentions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _MovedFile:
+    """One file a move relocates: where it came from and the bytes it had before the run."""
+
+    retired_path: str
+    digest: str
 
 
 @dataclass(frozen=True)
@@ -546,34 +560,141 @@ def _committed_paths(repository: Repo, commit: str) -> set[str]:
     return set(_split_nul(repository.git.diff_tree(*_DIFF_TREE_ARGS, commit)))
 
 
-def _restore_after_refusal(
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _inventory_moves(root: Path, plan: _MovePlan) -> tuple[dict[str, _MovedFile], tuple[str, ...]]:
+    """Record every file and directory each move will relocate, keyed by its new path."""
+    files: dict[str, _MovedFile] = {}
+    directories: list[str] = []
+    for retired, target in plan.moves:
+        retired_dir = root / retired
+        directories.append(str(retired))
+        for path in sorted(retired_dir.rglob("*")):
+            relative = path.relative_to(retired_dir)
+            if path.is_dir() and not path.is_symlink():
+                directories.append(str(retired / relative))
+                continue
+            files[str(target / relative)] = _MovedFile(
+                retired_path=str(retired / relative), digest=_digest(path.read_bytes())
+            )
+    return files, tuple(directories)
+
+
+def _prune_empty_directories(directory: Path) -> None:
+    if not directory.is_dir():
+        return
+    for path in sorted(directory.rglob("*"), key=lambda candidate: len(candidate.parts), reverse=True):
+        if path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+    if not any(directory.iterdir()):
+        directory.rmdir()
+
+
+def _restore_files(
+    root: Path,
+    plan: _MovePlan,
+    moved: dict[str, _MovedFile],
+    directories: Sequence[str],
+    written: dict[str, tuple[bytes, bytes]],
+) -> list[str]:
+    """Move this run's own files back one by one; return the paths left where they are.
+
+    A file stays at its current path, and is named, when another writer changed
+    it, created it, or occupies its original path. Moving files individually
+    means a preserved file is never relocated by restoring its directory.
+    """
+    conflicts: list[str] = []
+    for written_path, (original, rewritten) in written.items():
+        if written_path in moved:
+            continue
+        written_file = root / written_path
+        if written_file.is_file() and written_file.read_bytes() == rewritten:
+            written_file.write_bytes(original)
+        else:
+            conflicts.append(written_path)
+    for relative in directories:
+        (root / relative).mkdir(parents=True, exist_ok=True)
+    for new_path, record in moved.items():
+        current = root / new_path
+        if not current.exists() and not current.is_symlink():
+            conflicts.append(new_path)
+            continue
+        expected = written.get(new_path)
+        current_bytes = current.read_bytes()
+        if expected is not None:
+            if current_bytes != expected[1]:
+                conflicts.append(new_path)
+                continue
+            current.write_bytes(expected[0])
+        elif _digest(current_bytes) != record.digest:
+            conflicts.append(new_path)
+            continue
+        destination = root / record.retired_path
+        if destination.exists() or destination.is_symlink():
+            conflicts.append(new_path)
+            continue
+        os.rename(current, destination)
+    for _, target in plan.moves:
+        target_dir = root / target
+        if target_dir.is_dir():
+            conflicts.extend(
+                str(path.relative_to(root))
+                for path in sorted(target_dir.rglob("*"))
+                if not path.is_dir() and str(path.relative_to(root)) not in moved
+            )
+            _prune_empty_directories(target_dir)
+    return conflicts
+
+
+def _restore_own_changes(
     root: Path,
     repository: Repo,
     plan: _MovePlan,
+    moved: dict[str, _MovedFile],
+    directories: Sequence[str],
     written: dict[str, tuple[bytes, bytes]],
-    index_snapshot: dict[str, str],
+    index_snapshots: Sequence[dict[str, str]],
     touched: Sequence[str],
 ) -> tuple[str, ...]:
-    """Reverse only convergence's own delta; return the paths left as found."""
-    conflicts: list[str] = []
-    for moved_path, (original, rewritten) in written.items():
-        moved_file = root / moved_path
-        if moved_file.is_file() and moved_file.read_bytes() == rewritten:
-            moved_file.write_bytes(original)
-        else:
-            conflicts.append(moved_path)
-    for retired, target in plan.moves:
-        if (root / retired).exists():
-            conflicts.append(str(retired))
-            continue
-        if (root / target).exists():
-            os.rename(root / target, root / retired)
+    """Reverse only convergence's own delta; return the paths left as found.
+
+    A touched path's index entry is reset only when it still equals one this run
+    observed (before its effects or after its own staging).
+    """
+    conflicts = _restore_files(root, plan, moved, directories, written)
     current_index = _index_entries(repository, touched)
-    restorable = [path for path in touched if current_index.get(path) == index_snapshot.get(path)]
-    conflicts.extend(path for path in touched if current_index.get(path) != index_snapshot.get(path))
+    restorable = [
+        path for path in touched if any(current_index.get(path) == snapshot.get(path) for snapshot in index_snapshots)
+    ]
+    conflicts.extend(path for path in touched if path not in restorable)
     if restorable:
         repository.git.reset(*_RESET_ARGS, _PATHSPEC_SEPARATOR, *restorable)
     return tuple(sorted(set(conflicts)))
+
+
+def _incomplete_paths(repository: Repo, root: Path) -> tuple[str, ...]:
+    """Retired directories the recorded tree still tracks but the checkout no longer has.
+
+    A migration interrupted after its move leaves the retired directory absent
+    while ``HEAD`` still records it; such a root is unresolved, never current.
+    """
+    incomplete: list[str] = []
+    if not repository.head.is_valid():
+        return ()
+    for retired, _ in LAYOUT_MOVES:
+        if (root / retired).exists():
+            continue
+        try:
+            tracked = _split_nul(
+                repository.git.ls_tree(*_LS_TREE_RECURSIVE_ARGS, _HEAD_REF, _PATHSPEC_SEPARATOR, str(retired))
+            )
+        except GitCommandError:
+            continue
+        if tracked:
+            incomplete.append(str(retired))
+    return tuple(incomplete)
 
 
 def _log_result(result: LayoutConvergenceResult) -> LayoutConvergenceResult:
@@ -601,6 +722,14 @@ def assess_root(
     repository = Repo(str(root))
     worktrees = _linked_worktrees(repository, root)
     moves = _present_moves(root, repository)
+    incomplete = _incomplete_paths(repository, root)
+    if incomplete:
+        return LayoutConvergenceResult(
+            root=root,
+            outcome=LayoutConvergenceOutcome.BLOCKED_INCOMPLETE,
+            blocking_paths=incomplete,
+            worktrees=worktrees,
+        )
     if not moves:
         return LayoutConvergenceResult(root=root, outcome=LayoutConvergenceOutcome.CURRENT, worktrees=worktrees)
     both = tuple(str(target) for _, target in moves if (root / target).exists())
@@ -636,9 +765,9 @@ def converge_root(
 
     Moves ``docs/project``/``agents/project`` to their ``local`` counterparts,
     rewrites references, and commits exactly those paths through ``committer``.
-    A refused commit reverses only this run's own bytes, directory moves and
-    index entries; anything another writer changed meanwhile is left as found
-    and reported as a restore conflict. A retired directory left as residue
+    A refused commit or a failed write reverses only this run's own bytes, file
+    moves and index entries; anything another writer changed meanwhile is left
+    where and as found and reported as a restore conflict. A retired directory left as residue
     beside its converged counterpart is removed first.
     """
     removed_residue = _remove_residue(root, Repo(str(root)))
@@ -651,14 +780,36 @@ def converge_root(
     plan = _plan_convergence(root, repository, own_slug=own_slug, registered_slugs=registered_slugs)
     mentions = plan.rewrite_plan.published_mentions
 
-    _apply_moves(root, plan)
-    written: dict[str, tuple[bytes, bytes]] = {}
-    for relative_path, (original, rewritten) in plan.rewrite_plan.rewrites.items():
-        moved_path = _moved_path(relative_path, plan.moves)
-        (root / moved_path).write_bytes(rewritten)
-        written[moved_path] = (original, rewritten)
     expected = _expected_commit_paths(plan)
     touched = tuple(sorted(expected))
+    moved, directories = _inventory_moves(root, plan)
+    index_snapshots: list[dict[str, str]] = [_index_entries(repository, touched)]
+    written: dict[str, tuple[bytes, bytes]] = {}
+    try:
+        _apply_moves(root, plan)
+        for relative_path, (original, rewritten) in plan.rewrite_plan.rewrites.items():
+            moved_path = _moved_path(relative_path, plan.moves)
+            (root / moved_path).write_bytes(rewritten)
+            written[moved_path] = (original, rewritten)
+        # Stage only the new side: the old paths stay unstaged deletions, so the
+        # sealed commit can see them, and the committer has nothing left to stage
+        # that this run's index snapshot does not already record.
+        added = sorted({_moved_path(path, plan.moves) for path in plan.tracked_moved} | set(written))
+        if touched and added:
+            repository.git.add(_PATHSPEC_SEPARATOR, *added)
+        index_snapshots.append(_index_entries(repository, touched))
+    except (OSError, GitCommandError):
+        logger.exception(_LOG_EFFECT_FAILED_EVENT, project_root=str(root))
+        conflicts = _restore_own_changes(root, repository, plan, moved, directories, written, index_snapshots, touched)
+        return _log_result(
+            LayoutConvergenceResult(
+                root=root,
+                outcome=LayoutConvergenceOutcome.RESTORE_CONFLICT if conflicts else LayoutConvergenceOutcome.FAILED,
+                touched_paths=touched,
+                blocking_paths=conflicts,
+                worktrees=worktrees,
+            )
+        )
     if not touched:
         return _log_result(
             LayoutConvergenceResult(
@@ -668,13 +819,6 @@ def converge_root(
                 worktrees=worktrees,
             )
         )
-    # Stage only the new side: the old paths stay unstaged deletions, so the
-    # sealed commit can see them, and the committer has nothing left to stage
-    # that this run's index snapshot does not already record.
-    added = sorted({_moved_path(path, plan.moves) for path in plan.tracked_moved} | set(written))
-    if added:
-        repository.git.add(_PATHSPEC_SEPARATOR, *added)
-    index_snapshot = _index_entries(repository, touched)
 
     previous_head = repository.head.commit.hexsha
     try:
@@ -704,7 +848,7 @@ def converge_root(
                 commit=current_head,
             )
         )
-    conflicts = _restore_after_refusal(root, repository, plan, written, index_snapshot, touched)
+    conflicts = _restore_own_changes(root, repository, plan, moved, directories, written, index_snapshots, touched)
     outcome = (
         LayoutConvergenceOutcome.RESTORE_CONFLICT
         if conflicts
