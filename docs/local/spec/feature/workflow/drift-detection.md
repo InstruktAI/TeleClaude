@@ -1,0 +1,826 @@
+---
+description: "Detect when a Todo's prepared artifacts and authored doc snippets no longer reflect current truth, and force re-grounding before the Todo may reach prepared."
+visibility: 'public'
+---
+
+# Drift Detection — Spec
+
+## Required reads
+
+- @~/.teleclaude/docs/sdlc/principle/documentation-first-development.md
+
+## What it is
+
+Drift detection is the workflow capability that decides whether a Todo's
+re-derivable prepared artifacts (`prd`, `architecture` index,
+`implementation-plan`) and the doc snippets they own or reference still reflect
+current truth. The prepare state machine refuses to advance a Todo to
+`prepared` while drift is unresolved, so that downstream work always derives
+from a fresh PRD, fresh architecture, a fresh plan, and a fresh design surface.
+The bug `input` artifact is frozen human intent, not a drift surface. The bug
+`diagnosis` artifact is root-cause evidence consumed by the plan, not a
+work-entry drift candidate.
+
+Drift is not a single class — it is a taxonomy. Truth lives in several
+
+places (code, sibling artifacts, doc snippets) and an artifact authored at one
+moment can fall out of step with any of them by the time prepare is asked to
+converge. The feature names each
+
+class explicitly, records the provenance needed to detect it, derives a
+status per class on every `telec todo prepare` call, and routes a
+`/sdlc/drift-analyze` worker when classification cannot be made
+deterministically from evidence alone.
+
+Drift detection is **fail-safe by design**: when provenance is missing,
+when the diff cannot be classified, or when an upstream reference cannot be
+resolved, the status is `pending` and the lifecycle blocks. A `cosmetic`
+verdict from the drift analyzer is **scoped to the evidence anchor at
+which it was made** — when a later change exceeds that anchor, the verdict
+expires and the artifact re-enters `pending` automatically. There is no
+silent acceptance of new drift behind a stale verdict.
+
+The feature integrates with the existing prepare lifecycle without adding
+a new phase: drift is derived inside the existing `BLOCKED` branch and
+cleared by the existing `--drift-reviewed` stamp surface. It also
+participates at the work-entry boundary: `telec todo work` calls the same
+shared derivation function before its `prepared → build_started` handoff. The
+work state machine owns the work-entry continuation — on a `pending` collapsed
+status it dispatches the `sdlc/drift-analyze` worker and the orchestrator
+re-enters `telec todo work {slug}`; on the re-entered `substantive` status it
+promotes the claim-holder in place to `prepare-orchestrator` and hands that
+session off to drive `/sdlc/prepare {slug}`; on `cosmetic` (valid anchor) it
+proceeds. The work orchestrator never calls `telec todo prepare`. Autonomous
+continuation needs no human gate on either verdict: the promoted session
+re-derives and self-ends through the prepare terminal, and work resumes only
+under the lifecycle runner's autostart toggle. See
+`@spec/feature/workflow/work-state-machine` for the continuation contract.
+
+## Canonical fields
+
+### Drift classes (taxonomy)
+
+Each tracked artifact is evaluated against every applicable class on every
+prepare call. The overall artifact drift status is the **most blocking**
+status across its classes (`substantive` > `pending` > `cosmetic` > `fresh`).
+
+| Class                 | Evidence checked                                                                                                 | When pending                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **code**              | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to `referenced_paths`.                  | HEAD has moved AND at least one changed path overlaps `referenced_paths`.              |
+| **upstream-artifact** | Digest of each upstream artifact (e.g., PRD digest at the time architecture was written) vs current digest.      | Any upstream artifact has been rewritten since this artifact was authored.             |
+| **owned-snippet**     | Digest of each doc snippet the Todo owns via `delivered_by` (recorded at artifact write time) vs current digest. | An owned snippet was edited outside this prepare flow since the artifact was authored. |
+| **upstream-snippet**  | Digest of each non-owned doc snippet the artifact references by ID, recorded at write time, vs current digest.   | A referenced snippet's content has changed since the reference was recorded.           |
+
+| **age** _(policy)_ | Artifact `produced_at` vs configurable freshness window. | `produced_at` is older than the configured window for the artifact kind. |
+
+Pending drift contract update:
+
+| Class    | Evidence checked                                                                                                                         | When pending                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **code** | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
+
+Prepare dependency ground may be satisfied by a direct dependency's
+human-approved PRD before that dependency reaches `prepared`. This is a gating
+relaxation enforced at slug resolution: the prepare gate reads the dependency's
+live PRD approval, so a lost or changed approval re-blocks dispatch directly.
+
+The **dependency-artifact** class tracks an implementation-plan's reliance on the
+contracts of the Todos it depends on, since a plan's reading of a dependency is a
+copy that goes stale when its source moves (`general/principle/grounding`). It is
+scoped to a dependency's artifacts, never to the `after` edges themselves, which
+stay gate-only (`projects/teleclaude/spec/feature/workflow/dependency-graph`):
+
+| Class                   | Evidence checked                                                                                                                                                                                                                                                       | When pending                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **dependency-artifact** | For each dependency in the Todo's `after` set when the implementation-plan was written, the digest of that dependency's intent and prepared artifacts (`input`, `prd`, `architecture`, `diagnosis`, `implementation-plan` — whichever exist) vs their current digests. | A dependency still in the `after` set and not yet delivered has had one of those artifacts rewritten or removed since the plan was written. |
+
+A delivered dependency is not evaluated: what it delivered reaches the plan
+through the `code` class.
+
+### Provenance recorded per artifact
+
+When a tracked artifact is written (`telec todo artifacts write`), the
+workflow's state-stamping boundary captures all evidence needed for every
+drift class that applies to it. Per-artifact provenance:
+
+- `codebase_sha_at_write` — `origin/main` HEAD SHA at write time. Captured
+  via a single origin-main-sha helper that is the canonical drift anchor.
+  ALL artifact-provenance write paths read from this helper rather than
+  local HEAD. The drift derivation compares against the same helper, so
+  the write-time anchor and the derivation-time comparison agree on what
+  "current main" means even when the local repo's HEAD diverges from
+  origin/main between write and derive.
+- `referenced_paths` — tracked repo paths mentioned in the artifact body.
+- `referenced_paths` — the sorted, de-duplicated file paths declared inside
+  the implementation-plan artifact's single ` ```referenced-paths ` fenced
+  block. Prose path mentions are not part of the code drift surface. Tracked
+  artifacts that do not declare a block record an empty list, so the code
+  class derives fresh for them.
+- `upstream_artifact_digests` — map of `{upstream_artifact_name: digest}` for
+  every artifact this artifact derives from (per artifact-kind table below).
+  **Field consolidation (architecture-resolved):** the existing
+  `upstream_digests` field on the artifact lifecycle entry is **kept as the
+  canonical storage field** under its current name. The spec-side name
+  `upstream_artifact_digests` is the spec/documentation display label only;
+  persisted state continues to use `upstream_digests`. This avoids any
+  persisted-schema migration, alias, or read/write compatibility shim — the
+  existing storage is reused with no on-disk change. New per-class provenance
+  fields (`owned_snippet_digests`, `referenced_snippet_digests`,
+  `produced_at`) are pure additions to the
+  artifact lifecycle entry (default-empty) and follow the same
+  backward-compat rule: absent values resolve to `pending` per the fail-safe
+  contract, so old state loads cleanly.
+- `owned_snippet_digests` — map of `{snippet_id: digest}` for every snippet
+  the Todo owns via its `delivered_by` membership at write time.
+- `referenced_snippet_digests` — map of `{snippet_id: digest}` for every
+  snippet the artifact references by id (extracted from the
+  validator-accepted inline reference forms — `@<HOME>/.teleclaude/docs/<id-path>.md`
+  for global snippets and `@docs/<id-path>.md` for project snippets. The
+  extractor maps each accepted reference to its canonical snippet ID and
+  the ID is the key into the digest map. Forms outside the validator's
+  accepted set are not tracked, by design — references in the body, not
+  by literal path substring).
+- `produced_at` — UTC wall-clock timestamp.
+- `dependency_artifact_digests` — map of `{dependency_slug: {artifact_name: digest}}`
+  over the dependencies in the Todo's `after` set at write time, covering each
+  dependency's intent and prepared artifacts. Recorded for the
+  `implementation-plan` only.
+
+Snippet digests are content hashes of the snippet body (excluding
+frontmatter `delivered_by` churn so a target → actual flip on an unrelated
+slug does not trigger drift).
+
+### Per-artifact coverage matrix
+
+| Artifact               | code | upstream-artifact | owned-snippet | upstream-snippet | age |
+| ---------------------- | :--: | ----------------- | :-----------: | :--------------: | :-: |
+| `prd`                  |  ✓   | `input`           |       ✓       |        ✓         |  ✓  |
+| `architecture` (index) |  ✓   | `prd`             |       ✓       |        ✓         |  ✓  |
+
+| `implementation-plan` | ✓ | `prd`, `architecture`, `diagnosis` (feature, bug); `input` (change) | _(none)_ | ✓ | ✓ |
+
+The `code` column is contract-scoped. Today only the `implementation-plan`
+declares a `referenced-paths` contract block. All other tracked artifacts have
+an empty code surface unless a future contract explicitly gives them one, and
+empty-surface code drift derives fresh.
+
+`owned-snippet` applies to artifacts whose authoring phase writes doc
+snippets directly (intake → feature spec; architecture → domain/design
+snippets). `implementation-plan` does not author durable snippets, so it
+has no owned-snippet class.
+
+`dependency-artifact` applies to the `implementation-plan` only: the plan is
+where a dependency's contract becomes task premises and ordering claims,
+while every other tracked artifact reaches the plan
+through `upstream-artifact`.
+
+Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
+never a direct drift target: a direct `input` drift verdict is invalid because
+no work-entry re-derivation phase owns it. How intent reaches the
+implementation-plan depends on the Todo kind. For a `feature`, intent flows
+`input → prd → implementation-plan`, so an input rewrite surfaces as PRD drift.
+For a `bug`, it flows `input → diagnosis → implementation-plan`, so an input
+rewrite surfaces through the plan's `upstream_digests[diagnosis]` evidence. A
+`change` has no PRD or diagnosis intermediary — its `input` is the approved
+intent the plan derives from directly, so the implementation-plan observes
+`input` through its `upstream_digests[input]` evidence exactly as a bug plan
+observes `diagnosis`. The plan is the tracked target in every case; `input` and
+`diagnosis` are upstream evidence, never tracked targets, and drift derivation
+never reports `drift.input` or `drift.diagnosis`.
+
+### Stamp scoping — the evidence anchor
+
+A `--drift-reviewed <artifact> cosmetic|substantive <reason>` stamp records
+the **evidence anchor** at which the verdict was made:
+
+- `head_sha_at_review` — the HEAD SHA when the analyzer ran.
+- `upstream_digests_at_review` — the upstream artifact digest map at review.
+- `snippet_digests_at_review` — the snippet digest map at review.
+- `dependency_digests_at_review` — the dependency artifact digest map at review.
+
+On every prepare call, the per-artifact drift derivation first compares
+**current evidence** against the stamp's anchor for the same class. If any
+anchor field has moved (e.g., HEAD advanced past `head_sha_at_review` AND a
+new overlap exists in `referenced_paths`), the stamp is treated as
+**expired-for-class** and the class re-derives from scratch. A
+`substantive` stamp does not expire — it has already routed back to
+re-derivation. A `cosmetic` stamp expires lazily, only when new evidence
+arrives.
+
+This is the contract that closes the "permanent cosmetic stamp" gap: a
+cosmetic verdict at SHA X cannot mask substantive drift introduced at
+SHA Y > X.
+
+### State machine integration
+
+Drift is derived inside the existing `BLOCKED` lifecycle phase, not as a
+new phase:
+
+- On every `telec todo prepare {slug}` call, after the basic phase
+  derivation, the machine computes drift status for every present tracked
+  artifact in the coverage matrix across every applicable class.
+- If any artifact's overall drift status is `pending`, the machine routes
+  to the BLOCKED branch and emits a `/sdlc/drift-analyze` dispatch
+  instruction, listing the artifacts and classes pending review.
+- If any re-derivable artifact's drift status is `substantive`, the machine
+  clears the artifact's review verdict (and every downstream artifact's review
+  verdict) and routes back to the artifact's drafting phase.
+- Every valid `substantive` stamp starts a new review cycle for each review
+  target it invalidates. Each cycle counts its passes from zero against the
+  configured threshold, while the phase's cumulative round, report, and verdict
+  history remains intact.
+- If drift evidence names an artifact outside the coverage matrix or a class
+  whose owning re-derivation path is undefined, the machine halts as an anomaly
+  instead of accepting a `substantive` verdict with nowhere coherent to route.
+- If every artifact's drift status is `fresh` or `cosmetic`, the machine
+  derives `PREPARED` (subject to the other gates) and the chain proceeds.
+
+The `/sdlc/drift-analyze` worker reads the pending classes per artifact,
+inspects the appropriate evidence for every pending class, and stamps
+**one verdict per artifact** (the per-artifact stamp shape with multi-
+dimensional evidence anchor; the CLI signature
+`--drift-reviewed <artifact> <verdict> <reason>` is unchanged). The
+verdict collapses across all pending classes by the rule "substantive on
+any class → substantive overall; otherwise cosmetic." The reason text
+names each evaluated class and its per-class finding so the audit trail
+preserves the per-class detail. Anchor expiry on the next derivation is
+checked per class against the recorded multi-dimensional anchor; any
+single dimension moving past its anchor re-pends that class. The
+orchestrator re-enters the state machine when the worker idles.
+
+The lifecycle runner dispatches a Todo it would otherwise route to the work
+lane to the prepare lane when that Todo's implementation-plan derives
+`dependency-artifact` drift `pending`; the prepare call then routes the drift
+as above. The prepare-lane dependency gate still applies
+(`projects/teleclaude/spec/feature/workflow/dependency-graph`): while a dependency does not
+count as prepared, the Todo stays dependency-blocked. A drift-reviewed stamp
+whose `dependency_digests_at_review` matches the current dependency digests
+ends the re-entry.
+
+### Work-entry re-derivation
+
+The work state machine calls the same derivation function at its entry
+boundary, BEFORE the `prepared → build_started` handoff, BEFORE worktree
+preparation, and BEFORE any origin/main merge into the worktree. The call
+order in work entry becomes:
+
+1. Resolve the slug from the todo list or argument.
+2. Validate work preconditions that do not require a worktree
+   (stash debt check, etc.).
+3. **Read state from the workflow context** (moved earlier — currently
+   this happens inside the dispatch loop).
+4. **Call the shared drift derivation against repo-root state, NOT against
+   any worktree** (drift derivation compares against `origin/main` HEAD and
+   persisted provenance; no worktree is required).
+5. If a collapsed drift status is `pending`, dispatch the
+   `sdlc/drift-analyze` worker and have the orchestrator re-enter on
+   `telec todo work`; if it is `substantive`, promote the claim-holder in
+   place and hand that session off to drive `/sdlc/prepare {slug}`. **No
+   worktree created. No state mutated.**
+6. Only when every artifact's collapsed drift status is `fresh` or
+   `cosmetic` (with a valid anchor): proceed with worktree preparation,
+   the origin/main merge, the `prepared → build_started` handoff, and
+   the dispatch loop.
+
+The PRD's "does not create or touch the worktree" constraint requires
+this ordering — the state read and drift pre-check happen ahead of any
+worktree work.
+
+Detail of the call itself:
+
+- The shared function takes the slug, the loaded todo state, the repo
+  root, the workflow context handle for dependency lookup, and a
+  snippet-digest callable — explicit injection rather than hidden
+  imports. Both the prepare BLOCKED branch and the work entry path call
+  it with the same evidence-loading rules so there is one source of
+  truth for drift status.
+- When the shared derivation reports a tracked artifact's collapsed
+  status as `pending` or `substantive`, work does NOT advance
+  `lifecycle_phase` and does NOT create or touch the worktree. On `pending`
+  it dispatches the `sdlc/drift-analyze` worker and the orchestrator
+  re-enters `telec todo work {slug}`; on `substantive` it promotes the
+  claim-holder in place to `prepare-orchestrator` and hands that session off
+  to drive `/sdlc/prepare {slug}`. The work orchestrator never calls
+  `telec todo prepare`.
+- When every tracked artifact's collapsed status is `fresh` or `cosmetic`
+  (with a valid evidence anchor), work proceeds with the existing
+  `prepared → build_started` handoff, worktree creation, and builder
+  dispatch.
+
+The work entry path inherits the same fail-safe defaults as prepare:
+missing provenance for an applicable class resolves to `pending` and
+forces the bounce, so first-time work entry on a PREPARED todo whose
+artifacts pre-date the extended provenance schema reliably routes through
+the analyzer to establish fresh evidence anchors.
+
+For bug-kind Todos, the work-entry drift surface is the approved
+`implementation-plan`. Bug input is frozen, and diagnosis is consumed through
+the plan's upstream diagnosis digest. Work entry must not bounce directly on
+`input` or `diagnosis` drift.
+
+Continuation across the bounce is the existing orchestrator-script
+contract. The prepare BLOCKED branch's drift-analyze dispatch, the
+analyzer's stamp, the next prepare call's PREPARED derivation, and the
+PREPARED terminal's lineage-conditioned resume — the bounced work orchestrator
+resumes `telec todo work {slug}` — combine into a
+single loop: work bounces to prepare, prepare resolves drift, prepare
+bounces back to work, work re-derives drift, and the second derivation
+either proceeds (cosmetic anchor now valid) or re-pends (genuinely
+unresolvable drift, exposed as a hard blocker the human can inspect).
+
+### Re-derivation contract
+
+When the drift analyzer stamps `substantive` for artifact X on any class, X
+must be a re-derivable artifact in the coverage matrix and the class must have
+an owning drafting route. A `substantive` stamp for any other artifact or class
+combination is an anomaly: the lifecycle halts for operator inspection rather
+than fabricating a route.
+
+For a valid substantive stamp:
+
+- X's review verdict is cleared (architecture-review or plan-review, as
+  applicable).
+- Every downstream artifact's review verdict is cleared (a substantive
+  PRD drift invalidates architecture and plan; substantive architecture
+  drift invalidates plan).
+- The PRD-approved gate is **not** re-opened by drift on the PRD's
+  downstream evidence (code/snippets). It IS re-opened when the PRD
+  artifact itself is rewritten through intent-level refinement (its live
+  digest diverges from `approved_digest`; see `prepare-flow#refinement`).
+  This supersedes a legacy approval that bound no `approved_digest` and one
+  that recorded no `approved_at`; a re-approval whose `approved_at` is at or
+  after the PRD rewrite resolves it.
+- The drift-reviewed stamps for X are cleared (so re-derived X earns a
+  fresh evidence anchor on its next analyze pass).
+- Routing returns to X's **drafting** phase, not its review phase, even
+  though X's artifact is still present on disk.
+
+The phase-derivation mechanism that distinguishes "verdict cleared by
+substantive drift (needs re-draft)" from "verdict never approved (needs
+first review)" or "verdict cleared by reviewer needs_work (needs author
+fix inside the existing review loop)" is an explicit marker on the
+review state:
+
+- The verdict-state record (for `architecture_review` and `plan_review`)
+  gains a `cleared_by_substantive_drift` boolean (default `false`). The
+  marker is set in the same commit that clears the verdict due to a
+  substantive `--drift-reviewed` stamp.
+- The phase-derivation helpers for the feature and plan-only lanes
+  consult the marker before treating an artifact-present + unapproved-verdict
+  state as "ready for review." When the marker is `true`, derivation
+  returns the corresponding `*_DRAFTING` phase. When `false`, derivation
+  returns `*_REVIEW` (existing behavior).
+- The marker is cleared automatically when the artifact is rewritten
+  (`telec todo artifacts write` — same boundary that re-captures
+  provenance and clears drift-reviewed stamps for the artifact). After
+  the rewrite, the next prepare call sees a present artifact, a cleared
+  verdict, and a cleared marker — which routes to the review phase for
+  a fresh review, on the new artifact.
+
+The marker does not affect any existing flow that does not involve
+substantive drift; default `false` makes the derivation behavior
+identical to the pre-change behavior whenever drift has not fired.
+
+When the drift analyzer stamps `cosmetic`, no downstream invalidation
+occurs; the chain continues. The cosmetic stamp remains valid until its
+evidence anchor is exceeded.
+
+### Use cases
+
+```gherkin
+Scenario: code drift detected, classified cosmetic, then re-evaluated after further drift
+  Given a Todo at lifecycle_phase=plan_review with an approved plan
+  And the plan's referenced_paths include a tracked module
+  And origin/main HEAD has advanced past the plan's codebase_sha_at_write
+  And the new commits touch the tracked module
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the machine reports drift.implementation-plan = pending (class: code)
+  And dispatches the drift-analyze worker
+  And the worker stamps "telec todo stamp my-feature --drift-reviewed implementation-plan cosmetic '<reason>'"
+  And the cosmetic stamp records head_sha_at_review = current HEAD
+  And the next prepare call advances to PREPARED
+  And when origin/main HEAD later advances further AND introduces a new overlapping change
+  Then the cosmetic stamp is treated as expired-for-class
+  And drift.implementation-plan returns to pending
+  And the drift-analyze worker is dispatched again
+```
+
+```gherkin
+Scenario: upstream-artifact drift invalidates downstream review
+  Given a Todo at lifecycle_phase=plan_review with an approved plan and an approved architecture
+  And the architecture artifact recorded upstream_artifact_digests[prd] = "<old-prd-digest>"
+  When the human refines the PRD via intake re-entry and writes a new PRD
+  Then on the next "telec todo prepare my-feature" call
+  And the machine reports drift.architecture = pending (class: upstream-artifact)
+  And dispatches the drift-analyze worker
+  And the analyzer stamps "--drift-reviewed architecture substantive '<reason>'"
+  Then the architecture review verdict is cleared
+  And the plan review verdict is cleared
+  And the machine routes back to architecture_drafting
+```
+
+#### UC-WDD1: Implementation-plan upstream derivation is fresh when diagnosis matches
+
+```gherkin
+Scenario: implementation-plan upstream derivation is fresh when diagnosis matches
+  Given a bug Todo whose implementation-plan recorded upstream_digests[diagnosis] = "<diagnosis-digest>"
+  And the current diagnosis artifact digest is "<diagnosis-digest>"
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review matches current upstream digests
+  When upstream-artifact drift is derived for implementation-plan
+  Then drift derivation reports implementation-plan = fresh
+  And implementation-plan has no pending upstream-artifact drift
+```
+
+#### UC-WDD2: Diagnosis rewrite drifts the bug implementation-plan
+
+```gherkin
+Scenario: diagnosis rewrite drifts the bug implementation-plan
+  Given a prepared bug Todo whose implementation-plan recorded upstream_digests[diagnosis] = "<old-diagnosis-digest>"
+  When the diagnosis artifact is rewritten and its current digest becomes "<new-diagnosis-digest>"
+  Then drift derivation reports drift.implementation-plan = pending
+  And the pending class is upstream-artifact
+```
+
+#### UC-WDD3: Prepared bug with matching diagnosis upstream stays terminal
+
+```gherkin
+Scenario: prepared bug with matching diagnosis upstream stays terminal
+  Given a bug Todo at lifecycle_phase=prepared with an approved implementation-plan
+  And the implementation-plan recorded upstream_digests[diagnosis] = "<diagnosis-digest>"
+  And the current diagnosis artifact digest is "<diagnosis-digest>"
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review matches current upstream digests
+  When the orchestrator calls "telec todo prepare my-bug"
+  Then drift derivation reports no pending upstream-artifact drift on implementation-plan
+  And the prepare machine settles at prepared
+  And no drift-analyzer worker is re-dispatched for implementation-plan
+```
+
+#### UC-WDD4: Bug input is frozen and not drift-reviewed
+
+```gherkin
+Scenario: bug input is frozen and not drift-reviewed
+  Given a bug Todo with an input artifact and an approved implementation-plan
+  When drift derivation runs during prepare or work entry
+  Then drift derivation does not evaluate input as a tracked artifact
+  And it never reports drift.input
+  And it never dispatches a drift analyzer for input
+```
+
+#### UC-WDD5: Diagnosis is plan evidence, not a drift candidate
+
+```gherkin
+Scenario: diagnosis is plan evidence, not a drift candidate
+  Given a bug Todo with input, diagnosis, and implementation-plan artifacts
+  When provenance is recorded, a drift-reviewed stamp is anchored, and upstream-artifact drift is derived
+  Then all three surfaces evaluate implementation-plan against prd, architecture, and diagnosis
+  And none of the three surfaces evaluates diagnosis as a tracked artifact
+  And drift derivation never reports drift.diagnosis
+```
+
+#### UC-WDD6: Work entry accepts a prepared bug when diagnosis upstream evidence matches
+
+```gherkin
+Scenario: work entry accepts a prepared bug when diagnosis upstream evidence matches
+  Given a bug Todo at lifecycle_phase=prepared with an approved implementation-plan
+  And the implementation-plan recorded upstream_digests[diagnosis] = "<diagnosis-digest>"
+  And the current diagnosis artifact digest is "<diagnosis-digest>"
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review matches current upstream digests
+  When the orchestrator calls "telec todo work my-bug"
+  Then work entry does not return WORK_ENTRY_DRIFT
+  And work entry does not report PENDING_DRIFT for implementation-plan
+  And the work machine proceeds to the normal build-start dispatch path
+```
+
+```gherkin
+Scenario: owned-snippet drift on a target architecture snippet
+  Given a Todo at lifecycle_phase=plan_review with an approved architecture
+  And the architecture index recorded owned_snippet_digests["projects/teleclaude/spec/domain/workflow"] = "<digest-A>"
+  And a sibling delivery has since edited docs/local/spec/domain/workflow.md, producing "<digest-B>"
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the machine reports drift.architecture = pending (class: owned-snippet)
+  And dispatches the drift-analyze worker with the pending class named
+  And the analyzer reads the snippet diff and the architecture index
+  And classifies the change as substantive or cosmetic
+  And stamps "--drift-reviewed architecture <verdict> '<reason>'"
+```
+
+```gherkin
+Scenario: upstream-snippet drift on a referenced domain spec
+  Given a Todo whose implementation-plan references "@docs/local/spec/domain/context.md" (validator-accepted project reference resolving to canonical snippet ID "projects/teleclaude/spec/domain/context")
+  And the plan recorded referenced_snippet_digests["projects/teleclaude/spec/domain/context"] = "<digest-A>"
+  And docs/local/spec/domain/context.md has since been edited, producing "<digest-B>"
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the machine reports drift.implementation-plan = pending (class: upstream-snippet)
+  And dispatches the drift-analyze worker
+  And the worker classifies and stamps the verdict
+```
+
+#### UC-WDD9: Prepare hydration refreshes stale referenced paths without stamp churn
+
+```gherkin
+Scenario: prepare hydration self-heals stale greedy referenced paths
+  Given a prepared Todo whose implementation-plan has complete async provenance
+  And the stored referenced_paths include stale greedy prose matches
+  And the current implementation-plan body declares no referenced-paths contract block
+  And the implementation-plan has an existing drift-reviewed stamp
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then prepare hydration refreshes referenced_paths from the current artifact body
+  And referenced_paths becomes empty without changing produced_at, dependency provenance, or drift-reviewed stamps
+  And code drift for implementation-plan derives fresh
+```
+
+#### UC-WDD10: Change input rewrite drifts the implementation-plan
+
+```gherkin
+Scenario: change input rewrite drifts the implementation-plan
+  Given a change Todo whose implementation-plan recorded upstream_digests[input] = "<old-input-digest>"
+  When the input artifact is rewritten and its current digest becomes "<new-input-digest>"
+  Then drift derivation reports drift.implementation-plan = pending
+  And the pending class is upstream-artifact
+  And drift derivation never reports drift.input
+```
+
+#### UC-WDD11: Change implementation-plan is fresh when input is unchanged
+
+```gherkin
+Scenario: change implementation-plan upstream derivation is fresh when input matches
+  Given a change Todo whose implementation-plan recorded upstream_digests[input] = "<input-digest>"
+  And the current input artifact digest is "<input-digest>"
+  When upstream-artifact drift is derived for implementation-plan
+  Then drift derivation reports implementation-plan = fresh
+  And implementation-plan has no pending upstream-artifact drift
+  And feature and bug implementation-plan upstream derivation is unchanged
+```
+
+```gherkin
+Scenario: age drift on a long-paused Todo
+  Given a Todo at lifecycle_phase=plan_review approved 90 days ago
+  And the configured age window for implementation-plan is 30 days
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the machine reports drift.implementation-plan = pending (class: age)
+  And dispatches the drift-analyze worker
+  And the worker re-grounds against current code/snippets/deps and stamps a verdict per class
+```
+
+```gherkin
+Scenario: missing provenance is fail-safe
+  Given a Todo whose architecture artifact pre-dates the provenance schema
+  And owned_snippet_digests is empty for that artifact
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the machine treats owned-snippet drift as pending
+  And the drift-analyze worker is dispatched to establish a fresh evidence anchor
+  And the analyzer stamps cosmetic only after reading the snippets and grounding the verdict
+```
+
+```gherkin
+Scenario: cross-class drift collapses to the most blocking status
+  Given an architecture artifact with code drift = cosmetic (stamped, anchor current)
+  And upstream-artifact drift = substantive (PRD was rewritten)
+  When the orchestrator calls "telec todo prepare my-feature"
+  Then the overall architecture drift status is substantive
+  And the architecture review verdict is cleared
+  And the plan review verdict is cleared
+  And the machine routes back to architecture_drafting
+```
+
+```gherkin
+Scenario: work entry bounces to prepare on pending drift, then resumes autonomously
+  Given a Todo at lifecycle_phase=prepared with an approved implementation-plan
+  And the plan's owned_snippet_digests no longer match current truth
+    (a sibling delivery edited a referenced domain spec)
+  When the orchestrator calls "telec todo work my-feature"
+  Then drift derivation reports drift.implementation-plan = pending (class: owned-snippet)
+  And the work machine returns a script:
+    "Drift detected on implementation-plan. Call `telec todo prepare my-feature` to resolve."
+  And the work machine does NOT advance lifecycle_phase
+  And the work machine does NOT create or touch the worktree
+  And the orchestrator follows the script and calls "telec todo prepare my-feature"
+  And the prepare BLOCKED branch dispatches the sdlc/drift-analyze worker
+  And the analyzer stamps "--drift-reviewed implementation-plan cosmetic '<reason>'"
+  And the cosmetic stamp records the current evidence anchor
+  And the next "telec todo prepare my-feature" call derives PREPARED
+  And the PREPARED terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
+  And the orchestrator follows that script
+  And work re-runs drift derivation, observes fresh/valid-anchor status
+  And proceeds with worktree creation and sdlc/build dispatch
+  And no human gate fires anywhere in the round-trip
+```
+
+```gherkin
+Scenario: work entry bounces on substantive drift, re-derivation re-converges
+  Given a Todo at lifecycle_phase=prepared with an approved plan and an approved architecture
+  And the PRD has been refined since architecture was approved
+    (upstream-artifact drift on architecture)
+  When the orchestrator calls "telec todo work my-feature"
+  Then drift derivation reports drift.architecture = pending
+  And work returns the bounce-to-prepare script
+  And the orchestrator follows the script
+  And the prepare BLOCKED branch dispatches the analyzer
+  And the analyzer stamps "--drift-reviewed architecture substantive '<reason>'"
+  Then the architecture review verdict is cleared
+  And the plan review verdict is cleared
+  And the prepare machine routes back to architecture_drafting
+  And the existing prepare chain re-derives architecture and plan, re-reviews each, reaches PREPARED
+  And the PREPARED terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
+  And work re-runs drift derivation, observes fresh status, and proceeds
+  And no human gate fires in the substantive round-trip (intent-level PRD refinement is the only human-gated path and is orthogonal)
+```
+
+```gherkin
+Scenario: re-writing an artifact clears its drift stamps
+  Given an artifact with a cosmetic drift-reviewed stamp on the code class
+  When the artifact is rewritten via "telec todo artifacts write"
+  Then the artifact's provenance fields are re-captured at the new write
+  And all drift-reviewed stamps for that artifact are cleared
+  And drift derivation starts from scratch on the next prepare call
+```
+
+#### UC-WDD12: Matching cosmetic stamp clears upstream drift past a structurally-absent upstream
+
+```gherkin
+Scenario: matching cosmetic stamp clears upstream drift on a multi-upstream plan
+  Given a feature Todo whose implementation-plan recorded upstream_digests[architecture] = "<old-architecture-digest>"
+  And the current architecture artifact digest is "<new-architecture-digest>"
+  And the plan's diagnosis upstream carries no digest because a feature produces no diagnosis
+  And the implementation-plan has a cosmetic drift-reviewed stamp whose upstream_digests_at_review equals the current upstream digests
+  When upstream-artifact drift is derived for implementation-plan
+  Then drift derivation reports implementation-plan = cosmetic
+  And implementation-plan has no pending upstream-artifact drift
+  And the prepare machine settles at prepared without re-dispatching the drift-analyzer for implementation-plan
+```
+
+#### UC-WDD13: Artifact provenance resolves snippets against the request's project
+
+```gherkin
+Scenario: provenance captures owned snippets for a project other than the daemon's working directory
+  Given the workflow daemon process is running with a working directory belonging to one project
+  And a Todo in a different project owns a project snippet through its delivered_by membership
+  When an artifact is written for that Todo through "telec todo artifacts write"
+  Then owned_snippet_digests contains that snippet's current body digest
+  And referenced_snippet_digests contains a digest for every validator-accepted project reference in the artifact body
+  And async_provenance_complete is true
+```
+
+#### UC-WDD14: A rewritten dependency contract drifts the implementation-plan
+
+```gherkin
+Scenario: a dependency's rewritten contract drifts the plan built on it
+  Given a Todo whose implementation-plan was written while it depended on another Todo that has not delivered
+  When one of that dependency's intent or prepared artifacts is rewritten
+  Then the prepare orchestrator finds the implementation-plan's drift pending under dependency-artifact
+  And the drift analyzer is dispatched before the Todo may reach prepared
+```
+
+#### UC-WDD15: An unchanged dependency leaves the implementation-plan fresh
+
+```gherkin
+Scenario: a dependency whose contract has not moved leaves the plan fresh
+  Given a Todo whose implementation-plan was written while it depended on another Todo
+  And none of that dependency's intent or prepared artifacts has been rewritten since
+  When drift is derived for the implementation-plan
+  Then the prepare orchestrator finds no dependency-artifact drift for that dependency
+```
+
+#### UC-WDD16: A prepared Todo waiting on a dependency is re-entered when that dependency's contract moves
+
+```gherkin
+Scenario: the lifecycle runner re-enters a prepared Todo whose dependency contract moved
+  Given a prepared Todo whose implementation-plan was written while it depended on another Todo that has not delivered
+  And one of that dependency's intent or prepared artifacts has been rewritten since
+  And that dependency counts as prepared for the prepare-lane gate
+  When the lifecycle runner evaluates the Todo
+  Then the runner dispatches the Todo to the prepare lane instead of reporting it dependency-blocked
+  And the prepare orchestrator finds the implementation-plan's drift pending under dependency-artifact
+```
+
+#### UC-WDD17: A cosmetic verdict on the moved dependency ends the re-entry
+
+```gherkin
+Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
+  Given a prepared Todo re-entered for dependency-artifact drift
+  When the drift analyzer stamps the implementation-plan cosmetic against the dependency's current artifacts
+  Then the Todo settles at prepared
+  And later lifecycle runner passes do not dispatch it to the prepare lane again until one of the dependency's intent or prepared artifacts moves again
+```
+
+#### UC-WDD18: Provenance recorded from a slug worktree reads the owning project's snippets
+
+```gherkin
+Scenario: an artifact written or a stamp applied from a slug worktree records the owning project's snippet digests
+  Given a Todo whose artifact references a project snippet whose body differs between a slug worktree and the project's owning checkout
+  When an agent standing in that worktree writes the artifact through "telec todo artifacts write" or applies a stamp through "telec todo stamp"
+  Then the recorded snippet digests are those of the owning checkout's snippets
+  And drift derived later from the owning checkout reports no drift for that unchanged snippet
+```
+
+### Cross-context references
+
+- `agent_runtime` — the `/sdlc/drift-analyze` worker session is dispatched
+  via the same `agent_runtime.session.started` event shape as
+  architecture/plan reviewers. Reuse-or-spawn matching applies per
+  `prepare-state-machine#reviewer-reuse`.
+- `integration` — `origin/main` advances triggered by integration land in
+  the SHA comparison used by the code class. The drift contract is
+  unaffected by whether the source of the advance is the current
+  orchestrator's own work or a sibling delivery.
+- `knowledge` — snippet digests are captured against the canonical doc
+  layer (`docs/`), the same source `telec docs get` reads. Snippet
+  reference extraction recognizes the validator-accepted inline forms
+  (`@<HOME>/.teleclaude/docs/<id-path>.md` for global and
+  `@docs/<id-path>.md` for project) and maps each to its canonical
+  snippet ID. The ID is the key into the digest map.
+- `session_ledger` — the resolved session principal for each
+  `--drift-reviewed` stamp is recorded so the analyzer's verdict can be
+  audited and so a non-analyzer session cannot author a drift verdict.
+
+## Allowed values
+
+- **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
+  `upstream-snippet`, `dependency-artifact`, `age`.
+
+- **Drift status:** `fresh`, `pending`, `cosmetic`, `substantive`. Priority
+  for collapse to per-artifact status: `substantive` > `pending` >
+  `cosmetic` > `fresh`.
+- **Drift-reviewed verdict (stamp):** `cosmetic`, `substantive`.
+- **Age window:** configurable per artifact kind in project config.
+  **Architecture-resolved default: disabled per project until explicit
+  config is set.** The age class is opt-in — projects that do not
+  configure an age window for an artifact kind pay no age cost on their
+  prepare/work cycles. When a project opts in, the recommended starting
+  values are `30 days` for `implementation-plan` and `architecture`,
+  `60 days` for `prd`; the project owner chooses the actual values.
+  `0` or unset is the disabled state. This avoids
+  surprising all in-flight todos with an age-pending sweep on first
+  prepare/work after this delivery merges; teams enable the class
+  deliberately when they want freshness pressure.
+
+## Known caveats
+
+- **Fail-safe is the contract, not the exception.** Missing provenance,
+  unreadable referenced paths, unresolvable upstream snippets, or rename
+  detection failures all produce `pending`, not `fresh`. The analyzer is
+  the only path back to a `cosmetic` verdict.
+- **Cosmetic stamps are scoped, not permanent.** A cosmetic verdict is
+  only valid against the evidence anchor it was made at. When evidence
+  moves past the anchor in a way that introduces NEW drift, the verdict
+  expires and the class re-pends. The analyzer must be re-run.
+- **Substantive stamps do not "carry over" to a re-derived artifact.**
+  When substantive drift forces re-derivation, the rewrite clears the
+  drift stamps. The next analyze pass establishes a fresh anchor against
+  current evidence.
+
+- **Only re-derivable artifacts are drift-reviewed.** `input` and
+  `diagnosis` are not drift-reviewed artifacts. `input` is the intent root,
+  edited only during prepare by the prepare orchestrator; its changes reach
+  downstream artifacts through their `upstream_digests`. `diagnosis` is consumed
+  as plan upstream evidence. Neither is a direct drift target; if either appears
+  as one, the lifecycle treats it as an anomaly rather than a substantive verdict.
+
+- **Snippet digests exclude `delivered_by` frontmatter churn.** When a
+  sibling delivery flips a snippet's `delivered_by` (`target` → `actual`
+  bookkeeping), the body digest is unchanged and no drift fires. This
+  prevents lifecycle-bookkeeping edits from invalidating unrelated
+  artifacts.
+- **Age drift is policy-driven and disabled by default per project until
+  the config defaults are set.** Projects that do not configure age
+  windows do not pay the age class on their prepare cycles.
+- **Drift detection runs on `origin/main`, not on the orchestrator's
+  worktree.** Prepare runs on repo-root main with no worktree. The SHA
+  compared against `codebase_sha_at_write` is `origin/main` HEAD, not
+  local `HEAD` of any sibling worktree.
+- **Reference extraction has two distinct mechanisms.** `referenced_paths`
+  uses literal path-substring matching against the project's tracked
+  files (current behavior, preserved). `referenced_snippet_digests` uses
+  reference extraction against the doc snippet index that recognizes the
+  validator-accepted inline forms (`@<HOME>/.teleclaude/docs/...` and
+  `@docs/...`) and resolves them to canonical snippet IDs (new). The two
+  surfaces do not overlap.
+- **Reference extraction has two distinct mechanisms.** `referenced_paths`
+  is a pure projection of the implementation-plan artifact body: the
+  sorted, de-duplicated path lines inside its single
+  ` ```referenced-paths ` contract block. It does not scan prose and does
+  not validate paths against tracked files, so generated-path warnings or
+  grounding notes are not drift surfaces unless the plan declares them in the
+  block. `referenced_snippet_digests` still uses reference extraction against
+  the doc snippet index that recognizes the validator-accepted inline forms
+  (`@<HOME>/.teleclaude/docs/...` and `@docs/...`) and resolves them to
+  canonical snippet IDs. The two surfaces do not overlap.
+- **`referenced_paths` refreshes on prepare hydration.** Because the field is
+  now derived only from the artifact body, prepare hydration refreshes that
+  projection without rewriting the artifact's other provenance. Extractor
+  semantics changes self-heal stale stored values on the next prepare call
+  without resetting `produced_at`, snippet/dependency provenance, or drift
+  review stamps.
+- **`dependency-artifact` arms at the plan's next write, not on upgrade.** An
+  implementation-plan written before dependency provenance existed carries none
+  and derives fresh for the class until it is next written. Resolving the absent
+  field to `pending`, as the other per-class fields do, would send every
+  prepared plan to the analyzer at once — the sweep the opt-in `age` class exists
+  to avoid.
+
+## See Also
+
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/drift-analyze.md
+- docs/local/spec/feature/workflow/prepare-state-machine.md
+- docs/local/design/architecture/prepare-flow.md
+- docs/local/spec/feature/workflow/state-stamping.md

@@ -1,0 +1,245 @@
+---
+description: Restart the agent process inside a live TeleClaude session by terminating
+  the running agent and relaunching it with resume-from-transcript so the session
+  row, hosting pane, and native transcript chain survive.
+visibility: public
+---
+
+# Agent Restart — Spec
+
+## Required reads
+
+- @docs/local/spec/domain/agent_runtime.md
+
+## What it is
+
+Agent restart is the verb that swaps the agent CLI process inside an already-bound TeleClaude session without disturbing the session ledger row, the hosting pane that runs it, or the native transcript chain. A caller asks the agent_runtime service to restart the agent for a given session; the service validates that the session is restart-eligible, accepts the request, and performs the swap asynchronously. The handler terminates the agent process directly so a mid-tool-execution agent still exits, waits for the host shell to become quiescent, and relaunches the agent CLI with resume-from-transcript semantics — the agent reads its own transcript on startup and continues from where it left off.
+
+A special `self` form is dispatched by orchestrators that want to restart themselves. The CLI verb `telec sessions restart self` resolves the caller's own session identity from the local identity record and asks the agent_runtime service to restart that session. The handler subscribes to a session-ready signal before issuing the relaunch (the agent's session start event can race the relaunch and emit readiness before any post-hoc subscriber attaches), waits for readiness, and hands the continuation stimulus to control delivery. The resumed prompt receives only the standard wake marker; submitting that marker delivers the continuation as platform control context for the fresh turn. Non-self restarts skip the stimulus — the existing transcript is allowed to dictate behavior.
+
+## Canonical fields
+
+### Use cases
+
+#### UC-AR13: Restart eligibility requires a resumable native binding
+
+```
+Given a caller asks the agent_runtime service to restart the agent for a session
+When the service loads the session row
+Then if the row does not exist, the request is refused with a "session not found" error
+And if no active agent is bound to the session, the request is refused with a "no active agent for this session" error
+And if no native session identifier has been recorded, the request is refused with a "no native session ID — start agent first" error
+And restart performs no fresh-agent selection or cross-agent handoff behavior
+```
+
+#### UC-AR14: Accepted restart returns a durable receipt
+
+```
+Given the eligibility gates pass
+When the service accepts the request
+Then the service persists a durable operation row before the restart begins and returns immediately
+And the response carries the operation receipt: its identity, its state, where to read it, the computer that owns it, and the success and failure events it will emit
+And the caller recorded on that row is woken when the restart reaches its outcome
+And no readiness information is encoded in the acceptance response
+```
+
+#### UC-AR15: Restart waits for direct process termination before relaunch
+
+```
+Given the restart has been dispatched
+When the handler stops the running agent
+Then it resolves the host pane's child process and sends a termination signal directly to that process
+And it does NOT route the termination through pane keystrokes (that path is swallowed when the agent is mid-tool-execution)
+And it waits for the host shell prompt to return before relaunching
+And if the shell does not become ready, the handler aborts with "Agent did not exit after termination. Restart aborted."
+And the abort is emitted as an error event and as an in-session message
+```
+
+#### UC-AR16: Restart relaunches in place with native transcript continuity
+
+```
+Given the agent process has exited and the shell is ready
+When the handler relaunches the agent
+Then it constructs the agent command with resume-from-transcript semantics and the session's recorded thinking mode (defaulting to "slow")
+And it sends the command into the existing host pane
+And the host pane, session_id, native session identifier, and transcript chain are preserved
+And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
+And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
+```
+
+#### UC-AR1: Self-restart wakes the resumed agent without foregrounding the continuation
+
+```gherkin
+Given an agent restarts itself and its resumed prompt becomes ready
+When the platform supplies the fixed continuation stimulus for the fresh turn
+Then the continuation is accepted durably as platform control content
+And the only platform text entered into the foreground composer is `[TeleClaude Wake]`
+And submitting that wake delivers the continuation to the agent as control context
+And no paired restart-continuation block appears in the foreground composer
+And a readiness timeout leaves the session alive and reports that the continuation was not submitted
+```
+
+#### UC-AR2: Self-restart retries only the wake submission
+
+```gherkin
+Given one restart continuation is pending and its wake marker has entered the resumed prompt
+And the wake has not yet started a turn
+When prompt delivery retries submission
+Then it does not accept or paste another continuation payload
+And it does not paste another wake marker
+And it retries submission only while the existing wake remains live in the prompt
+And it stops once the wake has started a turn or no longer occupies the prompt
+```
+
+#### UC-AR3: Self-restart fails loud when the wake cannot start a turn
+
+```gherkin
+Given a self-restart has durably accepted its continuation
+And the standard wake marker cannot start a turn within the bounded retry budget
+When wake delivery is exhausted
+Then the platform reports the delivery failure
+And the session remains alive
+And the continuation remains available for a later valid delivery boundary rather than being duplicated or silently dropped
+```
+
+#### UC-AR4: Non-self restart skips the continuation stimulus
+
+```
+Given the request does NOT set the self-restart flag
+When the handler enters the relaunch phase
+Then the relaunch is issued without subscribing to the readiness signal
+And no continuation stimulus is injected
+And the resumed agent acts on whatever its replayed transcript dictates
+```
+
+#### UC-AR17: Restart revives a closed session through headless state
+
+```
+Given the target session row is marked closed
+When the restart runs
+Then it clears the closed marker, sets the lifecycle status to "headless", and re-reads the row before continuing
+And revival of a closed session is a side effect of restart, not a separate code path
+```
+
+#### UC-AR18: Restart adopts a replacement pane for a missing host pane
+
+```
+Given the row's recorded host pane no longer exists
+When the restart runs
+Then it clears the recorded host pane reference, sets the lifecycle status to "headless", and re-reads the row
+And it adopts a fresh host pane in headless mode before relaunch
+And if adoption fails, the restart reports "Failed to adopt headless session."
+```
+
+#### UC-AR19: Restart fails when the target agent is disabled
+
+```
+Given the target agent is no longer enabled in configuration
+When the restart consults the enablement gate
+Then it aborts with that gate's error message
+And an error event is emitted (sourced from agent restart) and a failure-marker message is sent to the session
+```
+
+#### UC-AR5: Restart a session owned by a remote computer
+
+```
+Given a session is owned by a remote computer
+When a caller asks to restart its agent and names the owning computer
+Then the restart is dispatched to the owning computer and runs against that computer's ledger
+And the agent process is replaced on the owning computer exactly as for a local restart
+And the owning computer persists the operation row, runs the restart, and emits its outcome event there
+And the receipt the caller receives names that computer, so the caller reads the record where it lives
+And the outcome notification crosses back to the caller's computer, which wakes the caller session locally
+And no restart is attempted against the local computer, which does not own the session
+```
+
+#### UC-AR20: Restart refuses a remote session when its owner is omitted
+
+```
+Given a caller asks to restart a session but names no owning computer for a session this computer does not own
+When the restart request is resolved
+Then the request is refused with a "session not found" error rather than silently executing locally
+```
+
+#### UC-AR6: Kill-side restart abort notifies the operator
+
+```
+Given a restart aborts because the agent process did not exit and the shell never returned ready
+When the handler reports the failure
+Then the operator receives an actionable restart-failure notification
+And the in-session failure message remains visible in the session pane
+```
+
+#### UC-AR7: Disabled-agent restart abort notifies the operator
+
+```
+Given a restart aborts because the target agent is no longer enabled in configuration
+When the handler reports the failure
+Then the operator receives an actionable restart-failure notification
+And the in-session failure message remains visible in the session pane
+```
+
+#### UC-AR8: Self-restart readiness-timeout notifies the operator
+
+```
+Given a self-restart relaunched the agent but readiness timed out before the continuation stimulus could be delivered
+When the handler reports the timeout
+Then the operator receives an actionable restart-failure notification
+And the in-session timeout message remains visible in the session pane
+```
+
+#### UC-AR9: Repeated restart failures for one session coalesce into one operator notification
+
+```
+Given several restart failures occur for the same session within the platform's trailing delivery window
+When the failures are reported
+Then the operator receives a single external notification for that session after the window elapses
+And each failure still updates the durable notification record immediately
+```
+
+#### UC-AR10: A restart-failure notification is distinct from other same-session notifications
+
+```
+Given a notification already exists for a session under that session's lifecycle grouping
+When a restart failure occurs for the same session
+Then the restart failure produces its own operator notification
+And it does not update or resolve the pre-existing session notification
+```
+
+#### UC-AR11: Self-restart relaunches only after the terminated agent process is confirmed exited
+
+```
+Given a self-restart has sent the termination signal to the running agent process
+And the host pane's foreground command reports the shell while that terminated process has not yet exited
+When the handler evaluates the kill-side barrier before relaunching
+Then it treats the agent as still running until the terminated process is confirmed exited, not merely because the foreground command reports the shell
+And it does not relaunch the agent nor inject the continuation stimulus while the terminated process remains alive
+And once the terminated process is confirmed exited it relaunches and proceeds to continuation-stimulus delivery
+```
+
+#### UC-AR12: Maintenance restoration wakes the resumed agent without foregrounding the continuation
+
+```gherkin
+Given maintenance restores a missing host pane and its resumed agent reaches a ready prompt
+When the platform supplies the fixed continuation stimulus for the restored session
+Then the continuation is accepted durably as platform control content
+And the only platform text entered into the foreground composer is `[TeleClaude Wake]`
+And submitting that wake delivers the continuation to the agent as control context
+And no paired restart-continuation block appears in the foreground composer
+```
+
+### Cross-context references
+
+- **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.
+- **session_mirrors** — restart preserves the session id, native session identifier, and transcript file chain, so the mirror layer sees an uninterrupted continuation of the same record; no mirror reseed is required, and external observers reading transcript files keep the same handle.
+- **workflow** — operations bound to the session (e.g., dispatched lifecycle commands waiting on completion events) are NOT cancelled by restart; the relaunch publishes `agent_runtime.agent.restarted` so coordinators can observe the cycle without losing their existing bindings.
+
+## Known caveats
+
+- **Restart does not cancel in-flight subscribers.** Listeners registered against the session, direct links the session participates in, and event subscriptions (other than the self-restart readiness handler) survive the agent process swap. This is deliberate — restart targets the agent CLI, not the session's collaboration surface.
+- **The kill-side barrier is the only gate between kill and launch.** The barrier requires both the terminated agent process to be confirmed exited and the host shell prompt to return, under one deadline. If it times out (the process did not exit or the prompt did not return), restart aborts; there is no escalating force-kill today.
+- **Self-restart relies on pre-subscription to the readiness signal.** The handler subscribes before the relaunch because the agent's session start event can fire before any post-launch subscriber would attach. A future agent that ships its readiness event differently must keep this invariant or the continuation stimulus will be skipped via timeout.
+- **Continuation stimulus is fixed text.** The constant "Session restarted. Continue pending work or remain idle." is the only stimulus the platform supplies to control delivery on self-restart; there is no caller-supplied payload.
+- **`self` semantics are CLI-side only.** The agent_runtime service takes a concrete session id; the literal `self` is resolved in `telec sessions restart` by reading the local identity record, not by the service. A direct service caller must address a concrete session id.
+- **Self-restart is flag-shaped on the request.** A request that fails to carry the self-restart flag is silently treated as a non-self restart.
+- **Restart on a dead host pane quietly switches to adoption.** If the recorded host pane no longer exists, restart does not error — it adopts a fresh host pane in headless mode before relaunch, so callers may observe a different host-pane reference after the cycle than the one they passed in.

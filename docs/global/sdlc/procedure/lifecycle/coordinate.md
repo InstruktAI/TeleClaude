@@ -152,7 +152,8 @@ a contract names may not be.
 ### 2. Load the project's delivery references
 
 Run `telec docs index --scope project --areas design,spec` and fetch
-`project/design/architecture/notification-delivery` and `project/spec/messaging`
+`projects/<slug>/design/architecture/notification-delivery` and
+`projects/<slug>/spec/messaging`, `<slug>` being this project's declared slug,
 when present. They fund the judgment
 of one case class — a signal whose delivery path is provably broken. Their
 absence is information about the project, not an error.

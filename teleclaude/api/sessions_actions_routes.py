@@ -945,7 +945,7 @@ async def unsubscribe_session(
 
     Removes the caller's listener row (if any) AND severs any active direct link
     the caller holds with the target. Idempotent: empty state returns success
-    with both action flags false. See `project/spec/session-subscriptions`.
+    with both action flags false. See `projects/teleclaude/spec/session-subscriptions`.
     """
     await refuse_act_on_ancestor(identity, session_id, ACT_UNSUBSCRIBE)
     cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)

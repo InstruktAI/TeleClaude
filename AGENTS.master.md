@@ -1,4 +1,4 @@
-<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. Knowledge additions/modifications MUST go to the source docs/** snippets, never here. Agents edit only on explicit human override. Rule: project/policy/agent-artifact-governance. -->
+<!-- LOCKED_FILE: DO NOT EDIT. Human-maintained thin wrapper. Knowledge additions/modifications MUST go to the source docs/** snippets, never here. Agents edit only on explicit human override. Rule: projects/teleclaude/policy/agent-artifact-governance. -->
 
 # AGENTS.md
 
@@ -8,6 +8,6 @@ This file provides guidance to agents when working with code in this repository.
 
 ## Required reads
 
-- @docs/project/baseline.md
+- @docs/local/baseline.md
 
 <!-- /LOCKED_FILE -->

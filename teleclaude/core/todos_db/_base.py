@@ -19,6 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.db.connection_factory import create_async_db_engine, create_sync_db_engine
 
+from ._docs_local_rename import migrate_docs_local_rename
 from ._legacy_import import maybe_auto_import_legacy_markdown_todos
 from ._models import TODOS_DB_TABLES
 from ._sdlc_rename import migrate_sdlc_rename
@@ -609,6 +610,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_todo_removed_claim(conn)
         _drop_dispatch_claims_table(conn)
         migrate_sdlc_rename(conn)
+        migrate_docs_local_rename(conn, db_path)
         conn.commit()
     finally:
         conn.close()

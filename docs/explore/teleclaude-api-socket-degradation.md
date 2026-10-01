@@ -5,7 +5,7 @@
 Keep a durable, stateful trail of incident reasoning so future AI sessions can resume without re-investigating from zero.
 
 Use this file for case-level chronology and evolving hypotheses.
-Keep stable runbook instructions in `docs/project/procedure/troubleshooting.md`.
+Keep stable runbook instructions in `docs/local/procedure/troubleshooting.md`.
 
 ## Entry Template
 
@@ -124,6 +124,6 @@ Each new entry should include:
   - `pytest tests/unit/test_hook_receiver.py -q` passed.
   - `pytest tests/unit/test_hook_receiver.py` reported all cases passing (33).
   - Runbook and trail documentation updated in:
-    - `docs/project/procedure/troubleshooting.md`
+    - `docs/local/procedure/troubleshooting.md`
     - `docs/explore/teleclaude-api-socket-degradation.md`
 - **Next decision:** Keep `native_session_id`/marker validation in the hot path for all receiver session resolution and monitor for recurring stale-marker telemetry before adding cleanup heuristics.

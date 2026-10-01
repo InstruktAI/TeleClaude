@@ -14,7 +14,7 @@ visibility: 'public'
 1. **No agent-authored unit tests.** TypeScript's types are erased at runtime and do not enforce
    behavioral correctness — under the generic rule it is a compiler-less language for testing
    purposes. Behavior is verified by functional and smoke tests.
-2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
+2. **Test files mirror the feature spec.** A spec at `docs/local/spec/feature/<domain>/<slug>.md`
    is covered by `<frontend_root>/tests/<domain>/<slug>.test.ts`. Contract-defining tooling is not
    tested — see the generic policy.
 3. **Bind scenarios** with the project's `spec("<spec_id>", "<UC-id>")` tag at the top of each test;

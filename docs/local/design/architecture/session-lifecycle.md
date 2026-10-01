@@ -1,0 +1,176 @@
+---
+description: 'Complete lifecycle of a terminal session from creation to cleanup.'
+visibility: 'public'
+---
+
+# Session Lifecycle — Design
+
+## Purpose
+
+- Describe the lifecycle of a session from creation to cleanup.
+
+### 1. Creation
+
+- **Ingress**: A `/new-session` command arrives via an origin (UI adapter, terminal, or daemon-internal).
+- **Origin assembly**: The receiving edge normalizes raw platform signals into typed request metadata. Message flows use `MessageMetadata` actor fields (`actor_id`, `actor_name`, `actor_avatar_url`, `platform_message_id`). Session-creation flows use the typed origin metadata object `TerminalOriginMetadata`. Identity resolution reads those typed inputs to derive `human_email`, `human_role`, and `principal`, and the session handler persists the session-level view in `origin_metadata`.
+- **Queueing**: Command is persisted in the SQLite queue.
+- **Execution**: The `SessionLauncher` starts a new `tmux` session.
+- **Persistence**: Session metadata is saved in the `sessions` table.
+- **Announcement**: The originating adapter announces the session (e.g., creates a Telegram topic). This is fire-and-forget; session creation does not block on channel readiness.
+
+### 2. Active Operation
+
+- **Self-Identification**: The agent's own TeleClaude session ID is available at `$TMPDIR/teleclaude_session_id`. This is the prerequisite for self-referential operations: `telec sessions end` (self-termination), agent-restart API calls, and `telec sessions tail` on own output.
+- **Input**: Commands are sent to the `tmux` pane via `tmux_io`. Normal message delivery requires a routable tmux session, except for intentional `headless` sessions, which may be adopted into tmux on user input.
+- **Output**: The `OutputPoller` reads from `tmux`, uses normalized pane text for generic change detection, and wakes transcript projection.
+- **Summarization**: Periodic AI-summarization updates the Telegram topic.
+- **Clutter Control**: User inputs and feedback are cleaned up based on session state.
+- **Lifecycle Status**: The status stream carries input acceptance (`accepted`) and every change of the session's agent status, published once per change by the agent-status owner and propagated to observers via the event bus. UI adapters may derive throttled typing pulses from `accepted` and `active`; status controls must not render visible message content.
+- **Title ownership**: Session title updates are projection-owned, but finalized only at completed-turn boundaries. Transcript truth remains the input, and `agent_stop` is only the finalize signal. A title may change at most once per user turn, using the last user input plus the assistant output that followed it; live streaming output must not retitle the session.
+- **Title delivery**: Core emits `SESSION_TITLE_CHANGED(session_id, title)` only after persisting a finalized raw semantic title. `UiAdapter` consumes that lifecycle event directly, and each UI adapter owns its own latest-only title delivery and platform pacing.
+
+### 3. Termination
+
+- **Close Command**: User calls `/close-session` or AI calls `end_session`.
+- **Cleanup**:
+  - `tmux` process is killed.
+  - SQLite record is marked as closed.
+  - Final summary is posted.
+  - Topic is archived or marked inactive.
+
+### 4. Headless Sessions (Standalone TTS/Summarization)
+
+- **Trigger**: An agent hook fires with neither a TeleClaude identity marker in
+  its session-scoped temporary directory nor a tmux attachment. A marker-bearing
+  process remains managed lineage even when it has no pane.
+
+- **Normalization**: The hook receiver normalizes payloads and enqueues them in the outbox.
+- **Metadata persistence (best-effort)**: Before enqueue, the receiver may update existing session rows with `native_session_id` and `native_log_file` when available.
+- **Creation (command-owned)**: The daemon dispatches `CreateSessionCommand(headless=True, ...)` through the normal command service. The session handler creates a minimal session row with `lifecycle_status="headless"`, an empty `tmux_session_name`, and `last_input_origin=InputOrigin.TERMINAL.value`.
+- **Project path**: The daemon attempts to derive `project_path` (and `subdir`) from the native transcript file before persisting the headless session.
+
+- **Session ID resolution uses three managed states plus the headless path**:
+  - **Managed primary**: a valid marker and pane attachment reuse the marker id;
+    the execution may refresh canonical native metadata.
+  - **Managed descendant**: a valid marker without pane attachment reuses the
+    marker id while preserving the child's native execution id in hook payloads.
+    Descendant starts do not create lifecycle events or replace canonical native
+    metadata.
+  - **Managed teardown**: pane attachment without a readable marker uses the
+    live native-session fallback and otherwise drops the late event.
+  - **Headless**: only a source with no marker and no pane resolves through the
+    native map and sessions store. A mint event explicitly authorizes the daemon
+    to create a new headless row when no reusable session exists.
+
+- **Backward compatibility note**:
+  - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.
+  - For true headless identity resolution, native-session mapping is authoritative.
+- **Pipeline**: Hook events flow through the normal outbox → daemon → summarization → TTS pipeline. Output polling is skipped (no tmux to poll).
+- **Cleanup**: Headless sessions are cleaned up by the 7d inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
+- **Adoption boundary**: Transparent adoption is reserved for true `headless` sessions. Closed sessions are not reopened by normal message flow, and non-headless sessions with missing tmux require explicit recovery rather than passive background healing.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Creating
+    [*] --> Headless: Hook without TC context
+    Creating --> Active: Tmux started
+    Creating --> Failed: Tmux failed
+    Active --> Active: Messages exchanged
+    Active --> Closing: Close command
+    Headless --> Closing: 7d inactivity
+    Closing --> Closed: Cleanup complete
+    Failed --> [*]
+    Closed --> [*]
+```
+
+## Inputs/Outputs
+
+**Inputs:**
+
+- Session creation command (computer, project_path, agent, title, message)
+- User messages and commands during operation
+- Agent output via tmux streams
+- Close/end session request
+
+**Outputs:**
+
+- Tmux session with running agent
+- Session metadata in SQLite (session_id, tmux_session_name, status, timestamps)
+- Adapter channel creation (Telegram topic, TUI pane)
+- Domain events (SESSION_STARTED, OUTPUT_UPDATE, SESSION_CLOSE_REQUESTED, SESSION_CLOSED)
+- Final transcript and summary artifacts
+
+## Invariants
+
+- **Unique Session ID**: Each session has a globally unique UUID that never changes.
+- **Stable Tmux Mapping**: Session ID maps to exactly one tmux session name `tc_{session_id[:8]}`.
+- **Single Owner**: Each session is owned by the adapter that created it; ownership never transfers.
+- **State Progression**: Sessions move forward through states only (no rollback from Closed to Active).
+- **Cleanup Finality**: Once marked Closed, session metadata is immutable and tmux resources are released.
+- **Native Transcript File Is Never Platform-Written**: The daemon's session
+  metadata, channel state, and summary artifacts above are its own durable
+  records, separate from the agent CLI's native transcript file. That file is
+  written only by the agent CLI process itself: the daemon's sole lever on it
+  is delivered input (text injected into the tmux pane), which the CLI records
+  as a turn along with everything it produces in response — assistant text,
+  tool calls, thinking, system reminders. Nothing in this platform edits,
+  rewrites, or truncates the native transcript file in place. `session_mirrors`'
+  indexing, search, extraction, and projection are read-only derivations from
+  it (`projects/teleclaude/spec/domain/session_mirrors`).
+
+## Primary flows
+
+### 1. Creation Flow
+
+1. **Command Reception**: Adapter receives `/new-session` or MCP `start_session` call
+2. **Validation**: Check project_path exists, agent is valid
+3. **Persistence**: Create session record in SQLite with status=creating
+4. **Tmux Launch**: `SessionLauncher` starts tmux with agent command
+5. **Metadata Update**: Set tmux_session_name, status=active, started_at timestamp
+6. **Channel Creation**: Adapter creates UI channel (fire-and-forget, non-blocking)
+7. **Event Emission**: Broadcast SESSION_STARTED to EventBus
+8. **Poller Start**: OutputPoller begins streaming tmux output
+
+### 2. Active Operation Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Adapter
+    participant TmuxBridge
+    participant Agent
+    participant OutputPoller
+    participant EventBus
+
+    loop Active session
+        User->>Adapter: Send message
+        Adapter->>TmuxBridge: Write to pane
+        TmuxBridge->>Agent: Input delivered
+        Agent->>OutputPoller: Writes output
+        OutputPoller->>EventBus: OUTPUT_UPDATE
+        EventBus->>Adapter: Stream to user
+    end
+```
+
+### 3. Termination Flow
+
+1. **Close Trigger**: User calls `/close-session` or AI calls `telec sessions end $(cat "$TMPDIR/teleclaude_session_id")`
+2. **Intent Record**: API/tooling marks session status=`closing`, emits `SESSION_CLOSE_REQUESTED`, and returns accepted immediately
+3. **Daemon Cleanup Start**: Daemon handler receives `SESSION_CLOSE_REQUESTED` and begins termination exactly once
+4. **Tmux Kill**: Send SIGTERM to tmux session
+5. **Poller Stop**: OutputPoller detects exit and stops
+6. **Final Summary**: Generate and post session summary (if applicable)
+7. **Channel Archive**: Adapter archives or marks channel inactive
+8. **Metadata Finalize**: Set status=`closed`, `closed_at` timestamp
+9. **Event Emission**: Broadcast `SESSION_CLOSED`
+10. **Resource Cleanup**: Remove listeners, delete workspace directories if temporary
+
+## Failure modes
+
+- **Tmux/identity bootstrap failure**: The bootstrap task cannot start the session's host pane or resolve its identity. The daemon emits an actionable `system.session.bootstrap_failed` operational event — part of the `system.*` infrastructure-event family in `teleclaude/events/schemas/system.py`, delivered to operators through the actionable-event path — carrying the session id and project path. The session remains `lifecycle_status="initializing"`; it is not auto-resurrected, retried, or transitioned by this path. Recovery is operator-driven (explicit `telec sessions end`) or the inactivity sweep.
+
+- **Mid-Session Crash**: Tmux dies unexpectedly. OutputPoller detects exit code, marks session failed or unavailable, and emits event. The system does not background-heal ordinary tmux-backed sessions; only explicit recovery flows or true `headless` adoption may restore routability.
+- **Cleanup Timeout**: Channel archival or final summary hangs. Session marked closed anyway. Channel may show stale state.
+- **Orphaned Tmux**: Daemon crash during active session leaves tmux running. Next startup detects orphan via process scan, marks session as recovered or failed.
+- **Double Close**: Second close request is idempotent and returns success/accepted without duplicate cleanup.
+- **Hook Delivery Delay**: Session closes before agent hook processes. Hook delivered late causes out-of-order notification.

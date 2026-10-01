@@ -1,0 +1,179 @@
+---
+description: Configuration operations are cleared against the verified principal,
+  target instance, affected fields, and agent role.
+---
+
+# Configuration Target Clearance — Spec
+
+## What it is
+
+Configuration clearance evaluates the resolved caller against the addressed
+configuration kind, instance, operation, and affected fields. The CLI verb alone
+cannot grant access to every instance of a kind. An agent acting for a human
+carries that human's verified principal; its system role can narrow the
+operation set but cannot grant an operation the principal lacks.
+
+The decision runs in the process that performs the configuration operation,
+before it reads governed configuration or persists a change. That process
+resolves the caller through the shared principal-resolution capability
+(`projects/teleclaude/spec/identity-and-auth` §6), applies the verb's role band, and then
+applies this target decision. An unidentified caller holds no role and is
+refused before any configuration is read.
+
+A person may read and change settings in their own person overlay, directly or
+through an agent. Person-registry identity fields, including platform role,
+remain platform-administrator-maintained. A company, its roster included, is
+read and changed through that company's configuration resource by a caller whose
+effective role for that company is `admin`
+(`projects/teleclaude/design/architecture/scoped-roles`); a platform administrator holds
+that role for every company. Machine and global configuration writes remain
+platform-administrator operations. Project writes require the `admin` effective
+role for that project and also respect their repository's ownership and commit
+boundary; naming a project in the CLI never grants authority over it.
+
+A caller whose principal is a system principal carries no person
+(`projects/teleclaude/spec/identity-and-auth` §8). It holds no standing that belongs to a
+person or to a platform administrator, whatever its system role permits.
+
+Computer configuration is the daemon's own startup input and stays repairable
+while it is invalid
+(`projects/teleclaude/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7).
+Deciding its clearance needs no running daemon, and resolving the caller does
+not depend on the machine configuration being valid.
+
+The clearance decision receives the same subject and affected-field set that the
+config owner mutates. A refusal names the target and the standing needed to
+perform the operation. The target's stored state is unchanged by a refusal, and
+a refused read returns no configuration.
+
+## Canonical fields
+
+### Standing
+
+| Target               | Operation                                                                               | Standing required                               |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| computer, global     | list, get                                                                               | none beyond the verb band                       |
+| computer, global     | init, patch                                                                             | platform administrator                          |
+| person, own instance | get; patch of settings                                                                  | the person                                      |
+| person, any instance | get; patch of settings                                                                  | platform administrator                          |
+| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
+| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
+| company              | list                                                                                    | platform administrator                          |
+| company              | get, patch                                                                              | `admin` effective role for that company         |
+| company              | init                                                                                    | none beyond the verb band                       |
+| project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
+| project              | patch                                                                                   | `admin` effective role for that project         |
+
+### Use cases
+
+#### UC-CTC1: A person's agent edits that person's settings
+
+```gherkin
+Given a person directs an agent bound to their verified principal
+And the agent's system role permits configuration patching
+When the agent patches that person's own settings
+Then the operation is accepted
+And the resulting state belongs to that person
+```
+
+#### UC-CTC2: Person ownership does not confer platform-role authority
+
+```gherkin
+Given a non-administrator directs an agent bound to their verified principal
+When the agent attempts to change the person's platform role or registry identity
+Then the change is refused before persistence
+And the refusal names the administrator standing required for those fields
+```
+
+#### UC-CTC3: An agent cannot edit another person's instance by naming it
+
+```gherkin
+Given an agent acts for a person without administrator standing
+When the agent addresses another person's configuration instance
+Then the change is refused before persistence
+And the other person's stored state is unchanged
+```
+
+#### UC-CTC4: A company roster requires the standing of its target
+
+```gherkin
+Given an agent acts for a person whose effective role for a company is not admin
+When the agent patches that company's membership or project assignments
+Then the change is refused before persistence
+And neither a permissive system role nor a named company widens the principal's authority
+```
+
+#### UC-CTC5: An administrator can maintain a company roster
+
+```gherkin
+Given an agent acts for a verified platform administrator
+And its system role permits configuration patching
+When it patches a registered company's roster with valid relationships
+Then clearance accepts the targeted operation
+And the config owner validates and persists the requested change
+```
+
+#### UC-CTC6: A person cannot read another person's configuration
+
+```gherkin
+Given an agent acts for a person without administrator standing
+When the agent reads another person's configuration view
+Then the read is refused
+And no part of that person's configuration is returned
+```
+
+#### UC-CTC7: A system principal holds no person or administrator standing
+
+```gherkin
+Given an agent session whose principal is a system principal
+And its system role permits configuration patching
+When it patches a person's settings or a company
+Then the change is refused before persistence
+And the refusal names the standing the target requires
+```
+
+#### UC-CTC8: Computer configuration stays repairable while it is invalid
+
+```gherkin
+Given the committed machine configuration is invalid
+And no daemon is listening
+When an agent acting for a platform administrator patches the computer configuration to correct it
+Then the caller's clearance is decided without the daemon
+And the config owner validates and persists the corrected candidate
+When an agent whose principal lacks platform administrator standing submits the same patch
+Then the operation is refused and the machine configuration is unchanged
+```
+
+### Cross-context references
+
+- The config context identifies the kind, instance, fields, and validated
+  candidate. The identity context owns clearance for that target.
+- `projects/teleclaude/spec/feature/config/kind-addressed-configuration` owns the
+  addressed CLI resource and its mutation semantics.
+- `projects/teleclaude/spec/feature/config/organizational-membership` owns roster
+  declaration validity, not caller clearance.
+- `projects/teleclaude/spec/identity-and-auth` owns caller verification and the verb's role
+  band this decision follows.
+
+#### UC-CTC9: A company administrator maintains their own company
+
+```gherkin
+Given an agent acts for a person holding no platform role and the admin role in one company
+When it reads or patches that company's roster with valid relationships
+Then clearance accepts the targeted operation
+And the same person's read or patch of a different company is refused
+And their attempt to list every company is refused
+```
+
+## Known caveats
+
+- This contract applies to configuration resources. Other CLI object families
+  retain their own authorization contracts until those owners change them.
+- Every agent runs as the same operating-system account, which can edit
+  configuration files directly. Clearance directs agents through the
+  configuration surface; it is not a boundary against that account's own file
+  access.
+
+## See Also
+
+- docs/local/adr/0099-address-configuration-by-kind.md

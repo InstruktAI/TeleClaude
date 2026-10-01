@@ -20,7 +20,7 @@ against, and readable at the level of behavior rather than implementation.
   (`sdlc/principle/documentation-first-development`): a feature
   spec sits at `spec/feature/<context>/<concept-name>.md` within the scope whose
   bounded context owns the behavior, concept-named, never slug-named. Most sit
-  under `docs/project/`; the scope follows the owning context rather than being
+  under `docs/local/`; the scope follows the owning context rather than being
   fixed to one.
 - Pending-change mechanics are loaded
   (`general/procedure/doc-snippet-authoring`): a scenario describing behavior

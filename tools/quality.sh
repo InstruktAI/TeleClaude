@@ -422,7 +422,7 @@ lint_scoped() {
 }
 
 run_tests() {
-    echo "No tests in this repository — see docs/project/policy/test-moratorium.md"
+    echo "No tests in this repository — see docs/local/policy/test-moratorium.md"
 }
 
 main() {

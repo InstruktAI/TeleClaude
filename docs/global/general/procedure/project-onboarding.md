@@ -44,7 +44,7 @@ surface that starts agents.
 4. **Analyze the codebase.** Start
    `telec sessions run --command /projects-analyze --path <project-root>`. The session
    follows the project-analysis procedure and emits schema-valid snippets under
-   `docs/project/`.
+   `docs/local/`.
 
 Steps 3 and 4 run concurrently once started, and either can be started again on its own
 later: re-run the analysis when codebase structure has shifted, and the assessment after
@@ -52,7 +52,7 @@ the team adopts a new quality rule or upgrades blessed templates.
 
 ## Outputs
 
-- Schema-valid project doc snippets under `docs/project/` with
+- Schema-valid project doc snippets under `docs/local/` with
   `generated_by: telec-init` frontmatter (internal marker — unchanged for
   backward compatibility with existing analyzed projects).
 - `.telec-init-meta.yaml` metadata recording the analysis run.

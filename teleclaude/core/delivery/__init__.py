@@ -1,7 +1,7 @@
 """Destination-addressed delivery seam: Router, Destination, DeliveryPlan.
 
-See docs/project/spec/session-output-routing.md for the routing contract and
-docs/project/design/architecture/adapter-client.md for the Router/Destination
+See docs/local/spec/session-output-routing.md for the routing contract and
+docs/local/design/architecture/adapter-client.md for the Router/Destination
 invariants this module implements.
 """
 

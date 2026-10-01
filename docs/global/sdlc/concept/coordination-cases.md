@@ -469,7 +469,7 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 - **Evidence available:** contract-ordered signal, source state proving its trigger
   occurred, event/notification records showing absence or demotion, and bounded source
-  inspection where needed (`project/design/architecture/notification-delivery`).
+  inspection where needed (`projects/<slug>/design/architecture/notification-delivery`).
 - **Ownership:** Coordinator judges only whether the path is demonstrably broken.
   Repair ownership is established with the standing peer and the defect is filed
   once or routed to existing coverage, per the coordinate procedure's step 7. Event

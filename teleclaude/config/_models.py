@@ -12,7 +12,7 @@ reaches humans. A field with no marker is ``internal``: absent from the generate
 ``tui`` fields are the operator-facing subset the wizard renders. A container
 field's tier is inherited by its unmarked nested leaves. The field tiers are the
 single authority for what is public — the defaults blob and the sample follow
-from them. See ``project/policy/config-public-surface``.
+from them. See ``projects/teleclaude/policy/config-public-surface``.
 
 A container whose members are themselves structured is not a leaf: its members
 carry their own tiers, so a schema walk that treats the container as opaque lets
@@ -681,7 +681,7 @@ class TeleclaudeConfig(ClosedModel):
     """Top-level machine configuration aggregate.
 
     Each field carries an editability ``tier`` (see the module docstring and
-    ``project/policy/config-public-surface``): ``internal`` (the default) for
+    ``projects/teleclaude/policy/config-public-surface``): ``internal`` (the default) for
     constants and runtime-derived values, ``public`` for the ``config.yml``
     surface, ``tui`` for the operator-facing subset the wizard renders. A
     container field's tier is inherited by its unmarked nested leaves.

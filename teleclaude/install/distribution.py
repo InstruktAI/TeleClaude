@@ -48,6 +48,7 @@ from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
 from teleclaude.snippet_roots import iter_tier_snippet_roots
+from teleclaude.snippet_scope import HOME_SCOPES
 from teleclaude.snippet_validation import (
     SnippetScope,
     derive_snippet_classification,
@@ -87,7 +88,14 @@ _ARTIFACT_DISTRIBUTION_STARTED = "artifact_distribution_started"
 _DOMAIN_BASELINE_BUNDLE_GENERATED = "domain_baseline_bundle_generated"
 _GENERATED_REQUIRED_READ_EXPANDED = "generated_required_read_expanded"
 _INLINE_REF_PREFIX = "@"
-_PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
+_PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "local"
+_LOCAL_AGENTS_SOURCE_LABEL = "agents/local"
+#: Index ``domain`` values that name no published domain: structural markers and
+#: the home-kind literals of project, person and company snippets.
+_NON_DOMAIN_INDEX_DOMAINS: frozenset[str] = frozenset({"baseline", "general", ""}) | frozenset(
+    scope.value for scope in HOME_SCOPES
+)
+_TIER_PUBLISHED_DOCS_RELATIVE_PATH = Path("docs") / "global"
 _MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
 _MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
 _MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE = "- `{slug}`"
@@ -454,7 +462,7 @@ def _load_snippet_index_entries(project_root: Path) -> dict[str, SnippetIndexEnt
     entries: dict[str, SnippetIndexEntry] = {}
     for index_path in (
         project_root / "docs" / "global" / "index.yaml",
-        project_root / "docs" / "project" / "index.yaml",
+        project_root / _PROJECT_DOCS_RELATIVE_PATH / "index.yaml",
     ):
         entries.update(_load_index_entries(index_path))
     return entries
@@ -484,7 +492,7 @@ def _logical_snippet_path(path: Path, *, project_root: Path) -> Path:
         pass
 
     parts = path.resolve().parts
-    for scope in ("global", "project"):
+    for scope in ("global", "local"):
         marker = ("docs", scope)
         for index in range(len(parts) - 1):
             if parts[index : index + 2] != marker:
@@ -1256,7 +1264,7 @@ def _render_domain_awareness(deploy_docs_root: Path, *, triggers: dict[str, str]
         if not isinstance(item, dict):
             continue
         domain = item.get("domain")
-        if not isinstance(domain, str) or domain in ("baseline", "general", "project", ""):
+        if not isinstance(domain, str) or domain in _NON_DOMAIN_INDEX_DOMAINS:
             continue
         if _is_pending(item):
             continue
@@ -1462,15 +1470,13 @@ def distribute_committed_tiers(platform_home_snapshot: Path, deploy_docs_root: P
             slug = root.name
             is_company = kind is ConfigKind.COMPANY
             deploy_dirname = _TIER_COMPANY_DEPLOY_DIRNAME if is_company else _TIER_PERSON_DEPLOY_DIRNAME
-            # Deployed at <deploy_dirname>/<slug>/ directly — the tier's own source-side
-            # "docs" wrapper (<tier root>/docs/) is flattened away here, matching the
-            # three-segment published address form (`companies/<slug>/<taxonomy>/<rest>`)
-            # this delivery's validator and `general/policy/referencing-doc-snippets`
-            # already sanction. Recording an extra "docs" segment in the deployed path
-            # would desynchronize it from that already-reviewed reference grammar.
+            # Only the tier's published half (<tier root>/docs/global/) is deployed, at
+            # <deploy_dirname>/<slug>/ directly, matching the published address form
+            # (`companies/<slug>/<taxonomy>/<rest>`). The local half and its catalog
+            # never enter the corpus.
             staged_tier_root = staged_root / deploy_dirname / slug
             deployed_tier_root = deploy_docs_root / deploy_dirname / slug
-            source_docs = root / "docs"
+            source_docs = root / _TIER_PUBLISHED_DOCS_RELATIVE_PATH
             if source_docs.is_dir():
                 shutil.copytree(source_docs, staged_tier_root, symlinks=False)
             else:
@@ -1559,7 +1565,7 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     # project_root is Mother, and is a no-op path otherwise.
     skill_tree_roots = {
         global_skill_source_root(project_root),
-        project_root / "agents" / "project" / "skills",
+        agent_artifacts.project_skills_root(project_root),
     }
     matches: list[Path] = []
     for root, dirs, files in os.walk(project_root):
@@ -1743,7 +1749,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
         project_root=project_root_path,
     )
     agents_root = os.path.join(project_root if is_mother_project and request is not None else teleclaude_root, "agents")
-    project_agents_root = os.path.join(project_root, "agents", "project")
+    project_agents_root = str(agent_artifacts.local_tier_root(project_root_path))
     os.chdir(project_root)
     canonical_root = git_common_root(project_root_path)
     master_docs_dir = os.path.join(project_root, "docs", "global")
@@ -1853,8 +1859,8 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
         ]
     local_sources = [
         {
-            "label": "agents/project",
-            "master": os.path.join(project_root, "agents", "project", "__none__"),
+            "label": _LOCAL_AGENTS_SOURCE_LABEL,
+            "master": os.path.join(project_agents_root, "__none__"),
             "skills": project_skills_dir,
         },
     ]
@@ -1862,7 +1868,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
     def _existing_sources(source_list: list[dict[str, str]]) -> list[dict[str, str]]:
         existing: list[dict[str, str]] = []
         for source in source_list:
-            if source["label"] in {"agents", "agents/project"}:
+            if source["label"] in {"agents", _LOCAL_AGENTS_SOURCE_LABEL}:
                 existing.append(source)
                 continue
             if os.path.isfile(source.get("master", "")) or os.path.isdir(source.get("skills", "")):
@@ -1990,7 +1996,7 @@ def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C90
         markdown_outputs: list[str] = []
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
-            if os.path.isfile(source["master"]) and source["label"] != "agents/project":
+            if os.path.isfile(source["master"]) and source["label"] != _LOCAL_AGENTS_SOURCE_LABEL:
                 with open(source["master"], encoding="utf-8") as f:
                     agent_master_contents.append(f.read())
             for spec in artifact_specs:

@@ -12,7 +12,6 @@ visibility: public
 ## Required reads
 
 - @~/.teleclaude/docs/general/procedure/memory-extraction/overview.md
-- @docs/project/spec/feature/memory/extraction-project.md
 
 ## Goal
 
@@ -23,7 +22,7 @@ Extract durable observations about projects from a session mirror, classified in
 All preconditions from the general procedure apply. Plus:
 
 - The agent's category for this run is `project`.
-- The agent has loaded the project-category vocabulary, subject-resolution rules, and cross-project routing rules from the feature spec (above).
+- The agent has loaded the project-category vocabulary, subject-resolution rules, and cross-project routing rules from the feature spec (`projects/teleclaude/spec/feature/memory/extraction-project`).
 - The agent has required reads for every known project on the machine, so it can identify which project a candidate observation pertains to (not only the session's own project).
 
 ## Steps

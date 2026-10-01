@@ -13,7 +13,7 @@ Redis is the cross-host propagation boundary for ``CLUSTER`` events only;
 ``LOCAL`` events continue to dispatch when Redis is unavailable. Workflow
 truth remains in SQLite-owned stores; clients fall back to polling canonical
 state when cross-host fan-out is degraded. See
-``docs/project/design/architecture-v2/event-bus-transports.md``.
+``docs/local/design/architecture-v2/event-bus-transports.md``.
 """
 
 from __future__ import annotations

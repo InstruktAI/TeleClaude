@@ -1,4 +1,4 @@
-"""Resolve command roots by the rules in project/design/architecture/command-scope."""
+"""Resolve command roots by the rules in projects/teleclaude/design/architecture/command-scope."""
 
 from __future__ import annotations
 

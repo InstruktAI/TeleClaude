@@ -4,7 +4,7 @@ One answer to "what is an agent-artifact source, and who may publish it?" for
 every consumer that used to carry its own local tuple or glob: artifact
 validation, checkpoint/watch scope, onboarding capability inference,
 slug-worktree source protection, and sealed-commit review routing. See
-``project/design/architecture/agent-artifact-distribution`` for the approved
+``projects/teleclaude/design/architecture/agent-artifact-distribution`` for the approved
 design this registry implements.
 
 ``.agents/`` is never a source — it is the delivery location the local phase
@@ -52,7 +52,7 @@ _GLOBAL_MASTER_FILENAME = "AGENTS.master.md"
 _GLOBAL_BASELINE_FILENAME = "AGENTS.global.md"
 _ADDENDUM_SUFFIX = ".addendum.md"
 _GLOBAL_DIRNAME = "global"
-_PROJECT_DIRNAME = "project"
+_LOCAL_DIRNAME = "local"
 _COMMANDS_DIRNAME = "commands"
 _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
@@ -155,14 +155,19 @@ def _agents_root(project_root: Path) -> Path:
     return project_root / AGENT_ARTIFACT_ROOT_DIRNAME
 
 
+def local_tier_root(project_root: Path) -> Path:
+    """Return a repository's local agent-artifact tier root, ``agents/local``."""
+    return _agents_root(project_root) / _LOCAL_DIRNAME
+
+
 def project_commands_root(project_root: Path) -> Path:
     """Return the project-tier command source root the registry classifies.
 
     The single owner of this path: a consumer that needs "where do this
     project's own commands live" asks here rather than re-deriving the
-    ``agents/project/commands`` join itself.
+    ``agents/local/commands`` join itself.
     """
-    return _agents_root(project_root) / _PROJECT_DIRNAME / _COMMANDS_DIRNAME
+    return _agents_root(project_root) / _LOCAL_DIRNAME / _COMMANDS_DIRNAME
 
 
 def command_source_roots(project_root: Path) -> tuple[Path, Path]:
@@ -201,7 +206,7 @@ def retirement_command_companions(project_root: Path) -> list[CommandRetirementC
 
 def project_skills_root(project_root: Path) -> Path:
     """Return the project-tier skill source root the registry classifies."""
-    return _agents_root(project_root) / _PROJECT_DIRNAME / _SKILLS_DIRNAME
+    return _agents_root(project_root) / _LOCAL_DIRNAME / _SKILLS_DIRNAME
 
 
 def _iter_root_files(project_root: Path) -> Iterator[ArtifactSource]:
@@ -369,7 +374,7 @@ def _boundary_violation(project_root: Path, resolved: Path) -> str | None:
         _GENERATED_ROOT_POINTER_FILENAME,
     ):
         return None
-    if first in (_GLOBAL_DIRNAME, _PROJECT_DIRNAME):
+    if first in (_GLOBAL_DIRNAME, _LOCAL_DIRNAME):
         if len(relative_parts) < 2 or relative_parts[1] in (_COMMANDS_DIRNAME, _SKILLS_DIRNAME):
             return None
         return (
@@ -432,7 +437,7 @@ def boundary_violations(project_root: Path) -> list[str]:
     so an unrecognized kind directory (``agents/global/unknown-kind/``, for
     example) would otherwise never be discovered — nothing enumerates it as a
     source in the first place. This walks the fixed boundary levels the tiered
-    layout defines (``agents/``, ``agents/global/``, ``agents/project/``)
+    layout defines (``agents/``, ``agents/global/``, ``agents/local/``)
     directly, so a full scan sees the same violations a targeted probe would.
     """
     root = project_root.resolve()
@@ -444,7 +449,7 @@ def boundary_violations(project_root: Path) -> list[str]:
         violation = _boundary_violation(root, entry.resolve(strict=False))
         if violation is not None:
             violations.append(violation)
-    for tier_name in (_GLOBAL_DIRNAME, _PROJECT_DIRNAME):
+    for tier_name in (_GLOBAL_DIRNAME, _LOCAL_DIRNAME):
         tier_root = agents_root / tier_name
         if not tier_root.is_dir():
             continue

@@ -154,36 +154,36 @@ and survives deletion of the source files. This case study is evidence for the
 value test, not rationale for a rule — the incidents-as-history note above
 governs a rule's _reason_, not a worked demonstration kept for its own sake.
 
-- **`project/design/architecture`** — Skeleton mostly correct, but the
+- **`projects/python-logger/design/architecture`** — Skeleton mostly correct, but the
   "Inputs/Outputs" section restated the public logging contract that already
   lives in `sdlc/policy/python/logging`. Net new signal
   ≈ 20%. Anti-pattern: **Duplication** (the global policy already answers it).
   Correct shape: a one-line reverse pointer to the global policy plus any
   project-specific layering, if any exists.
-- **`project/design/test-strategy`** — Described `pytest` + `tmp_path` +
+- **`projects/python-logger/design/test-strategy`** — Described `pytest` + `tmp_path` +
   `monkeypatch` usage. Every Python repository tests this way. Anti-pattern:
   **Genericity**. Correct outcome: skip the snippet. The language's testing
   policy answers it.
-- **`project/policy/conventions`** — Restated `sdlc/policy/python/core`,
+- **`projects/python-logger/policy/conventions`** — Restated `sdlc/policy/python/core`,
   `sdlc/policy/python/tooling`, and `[tool.ruff]` from
   `pyproject.toml`. Anti-pattern: **Restatement** + **Duplication**.
   Correct outcome: skip; the global Python policies and the source
   configuration both answer it.
-- **`project/spec/dependencies`** — Restated `pyproject.toml`'s
+- **`projects/python-logger/spec/dependencies`** — Restated `pyproject.toml`'s
   `[build-system]` and `[project] dependencies`. Anti-pattern:
   **Restatement**. The `pyproject.toml` is the source of truth. Correct
   outcome: skip, or write a one-liner only if a dependency choice encodes
   durable intent the manifest cannot express.
-- **`project/spec/entry-points`** — Restated `[project.scripts]` and `__all__`,
+- **`projects/python-logger/spec/entry-points`** — Restated `[project.scripts]` and `__all__`,
   both 30-second source reads. Anti-pattern: **Restatement**. Correct
   outcome: skip unless an entry point has non-obvious wiring (conditional
   registration, side-effect imports) that the source does not make explicit.
-- **`project/spec/build-deploy`** — Paraphrased the GitHub Actions workflow
+- **`projects/python-logger/spec/build-deploy`** — Paraphrased the GitHub Actions workflow
   YAML. Anti-pattern: **Restatement**. The YAML is the source of truth.
   Correct outcome: skip, or write a snippet only if the pipeline encodes
   constraints invisible in the YAML (why a step exists, what failure mode
   it defends).
-- **`project/spec/configuration`** — Restated the per-app environment-variable
+- **`projects/python-logger/spec/configuration`** — Restated the per-app environment-variable
   contract that lives in `sdlc/policy/python/logging`. This
   is the most catastrophic case in the set: **the project IS the
   implementation of the global policy**, and the snippet duplicated the

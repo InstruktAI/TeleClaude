@@ -8,7 +8,7 @@ set -e
 
 PYTHON_CMD="./.venv/bin/python"
 WRAPPER_MOD="teleclaude.helpers.agent_cli"
-SCHEMA_FILE="docs/project/spec/release-report-schema.md"
+SCHEMA_FILE="docs/local/spec/release-report-schema.md"
 
 # Generate a real diff to feed them
 echo "🔍 Generating context..."

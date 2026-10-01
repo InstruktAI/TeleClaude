@@ -43,7 +43,7 @@ Determine the project's primary characteristics before deep analysis:
 - Read `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Gemfile`,
   `pom.xml`, `build.gradle`, or equivalent to identify language and package manager.
 - Read the project root directory listing to identify top-level structure.
-- Check for existing `teleclaude.yml`, `docs/project/`, and `AGENTS.md` to
+- Check for existing `teleclaude.yml`, `docs/local/`, and `AGENTS.md` to
   understand current TeleClaude integration state.
 - If the project already has `generated_by: telec-init` snippets, this is a
   re-analysis. Note existing snippet IDs for merge decisions.
@@ -99,13 +99,13 @@ cleanup pass.
   or consumed events, and persistence boundaries. A package, directory, or
   class is not automatically a bounded context; it earns that treatment only
   when it owns a coherent domain model.
-- **Domain specs:** author or refresh `project/spec/domain/<context>` only
+- **Domain specs:** author or refresh `projects/<slug>/spec/domain/<context>` only
   when a bounded context is evidenced. The spec names ubiquitous language,
   aggregates, domain events, use cases, and context-map position in domain
-  terms. Do not replace this with a flat `project/concept/domain-model`
+  terms. Do not replace this with a flat `projects/<slug>/concept/domain-model`
   summary.
 - **Feature specs:** author or refresh
-  `project/spec/feature/<context>/<concept>` only for Category A
+  `projects/<slug>/spec/feature/<context>/<concept>` only for Category A
   user-visible product capabilities. The concept is a durable product/domain
   noun, never the onboarding run slug and never a tooling cleanup label.
 - **Contract or tooling refinements:** route service contracts, CLI surfaces,
@@ -220,8 +220,9 @@ Infer project conventions from evidence, not assumptions:
 Generated snippets must:
 
 - Conform to the scaffolding schema (`sdlc/spec/init-scaffolding`).
-- Use `project/` scope IDs from the scaffolding schema. Flat IDs such as
-  `project/design/architecture` remain valid; nested spec IDs are reserved for
+- Carry the analyzed project's qualified IDs from the scaffolding schema
+  (`projects/<slug>/…`, `<slug>` being the project's declared slug). Flat IDs such as
+  `projects/<slug>/design/architecture` remain valid; nested spec IDs are reserved for
   earned domain specs and Category A feature specs.
 - Include `generated_by: telec-init` and `generated_at: <ISO8601>` in frontmatter.
 - Declare `visibility` deliberately. Default to `internal`. Promote a single
@@ -244,17 +245,17 @@ do not produce that snippet. Coverage is not a virtue; signal is. When the
 project implements a global policy, prefer a reverse pointer (`See also: <global policy ID>`)
 over restating the contract.
 
-| Snippet shape                              | Taxonomy | Worth producing when…                                                                                                                                                                           |
-| ------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project/spec/domain/<context>`            | spec     | A bounded context is evidenced by coherent domain vocabulary, state ownership, events, entry points, and invariants.                                                                            |
-| `project/spec/feature/<context>/<concept>` | spec     | A user-visible product capability is present and needs durable business value plus Gherkin scenarios. Never use this for tooling, contract cleanup, or generic code inventory.                  |
-| `project/design/architecture`              | design   | Repo structure encodes durable intent the code cannot express — non-obvious layering, a deliberate constraint, or topology agents must navigate.                                                |
-| `project/policy/conventions`               | policy   | Conventions diverge from the language's global policy in ways agents must respect (custom error hierarchy, project-specific naming). The global policy answers the rest.                        |
-| `project/spec/dependencies`                | spec     | Dependency choices encode constraints invisible in the manifest (why a version is pinned, why a library was chosen over alternatives). Otherwise the manifest is the source of truth.           |
-| `project/spec/entry-points`                | spec     | Entry points have non-obvious wiring (conditional registration, side-effect imports). Otherwise a 30-second source read answers it.                                                             |
-| `project/design/test-strategy`             | design   | The project tests in non-standard ways agents must follow (custom fixtures, coverage philosophy, specific frameworks). Generic pytest/jest patterns do not earn a snippet.                      |
-| `project/spec/build-deploy`                | spec     | The pipeline encodes constraints invisible in the CI YAML (why a step exists, what failure it defends). Otherwise the YAML is the source of truth.                                              |
-| `project/spec/configuration`               | spec     | Configuration semantics are project-specific. **If the project implements a global policy, write a reverse pointer (`See also: <global policy ID>`) and stop — do not duplicate the contract.** |
+| Snippet shape                                      | Taxonomy | Worth producing when…                                                                                                                                                                           |
+| -------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projects/<slug>/spec/domain/<context>`            | spec     | A bounded context is evidenced by coherent domain vocabulary, state ownership, events, entry points, and invariants.                                                                            |
+| `projects/<slug>/spec/feature/<context>/<concept>` | spec     | A user-visible product capability is present and needs durable business value plus Gherkin scenarios. Never use this for tooling, contract cleanup, or generic code inventory.                  |
+| `projects/<slug>/design/architecture`              | design   | Repo structure encodes durable intent the code cannot express — non-obvious layering, a deliberate constraint, or topology agents must navigate.                                                |
+| `projects/<slug>/policy/conventions`               | policy   | Conventions diverge from the language's global policy in ways agents must respect (custom error hierarchy, project-specific naming). The global policy answers the rest.                        |
+| `projects/<slug>/spec/dependencies`                | spec     | Dependency choices encode constraints invisible in the manifest (why a version is pinned, why a library was chosen over alternatives). Otherwise the manifest is the source of truth.           |
+| `projects/<slug>/spec/entry-points`                | spec     | Entry points have non-obvious wiring (conditional registration, side-effect imports). Otherwise a 30-second source read answers it.                                                             |
+| `projects/<slug>/design/test-strategy`             | design   | The project tests in non-standard ways agents must follow (custom fixtures, coverage philosophy, specific frameworks). Generic pytest/jest patterns do not earn a snippet.                      |
+| `projects/<slug>/spec/build-deploy`                | spec     | The pipeline encodes constraints invisible in the CI YAML (why a step exists, what failure it defends). Otherwise the YAML is the source of truth.                                              |
+| `projects/<slug>/spec/configuration`               | spec     | Configuration semantics are project-specific. **If the project implements a global policy, write a reverse pointer (`See also: <global policy ID>`) and stop — do not duplicate the contract.** |
 
 ### 15. Agent Bootstrap Content (AGENTS.master.md decision)
 
@@ -299,7 +300,7 @@ proceeds.
 
 ## Outputs
 
-- A set of schema-valid doc snippets under `docs/project/`.
+- A set of schema-valid doc snippets under `docs/local/`.
 - A concise summary of what was created/updated.
 - An updated `.telec-init-meta.yaml` recording `last_analyzed_commit` set to the
   HEAD commit analyzed, so the next run has a diff base.

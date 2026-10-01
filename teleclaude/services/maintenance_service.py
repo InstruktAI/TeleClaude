@@ -68,7 +68,7 @@ COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # applies to any long-lived session
 # (TUI revive/jump affordances) resolvable; removed-todo retention bounds how
 # long a soft-removed entry survives before purge. Each window is owned by its
 # constant below and the two are deliberately independent — see
-# project/spec/domain/agent_runtime and project/spec/domain/workflow.
+# projects/teleclaude/spec/domain/agent_runtime and projects/teleclaude/spec/domain/workflow.
 CLOSED_SESSION_RETENTION_WINDOW = timedelta(days=90)
 VOICE_TEMP_AUDIO_PREFIX = "voice_"
 VOICE_TEMP_AUDIO_RACE_SAFETY = timedelta(minutes=10)

@@ -1,6 +1,6 @@
 """The codebase Blueprint — a generated AST structural map for change blast-radius.
 
-See ``project/spec/codebase-blueprint`` for the contract. ``integration`` is the
+See ``projects/teleclaude/spec/codebase-blueprint`` for the contract. ``integration`` is the
 single writer (``regenerate_blueprint``); agents consume blast-radius via
 ``telec code blueprint affected``.
 """

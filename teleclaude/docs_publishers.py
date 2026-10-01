@@ -19,6 +19,8 @@ from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier
 
 _DOMAIN_AGNOSTIC_DIR = "general"
 _SNIPPETS_DIR = "snippets"
+#: A tier's published half; its deployed address maps back here.
+_TIER_PUBLISHED_DOCS = Path("docs") / "global"
 
 
 class DocsPublisherResolutionError(ValueError):
@@ -181,7 +183,7 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     root_name, *tail = relative_path.parts
     if root_name in (COMPANIES_ROOT.name, PEOPLE_DIR.name):
         if tier_root_kind(project_root) is not None and tail and tail[0] == project_root.name:
-            return project_root.parent.parent / root_name / tail[0] / "docs" / Path(*tail[1:])
+            return project_root.parent.parent / root_name / tail[0] / _TIER_PUBLISHED_DOCS / Path(*tail[1:])
         return candidate
     registry = _PUBLISHER_REGISTRY.get()
     if registry is None:

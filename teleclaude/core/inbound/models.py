@@ -1,7 +1,7 @@
 """Value objects for the origin-addressed inbound resolve-or-create seam.
 
 Mirrors ``core/delivery/models.py`` on the inbound side — see
-docs/project/design/architecture/ui-adapter.md for the resolve-or-create
+docs/local/design/architecture/ui-adapter.md for the resolve-or-create
 seam invariants these types implement.
 """
 

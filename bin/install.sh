@@ -1093,6 +1093,10 @@ converge_plumbing() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing "$INSTALL_DIR"
 }
 
+converge_docs_layout() {
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.docs_layout_convergence || print_warning "Documentation layout convergence reported deferred or blocked repositories (report above); install continues"
+}
+
 publish_config_schemas() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.core.reconciliation.config_schemas
 }
@@ -1131,11 +1135,12 @@ install_deps_only() {
     install_voice_bridge
 
     converge_plumbing
+    converge_docs_layout
     print_success "Project dependencies installed"
 }
 
 # Pinned Blueprint engine. Graphify ships daily; pin exactly so the graph.json
-# contract the blueprint depends on stays stable (project/adr/0016).
+# contract the blueprint depends on stays stable (projects/teleclaude/adr/0016).
 GRAPHIFY_PINNED_VERSION="0.9.48"
 
 # Full transitive dependency closure, version-pinned with SHA256 hashes
@@ -1148,7 +1153,7 @@ GRAPHIFY_LOCK_FILE="$INSTALL_DIR/graphifyy-$GRAPHIFY_PINNED_VERSION.requirements
 # ── Canonical CLI publish location ────────────────────────────────────────────
 # Every platform CLI (telec, graphify) publishes to one
 # OS-agnostic location: ~/.local/bin. The daemon and all agent shells guarantee
-# it on PATH (project/spec/agent-shell-path), so it always resolves. We create it
+# it on PATH (projects/teleclaude/spec/agent-shell-path), so it always resolves. We create it
 # if missing and never scatter binaries to brew/usr-local.
 TELEC_BIN_DIR="$HOME/.local/bin"
 _TELEC_PATH_PROMPTED=0
@@ -1641,6 +1646,7 @@ main() {
     fi
     converge_plumbing
     if [ "$CI_MODE" = false ]; then
+        converge_docs_layout
         link_shared_scripts
     fi
 

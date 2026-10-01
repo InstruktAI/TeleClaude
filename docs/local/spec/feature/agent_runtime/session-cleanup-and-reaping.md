@@ -1,0 +1,301 @@
+---
+description: 'agent_runtime — terminate a session, free its host-pane + workspace + tmpdir resources, sweep orphans, and replay close-requested events for sessions whose channel cleanup never completed.'
+visibility: 'public'
+---
+
+# Session Cleanup and Reaping — Spec
+
+## Required reads
+
+- @docs/local/spec/domain/agent_runtime.md
+
+## What it is
+
+The cleanup half of agent_runtime session lifecycle. Where `session-lifecycle` accepts a close request, this surface performs it: token revocation, host-pane termination, conversation-link teardown, listener cleanup, adapter channel deletion, workspace removal, per-session tmpdir removal, Claude Code session temp directory removal on purge, escalation teardown, inbound expiry, and the final `closing -> closed` lifecycle write.
+
+It also reconciles the gap between what durable storage believes and what the system holds: stale sessions (storage-active but host-pane-gone), orphan host-pane sessions (TeleClaude-prefixed host pane with no storage row), orphan workspace directories (UUID-named directory under the workspace base with no storage row), and orphan per-session tmpdirs (UUID-named subdirectory under the configured tmpdir base, not bound to a live session).
+
+Finally, it provides the recently-closed replay mechanism: a sweep that re-emits a session-close request for closed sessions whose adapter channel reference is still set — recovering channel-deletion work that was dropped across a service restart.
+
+The cleanup loop runs on the maintenance service tick (every hour by default). An end-session request reaches the termination flow synchronously via the command service.
+
+## Canonical fields
+
+### Use cases
+
+#### terminate-session — happy path
+
+```
+Given a non-closed session row exists for session_id
+And the caller invokes terminate-session for the session with a reason
+When the cleanup begins
+Then the session id is added to the in-flight cleanup set (concurrency guard)
+And the lifecycle status is written to "closing"
+And the host pane is terminated when a host pane reference is present and the session is not headless
+And the resource-cleanup step runs (links, listeners, channel delete, workspace removal)
+And the per-session tmpdir cleanup runs
+And the Claude Code session temp directory cleanup runs only when the destructive delete variant is requested
+And the inbound queue manager expires pending inbound messages for the session
+And the escalation-end step clears relay state and emits `session.escalation_ended` if relay status was active
+And the lifecycle write completes via close-session (or delete-session when the destructive variant is requested)
+And the cache is invalidated one final time
+And the session id is removed from the in-flight cleanup set
+And the function reports success
+```
+
+#### UC-SCR-1: Host-pane processes are reaped before per-session tmpdir removal
+
+```
+Given a session whose per-session tmpdir holds a Node compile cache
+And the agent process writes its compile-cache entries from an exit-time hook
+When terminate-session terminates the host pane and then removes the per-session tmpdir
+Then the host pane's process tree has exited before tmpdir removal begins
+And the tmpdir is removed without a "directory not empty" failure
+```
+
+#### UC-SCR-2: Order of operations is fixed
+
+```
+Given the termination flow is mid-flight
+Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> reap the host pane's process tree -> resource cleanup -> per-session tmpdir cleanup -> Claude Code session temp directory cleanup (delete variant only) -> expire inbound -> end escalation -> close-session (or delete-session)
+And every step after host-pane termination is wrapped in best-effort error handling
+And a failure in any intermediate step is logged but does NOT prevent the final lifecycle write — once the host pane is gone, leaving the row stuck at "closing" would be worse than continuing
+And a reap that cannot confirm the process tree exited within its bound logs the unresolved or surviving process ids and continues, so the final lifecycle write still runs
+```
+
+#### Concurrency guard
+
+```
+Given two parallel session-close-request events fire for the same session id
+When both invoke terminate-session
+Then the first call adds the session id to the in-flight cleanup set
+And the second call sees the session id already present, logs a debug message, and returns immediately
+And the in-flight set is cleared in a finalizer so a future retry can proceed
+```
+
+#### Missing session
+
+```
+Given the session id does not resolve to a session row
+When terminate-session runs
+Then the function logs at debug and returns without success
+And no token revocation, host-pane termination, or cleanup is attempted
+```
+
+#### Already-closed session
+
+```
+Given the session row has a non-null closed-at marker
+And the destructive delete variant is NOT requested (the default)
+When terminate-session runs
+Then the function records the already-closed state
+And the lifecycle-status="closing" write is SKIPPED (the row stays at its closed status)
+And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, inbound expiry, escalation teardown) — straggling artifacts get reaped
+And the final close-session call is also SKIPPED
+And the function returns without reporting a new transition
+```
+
+#### UC-SCR-8: An interrupted close finalizes on the next terminate-session
+
+```
+Given the session row carries lifecycle status "closing" and a null closed-at marker — a close that started and was interrupted before its final write
+And the destructive delete variant is NOT requested (the default)
+When terminate-session runs for that session
+Then the function records that the close has already started
+And the lifecycle-status="closing" write is SKIPPED (re-declaring a close that is already underway is not a permitted transition)
+And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, inbound expiry, escalation teardown)
+And the final close-session call sets the closed-at marker and moves the row to "closed"
+And the caller receives the ordinary end-session success rather than a lifecycle-transition error
+```
+
+#### Idempotency of resource cleanup
+
+```
+Given the resource-cleanup step is invoked twice for the same session
+When the second call runs
+Then link cleanup closes zero links (the first call already closed them)
+And listener pop returns an empty list
+And caller-listener cleanup is a no-op
+And the adapter client's delete-channel may log a warning if the channel was already deleted but does not raise
+And the workspace directory check short-circuits if the first call removed it
+And no exception escapes the function
+```
+
+#### cleanup-stale-session — storage-active, host-pane-gone
+
+```
+Given a session row has lifecycle status reading as active
+And the host pane named by the session no longer exists
+And the session is older than 10 seconds (race-condition guard against just-created sessions)
+And the session has a non-empty host-pane reference (headless sessions are skipped — they have no host pane to detect staleness against)
+When the stale-session cleanup is called
+Then a warning is logged: "Found stale session ... cleaning up"
+And termination is invoked with reason "stale", host-pane termination suppressed (already gone), and the destructive delete variant requested (drop the row entirely)
+And it reports success
+```
+
+#### cleanup-orphan-host-panes — host-pane-present, storage-absent
+
+```
+Given the host-pane layer is listing N host-pane sessions
+When the orphan-host-pane sweep runs
+Then the list is filtered to entries with the TeleClaude prefix, excluding the TUI host pane
+And durable storage is queried for the host panes its session rows own: each recorded host-pane reference, and the host pane named for each session still creating its first host pane
+And every TeleClaude-prefixed host pane not appearing in that owned set is terminated
+And the count of terminated host panes is returned
+```
+
+#### UC-SCR-9: A starting session's host pane survives the orphan-host-pane sweep
+
+```
+Given an agent has started a session whose storage row exists
+And the session is still creating its first host pane, so the row has not yet recorded a host-pane reference
+When the orphan-host-pane sweep runs
+Then the host pane named for that session is treated as owned by its row and is not terminated
+And a TeleClaude-prefixed host pane that no session row owns is still terminated
+```
+
+#### cleanup-orphan-workspaces — directory-present, storage-absent
+
+```
+Given the workspace base directory exists
+When the orphan-workspace sweep runs
+Then it iterates direct children, skipping symlinks and non-directories
+And skips entries whose name is not a canonical UUID
+And consults durable storage for known session ids
+And recursively removes any UUID-named directory whose name is NOT in the known set
+And returns the count of removed directories
+```
+
+#### cleanup-orphan-session-tmpdirs — per-session tmpdir sweep
+
+```
+Given the per-session tmpdir base directory exists and is a real directory (not a symlink)
+When the orphan-tmpdir sweep runs
+Then candidates iterate as direct children of the base dir
+And entries that are symlinks or non-directories are skipped
+And entries whose name is not a canonical UUID are skipped
+And entries modified within the last 10 minutes (race-safety window) are skipped — guards against reaping a tmpdir for a just-spawned session
+And entries whose name matches a live (non-closed) session id are skipped
+And entries that resolve outside the configured base path are refused (symlink-escape guard)
+And surviving entries are recursively removed
+And the count of removed dirs is returned
+```
+
+#### cleanup-session-tmpdir — single session
+
+```
+Given a session id whose tmpdir path lives under the configured base
+When the single-session tmpdir cleanup runs
+Then the path is resolved via the safe-component helper (UUID or SHA-256 fallback)
+And missing tmpdirs return without error
+And symlink-or-not-a-dir paths are refused with a warning
+And paths that do not resolve under the base are refused with a warning
+And the removal swallows mid-walk "file vanished" errors (Node compile-cache vanish race) but propagates other exceptions
+```
+
+#### UC-SCR-10: A purged Claude session's Claude Code temp directory is removed
+
+```
+Given a session whose active agent is Claude and whose native session id is a canonical UUID
+And terminate-session runs with the destructive delete variant (retention purge or stale-session cleanup)
+And Claude Code's per-user temp root is a real directory owned by the daemon user, not a symlink
+When terminate-session runs the Claude Code session temp directory cleanup
+Then every directory named by that native session id directly under a project directory of the temp root is removed
+And project directories and session directories that are symlinks are skipped
+And temp directories of every other Claude session, open or closed, are left untouched
+And a session of any other agent, or without a native session id, removes nothing
+And a close without the delete variant leaves the Claude Code temp directory in place, so a revived session resumes with its scratchpad
+```
+
+#### emit-recently-closed-session-events — restart-recovery sweep
+
+```
+Given the agent_runtime service restarted and some sessions closed before the restart left adapter-channel cleanup unfinished
+When the recently-closed-session-events sweep runs (default window 60 seconds)
+Then it enumerates closed sessions including headless ones
+And keeps only entries whose closed-at marker is within the lookback window
+And further keeps only entries that still carry a Telegram topic reference or Discord channel reference — the markers that channel deletion never completed
+And emits a session-close-request event (NOT a session-closed event) for each so the subscriber path runs termination exactly once and clears the channel reference on success
+And returns the count of emitted events
+And a non-positive window short-circuits to zero emissions
+```
+
+#### UC-SCR-3: Closed session rows inside the 90-day window are retained
+
+```
+Given a closed session row whose closed-at marker is newer than 90 days
+When the maintenance cleanup tick runs
+Then the row remains in the agent_runtime session ledger
+And operator surfaces may still resolve the TeleClaude session id for direct jump or revive affordances
+```
+
+#### UC-SCR-4: Closed session rows older than 90 days are hard-purged
+
+```
+Given a closed session row whose closed-at marker is older than 90 days
+When the maintenance cleanup tick runs
+Then the row is hard-deleted from the agent_runtime session ledger
+And operator surfaces that still carry the historical TeleClaude session id render it as inert text
+```
+
+#### UC-SCR-5: Adapter stale-thread reconciliation reaches project-specific session forums
+
+```
+Given an operator has a Discord thread in a project-specific or Unknown session forum beneath one computer's project category
+When that computer runs the adapter stale-resource sweep
+Then the parent forum hierarchy establishes that computer as the thread's destructive owner
+And the owner leaves the thread in place while an open local session row maps to it
+And the owner deletes the thread when no open local session row maps to it, unless it is the forum's launcher thread
+And another computer does not mutate the thread
+```
+
+#### UC-SCR-6: Shared Help Desk threads converge through durable child ownership
+
+```
+Given an operator has a Discord thread in the shared Help Desk forum
+When the fleet accepts or reconciles that thread
+Then every computer publishes observational claims and inventories while any retained fleet member has not adopted the ownership protocol
+And observational claims do not change the previously agreed handling or authorize deletion
+And after every retained fleet member has adopted the protocol, exactly one computer must durably claim a new child before binding it to a local session
+And the claiming computer leaves the thread in place while its local session row is open
+And the claiming computer deletes the thread after its local session is no longer open
+And every foreign computer leaves the claimed thread unchanged
+And the master deletes an unclaimed non-launcher only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
+And incomplete discovery, an incomplete adoption barrier, or mixed-version disagreement leaves the shared forum unchanged
+And no age floor, archived state, or starter-message identity line grants a conclusively ownerless non-launcher preservation
+And when the forum's launcher thread cannot be conclusively resolved, the sweep skips that forum's pass without deleting anything
+```
+
+#### UC-SCR-7: Escalation relay threads reflect active relays
+
+```
+Given an operator has a Discord thread in the shared escalation forum
+When the adapter stale-resource sweep runs
+Then every computer publishes observational claims and inventories while any retained fleet member has not adopted the ownership protocol
+And after every retained fleet member has adopted the protocol, the computer creating a new relay must durably claim the child before activating it
+And that owner leaves the thread in place while its local relay session is active
+And that owner deletes the thread after its local relay is no longer active
+And every foreign computer leaves the claimed relay thread unchanged
+And the master deletes an unclaimed relay thread only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
+And incomplete ownership evidence produces no provider deletion
+```
+
+### Cross-context references
+
+- **session_mirrors** — consumer of the `session.ended` event family produced when the lifecycle write transitions to closed. Mirror extraction at session-end depends on the lifecycle write running, which is why the cleanup module guarantees the final close-session even when intermediate cleanup steps raise.
+- **integration** — the escalation-end step clears relay status / Discord channel binding / relay-started-at on the session and emits `session.escalation_ended` (CLUSTER visibility) so the escalation integration can drop its corresponding Discord channel binding. The adapter-channel deletion side runs via the adapter client's delete-channel inside the resource-cleanup step.
+- **workflow** — sessions spawned by orchestrators register one-shot stop-listeners on creation (see `session-lifecycle`); the resource-cleanup step removes both target-side and caller-side listener rows so notifications stop firing for the dead session.
+
+## Known caveats
+
+- **The lifecycle write at the end is non-negotiable.** Every intermediate step after host-pane termination is wrapped in best-effort error handling specifically so a single hiccup (e.g., a removal race on a per-session tmpdir) cannot strand a session at `lifecycle_status=closing`. If the lifecycle write were skipped on an inner failure, the session would be invisible to both the live UI and the close-reaper sweep.
+- **Resource cleanup does NOT touch the lifecycle write.** Callers handle the lifecycle write; the resource-cleanup helper is purely for adapter / filesystem / listener teardown. The split exists so terminate-session and stale-session cleanup can both reuse the same resource sweep with different lifecycle intentions (close vs delete).
+- **Headless sessions are excluded from stale detection.** They have no host-pane reference to consult, so stale detection short-circuits to false for them — they only ever close via explicit user/agent action.
+- **Stale detection has a 10-second race-condition floor.** Sessions younger than 10 seconds are skipped to avoid reaping a just-created session whose host pane has not yet appeared.
+- **Orphan-tmpdir sweep has a 10-minute race-safety window.** A tmpdir freshly created for a brand-new session is invisible to the sweep until its modification time ages past the window. The window is necessary because the row insert (which makes the session id "live") and the tmpdir creation are not co-transactional.
+- **Symlink-escape guards on tmpdir removal.** Single-session and orphan-tmpdir sweeps both refuse to traverse symlinks and check that the resolved path remains under the configured base. A maliciously symlinked tmpdir cannot trick the sweep into removing arbitrary paths.
+- **The recently-closed sweep re-emits a session-close request, not a session-closed event.** This is deliberate — it routes back through termination's idempotent path so the channel reference gets cleared on the second pass. Re-emitting a session-closed event would not run the channel-delete logic.
+- **Orphan sweeps are time-bound to the maintenance tick (~1 hour).** There is no startup sweep that runs these unconditionally on boot — the first sweep happens immediately on periodic-cleanup entry (the first-run flag skips the initial sleep), but a freshly-rebooted service that crashes again within minutes can carry orphans across two restarts before they are observed.
+- **The in-flight cleanup set is process-local.** Two service processes claiming the same session (which should not happen — there is one service per machine) would not coordinate through this guard. The guard exists to deduplicate parallel events within a single service, not to provide cross-process exclusion.
+- **The destructive delete variant is, well, destructive.** It removes the row entirely rather than transitioning it to closed. The cleanup paths use this only for stale-session reaping, where the row carries no recoverable signal — preserving a tombstone for a session whose host pane died before the service noticed has no operational value.

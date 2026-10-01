@@ -9,7 +9,7 @@ visibility: 'public'
 
 The required structure for the canonical domain spec of a bounded context. One spec per context. The spec is the source of truth for what the context does in domain terms — independent of implementation language or technology. Implementation (Python, Rust, anything else) must satisfy the spec; the spec does not describe implementation.
 
-Domain specs are documentation snippets and follow the snippet schema (`general/spec/snippet-authoring-schema`). Project-scoped domain specs live under `docs/project/spec/domain/<context>.md`. Cross-project domain contexts use the owning global domain's `spec/domain/<context>` snippet path when a global snippet is warranted.
+Domain specs are documentation snippets and follow the snippet schema (`general/spec/snippet-authoring-schema`). Project-scoped domain specs live under `docs/local/spec/domain/<context>.md`. Cross-project domain contexts use the owning global domain's `spec/domain/<context>` snippet path when a global snippet is warranted.
 
 Each spec is authored once per bounded context and evolves with the context. New intended state is added by updating the spec and adding the delivering slug to `delivered_by`. Implementation changes that change behavior MUST update the spec.
 
@@ -18,7 +18,7 @@ Each spec is authored once per bounded context and evolves with the context. New
 ### Frontmatter
 
 ```yaml
-id: project/spec/domain/<context-name>
+id: projects/<slug>/spec/domain/<context-name>
 type: spec
 domain: <domain>
 scope: project | global
@@ -115,21 +115,21 @@ One subsubsection per consumed event. Each entry:
 
 #### Use cases (index of feature specs)
 
-This section is an INDEX. Each entry references a feature spec snippet at `docs/project/spec/feature/<this-context>/<concept-name>.md` that owns the Gherkin acceptance scenarios for one use case touching this context.
+This section is an INDEX. Each entry references a feature spec snippet at `docs/local/spec/feature/<this-context>/<concept-name>.md` that owns the Gherkin acceptance scenarios for one use case touching this context.
 
 Per `sdlc/principle/documentation-first-development`, feature specs are the hub (Gherkin lives there); domain specs are the spokes. The use cases section here lists which feature specs touch this bounded context, with a one-line summary per entry — NOT embedded Gherkin.
 
 Format:
 
 ```
-- **<feature-concept-name>** — `docs/project/spec/feature/<this-context>/<concept-name>.md` — one-line summary of the use case in domain language
+- **<feature-concept-name>** — `docs/local/spec/feature/<this-context>/<concept-name>.md` — one-line summary of the use case in domain language
 ```
 
 Example:
 
 ```
-- **session-restart-recovery** — `docs/project/spec/feature/agent_runtime/session-restart-recovery.md` — sessions survive daemon restart with reconstructed SessionRuntime actors
-- **operation-tracking** — `docs/project/spec/feature/agent_runtime/operation-tracking.md` — long-running task receipts persist across restarts and signal completion via events
+- **session-restart-recovery** — `docs/local/spec/feature/agent_runtime/session-restart-recovery.md` — sessions survive daemon restart with reconstructed SessionRuntime actors
+- **operation-tracking** — `docs/local/spec/feature/agent_runtime/operation-tracking.md` — long-running task receipts persist across restarts and signal completion via events
 ```
 
 When a new feature touches this context, a new entry is added here AND the corresponding feature spec is authored at the referenced path.

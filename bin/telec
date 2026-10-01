@@ -5,10 +5,10 @@
 # belongs to, so `uv` manages that checkout's environment from its own
 # pyproject.toml. The wrapper's location selects the code that runs, never the
 # caller's working directory
-# (docs/project/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to.md).
+# (docs/local/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to.md).
 # Code loaded from a slug worktree resolves its provisioned home in
 # teleclaude/runtime/config.py; this wrapper creates no home
-# (docs/project/design/architecture/cli-invocation-boundary.md).
+# (docs/local/design/architecture/cli-invocation-boundary.md).
 set -euo pipefail
 
 SOURCE="$0"

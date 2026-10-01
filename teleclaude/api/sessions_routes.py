@@ -230,7 +230,7 @@ async def _link_direct_sessions(
 
     Does not touch listener records — the two subscription axes are orthogonal.
     Notification suppression while the link is active is enforced at delivery
-    time in `_notify_listeners`. See `project/spec/session-subscriptions`.
+    time in `_notify_listeners`. See `projects/teleclaude/spec/session-subscriptions`.
     """
     resolved_caller_session = caller_session or await db.get_session(caller_session_id)
     target_session = await db.get_session(target_session_id)

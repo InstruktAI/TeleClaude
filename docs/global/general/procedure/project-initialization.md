@@ -83,7 +83,7 @@ declaration resolves no executable action receives no TeleClaude-owned hook.
 Whatever the project subscribes, the repository's local exclude list names
 TeleClaude's machine-local state — the project's `.teleclaude/` directory and the
 configuration writer's lock files — and that state is never offered for commit
-(`project/spec/feature/reconciliation/project-plumbing-convergence`).
+(`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 
 A root carrying no project declaration is not adopted by this act: it is left
 byte-for-byte unchanged, with no hook and no filter written or read for it.
@@ -128,10 +128,10 @@ a project is adopted, whether `telec config project init` or the daemon's
 add-project request invokes it. A folder whose identity another registry entry
 already holds is refused before any step writes, and a folder declaring the person
 or company tier is recorded without these steps
-(`project/spec/feature/config/project-registry`). Publication must not mutate
+(`projects/teleclaude/spec/feature/config/project-registry`). Publication must not mutate
 `~/.teleclaude/projects.yaml`. Once registered, the project is visible to
-`ProjectCatalogService` and every consumer that iterates projects (docs
-cross-project namespace, job orchestration, etc.).
+`ProjectCatalogService` and every consumer that iterates projects (resolution of
+`projects/<slug>/…` documentation identities, job orchestration, etc.).
 
 Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
 and `teleclaude/project_manifest.py:register_root()`

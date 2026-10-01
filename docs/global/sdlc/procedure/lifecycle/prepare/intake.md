@@ -40,7 +40,7 @@ to prepare routing instead of producing feature-lane artifacts.
   **Produced for every confirmed feature.**
 - **Feature spec snippet (durable contract, hub)** — author or enrich the
   feature spec(s) at
-  `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named,
+  `docs/local/spec/feature/<context>/<concept-name>.md`. Concept-named,
   NEVER slug-named. Contains the business value summary and the Gherkin
   acceptance scenarios. Author new and changed feature-spec material through
   the pending carriers prescribed by `general/procedure/doc-snippet-authoring`.
@@ -82,7 +82,7 @@ anything in between) and produce:
 ### Pillar identification + grouping (multi-pillar features)
 
 During grounding, identify which bounded contexts the feature touches. The
-list of pillars comes from `project/spec/domain/context-map` and the per-
+list of pillars comes from `projects/<slug>/spec/domain/context-map` and the per-
 context domain specs.
 
 Decision rule:
@@ -172,12 +172,12 @@ slug. Derive it from how a Product Owner would name the capability on a
 roadmap — short, noun-shaped, descriptive of what users get, stable across
 multiple deliveries that may shape it. Examples:
 
-- RIGHT: `docs/project/spec/feature/agent_runtime/session-revival.md`
-- RIGHT: `docs/project/spec/feature/workflow/multi-pillar-split.md`
-- RIGHT: `docs/project/spec/feature/identity/principal-invitation.md`
-- WRONG: `docs/project/spec/feature/workflow/v2-workflow-cli-refinement-commands.md` (todo slug)
-- WRONG: `docs/project/spec/feature/agent_runtime/fix-session-revive-bug-2026.md` (todo slug + date)
-- WRONG: `docs/project/spec/feature/identity/add-invite-flow.md` (verb-led, ephemeral; the durable concept is "principal invitation," not "add invite flow")
+- RIGHT: `docs/local/spec/feature/agent_runtime/session-revival.md`
+- RIGHT: `docs/local/spec/feature/workflow/multi-pillar-split.md`
+- RIGHT: `docs/local/spec/feature/identity/principal-invitation.md`
+- WRONG: `docs/local/spec/feature/workflow/v2-workflow-cli-refinement-commands.md` (todo slug)
+- WRONG: `docs/local/spec/feature/agent_runtime/fix-session-revive-bug-2026.md` (todo slug + date)
+- WRONG: `docs/local/spec/feature/identity/add-invite-flow.md` (verb-led, ephemeral; the durable concept is "principal invitation," not "add invite flow")
 
 **Smell test.** If the proposed concept name equals, contains, or is an
 obvious rewording of the todo slug, you have not named a concept — you have
@@ -432,7 +432,7 @@ re-engages and stamps approval.
 - **`prd-review-findings`** — a complete report accompanying every verdict, including clean passes.
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure for every confirmed feature.
-- **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — produced for human-facing and agent/operator-facing behavioral features alike. Concept-named, never slug-named. Its new or changed material is pending under this slug.
+- **Feature spec snippet** at `docs/local/spec/feature/<context>/<concept-name>.md` — produced for human-facing and agent/operator-facing behavioral features alike. Concept-named, never slug-named. Its new or changed material is pending under this slug.
 - **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — when the behavioral feature also changes domain or cross-cutting design. The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
 - **No feature-lane artifacts for a non-behavioral kind mismatch** — reclassify to `change`, leave intake, and let prepare routing derive the change lane.
 - **`prd_approved` stamp** — recorded when the human confirms. The human always owns final approval.

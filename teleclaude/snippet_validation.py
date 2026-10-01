@@ -10,9 +10,12 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.config.context_root import load_raw_declaration
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR, ConfigFileName
+from teleclaude.slug import normalize_slug
+from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES, HOME_SCOPES, home_identity_prefix
 from teleclaude.snippet_scope import SnippetScope as SnippetScope
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
@@ -33,26 +36,46 @@ class SnippetTaxonomy(StrEnum):
     ADR = "adr"
 
 
-#: Snippet-id prefixes reserved by the scope vocabulary, never a project slug.
-#: Derived from ``SnippetScope`` so a future tier is reserved the moment its
-#: scope value is added, plus the structural markers that are not scopes
-#: (``general`` is global's identity prefix; ``global`` itself never appears as
-#: one). A future tier's prefix is reserved the moment its scope enum member exists.
-RESERVED_SNIPPET_ID_PREFIXES: frozenset[str] = frozenset({"general", "third-party", "baseline"}) | frozenset(
-    member.value for member in SnippetScope if member is not SnippetScope.GLOBAL
+#: Snippet-id prefixes reserved by the identity grammar, never a domain name:
+#: the home identity prefixes (``projects``, ``people``, ``companies``, owned by
+#: ``HOME_IDENTITY_PREFIXES``), the home-kind domain literals, and the structural
+#: markers that are not domains.
+RESERVED_SNIPPET_ID_PREFIXES: frozenset[str] = (
+    frozenset({"general", "third-party", "baseline"})
+    | frozenset(HOME_IDENTITY_PREFIXES.values())
+    | frozenset(scope.value for scope in HOME_SCOPES)
 )
 
-#: Scopes whose identity carries an owner segment: ``<scope>/<owner>/<taxonomy>/<rest>``.
-_TIER_OWNER_SCOPES: frozenset[str] = frozenset({SnippetScope.PERSON.value, SnippetScope.COMPANY.value})
+_DOCS_DIRNAME = "docs"
+_GLOBAL_HALF = "global"
+_LOCAL_HALF = "local"
+#: The two halves of every documentation home, in classification order.
+DOCS_HALVES: tuple[str, str] = (_GLOBAL_HALF, _LOCAL_HALF)
+_BASELINE_MANIFEST_NAMES: frozenset[str] = frozenset({"baseline.md", "baseline-progressive.md"})
+_PROJECT_DECLARATION_SUBJECT = "project"
+_PROJECT_SLUG_KEY = "project_slug"
+_PROJECT_NAME_KEY = "project_name"
+_UNDECLARED_PROJECT_SLUG_MESSAGE = (
+    "Project at {root} declares neither project_slug nor project_name in teleclaude.yml; "
+    "its local snippet identities cannot be minted."
+)
+
+
+class UndeclaredProjectSlugError(ValueError):
+    """A project root declares no slug, so no local identity can be minted for it."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(_UNDECLARED_PROJECT_SLUG_MESSAGE.format(root=root))
+        self.root = root
 
 
 @dataclass(frozen=True)
 class SnippetIdParts:
     """Parsed components of a snippet ID.
 
-    ``owner`` is set only for the person and company tiers, whose identity carries
-    an owning slug segment (``person/<slug>/<taxonomy>/<rest>``,
-    ``company/<slug>/<taxonomy>/<rest>``); every other scope renders three segments.
+    ``owner`` is set only for home snippets, whose identity carries the home
+    prefix and its owning slug (``projects|people|companies/<slug>/<taxonomy>/<rest>``);
+    a domain snippet renders ``<domain>/<taxonomy>/<rest>``.
     """
 
     scope: str
@@ -62,7 +85,11 @@ class SnippetIdParts:
 
     def value(self) -> str:
         """Return the full snippet ID string."""
-        base = f"{self.scope}/{self.owner}/{self.taxonomy}" if self.owner else f"{self.scope}/{self.taxonomy}"
+        if self.owner:
+            prefix = home_identity_prefix(SnippetScope(self.scope))
+            base = f"{prefix}/{self.owner}/{self.taxonomy}"
+        else:
+            base = f"{self.scope}/{self.taxonomy}"
         if self.rest:
             return f"{base}/{self.rest}"
         return base
@@ -99,49 +126,6 @@ def _split_parts(value: str) -> tuple[list[str], bool]:
 
 def _allowed_scopes(domains: Iterable[str]) -> set[str]:
     return {"general", SnippetScope.PROJECT.value, SnippetScope.PERSON.value, SnippetScope.COMPANY.value, *domains}
-
-
-def validate_snippet_id_format(
-    value: str,
-    *,
-    domains: Iterable[str],
-) -> tuple[SnippetIdParts | None, str | None]:
-    """Validate a snippet ID string and return parsed parts or an error code.
-
-    Arity is tier-dependent: the person and company tiers carry an owner segment
-    (``<scope>/<owner>/<taxonomy>/<rest>``); every other scope is
-    ``<scope>/<taxonomy>/<rest>``. One parser renders both, via ``SnippetIdParts``.
-    """
-    if not value.strip():
-        return None, "missing"
-    raw = value.strip()
-    if raw.startswith("@"):
-        raw = raw[1:]
-    if raw.endswith(".md"):
-        return None, "looks_like_path"
-    if raw.startswith("docs/") or raw.startswith("~") or raw.startswith("/"):
-        return None, "looks_like_path"
-    parts, has_empty = _split_parts(raw)
-    if has_empty:
-        return None, "empty_segment"
-    if len(parts) < 2:
-        return None, "missing_taxonomy"
-    scope = parts[0]
-    if scope not in _allowed_scopes(domains):
-        return None, "invalid_scope"
-    if scope in _TIER_OWNER_SCOPES:
-        if len(parts) < 3:
-            return None, "missing_taxonomy"
-        owner, taxonomy = parts[1], parts[2]
-        if taxonomy not in ALLOWED_TAXONOMIES:
-            return None, "invalid_taxonomy"
-        rest = "/".join(parts[3:])
-        return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest, owner=owner), None
-    taxonomy = parts[1]
-    if taxonomy not in ALLOWED_TAXONOMIES:
-        return None, "invalid_taxonomy"
-    rest = "/".join(parts[2:])
-    return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest), None
 
 
 def companion_shape(path: Path) -> tuple[str, str] | None:
@@ -195,6 +179,39 @@ def is_companion(path: Path) -> bool:
     return companion_slug(path) is not None
 
 
+def read_declared_project_slug(project_root: Path) -> str:
+    """Return the slug a project declares, for minting its local snippet identities.
+
+    Reads ``project_slug``, else the normalized ``project_name``, from the root's
+    own ``teleclaude.yml`` without normalizing or rewriting the document. Never
+    falls back to the directory name, which is not an identity on a publication
+    snapshot or a clone. Raises :class:`UndeclaredProjectSlugError` when neither
+    is declared.
+    """
+    config_path = project_root / ConfigFileName.OVERLAY
+    if config_path.is_file():
+        payload = load_raw_declaration(config_path, subject=_PROJECT_DECLARATION_SUBJECT)
+        declared_slug = payload.get(_PROJECT_SLUG_KEY)
+        if isinstance(declared_slug, str) and declared_slug.strip():
+            return declared_slug.strip()
+        declared_name = payload.get(_PROJECT_NAME_KEY)
+        if isinstance(declared_name, str) and normalize_slug(declared_name):
+            return normalize_slug(declared_name)
+    raise UndeclaredProjectSlugError(project_root)
+
+
+def is_half_root_baseline_manifest(path: Path, *, docs_root: Path) -> bool:
+    """Whether ``path`` is a baseline manifest at the root of a home's ``docs/<half>``.
+
+    ``docs/global/baseline*.md`` and ``docs/local/baseline*.md`` list snippets for
+    assembly; they are manifests, never snippets, and carry no classification.
+    """
+    if path.name not in _BASELINE_MANIFEST_NAMES:
+        return False
+    parent = path.parent
+    return parent.name in DOCS_HALVES and parent.parent == docs_root
+
+
 def expected_snippet_id_for_path(
     path: Path,
     *,
@@ -208,17 +225,17 @@ def expected_snippet_id_for_path(
         return None, "not_under_project_root"
 
     parts = rel.parts
-    if len(parts) < 2 or parts[0] != "docs":
+    if len(parts) < 2 or parts[0] != _DOCS_DIRNAME:
         return None, "not_under_docs_root"
 
     if parts[1] == "third-party":
         return None, None
 
-    if parts[1] == "global":
+    if parts[1] == _GLOBAL_HALF:
         return _expected_from_global(parts, path, domains)
 
-    if parts[1] == "project":
-        return _expected_from_project(parts, path)
+    if parts[1] == _LOCAL_HALF:
+        return _expected_from_local(parts, path, project_root=project_root)
 
     return None, "invalid_docs_root"
 
@@ -252,17 +269,14 @@ def derive_snippet_classification(
 ) -> tuple[SnippetClassification | None, str | None]:
     """Derive snippet classification from its filesystem path.
 
-    For a declared company or person tier's documentation home, ``project_root`` is
-    the tier root itself and the layout is ``<tier root>/docs/<taxonomy>/<rest>`` —
-    no ``global``/``project`` scope segment. See :func:`_tier_root_kind`.
+    For a declared company or person tier, ``project_root`` is the tier root and
+    the layout is ``<tier root>/docs/{global,local}/<taxonomy>/<rest>`` — no domain
+    segment; both halves derive the same owner-qualified identity. See
+    :func:`tier_root_kind`.
     """
     tier_kind = tier_root_kind(project_root)
     if tier_kind is not None:
-        docs_root = project_root / "docs"
-        owner_slug = project_root.name
-        if tier_kind is SnippetScope.COMPANY:
-            return derive_company_snippet_classification(path, company_docs_root=docs_root, company_slug=owner_slug)
-        return derive_person_snippet_classification(path, person_docs_root=docs_root, person_slug=owner_slug)
+        return derive_tier_snippet_classification(path, tier_root=project_root, tier_kind=tier_kind)
 
     id_path = companion_parent(path) or path
     snippet_id, id_error = expected_snippet_id_for_path(id_path, project_root=project_root, domains=domains)
@@ -283,39 +297,42 @@ def derive_snippet_classification(
     if scope is None:
         return None, "missing_scope"
 
+    domain = scope.value if scope in HOME_SCOPES else snippet_id.split("/", 1)[0]
     return (
         SnippetClassification(
             id=snippet_id,
             type=taxonomy,
             scope=scope,
-            domain=snippet_id.split("/", 1)[0],
+            domain=domain,
         ),
         None,
     )
 
 
-COMPANY_SNIPPET_DOMAIN = "company"
-PERSON_SNIPPET_DOMAIN = "person"
-
-
-def _derive_tier_snippet_classification(
+def derive_tier_snippet_classification(
     path: Path,
     *,
-    tier_docs_root: Path,
-    owner_slug: str,
-    scope: SnippetScope,
-    domain: str,
+    tier_root: Path,
+    tier_kind: SnippetScope,
 ) -> tuple[SnippetClassification | None, str | None]:
-    """Derive a tier snippet's classification from its path under ``<tier root>/docs/``.
+    """Derive a tier snippet's classification from its path under either half.
 
-    Path-derived, never authored: ``docs/<taxonomy>/<rest>`` →
-    ``<scope>/<owner_slug>/<taxonomy>/<rest>``, the tier-qualified identity that
-    disambiguates a person or company by its own slug (`SC-8`). Shared body for
-    the company and person derivations, which differ only in scope and domain.
+    Path-derived, never authored: ``<tier root>/docs/{global,local}/<taxonomy>/<rest>``
+    → ``people|companies/<slug>/<taxonomy>/<rest>``. Both halves derive the same
+    identity, which is why the same relative path in both halves is a
+    validation error. The tier's slug is its folder name, the identity the tier
+    is discovered and registered by. The domain is the tier's kind literal.
     """
-    try:
-        rel = path.resolve().relative_to(tier_docs_root.resolve())
-    except (ValueError, OSError):
+    id_path = companion_parent(path) or path
+    docs_root = tier_root / _DOCS_DIRNAME
+    rel: Path | None = None
+    for half in DOCS_HALVES:
+        try:
+            rel = id_path.resolve().relative_to((docs_root / half).resolve())
+            break
+        except (ValueError, OSError):
+            continue
+    if rel is None:
         return None, "not_under_tier_docs_root"
     parts = rel.parts
     if len(parts) < 2:
@@ -324,62 +341,17 @@ def _derive_tier_snippet_classification(
     if raw_taxonomy not in ALLOWED_TAXONOMIES:
         return None, "invalid_taxonomy"
     rest = "/".join(parts[1:])
-    if rest.endswith(".md"):
-        rest = rest[: -len(".md")]
+    if rest.endswith(_MARKDOWN_SUFFIX):
+        rest = rest[: -len(_MARKDOWN_SUFFIX)]
     if not rest:
         return None, "missing_slug"
-    snippet_id = SnippetIdParts(scope=scope.value, taxonomy=raw_taxonomy, rest=rest, owner=owner_slug).value()
+    owner_slug = tier_root.expanduser().resolve().name
+    snippet_id = SnippetIdParts(scope=tier_kind.value, taxonomy=raw_taxonomy, rest=rest, owner=owner_slug).value()
     return (
-        SnippetClassification(id=snippet_id, type=SnippetTaxonomy(raw_taxonomy), scope=scope, domain=domain),
+        SnippetClassification(
+            id=snippet_id, type=SnippetTaxonomy(raw_taxonomy), scope=tier_kind, domain=tier_kind.value
+        ),
         None,
-    )
-
-
-def derive_company_snippet_classification(
-    path: Path,
-    *,
-    company_docs_root: Path,
-    company_slug: str | None = None,
-) -> tuple[SnippetClassification | None, str | None]:
-    """Derive a company snippet's classification from its path under ``companies/<slug>/docs/``.
-
-    ``company_slug`` defaults to ``company_docs_root``'s parent directory name — the
-    ``<slug>`` in ``companies/<slug>/docs`` — so an existing caller that only ever
-    passed the docs root keeps working unchanged. Scope is ``SnippetScope.COMPANY``,
-    the company tier's own scope: filtered to that company's members by ``context``'s
-    caller-scope resolution, not by global reach. The literal ``company`` domain
-    marks the tier.
-    """
-    slug = company_slug or company_docs_root.parent.name
-    return _derive_tier_snippet_classification(
-        path,
-        tier_docs_root=company_docs_root,
-        owner_slug=slug,
-        scope=SnippetScope.COMPANY,
-        domain=COMPANY_SNIPPET_DOMAIN,
-    )
-
-
-def derive_person_snippet_classification(
-    path: Path,
-    *,
-    person_docs_root: Path,
-    person_slug: str | None = None,
-) -> tuple[SnippetClassification | None, str | None]:
-    """Derive a person snippet's classification from its path under ``people/<slug>/docs/``.
-
-    ``person_slug`` defaults to ``person_docs_root``'s parent directory name — the
-    ``<slug>`` in ``people/<slug>/docs``. Scope is ``SnippetScope.PERSON``, the tier
-    reserved for that person's own material. The literal ``person`` domain marks the
-    tier.
-    """
-    slug = person_slug or person_docs_root.parent.name
-    return _derive_tier_snippet_classification(
-        path,
-        tier_docs_root=person_docs_root,
-        owner_slug=slug,
-        scope=SnippetScope.PERSON,
-        domain=PERSON_SNIPPET_DOMAIN,
     )
 
 
@@ -394,9 +366,9 @@ def _taxonomy_from_path(
         return None, "not_under_project_root"
     parts = rel.parts
     raw_taxonomy: str | None = None
-    if len(parts) >= 4 and parts[0] == "docs" and parts[1] == "global":
+    if len(parts) >= 4 and parts[0] == _DOCS_DIRNAME and parts[1] == _GLOBAL_HALF:
         raw_taxonomy = parts[3]
-    elif len(parts) >= 3 and parts[0] == "docs" and parts[1] == "project":
+    elif len(parts) >= 3 and parts[0] == _DOCS_DIRNAME and parts[1] == _LOCAL_HALF:
         raw_taxonomy = parts[2]
     if raw_taxonomy is None:
         return None, "missing_taxonomy"
@@ -416,11 +388,11 @@ def _index_scope_from_path(
     except (ValueError, OSError):
         return None, "not_under_project_root"
     parts = rel.parts
-    if len(parts) < 2 or parts[0] != "docs":
+    if len(parts) < 2 or parts[0] != _DOCS_DIRNAME:
         return None, "not_under_docs_root"
-    if parts[1] == "global":
+    if parts[1] == _GLOBAL_HALF:
         return SnippetScope.GLOBAL, None
-    if parts[1] == "project":
+    if parts[1] == _LOCAL_HALF:
         return SnippetScope.PROJECT, None
     return None, "invalid_docs_root"
 
@@ -466,13 +438,15 @@ def _expected_from_global(
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest).value(), None
 
 
-def _expected_from_project(
+def _expected_from_local(
     parts: tuple[str, ...],
     path: Path,
+    *,
+    project_root: Path,
 ) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_taxonomy"
-    if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "project":
+    if is_half_root_baseline_manifest(path, docs_root=project_root / _DOCS_DIRNAME):
         return None, None
     if parts[2] == "baseline":
         return None, "project_baseline_only_index"
@@ -482,7 +456,11 @@ def _expected_from_project(
     rest = _tail(parts, 3, path)
     if not rest:
         return None, "missing_slug"
-    return SnippetIdParts(scope="project", taxonomy=taxonomy, rest=rest).value(), None
+    try:
+        owner = read_declared_project_slug(project_root)
+    except UndeclaredProjectSlugError:
+        return None, "undeclared_project_slug"
+    return SnippetIdParts(scope=SnippetScope.PROJECT.value, taxonomy=taxonomy, rest=rest, owner=owner).value(), None
 
 
 def _tail(parts: tuple[str, ...], start_idx: int, path: Path) -> str:
@@ -515,7 +493,7 @@ def _global_ref_prefixes() -> tuple[str, ...]:
 
 def snippet_body_digest_for(repo_root: str) -> Callable[[str], str]:
     """Return a digest seam bound to the project whose snippets it resolves."""
-    project_index = Path(repo_root) / "docs" / "project" / "index.yaml"
+    project_index = Path(repo_root) / _DOCS_DIRNAME / _LOCAL_HALF / "index.yaml"
 
     def snippet_body_digest(snippet_id: str) -> str:
         """Return SHA256 of snippet content, excluding delivered_by frontmatter churn."""
@@ -605,14 +583,14 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
         return "nested_docs_root"
     if rel == "baseline.md":
         return None
-    if rel == "project/baseline.md":
+    if rel == f"{_LOCAL_HALF}/baseline.md":
         return None
     parts, has_empty = _split_parts(rel)
     if has_empty:
         return "empty_segment"
     if len(parts) < 3:
         return "missing_segments"
-    if parts[0] != "project":
+    if parts[0] != _LOCAL_HALF:
         return "invalid_project_scope"
     if parts[1] == "baseline":
         if len(parts) < 4:

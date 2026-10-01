@@ -29,7 +29,7 @@ caps, and the human is involved only where their lane is crossed.
   collaborative exploration, the `grill-me` skill must be available; otherwise
   this procedure has no skill dependency.
 - The bounded contexts of the codebase are known from its domain specs
-  (`docs/project/spec/domain/*`), or their absence is recorded.
+  (`docs/local/spec/domain/*`), or their absence is recorded.
 - Blueprint facts (`telec code blueprint affected`, co-change history) are
   available and their coverage limits are known; unsupported edge classes are
   never read as "no dependents".

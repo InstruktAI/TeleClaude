@@ -65,7 +65,7 @@ Read step 5 before reaching for a project destination.
    on demand without any project doing anything.
 
 5. **Adopt project-locally — only for these two reasons.** Copy the complete package
-   into the project's `agents/project/skills/<name>/`; sync delivers it into `.agents/skills/<name>/`:
+   into the project's `agents/local/skills/<name>/`; sync delivers it into `.agents/skills/<name>/`:
    - the skill must fire without an agent first consulting the index, because a
      project-local skill is deployed into the agent runtime's own skill folder and is
      therefore preloaded; or
@@ -73,13 +73,13 @@ Read step 5 before reaching for a project destination.
      earn a line in the shared catalog.
 
    Absent one of those, step 4 is the destination. "Install" does not mean "install into
-   a project"; an agent that reaches for `agents/project/skills/` because a human said
+   a project"; an agent that reaches for `agents/local/skills/` because a human said
    "install" has misread the request.
 
 6. **Link an already-curated skill into a project.** When an indexed skill must be
    always-on in one project, resolve `~/.teleclaude/skills/<name>` to its exact
    `~/.teleclaude/skill-store/<digest>/<name>` target and symlink that immutable
-   snapshot from a pin declared under `agents/project/skills/<name>`; sync writes the link
+   snapshot from a pin declared under `agents/local/skills/<name>`; sync writes the link
    into `.agents/skills/<name>`. Never link through the floating catalog name —
    the symlink target is the installed-state record. The new link is not retroactively
    added to the current session's preloaded context; read the installed package directly

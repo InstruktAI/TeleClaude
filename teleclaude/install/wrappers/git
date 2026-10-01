@@ -5,7 +5,7 @@
 # checkout's Python runtime to resolve and publish the declaration view.
 # The common wrapper path must stay fast because prompts and hubs call git often.
 #
-# Permission model for agent sessions (see docs/project/design/code-commit.md
+# Permission model for agent sessions (see docs/local/design/code-commit.md
 # for the full operations matrix):
 #   DESTRUCTIVE  — blocked for all agent roles, no override
 #                  (stash, merge/rebase/pull --autostash, clean, switch,

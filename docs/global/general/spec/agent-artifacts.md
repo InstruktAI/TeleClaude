@@ -173,9 +173,9 @@ structure and are not checked against any section taxonomy. The universal `name`
 - Skill bodies are pass-through in both scopes. Supporting Markdown is always
   opaque to taxonomy validation. Every package uses the same rendering and
   target-transformation pipeline.
-- Scope is conveyed by location, mirroring `docs/{global,project}`:
+- Scope is conveyed by location, mirroring the global and local halves of `docs/`:
   - **Global scope**: `<repository>/agents/global/commands/<domain>/*.md` for a domain the repository publishes; `TeleClaude/agents/global/commands/general/*.md` and `TeleClaude/agents/global/skills/*/SKILL.md` from the mother alone
-  - **Project scope**: `<project>/agents/project/commands/*.md`, `<project>/agents/project/skills/*/SKILL.md`
+  - **Local scope**: `<project>/agents/local/commands/*.md`, `<project>/agents/local/skills/*/SKILL.md`
   - `.agents/` is a delivery location and is never read as a source
 - Keep prompts concise to avoid bloated agent context.
 - Required reads in source docs are **inlined** in generated outputs; `@` references

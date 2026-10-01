@@ -7,7 +7,7 @@ keyed on the resolved recipient, the same mechanism the admin adapters use;
 email delivers immediately since it sits outside debounce's channel scope. An
 unresolvable recipient withholds the push and logs a warning — it never falls
 back to the admin fan-out, per
-``project/design/architecture/notification-delivery#failure-modes``.
+``projects/teleclaude/design/architecture/notification-delivery#failure-modes``.
 """
 
 from __future__ import annotations

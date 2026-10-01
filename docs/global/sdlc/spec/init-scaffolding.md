@@ -21,27 +21,30 @@ Analysis dimensions map to taxonomy types as guidance. The analysis session
 decides which snippets to produce based on what it finds — this mapping is not
 a fixed checklist.
 
-| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern                              |
-| ---------------------------------------------- | ------------- | ----------------------------------------------- |
-| Bounded context contract                       | `spec`        | `project/spec/domain/{context}`                 |
-| User-visible product capability                | `spec`        | `project/spec/feature/{context}/{concept-name}` |
-| Architecture patterns, module organization     | `design`      | `project/design/{slug}`                         |
-| Naming conventions, code style, error handling | `policy`      | `project/policy/{slug}`                         |
-| Dependency inventory, entry points, config     | `spec`        | `project/spec/{slug}`                           |
-| Test strategy, coverage model                  | `design`      | `project/design/{slug}`                         |
-| Build/deploy pipeline                          | `spec`        | `project/spec/{slug}`                           |
-| Operational procedures                         | `procedure`   | `project/procedure/{slug}`                      |
+| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern                                         |
+| ---------------------------------------------- | ------------- | ---------------------------------------------------------- |
+| Bounded context contract                       | `spec`        | `projects/{project}/spec/domain/{context}`                 |
+| User-visible product capability                | `spec`        | `projects/{project}/spec/feature/{context}/{concept-name}` |
+| Architecture patterns, module organization     | `design`      | `projects/{project}/design/{slug}`                         |
+| Naming conventions, code style, error handling | `policy`      | `projects/{project}/policy/{slug}`                         |
+| Dependency inventory, entry points, config     | `spec`        | `projects/{project}/spec/{slug}`                           |
+| Test strategy, coverage model                  | `design`      | `projects/{project}/design/{slug}`                         |
+| Build/deploy pipeline                          | `spec`        | `projects/{project}/spec/{slug}`                           |
+| Operational procedures                         | `procedure`   | `projects/{project}/procedure/{slug}`                      |
 
 ### Snippet ID Conventions
 
 Generated snippet IDs follow these supported shapes:
 
-- `project/{taxonomy}/{slug}` for flat project snippets.
-- `project/spec/domain/{context}` for bounded-context domain specs.
-- `project/spec/feature/{context}/{concept-name}` for Category A feature specs.
+- `projects/{project}/{taxonomy}/{slug}` for flat project snippets.
+- `projects/{project}/spec/domain/{context}` for bounded-context domain specs.
+- `projects/{project}/spec/feature/{context}/{concept-name}` for Category A feature specs.
 
 Where:
 
+- `{project}` is the analyzed project's declared slug; every generated ID
+  carries it, and the ID is derived from the snippet's path under `docs/local/`
+  (`general/spec/snippet-authoring-schema`).
 - `{taxonomy}` is one of: `principle`, `concept`, `policy`, `procedure`, `design`, `spec`.
 - `{slug}` is a lowercase kebab-case name derived from the content topic.
 - `{context}` is a safe bounded-context identifier using lowercase letters,
@@ -52,27 +55,27 @@ Where:
 - IDs must not collide with existing manually authored snippet IDs.
 - IDs must not contain empty path segments, `.` segments, `..` segments, or any
   other path traversal. File destinations must still resolve under
-  `docs/project/`.
+  `docs/local/`.
 
 Reserved snippet IDs (standard set, used as applicable):
 
 ```
-project/design/architecture
-project/design/test-strategy
-project/policy/conventions
-project/spec/dependencies
-project/spec/entry-points
-project/spec/build-deploy
-project/spec/configuration
+projects/{project}/design/architecture
+projects/{project}/design/test-strategy
+projects/{project}/policy/conventions
+projects/{project}/spec/dependencies
+projects/{project}/spec/entry-points
+projects/{project}/spec/build-deploy
+projects/{project}/spec/configuration
 ```
 
 ### File Placement
 
-Generated snippets are placed under `docs/project/` following the taxonomy
+Generated snippets are placed under `docs/local/` following the taxonomy
 directory structure:
 
 ```
-docs/project/
+docs/local/
   design/
     architecture.md
     test-strategy.md
@@ -101,17 +104,15 @@ Every generated snippet must include this frontmatter:
 
 ```yaml
 ---
-id: 'project/{taxonomy}/{slug}'
-type: '{taxonomy}'
-scope: 'project'
 description: '{concise description of what this snippet documents}'
 generated_by: 'telec-init'
 generated_at: '{ISO8601 timestamp}'
 ---
 ```
 
-Required fields: `id`, `type`, `scope`, `description`, `generated_by`,
-`generated_at`.
+Required fields: `description`, `generated_by`, `generated_at`. Classification
+(`id`, `type`, `scope`, `domain`) is derived from the snippet's path and never
+authored (`general/spec/snippet-authoring-schema`).
 
 - `generated_by: telec-init` marks the snippet as auto-generated.
 - `generated_at` records when the snippet was last generated or refreshed.
@@ -119,7 +120,8 @@ Required fields: `id`, `type`, `scope`, `description`, `generated_by`,
   is the current-state signal. Design-delivery snippets that describe intended
   future state carry `delivered_by: [<owning-slug>]`; analysis does not
   generate those.
-- `scope` is always `project` for enrichment-generated snippets.
+- Enrichment-generated snippets live in the project's `docs/local/`, so their
+  derived `scope` is always `project`.
 
 ### Merge Rules for Re-analysis
 
@@ -182,9 +184,9 @@ its content.
 The enrichment writer validates all output before persistence:
 
 - Snippet IDs must match one of the supported flat or nested project ID shapes.
-- File destinations must resolve to paths under `docs/project/`.
+- File destinations must resolve to paths under `docs/local/`.
 - Frontmatter must contain all required fields.
-- Unknown or unsafe snippet IDs (those that would escape `docs/project/`) are
+- Unknown or unsafe snippet IDs (those that would escape `docs/local/`) are
   rejected before any file write.
 
 ### Metadata File
@@ -197,11 +199,11 @@ last_analyzed_commit: '3f9a1c2'
 analyzed_by: telec-init
 files_analyzed: 42
 snippets_generated:
-  - project/design/architecture
-  - project/policy/conventions
-  - project/spec/dependencies
+  - projects/{project}/design/architecture
+  - projects/{project}/policy/conventions
+  - projects/{project}/spec/dependencies
 snippets_preserved:
-  - project/spec/entry-points
+  - projects/{project}/spec/entry-points
 ```
 
 This file is read during re-analysis to inform merge decisions and is updated

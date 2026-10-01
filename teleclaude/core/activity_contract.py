@@ -9,7 +9,7 @@ Canonical activity event types (outbound vocabulary):
   - agent_output_update — agent working (tool call initiated or completed)
   - agent_stop   — agent turn complete
 
-See docs/project/spec/event-vocabulary.md for the full vocabulary and hook-to-canonical mapping.
+See docs/local/spec/event-vocabulary.md for the full vocabulary and hook-to-canonical mapping.
 """
 
 from dataclasses import dataclass

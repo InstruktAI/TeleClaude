@@ -22,9 +22,10 @@ from teleclaude.git import Repo
 from teleclaude.paths import COMPANIES_ROOT, ConfigFileName
 from teleclaude.slug import normalize_slug, validate_slug
 
-# The company doc taxonomies scaffolded under docs/ (the company-scaffolding spec
+# The company doc taxonomies scaffolded under docs/local/ (the company-scaffolding spec
 # omits adr — companies carry no decision record tree).
 COMPANY_TAXONOMIES = ("principle", "concept", "policy", "procedure", "design", "spec")
+_COMPANY_LOCAL_DOCS = Path("docs") / "local"
 
 
 def _meta_path(company_dir: Path) -> Path:
@@ -55,7 +56,7 @@ def _iter_inbox_files(inbox: Path) -> list[Path]:
 def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path = COMPANIES_ROOT) -> Path:
     """Scaffold ``companies/<slug>/`` — idempotent deterministic plumbing only.
 
-    Creates the docs taxonomy tree and a git-tracked inbox, writes a minimal
+    Creates the local docs taxonomy tree and a git-tracked inbox, writes a minimal
     ``CompanyConfig`` overlay, seeds ``meta.yaml`` bookkeeping, and creates an
     owner-only (``0600``) ``.env`` for service credentials. Re-running preserves
     existing files (config, meta, populated inbox) rather than clobbering them.
@@ -64,7 +65,7 @@ def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path
     validate_slug(resolved_slug)
 
     company_dir = companies_root / resolved_slug
-    docs = company_dir / "docs"
+    docs = company_dir / _COMPANY_LOCAL_DOCS
     for taxonomy in COMPANY_TAXONOMIES:
         (docs / taxonomy).mkdir(parents=True, exist_ok=True)
 

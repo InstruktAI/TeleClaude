@@ -1,7 +1,7 @@
 """Redis subscriber that bridges v2 `workflow.*` events into the v1 daemon.
 
 The v2 Rust services publish workflow domain events to Redis pub/sub channels
-matching ``workflow.*`` (see ``docs/project/design/architecture-v2/event-bus-transports.md``).
+matching ``workflow.*`` (see ``docs/local/design/architecture-v2/event-bus-transports.md``).
 This module subscribes to those channels, decodes the envelope, and routes each
 event through a caller-provided dispatch sink — typically wiring cache
 invalidation and a WebSocket refresh push.

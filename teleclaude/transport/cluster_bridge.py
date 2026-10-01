@@ -15,7 +15,7 @@ when handling its own events.
 Scope notes:
 
 * Bridge stays agnostic of cache internals; the daemon composes the dispatch
-  callback. Per :doc:`project/policy/adapter-boundaries`.
+  callback. Per :doc:`projects/teleclaude/policy/adapter-boundaries`.
 * Idempotency LRU is in-memory only; the bootstrap snapshot covers events
   missed while a subscriber was offline.
 * Reconnects use exponential backoff capped at 30 s, matching the v2 bridges.

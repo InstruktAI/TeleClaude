@@ -148,7 +148,7 @@ note stays scoped to Graphify-the-tool; the authoritative TeleClaude integration
 design is owned by the project docs — read those, not this section, for how it is
 actually wired:
 
-- **Decision + seam:** `project/adr/0016-graphify-as-codebase-blueprint-engine`
+- **Decision + seam:** `projects/teleclaude/adr/0016-graphify-as-codebase-blueprint-engine`
 - **Capability contract:** `sdlc/spec/codebase-blueprint`
 - **Generation trigger:** the integration design's "Blueprint regeneration"
 - **Plan-time consumption:** the `plan-draft` procedure

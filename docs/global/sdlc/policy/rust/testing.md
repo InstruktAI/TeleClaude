@@ -18,7 +18,7 @@ visibility: 'public'
   languages chase with tests, and `#[cfg(test)] mod tests` over pure functions is idiomatic and
   cheap. These colocated units are not spec-bound.
 - **Spec-bound behavior lives in integration tests** at `crates/<crate>/tests/<slug>.rs`, mirroring
-  the feature spec `docs/project/spec/feature/<domain>/<slug>.md` (the domain resolves to a crate).
+  the feature spec `docs/local/spec/feature/<domain>/<slug>.md` (the domain resolves to a crate).
   Each test binds its scenario with a `// spec: <spec_id> <UC-id>` comment naming the scenario it
   realizes; Rust bindings are checked at review. Functional, smoke, and integration levels follow
   the generic policy.

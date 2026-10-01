@@ -33,7 +33,8 @@ the company tree and starts no session:
 
 - Derive slug from name (lowercase kebab-case).
 - Create `~/.teleclaude/companies/{slug}/` with subdirectories:
-  `inbox/`, `docs/`, and taxonomy directories under `docs/`.
+  `inbox/`, `docs/global/`, `docs/local/`, and taxonomy directories under each
+  half.
 - Initialize `inbox/` as a git repository for change tracking.
 - Create `meta.yaml` with company name, slug, and creation timestamp.
 
@@ -102,8 +103,11 @@ taxonomy types. The analysis session determines the natural boundaries.
 
 Generate doc snippets following the company scaffolding spec:
 
-- Use `company/{taxonomy}/{slug}` IDs.
-- Include all required frontmatter fields including `company: {slug}`.
+- Write into the company's `docs/local/`, as the company scaffolding spec
+  assigns; each snippet's identity is `companies/{slug}/{taxonomy}/{topic}`,
+  derived from its path.
+- Author only schema-permitted frontmatter; company membership comes from the
+  snippet's path, never from a frontmatter field.
 - Reference concrete findings from the input material — never generic templates.
 - Apply merge rules for existing snippets (human edits survive).
 - Validate all output before writing.
@@ -131,9 +135,10 @@ configuration step — company initialization does not modify project configs.
 
 - Company directory bootstrapped under `~/.teleclaude/companies/{slug}/`.
 - Inbox committed to local git for future diff tracking.
-- Company doc snippets generated under `~/.teleclaude/companies/{slug}/docs/`.
+- Company doc snippets generated under `~/.teleclaude/companies/{slug}/docs/local/`.
 - `meta.yaml` updated with processing history.
-- Snippets discoverable via `telec docs index` when working in linked projects.
+- Snippets discoverable via `telec docs index` wherever a member works and in
+  linked projects, and from any location by naming the company.
 
 ## Recovery
 

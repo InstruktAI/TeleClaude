@@ -530,7 +530,7 @@ snippet-body rules — and two checks do:
 
 **Frontmatter liveness check.** `delivered_by` is authorship provenance, not a
 dispatch gate. The reviewer checks frontmatter shape and stale delivered
-relationships against `project/spec/feature/context/snippet-frontmatter-validation`:
+relationships against `projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`:
 a known slug whose todo is already delivered is a finding, because delivery
 should have folded it. A slug absent from the local todo store is not a finding:
 todos are machine-local, so a git-carried pending snippet routinely names a
@@ -632,7 +632,7 @@ own trigger below, additionally flag the coherence anti-patterns
     existing snippet does not already answer. A new snippet that fails is
     rejected or collapsed into a citation from an existing one.
 
-When the changed snippet is an ADR (`docs/project/adr/**`), additionally hold its
+When the changed snippet is an ADR (`docs/local/adr/**`), additionally hold its
 body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/adr-authoring`
 — "What an ADR is"):
 
@@ -763,7 +763,7 @@ Critical when all three hold at once:
 
 When all three hold, the discrepancy is not Critical, does not force `REQUEST
 CHANGES`, and its remedy is not kickback — record it as a `log` entry on the
-todo (`project/spec/domain/workflow`) instead: a factual note, never a
+todo (`projects/teleclaude/spec/domain/workflow`) instead: a factual note, never a
 substitute for a real finding. Fail any one condition and this is a normal
 finding at full severity: a root cause that is actually wrong — even when the
 shipped fix happens to pass — does not qualify, nor does a fix that took a

@@ -76,7 +76,7 @@ launchd_path_env() {
     # Platform-published tool dirs first: ~/.local/bin (graphify, telec) and
     # ~/.cargo/bin (rust). The daemon shells out to these by bare name, so they
     # must be on its PATH for every project it manages.
-    # See project/spec/agent-shell-path (Implementation 2 — the daemon).
+    # See projects/teleclaude/spec/agent-shell-path (Implementation 2 — the daemon).
     local launchd_path="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     printf '%s\n' "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//'
 }

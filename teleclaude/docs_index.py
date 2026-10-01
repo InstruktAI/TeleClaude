@@ -8,7 +8,7 @@ Used by recorded-commit publication to build indexes from its source snapshot.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict, cast
 
@@ -33,14 +33,16 @@ from teleclaude.snippet_roots import (
     iter_tier_snippet_roots,
     snippet_files,
 )
+from teleclaude.snippet_scope import SnippetScope
 from teleclaude.snippet_validation import (
-    SnippetClassification,
+    DOCS_HALVES,
     companion_slug,
-    derive_company_snippet_classification,
-    derive_person_snippet_classification,
     derive_snippet_classification,
+    derive_tier_snippet_classification,
     is_companion,
+    is_half_root_baseline_manifest,
     load_domains,
+    read_declared_project_slug,
 )
 
 __all__ = ["load_domains", "reroot_index_document"]
@@ -49,6 +51,9 @@ logger = get_logger(__name__)
 
 _EMPTY_PROJECT_CONFIG_DOCUMENT: Final[Mapping[str, object]] = {"business": {}}
 _INDEX_PROJECT_ROOT_FIELD: Final = "project_root"
+_INDEX_FILENAME: Final = "index.yaml"
+_DOCS_DIRNAME: Final = "docs"
+_LOCAL_HALF: Final = "local"
 _INDEX_SNIPPETS_ROOT_FIELD: Final = "snippets_root"
 _INVALID_INDEX_DOCUMENT_MESSAGE: Final = (
     "Index document must contain a string snippets_root field and an optional string project_root field."
@@ -316,11 +321,9 @@ def get_project_slug(project_root: Path) -> str:
     2. Slugified ``config.project_name`` when available.
     3. Slugified directory name as a final fallback.
 
-    The slug is the machine identity used as the ``source_project`` field
-    in ``index.yaml`` entries and as the cross-project prefix for snippet
-    IDs (e.g., ``alpha/spec/overview``). Falling back through name and
-    directory ensures projects authored before ``project_slug`` was
-    required still resolve to a stable, lowercase key.
+    Used where a slug is needed before one is declared (project setup and
+    registration). Local snippet identities never use this fallback; they are
+    minted from :func:`teleclaude.snippet_validation.read_declared_project_slug`.
     """
     config_file = project_root / ConfigFileName.OVERLAY
     if config_file.exists():
@@ -418,7 +421,14 @@ def _eligible_snippet_files(snippets_root: Path, *, include_baseline: bool) -> l
 
 
 def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
-    """Build the index.yaml payload for a snippet root."""
+    """Build the index.yaml payload for a snippet root.
+
+    A project's local root mints ``projects/<declared slug>/…`` identities and
+    fails closed with :class:`teleclaude.snippet_validation.UndeclaredProjectSlugError`
+    when the project declares no slug.
+    """
+    is_local_root = snippets_root == project_root / _DOCS_DIRNAME / _LOCAL_HALF
+    local_slug = read_declared_project_slug(project_root) if is_local_root else None
     domains = load_domains(project_root)
     remove_non_baseline_indexes(snippets_root)
 
@@ -487,7 +497,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
 
     snippets.sort(key=lambda e: e["id"])
 
-    project_slug = get_project_slug(project_root)
+    project_slug = local_slug or get_project_slug(project_root)
     for snippet in snippets:
         snippet["source_project"] = project_slug
 
@@ -514,28 +524,29 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
 _TIER_AUTHORED_CLASSIFICATION_KEYS = ("id", "type", "scope", "domain")
 
 
-def _build_tier_index_payload(
-    tier_docs_root: Path,
-    classify: Callable[[Path], tuple[SnippetClassification | None, str | None]],
-    *,
-    tier_label: str,
-) -> IndexPayload:
-    """Build the index.yaml payload for a tier docs tree (``companies/<slug>/docs`` or ``people/<slug>/docs``).
+def _build_tier_index_payload(tier_root: Path, half: str, tier_kind: SnippetScope) -> IndexPayload:
+    """Build the catalog payload for one half (``docs/global`` or ``docs/local``) of a tier home.
 
     Classification is path-derived; the only authored frontmatter is ``description``
     (``visibility`` optional). A snippet that authors ``id``/``type``/``scope``/``domain``
     violates the no-authored-classification contract and fails the build loudly.
+    The half's root ``baseline*.md`` manifests are not snippets and are skipped.
 
-    Recorded rooted at ``tier_docs_root``, which is a publication snapshot when
-    building at platform-home publication time; ``reroot_index_document``
-    re-expresses the recorded roots at install time, so this function need not
-    know its own install-time destination.
+    Recorded rooted at the half, which is a publication snapshot when building at
+    platform-home publication time; ``reroot_index_document`` re-expresses the
+    recorded roots at install time, so this function need not know its own
+    install-time destination.
     """
-    if not tier_docs_root.exists():
-        return {"project_root": str(tier_docs_root), "snippets_root": str(tier_docs_root), "snippets": []}
+    tier_docs_root = tier_root / _DOCS_DIRNAME
+    half_root = tier_docs_root / half
+    tier_label = tier_kind.value.capitalize()
+    if not half_root.exists():
+        return {"project_root": str(half_root), "snippets_root": str(half_root), "snippets": []}
 
     snippets: list[SnippetEntry] = []
-    for file_path in _eligible_snippet_files(tier_docs_root, include_baseline=False):
+    for file_path in _eligible_snippet_files(half_root, include_baseline=False):
+        if is_half_root_baseline_manifest(file_path, docs_root=tier_docs_root):
+            continue
         post = frontmatter.load(str(file_path))
         metadata: Mapping[str, object] = post.metadata or {}
         authored = [key for key in _TIER_AUTHORED_CLASSIFICATION_KEYS if key in metadata]
@@ -547,7 +558,7 @@ def _build_tier_index_payload(
         description = metadata.get("description")
         if not isinstance(description, str):
             raise ValueError(f"{tier_label} snippet {file_path} is missing a 'description'.")
-        classification, reason = classify(file_path)
+        classification, reason = derive_tier_snippet_classification(file_path, tier_root=tier_root, tier_kind=tier_kind)
         if classification is None:
             raise ValueError(
                 f"Cannot derive {tier_label.lower()} snippet classification for {file_path}: {reason or 'unknown'}"
@@ -565,34 +576,29 @@ def _build_tier_index_payload(
             "scope": classification.scope.value,
             "domain": classification.domain,
             "activation_trigger": None,
-            "path": str(file_path.relative_to(tier_docs_root)),
+            "path": str(file_path.relative_to(half_root)),
             "visibility": visibility,
         }
         _copy_subscriptions_metadata(entry, metadata)
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])
-    return {"project_root": str(tier_docs_root), "snippets_root": str(tier_docs_root), "snippets": snippets}
+    return {"project_root": str(half_root), "snippets_root": str(half_root), "snippets": snippets}
 
 
-def build_company_index_payload(company_dir: Path) -> IndexPayload:
-    """Build the index.yaml payload for a company docs tree (``companies/<slug>/docs``)."""
-    docs_root = company_dir / "docs"
-    return _build_tier_index_payload(
-        docs_root,
-        lambda file_path: derive_company_snippet_classification(file_path, company_docs_root=docs_root),
-        tier_label="Company",
-    )
+def build_company_index_payload(company_dir: Path, half: str) -> IndexPayload:
+    """Build the catalog payload for one half of a company home (``companies/<slug>``)."""
+    return _build_tier_index_payload(company_dir, half, SnippetScope.COMPANY)
 
 
-def build_person_index_payload(person_dir: Path) -> IndexPayload:
-    """Build the index.yaml payload for a person docs tree (``people/<slug>/docs``)."""
-    docs_root = person_dir / "docs"
-    return _build_tier_index_payload(
-        docs_root,
-        lambda file_path: derive_person_snippet_classification(file_path, person_docs_root=docs_root),
-        tier_label="Person",
-    )
+def build_person_index_payload(person_dir: Path, half: str) -> IndexPayload:
+    """Build the catalog payload for one half of a person home (``people/<slug>``)."""
+    return _build_tier_index_payload(person_dir, half, SnippetScope.PERSON)
+
+
+def tier_index_path(tier_root: Path, half: str) -> Path:
+    """Return the catalog path of one half of a tier home: ``docs/<half>/index.yaml``."""
+    return tier_root / _DOCS_DIRNAME / half / _INDEX_FILENAME
 
 
 def _write_index_content_gated(target: Path, payload: IndexPayload, *, delete_if_empty: bool) -> Path:
@@ -617,20 +623,16 @@ def _write_index_content_gated(target: Path, payload: IndexPayload, *, delete_if
     return target
 
 
-def write_company_index(company_dir: Path) -> Path:
-    """Build and write the company docs index.yaml. Returns the target path."""
-    docs_root = company_dir / "docs"
-    return _write_index_content_gated(
-        docs_root / "index.yaml", build_company_index_payload(company_dir), delete_if_empty=False
-    )
+def write_tier_indexes(tier_root: Path, tier_kind: SnippetScope) -> list[Path]:
+    """Build and write both halves' catalogs of a tier home. Returns the target paths.
 
-
-def write_person_index(person_dir: Path) -> Path:
-    """Build and write the person docs index.yaml. Returns the target path."""
-    docs_root = person_dir / "docs"
-    return _write_index_content_gated(
-        docs_root / "index.yaml", build_person_index_payload(person_dir), delete_if_empty=False
-    )
+    Each half gets a catalog even when it holds no snippets.
+    """
+    written: list[Path] = []
+    for half in DOCS_HALVES:
+        payload = _build_tier_index_payload(tier_root, half, tier_kind)
+        written.append(_write_index_content_gated(tier_index_path(tier_root, half), payload, delete_if_empty=False))
+    return written
 
 
 def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
@@ -671,5 +673,6 @@ def build_tier_indexes(platform_home_snapshot: Path) -> list[Path]:
     """
     written: list[Path] = []
     for root, kind in iter_tier_snippet_roots(platform_home_snapshot):
-        written.append(write_company_index(root) if kind is ConfigKind.COMPANY else write_person_index(root))
+        tier_kind = SnippetScope.COMPANY if kind is ConfigKind.COMPANY else SnippetScope.PERSON
+        written.extend(write_tier_indexes(root, tier_kind))
     return written

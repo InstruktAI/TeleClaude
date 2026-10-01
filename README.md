@@ -146,8 +146,8 @@ Project configs may add project-specific names in `<project>/teleclaude.yml` wit
 
 ## Explore the Depth
 
-- **[Architecture: The Unified Pipeline](docs/project/design/architecture/system-overview.md)**
-- **[Setup: The Multi-Computer Mesh](docs/project/procedure/multi-computer-setup.md)**
+- **[Architecture: The Unified Pipeline](docs/local/design/architecture/system-overview.md)**
+- **[Setup: The Multi-Computer Mesh](docs/local/procedure/multi-computer-setup.md)**
 - **[Philosophy: The Breath](docs/global/general/principle/breath.md)**
 
 ---

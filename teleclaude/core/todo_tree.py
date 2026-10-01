@@ -95,7 +95,7 @@ def _resolve_parent(
 
     Resolved by durable id, never by slug: a retained delivered/removed row
     may legitimately share a slug with a live holder's synthetic label node
-    (project/spec/feature/workflow/todo-management#known-caveats), so slug
+    (projects/teleclaude/spec/feature/workflow/todo-management#known-caveats), so slug
     matching would misattribute the wrong row as parent.
     """
     group_id = (

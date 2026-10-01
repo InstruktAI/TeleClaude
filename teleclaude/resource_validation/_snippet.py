@@ -41,12 +41,14 @@ from teleclaude.resource_validation._models import (
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
+    DOCS_HALVES,
     SnippetClassification,
     SnippetScope,
     SnippetTaxonomy,
     derive_snippet_classification,
     generated_domain_bundle_domain,
     is_companion,
+    is_half_root_baseline_manifest,
     is_retirement_companion,
     load_domains,
     validate_inline_ref_format,
@@ -57,6 +59,9 @@ INCLUDE_DIRECTIVE_RE = re.compile(r"<!--\s*@include:\s*(.+?\.md)\s*-->")
 _THIRD_PARTY_TYPE = "third-party"
 _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
 _INLINE_REF_PREFIX = "@"
+_LOCAL_HALF = "local"
+_DOCS_DIRNAME = "docs"
+_BASELINE_SEGMENT = "baseline"
 # ---------------------------------------------------------------------------
 # Shared ref resolution
 # ---------------------------------------------------------------------------
@@ -66,7 +71,7 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
     """Resolve an ``@`` reference to an absolute path.
 
     Handles absolute paths, ``~/`` expansion, ``docs/`` relative paths with
-    project/global fallback, and paths relative to the referencing file.
+    local/global fallback, and paths relative to the referencing file.
     """
     if "://" in ref:
         return None
@@ -76,7 +81,7 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
             candidate = (root_path / candidate).resolve()
             if not candidate.exists():
                 tail = Path(ref).relative_to("docs")
-                project_candidate = (root_path / "docs" / "project" / tail).resolve()
+                project_candidate = (root_path / "docs" / _LOCAL_HALF / tail).resolve()
                 if project_candidate.exists():
                     candidate = project_candidate
                 else:
@@ -324,7 +329,7 @@ def validate_snippet(
     if (path.name == "index.md" and "baseline" in path.parts) or (
         path.name.startswith("baseline")
         and path.name.endswith(".md")
-        and (path.parent.name in ("global", "project") or path.parent.parent.name in ("global", "project"))
+        and (path.parent.name in DOCS_HALVES or path.parent.parent.name in DOCS_HALVES)
     ):
         _validate_baseline_index(path, content, project_root, domains=domains)
         return
@@ -824,7 +829,7 @@ def _containing_tier_root(path: Path, tier_roots: list[Path]) -> Path | None:
     """The declared tier root whose documentation home contains ``path``, or ``None``."""
     for root in tier_roots:
         try:
-            path.resolve().relative_to((root / "docs").resolve())
+            path.resolve().relative_to((root / _DOCS_DIRNAME).resolve())
             return root
         except ValueError:
             continue
@@ -835,6 +840,7 @@ def _validate_scoped_paths(
     project_root: Path, paths: list[Path], *, snippet_roots: list[Path], tier_roots: list[Path], domains: set[str]
 ) -> None:
     """Validate an explicit path list, matching each against project then tier roots."""
+    collision_checked: set[Path] = set()
     for path in paths:
         if path.name == "index.yaml" or path.suffix != ".md":
             continue
@@ -867,8 +873,11 @@ def _validate_scoped_paths(
         tier_root = _containing_tier_root(path, tier_roots)
         if tier_root is None:
             continue
-        if is_excluded_snippet_path(path, tier_root / "docs"):
+        if is_excluded_snippet_path(path, tier_root / _DOCS_DIRNAME):
             continue
+        if tier_root not in collision_checked:
+            collision_checked.add(tier_root)
+            _validate_tier_half_collisions(tier_root)
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -877,20 +886,55 @@ def _validate_scoped_paths(
         validate_snippet(path, text, tier_root, domains=domains)
 
 
+def _validate_tier_half_collisions(tier_root: Path) -> None:
+    """Report each relative path present in both halves of a tier home.
+
+    Both halves derive the same owner-qualified identity, so a shared relative
+    path would publish one identity twice. One finding names both files.
+    """
+    docs_root = tier_root / _DOCS_DIRNAME
+    halves = [docs_root / half for half in DOCS_HALVES]
+    if not all(half.is_dir() for half in halves):
+        return
+    published_root, local_root = halves
+    published = {
+        path.relative_to(published_root)
+        for path in published_root.rglob("*.md")
+        if not is_excluded_snippet_path(path, published_root)
+        and not is_half_root_baseline_manifest(path, docs_root=docs_root)
+    }
+    for path in sorted(local_root.rglob("*.md")):
+        if is_excluded_snippet_path(path, local_root) or is_half_root_baseline_manifest(path, docs_root=docs_root):
+            continue
+        relative = path.relative_to(local_root)
+        if relative in published:
+            _error(
+                "snippet_tier_half_collision",
+                path=str(published_root / relative),
+                other=str(path),
+                reason="the same relative path in both halves derives one identity twice",
+            )
+
+
 def _validate_tier_roots(
     tier_roots: list[Path], *, domains: set[str], todo_status_facts: Mapping[str, TodoStatusFact] | None
 ) -> None:
-    """Full-run validation of every declared, participating tier's documentation home."""
+    """Full-run validation of every declared, participating tier's documentation home.
+
+    Walks both halves; a half-root ``baseline*.md`` manifest is checked as a
+    manifest (its inline references), every other file as a snippet.
+    """
     for tier_root in tier_roots:
-        tier_docs_root = tier_root / "docs"
+        tier_docs_root = tier_root / _DOCS_DIRNAME
         if not tier_docs_root.exists():
             continue
+        _validate_tier_half_collisions(tier_root)
         for path in sorted(tier_docs_root.rglob("*.md")):
             if path.name == "index.yaml":
                 continue
             if is_excluded_snippet_path(path, tier_docs_root):
                 continue
-            if "baseline" in str(path):
+            if _BASELINE_SEGMENT in path.relative_to(tier_docs_root).parent.parts:
                 continue
             try:
                 text = path.read_text(encoding="utf-8")

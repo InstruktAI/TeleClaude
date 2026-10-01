@@ -39,7 +39,7 @@ def iter_snippet_roots(project_root: Path) -> list[Path]:
     roots: list[Path] = []
     candidates = [
         project_root / "docs" / "global",
-        project_root / "docs" / "project",
+        project_root / "docs" / "local",
         project_root / "agents" / "docs",
     ]
     for candidate in candidates:

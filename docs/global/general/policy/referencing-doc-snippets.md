@@ -22,12 +22,19 @@ visibility: 'public'
 - A generated global documentation artifact resolves to the published generation, never to a
   publisher source tree. The merged index and every published domain's baseline bundle are the
   artifacts this covers; every authored global snippet resolves to the project that owns it.
-- Project doc references must use `@docs/...` (repo‑relative to the project root).
-- Person and company doc references use the absolute-home form of the tier's
-  published address: `@<HOME>/.teleclaude/docs/companies/<slug>/...` or
-  `@<HOME>/.teleclaude/docs/people/<slug>/...`. An authored tier snippet
-  resolves to its source in that tier's documentation home. A tier snippet's
-  Required reads name only its own tier and global documentation.
+- Local doc references use `@docs/local/...`, relative to the root of the home
+  that holds both the referencing and the referenced snippet.
+- References to a person's or company's published snippets use the
+  absolute-home form of the tier's published address:
+  `@<HOME>/.teleclaude/docs/companies/<slug>/...` or
+  `@<HOME>/.teleclaude/docs/people/<slug>/...`. Such a reference resolves to
+  its source in that tier's `docs/global`. A tier snippet's Required reads name
+  only its own tier and global documentation.
+- A published snippet never requires a local snippet, and no snippet requires
+  another home's local snippet: local material is never published, so such a
+  reference cannot resolve for every reader. The snippet cites the local one by
+  its qualified id instead (`projects/<slug>/…`, `people/<slug>/…`,
+  `companies/<slug>/…`), which resolves from any location.
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.
 

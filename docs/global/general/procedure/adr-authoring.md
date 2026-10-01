@@ -44,16 +44,16 @@ broken:
 ## Preconditions
 
 - A non-trivial decision is being committed to documentation, agent artifacts, or architecture. (Per the ADR discipline policy: a future agent would reasonably ask "why was it done this way?")
-- The agent has identified the ADR's number by inspecting `docs/project/adr/` for the highest existing number and incrementing.
+- The agent has identified the ADR's number by inspecting `docs/local/adr/` for the highest existing number and incrementing.
 - The agent has read the ADR discipline policy and the snippet authoring schema's `adr` type definition.
 
 ## Steps
 
-1. **Pick the next number.** List the `docs/project/adr/` folder. Find the highest existing `NNNN-` prefix. The new ADR is `NNNN+1` (4-digit zero-padded).
+1. **Pick the next number.** List the `docs/local/adr/` folder. Find the highest existing `NNNN-` prefix. The new ADR is `NNNN+1` (4-digit zero-padded).
 
 2. **Pick a kebab-case title.** Short, action-oriented, describes the decision. Examples: `memory-uses-triples`, `event-store-semantics`, `provenance-via-mirror-id`.
 
-3. **Create the file** at `docs/project/adr/NNNN-kebab-case-title.md` with the frontmatter shape:
+3. **Create the file** at `docs/local/adr/NNNN-kebab-case-title.md` with the frontmatter shape:
 
    ```yaml
    ---
@@ -102,7 +102,7 @@ broken:
 
 ## Outputs
 
-- A new file at `docs/project/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered). `## Status` is omitted on a fresh ADR and added only later when a newer ADR supersedes it.
+- A new file at `docs/local/adr/NNNN-<title>.md` containing Context / Decision / Consequences (and optional Alternatives Considered). `## Status` is omitted on a fresh ADR and added only later when a newer ADR supersedes it.
 
 ## Discipline
 

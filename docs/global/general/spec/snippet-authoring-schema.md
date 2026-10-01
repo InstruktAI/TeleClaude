@@ -11,21 +11,35 @@ Defines the required structure, section headings, and directory layout for docum
 
 ## Canonical fields
 
-Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path** by the index build (`docs/index.yaml`) and materialized there — it is **never authored in frontmatter**. Validation separately enforces that the H1 type suffix matches the path-derived type. The index is the single source of truth for these four fields:
+Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path** by the index build and materialized in the catalog of the half the snippet lives in — it is **never authored in frontmatter**. Validation separately enforces that the H1 type suffix matches the path-derived type. The index is the single source of truth for these four fields:
 
-- `id` — unique snippet identifier. **Derived** from the snippet's path below the docs root.
+- `id` — unique snippet identifier, **derived** from the snippet's path below its
+  half and, for a home's snippet, from the home's own declaration. There is one
+  identity per snippet, the same from every location:
+  - `<domain>/<taxonomy>/<rest>` — a domain snippet, published by the domain's
+    owner from its `docs/global/<domain>/`.
+  - `projects/<slug>/<taxonomy>/<rest>` — a project's local snippet.
+  - `people/<slug>/<taxonomy>/<rest>` — a person's snippet, in either half.
+  - `companies/<slug>/<taxonomy>/<rest>` — a company's snippet, in either half.
+
+  `<slug>` is the slug the home declares, never a directory name. A local
+  index stores its entries under these qualified identities; no identity has a
+  shorter or location-relative form.
 - `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
 - `domain` — **Derived** as the first path segment of the id. It holds either a
   published knowledge domain (`sdlc` and its peers) or a
   structural marker: `general`, `project`, `person`, or `company`. The last two
-  are the tier markers that person and company identities begin with; a
-  structural marker is never a published domain.
+  are the home kinds whose identities begin with `people` and `companies`; a
+  structural marker is never a published domain. A home's snippet is the
+  exception to the first-segment rule: its identity begins with the plural home
+  prefix (`projects`, `people`, `companies`), and its derived domain is the
+  home's kind — `project`, `person`, or `company` — never that prefix.
 - `scope` — the tier the snippet belongs to: `global`, `project`, `person`, or
-  `company`. **Derived** from the path. Snippets under a person's or a company's
-  documentation tree carry that tier and an identity that names which person or
-  which company, because more than one tier of the same kind can be assembled
-  into a single index at once and an unqualified identity would be ambiguous
-  between them.
+  `company`. **Derived** from the home and half: a domain snippet is `global`,
+  a project's local snippet is `project`, and a person's or company's snippet
+  carries that tier in both halves. More than one home of the same kind can be
+  assembled into a single read at once, which is why every home's identity
+  names the owner.
 
 Frontmatter (required, authored):
 
@@ -102,14 +116,29 @@ Design snippets should include Mermaid diagrams where visual representation aids
 
 ### Directory layout
 
+Every documentation home — a repository (the TeleClaude repository and every
+registered project), a person's home, and a company's home — has the same two
+halves:
+
+- `docs/global/` — the **published** half. Publication copies it into
+  `~/.teleclaude/docs/`, where it is served to every reader it admits.
+- `docs/local/` — the **local** half. It is never published: it is indexed in
+  place and served from the home's local index.
+
+The half decides where a snippet is served from, never who may read it; reach
+and depth follow the reader's identity and the snippet's `visibility`
+(`general/design/configuration-tiers`).
+
 - `docs/global/baseline.md` — baseline manifest (curated required reads).
 - `docs/global/general/{taxonomy}/` — on-demand cross-domain documentation.
 - `docs/global/{domain}/{taxonomy}/` — domain-specific (e.g., `sdlc`).
-- `docs/project/{taxonomy}/` — project-scoped documentation.
+- `docs/local/{taxonomy}/` — project-scoped documentation.
 
 <!-- planned-change:personal-knowledge-taxonomy -->
-- `~/.teleclaude/people/{person}/docs/{taxonomy}/` — a person's own documentation.
-  Path-derived identity carries the tier and the person: `person/{person}/{taxonomy}/{rest}`.
+- `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` and
+  `~/.teleclaude/people/{person}/docs/local/{taxonomy}/` — a person's published
+  and local documentation. Path-derived identity carries the tier and the
+  person: `people/{person}/{taxonomy}/{rest}`.
 <!-- change:personal-knowledge-taxonomy -->
 - `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` — a person's disclosed
   documentation, published with that person's ownership and visibility.
@@ -119,21 +148,29 @@ Design snippets should include Mermaid diagrams where visual representation aids
   taxonomy and frontmatter schema; knowledge contents and disclosure boundaries
   are owned by `personal/spec/person-knowledge`.
 <!-- /planned-change:personal-knowledge-taxonomy -->
-- `~/.teleclaude/companies/{company}/docs/{taxonomy}/` — a company's documentation.
-  Path-derived identity carries the tier and the company: `company/{company}/{taxonomy}/{rest}`.
-  Several tiers of one kind can be assembled into a single index at once, so both
-  tiers name whose material they are.
-- `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
-- `{scope}/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `sdlc/principle/documentation-first-development`), under the scope whose bounded context owns the behavior; `docs/project/` is the common one, not the only one. Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
-- `docs/project/design/architecture/<topic>/overview.md` — canonical design snippet for a composite architecture topic. Named sibling design snippets carry independently useful facets; topic-owned non-Markdown companions may sit beside them.
+- `~/.teleclaude/companies/{company}/docs/global/{taxonomy}/` and
+  `~/.teleclaude/companies/{company}/docs/local/{taxonomy}/` — a company's
+  published and local documentation.
+- A repository's `docs/local/{taxonomy}/` snippets derive the identity
+  `projects/{project}/{taxonomy}/{rest}`.
+- Both halves of a person's home derive the same identity,
+  `people/{person}/{taxonomy}/{rest}`, and both halves of a company's home derive
+  `companies/{company}/{taxonomy}/{rest}`; neither has a domain segment. Their
+  published halves are deployed under `~/.teleclaude/docs/people/{person}/` and
+  `~/.teleclaude/docs/companies/{company}/`.
+- The same relative path under both halves of a person's or company's home is a
+  validation error: both files would carry the same identity.
+- `docs/local/spec/domain/{context}.md` — bounded-context domain spec (one per service).
+- `{half}/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `sdlc/principle/documentation-first-development`), under the half whose bounded context owns the behavior; `docs/local/` is the common one, not the only one. Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
+- `docs/local/design/architecture/<topic>/overview.md` — canonical design snippet for a composite architecture topic. Named sibling design snippets carry independently useful facets; topic-owned non-Markdown companions may sit beside them.
 - `<stem>.<slug>.md` (sibling to any `<stem>.md`) — a **companion**: the complete next version of `<stem>.md`, where `<slug>` is the delivering todo. A non-empty companion is a full snippet that shares the parent's derived `id` (the validator detects it by the sibling filename and exempts the id↔path / id-collision checks). An **empty** (zero-byte) companion is a **retirement**: the parent has no next version, the validator accepts it without snippet checks, and `telec docs get <id> --target <slug>` renders an empty pending view. The link lives entirely in the filename, the index never lists the companion, and default readers see the parent. On delivery a non-empty companion **replaces** the parent file and is deleted; an empty companion is deleted together with the parent. Bounded additions use in-body `&lt;!-- planned:slug --&gt;` blocks; bounded replacements and removals use in-body `&lt;!-- planned-change:slug --&gt;` blocks. All three live-parent carriers contribute to the parent's `(superseded by: <slugs>)` index suffix.
-- `docs/project/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/project/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter. The ADR body references earlier ADRs only (a backward in-prose reference); the one forward link is the optional `## Status` section's supersession pointer (`Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated`), added to an existing ADR when a later one supersedes it. `## Status` is the only part of an ADR that may change after authoring; the body is immutable.
+- `docs/local/adr/{NNNN}-{kebab-case-title}.md` — an `adr` snippet (type derived from the `adr/` path). Architectural decision records. Capture what was chosen and why, so specs/procedures/principles can describe the current state without becoming history logs. `date` and `number` are required additional frontmatter fields. ADRs sit at top-level under `docs/local/` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/`) — they are reasoning records, not design exploration, and do not belong under `design/`. An `adr` snippet carries no `delivered_by`, no `supersedes`, and no companion file — ADRs sit outside the pending/delivery machinery and do not cross-reference each other via frontmatter. The ADR body references earlier ADRs only (a backward in-prose reference); the one forward link is the optional `## Status` section's supersession pointer (`Superseded by ADR-NNNN` / `Superseded in part by ADR-NNNN` / `Deprecated`), added to an existing ADR when a later one supersedes it. `## Status` is the only part of an ADR that may change after authoring; the body is immutable.
 
 - **In-body marker grammar.** The `planned`, `planned-change`, and `change` markers are **whole-line**: each occupies its own line, with only whitespace before its opening `<!--` and after its closing `-->`. Markers **never nest** — an in-body block holds only plain content between its own markers, never another `planned`/`planned-change` block, and two carriers never overlap. Marker validation rejects inline (mid-prose) and nested markers as malformed, so every accepted marker is one the delivery fold can resolve.
 
-- `docs/project/baseline.md` — project baseline manifest (curated required reads).
+- `docs/local/baseline.md` — project baseline manifest (curated required reads).
 
-Global snippets are distributed to `~/.teleclaude/docs/` and available to all projects. Project snippets stay local to their repository.
+Published snippets are distributed to `~/.teleclaude/docs/` under their identity. Local snippets stay in their home and are served from its local index; any reader reaches them from any location by naming their home or their identity.
 
 ### Grouped snippets — folder convention
 
@@ -159,6 +196,8 @@ do not accumulate by default.
 
 - `type`: principle, concept, policy, procedure, design, spec, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, project, person, company.
+- Home identity prefixes: `projects`, `people`, `companies`. They are reserved:
+  no published domain carries one of these names.
 <!-- planned-change:personal-knowledge-taxonomy -->
 - `visibility`: public, internal. Default: `internal`.
 <!-- change:personal-knowledge-taxonomy -->
@@ -173,4 +212,4 @@ do not accumulate by default.
 - Section headings must match the schema exactly; extra headings are invalid.
 - For schema validation, "section headings" means the required H2 taxonomy sections. Subordinate headings inside a valid section are allowed.
 
-- `docs/index.yaml` is auto-generated by the index build — never hand-edit it.
+- The catalogs of both halves (`docs/global/index.yaml`, `docs/local/index.yaml`) are generated by the index build — never hand-edit them.

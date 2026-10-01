@@ -4,7 +4,7 @@ A field's tier declares what reaches humans: ``internal`` (the default),
 ``public``, or ``tui``. The tier is the single authority for the public config
 surface — the generated ``templates/config.yml`` sample and the config TUI render
 set are consequences of these markers, never independent sources. See
-``project/policy/config-public-surface``.
+``projects/teleclaude/policy/config-public-surface``.
 
 The marker is read from a Pydantic ``FieldInfo``'s ``json_schema_extra["tier"]``. A field with no marker is
 ``internal``. ``effective_tier`` resolves a leaf's tier by inheritance: the leaf's

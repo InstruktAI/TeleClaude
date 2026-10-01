@@ -4,7 +4,7 @@ files_analyzed: 2253
 snippets_generated: []
 snippets_preserved: []
 notes: >
-  Mother TeleClaude repository. Existing docs/project/ tree contains 100+
+  Mother TeleClaude repository. Existing docs/local/ tree contains 100+
   human-authored snippets that exhaustively cover architecture, policies,
   specs, and procedures. Applying general/policy/snippet-value-contract,
   every standard taxonomy slot failed the value test — either covered by

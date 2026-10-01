@@ -18,7 +18,7 @@ visibility: 'public'
 
 <!-- planned-change:enforce-process-marker-test-placement -->
 
-2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
+2. **Test files mirror the feature spec.** A spec at `docs/local/spec/feature/<domain>/<slug>.md`
    is covered by `tests/<domain>/test_<slug>.py`. Contract-defining tooling (wrappers, git filters)
    is not tested — see the generic policy.
 3. **Bind scenarios with the marker** `@pytest.mark.spec("<spec_id>", "<UC-id>")`.
@@ -30,7 +30,7 @@ visibility: 'public'
 
 <!-- change:enforce-process-marker-test-placement -->
 
-2. **Test files mirror the feature spec.** A spec at `docs/project/spec/feature/<domain>/<slug>.md`
+2. **Test files mirror the feature spec.** A spec at `docs/local/spec/feature/<domain>/<slug>.md`
    is covered by `tests/<domain>/test_<slug>.py`. A `process`-tier test is the exception: it lives
    under `tests/process/` (rule 3), which owns its location. Contract-defining tooling (wrappers,
    git filters) is not tested — see the generic policy.

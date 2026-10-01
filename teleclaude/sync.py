@@ -224,8 +224,9 @@ def _execute_publication(
         if not capabilities.is_target:
             if _is_platform_home(canonical_root):
                 # This validates every participating tier's snippet sources, installs
-                # each tier's catalog at its documentation home in the canonical home
-                # checkout, then composes the tier contribution into the deployed corpus.
+                # both catalogs of each tier (docs/global and docs/local) at its home in
+                # the canonical home checkout, then composes only the published half
+                # into the deployed corpus.
                 tier_findings = _collect_tier_source_findings(snapshot_root)
                 if tier_findings:
                     return validation_failed()

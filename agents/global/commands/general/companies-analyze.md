@@ -19,11 +19,11 @@ company's member projects can discover its knowledge on demand.
 
 Process the company onboarding per the company-scaffolding spec: read the company
 `meta.yaml` and inbox, diff against the recorded SHA digest to find new and changed
-material, generate path-derived `company/<taxonomy>/<slug>` snippets under
-`companies/<slug>/docs/`, build the company index, and validate. Preserve
+material, generate path-derived `companies/<slug>/<taxonomy>/<topic>` snippets under
+`companies/<slug>/docs/local/`, build the company index, and validate. Preserve
 human-authored sections when re-onboarding.
 
 ## Discipline
 
 Author only `description` frontmatter — classification is path-derived. Never write
-outside the company's docs tree, and reprocess only the inbox files whose SHA changed.
+outside the company's `docs/local` tree, and reprocess only the inbox files whose SHA changed.

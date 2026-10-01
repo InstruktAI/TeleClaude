@@ -19,6 +19,7 @@ from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTE
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
+from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES
 
 CURRENT_SCHEMA_VERSION = 9
 
@@ -173,6 +174,9 @@ def is_agent_job(schedule: JobScheduleConfig) -> bool:
 
 
 PUBLISHES_TRIGGER_MAX_LENGTH: Final = 200
+_RESERVED_HOME_PREFIX_ERROR: Final = (
+    "PublishesEntry.slug {slug!r} is a reserved home identity prefix and cannot name a domain"
+)
 
 
 class PublishesEntry(ClosedModel):
@@ -186,6 +190,14 @@ class PublishesEntry(ClosedModel):
 
     slug: str = Field(min_length=1)
     trigger: str
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug_not_home_prefix(cls, v: str) -> str:
+        """Reject a domain slug that is a home identity prefix (``projects``, ``people``, ``companies``)."""
+        if v.strip() in HOME_IDENTITY_PREFIXES.values():
+            raise ValueError(_RESERVED_HOME_PREFIX_ERROR.format(slug=v.strip()))
+        return v
 
     @field_validator("trigger")
     @classmethod
@@ -461,7 +473,7 @@ class CheckpointConfig(ClosedModel):
     """Project checkpoint maintenance overlay merged atop the platform-universal base.
 
     Authored at analyze-time by intelligence (``telec sessions run --command
-    /projects-analyze``) per ``project/procedure/checkpoint-overlay-projection``;
+    /projects-analyze``) per ``projects/teleclaude/procedure/checkpoint-overlay-projection``;
     consumed structurally by
     the checkpoint engine. An unreadable overlay degrades to base-only (fail-open).
     """
@@ -557,7 +569,7 @@ class ProjectConfig(ClosedModel):
 
     This is the project-scoped overlay, not the machine runtime config — the
     public/editable machine surface is declared by the per-field ``tier`` markers
-    on ``TeleclaudeConfig`` (``project/policy/config-public-surface``). Keys that
+    on ``TeleclaudeConfig`` (``projects/teleclaude/policy/config-public-surface``). Keys that
     belong machine-wide (the release channel, the workflow control plane) live on
     the machine config, not here.
     """
@@ -650,7 +662,7 @@ class GlobalConfig(ClosedModel):
 
     Like ``ProjectConfig``, this is an overlay, not the machine runtime config; the
     public/editable machine surface is the per-field ``tier`` markers on
-    ``TeleclaudeConfig`` (``project/policy/config-public-surface``). ``checkout_root``
+    ``TeleclaudeConfig`` (``projects/teleclaude/policy/config-public-surface``). ``checkout_root``
     is the surviving git overlay key, marked ``internal`` — not human-edited in the
     wizard.
     """

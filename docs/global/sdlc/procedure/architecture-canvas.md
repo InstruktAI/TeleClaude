@@ -73,7 +73,7 @@ needs to see is cheaper and clearer as Mermaid source; see
 8. For a composite architecture topic, promote durable material into:
 
    ```text
-   docs/project/design/architecture/<topic>/
+   docs/local/design/architecture/<topic>/
      overview.md
      <facet>.md
      canvas.excalidraw

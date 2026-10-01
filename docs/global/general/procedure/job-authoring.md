@@ -38,7 +38,7 @@ Place it by the job's nature:
 
 - Maintenance jobs: `docs/global/general/procedure/maintenance/{job-slug}.md`
 - Domain-specific jobs: `docs/global/{domain}/procedure/{job-slug}.md`
-- Project-only jobs: `docs/project/procedure/{job-slug}.md`
+- Project-only jobs: `docs/local/procedure/{job-slug}.md`
 
 Define the job-specific artifacts and report under Outputs, including any history
 the next run consumes. The `run-job` brief supplies the role boundary and
@@ -78,10 +78,12 @@ override any setting for that project except the execution pointer — its own `
 leaves unset falls back to the published defaults, and the job runs inside the subscribing
 project.
 
-The `job:` value is the procedure's canonical snippet ID. A global-registry
-declaration uses an ID that resolves from every project (global-scope or
-slug-prefixed); a project-local declaration may use its own
-`project/procedure/...` ID.
+The `job:` value is the procedure's canonical snippet ID, which is the same from
+every location (`general/spec/snippet-authoring-schema`): `<domain>/procedure/...`
+for a published procedure, `projects/<slug>/procedure/...` for a project's local
+one. A project-local declaration may point at its own project's local procedure;
+a global-registry declaration points at a procedure every subscribing project
+can read.
 
 ### 4. For script jobs: write the script
 

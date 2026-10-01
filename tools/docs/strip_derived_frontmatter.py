@@ -10,7 +10,7 @@ from pathlib import Path
 import frontmatter
 
 DERIVED_KEYS = frozenset({"id", "type", "scope", "domain"})
-DOC_ROOTS = ("docs/global", "docs/project", "docs/third-party")
+DOC_ROOTS = ("docs/global", "docs/local", "docs/third-party")
 SKIPPED_FILENAMES = frozenset({"index.md", "index.yaml"})
 
 
@@ -36,7 +36,9 @@ def strip_file(path: Path, *, dry_run: bool = False) -> StripResult:
     stripped = {key: value for key, value in metadata.items() if key not in DERIVED_KEYS}
     if stripped == metadata:
         return StripResult(path=path, changed=False)
-    rendered = frontmatter.dumps(frontmatter.Post(post.content, **stripped)).rstrip() + "\n"
+    stripped_post = frontmatter.Post(post.content)
+    stripped_post.metadata.update(stripped)
+    rendered = frontmatter.dumps(stripped_post).rstrip() + "\n"
     if not dry_run:
         path.write_text(rendered, encoding="utf-8")
     return StripResult(path=path, changed=True)

@@ -7,28 +7,23 @@ visibility: 'public'
 
 ## Rules
 
-- Agent artifacts carry the same tier shape documentation has. In a repository they live under `agents/{global,project}/{commands,skills}`; in a company or person home they live flat under `agents/{commands,skills}` beside `docs/`. Commands and skills are the artifact kinds and are treated equally; subagent definitions are not an artifact class. Global commands are partitioned by the domains the repository publishes, under the same one-owner declaration that governs documentation domains; general commands and global skills are the mother's alone, and global content outside a repository's declared reach fails validation.
+- Agent artifacts carry the same tier shape documentation has. In a repository they live under `agents/{global,local}/{commands,skills}`; in a company or person home they live flat under `agents/{commands,skills}` beside `docs/`. Commands and skills are the artifact kinds and are treated equally; subagent definitions are not an artifact class. Global commands are partitioned by the domains the repository publishes, under the same one-owner declaration that governs documentation domains; general commands and global skills are the mother's alone, and global content outside a repository's declared reach fails validation.
 - Authored sources and generated output never share a location. `.agents/` is a delivery location — the open project-local convention agent runtimes read — and is never an authored source root. A directory that is written by the platform is not also read as input.
 - A machine-generated artifact reaches no further than the tier that produced it; promotion to a wider tier is a human act.
-
 
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts — commands and skills — are standalone agent-infrastructure plumbing; code never depends on their content, and couples to a command only where the platform dispatches it by name. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no content for code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, artifact distribution deploys it and the commits policy governs its commit.
 - **A dispatched command retires with the delivery that removes its last dispatcher.** The command must exist while any dispatcher on `main` still names it, and must not outlive the delivery that removes the last one. Its retirement is therefore the one pending carrier an artifact takes: during that delivery's preparation, an empty companion `<name>.<slug>.md` is authored beside the command on `main`, naming the delivering slug, and the delivery fold deletes the command and the companion together. The command stays deployed until then. A new dispatched command needs no carrier: authored on `main` ahead of its dispatcher, it is inert until dispatched.
 - Any `AGENTS.master.md` in a project is inflated by artifact distribution into an adjacent `AGENTS.md`.
 
-
 - Master files are thin wrappers. Their only authored contents are `## Purpose` and `## Required reads`. Only the repository-root `AGENTS.master.md` produces the project entrypoint and receives the generated project baseline index and project activatable-procedure catalog. A nested master produces a directory-local entrypoint from its own authored content and required reads; it never inherits project-wide baseline material. They are never a knowledge home — all knowledge lives in doc snippets under `docs/`, and developer-experience prose lives in the README. A contract, procedure, architecture note, or operational note authored into a master file is a defect to be relocated to its rightful snippet.
-
 
 - Master files are locked against unprompted edits: an agent never edits a master file on its own initiative or as a side effect of other work — only when the human raises the change in the session, and then the agent makes the edit. The lock guards the wrapper against accreting knowledge; it does not route typing to the human. It is declared by a `LOCKED_FILE` sentinel at the top and bottom of each master file.
 - A `CLAUDE.md` companion is always created or replaced next to each `AGENTS.master.md` with a single line: `@./AGENTS.md`.
 - Generated outputs under `dist/` are build artifacts. Do not edit them directly.
 
-
 - The generated per-agent entrypoint files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are build outputs — never edit them directly. Author the source artifacts; new instruction text belongs in a source addendum, never in a generated file.
 - Deployed runtime directories (`~/.claude/`, `~/.codex/`, `~/.gemini/`) are also build outputs — never create or edit files there directly. Always author in source. This applies to any future agent runtime: `~/.{agent}/` directories are always deployment targets, never sources.
 - Documentation indexes (for example `docs/index.yaml` and baseline index blocks in generated `AGENTS.md`) are generated by the index build; do not hand-edit them.
-
 
 - Inline references are expanded for Claude, Codex, and Gemini outputs.
 - Frontmatter is preserved by default; `hooks` are only emitted for Claude outputs.
@@ -48,11 +43,9 @@ visibility: 'public'
 - Limiting `hooks` to Claude matches current agent capabilities and avoids invalid configs.
 - Quality configuration is the wall agent work is measured against; under goal pressure, any checker its own subject can edit gets edited toward green, one defensible commit message at a time. Governing the wall's definition places it outside the constrained author's unilateral reach.
 
-
 - A dispatched command is coupled to code in one direction only: its removal. Deleted on `main` before its last dispatcher is delivered, it breaks the dispatch still live there; deleted by hand afterwards, it has no owner once the preparing session ends. The fold that delivers the dispatcher's removal is the only act that reaches exactly that moment, so the removal rides it.
 
 - Reading authored input from a directory the platform also writes makes a file's provenance unreadable from its location: an author cannot tell their own work from generated output, and a regenerating deploy is free to overwrite something a human wrote. Keeping the source root out of every delivery location is what makes that class of loss unrepresentable rather than merely avoided by convention.
-
 
 ## Scope
 

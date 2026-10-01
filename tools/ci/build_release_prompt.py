@@ -33,7 +33,7 @@ NO_CHANGES = "No changes.\n\n"
 PROMPT_FILE = "release-prompt.txt"
 PROMPT_PREFIX = "Prompt size: "
 PROMPT_SUFFIX = " bytes"
-RELEASE_PROMPT = "docs/project/spec/release-inspector-prompt.md"
+RELEASE_PROMPT = "docs/local/spec/release-inspector-prompt.md"
 
 
 def latest_tag(repo: Repo) -> str:

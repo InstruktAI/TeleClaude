@@ -14,7 +14,7 @@ visibility: 'public'
 - An ADR records one real, contestable decision — a fork where genuine alternatives existed and one was chosen over them. It is created only for such a decision, and only because that reasoning is needed to work safely with what was built.
 - The default is none. New and tightened contracts, clarifications, restatements, and alignment to already-settled decisions carry no fork and take no ADR. An unclear case takes none. An ADR is never produced preemptively, to satisfy a process step, or by clerical habit.
 - The ADR is authored BEFORE or ALONGSIDE the primary artifact change, never retroactively long after.
-- ADRs live at `docs/project/adr/NNNN-<kebab-case-title>.md` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/` — NOT under `design/`, because ADRs are reasoning records, not design exploration), follow the `type: adr` schema (Context / Decision / Consequences, with required `date` and `number` frontmatter), and are discovered via `telec docs index --areas adr`.
+- ADRs live at `docs/local/adr/NNNN-<kebab-case-title>.md` (peer to `spec/`, `design/`, `policy/`, `procedure/`, `concept/` — NOT under `design/`, because ADRs are reasoning records, not design exploration), follow the `type: adr` schema (Context / Decision / Consequences, with required `date` and `number` frontmatter), and are discovered via `telec docs index --areas adr`.
 - Primary artifacts (specs, procedures, principles) MUST describe the _current state_ — they are NOT reasoning logs. The reasoning belongs in the accompanying ADR, not inline.
 - The converse also holds: an ADR contains only the _why_ of a contested fork. Content that defines a term, states a contract, or describes current state is spec / policy / schema material, not ADR material. A record whose substance is definition, restatement, or current-state description carries no fork and is not an ADR — even when cast in the ADR form.
 - When a **project-scoped** snippet relates to an ADR, point to it from the
@@ -39,7 +39,7 @@ All agents authoring or modifying:
 
 - Doc snippets under `docs/`
 - Agent artifacts under `agents/` or `.agents/`
-- Architecture documents under `docs/project/design/architecture/`
+- Architecture documents under `docs/local/design/architecture/`
 - Policies, principles, procedures, concepts, specs at any level
 
 ## Enforcement

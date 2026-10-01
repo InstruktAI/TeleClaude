@@ -11,8 +11,6 @@ visibility: public
 
 ## Required reads
 
-- @docs/project/spec/domain/memory.md
-
 ## Goal
 
 Turn a session's conversation into a stream of durable memory triples that survive the session and feed downstream pattern-matchers, without polluting the memory store with content already codified elsewhere or with interpretive synthesis.
@@ -21,6 +19,7 @@ Turn a session's conversation into a stream of durable memory triples that survi
 
 - The agent is the memory miner — the sole authorized writer to memory. No other agent role may run this procedure.
 - The session being extracted has a corresponding mirror (`session_mirrors.text_content` populated). The mirror's `mirror_id` is the provenance handle the agent will record on every saved triple.
+- The agent has read the memory domain contract (`projects/teleclaude/spec/domain/memory`).
 - The agent has loaded its category-specific feature spec (human or project) which declares the predicate vocabulary, subject resolution rules, and out-of-scope boundary.
 - The agent has read access to existing doc snippets (`telec docs index` and `telec docs get`) — without this, the dedup discipline cannot be enforced.
 

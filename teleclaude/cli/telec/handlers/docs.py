@@ -61,7 +61,7 @@ class DocsRetrievalContext:
 @dataclass(frozen=True)
 class DocsContext:
     project_root: Path
-    include_registered_projects: bool
+    landing_kind: ConfigKind | None
 
 
 DocsHandler = Callable[[list[str], DocsRetrievalContext], None]
@@ -95,12 +95,13 @@ def _emit_retrieval_accepted(
 
 
 def _resolve_docs_context() -> DocsContext:
+    """Resolve the landed home; the landing sets only the default read set."""
     roots = resolve_invocation_roots()
     if roots.context_root is None:
-        return DocsContext(project_root=roots.invocation_dir, include_registered_projects=True)
+        return DocsContext(project_root=roots.invocation_dir, landing_kind=None)
     if roots.context_kind is ConfigKind.PROJECT:
-        return DocsContext(project_root=roots.require_project_root(), include_registered_projects=False)
-    return DocsContext(project_root=roots.context_root, include_registered_projects=False)
+        return DocsContext(project_root=roots.require_project_root(), landing_kind=ConfigKind.PROJECT)
+    return DocsContext(project_root=roots.context_root, landing_kind=roots.context_kind)
 
 
 def _parse_scope(value: str, subcommand: str) -> SnippetScope:
@@ -240,7 +241,7 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
         company=company,
         caller=caller,
         config=config,
-        include_registered_projects=docs_context.include_registered_projects,
+        landing_kind=docs_context.landing_kind,
         retrieval_id=context.retrieval_id,
         verb=context.verb.value,
     )
@@ -304,7 +305,7 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
             closure=closure,
             caller=caller,
             config=config,
-            include_registered_projects=docs_context.include_registered_projects,
+            landing_kind=docs_context.landing_kind,
             retrieval_id=context.retrieval_id,
             verb=context.verb.value,
         )

@@ -66,7 +66,7 @@ Edge (UI / API adapters) → Core (business logic, domain services) → Infrastr
 - Core **decides** based on domain logic; it doesn't translate.
 - Infrastructure **executes** mechanically; it doesn't decide.
 
-See `project/design/architecture/layer-ownership` for the platform's concrete layering.
+See `projects/teleclaude/design/architecture/layer-ownership` for the platform's concrete layering.
 
 ### 6. CLI-first agency
 
@@ -125,4 +125,4 @@ These are concrete moves the defaults reject. Listed explicitly because agents o
 - **Event-driven vs synchronous semantics.** Some operations need transactional guarantees event-driven composition can't provide. The principle yields here: when the semantics genuinely require synchronous, choose synchronous and document the reason. Don't fight the semantics.
 - **CLI-first vs other agent protocols.** MCP and similar protocols have real value in specific contexts (e.g., when integrating with an external tool that only exposes MCP). The principle is "default to CLI; reach for MCP/etc when the external integration demands it" — not "ban MCP."
 - **State ownership vs read performance.** Single-state-owner is strict; some read-heavy patterns benefit from replicated state. The principle accepts replicated state as long as the source of truth is explicit and the replication mechanism is documented (events as the replication signal, not direct database reads).
-- **Defaults vs project-specific architecture.** This principle is the global default. Specific projects may have additional structural choices that aren't in the global defaults. Those live in project-specific architecture docs (`docs/project/design/architecture/...`), not here.
+- **Defaults vs project-specific architecture.** This principle is the global default. Specific projects may have additional structural choices that aren't in the global defaults. Those live in project-specific architecture docs (`docs/local/design/architecture/...`), not here.

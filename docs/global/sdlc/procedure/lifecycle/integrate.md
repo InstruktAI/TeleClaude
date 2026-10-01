@@ -29,7 +29,7 @@ each decision point until the queue is drained.
   included. The rule keeps a candidate's ancestry and working tree free of work that sits
   on local `main` but not yet on `origin/main`.
 - The git wrapper refuses a local-`main` reference inside a slug worktree with no
-  override; the wrapper matrix in `docs/project/design/code-commit.md` carries the rule.
+  override; the wrapper matrix in `docs/local/design/code-commit.md` carries the rule.
 - **The agent's cwd is the integration worktree.** All git and make commands run from
   there without `-C` prefixes. Commands targeting project root (repo sync) are emitted
   by the engine with explicit `-C <project_root>` paths. **The worktree's index and
@@ -37,7 +37,7 @@ each decision point until the queue is drained.
   `telec code commit` instructions it emits write to them. Read-only git commands —
   `status`, `log`, `show`, `diff <ref>..<ref>`, `rev-parse` — are fine. Mutating
   commands inside the worktree are gated per the wrapper matrix (see
-  `docs/project/design/code-commit.md`): `stash` is absolutely blocked everywhere
+  `docs/local/design/code-commit.md`): `stash` is absolutely blocked everywhere
   (no role carve-out — stash is too coarse for a multi-agent repo); `checkout <ref>
 -- <path>`, `restore <path>`, and `restore --source <ref> <path>` require the
   `--confirmed` flag after reading the printed inspection checklist; pathspec

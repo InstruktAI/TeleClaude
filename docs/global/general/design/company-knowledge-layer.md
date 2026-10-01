@@ -14,54 +14,59 @@ isolation is enforced.
 
 ## Inputs/Outputs
 
-| Component          | Receives                              | Produces                                   |
-| ------------------ | ------------------------------------- | ------------------------------------------ |
-| Onboard command    | Company name, inbox path              | Company directory, meta.yaml, git inbox    |
-| Analysis session   | Input files, existing snippets        | Company doc snippets, updated meta.yaml    |
-| Context selector   | Project config (company field), index | Merged context: global + company + project |
-| Project config     | `company: {slug}` declaration         | Company membership for context filtering   |
-| `telec docs index` | Company snippet directories           | Company snippets in index output           |
+| Component          | Receives                                               | Produces                                                       |
+| ------------------ | ------------------------------------------------------ | -------------------------------------------------------------- |
+| Onboard command    | Company name, inbox path                               | Company directory, meta.yaml, git inbox                        |
+| Analysis session   | Input files, existing snippets                         | Company doc snippets, updated meta.yaml                        |
+| Publication        | The company's committed `docs/global`                  | The company's published snippets in the shared corpus          |
+| Local index build  | The company's committed `docs/local`                   | The company's local catalog, kept in the company home          |
+| Context selector   | Caller identity, landing location, selectors, catalogs | The caller's read set, each company read at the caller's depth |
+| Project config     | `company: {slug}` declaration                          | The project's owning company                                   |
+| `telec docs index` | The read set the selector resolved                     | Company snippets in index output                               |
 
 ## Invariants
 
 ### Storage isolation
 
 Each company has exactly one directory: `~/.teleclaude/companies/{slug}/`.
-Company directories are siblings, never nested. A company's docs directory
+Company directories are siblings, never nested. A company's documentation
 contains only that company's snippets. No cross-company file references.
 
-### Project membership
+The company home has the two documentation halves every documentation home has
+(`general/spec/snippet-authoring-schema`): `docs/global` is published into the
+shared corpus, and `docs/local` is never published and is served from the
+company's own local catalog.
+
+### Identity
+
+Every company snippet carries the identity `companies/{slug}/<taxonomy>/<rest>`,
+whichever half holds it, and that identity is the same from every location.
+Identities of different companies, projects, people, and domains never collide,
+so no tier overrides another and there is no precedence to resolve.
+
+### Project ownership
 
 A project belongs to at most one company. The `company` field in
-`teleclaude.yml` is a string matching a company slug. If absent, the
-project has no company context — only global and project docs are loaded.
+`teleclaude.yml` is a string matching a company slug. An invocation in a project
+that declares an owning company offers that company in its default read set; a
+project without the declaration offers no company beyond the caller's own.
 
-### Context selection hierarchy
+### Reach and depth
 
-The context selector merges three tiers in precedence order:
-
-```
-project (highest) → company → global (lowest)
-```
-
-When snippet IDs collide across tiers, the higher-precedence tier wins.
-In practice, collisions are rare because each tier uses a different ID
-prefix (`project/`, `company/`, domain-based for global).
+A company's documentation enters the default read set of every member wherever
+they work, and of every invocation in a project that declares the company as its
+owner. Any caller reaches it from any location by naming the company, through a
+selector or a `companies/{slug}/…` identity; both halves are read. Depth follows
+the caller's relationship, never the location or the half: a member of the
+company, or a platform admin, reads it in full; anyone else reads its
+`visibility: public` snippets only. The relationship rules themselves are owned
+by `general/design/configuration-tiers`.
 
 ### Multi-company isolation
 
-When a session starts in a project with `company: acme`, the context
-selector includes only Acme's company docs. Snippets from other companies
-are never loaded, even if they exist on the same machine. The filter is
-based on the `company` frontmatter field matching the project's declared
-company.
-
-### Snippet scope semantics
-
-Company snippets use `scope: global` in their frontmatter because they
-are available to multiple projects — they are not confined to a single
-repository. However, they are filtered by the `company` field, making
-them effectively "global within a company."
+A caller's view of a company they do not belong to is that company's public
+snippets, whatever project they work in and whatever they name. Membership in
+one company opens nothing of another.
 
 ## Primary flows
 
@@ -75,7 +80,7 @@ flowchart TD
     D --> E[User dumps material into inbox/]
     E --> F[Dispatch /telec-company-analyze session]
     F --> G[Analysis reads inbox files]
-    G --> H[Generate company/ snippets]
+    G --> H[Write companies/acme/ snippets]
     H --> I[Update meta.yaml bookkeeping]
     I --> J[User adds company: acme to project teleclaude.yml]
 ```
@@ -97,11 +102,12 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Session starts in project] --> B{project has company field?}
-    B -->|yes| C[Load global + company + project docs]
-    B -->|no| D[Load global + project docs]
-    C --> E[Merge by precedence: project > company > global]
-    D --> F[Merge by precedence: project > global]
+    A[Invocation] --> B{Selector or qualified identity names a home?}
+    B -->|no| C[Default read set: landed home and its owning company, caller's person tier, caller's companies, global]
+    B -->|yes| D[Read set: the named homes]
+    C --> E[Load published corpus and the local catalogs of homes in the set]
+    D --> E
+    E --> F[Read each company in full for members and admins, public snippets for everyone else]
 ```
 
 ## Failure modes
@@ -125,7 +131,8 @@ timestamp in `meta.yaml` makes staleness visible.
 The inbox git repository becomes corrupted. Recovery: delete `.git/` in the
 inbox directory. Next onboard will re-initialize git and process all files
 as new (full analysis, no diff optimization). No snippet data is lost —
-snippets live in `docs/`, not in the inbox.
+snippets live in the company's `docs/global` and `docs/local`, not in the
+inbox.
 
 ### Company slug collision
 
@@ -136,11 +143,18 @@ fails with a clear error suggesting a different name.
 
 ### Cross-company leakage
 
-A misconfigured project declares the wrong company. The agent loads another
-company's policies. Prevention: the `company` field is a simple string match
-— there is no authorization layer. This is acceptable for single-operator
-deployments. For multi-tenant hosting, company isolation would need an
-additional auth check, which is out of scope for the initial implementation.
+A misconfigured project declares the wrong company. Invocations in that project
+offer the wrong company in their default read set, but depth still follows each
+caller's own relationship: a caller who does not belong to that company reads
+only its public snippets.
+
+### Confidentiality read from the half
+
+Filing a snippet in `docs/local` does not hide it, and filing it in
+`docs/global` does not expose it: the half decides where a snippet is served
+from, and its `visibility` with the caller's relationship decides who reads it.
+Internal company material placed in `docs/global` is published into the shared
+corpus and is still read in full only by members and admins.
 
 ## See Also
 

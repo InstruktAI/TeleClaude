@@ -12,7 +12,6 @@ visibility: public
 ## Required reads
 
 - @~/.teleclaude/docs/general/procedure/memory-extraction/overview.md
-- @docs/project/spec/feature/memory/extraction-human.md
 
 ## Goal
 
@@ -23,7 +22,7 @@ Extract durable facts about the human from a session mirror, classified into the
 All preconditions from the general procedure apply. Plus:
 
 - The agent's category for this run is `human`.
-- The agent has loaded the human-category vocabulary and subject-resolution rules from the feature spec (above).
+- The agent has loaded the human-category vocabulary and subject-resolution rules from the feature spec (`projects/teleclaude/spec/feature/memory/extraction-human`).
 
 ## Steps
 

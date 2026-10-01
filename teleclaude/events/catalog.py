@@ -67,7 +67,7 @@ class EventSchema(BaseModel):
     # Safer default per the v2 event-bus contract: cross-context schemas are the
     # majority. Schemas that intentionally stay in-process (content, deployment,
     # notification, signal) set ``default_visibility=EventVisibility.LOCAL``
-    # explicitly. See docs/project/design/architecture-v2/event-bus-transports.md.
+    # explicitly. See docs/local/design/architecture-v2/event-bus-transports.md.
     default_visibility: EventVisibility = EventVisibility.CLUSTER
     lifecycle: NotificationLifecycle | None = None
     actionable: bool = False

@@ -34,8 +34,8 @@ MARKDOWN_DIRS = [
 AGENT_ARTIFACT_DIRS = (
     Path("agents/global/commands"),
     Path("agents/global/skills"),
-    Path("agents/project/commands"),
-    Path("agents/project/skills"),
+    Path("agents/local/commands"),
+    Path("agents/local/skills"),
 )
 
 # Root-level markdown files to validate

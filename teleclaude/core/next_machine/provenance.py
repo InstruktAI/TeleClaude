@@ -283,7 +283,7 @@ def _global_ref_to_id(ref: str) -> str:
 
 def _snippet_ids_delivered_by(slug: str, *, repo_root: str) -> list[str]:
     ids: set[str] = set()
-    for index_path in (Path(repo_root) / "docs" / "project" / "index.yaml", GLOBAL_DOCS_DIR / "index.yaml"):
+    for index_path in (Path(repo_root) / "docs" / "local" / "index.yaml", GLOBAL_DOCS_DIR / "index.yaml"):
         ids.update(_snippet_ids_delivered_by_from_index(index_path, slug))
     return sorted(ids)
 

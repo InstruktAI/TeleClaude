@@ -12,12 +12,19 @@ concept, policy, procedure, design, spec, or decision record (ADR). Each snippet
 and scope in frontmatter, follows a schema specific to that type, and can declare hard
 dependencies on other snippets.
 
-Snippets exist in two scopes:
+Snippets live in documentation homes — each repository, each person, and each
+company — and every home keeps them in two halves:
 
-- **Global** — cross-project knowledge (coding standards, procedures, shared policies),
-  maintained in the TeleClaude repo and distributed to `~/.teleclaude/docs/` for all
-  projects.
-- **Project** — knowledge specific to one repository, living alongside its code.
+- **Global** (`docs/global/`) — published to `~/.teleclaude/docs/`. In a
+  repository it holds the domains that repository publishes (coding standards,
+  procedures, shared policies); in a person's or company's home it holds what
+  that person or company publishes.
+- **Local** (`docs/local/`) — the home's own knowledge, living alongside what it
+  describes, never published, and served from the home's own index.
+
+Every snippet has one qualified identity, the same from every location, so a
+reader reaches any home's snippets from anywhere by naming the home or the
+identity, at the depth their own identity grants.
 
 Agents retrieve snippets on demand via `telec docs index` + `telec docs get`
 rather than loading
@@ -34,6 +41,6 @@ design.**
 
 AI agents work within limited context windows. Bundling all documentation into every
 prompt wastes tokens and dilutes signal. Snippets make knowledge modular and selectively
-retrievable — an agent pulls only what it needs for the task at hand. The global/project
-split keeps shared knowledge maintained once and project-specific knowledge local, without
-duplication.
+retrievable — an agent pulls only what it needs for the task at hand. The global/local
+split keeps shared knowledge maintained once and published everywhere, and each home's
+own knowledge beside its owner, without duplication.

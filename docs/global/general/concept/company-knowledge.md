@@ -12,21 +12,27 @@ project-specific docs. It captures the policies, procedures, principles, domain
 language, and structural context of a company (or organization, nonprofit, solo
 practice — any entity that owns projects).
 
-The knowledge lives under `~/.teleclaude/companies/{slug}/` and is stored as
-taxonomy-conformant doc snippets with `company/` prefix IDs. When an agent session
-starts in a project linked to a company (`company: <slug>` in `teleclaude.yml`),
-the company's doc snippets are loaded alongside global and project docs.
+The knowledge lives under `~/.teleclaude/companies/{slug}/` in the two halves
+every documentation home has: `docs/global`, which the company publishes, and
+`docs/local`, which is served from the company home and never published. Both
+halves hold taxonomy-conformant doc snippets whose identities begin
+`companies/{slug}/`. When an agent session starts in a project linked to a
+company (`company: <slug>` in `teleclaude.yml`), or the caller belongs to the
+company, the company's doc snippets are loaded alongside global and project docs.
 
-### Scope hierarchy
+### Reach
 
 ```
 global (platform docs) → company (organizational docs) → project (repo docs)
 ```
 
-Global docs are always available. Company docs are available to projects that
-declare membership. Project docs are available only within their repository.
-The context selector merges all three tiers, with project docs taking precedence
-over company docs, which take precedence over global docs when IDs collide.
+Global docs are always available. A company's docs are offered by default to
+its members wherever they work and to every invocation in a project that
+declares the company as its owner. Project docs are offered by default where the
+project is worked in. Any home's docs — company or project — are reachable from
+any location by naming the home. Every snippet has its own qualified identity,
+so the tiers never collide and none overrides another; what a caller reads of a
+tier follows their relationship to it (`general/design/configuration-tiers`).
 
 ### What it contains
 
@@ -54,8 +60,8 @@ system it bridges and reflects state one way rather than syncing.
 
 ### What it is not
 
-- Not project-specific code conventions — those belong in `project/` scope.
-- Not global platform knowledge — that belongs in `global/` scope.
+- Not project-specific code conventions — those belong in the project's `docs/local`.
+- Not global platform knowledge — that belongs in a published domain.
 - Not third-party library docs — those belong in `third-party/`.
 - Not ephemeral task context — that belongs in session memory or todos.
 - Not company-coupled application code — that lives in the company `apps/` home as
@@ -66,8 +72,9 @@ system it bridges and reflects state one way rather than syncing.
 A single TeleClaude installation can host multiple companies. Each company has
 its own `~/.teleclaude/companies/{slug}/` directory with isolated docs. Projects
 link to exactly one company via their `teleclaude.yml` config. Company knowledge
-never leaks across company boundaries — the context selector filters by the
-project's declared company.
+never leaks across company boundaries: a caller who does not belong to a company
+reads only that company's public snippets, whatever project they work in and
+whatever they name.
 
 ## Why
 

@@ -38,7 +38,7 @@ for supported CLIs.
    non-authoritative scratchpad and stop before editing Git-tracked artifacts on
    shared `main`.
 1. Choose the artifact kind — command or skill — and its tier and reach: a project
-   artifact lives under `agents/project/{commands,skills}`; a global command lives under
+   artifact lives under `agents/local/{commands,skills}`; a global command lives under
    `agents/global/commands/<domain>/` in the repository that publishes `<domain>`, or
    under `agents/global/commands/general/` in the mother; a global skill lives under the
    mother's `agents/global/skills/<name>/`. `.agents/` is never authored into. A master

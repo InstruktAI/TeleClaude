@@ -25,20 +25,24 @@ scope, storage location, and input surface.
 ### Storage Layout
 
 ```
-~/.teleclaude/companies/{slug}/
+~/.teleclaude/companies/{company}/
   meta.yaml                         # company metadata and onboard history
   inbox/                            # input material (git-tracked)
-  docs/                             # generated doc snippets
-    principle/
-    concept/
-    policy/
-    procedure/
-    design/
-    spec/
+  docs/
+    global/                         # what the company publishes
+      principle/ concept/ policy/ procedure/ design/ spec/
+    local/                          # generated doc snippets, never published
+      principle/ concept/ policy/ procedure/ design/ spec/
 ```
 
 The `inbox/` directory is a git repository initialized by the onboard command.
 This enables `git diff` for smart re-processing on subsequent onboard runs.
+
+The analysis session writes every generated snippet into `docs/local/`.
+`docs/global/` holds what the company deliberately publishes, including every
+procedure that declares `subscriptions`; the analysis session never moves a
+snippet there on its own. The half decides where a snippet is served from, never who may read it
+(`general/policy/artifact-scope`).
 
 ### Discovery-to-Taxonomy Mapping
 
@@ -46,35 +50,37 @@ Organizational material maps to taxonomy types. The analysis session decides
 which snippets to produce based on what it finds — this mapping is guidance,
 not a fixed checklist.
 
-| Source Material                                      | Taxonomy Type | Snippet ID Pattern         |
-| ---------------------------------------------------- | ------------- | -------------------------- |
-| Company values, engineering principles, culture docs | `principle`   | `company/principle/{slug}` |
-| Org structure, team topology, domain model, products | `concept`     | `company/concept/{slug}`   |
-| HR policies, security standards, compliance rules    | `policy`      | `company/policy/{slug}`    |
-| Onboarding flows, deployment SOPs, incident response | `procedure`   | `company/procedure/{slug}` |
-| System architecture, infrastructure topology         | `design`      | `company/design/{slug}`    |
-| API contracts, data schemas, service inventory       | `spec`        | `company/spec/{slug}`      |
+| Source Material                                      | Taxonomy Type | Snippet ID Pattern                      |
+| ---------------------------------------------------- | ------------- | --------------------------------------- |
+| Company values, engineering principles, culture docs | `principle`   | `companies/{company}/principle/{topic}` |
+| Org structure, team topology, domain model, products | `concept`     | `companies/{company}/concept/{topic}`   |
+| HR policies, security standards, compliance rules    | `policy`      | `companies/{company}/policy/{topic}`    |
+| Onboarding flows, deployment SOPs, incident response | `procedure`   | `companies/{company}/procedure/{topic}` |
+| System architecture, infrastructure topology         | `design`      | `companies/{company}/design/{topic}`    |
+| API contracts, data schemas, service inventory       | `spec`        | `companies/{company}/spec/{topic}`      |
 
 ### Snippet ID Conventions
 
-Generated snippet IDs follow the pattern `company/{taxonomy}/{slug}` where:
+Generated snippet IDs follow the pattern `companies/{company}/{taxonomy}/{topic}` where:
 
+- `{company}` is the company's declared slug.
 - `{taxonomy}` is one of: `principle`, `concept`, `policy`, `procedure`, `design`, `spec`.
-- `{slug}` is a lowercase kebab-case name derived from the content topic.
-- IDs must be unique within the company scope.
+- `{topic}` is a lowercase kebab-case name derived from the content topic.
+- IDs are derived from the snippet's path, identical in either half, and must be
+  unique across both halves of the company home.
 
 Reserved snippet IDs (standard set, used as applicable):
 
 ```
-company/concept/organization
-company/concept/domain-model
-company/concept/team-topology
-company/policy/security
-company/policy/coding-standards
-company/procedure/onboarding
-company/procedure/incident-response
-company/design/architecture
-company/spec/service-inventory
+companies/{company}/concept/organization
+companies/{company}/concept/domain-model
+companies/{company}/concept/team-topology
+companies/{company}/policy/security
+companies/{company}/policy/coding-standards
+companies/{company}/procedure/onboarding
+companies/{company}/procedure/incident-response
+companies/{company}/design/architecture
+companies/{company}/spec/service-inventory
 ```
 
 ### Frontmatter Template
@@ -88,11 +94,11 @@ description: '{concise description}'
 ```
 
 Classification (`id`, `type`, `scope`, `domain`) is **path-derived** by the index
-build from the snippet's location under the company docs tree — never authored,
-per the current snippet-authoring schema. Company membership is keyed by the
-company folder in the snippet's path (`companies/<slug>/docs/<taxonomy>/...`),
-which is what lets the context selector filter by project membership; there is
-**no** authored `company` frontmatter field. `description` is the only required
+build from the snippet's location under the company home — never authored,
+per the current snippet-authoring schema. Company ownership is keyed by the
+company folder in the snippet's path (`companies/<slug>/docs/{global,local}/<taxonomy>/...`),
+which is what lets the context selector read the snippet at the caller's depth
+on that company; there is **no** authored `company` frontmatter field. `description` is the only required
 authored field; `visibility` is optional. No `generated_by`/`generated_at` fields
 are authored — they are not part of the snippet-authoring schema.
 
@@ -124,18 +130,18 @@ processed_files:
     sha256: 'abc123...'
     processed_at: '2024-01-15T10:30:00Z'
     snippets_produced:
-      - company/policy/security
-      - company/procedure/onboarding
+      - companies/acme/policy/security
+      - companies/acme/procedure/onboarding
   - path: 'architecture-overview.md'
     sha256: 'def456...'
     processed_at: '2024-03-20T14:00:00Z'
     snippets_produced:
-      - company/design/architecture
+      - companies/acme/design/architecture
 snippets_generated:
-  - company/concept/organization
-  - company/policy/security
-  - company/procedure/onboarding
-  - company/design/architecture
+  - companies/acme/concept/organization
+  - companies/acme/policy/security
+  - companies/acme/procedure/onboarding
+  - companies/acme/design/architecture
 snippets_preserved: []
 ```
 
@@ -143,7 +149,7 @@ snippets_preserved: []
 
 The same merge rules as init scaffolding apply:
 
-1. Identify existing snippets by their path under the company docs tree (recorded in `meta.yaml`); there is no authored `generated_by` field.
+1. Identify existing snippets by their identity (recorded in `meta.yaml`); there is no authored `generated_by` field.
 1. Human-authored sections after `<!-- human -->` survive.
 1. Changed-file-only writes (preserve timestamps for unchanged content).
 1. No duplication — update by ID.
@@ -162,11 +168,13 @@ Additionally for re-onboarding:
 
 The enrichment writer validates all output before persistence:
 
-- Snippet IDs must match the pattern `company/{taxonomy}/{slug}`.
+- Snippet IDs must match the pattern `companies/{company}/{taxonomy}/{topic}`.
 - File destinations must resolve to paths under
-  `~/.teleclaude/companies/{slug}/docs/`.
+  `~/.teleclaude/companies/{company}/docs/local/`.
+- No destination may take a relative path that already exists under the other
+  half; both files would carry the same identity.
 - Frontmatter authors only `description`; classification (`id`/`type`/`scope`/`domain`) is path-derived, never authored.
-- Company membership is enforced by the snippet's path under `~/.teleclaude/companies/{slug}/docs/`, not a frontmatter field.
+- Company ownership is enforced by the snippet's path under `~/.teleclaude/companies/{company}/docs/`, not a frontmatter field.
 
 ## Allowed values
 
@@ -180,6 +188,6 @@ The enrichment writer validates all output before persistence:
 - PDF and other binary formats produce SHA changes on any byte modification,
   even for non-content changes (metadata updates). The analysis session
   handles this gracefully by comparing semantic content, not file diffs.
-- Company snippets are path-derived as `scope: global` but are filtered by the
-  company folder in their path. They are global in reach but scoped in
-  visibility to member projects.
+- Company snippets are path-derived as `scope: company` in both halves. Members
+  and platform admins read them in full from any location; everyone else reads
+  their `visibility: public` snippets only, whichever half holds them.

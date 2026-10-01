@@ -27,10 +27,10 @@ again without undoing a defensible project choice.
   the blessed quality templates in the registered TeleClaude project. The
   templates offer defaults; the Makefile interface is the platform mandate.
 - Read the TeleClaude project contracts before authoring those surfaces:
-  teleclaude/spec/feature/config/project-capability-manifest,
-  teleclaude/procedure/checkpoint-overlay-projection,
-  teleclaude/design/architecture/checkpoint-system, and
-  teleclaude/spec/feature/reconciliation/project-plumbing-convergence.
+  projects/teleclaude/spec/feature/config/project-capability-manifest,
+  projects/teleclaude/procedure/checkpoint-overlay-projection,
+  projects/teleclaude/design/architecture/checkpoint-system, and
+  projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence.
 
 ## Steps
 

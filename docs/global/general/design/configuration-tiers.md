@@ -36,9 +36,10 @@ implies, and the portion of those sources the caller may see.
 
 **Input — agent artifacts carry the same shape at every tier.** Each tier root
 carries `agents/` beside `docs/`. In a repository, scope is in the path, exactly
-as it is for documentation: `agents/{global,project}/{commands,skills}`.
+as it is for documentation: `agents/{global,local}/{commands,skills}`.
 In a company or person home the home is the scope, so `agents/{commands,skills}`
-sits flat beside the flat `docs/`. Commands and skills are the two artifact
+sits flat beside the home's two documentation halves, `docs/global` and
+`docs/local`. Commands and skills are the two artifact
 kinds; subagent definitions are not one — this platform's agents are general and
 take their role from the command document they load. Global commands are partitioned by the
 domains the repository publishes — `agents/global/commands/<domain>/` — under
@@ -88,12 +89,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
   company's projects each is assigned to. The person tier declares no company
   membership, so there is one authoritative place to read the relationship from
   and one place to change it.
-- **Today, authorization to read is one gate.** A caller resolves to a person
-  and their platform role. An admin sees every snippet; everyone else sees only
-  snippets declaring themselves public. There is no membership or ownership
-  dimension in the read path: the company tier declares who belongs to a
-  business and which of its projects each person is assigned to, and no read
-  path consults it.
 
 - **Meaning comes from the file, never from where it sits.** Each configuration
   file declares its own kind, and resolution reads that declaration. Location is
@@ -157,6 +152,23 @@ one index entry, listed on demand — rather than autoloaded into every session.
   meets. Public material is readable by anyone with a legitimate reason to reach
   it; internal material is not readable without belonging.
 
+- **Every documentation home has a published half and a local half.** A
+  repository's, a person's, and a company's `docs/global` is published into the
+  shared corpus; its `docs/local` is never published and is served in place from
+  that home's own index. Both halves carry the same identity form, so a snippet
+  is named identically from every location. Which half a snippet lives in
+  decides where it is served from, never who may read it.
+- **Landing and reading are two mechanisms.** Where a session may run is decided
+  by routing and folder scoping; what a caller may read is decided by identity,
+  visibility, and the selectors the caller supplies. They meet at one point: the
+  location an invocation lands in sets its default read set — that home (with,
+  for a project, the company it declares as its owner), the caller's own person
+  tier, the companies they belong to, and global documentation. Location never
+  sets depth.
+- **Any home is readable from anywhere by naming it.** A selector or a qualified
+  identity names a home, and the named home — its local half included — is read
+  from wherever the caller stands, at the depth the caller's relationship grants.
+
 ## Primary flows
 
 **Gathering the tiers.** Read the global configuration, take the person and
@@ -181,9 +193,9 @@ Someone with no relationship to a company is not shut out of it — they meet th
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
 people who do not belong to it. Explicit selectors naming a person, a company, or
-a project narrow the read to that tier and never widen it: the named tier is read
-at the depth the caller's relationship grants, and a platform admin reads any
-named tier in full.
+a project narrow the read to that tier and never widen it: the named tier is
+loaded from wherever the caller stands, both of its halves, and read at the depth
+the caller's relationship grants; a platform admin reads any named tier in full.
 
 ## Failure modes
 
@@ -193,9 +205,13 @@ named tier in full.
 - **Letting git decide what a folder is.** Anchoring on a repository root makes a
   folder with a valid configuration fail because no `.git` sits above it, and
   lets an unrelated repository capture a configuration several levels down.
-- **Reading scope from location.** Treating the current directory as the thing
-  that sets what a caller may see produces an authorization model that changes
-  when someone changes directory, which is not an authorization model.
+- **Reading authorization from location.** Treating the current directory as the
+  thing that decides how deeply a caller may read produces an authorization model
+  that changes when someone changes directory, which is not an authorization
+  model. Location chooses only which homes are listed by default.
+- **Reading confidentiality from the half.** Treating `docs/local` as private or
+  `docs/global` as public puts a snippet's audience in the folder it was filed
+  in. Visibility and the caller's relationship decide reading in both halves.
 - **Collapsing the two role axes.** Deriving a company role from a platform role,
   or the reverse, misreads identity across domains and grants authority nobody
   declared.

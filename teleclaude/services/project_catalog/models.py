@@ -21,11 +21,6 @@ class ProjectNode:
         """Human-readable project name; falls back to slug when unset."""
         return self.config.project_name or self.slug
 
-    @property
-    def docs_index_path(self) -> Path:
-        """Canonical docs index location for this project."""
-        return self.root / "docs" / "project" / "index.yaml"
-
 
 @dataclass(frozen=True)
 class ProjectCatalogEntry:

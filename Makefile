@@ -25,7 +25,7 @@ lint:
 	@FILES_FROM="$(FILES_FROM)" bash tools/quality.sh lint
 
 test:
-	@echo "No tests in this repository — see docs/project/policy/test-moratorium.md"
+	@echo "No tests in this repository — see docs/local/policy/test-moratorium.md"
 
 clean:
 	@tools/make/clean.sh
