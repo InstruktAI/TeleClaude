@@ -272,7 +272,7 @@ IDLE → CANDIDATE_DEQUEUED → CLEARANCE_WAIT → MERGE_CLEAN / MERGE_CONFLICTE
 | `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                           | No                     |
 | `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                            | No                     |
 | `PUSH_REJECTED`        | Push rejected (non-fast-forward). Agent must recover.       | Yes — rebase + push    |
-| `CLEANUP`              | Remove worktree, branch, todo dir. Restart daemon.          | No                     |
+| `CLEANUP`              | Remove worktree, branch, todo dir.                          | No                     |
 | `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark integrated, reset to IDLE. | No                     |
 | `COMPLETED`            | Queue empty. Terminal state.                                | Yes — self-end         |
 
