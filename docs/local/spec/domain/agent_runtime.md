@@ -150,10 +150,11 @@ Every platform event agent_runtime emits states as its subject what its act
 concerned:
 
 - session lifecycle events (a session ended, a restart failed, a bootstrap
-  failed): the session's recorded configuration subject, or no subject when the
-  session has none;
+  failed): the session's recorded configuration subject; unknown when the
+  session record marks that subject as not established; otherwise no subject;
 - events a session's own tools emit about its work, such as captured content or
-  a raised escalation: that session's recorded configuration subject;
+  a raised escalation: that session's recorded configuration subject, or unknown
+  when the record marks it as not established;
 - daemon and process-supervision events: no subject.
 
 <!-- /planned:event-origin-and-subject -->

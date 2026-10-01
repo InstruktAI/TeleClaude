@@ -64,6 +64,7 @@ Examples:
   | a registered person's folder          | that person         |
   | a registered company's folder         | that company        |
   | a folder no registration governs      | none                |
+  | a registered folder whose declaration cannot be read | unknown |
 ```
 
 #### UC-EE2: An event emitted by platform automation names only its computer
