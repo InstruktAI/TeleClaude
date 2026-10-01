@@ -6,9 +6,11 @@ description: The permitted gog invocations for personal Gmail and Calendar work,
 
 ## What it is
 
-`gog` is the command-line tool through which all Google access happens — reading
-mail and calendar, and preparing drafts. It is never reached through an MCP
-server: one pathway means one place the gates live.
+`gog` is the command-line tool for the configured personal Gmail and Calendar
+path — reading mail and calendar, and preparing drafts. This spec owns that tool
+path, not every Google integration elsewhere in the platform. The mediated gog
+path is not reached through an MCP server: one pathway means one place its gates
+live.
 
 Every person has their own state root under their workspace, holding their
 configuration, aliases and per-account settings. Which mail a command touches is

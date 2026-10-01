@@ -19,7 +19,8 @@ asked for it to be sent.
 
 ## Preconditions
 
-- The person is resolved and their identity registry and examples have been read.
+- The person is resolved and relevant identity context and voice examples have
+  been discovered under `personal/spec/person-knowledge`.
 - The conduct policy and the tool contract are in force.
 
 ## Steps
@@ -34,24 +35,21 @@ asked for it to be sent.
 2. **Match the voice of that identity.** Take the one or two examples closest to
    this identity and this kind of message, and write in that voice. If none of
    them fit the situation, write plainly instead of imitating a mismatched one.
-3. **Write as the receiving identity.** Use only what this identity plausibly
-   knows of this correspondent. Where knowledge that arrived through another
-   identity would materially help, flag it to the person instead of using it.
+3. **Apply the identity boundary** in `personal/policy/assistant-conduct` to
+   the facts included in the draft. Surface any proposed cross-identity use.
 4. **Compose as a draft**, in-thread with quoting when replying, with recipients
    carried forward correctly on a reply-all.
 5. **Hand it over.** Tell the person where the draft is and what it says in one
    line.
-6. **Send when they ask.** A message the agent decided to write stays a draft
-   until they say otherwise. When they ask for one to be sent: if they have seen
+6. **Carry out an authorized send** under `personal/policy/assistant-conduct`.
+   When they ask for one to be sent: if they have seen
    the words, send it and report. If they have not — asking for a message to go
    out authorizes the errand, not the wording — show it once, then send on their
-   word. One exchange, never a ceremony. Nothing is ever sent in an unattended
-   run.
+   word. One exchange, never a ceremony.
 7. **When they tell you what they changed**, record it — as a standing
-   instruction if they framed it as one, or, when they point at a message and
-   say it is how they want to sound, as an example of their voice, replacing a
-   weaker one that covers the same situation. Recording happens because they
-   said something, never by inspecting what they sent.
+   instruction under `personal/policy/assistant-conduct` if they framed it as
+   one, or as a voice example under `personal/spec/person-knowledge` when they
+   identify a message as representative.
 
 ## Outputs
 

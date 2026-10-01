@@ -21,8 +21,8 @@ carried out; the assistant is the hand, not the decision. In an unattended run
 no such instruction can exist, so nothing is sent there at all, and the tool
 that run uses cannot send.
 
-**Work happens in the person's own workspace, and only there.** An agent
-started anywhere else does not do this work, however plainly it understands the
+**Private mail and calendar work happens in the person's own workspace, and only
+there.** An agent started anywhere else does not do this work, however plainly it understands the
 request and however complete its context appears; it says where the work belongs
 and starts an agent there. Recognising the request is not authority to serve it.
 
@@ -47,6 +47,12 @@ person from whoever is calling. An agent that
 recognises personal work makes that call rather than working out where to point
 a new session. No argument names a person, and none is accepted in any form.
 <!-- /planned:personal-assistant-launch -->
+
+Reading person-disclosed documentation is a separate operation, governed by its
+audience and the knowledge contract (`personal/spec/person-knowledge`). It does
+not authorize private operational access or acting as that person. Local
+assistant context is discovered through the person's taxonomy, not through a
+separate knowledge directory.
 
 An agent that looks for a way around any of these has already violated this
 policy.
@@ -89,7 +95,8 @@ rather than worked around.
 ### Standing instructions
 
 "Always", "never again", "yes — and always" is an instruction like any other: do
-it now, and record it in the person's data so it keeps holding. Recording is
+it now, and record it in the person's local taxonomy under
+`personal/spec/person-knowledge` so it keeps holding. Recording is
 part of executing, not a separate duty. Nothing else is watched for — an agent
 does not scan a conversation for preferences to extract, and does not turn an
 aside into doctrine.
@@ -174,7 +181,7 @@ on inference is unsafe. The mandate rule separates them cleanly — authority is
 granted explicitly in three visible forms, and spent without ceremony while
 reporting what was spent.
 
-One person's data is reachable only from their own workspace because the
+One person's private mail and calendar operations belong in their own workspace because the
 alternative is an assistant whose reach is decided by how well it argued for
 crossing. Prose alone cannot hold that line, since an agent convinced of an
 exception reads these same words and proceeds.
@@ -202,13 +209,16 @@ should leave stays with the person — but an assistant that cannot send when
 told to is a worse tool for no gain in safety, since the person could send it
 themselves in the same breath.
 
-Voice is carried by the person's own messages rather than by a description of
-how they write, because a description is one reader's interpretation and is then
-wrong in every draft at once. The same reasoning bounds the set: a mismatched
-example is worse than none, since its shape gets copied whether or not it
-belongs, and a set that accumulates drifts back toward the average that examples
-exist to avoid. Which identity an example came from is recorded with it, because
-an unlabelled set averages together and the identities blur.
+Disclosure of curated knowledge must not expose the underlying private
+correspondence or confer operational authority. Knowledge audiences and the
+voice-example data contract have their single owner in
+`personal/spec/person-knowledge`.
+
+Voice examples preserve the person's expression directly. A description of
+their style adds an interpreter between the person and every draft; mismatched
+examples flatten different identities and situations into an average voice.
+The example-selection contract in `personal/spec/person-knowledge` protects
+against that loss.
 
 Conflict is refused rather than resolved because contradictory instructions
 degrade an agent instead of constraining it: handed a rule and then its
@@ -247,7 +257,7 @@ interface, whether a human is present or the run is scheduled.
   message is framed.
 - Editing shared doctrine from a person's workspace is a violation; promotion is
   the only route.
-- Touching one person's data from anywhere but their own workspace is a
+- Operating one person's private mail or calendar from anywhere but their own workspace is a
   violation, and a platform admin role neither excuses it nor grants it.
 - Performing work a schedule declares, outside that schedule, is a violation
   however the request was phrased.

@@ -24,39 +24,32 @@ them. The cases a sweep is answerable for are specified in
 ## Preconditions
 
 - The person is resolved and their workspace is the working directory.
-- Their own knowledge has been discovered and read.
+- Relevant person-owned knowledge has been discovered and read under
+  `personal/spec/person-knowledge`.
 - The conduct policy and the tool contract are in force.
 
 ## Steps
 
 1. **Fetch the window.** Search their mail for the period being reviewed —
    since the last briefing, or the period they named.
-2. **Check provenance before acting on anything.** Compare each message's From
-   against its Reply-To and its sending domain. A mismatch is reported in the
-   briefing as suspected forgery and is not answered, labelled, or archived.
-3. **Sort against their priorities.** Who always matters, what is always noise,
+2. **Read the correction before classifying.** Read the previous run and what
+   the person did to its selection. Interpret completed gestures against the
+   previous proposals under `personal/spec/mail-dispositions`, and update
+   relevant local mailbox or sender conclusions before deciding new mail.
+   With no informative prior handling, classify without inventing a lesson and
+   state that the pass is uncorrected. Silence or an indiscriminate bulk
+   operation supplies no message-specific correction.
+3. **Check provenance before acting on anything.** Apply the sender-provenance
+   boundary in `personal/policy/assistant-conduct`. Surface an unexplained
+   identity conflict with its evidence; different automated reply-routing
+   addresses alone do not establish forgery.
+4. **Sort against their priorities.** Who always matters, what is always noise,
    what they want surfaced rather than handled. Where their rules do not decide
    it, it goes to the briefing rather than being guessed.
-4. **Handle what they have authorized.** Labelling, filing, archiving, marking
-   read, trashing noise — these are ordinary writes under the mandate rule.
-   Where this ask, the invoked command's contract, or a standing instruction
-   covers them, do them and name them in the briefing; do not come back with
-   questions about mail they already told you how to treat.
-5. **Leave every message you considered with one disposition**, per the
+5. **Handle covered actions**, applying the mandate rule in
+   `personal/policy/assistant-conduct` and the person's own instructions.
+6. **Leave every message you considered with one disposition**, per the
    disposition contract, and record the point this sweep reached.
-6. **Read what happened to the last selection before deciding this one.** What
-   the person did to what was surfaced is the correction: a reply is the
-   strongest endorsement available, a message trashed says it should not have
-   been surfaced, a label removed is dismissal, and a message left alone says
-   least of all. Deletions are visible only for a limited window, so a sweep
-   that runs rarely will see fewer of them than one that runs often.
-
-   On a first run there is no prior selection, and none arrives until the person
-   has acted once. Proceed on classification alone, surface more generously than
-   a corrected run would, and say that the pass is uncorrected. The same holds
-   after a history that records only one indiscriminate operation, which carries
-   no more correction than no history at all.
-
 7. **Propose the rest**, named precisely enough that "yes" is a complete answer.
 8. **Prepare replies their rules call for**, following the drafting procedure.
    Drafts are prepared; sending is theirs.

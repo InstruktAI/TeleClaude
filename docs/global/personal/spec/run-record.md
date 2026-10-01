@@ -12,9 +12,11 @@ settle. Without it every run re-reads the whole history to reach conclusions the
 last run already reached, which is the cost that makes an assistant not worth
 running.
 
-It lives in the person's workspace beside their knowledge, discovered by listing
-rather than by name, like everything else there. It is the person's data and never
-leaves their workspace.
+Run evidence remains private to the person's home. Retrieve person-owned run
+knowledge through `telec docs` in the person's scope under
+`general/policy/context-retrieval`. Durable conclusions belong in the person's
+local taxonomy under `personal/spec/person-knowledge`; the record retains the
+evidence of this particular run.
 
 A record is opened when a run starts and closed when it ends. Records are only
 ever added, never revised by a later run.

@@ -1,41 +1,67 @@
 ---
-description: The shape of a person's own data in their workspace, and how procedures consume it without naming individual documents.
+description: Person-owned knowledge in the global and local documentation taxonomy, its disclosure audiences, and discovery by personal-assistant procedures.
 ---
 
 # Person Knowledge — Spec
 
 ## What it is
 
-A person's workspace holds what came out of their own interactions: who they
-are to different correspondents, how they write, who matters, what they have
-decided should always happen. Shared contracts never live here, and this data
-never travels to another person.
+A person's knowledge is authored as documentation snippets in their home. The
+shared personal domain defines the reusable contracts; a person's own snippets
+hold their disclosures, identity context, priorities, and standing preferences.
+Personal disclosure and participation choices belong to the person
+(`general/policy/human-contract`).
 
-Procedures reach it by **discovery, never by name**. Before work that involves
-personal knowledge, an agent lists what the person's workspace publishes and
-reads what it has not already loaded. No procedure names an individual
-document.
-
-The listing is a directory listing. A person's knowledge lives in `knowledge/`
-beneath their workspace root, one Markdown document per subject, and an agent
-discovers it by listing that directory with ordinary file tools. It is not
-reachable through `telec docs`, which resolves only global and project scopes;
-a person's workspace is neither. Onboarding creates the directory and its first
-documents, and every document a person accumulates afterwards joins it there.
+The taxonomy and frontmatter contract are owned by
+`general/spec/snippet-authoring-schema`. There is no separate `knowledge/`
+document store.
 
 ## Canonical fields
 
-The conventional contents. A person may hold more; nothing here is required for
-the assistant to run, and an absent piece means the agent asks or proposes
-rather than assumes.
+<!-- planned:personal-knowledge-taxonomy -->
+### Location and audience
+
+| Person-home subtree | Contents and reach |
+| --- | --- |
+| `docs/global/` | Knowledge the person discloses for retrieval outside their home. Public snippets can answer visitors to a public help desk of a company the person belongs to; private snippets serve eligible internal users under the role-access contract. |
+| `docs/local/` | Personal context and instructions supplied to an agent operating in that person's home. These snippets are indexed locally rather than published into the global corpus. |
+
+Visibility follows `general/spec/snippet-authoring-schema`; wider disclosure is
+the person's deliberate choice (`general/policy/human-contract`). Visibility and
+location have separate meanings: locality describes where a snippet is served,
+while the caller's identity and role determine its permitted audience. The home
+agent's local baseline supplies its required context. Retrieval from another
+location remains subject to the same audience contract.
+
+Mail-derived private context, correspondent details, voice examples, and
+assistant instructions belong in the local subtree unless the person explicitly
+discloses particular material. The publication boundary is not authority to
+operate mail or calendars (`personal/policy/assistant-conduct`).
+<!-- /planned:personal-knowledge-taxonomy -->
+
+### Discovery and ownership
+
+Retrieve person-owned knowledge through `telec docs`, explicitly selecting the
+person's scope and identity, under `general/policy/context-retrieval`.
+
+Person-specific snippets state the person's facts, choices, and extensions;
+shared rules are cited from their owners
+(`general/policy/referencing-doc-snippets`).
+
+### Personal contents
+
+The following are conventional subjects, not mandatory filenames or a required
+set of documents. Missing optional material is not a blanket reason to refuse
+work; missing facts needed for an operation are handled under the conduct
+policy.
 
 - **Identity registry** — one entry per address the person sends from: the
   sphere of life it serves, its language, its register, and the rule for when
-  fresh outbound should use it.
+  fresh outbound should use it. Authorized account declarations and credentials
+  remain owned by configuration and the provider's tool contract.
 - **Standing instructions** — what the person has told the assistant to always
-  or never do, recorded as it was given. Each exists once; a new instruction
-  that contradicts an existing one is refused at recording time rather than
-  stacked beside it.
+  or never do, recorded as it was given. Their creation and reconciliation are
+  governed by `personal/policy/assistant-conduct`.
 - **Priorities** — who always matters, what is always noise, what the person
   wants surfaced rather than handled.
 - **What has been concluded about the mailbox itself** — the standing read of how
@@ -72,9 +98,8 @@ rather than assumes.
 
 - The workspace declares whose it is; identity is read from that declaration,
   never inferred from the folder's location.
-- Everything here is personal data. It is never published to a shared surface,
-  never quoted into another person's context, and never used to answer a
-  question asked from outside that person's own work.
-- A fact belongs in exactly one place. When the same thing appears in two
-  documents, the duplicate is removed at the moment it is noticed during work
-  that touches it — not by a periodic sweep.
+- A disclosed profile is not a disclosure of its underlying correspondence,
+  credentials, or operational records. Those have separate owners and access
+  boundaries.
+- A person's preference is not a shared personal-domain rule. Promotion of a
+  reusable contract follows the shared documentation authoring process.

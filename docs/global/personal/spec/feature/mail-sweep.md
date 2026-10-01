@@ -39,8 +39,9 @@ And the run leaves one report naming what it did
 Given a person with a backlog no sweep has touched
 When the first pass runs
 Then messages are grouped by the rule that would dispose of them
-And each group is put to the person as one decision carrying its rule, its size, and examples from it
-And no group contains a message a person wrote
+And each unmandated disposal group is put to the person as one decision carrying its rule, its size, and examples from it
+And an existing mandate is executed and reported under the conduct policy
+And personal correspondence is not disposed of on inference alone
 And nothing is disposed of beyond recovery
 And the report names each rule applied and how many it covered
 ```
@@ -60,9 +61,10 @@ And its report states that the pass was uncorrected
 ```
 Given a previous sweep's selection the person has acted on
 When the next sweep runs
-Then a message the person disposed of confirms the disposition it was given
-And a message the person returned to the inbox rejects it
-And a reply is taken as the strongest endorsement available
+Then the person's handling is interpreted against the disposition previously proposed
+And disposing of a disposal candidate confirms that proposal
+And returning disposed mail to the inbox rejects disposal
+And a reply establishes the message's relevance
 And what is concluded about that sender is updated before new mail is classified
 And the report names what changed and what evidence changed it
 ```

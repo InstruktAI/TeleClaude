@@ -19,7 +19,8 @@ and make the changes they have authorized.
 ## Preconditions
 
 - The person is resolved and their workspace is the working directory.
-- Their own knowledge has been discovered and read.
+- Relevant person-owned knowledge has been discovered and read under
+  `personal/spec/person-knowledge`.
 - The conduct policy and the tool contract are in force.
 
 ## Steps
@@ -27,12 +28,9 @@ and make the changes they have authorized.
 1. **Read the window** across the calendars that belong to them.
 2. **Name what collides** — overlapping commitments, and back-to-back items in
    different places where travel makes the second impossible.
-3. **Do the work they have authorized.** Creating, moving, cancelling and
-   answering invitations are ordinary writes under the mandate rule: they
-   execute when this ask, the invoked command's contract, or a standing
-   instruction covers them, and are reported afterwards. Booking the focus block
-   they always want, declining what their rules always decline, moving what they
-   asked to move — none of these come back as questions.
+3. **Apply covered calendar changes** under the mandate rule in
+   `personal/policy/assistant-conduct`: creating, moving, cancelling, or
+   answering invitations as the person's instructions require.
 4. **Propose the rest.** Where nothing grants authority, or where a collision
    trades one commitment against another, name the options precisely enough that
    a one-word answer settles it.

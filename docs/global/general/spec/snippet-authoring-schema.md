@@ -33,11 +33,22 @@ Frontmatter (required, authored):
 
 Frontmatter (optional, authored):
 
+<!-- planned-change:personal-knowledge-taxonomy -->
 - `visibility` — access classification: `public` or `internal`. Defaults to
   `internal` when omitted. It gates a caller who holds no declared relationship
   to the snippet's tier: such a caller sees only `public` snippets. A caller who
   holds a relationship to that tier reads it in full, and a platform admin reads
   every tier in full.
+<!-- change:personal-knowledge-taxonomy -->
+- `visibility` — access classification. Person-owned snippets use `public` or
+  `private`, with `visibility: private` explicitly authored on new snippets in
+  both halves of the person's documentation tree. `public` identifies approved
+  disclosure; `private` requires the eligible internal relationship and role.
+  A caller with public-only access sees only public snippets. Existing shared,
+  project, and company snippets retain their `public`/`internal` vocabulary and
+  internal default. Locality and audience are separate: visibility does not
+  publish a local snippet or confer operational authority over its owner.
+<!-- /planned-change:personal-knowledge-taxonomy -->
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 - `subscriptions` — procedures only. A non-empty list of event type names, each the type a verified event carries as its own source names it — no registration in the platform event catalog is required — whose arrival activates the procedure through the platform's procedure-activation contract. A procedure declares `subscriptions` or `activation_trigger`, never both, because each names who is responsible for starting the work; a procedure used only as supporting knowledge declares neither. A procedure declaring `subscriptions` is excluded from the "Activatable Procedures" section and listed as a configured responsibility instead. Validation rejects this field on non-procedure snippet types, on a procedure published in a tier the procedure-activation contract does not route, and on a procedure declaring both activation fields.
 
@@ -96,8 +107,18 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/global/{domain}/{taxonomy}/` — domain-specific (e.g., `sdlc`).
 - `docs/project/{taxonomy}/` — project-scoped documentation.
 
+<!-- planned-change:personal-knowledge-taxonomy -->
 - `~/.teleclaude/people/{person}/docs/{taxonomy}/` — a person's own documentation.
   Path-derived identity carries the tier and the person: `person/{person}/{taxonomy}/{rest}`.
+<!-- change:personal-knowledge-taxonomy -->
+- `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` — a person's disclosed
+  documentation, published with that person's ownership and visibility.
+- `~/.teleclaude/people/{person}/docs/local/{taxonomy}/` — a person's local
+  documentation, indexed in the home rather than globally published. Its local
+  baseline supplies context to the home agent. Both halves follow the same
+  taxonomy and frontmatter schema; knowledge contents and disclosure boundaries
+  are owned by `personal/spec/person-knowledge`.
+<!-- /planned-change:personal-knowledge-taxonomy -->
 - `~/.teleclaude/companies/{company}/docs/{taxonomy}/` — a company's documentation.
   Path-derived identity carries the tier and the company: `company/{company}/{taxonomy}/{rest}`.
   Several tiers of one kind can be assembled into a single index at once, so both
@@ -138,7 +159,13 @@ do not accumulate by default.
 
 - `type`: principle, concept, policy, procedure, design, spec, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, project, person, company.
+<!-- planned-change:personal-knowledge-taxonomy -->
 - `visibility`: public, internal. Default: `internal`.
+<!-- change:personal-knowledge-taxonomy -->
+- `visibility`: person-owned snippets use `public` or `private`, defaulting to
+  explicitly authored `private`; other existing scopes use `public` or
+  `internal`, defaulting to `internal`.
+<!-- /planned-change:personal-knowledge-taxonomy -->
 
 ## Known caveats
 

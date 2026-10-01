@@ -27,12 +27,12 @@ record of what was completed so a later run continues rather than restarts.
 1. **Read the current state before changing any of it.** Onboarding is a
    reconciliation, not a script: it runs against a workspace that may be empty,
    partly built, or complete. Establish what exists — the workspace, the
-   `knowledge/` directory and its documents, whether an account is already
+   person-owned taxonomy snippets, whether an account is already
    authorized — and compute what is missing. Nothing already correct is redone,
    and nothing is asked about that the workspace already answers.
 
-2. **Materialize what is absent.** Create the workspace root and its
-   `knowledge/` directory if they are not there. Silent creation is correct here:
+2. **Materialize what is absent.** Establish the workspace and documentation
+   structure defined by `personal/spec/person-knowledge`. Silent creation is correct here:
    it is structure, not content, and nothing about it is the person's to decide.
 
 3. **Establish the mandate before asking for any credential.** Tell them plainly
@@ -72,8 +72,9 @@ record of what was completed so a later run continues rather than restarts.
 
 7. **Propose, and let them correct.** Show the identity registry and the
    candidate examples as a proposal in one pass, not a document at a time. They
-   confirm, cut, and correct. What survives is written to `knowledge/`, one
-   document per subject, in their words rather than a summary of them.
+   confirm, cut, and correct. What survives is authored in their local taxonomy,
+   in their words rather than a summary of them. Disclosure into their global
+   subtree requires their explicit choice under `personal/spec/person-knowledge`.
 
 8. **Record what this run completed** in the person's own data, so a later run
    can offer the difference rather than the whole. When a run finds steps
@@ -86,8 +87,8 @@ record of what was completed so a later run continues rather than restarts.
 
 ## Outputs
 
-- A workspace with a `knowledge/` directory holding the confirmed identity
-  registry, priorities, and voice examples.
+- A workspace with confirmed identity context, priorities, and voice examples
+  in its person-owned documentation taxonomy.
 - An authorized mail account whose grant has been demonstrated to match what the
   person agreed to.
 - A record of the steps this run completed.

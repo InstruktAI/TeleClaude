@@ -14,8 +14,10 @@ records the point it swept to.
 A disposition is carried in a channel the assistant owns and nothing else writes
 to. What that channel is belongs to the tool contract for the person's provider —
 a label, a category, a folder — and the assistant never signals through a state
-the person already uses for their own purposes. Reading and unread belong to the
-person.
+the person already uses for their own purposes. Read status remains the person's
+attention signal. An explicit ask or standing instruction can authorize changing
+that status under `personal/policy/assistant-conduct`; it is not silently
+repurposed as the assistant's disposition channel.
 
 ## Canonical fields
 
@@ -50,10 +52,13 @@ an admin and never authored by a person's own assistant.
 
 ## Known caveats
 
-- **The person's handling is the correction.** Disposing of something the
-  assistant proposed disposing of confirms the call. Returning it to the inbox
-  rejects it. A reply is the strongest endorsement available. These are the
-  signals a later run learns from.
+- **The person's handling is the correction.** Interpret a finished gesture
+  against the disposition and action previously proposed. Disposing of a
+  disposal candidate confirms that proposal; disposing of something surfaced
+  as valuable rejects the retention judgment. Returning disposed mail to the
+  inbox rejects disposal. A reply establishes the message's relevance rather
+  than endorsing a proposal to discard it. These are the signals a later run
+  learns from.
 - **Only a finished gesture teaches.** A message left where the assistant put it
   says nothing about that message — it may have been postponed, avoided, or never
   looked at. A whole disposition whose items go persistently untouched says
@@ -62,7 +67,8 @@ an admin and never authored by a person's own assistant.
   and the cost of being wrong within it is survivable, its proposal may become an
   action taken rather than one offered. Sustained accuracy alone does not earn
   this; a disposition that could hold something irreplaceable does not graduate
-  however clean its record.
+  however clean its record. Execution still requires a mandate under
+  `personal/policy/assistant-conduct`; accuracy alone grants none.
 
 ## See Also
 
