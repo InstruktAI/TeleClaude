@@ -77,11 +77,11 @@ tooling.
     the docs directory. This step supplies neither authoring nor commit
     authority.
 <!-- change:home-publication-sync -->
-9.  Publication happens only from committed state: the commit gate validates
-    the batch, and commit or merge maintenance publishes the committed result,
-    so authoring a snippet invokes no publication of its own. `telec sync`, run
-    from a home's own directory, republishes that home's committed state when
-    maintenance did not. No path publishes the caller's working tree. Keep
+9.  Authoring a snippet publishes nothing. Readers receive committed
+    documentation: the commit gate validates the batch, commit or merge
+    maintenance publishes the committed result, and `telec sync`, run from a
+    home's own directory, republishes that home's committed state. No path
+    publishes a working tree. Keep
     regenerated index files with the eventual commit — they are build outputs
     and reflect the committed truth of the docs directory. This step supplies
     neither authoring nor commit authority.

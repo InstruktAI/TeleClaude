@@ -458,7 +458,9 @@ Given pathspec contains only a deleted file
 When agent invokes telec code commit --approved "<msg>"
 Then quality_paths is empty
 And handle_format is not invoked
-And git commit proceeds, and the pre-commit hook has nothing to lint
+And git commit runs the pre-commit hook without the native leg
+And the documentation and agent-artifact validators grade each owning home of the deleted file as committed after the deletion
+And the commit lands only if that home has no findings
 ```
 
 #### UC-CGIP-4 — Clean commit passes through the pre-commit hook

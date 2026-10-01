@@ -71,7 +71,7 @@ contract governs only what happens when maintenance runs.
 - **Committed source.** A publication action is selected by its recorded range
   and publishes the homes that range touched at the repository's committed
   `main` tip, read under publication serialization
-  (`projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
   Every other repository remains at its previously activated revision until its
   own maintenance or `telec sync` runs. Working-tree files are never inputs.
 - **Recovery.** A failed action is replayed through this executor for its

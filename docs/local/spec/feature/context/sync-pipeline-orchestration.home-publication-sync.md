@@ -13,7 +13,7 @@ visibility: 'public'
 
 Publication is Context's routine for promoting committed source into deployed
 agent runtime outputs. Committed state has passed the commit gate
-(`projects/teleclaude/design/code-commit`) and is the source of truth, so
+(`local/projects/teleclaude/design/code-commit`) and is the source of truth, so
 publication derives and never validates: it resolves committed source, rebuilds
 derived indexes, and distributes runtime artifacts. It never reads a working
 tree.
@@ -22,14 +22,16 @@ Two entry points run the same routine:
 
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
-  (`projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
 - **`telec sync`** — an operator command that publishes the home at the
   invocation directory and every nested home beneath it in the committed tree,
   whatever its kind. It runs only when the invocation directory itself holds a
   `teleclaude.yml`; it never resolves a home from a parent directory, and
-  anywhere else it refuses and names that requirement.
+  anywhere else it refuses and names that requirement. It is an agent command,
+  reached by every agent role except the worker, and admits members and admins
+  (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
 
-Home vocabulary follows `projects/teleclaude/spec/domain/glossary`. Homes are
+Home vocabulary follows `local/projects/teleclaude/spec/domain/glossary`. Homes are
 discovered in the committed tree, never on disk, so a gitignored folder or a
 foreign repository is never a home in scope.
 
@@ -141,7 +143,7 @@ And the replayed action completes without awaiting further recovery
 #### UC-SPO26: telec sync publishes the invocation home and its nested homes
 
 ```gherkin
-Given an operator or agent in a directory that holds a teleclaude.yml
+Given a member, an admin, or a non-worker agent in a directory that holds a teleclaude.yml
 And the committed tree holds further homes beneath that directory
 When it invokes telec sync
 Then that home and every nested home in the committed tree are published from the committed main tip
