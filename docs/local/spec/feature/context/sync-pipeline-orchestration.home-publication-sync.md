@@ -323,8 +323,7 @@ And every other home's deployed output is unchanged
   state at any time.
 - Commit-boundary maintenance owes publication only for the paths its
   repository's maintenance bindings name, and those bindings are anchored at the
-  repository root. A project home nested below that root is therefore published
-  by `telec sync` in that home, not at the commit boundary.
+  repository root.
 - Publication fails explicitly when its distribution implementation is
   unavailable; publication never reports success after omitting a
   runtime-output phase.

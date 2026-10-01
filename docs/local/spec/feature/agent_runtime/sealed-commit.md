@@ -362,21 +362,12 @@ And the session's effective scope is the same as for a bare invocation of the sa
 
 `telec code commit` runs the gates the acting invocation context root's declared
 tier carries, read from that tier's published answers
-<!-- change:commit-gate-in-hook -->
-### Commit-time gates — the pre-commit hook, no framework stash
-
-The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs, for every
-route into a commit, the gates that each staged path's owning home's declared
-tier carries, never selected by the directory the commit started from, read
-from that tier's published answers
-<!-- /planned-change:commit-gate-in-hook -->
 (`projects/teleclaude/spec/feature/config/tier-permissions`). Whether the gate runs follows
 the tier: a tier carrying project subscriptions, or whose material participates
 in documentation, is gated; a tier carrying neither is not, no check is applied
 in its place, and the commit proceeds directly. Which checks run follows what the
 tier carries, never where its root sits: the native toolchain leg runs where the
 tier carries `code`, and TeleClaude's guardrails lane runs wherever the gate
-<!-- planned-change:commit-gate-in-hook -->
 runs. Both run in-process against `quality_paths` (the commit pathspec filtered
 to existing files) before `git commit --no-verify`, in that order where both
 apply. A tier participating in documentation that carries no project
@@ -386,18 +377,27 @@ occurs; files outside the pathspec are not touched. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
 <!-- change:commit-gate-in-hook -->
-runs. Both run against the commit's staged file set, after the partial-staging
-guard, in that order where both apply. Formatting is checked and never
-rewritten. The documentation and agent-artifact validators read the staged
-content against the rest of each owning home as committed, never against
-another session's uncommitted files; the native leg runs on disk over the staged
-files, which the partial-staging guard makes identical to what is staged. A tier participating in documentation that carries no
-project subscriptions is gated, runs the guardrails lane, and requires no native
-toolchain contract at its root — by no separate mechanism. `telec code commit`
-formats `quality_paths` (the commit pathspec filtered to existing files) and
-then runs `git commit` without `--no-verify`, so it passes the same hook as a
-raw `git commit`. No framework stash occurs; files outside the pathspec are not
-touched.
+### Commit-time gates — the pre-commit hook, no framework stash
+
+The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs, for every
+route into a commit, the checks each staged path's owning home carries, never
+selected by the directory the commit started from. Whether the gate runs, and
+which checks it runs, follow the capability rule in
+`projects/teleclaude/spec/feature/config/project-capability-manifest`: the gate
+runs where the owning home carries `code` or `docs`, a global, person, or
+company home counting as `docs` by its kind
+(`projects/teleclaude/spec/feature/config/tier-permissions`), and each capability
+contributes only its own checks. A home carrying neither is not gated, no check
+is applied in its place, and the commit proceeds directly. The checks run
+against the commit's staged file set, after the partial-staging guard.
+Formatting is checked and never rewritten. The documentation and agent-artifact
+validators read the staged content against the rest of each owning home as
+committed, never against another session's uncommitted files; the native leg
+runs on disk over the staged files, which the partial-staging guard makes
+identical to what is staged. `telec code commit` formats `quality_paths` (the
+commit pathspec filtered to existing files) and then runs `git commit` without
+`--no-verify`, so it passes the same hook as a raw `git commit`. No framework
+stash occurs; files outside the pathspec are not touched.
 <!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
@@ -898,6 +898,7 @@ Then no subscription-gated check runs, and no check is applied in place of one
 And the commit is produced
 ```
 
+<!-- planned-change:commit-gate-in-hook -->
 #### UC-NCR-14 — A tier participating in documentation without project subscriptions is gated and runs the guardrails lane
 
 ```
@@ -911,6 +912,21 @@ And the native toolchain leg does not run, because the tier does not carry code
 And no native toolchain contract is required at that root for the commit to proceed
 And a failing gate blocks the commit exactly as it does for a subscribed project
 ```
+
+<!-- change:commit-gate-in-hook -->
+#### UC-NCR-14 — A home declaring no capabilities gets only the documentation checks
+
+```
+Given an agent working in a person home, which declares no capability blocks
+And that home has changes in scope
+When the agent commits through the sealed surface
+Then the gate runs over the staged files
+And snippet validation runs over them, because the home counts as docs by its kind
+And neither the native toolchain nor TeleClaude's code rules run, because the home does not carry code
+And no native toolchain contract is required at that root for the commit to proceed
+```
+
+<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-NCR-15 — A tier carrying code still requires its native toolchain
 

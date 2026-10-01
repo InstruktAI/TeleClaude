@@ -288,24 +288,6 @@ todo worktree, a successful commit also publishes the todo's branch to
    `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
    run against `quality_paths` (the commit pathspec filtered to existing files)
    before `git commit --no-verify`, in that order where both apply. A tier that
-<!-- change:commit-gate-in-hook -->
-4. **The pre-commit hook runs the gates each staged path's owning home carries.**
-   Whether the gate runs follows the declared tier of each staged path's owning
-   home, never the directory the commit started from:
-   a tier carrying project subscriptions, or whose material participates in
-   documentation, is gated; a tier carrying neither is not, and nothing is
-   applied in its place. Which checks run follows what that tier carries, never
-   where its root sits: the native toolchain leg runs where the tier carries
-   `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
-   run from `.git/hooks/pre-commit` (`telec code pre-commit`) against the
-   commit's staged file set, after the partial-staging guard, in that order
-   where both apply. Formatting is checked, never rewritten. The documentation
-   and agent-artifact validators read the staged content against the rest of
-   each owning home as committed; the native leg runs on disk over the staged
-   files. `telec code commit` formats `quality_paths` (the commit
-   pathspec filtered to existing files) before staging and passes no
-   `--no-verify`, so its commits pass the same hook as a raw `git commit`. A tier that
-<!-- /planned-change:commit-gate-in-hook -->
    participates in documentation and carries no project subscriptions is gated,
    runs the guardrails lane, and requires no native toolchain contract at its
    root. The selected checks run in-process when the checkout under commit is
@@ -319,11 +301,39 @@ todo worktree, a successful commit also publishes the todo's branch to
    missing, is refused rather than graded by installed rules
    (`projects/teleclaude/design/architecture/cli-invocation-boundary`).
    Deletion-only commits
-<!-- planned-change:commit-gate-in-hook -->
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
    not re-run format or lint.
 <!-- change:commit-gate-in-hook -->
+4. **The pre-commit hook runs the checks each staged path's owning home carries.**
+   Whether the gate runs, and which checks it runs, follow the owning home of
+   each staged path, never the directory the commit started from, under the
+   capability rule in
+   `projects/teleclaude/spec/feature/config/project-capability-manifest`: the
+   gate runs where that home carries `code` or `docs`, a global, person, or
+   company home counting as `docs` by its kind, and each capability contributes
+   only its own checks — `code` the native toolchain and TeleClaude's code
+   rules, `docs` snippet validation, `agents` artifact validation. A home
+   carrying neither is not gated, and nothing is applied in its place. The
+   checks run from `.git/hooks/pre-commit` (`telec code pre-commit`) against
+   the commit's staged file set, after the partial-staging guard. Formatting is
+   checked, never rewritten. The documentation and agent-artifact validators
+   read the staged content against the rest of each owning home as committed;
+   the native leg runs on disk over the staged files. `telec code commit`
+   formats `quality_paths` (the commit pathspec filtered to existing files)
+   before staging and passes no `--no-verify`, so its commits pass the same
+   hook as a raw `git commit`. A home without `code` requires no native
+   toolchain contract at its root. The selected checks run in-process when the
+   checkout under commit is the installation or is not a TeleClaude checkout.
+   For any other TeleClaude checkout exactly the selected checks run in that
+   checkout's own code — a slug worktree against the worktree's home
+   (`projects/teleclaude/spec/feature/agent_runtime/isolated-home`), any other checkout
+   against a fresh scratch home — so a change is graded by the rules it carries
+   and undelivered code never runs against the live home; a checkout that cannot
+   run the selected checks in its own code, or a slug worktree whose home is
+   missing, is refused rather than graded by installed rules
+   (`projects/teleclaude/design/architecture/cli-invocation-boundary`).
+   Deletion-only commits
    (empty `quality_paths`) skip formatting and the native leg; the documentation
    and agent-artifact validators still grade each owning home of a deleted path.
 <!-- /planned-change:commit-gate-in-hook -->

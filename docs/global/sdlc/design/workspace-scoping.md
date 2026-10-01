@@ -17,9 +17,15 @@ own. `telec code lint` composes **two decoupled legs**:
 
 1. the project's own `make lint` — native tools (ruff/pyright/mypy/jscpd, eslint/tsc,
    cargo) with **zero TeleClaude dependency**; and
+<!-- planned-change:commit-gate-in-hook -->
 2. TeleClaude's **guardrails lane** — the policy checks
    (`tools/lint/{guardrails,markdown,home_paths,snapshot_testing}.py`
    plus the doc-index resource-validation).
+<!-- change:commit-gate-in-hook -->
+2. TeleClaude's own checks — its code rules, snippet validation, and artifact
+   validation — each run only where the owning home carries the capability it
+   belongs to: `code`, `docs`, or `agents` in that home's `teleclaude.yml`.
+<!-- /planned-change:commit-gate-in-hook -->
 
 `make lint` never contains the guardrails lane and never calls `telec`; the
 guardrails lane is never plumbed into any `Makefile`. The native Makefile shape
@@ -208,7 +214,7 @@ answer from session history.
     leg first (ruff `--fix` may edit), then the guardrails lane; it exits
     non-zero if either leg fails. `make lint` carries no guardrails; the
     guardrails lane carries no native tools.
-<!-- planned-change:full-lint-tracked-material -->
+<!-- planned-change:commit-gate-in-hook -->
 11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
     make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
     paths; on full runs neither is scoped. Because the make leg's paths travel
@@ -216,20 +222,21 @@ answer from session history.
     metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
-<!-- change:full-lint-tracked-material -->
+<!-- change:commit-gate-in-hook -->
 11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
     make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
     paths; on full runs neither is scoped. Because the make leg's paths travel
     in a NUL file (not a command line), a filename with spaces or shell
     metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
     cross-reference validation runs inside the guardrails lane on full runs, so
-    an agent's scoped lint never fails on another agent's in-flight docs. On a
-    full run, every file the guardrails lane grades, the doc-index and
-    agent-artifact validations included, is one git tracks for the repository:
-    content git ignores, and the content of another repository nested inside
-    it, are never graded. Untracked files reach the lane through file-scoped
-    runs and the commit gate.
-<!-- /planned-change:full-lint-tracked-material -->
+    an agent's scoped lint never fails on another agent's in-flight docs.
+    A full run collects the homes in the repository's committed tree and runs,
+    per home, exactly the checks that home's capabilities carry over that home's
+    tracked files. The full-run option widens the files, never the
+    checks: content git ignores, and another repository nested inside the
+    repository, are never graded, and a home that carries no capability is not
+    checked.
+<!-- /planned-change:commit-gate-in-hook -->
 
 12. **Ownership is declared, never inferred.** A path with no live declaration is
     unowned — that is a fact about the record, not a judgment about the work.
@@ -346,19 +353,22 @@ git commit (raw, or invoked by telec code commit)
 
 ### Full-run flow
 
-<!-- planned-change:full-lint-tracked-material -->
+<!-- planned-change:commit-gate-in-hook -->
 ```
 telec code lint --all   (or CI, no-session shared branch)
   → make lint (no FILES_FROM) + guardrails lane (repo-wide)
   → doc-index cross-reference validation runs inside the guardrails lane
 ```
-<!-- change:full-lint-tracked-material -->
+<!-- change:commit-gate-in-hook -->
 ```
 telec code lint --all   (or CI, no-session shared branch)
-  → make lint (no FILES_FROM) + guardrails lane (repo-wide over tracked files)
-  → doc-index cross-reference validation runs inside the guardrails lane
+  → collect the homes in the repository's committed tree
+  → per home, over its tracked files: the checks its capabilities carry
+    (code → make lint at the home root plus TeleClaude's code rules;
+     docs → snippet validation; agents → artifact validation)
+  → a home that carries no capability is not checked
 ```
-<!-- /planned-change:full-lint-tracked-material -->
+<!-- /planned-change:commit-gate-in-hook -->
 
 ## Failure modes
 
