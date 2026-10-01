@@ -2,7 +2,7 @@
 id: third-party/antigravity-cli/directory-trust-1.1.12
 type: third-party
 scope: project
-description: Google Antigravity CLI 1.1.12 workspace-trust storage and the authoritative gaps that block safe automated trust-store writes.
+description: Google Antigravity CLI workspace-trust storage (1.1.12 static) and its exact-real-path matching observed on 1.2.14, with the remaining write-safety gaps.
 ---
 
 # Google Antigravity CLI 1.1.12 directory trust
@@ -15,6 +15,14 @@ This is pinned to the shipped macOS arm64 `agy` 1.1.12 binary at
 Team ID `EQHXZ8M8AV`). Findings not covered by official documentation come from
 static strings and Go type metadata in that signed binary; it was not executed
 to derive them.
+
+Sections B and C additionally record behavior observed by executing the
+installed `agy` 1.2.14 on macOS arm64 on 2026-10-01, under the real user home:
+the CLI was launched in tmux in fresh directories outside any Git repository,
+with candidate entries added to `trustedWorkspaces`, and the pane was inspected
+for the startup trust menu. A session launched in an untrusted directory was the
+negative control; an exact entry for the launch directory was the positive
+control.
 
 ## A. Store and value shape
 
@@ -34,20 +42,31 @@ binary independently contains the field/tag pair
 
 ## B. Key normalization
 
-**Open gap.** Neither the official documentation nor the shipped type metadata
-establishes whether a launch directory is stored literally, made absolute or
-clean, resolved through symlinks, or replaced by a Git/project root. Generic
-`filepath.Abs` and `filepath.EvalSymlinks` symbols in the binary are not enough
-to attribute either operation to trust-key construction.
+Neither the official documentation nor the shipped type metadata establishes
+how a launch directory is stored. On 1.2.14 the lookup compares against the
+symlink-resolved launch directory: an entry spelled with the resolved path
+(`/private/tmp/...`) suppressed the menu, while an entry for the same directory
+spelled through the `/tmp` symlink did not.
 
 ## C. Resolution and inheritance
 
-**Open gap.** The codelab says the prompt is typically seen in each new folder,
-but it does not specify the comparator. Static inspection did not establish
-whether membership requires an exact path, inherits from any ancestor, or uses
-an enclosing repository/project root. No automated writer should populate this
-store until this rule and section B are established by vendor source or
-documentation.
+The codelab says the prompt is typically seen in each new folder, but it does
+not specify the comparator. On 1.2.14 membership is an exact path match:
+
+| Entry                                   | Launch directory   | Trust menu |
+| --------------------------------------- | ------------------ | ---------- |
+| none                                    | `<d>/ctrl`         | shown      |
+| `<d>/anc` (exact ancestor)              | `<d>/anc/child`    | shown      |
+| `<d>/*` (top-level)                     | `<d>/glob1`        | shown      |
+| `<d>/*` (top-level)                     | `<d>/nest/deep/er` | shown      |
+| `security.trustedWorkspaces: ["<d>/*"]` | `<d>/sec1`         | shown      |
+| `<d>/ctrl` (exact, resolved)            | `<d>/ctrl`         | not shown  |
+
+Wildcards are not expanded, ancestors confer no trust, and a nested
+`security.trustedWorkspaces` key is not read. Repository-root inheritance was
+not probed directly, but a 1.2.13 session launched in a linked worktree of a
+repository whose main checkout was listed in `trustedWorkspaces` still showed
+the menu, so a linked worktree is not covered by its main repository's entry.
 
 ## D. Gate suppression and version history
 
@@ -79,8 +98,10 @@ vendor-supported safety protocol to follow.
 
 ## Gaps/Unknowns
 
-- Path normalization and symlink behavior are unresolved.
-- Exact matching versus ancestor or repository-root inheritance is unresolved.
+- Whether a plain subdirectory inside a Git repository inherits trust from an
+  entry for the repository root was not probed.
+- The 1.2.14 matching behavior is observed, not vendor-documented, and may
+  change between releases.
 - Whether `--dangerously-skip-permissions` suppresses the startup trust gate is
   unresolved; documentation only promises tool-permission auto-approval.
 - No locking, atomicity, or concurrent-writer contract is documented.
