@@ -34,8 +34,8 @@ nothing about its consumers:
   with no caller session states only the computer.
 - **Subject:** a registered project, person, or company, named in the
   configuration-subject vocabulary; none when the event concerns no registered
-  home; or unknown when the producer acted on something that belongs to a
-  registered home but cannot establish which on the emitting computer. A project
+  home; or unknown when the event does not carry it, because it predates these
+  facts or reports an act whose record was kept before its home was. A project
   subject also carries its owner as the emitting computer
   resolves it: the declared company or person, declared ownerless, or
   unresolved when that computer cannot read the project's ownership declaration.

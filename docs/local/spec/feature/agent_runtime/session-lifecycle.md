@@ -306,24 +306,6 @@ And a session created before owners were recorded names its subject's owner afte
 
 <!-- /planned:subject-scope-reach -->
 
-<!-- planned:event-origin-and-subject -->
-#### UC-SL49: An agent reading a session whose governing declaration cannot be read sees that its subject was not established
-
-```
-Given an agent session starts in a working folder
-And the declaration governing that folder cannot be read or names no subject it can declare
-When an agent reads that session's details
-Then the session is running
-And its details state no configuration subject
-And its details state that its configuration subject could not be established, distinct from a session in a folder no declaration governs
-And which sessions a caller's role lists is unchanged
-```
-
-<!-- /planned:event-origin-and-subject -->
-
-
-
-
 #### UC-SL33: A completed native command leaves the agent idle
 
 ```gherkin

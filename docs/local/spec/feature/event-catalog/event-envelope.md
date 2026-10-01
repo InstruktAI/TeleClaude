@@ -17,7 +17,7 @@ its producer where the event happens:
   home (a project, person, or company).
 - **Subject** — what the event is about: the registered project, person, or
   company it concerns; none when it concerns no registered home, such as the
-  platform itself; or unknown when its subject cannot be established. A project
+  platform itself; or unknown when the event does not carry it. A project
   subject also carries its owner as resolved on the computer where the event
   happened: the owning company or person, no owner, or unresolved when that
   computer cannot read the project's ownership.
@@ -64,7 +64,6 @@ Examples:
   | a registered person's folder          | that person         |
   | a registered company's folder         | that company        |
   | a folder no registration governs      | none                |
-  | a registered folder whose declaration cannot be read | unknown |
 ```
 
 #### UC-EE2: An event emitted by platform automation names only its computer
@@ -151,14 +150,13 @@ But when a computer that knows these facts receives an event from one that preda
 Then it reads that event as having no emitting session, no origin home, and an unknown subject, without error
 ```
 
-#### UC-EE10: An event that cannot establish its subject states it as unknown
+#### UC-EE10: An event about an act recorded before its home was kept states its subject as unknown
 
 ```gherkin
-Given a producer acts on something that belongs to a registered home
-And the emitting computer cannot establish which home that is
+Given a producer reports an act whose record was kept before the home it concerned was recorded with it
 When the producer emits a platform event about that act
-Then the event states that its subject is unknown
-And it states neither no subject nor a guessed home
+Then an agent consuming platform events sees that the event's subject is unknown
+And the event states neither no subject nor a guessed home
 ```
 
 ## See Also
