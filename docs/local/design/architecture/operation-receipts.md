@@ -58,7 +58,10 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
 <!-- change:subject-scope-reach -->
 - Operation rows are keyed to the caller session and record the subject the operation runs in —
   the subject of its working folder, or of the session it acts on — with that subject's owner as
-  resolved when the operation is created. A caller may inspect its own,
+  resolved when the operation is created. A row written before operations recorded a subject
+  receives once the subject and owner of its working folder or target session; a row whose
+  subject cannot be established records it as unknown, which only platform reach and its own
+  caller see. A caller may inspect its own,
   and any operation whose subject its reach admits
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`). A read from another computer
   carries no session (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
