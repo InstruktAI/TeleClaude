@@ -136,6 +136,7 @@ RECEIVER_AGY_FILE = "receiver_agy.py"
 MATCHER_KEY = "matcher"
 MATCHER_ALL = "*"
 HOOKS_KEY = "hooks"
+_RECEIVER_SCRIPT_PARTS = ("teleclaude", "hooks", "receiver", "__main__.py")
 HOOK_TYPE_KEY = "type"
 HOOK_COMMAND_KEY = "command"
 HOOK_COMMAND_TYPE = "command"
@@ -370,6 +371,17 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
         "claude",
         _declared_hook_map("claude"),
     )
+
+
+def claude_platform_hooks(repo_root: Path) -> dict[str, Any]:
+    """Return TeleClaude's own Claude hook blocks in settings form, and nothing else.
+
+    These are the blocks the installer merges into the user settings. A launch
+    that loads no settings source carries exactly these, so lifecycle reporting
+    keeps working without importing any other hook.
+    """
+    receiver_script = repo_root.joinpath(*_RECEIVER_SCRIPT_PARTS)
+    return merge_hooks({}, _claude_hook_map(_build_hook_invocation(receiver_script), receiver_script))
 
 
 def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[str, list[dict[str, Any]]]:

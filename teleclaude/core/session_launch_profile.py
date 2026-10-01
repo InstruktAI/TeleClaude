@@ -20,9 +20,9 @@ from teleclaude.core.identity import session_person_role
 from teleclaude.core.models import Session
 from teleclaude.core.session_utils import get_session_output_dir, resolve_working_dir
 from teleclaude.core.tool_access import desk_command_paths
+from teleclaude.install.configure_agent_cli import claude_platform_hooks
+from teleclaude.paths import REPO_ROOT
 
-_CLAUDE_HOME_DIR = ".claude"
-_CLAUDE_SETTINGS_FILE = "settings.json"
 _CLAUDE_HOOKS_KEY = "hooks"
 _DESK_INSTRUCTIONS_FILE = "AGENTS.md"
 _DESK_BASH_RULE_TEMPLATE = "Bash(telec {path} *)"
@@ -30,7 +30,6 @@ _DESK_SETTINGS_FLAG = "--settings"
 _DESK_ADD_DIR_FLAG = "--add-dir"
 _DESK_APPEND_PROMPT_FILE_FLAG = "--append-system-prompt-file"
 _NO_DESK_RENDERER_TEMPLATE = "Agent '{agent}' has no help-desk launch rendering"
-_INVALID_CLAUDE_SETTINGS_TEMPLATE = "Claude user settings at {path} are not a JSON object"
 _FLAG_SEPARATOR = " "
 
 # Launch settings for a Claude desk session. The desk profile loads no user,
@@ -38,7 +37,8 @@ _FLAG_SEPARATOR = " "
 # permission set: don't-ask mode denies every tool call that is not
 # pre-approved here, the read fence keeps the file tools inside the working
 # directories, only managed instructions load at startup, and memory and web
-# tools stay off. The allow list and the deployed hooks are added per launch.
+# tools stay off. The allow list and TeleClaude's own hooks are added per
+# launch; no other hook source loads, so no hook can approve a call.
 _CLAUDE_DESK_SETTINGS: dict[str, object] = {  # guard: loose-dict - vendor settings document
     "forceLoginMethod": "claudeai",
     "enabledMcpjsonServers": [],
@@ -62,29 +62,12 @@ class SessionLaunchProfile:
     flags: str = ""
 
 
-def _claude_deployed_hooks() -> dict[str, object]:  # guard: loose-dict - vendor hook settings
-    """Return the hook blocks the deployed Claude user settings carry.
-
-    Hooks run outside the agent's tool permissions and never widen its
-    permissions or readable roots; the session's lifecycle reporting depends
-    on them, so a desk launch carries them although it loads no settings source.
-    """
-    path = Path.home() / _CLAUDE_HOME_DIR / _CLAUDE_SETTINGS_FILE
-    if not path.is_file():
-        return {}
-    settings = json.loads(path.read_text())
-    if not isinstance(settings, dict):
-        raise ValueError(_INVALID_CLAUDE_SETTINGS_TEMPLATE.format(path=path))
-    hooks = settings.get(_CLAUDE_HOOKS_KEY)
-    return hooks if isinstance(hooks, dict) else {}
-
-
 def _render_claude_desk_flags(session: Session) -> str:
     allow = [_DESK_BASH_RULE_TEMPLATE.format(path=path) for path in desk_command_paths(session.human_role)]
     settings = {
         **_CLAUDE_DESK_SETTINGS,
         _PERMISSIONS_KEY: {**_CLAUDE_DESK_PERMISSIONS, _ALLOW_KEY: allow},
-        _CLAUDE_HOOKS_KEY: _claude_deployed_hooks(),
+        _CLAUDE_HOOKS_KEY: claude_platform_hooks(REPO_ROOT),
     }
     parts = [
         _DESK_SETTINGS_FLAG,
