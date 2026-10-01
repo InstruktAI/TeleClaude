@@ -126,6 +126,7 @@ the resulting evaluation owes no commit action.
 
 ### Invariant 28 — Undeclared-write question
 
+<!-- planned-change:checkpoint-refires-on-foreign-dirty-file -->
 On a shared branch, the engine derives advisory candidates from the same
 checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
 not declared that appear, as an exact path, in a successful shell command of
@@ -137,6 +138,26 @@ candidates: the hook receiver declares them when the call succeeds
 candidates exist, the engine still produces a decision carrying the question.
 Classifying a shell command as one that writes files and matching a known path
 in its text is structural; the engine never extracts paths from command text.
+<!-- change:checkpoint-refires-on-foreign-dirty-file -->
+On a shared branch, the engine derives advisory candidates from the same
+checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
+not declared that appear, as an exact path, at a write target of a successful
+shell command of that cycle. A write target is a redirection destination, an
+operand of a file-writing command, or the script of an interpreter invocation
+that writes files. A path that appears only in a quoted argument of a command
+that writes nothing, in heredoc data fed to a command that is not an
+interpreter, or in other non-target text is not at a write target, so a
+command that writes one file while carrying another path as data raises no
+question about that other path. The candidates are rendered as a named question
+inviting `telec code add`; they never join the effective file set, never write a
+declaration, and never raise an obligation. Edit-tool writes are not
+candidates: the hook receiver declares them when the call succeeds
+(`sdlc/design/workspace-scoping`). When the effective set is empty but
+candidates exist, the engine still produces a decision carrying the question.
+Locating write targets from shell syntax outside quotes and heredoc data, and
+matching a known dirty path there, is structural; the engine never derives a
+path from command text that is not already a known dirty path.
+<!-- /planned-change:checkpoint-refires-on-foreign-dirty-file -->
 
 ## Primary flows
 
