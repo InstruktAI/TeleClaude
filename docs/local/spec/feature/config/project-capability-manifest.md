@@ -87,9 +87,9 @@ Derivation rules:
   checks it counts as `docs` and `agents` by its kind
   (`local/projects/teleclaude/spec/feature/config/tier-permissions`), and never as
   `code`.
-- Every staged `teleclaude.yml` is validated in full at the commit gate, by the
-  same validation `telec config validate` applies, in every home that holds one
-  and whatever that home subscribes. In a home that enables neither `code` nor
+- Every staged `teleclaude.yml` is validated at the commit gate as that one
+  file, against its own declaration schema, in every home that holds one and
+  whatever that home subscribes. Nothing beyond the staged file is validated. In a home that enables neither `code` nor
   `docs`, declaration validation is the gate's only check, and that home still
   raises no commit obligation. A declaration that fails validation refuses the
   commit, so committed state, which every consumer derives from, never holds an
@@ -463,8 +463,9 @@ And after that value changes in the .env, the next git invocation decides from t
 ```
 Given a home of any kind, whatever capabilities it subscribes
 And a commit that stages its teleclaude.yml
-When the declaration fails the validation telec config validate applies
-Then the commit is refused with that validation's findings
+When that staged file fails validation against its own declaration schema
+Then the commit is refused with that file's findings
+And no other configuration is validated
 And this holds for a raw git commit and for telec code commit alike
 And a home subscribing neither code nor docs runs no other check and raises no commit obligation
 ```
