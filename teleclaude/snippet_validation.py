@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
 import yaml
 
@@ -29,6 +30,8 @@ _GENERATED_DOMAIN_ARTIFACT_NAMES: frozenset[str] = frozenset(
     {GENERATED_DOMAIN_BUNDLE_FILENAME, RETIRED_DOMAIN_BUNDLE_FILENAME}
 )
 _MARKDOWN_SUFFIX = ".md"
+_BASELINE_INDEX_FILENAME = "index.md"
+_BASELINE_FILE_PREFIX = "baseline"
 _COMPANION_NAME_SEPARATOR = "."
 
 
@@ -42,6 +45,15 @@ class SnippetTaxonomy(StrEnum):
     DESIGN = "design"
     SPEC = "spec"
     ADR = "adr"
+
+
+class TierAuthoredClassificationKey(StrEnum):
+    """Classification fields that tier snippet sources must derive from paths."""
+
+    ID = "id"
+    TYPE = "type"
+    SCOPE = "scope"
+    DOMAIN = "domain"
 
 
 #: Snippet-id prefixes reserved by the identity grammar, never a domain name:
@@ -60,6 +72,8 @@ _LOCAL_HALF = "local"
 #: The two halves of every documentation home, in classification order.
 DOCS_HALVES: tuple[str, str] = (_GLOBAL_HALF, _LOCAL_HALF)
 _BASELINE_MANIFEST_NAMES: frozenset[str] = frozenset({"baseline.md", "baseline-progressive.md"})
+_BASELINE_SEGMENT = "baseline"
+_TIER_CLASSIFICATION_KEY_SEPARATOR: Final[str] = ", "
 _PROJECT_DECLARATION_SUBJECT = "project"
 _PROJECT_SLUG_KEY = "project_slug"
 _PROJECT_NAME_KEY = "project_name"
@@ -267,6 +281,28 @@ def tier_root_kind(root: Path) -> SnippetScope | None:
     if resolved.parent.name == PEOPLE_DIR.name:
         return SnippetScope.PERSON
     return None
+
+
+def authored_tier_classification_keys(path: Path, tier_root: Path, metadata: Mapping[str, object]) -> str | None:
+    """Return classification keys authored by an indexable tier source."""
+    if tier_root_kind(tier_root) is None:
+        return None
+    docs_root = tier_root / _DOCS_DIRNAME
+    if _BASELINE_SEGMENT in path.relative_to(docs_root).parent.parts or is_half_root_baseline_manifest(
+        path, docs_root=docs_root
+    ):
+        return None
+    authored = [key.value for key in TierAuthoredClassificationKey if key in metadata]
+    return _TIER_CLASSIFICATION_KEY_SEPARATOR.join(authored) if authored else None
+
+
+def is_baseline_index(path: Path) -> bool:
+    """Whether a Markdown file is a baseline manifest or index."""
+    return (path.name == _BASELINE_INDEX_FILENAME and _BASELINE_SEGMENT in path.parts) or (
+        path.name.startswith(_BASELINE_FILE_PREFIX)
+        and path.name.endswith(_MARKDOWN_SUFFIX)
+        and (path.parent.name in DOCS_HALVES or path.parent.parent.name in DOCS_HALVES)
+    )
 
 
 def derive_snippet_classification(

@@ -45,8 +45,10 @@ from teleclaude.snippet_validation import (
     SnippetClassification,
     SnippetScope,
     SnippetTaxonomy,
+    authored_tier_classification_keys,
     derive_snippet_classification,
     generated_domain_bundle_domain,
+    is_baseline_index,
     is_companion,
     is_generated_domain_artifact_source,
     is_half_root_baseline_manifest,
@@ -63,6 +65,7 @@ _INLINE_REF_PREFIX = "@"
 _LOCAL_HALF = "local"
 _DOCS_DIRNAME = "docs"
 _BASELINE_SEGMENT = "baseline"
+_TIER_CLASSIFICATION_AUTHORED_FINDING = "snippet_tier_classification_authored"
 # ---------------------------------------------------------------------------
 # Shared ref resolution
 # ---------------------------------------------------------------------------
@@ -327,13 +330,6 @@ def validate_snippet(
         # Generated deploy artifact (one merged inflated bundle per domain),
         # not an authored snippet — no frontmatter or taxonomy contract applies.
         return
-    if (path.name == "index.md" and "baseline" in path.parts) or (
-        path.name.startswith("baseline")
-        and path.name.endswith(".md")
-        and (path.parent.name in DOCS_HALVES or path.parent.parent.name in DOCS_HALVES)
-    ):
-        _validate_baseline_index(path, content, project_root, domains=domains)
-        return
     has_frontmatter = content.lstrip().startswith("---")
     if has_frontmatter:
         try:
@@ -346,6 +342,11 @@ def validate_snippet(
     else:
         meta = {}
         body = content
+    if authored_keys := authored_tier_classification_keys(path, project_root, meta):
+        _error(_TIER_CLASSIFICATION_AUTHORED_FINDING, path=str(path), keys=authored_keys)
+    if is_baseline_index(path):
+        _validate_baseline_index(path, content, project_root, domains=domains)
+        return
     lines = body.splitlines()
 
     classification, path_error = derive_snippet_classification(path, project_root=project_root, domains=domains)

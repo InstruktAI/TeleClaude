@@ -36,6 +36,7 @@ from teleclaude.snippet_roots import (
 from teleclaude.snippet_scope import SnippetScope
 from teleclaude.snippet_validation import (
     DOCS_HALVES,
+    TierAuthoredClassificationKey,
     companion_slug,
     derive_snippet_classification,
     derive_tier_snippet_classification,
@@ -521,9 +522,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
     return {"project_root": root, "snippets_root": snippets_root_str, "snippets": snippets}
 
 
-_TIER_AUTHORED_CLASSIFICATION_KEYS = ("id", "type", "scope", "domain")
-
-
 def _build_tier_index_payload(tier_root: Path, half: str, tier_kind: SnippetScope) -> IndexPayload:
     """Build the catalog payload for one half (``docs/global`` or ``docs/local``) of a tier home.
 
@@ -549,7 +547,7 @@ def _build_tier_index_payload(tier_root: Path, half: str, tier_kind: SnippetScop
             continue
         post = frontmatter.load(str(file_path))
         metadata: Mapping[str, object] = post.metadata or {}
-        authored = [key for key in _TIER_AUTHORED_CLASSIFICATION_KEYS if key in metadata]
+        authored = [key.value for key in TierAuthoredClassificationKey if key in metadata]
         if authored:
             raise ValueError(
                 f"{tier_label} snippet {file_path} authors path-derived classification keys {authored}; "
