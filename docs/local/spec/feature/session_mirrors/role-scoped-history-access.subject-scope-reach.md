@@ -41,51 +41,6 @@ The scopes are:
   returned; an unidentified caller never receives a wider view than an
   identified one.
 
-Every surface that serves mirrors to a caller identifies it first; in-process reads that serve no caller are unscoped."
-visibility: 'public'
----
-
-# Role-Scoped History Access — Spec
-
-## Required reads
-
-- @docs/local/spec/domain/session_mirrors.md
-- @docs/local/spec/domain/identity.md
-
-## What it is
-
-History queries are scoped to the caller, so no one reads another person's
-conversations without the authority to. The scope derives from the identity the
-caller carries — the principal of its session, or the person resolved for it at a
-terminal — never from a terminal signal inside a session and never from a stored
-role copy. A person's role is their effective role for the project each mirror
-was recorded in, resolved when the scope is decided
-(`projects/teleclaude/design/architecture/scoped-roles`). A caller's system role is not an
-input: it governs which operations the caller may run, not whose conversations it
-may read.
-
-The scopes are:
-
-- **System principal**: every mirror on the host. A system principal is the
-  platform acting on work that was already accepted; it has no person to scope
-  by.
-- **A person whose effective role for a mirror's project is admin**: that mirror,
-  whoever it is recorded against. A platform administrator holds that role for
-  every project and so sees every mirror; a company administrator sees the
-  mirrors of every project their company owns. A mirror recorded under no person
-  principal — a system-rooted session's — is visible to such a person, and to a
-  system principal, only.
-- **Any other person**: only the mirrors recorded under their own principal —
-  the person the session ran under, spawned sessions of their own chains
-  included (`general/concept/lineage-vs-authorship`) — whatever their role,
-  including a role that does not resolve.
-- **A mirror with no registered project** has no company scope. It is visible to
-  a platform administrator, a system principal, and the person it is recorded
-  under.
-- **A caller that cannot be identified**: refused. Nothing is read and nothing is
-  returned; an unidentified caller never receives a wider view than an
-  identified one.
-
 Every surface that serves mirrors to a caller identifies that caller first: the
 history detail capability that answers `telec history show`, history search,
 the search command a peer receives over the relay, and the session_mirrors

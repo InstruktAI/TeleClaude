@@ -151,7 +151,7 @@ And a person with no relationship to that company does not see it
 ```gherkin
 Given a record whose subject the showing computer cannot resolve to any reach, or whose subject is recorded as unknown
 When a person who is not a platform administrator views that data
-Then the record is not shown
+Then the record is not shown to them unless it is recorded under their own principal
 And a platform administrator and the system principal still see it
 ```
 
