@@ -308,16 +308,15 @@ And sessions recorded before owners were recorded receive the owner of their sub
 <!-- /planned:subject-scope-reach -->
 
 <!-- planned:event-origin-and-subject -->
-#### UC-SL49: A session whose governing declaration cannot be read records that its subject was not established
+#### UC-SL49: An agent reading a session whose governing declaration cannot be read sees that its subject was not established
 
 ```
-Given a session is created for a working folder
+Given an agent session starts in a working folder
 And the declaration governing that folder cannot be read or names no subject it can declare
-When the session record is written
-Then the session is created
-And it records no configuration subject
-And it records that its configuration subject could not be established, distinct from a folder no declaration governs
-And the session payload carries that the subject was not established
+When an agent reads that session's details
+Then the session is running
+And its details state no configuration subject
+And its details state that its configuration subject could not be established, distinct from a session in a folder no declaration governs
 And which sessions a caller's role lists is unchanged
 ```
 
