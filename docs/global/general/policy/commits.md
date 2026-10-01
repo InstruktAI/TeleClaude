@@ -105,8 +105,10 @@ All Committizen types are allowed.
   an evidence-only rejection names its sources. For commit review, this exchange
   carries the disposition record — no todo artifact or lifecycle stamp is
   introduced. The author retains commit and review-routing responsibilities; the
-  reviewer alone determines the verdict. Only a genuine human-owned decision, an unresolved
-  contract deadlock, or a safety gate is carried to the human.
+  reviewer alone determines the verdict. What cannot proceed — a genuine
+  human-owned decision, a safety gate, or a disagreement author and reviewer
+  cannot resolve — is held, and the session goes idle with it; nothing routes
+  it to another party (`general/principle/autonomy`).
   Governed contracts (documentation snippets) and agent artifacts require
   independent review after commit. The main-branch checkpoint's code-scoped
   review gate applies to every committed non-documentation path; runtime path

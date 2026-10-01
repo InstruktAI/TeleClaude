@@ -594,7 +594,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "
                     "in particular never instruct authoring an ADR or which snippets to write. Per "
                     "sdlc/policy/preparation-artifact-quality (Input artifact quality): HOW is "
-                    "the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed "
+                    "the prepare phase's hypothesis to verify, doc routing is not the input's "
+                    "(general/policy/documentation-discipline), and an ADR is governed "
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
                     "deliberate exception: its content is a complete implementation-plan, not an input.)",
@@ -611,12 +612,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--plan is valid with --kind change or --kind task.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
-                    "Process changes are decided by humans (sdlc/policy/process-change-authority): "
-                    "when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, "
-                    "gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a "
-                    "human decision from the live conversation. Holding no such decision, do NOT file the todo: "
-                    "escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change "
-                    "intents it cannot trace to a human decision.",
+                    "Process changes are agent-owned (sdlc/policy/process-change-authority): file them on the "
+                    "ordinary path; only a consequence on the closed list of general/policy/human-contract waits "
+                    "for the human.",
                 ],
                 auth=CommandAuth(
                     system=_AGENT_REACH | _WORKER_REACH,

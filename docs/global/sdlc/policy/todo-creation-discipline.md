@@ -99,7 +99,8 @@ description: Decide whether a todo should exist, audit that decision at preparat
   stamped creation record and the current `input`, establish the owning
   project, repeat the bounded creation check, apply the governing creation and
   process-authority contracts, and confirm that functionality work carries its
-  required pending documentation. The creation record establishes lineage,
+  required pending documentation, written by whoever holds the awareness
+  (`general/policy/documentation-discipline`). The creation record establishes lineage,
   entry point, human involvement, and door-specific context; it does not prove
   which sources or todo queries the creator consulted.
 - **Repair before retiring.** Correct the project, input, missing
@@ -186,18 +187,17 @@ description: Decide whether a todo should exist, audit that decision at preparat
   conversational settlement; flagger silence leaves nothing pending. For
   every state-changing exit, the flagger reads settlement from the todo
   record: the hold and its log entry, the amended `input`, or removal.
-- **Deadlock reaches the project coordinator, never the human.** Deadlock
-  exists only when the claimant maintains its defense after the permitted
-  follow-up and the flagger still cannot reconcile the conflict. The flagger
-  then routes the conflict, with both sides' grounding, by address to the live
-  project coordinator, which owns its disposition under
-  `sdlc/procedure/lifecycle/coordinate` with its one standing
-  peer falsifying; a flagger that is the coordinator disposes of it directly.
-  With no coordinator live, the flagger preserves the conflict unresolved and
-  never manufactures human ownership for it. Only a surviving decision that
-  `general/policy/human-contract` independently assigns to the human travels
-  to him, as one live question. A resolved defense, hold, stand-down, or
-  retraction does not become human clerking.
+- **Deadlock is held, never routed.** Deadlock exists only when the claimant
+  maintains its defense after the permitted follow-up and the flagger still
+  cannot reconcile the conflict. The flagger preserves the conflict unresolved,
+  states both sides' grounding in its final turn, and goes idle
+  (`general/principle/autonomy`); it routes the conflict to no other party and
+  never manufactures human ownership for it. A coordinator the human has
+  started may take up a deadlock it observes, under
+  `sdlc/procedure/lifecycle/coordinate`. Only a surviving decision that
+  `general/policy/human-contract` independently assigns to the human is left
+  in that idle turn, as one live question. A resolved defense, hold,
+  stand-down, or retraction does not become human clerking.
 
 ### Read authorship from the creation record
 
@@ -237,9 +237,10 @@ trigger. A live-claimant flag closes that gap at the moment cost is being
 incurred: preparation pauses, while the claimant retains judgment over whether
 to defend, hold, stand down, or retract. Restricting the flagger to addresses
 and one follow-up prevents a challenge from becoming a parallel
-orchestration. Routing an unresolved defense to the coordinator, and to the
-human only what the human contract assigns there, keeps every technical
-disagreement out of the human's attention.
+orchestration. Holding an unresolved defense where it arose, with only what
+the human contract assigns to the human left as a question, keeps every
+technical disagreement out of the human's attention without inventing a
+channel that may not exist.
 
 The message-based flag is deliberately not durable todo state. It protects
 actively prepared work, where a claimant exists and effort is being spent.

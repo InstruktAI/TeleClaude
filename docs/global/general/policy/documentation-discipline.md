@@ -48,8 +48,9 @@ restart, then check the logs` is directive. One string reaching a human and an
   authoring session holds context a handoff would lose, or delegated, where
   nothing would be lost in translation.
 - **Functionality is doc-driven — snippets first.** A todo that delivers
-  functionality authors or updates the affected snippets up front, pending, as
-  part of creating the todo. The planner shapes that doc work into the plan; the
+  functionality has its affected snippets authored or updated, pending, before
+  its plan is drafted: by the creating session when it holds context a handoff
+  would lose, otherwise by the claimant at preparation entry. The planner shapes that doc work into the plan; the
   builder executes against it and does not decide doc reflection on its own.
 - **A feature spec is owed only for behavioral work delivered through a todo**,
   against the bounded context that owns the behavior; the classification and

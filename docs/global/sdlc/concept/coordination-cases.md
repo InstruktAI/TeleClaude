@@ -70,9 +70,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
   `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which that clause routes to this role: it owns the
-  disposition with its standing peer falsifying, and only residue the human
-  contract assigns to the human travels on.
+  defense is deadlock, which the flagger holds and goes idle with; this role
+  may take up a deadlock it observes, owning that disposition with its standing
+  peer falsifying, and only residue the human contract assigns to the human is
+  left for him.
 
 ##### NC-02-b — Documentation-only work routed through the lifecycle
 
@@ -92,22 +93,25 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
   `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which that clause routes to this role: it owns the
-  disposition with its standing peer falsifying, and only residue the human
-  contract assigns to the human travels on.
+  defense is deadlock, which the flagger holds and goes idle with; this role
+  may take up a deadlock it observes, owning that disposition with its standing
+  peer falsifying, and only residue the human contract assigns to the human is
+  left for him.
 
-##### NC-02-c — Process change without a recorded human decision
+##### NC-02-c — Process change past a human-owned consequence without its decision
 
 - **Evidence available:** the actual human decision record, current input, creation
   record, Prepare transcript and derived artifacts, and
   `sdlc/policy/process-change-authority`. Lineage and
   `human_involved` corroborate involvement but never prove the decision.
 - **Ownership:** The live claimant, resolved from the todo/session record, applies the
-  authority gate and executes refusal or continuation. Human owns process intent. The Prepare state machine records the
-  resulting phase state.
-- **Coordinator:** intervene only on positive evidence that the claimant crossed the
-  gate without the recorded decision, or that its stated basis contradicts those
-  addresses. Never infer ratification or ask Human to re-decide a recorded decision.
+  authority gate and executes refusal or continuation. Process evolution is
+  agent-owned; the human owns only a consequence on the closed list of
+  `general/policy/human-contract` (`sdlc/policy/process-change-authority`). The
+  Prepare state machine records the resulting phase state.
+- **Coordinator:** intervene only on positive evidence that the claimant proceeded
+  past such a human-owned consequence without the recorded decision, or that its
+  stated basis contradicts those addresses. Never infer ratification or ask Human to re-decide a recorded decision.
   Then flag the live claimant with the complete first message the reconciliation
   clause of `sdlc/policy/todo-creation-discipline` defines; never
   perform the audit, decide validity, or select the claimant's exit.
@@ -116,9 +120,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
   `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which that clause routes to this role: it owns the
-  disposition with its standing peer falsifying, and only residue the human
-  contract assigns to the human travels on.
+  defense is deadlock, which the flagger holds and goes idle with; this role
+  may take up a deadlock it observes, owning that disposition with its standing
+  peer falsifying, and only residue the human contract assigns to the human is
+  left for him.
 
 ##### NC-02-d — A role claims authority reserved elsewhere
 
@@ -152,9 +157,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
   `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which that clause routes to this role: it owns the
-  disposition with its standing peer falsifying, and only residue the human
-  contract assigns to the human travels on.
+  defense is deadlock, which the flagger holds and goes idle with; this role
+  may take up a deadlock it observes, owning that disposition with its standing
+  peer falsifying, and only residue the human contract assigns to the human is
+  left for him.
   A logged-and-disposed defect settles separately.
 
 ##### NC-04 — Prepare's ordered process-authority beacon
@@ -441,9 +447,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
   `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which that clause routes to this role: it owns the
-  disposition with its standing peer falsifying, and only residue the human
-  contract assigns to the human travels on.
+  defense is deadlock, which the flagger holds and goes idle with; this role
+  may take up a deadlock it observes, owning that disposition with its standing
+  peer falsifying, and only residue the human contract assigns to the human is
+  left for him.
 
 ##### NC-21 — Materially unjustified production or noise
 

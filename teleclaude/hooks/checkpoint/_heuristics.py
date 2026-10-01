@@ -213,6 +213,7 @@ def _post_commit_review_instruction() -> str:
         "A session-authored main-branch code commit is eligible for post-commit review. "
         "Dispatch the commit(s) to independent review yourself and wait for REVIEW COMPLETE "
         "before reporting completion. A REQUEST CHANGES verdict remains with this session "
-        "for evidence-based rejection or in-scope remediation and re-review; carry only a "
-        "genuine human-owned decision, unresolved contract deadlock, or safety gate to the human."
+        "for evidence-based rejection or in-scope remediation and re-review. What you and the "
+        "reviewer cannot resolve, you hold: go idle with it and route it nowhere "
+        "(general/principle/autonomy)."
     )

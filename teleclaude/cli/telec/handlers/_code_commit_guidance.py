@@ -236,7 +236,8 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         "\n"
         f"{review_dispatch}"
         "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
-        "   you for evidence-based rejection or in-scope remediation and re-review; carry\n"
-        "   only a genuine human-owned decision, unresolved contract deadlock, or safety gate.\n",
+        "   you for evidence-based rejection or in-scope remediation and re-review. What\n"
+        "   you and the reviewer cannot resolve, you hold: go idle with it and route it\n"
+        "   nowhere (general/principle/autonomy).\n",
         file=sys.stderr,
     )
