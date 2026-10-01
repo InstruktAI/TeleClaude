@@ -16,10 +16,15 @@ its producer where the event happens:
   when an agent session emitted it, that session and the session's registered
   home (a project, person, or company).
 - **Subject** — what the event is about: the registered project, person, or
-  company it concerns, or none when it concerns the platform itself. A project
+  company it concerns; none when it concerns no registered home, such as the
+  platform itself; or unknown when its subject cannot be established. A project
   subject also carries its owner as resolved on the computer where the event
   happened: the owning company or person, no owner, or unresolved when that
   computer cannot read the project's ownership.
+
+An event states none only when it concerns no registered home, so a consumer
+reading none can rely on that. An event that does not know its subject states
+unknown instead, and never passes as one about no home.
 
 Both are facts about the event, never about its consumers. A producer does not
 decide, assume, or check who will receive an event, and emission refuses nothing
@@ -31,7 +36,8 @@ one such consumer); this contract only guarantees the facts are there.
 
 Every event type in the catalog declares its subject assignment — what its
 events are about and the home kinds that subject can take, or none for a type
-about the platform itself — and the payload fields its events carry. The
+whose events concern no registered home — and the payload fields its events
+carry. The
 declaration is the discovery surface for what a consumer may filter or narrow
 on; each event carries a subject and payload consistent with its type's
 declaration.
@@ -93,12 +99,17 @@ Examples:
   | a declaration the emitting computer cannot read | unresolved, never no owner |
 ```
 
-#### UC-EE5: An event about the platform itself carries no subject
+#### UC-EE5: An event that concerns no registered home carries no subject
 
 ```gherkin
-Given platform automation emits an event about the platform itself rather than about any registered home
+Given a producer emits a platform event that concerns no registered home
 When an agent consuming platform events receives it
 Then the event states that it has no subject
+
+Examples:
+  | the event concerns                                    |
+  | the platform itself, such as daemon or stream health  |
+  | a session working in a folder no registration governs |
 ```
 
 #### UC-EE6: Emission decides nothing about consumers
@@ -124,7 +135,7 @@ And this holds when the receiving computer does not know the named home
 ```gherkin
 Given an agent reads the event catalog's declaration for any event type
 When it looks up what events of that type are about and what they carry
-Then the declaration states what those events are about and which home kinds that subject can take, or that they are about the platform itself
+Then the declaration states what those events are about and which home kinds that subject can take, or that they concern no registered home
 And it lists the payload fields events of that type carry
 And every event of that type carries a subject and payload fields consistent with its type's declaration
 ```
@@ -136,12 +147,23 @@ Given computers in the fleet run versions from before and after events carried o
 When a computer that predates these facts receives an event carrying them
 Then it processes the event as before, ignoring the facts it does not know
 But when a computer that knows these facts receives an event from one that predates them
-Then it reads that event as having no emitting session, no origin home, and no subject, without error
+Then it reads that event as having no emitting session, no origin home, and an unknown subject, without error
+```
+
+#### UC-EE10: An event that cannot establish its subject states it as unknown
+
+```gherkin
+Given a producer acts on something that belongs to a registered home
+And the emitting computer cannot establish which home that is
+When the producer emits a platform event about that act
+Then the event states that its subject is unknown
+And it states neither no subject nor a guessed home
 ```
 
 ## See Also
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why events state origin and subject as facts about themselves, why access follows the subject, why a project subject carries its owner, and why emission validates nothing.
+- docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why the subject distinguishes none from unknown, and why events from older computers read as unknown.
 - docs/local/adr/0026-cross-version-fleet-compatibility.md — why origin and subject evolve additively and older events read as carrying neither.
 - ~/.teleclaude/docs/sdlc/principle/architectural-defaults.md — event-driven decoupling: producers publish facts, consumers decide their own reaction.
 - docs/local/spec/domain/event-catalog.md — the catalog owns envelope shape and discovery metadata; producing contexts own event meaning.

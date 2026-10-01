@@ -80,3 +80,10 @@ parties call in.
   would drop true facts, while validation belongs where untrusted input enters.
 - **Carry a filesystem path as the origin.** Rejected: a path means something on
   one computer only. A registered slug plus the computer is portable.
+
+## Status
+
+Superseded in part by ADR-0109: an event's subject is a registered home, none
+when it concerns no registered home, or unknown when it cannot be established,
+and events from computers that predate the subject read as unknown. The rest of
+the decision stands.
