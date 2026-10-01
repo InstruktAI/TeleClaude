@@ -66,8 +66,10 @@ other permission; granting stays with a person or a managed device profile.
   opens the signing store nor signs, and leaves the installed launchers
   untouched.
 - **Unattended readiness.** Before signing, a run confirms that the signing store
-  opens, the authority is present and valid, and its key is authorized for
-  unattended use by the signing tool. Any of these failing fails the run at
+  opens, the authority is present with its private key and not expired, and its
+  key is authorized for unattended use by the signing tool. A self-signed
+  authority is never in the system's trusted-identity list, and that is not a
+  readiness failure. Any of these failing fails the run at
   once, naming the cause; signing never relies on a prompt.
 - **Authority creation.** Happens only when the signing store holds no
   authority. A store that is locked is opened with the unlock secret and signs
