@@ -134,7 +134,7 @@ class AdminReflectionMixin:
             thread = await self._get_channel(int(thread_id))
             if thread is None:
                 logger.error(_THREAD_NOT_FOUND_EVENT, thread_id=thread_id)
-                return
+                raise AdapterError(_THREAD_NOT_FOUND_EVENT)
             send_fn = cast_async_callable(
                 self._require_async_callable, getattr(thread, _SEND_ATTR, None), label=_THREAD_SEND_LABEL
             )

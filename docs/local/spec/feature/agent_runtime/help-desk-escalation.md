@@ -200,5 +200,5 @@ And tagging the agent in that thread hands the conversation back
   result tells the agent that the thread is missing.
 - A visitor message that no notified admin could receive is refused back to
   the visitor's adapter rather than dropped or handed to the agent; an admin
-  answer that could not reach the visitor is reported to that admin, who can
-  resend it.
+  answer that could not reach the visitor, or that arrived after the
+  conversation was handed back, is reported to that admin.
