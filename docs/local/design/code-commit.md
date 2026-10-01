@@ -432,6 +432,24 @@ todo worktree, a successful commit also publishes the todo's branch to
     with git's own reason, and the next commit publishes again. Main, the
     integration worktree, and a repository without `origin` publish nothing,
     and the last says nothing about it.
+<!-- planned:home-scoped-commits -->
+
+14. **A refusal confined to owning homes narrows the pathspec once.** The
+    sealed commit hands the hook a place to record its verdict for that
+    attempt: per owning home of the staged paths, the paths it owns and whether
+    its checks passed, and whether the refusal is attributable to owning homes
+    at all. After a refusal it reads that verdict and nothing else. When every
+    finding belongs to an owning home and at least one home passed, the
+    pathspec shrinks to the passing homes' paths plus the staged paths no gated
+    home owns, and git runs again under the same lock, message, identity, and
+    footer; the hook judges that commit afresh. It narrows at most once per
+    invocation. A narrowed landing clears only the declarations it committed,
+    publishes the branch per Invariant 13, and then exits non-zero naming each
+    dropped home with its findings. A missing or unreadable verdict, a refusal
+    not attributable to owning homes, an active merge, or a verdict with no
+    passing home leaves the refusal whole. The sealed commit never runs a check
+    of its own to decide what to drop.
+<!-- /planned:home-scoped-commits -->
 
 ## Primary flows
 
@@ -567,6 +585,29 @@ telec code commit --approved "chore(<slug>): reconcile with origin/main"
 <!-- /planned-change:commit-gate-in-hook -->
   → lock released
 ```
+<!-- planned:home-scoped-commits -->
+
+### Agent commit refused for some owning homes
+
+```
+telec code commit --approved "docs(people): update snippets"
+  → lock acquired; scope, pathspec, staging, and formatting as on main
+  → real git commit -F <msg> -- <pathspec>       (verdict place handed to the hook)
+    → .git/hooks/pre-commit → telec code pre-commit
+      → per owning home: checks run, findings grouped under the home
+      → verdict recorded; exits non-zero
+  → read the verdict
+    → not attributable to owning homes, or no home passed → exit non-zero, no commit
+    → otherwise pathspec = passing homes' paths + paths no gated home owns
+  → real git commit -F <msg> -- <narrowed pathspec>
+    → .git/hooks/pre-commit judges the narrowed commit
+      → refused → exit non-zero, no commit, both refusals reported
+  → clear the declarations the narrowed commit carried
+  → lock released
+  → slug worktree with an origin remote → publish the branch (Invariant 13)
+  → report each dropped home with its findings; exit non-zero
+```
+<!-- /planned:home-scoped-commits -->
 
 ## Failure modes
 
@@ -598,6 +639,16 @@ is named with the format command that fixes it. No commit is produced; files
 remain in their current state for the author to fix and retry. A tier that
 carries no gate runs none, so this failure mode does not arise there.
 <!-- /planned-change:commit-gate-in-hook -->
+<!-- planned:home-scoped-commits -->
+
+**Hook gate failure confined to some owning homes.** For `telec code commit`,
+a refusal whose findings all belong to owning homes, with at least one home in
+the commit passing, narrows once per Invariant 14. The passing homes'
+changes are committed and the command still exits non-zero, naming each
+dropped home with its findings. The dropped files and their declarations are
+left as they were for their authors. When the narrowed commit is refused too,
+nothing is committed and both refusals are reported.
+<!-- /planned:home-scoped-commits -->
 
 **Forgotten commit gate.** A non-integrator agent on main passes a message
 without `--approved`. Exit with commit-first guidance and no commit. The agent
@@ -628,3 +679,6 @@ integrates them; the report names that reason each time.
 - docs/global/sdlc/policy/version-control-safety.md
 - docs/local/adr/0065-integrator-parks-and-drains-with-integrity-only-gating.md — why a slug worktree's only baseline is `origin/main`: the integrator inspects and squashes against it.
 - docs/local/adr/0097-involvement-is-observed-not-adjudicated.md — why the involvement record is resolved from observed presence and never refuses the commit.
+<!-- planned:home-scoped-commits -->
+- docs/local/adr/0110-a-refused-commit-is-narrowed-to-the-homes-the-gate-passed.md — why a refused commit narrows by owning home, once, from the gate's own verdict.
+<!-- /planned:home-scoped-commits -->

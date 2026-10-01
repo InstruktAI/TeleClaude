@@ -1070,6 +1070,85 @@ Then the file is committed as part of the session's declared set
 But a file the session changed only through a shell command is not committed until the session declares it
 ```
 
+<!-- planned:home-scoped-commits -->
+### Narrowing a refused commit to the homes the gate passed
+
+When the pre-commit hook refuses a `telec code commit`, its verdict for that
+attempt states, for each owning home of the staged paths, whether that home's
+checks passed. When every finding belongs to an owning home and at least one
+owning home in the commit passed, `telec code commit` commits again with only
+the paths of the passing homes and of staged paths no gated home owns. That
+commit passes through the hook like any other. The command narrows at most once
+per invocation. It reports each dropped home with its findings and exits
+non-zero, after the narrowed commit and its branch publication when one lands.
+The dropped homes' files stay uncommitted, and the session's declarations for
+them stay live.
+
+The unit dropped is the owning home, never the single file. The hook only
+judges; it never narrows a commit. A raw `git commit` therefore receives the
+whole refusal, and the hook output groups findings under their owning home so
+its author can narrow by hand.
+
+#### UC-CGIP-57 — A refusal confined to some owning homes commits the rest
+
+```gherkin
+Given a repository that hosts a company home and a person home
+And an agent session's commit carries changes to both homes
+And the person home's changes carry a finding while the company home's pass the gate
+When the agent invokes telec code commit --approved "<msg>"
+Then the company home's changes are committed, judged by the gate as that narrower commit
+And the person home's files remain uncommitted in the working tree
+And the session's declarations for the person home's files stay live
+And the person home is reported with its findings
+And telec code commit exits non-zero
+```
+
+#### UC-CGIP-58 — A refusal covering every owning home commits nothing
+
+```gherkin
+Given an agent session's commit carries changes to two homes
+And each home's changes carry a finding
+When the agent invokes telec code commit --approved "<msg>"
+Then no commit is created
+And both homes are reported with their findings
+And telec code commit exits non-zero
+```
+
+#### UC-CGIP-59 — A refusal not attributable to owning homes is not narrowed
+
+```gherkin
+Given an agent session's commit carries changes to two homes
+And the hook refuses for a reason it does not attribute to an owning home, such as a partially staged path or a check that could not run
+When the agent invokes telec code commit --approved "<msg>"
+Then no commit is created
+And the hook's reason is reported
+And no narrower commit is attempted
+```
+
+#### UC-CGIP-60 — A narrower commit the gate refuses again commits nothing
+
+```gherkin
+Given an agent session's commit carries changes to the global home's own material and to a person home
+And the global home's changes carry a finding
+And the person home's changes pass only together with the global home's changes
+When the agent invokes telec code commit --approved "<msg>"
+Then the narrower commit carrying the person home is refused by the gate
+And no commit is created
+And both refusals are reported
+And no third commit is attempted
+```
+
+#### UC-CGIP-61 — A merge commit is never narrowed
+
+```gherkin
+Given an agent session completes a merge through telec code commit
+And the merge result carries a finding in one owning home
+When the agent invokes telec code commit --approved "<msg>"
+Then no merge commit is created
+And the merge stays in progress for the agent to resolve
+```
+<!-- /planned:home-scoped-commits -->
+
 ### Branch publication
 
 A successful sealed commit in a todo worktree whose checked-out branch is that todo's branch publishes it to the project's `origin` remote, so every task commit exists off the computer that made it. Publication follows the commit and never decides it: the commit is recorded before any push is attempted, and no publication outcome changes the commit or the command's success.
@@ -1143,3 +1222,6 @@ And the agent is told the branch was not published because it is not the todo's 
 - docs/local/design/code-commit.md
 - docs/global/general/spec/tools/telec-cli.md
 - docs/global/sdlc/policy/version-control-safety.md
+<!-- planned:home-scoped-commits -->
+- docs/local/adr/0110-a-refused-commit-is-narrowed-to-the-homes-the-gate-passed.md — why a refused commit narrows by owning home, and why only once.
+<!-- /planned:home-scoped-commits -->

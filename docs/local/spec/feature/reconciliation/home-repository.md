@@ -48,6 +48,16 @@ project a person owns — is foreign to the home's history and is not part of it
 retained set. What a commit boundary does with that answer belongs to the commit
 surface that asks it, not to the home's own membership rule.
 
+<!-- planned:home-scoped-commits -->
+Once the history exists, activation records only what activation itself
+writes. Each record holds the files activation wrote that were unchanged since
+the last record, or absent, before it wrote them. Material other authors have
+not recorded, whether untracked, modified, or staged, stays exactly as they
+left it. The record is authored under the installation's own identity, never a
+person's, and passes the same commit gate as every other commit. An activation
+that writes nothing records nothing.
+<!-- /planned:home-scoped-commits -->
+
 ## Canonical fields
 
 ### Use cases
@@ -115,6 +125,51 @@ When the home's history is activated
 Then that material is absent from the record the activation creates
 And it is absent because it was never recorded, not because it was recorded and then dropped
 ```
+<!-- planned:home-scoped-commits -->
+
+#### UC-HOME-8: Activation over an active history records only its own writes
+
+```
+Given the home's history is active
+And the home holds an authored snippet no one has recorded yet
+And another session has staged a change in the home without committing it
+And activation refreshes a retained template file that was unchanged since the last record
+When an agent or operator activates the home again
+Then the activation's record holds the refreshed template file and nothing else
+And the authored snippet is still unrecorded and untouched
+And the other session's change is still staged and unrecorded
+```
+
+#### UC-HOME-9: An activation that writes nothing records nothing
+
+```
+Given the home's history is active
+And every file activation would write already matches what it would write
+When an agent or operator activates the home again
+Then no record is created
+```
+
+#### UC-HOME-10: The activation's record names the installation as its author
+
+```
+Given activation records a change in the home's history
+When anyone inspects that record
+Then its author is the installation's own identity
+And no person's identity is named as its author
+```
+
+#### UC-HOME-11: A refused activation record leaves the home as activation found it
+
+```
+Given the home's history is active
+And activation wrote retained template files that were unchanged since the last record, or absent
+And the commit gate refuses the activation's record
+When activation completes
+Then nothing is recorded
+And each file activation wrote holds its earlier content again, or is absent again if it was absent
+And the refusal is reported with the gate's findings
+```
+<!-- /planned:home-scoped-commits -->
 
 ## Known caveats
 
