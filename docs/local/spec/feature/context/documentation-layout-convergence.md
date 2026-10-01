@@ -13,22 +13,40 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 Documentation layout convergence brings every registered repository to the
 documentation layout the context domain reads: local documentation under
 `docs/local/`, local agent artifacts under `agents/local/`, and every snippet
 reference in the qualified identity form (`general/spec/snippet-authoring-schema`).
 Nothing reads the earlier layout, so a repository that has not converged is
 invisible to indexing, validation, and selection until it does.
+<!-- change:local-doc-ids-and-person-privacy -->
+Documentation layout convergence brings every registered repository to the
+documentation layout the context domain reads: local documentation under
+`docs/local/`, local agent artifacts under `agents/local/`, and every snippet
+reference in the qualified identity form, a home's local identities carrying the
+`local/` prefix (`general/spec/snippet-authoring-schema`). Nothing reads the
+earlier layout or the earlier identity forms, so a repository that has not
+converged is invisible to indexing, validation, and selection until it does.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 Convergence is a documentation-owned maintenance operation. It walks the
 project registry, and for each available root it either finds the root current,
 converges it with one commit in that root's own repository, or leaves it
 unchanged and reports why. A convergence commit is always attributable: a run
 with no attributable commit party — no agent session and no terminal login —
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 changes no root and defers every root that would converge. The layout of the checkout is its own completion
 record: a root with neither `docs/project` nor `agents/project` is current, so
 every run is idempotent and a convergence that arrived by pull is recognized
 without bookkeeping. A root whose recorded tree still tracks a retired
+<!-- change:local-doc-ids-and-person-privacy -->
+changes no root and defers every root that would converge. The checkout is its
+own completion record: a root with neither `docs/project` nor `agents/project`,
+whose tracked Markdown names no project-local identity without its `local/`
+prefix, is current, so every run is idempotent and a convergence that arrived by
+pull is recognized without bookkeeping. A root whose recorded tree still tracks a retired
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 directory that is gone from the checkout is an interrupted migration: it is
 reported blocked, never current.
 
@@ -36,6 +54,7 @@ A convergence consists of:
 
 - **The move.** `docs/project` becomes `docs/local` and `agents/project` becomes
   `agents/local`.
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - **The reference rewrite.** Tracked text is rewritten at the identifier level
   only: paths into the old folders become paths into the new ones; the
   repository's own unqualified local identities become `projects/<slug>/…`
@@ -47,8 +66,32 @@ A convergence consists of:
   repository's published half (`docs/global`) keep their identities; their
   occurrences are reported to the owner, who decides whether each mention means
   that repository or the project at hand.
+<!-- change:local-doc-ids-and-person-privacy -->
+- **The reference rewrite.** Tracked text is rewritten at the identifier level
+  only: paths into the old folders become paths into the new ones; the
+  repository's own unqualified local identities become `local/projects/<slug>/…`
+  with the slug the repository declares; person and company identities become
+  `people/<slug>/…` and `companies/<slug>/…`; identities prefixed with a
+  registered project's slug become `local/projects/<slug>/…`; and every
+  project-local identity written as `projects/<slug>/…` — a registered project's
+  slug, or the `<slug>`, `{slug}`, and `{project}` placeholders — gains the
+  `local/` prefix wherever it stands, the published half included, because that
+  form names a local snippet in every repository. Changelogs and generated files
+  are never rewritten; a decision record keeps its body, and only the paths in
+  its See Also list follow the move. Unqualified local identities in the
+  repository's published half (`docs/global`) keep their form; their
+  occurrences are reported to the owner, who decides whether each mention means
+  that repository or the project at hand.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - **The commit.** One commit in the root's repository through the sealed commit
   path, carrying exactly the moved and rewritten paths.
+<!-- change:local-doc-ids-and-person-privacy -->
+- **The commit.** One commit in the root's repository through the sealed commit
+  path, carrying exactly the moved and rewritten paths. A root already on the
+  converged layout whose only change is the `local/` prefix converges the same
+  way, with a commit carrying only the rewritten paths.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 Convergence runs on every computer: as a post-merge maintenance action on
 computers that follow the branch, and from both install paths, which include
@@ -76,6 +119,7 @@ And one commit in that repository, made through the sealed commit path, carries 
 And the root is reported as migrated and committed
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DLC2: A repository on the converged layout is current
 
 ```gherkin
@@ -85,6 +129,18 @@ Then nothing in that repository changes
 And the root is reported as current
 And a second run over a repository converged by UC-DLC1 reports it current
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DLC2: A repository on the converged layout is current
+
+```gherkin
+Given a registered repository with neither docs/project nor agents/project
+And whose tracked Markdown names every project-local identity with its local/ prefix
+When layout convergence runs
+Then nothing in that repository changes
+And the root is reported as current
+And a second run over a repository converged by UC-DLC1 or UC-DLC13 reports it current
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DLC3: A clone whose upstream already converged is not migrated again
 
@@ -182,6 +238,21 @@ And each root that would converge is reported as deferred for lack of an attribu
 And the report names the command that re-runs convergence
 And current roots and roots needing a pull are still reported as such
 ```
+<!-- planned:local-doc-ids-and-person-privacy -->
+
+#### UC-DLC13: A repository naming project-local identities without the local prefix converges in one commit
+
+```gherkin
+Given a registered repository with neither docs/project nor agents/project
+And its tracked Markdown, in either half, names a project-local identity as projects/<slug>/… with a registered project's slug or a <slug>, {slug} or {project} placeholder
+And every path the rewrite touches is clean
+When layout convergence runs with an attributable party
+Then each such identity gains the local/ prefix
+And changelogs, generated files, and decision-record bodies are unchanged
+And one commit in that repository, made through the sealed commit path, carries exactly the rewritten paths
+And the root is reported as migrated and committed
+```
+<!-- /planned:local-doc-ids-and-person-privacy -->
 
 ### Cross-context references
 

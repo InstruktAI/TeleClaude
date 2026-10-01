@@ -53,8 +53,14 @@ flowchart LR
   (`docs/local/index.yaml`), each an array of snippet entries: identity,
   description, type, scope, domain, path, visibility, owner, activation trigger
   or subscriptions, and the pending-delivery fields
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - Local entries under their qualified identity (`projects/<slug>/…`,
   `people/<slug>/…`, `companies/<slug>/…`)
+<!-- change:local-doc-ids-and-person-privacy -->
+- Local entries under their `local/`-prefixed qualified identity
+  (`local/projects/<slug>/…`, `local/people/<slug>/…`, `local/companies/<slug>/…`);
+  published tier entries under `people/<slug>/…` or `companies/<slug>/…`
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - Portable paths using `~/.teleclaude` for published docs
 
 A half's root `baseline.md` and `baseline-progressive.md` are manifests: they
@@ -65,9 +71,17 @@ are read for baseline anchoring and never cataloged as snippets.
 - **Validated input only**: Source validation runs before the index build, and
   a finding blocks publication, so a catalog is only ever built from source that
   passed validation.
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - **Unique IDs**: Each snippet has a globally unique ID; collisions are rejected. The same relative path under both halves of a person's or company's home is such a collision.
+<!-- change:local-doc-ids-and-person-privacy -->
+- **Unique IDs**: Each snippet has a globally unique ID; collisions are rejected. A local identity carries the `local/` prefix, so the same relative path under both halves of a home yields two identities, never a collision.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - **Declared owner**: A home-qualified identity takes its slug from the home's declaration, never from a directory name; a home whose declaration yields no slug fails the build.
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - **Local stays home**: The local catalog is never published; it is read in place by the context selector for every read set that contains its home.
+<!-- change:local-doc-ids-and-person-privacy -->
+- **Local stays home**: The local catalog is never published; it is read in place by the context selector whenever a read assembles its home's local half.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - **Stable Paths**: Published docs use `~/.teleclaude/docs`; local docs use absolute or tilde-expanded paths into their home.
 - **Path Normalization**: The `teleclaude-docs` git filter smudges portable `~/.teleclaude` paths into local absolute paths and cleans them back on commit. Applies to both `@` prefixed doc references and bare paths in index files.
 - **Type Validation**: Snippet types must match canonical taxonomy from `teleclaude/constants.py:TAXONOMY_TYPES`.
@@ -105,7 +119,11 @@ sequenceDiagram
 
 ## Failure modes
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - **Validation findings**: A missing description, a missing required section, a wrong H1 type suffix, a duplicate identity, or one relative path in both halves of a tier home is a source-validation finding. Publication stops before the index build and no catalog changes.
+<!-- change:local-doc-ids-and-person-privacy -->
+- **Validation findings**: A missing description, a missing required section, a wrong H1 type suffix, or a duplicate identity is a source-validation finding. Publication stops before the index build and no catalog changes.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - **Non-derivable classification**: A snippet whose path yields no classification raises; the build fails naming the file and the reason.
 - **Tier snippet authoring**: A person or company snippet that lacks a description or authors a path-derived classification key fails the build naming the file.
 - **Undeclared slug**: A home whose declaration yields no slug cannot mint qualified identities; the build fails naming the home.

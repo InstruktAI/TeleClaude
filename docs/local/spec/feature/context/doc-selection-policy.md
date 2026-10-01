@@ -65,6 +65,7 @@ And what the invocation itself offers is read at public-only depth
 And the absent identity never widens the read
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP21: A project's local identity in the published tree is excluded
 
 ```
@@ -73,6 +74,16 @@ When the Selection policy filters the published tree
 Then the snippet is excluded
 And only general/*, domain-prefixed, people/<slug>/*, and companies/<slug>/* IDs survive
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP21: A local identity in the published tree is excluded
+
+```
+Given a snippet under ~/.teleclaude/docs/ whose ID begins local/
+When the Selection policy filters the published tree
+Then the snippet is excluded
+And only domain-prefixed, people/<slug>/*, and companies/<slug>/* IDs survive
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DSP22: Areas filter keeps only the requested taxonomy
 
@@ -120,6 +131,7 @@ Then the snippet content is returned
 And no tier authorization is required
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
 
 ```
@@ -128,6 +140,17 @@ When the caller references that ID without a selector, from any location
 Then that home's local catalog and published material are loaded
 And visibility gating applies at the depth the caller's relationship to that home grants
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
+
+```
+Given a snippet ID whose prefix names a home the caller's assembled catalogs do not contain — people/<slug> or companies/<slug> for a published snippet, local/projects/<slug>, local/people/<slug> or local/companies/<slug> for a local one
+When the caller references that ID without a selector, from any location
+Then the catalog of the half the identity names is loaded
+And visibility gating applies at the depth the caller's relationship to that home grants
+And a person's local half admits only that person and a system principal
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DSP1: Scope filter keeps only global snippets
 
@@ -138,6 +161,7 @@ Then only snippets with scope global are returned
 And project-scoped snippets are excluded
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP2: Scope filter keeps only one project home's owned set
 
 ```
@@ -147,7 +171,19 @@ Then the project home is the named project, or the landed project when none is n
 And that home's owned set is returned: its local snippets (IDs beginning projects/<slug>/) and the published snippets of the domains it publishes as owner
 And snippets owned by any other home or domain publisher are excluded
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP2: Scope filter keeps only one project home's owned set
 
+```
+Given --scope project passed by the caller, with or without --project <slug>
+When the Selection policy applies the scope filter
+Then with no project named, the landed project's owned set is returned: its local snippets (IDs beginning local/projects/<slug>/) and the published snippets of the domains it publishes as owner
+And with a project named, that project's published snippets — those of the domains it publishes as owner — are returned
+And snippets owned by any other home or domain publisher are excluded
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
+
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP3: Project filter keeps only the queried project's snippets
 
 ```
@@ -159,6 +195,19 @@ And everything that project owns is returned: its local snippets (IDs beginning 
 And snippets owned by any other home or domain publisher are excluded
 And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP3: Project filter keeps only the queried project's published snippets
+
+```
+Given --project <slug> naming a registered project
+And the invocation runs in any location, inside that project or not
+When the Selection policy applies the project filter
+Then the published snippets of the domains that project publishes as owner are returned
+And that project's local snippets are not returned
+And snippets owned by any other home or domain publisher are excluded
+And the filter composes with --areas, --domains, --baseline-only, --scope, --local, and --target
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DSP4: Project filter on an unknown slug returns nothing
 
@@ -239,6 +288,7 @@ And a project owned by a different company gains no depth on that role's account
 And the Selection policy reads the covered set as the roster resolves it rather than deriving it from the role
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP13: A platform administrator reaches any named tier
 
 ```
@@ -247,6 +297,16 @@ And the session names a person, a company, or a project tier explicitly
 When the Selection policy resolves the request
 Then that named tier is returned in full
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP13: A platform administrator reaches any named half but another person's local half
+
+```
+Given an agent session running under the identity of a platform administrator
+And the session names a person's published half, or a company's or a project's published or local half, explicitly
+When the Selection policy resolves the request
+Then that named half is returned in full
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DSP17: Naming a tier never widens a non-administrator's depth
 
@@ -307,6 +367,7 @@ Then only snippets in the company tier are returned
 And snippets of every other tier are excluded
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP34: Naming a person or company reads both halves from anywhere
 
 ```
@@ -317,7 +378,20 @@ Then that home's local catalog is loaded alongside its published material
 And both halves are returned at the depth the caller's relationship to that home grants
 And no other home is returned
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP34: Naming a person or company reads its published half from anywhere
 
+```
+Given an agent session in any location
+And the session names a person or a company by selector, without --local
+When the Selection policy resolves the request
+Then that home's published material is returned at the depth the caller's relationship to that home grants
+And that home's local snippets are not returned
+And no other home is returned
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
+
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DSP35: The half a snippet lives in never decides depth
 
 ```
@@ -327,6 +401,17 @@ When the Selection policy resolves visibility
 Then the public docs/local snippet is included
 And the internal docs/global snippet is excluded
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DSP35: Outside a person's local half, the half a snippet lives in never decides depth
+
+```
+Given a company home holding an internal snippet in docs/global and a public snippet in docs/local
+And a caller who holds no relationship to that home
+When the caller names the company's local half, and separately its published half
+Then the public docs/local snippet is included in the local listing
+And the internal docs/global snippet is excluded from the published listing
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DSP36: The default read set carries both halves of the caller's own tiers
 
@@ -367,6 +452,69 @@ And both offer the public snippets of the platform's shared documentation, the h
 And no internal snippet of an offered home the visitor holds no relationship to is included
 And the visitor's own tiers are read at the depth their relationships grant
 ```
+<!-- planned:local-doc-ids-and-person-privacy -->
+
+#### UC-DSP38: The local selector reads a named home's local half
+
+```
+Given an agent session in any location
+And the session names a person, a company, or a project by selector together with --local
+When the Selection policy resolves the request
+Then that home's local snippets are returned at the depth the caller's relationship to that home grants
+And that home's published snippets are not returned
+And no other home is returned
+```
+
+#### UC-DSP39: The local selector without a named home reads the landed home's local half
+
+```
+Given an invocation landed in a project or a person home
+When the session runs discovery with --local and no home selector
+Then the landed home's local snippets are returned at the caller's depth
+And no other home is returned
+Given an invocation landed in no home
+When the session runs discovery with --local and no home selector
+Then the command is refused and the refusal names the selectors that name a home
+```
+
+#### UC-DSP40: Only its owner and a system principal read a person's local half
+
+```
+Given an agent session whose caller does not carry a person's identity and is not a system principal, whatever its platform or company role
+When the session names that person's local half by --local --person <slug>
+Then the command exits non-zero with a refusal
+And the refusal states that the owner's local documentation is private and names working in the owner's workspace as the way in
+And nothing is listed
+And the refusal is the same whether or not that person is declared
+```
+
+#### UC-DSP41: A person reads their own local half in full
+
+```
+Given an agent session carrying a person's identity, or a system principal
+When the session names that person's local half
+Then every snippet of it is returned, whatever its visibility
+```
+
+#### UC-DSP42: Another person's local half is left out of an unnamed read
+
+```
+Given an invocation landed in a person's home
+And its caller is neither that person nor a system principal
+When the session runs discovery without a selector
+Then that person's published snippets are returned at the caller's depth
+And no snippet of that person's local half is returned
+And the command is not refused
+```
+
+#### UC-DSP43: A kind filter adds nothing next to the local selector
+
+```
+Given an agent session passing --local, with or without a home selector
+When it also passes --scope <kind>
+Then the result is identical to the same request without --scope
+```
+<!-- /planned:local-doc-ids-and-person-privacy -->
 
 ### Cross-context references
 
@@ -377,10 +525,18 @@ And the visitor's own tiers are read at the depth their relationships grant
   from these resolved answers; this policy owns neither the resolution nor the
   declarations beneath it.
 - **config** — supplies the registered publishers' `business.publishes`
+<!-- planned-change:local-doc-ids-and-person-privacy -->
   declarations (their union is the valid-domain set), the project catalog that
   maps the slug of a `projects/<slug>/…` identity to its home, each person's and
   company's declaration that maps `people/<slug>` and `companies/<slug>` to
   theirs, each project's own declaration of its owning company, and each tier's
+<!-- change:local-doc-ids-and-person-privacy -->
+  declarations (their union is the valid-domain set), the project catalog that
+  maps the slug of a `local/projects/<slug>/…` identity to its home, each person's
+  and company's declaration that maps `people/<slug>` and `companies/<slug>`, with
+  or without the `local/` prefix, to theirs, each project's own declaration of
+  its owning company, and each tier's
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
   declared participation in the documentation surface. Declarations only; a
   caller's resolved relationships come from identity.
 

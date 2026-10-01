@@ -13,6 +13,7 @@ Defines the required structure, section headings, and directory layout for docum
 
 Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path** by the index build and materialized in the catalog of the half the snippet lives in — it is **never authored in frontmatter**. Validation separately enforces that the H1 type suffix matches the path-derived type. The index is the single source of truth for these four fields:
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - `id` — unique snippet identifier, **derived** from the snippet's path below its
   half and, for a home's snippet, from the home's own declaration. There is one
   identity per snippet, the same from every location:
@@ -25,15 +26,42 @@ Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path
   `<slug>` is the slug the home declares, never a directory name. A local
   index stores its entries under these qualified identities; no identity has a
   shorter or location-relative form.
+<!-- change:local-doc-ids-and-person-privacy -->
+- `id` — unique snippet identifier, **derived** from the snippet's path below its
+  half and, for a home's snippet, from the home's own declaration. There is one
+  identity per snippet, the same from every location:
+  - `<domain>/<taxonomy>/<rest>` — a domain snippet, published by the domain's
+    owner from its `docs/global/<domain>/`. A project publishes only domain
+    snippets.
+  - `people/<slug>/<taxonomy>/<rest>` — a person's published snippet.
+  - `companies/<slug>/<taxonomy>/<rest>` — a company's published snippet.
+  - `local/projects/<slug>/<taxonomy>/<rest>`, `local/people/<slug>/<taxonomy>/<rest>`,
+    `local/companies/<slug>/<taxonomy>/<rest>` — a snippet in the local half of a
+    project, a person, or a company.
+
+  An identity that begins with `local/` is indexed in place in its home and never
+  published; every other identity is published. The two halves of a home
+  therefore never share an identity. `<slug>` is the slug the home declares,
+  never a directory name. Each catalog stores its entries under these qualified
+  identities; no identity has a shorter or location-relative form.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
 - `domain` — **Derived** as the first path segment of the id. It holds either a
   published knowledge domain (`general`, `sdlc`, and their peers) or a
   structural marker: `project`, `person`, or `company`. The last two
   are the home kinds whose identities begin with `people` and `companies`; a
+<!-- planned-change:local-doc-ids-and-person-privacy -->
   structural marker is never a published domain. A home's snippet is the
   exception to the first-segment rule: its identity begins with the plural home
   prefix (`projects`, `people`, `companies`), and its derived domain is the
   home's kind — `project`, `person`, or `company` — never that prefix.
+<!-- change:local-doc-ids-and-person-privacy -->
+  structural marker is never a published domain. A home's snippet is the
+  exception to the first-segment rule: its identity begins with the plural home
+  prefix (`people`, `companies`) or, in a local half, with `local` followed by
+  the plural home prefix (`projects`, `people`, `companies`), and its derived
+  domain is the home's kind — `project`, `person`, or `company` — never a prefix.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - `scope` — the tier the snippet belongs to: `global`, `project`, `person`, or
   `company`. **Derived** from the home and half: a domain snippet is `global`,
   a project's local snippet is `project`, and a person's or company's snippet
@@ -125,9 +153,18 @@ halves:
 - `docs/local/` — the **local** half. It is never published: it is indexed in
   place and served from the home's local index.
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 The half decides where a snippet is served from, never who may read it; reach
 and depth follow the reader's identity and the snippet's `visibility`
 (`general/design/configuration-tiers`).
+<!-- change:local-doc-ids-and-person-privacy -->
+The half decides where a snippet is served from and whether its identity
+carries the `local/` prefix. Outside a person's local half it never decides who
+may read a snippet: reach and depth follow the reader's identity and the
+snippet's `visibility` (`general/design/configuration-tiers`). A person's local
+half is readable only by that person and the system principal
+(`general/policy/artifact-scope`).
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 - `docs/global/{domain}/baseline.md` and `docs/global/{domain}/baseline-progressive.md` — a published domain's baseline manifests (curated required reads), generated into that domain's bundle; `general` is a domain like any other.
 - `docs/global/{domain}/{taxonomy}/` — a published domain's documentation (e.g., `general`, `sdlc`).
@@ -150,6 +187,7 @@ and depth follow the reader's identity and the snippet's `visibility`
 - `~/.teleclaude/companies/{company}/docs/global/{taxonomy}/` and
   `~/.teleclaude/companies/{company}/docs/local/{taxonomy}/` — a company's
   published and local documentation.
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - A repository's `docs/local/{taxonomy}/` snippets derive the identity
   `projects/{project}/{taxonomy}/{rest}`.
 - Both halves of a person's home derive the same identity,
@@ -159,6 +197,18 @@ and depth follow the reader's identity and the snippet's `visibility`
   `~/.teleclaude/docs/companies/{company}/`.
 - The same relative path under both halves of a person's or company's home is a
   validation error: both files would carry the same identity.
+<!-- change:local-doc-ids-and-person-privacy -->
+- A repository's `docs/local/{taxonomy}/` snippets derive the identity
+  `local/projects/{project}/{taxonomy}/{rest}`.
+- A person's published half derives `people/{person}/{taxonomy}/{rest}` and their
+  local half `local/people/{person}/{taxonomy}/{rest}`; a company's published half
+  derives `companies/{company}/{taxonomy}/{rest}` and its local half
+  `local/companies/{company}/{taxonomy}/{rest}`. Neither has a domain segment.
+  Their published halves are deployed under `~/.teleclaude/docs/people/{person}/`
+  and `~/.teleclaude/docs/companies/{company}/`.
+- The same relative path under both halves of a home yields two snippets with two
+  identities.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - `docs/local/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `{half}/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `sdlc/principle/documentation-first-development`), under the half whose bounded context owns the behavior; `docs/local/` is the common one, not the only one. Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
 - `docs/local/design/architecture/<topic>/overview.md` — canonical design snippet for a composite architecture topic. Named sibling design snippets carry independently useful facets; topic-owned non-Markdown companions may sit beside them.
@@ -169,7 +219,11 @@ and depth follow the reader's identity and the snippet's `visibility`
 
 - `docs/local/baseline.md` — project baseline manifest (curated required reads).
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 Published snippets are distributed to `~/.teleclaude/docs/` under their identity. Local snippets stay in their home and are served from its local index; any reader reaches them from any location by naming their home or their identity.
+<!-- change:local-doc-ids-and-person-privacy -->
+Published snippets are distributed to `~/.teleclaude/docs/` under their identity. Local snippets stay in their home and are served from its local index; a reader reaches them from any location by naming the home's local half or a snippet's `local/` identity, at the depth the reader holds, and a person's local half admits only that person and the system principal.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ### Grouped snippets — folder convention
 
@@ -195,8 +249,14 @@ do not accumulate by default.
 
 - `type`: principle, concept, policy, procedure, design, spec, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, project, person, company.
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 - Home identity prefixes: `projects`, `people`, `companies`. They are reserved:
   no published domain carries one of these names.
+<!-- change:local-doc-ids-and-person-privacy -->
+- Home identity prefixes: `projects`, `people`, `companies`, and the local-half
+  prefix `local`. They are reserved: no published domain carries one of these
+  names.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 <!-- planned-change:personal-knowledge-taxonomy -->
 - `visibility`: public, internal. Default: `internal`.
 <!-- change:personal-knowledge-taxonomy -->

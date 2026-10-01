@@ -32,9 +32,16 @@ visibility: 'public'
   only its own tier and global documentation.
 - A published snippet never requires a local snippet, and no snippet requires
   another home's local snippet: local material is never published, so such a
+<!-- planned-change:local-doc-ids-and-person-privacy -->
   reference cannot resolve for every reader. The snippet cites the local one by
   its qualified id instead (`projects/<slug>/…`, `people/<slug>/…`,
   `companies/<slug>/…`), which resolves from any location.
+<!-- change:local-doc-ids-and-person-privacy -->
+  reference cannot resolve for every reader. The snippet cites the local one by
+  its qualified id instead (`local/projects/<slug>/…`, `local/people/<slug>/…`,
+  `local/companies/<slug>/…`), which resolves from any location for every reader
+  its depth admits; a person's local identity resolves only for that person.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.
 

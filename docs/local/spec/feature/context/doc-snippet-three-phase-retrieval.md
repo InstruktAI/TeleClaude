@@ -189,6 +189,7 @@ And the listing holds their own person tier, the companies they belong to, and t
 And no other home's documentation is listed
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-3PR12: A home-qualified identity is retrieved from any location
 
 ```gherkin
@@ -198,7 +199,20 @@ When the caller runs telec docs get on that ID
 Then the snippet is loaded from that home's catalog, whichever half holds it
 And the caller's depth on that home decides whether its content or a withheld notice is returned
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-3PR12: A home-qualified identity is retrieved from any location
 
+```gherkin
+Given a snippet ID local/projects/<slug>/<taxonomy>/<rest> of a registered project, people/<slug>/… or companies/<slug>/… of a declared person or company, or local/people/<slug>/… or local/companies/<slug>/… of one
+And the caller works in a different home or outside any home
+When the caller runs telec docs get on that ID
+Then the snippet is loaded from the catalog of the half the identity names
+And the caller's depth on that home decides whether its content or a withheld notice is returned
+And a person's local identity is retrieved only by that person or a system principal
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
+
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-3PR13: An identity that names no home or domain is unknown
 
 ```gherkin
@@ -208,7 +222,20 @@ When the caller runs telec docs get on that ID
 Then the output includes "ERROR: Unknown snippet IDs: <id>"
 And no other home is searched for a similar identity
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-3PR13: An identity that names no home or domain is unknown
 
+```gherkin
+Given a snippet ID whose first segment is none of local, a published domain, general, a third-party root, or a home prefix
+Or whose home prefix and slug name no registered project, declared person, or declared company
+Or that names a project home without the local/ prefix
+When the caller runs telec docs get on that ID
+Then the output includes "ERROR: Unknown snippet IDs: <id>"
+And no other home is searched for a similar identity
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
+
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-3PR14: Naming a home lists it from any location
 
 ```gherkin
@@ -217,6 +244,30 @@ When they run telec docs index naming another home by selector
 Then the listing holds that home's published and local snippets at the depth their relationship grants
 And nothing outside the named home is listed
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-3PR14: Naming a home lists one of its halves from any location
+
+```gherkin
+Given an operator working in one home or outside any home
+When they run telec docs index naming another home by selector
+Then the listing holds that home's published snippets at the depth their relationship grants
+When they run the same listing with --local
+Then the listing holds that home's local snippets instead, at the same depth
+And nothing outside the named home is listed
+```
+
+#### UC-3PR15: Retrieving another person's local identity is refused
+
+```gherkin
+Given a snippet ID local/people/<slug>/… naming a person other than the caller
+And the caller is not a system principal, whatever its platform or company role
+When the caller runs telec docs get on that ID, alone or with other IDs
+Then the command exits non-zero with a refusal
+And the refusal states that the owner's local documentation is private and names working in the owner's workspace as the way in
+And no content body or withheld notice is returned
+And the refusal is the same whether or not that person is declared
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ### Cross-context references
 
@@ -245,7 +296,13 @@ And nothing outside the named home is listed
   does not admit an `internal` snippet can still confirm that the identity
   exists. This is a deliberate disclosure surface for direct identities — the
   caller learns that a relationship to that tier would open it — and is
+<!-- planned-change:local-doc-ids-and-person-privacy -->
   confined to identities the caller names; the tier selectors disclose nothing.
+<!-- change:local-doc-ids-and-person-privacy -->
+  confined to identities the caller names; the tier selectors disclose nothing,
+  and the refusal for another person's local half, which is the same whether or
+  not that person is declared, discloses nothing either.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
   renders on a separate track), but `--scope` and `--project` do apply to it:
   `--scope` keeps only third-party entries of that scope, and `--project <slug>`

@@ -44,7 +44,11 @@ Given a project with valid snippet sources under docs/
 And the recorded commit is the project's latest canonical commit, or its checkout records a published generation and neither it nor an unfinished publication descends from the recorded commit
 When commit-boundary publication runs for that recorded commit
 Then the index-build phase runs
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 And the project's canonical checkout receives docs/local/index.yaml with one entry per valid committed local Source, identified as projects/<slug>/…, and paths rooted at that checkout
+<!-- change:local-doc-ids-and-person-privacy -->
+And the project's canonical checkout receives docs/local/index.yaml with one entry per valid committed local Source, identified as local/projects/<slug>/…, and paths rooted at that checkout
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
 And an agent's local telec docs retrieval reads those canonical-checkout indexes
 ```
@@ -141,7 +145,12 @@ And Sources authored in that tier's docs/global and docs/local
 When the index build runs over the configuration surface
 Then that tier's published catalog and local catalog are written
 And the local catalog stays in the person's home
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 And an agent session permitted to read that tier finds each Source under people/<slug>/…, whichever half holds it
+<!-- change:local-doc-ids-and-person-privacy -->
+And a session permitted to read that tier's published half finds each published Source under people/<slug>/…
+And a session carrying that person's identity finds each local Source under local/people/<slug>/…
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 ```
 
 #### UC-DIB4: A doc-capable company tier gets both catalogs built
@@ -152,7 +161,11 @@ And Sources authored in that tier's docs/global and docs/local
 When the index build runs over the configuration surface
 Then that company's published catalog and local catalog are written
 And the local catalog stays in the company's home
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 And an agent session permitted to read that tier finds each Source under companies/<slug>/…, whichever half holds it
+<!-- change:local-doc-ids-and-person-privacy -->
+And a session permitted to read that tier finds each published Source under companies/<slug>/… and each local Source under local/companies/<slug>/…
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 ```
 
 #### UC-DIB5: Catalog building follows the tier's own declaration
@@ -199,6 +212,7 @@ Then the agent's local documentation retrieval still includes the newer committe
 And the checkout's catalog remains aligned with its latest canonical commit
 ```
 
+<!-- planned-change:local-doc-ids-and-person-privacy -->
 #### UC-DIB17: One relative path in both halves of a tier home is refused
 
 ```gherkin
@@ -207,6 +221,17 @@ When source validation runs ahead of the index build
 Then a finding names both files as one identity
 And the index build does not write either catalog from that source state
 ```
+<!-- change:local-doc-ids-and-person-privacy -->
+#### UC-DIB17: One relative path in both halves of a tier home yields two snippets
+
+```gherkin
+Given a person or company home holding a Source at the same relative path under docs/global and docs/local
+When source validation and the index build run
+Then no finding is reported for the shared path
+And the published catalog carries the published Source under its kind-prefixed identity
+And the local catalog carries the local Source under its local/-prefixed identity
+```
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 #### UC-DIB18: A project without a declared slug mints no identities
 
@@ -230,9 +255,16 @@ And the index build does not write catalogs from that source state
 
 - **config** — supplies the project slug (from `teleclaude.yml`
   `project_slug` then `project_name`) and each person's and company's declared
+<!-- planned-change:local-doc-ids-and-person-privacy -->
   slug; the slug is the second segment of every identity the home owns
   (`projects/<slug>/…`, `people/<slug>/…`, `companies/<slug>/…`). A directory
   name never supplies it.
+<!-- change:local-doc-ids-and-person-privacy -->
+  slug; the slug is the segment after the home prefix in every identity the
+  home owns (`people/<slug>/…`, `companies/<slug>/…`, and the local forms
+  `local/projects/<slug>/…`, `local/people/<slug>/…`, `local/companies/<slug>/…`).
+  A directory name never supplies it.
+<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ## Known caveats
 
