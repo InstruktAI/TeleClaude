@@ -84,7 +84,7 @@ Derivation rules:
   snippet validation, `agents` artifact validation — so a home without `code`
   never runs a code check. A full run widens the files, never the checks.
 - A global, person, or company home declares no capability blocks. For these
-  checks it counts as `docs` by its kind
+  checks it counts as `docs` and `agents` by its kind
   (`projects/teleclaude/spec/feature/config/tier-permissions`), and never as
   `code`.
 <!-- /planned-change:commit-gate-in-hook -->

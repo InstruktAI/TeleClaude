@@ -42,8 +42,13 @@ Three execution contexts drive file resolution:
    the task.
 2. **Shared branch with session identity** — multiple agents may have
    uncommitted work. Scope to the current session's declared dirty files.
+<!-- planned-change:commit-gate-in-hook -->
 3. **Shared branch without session identity** — human or CI context. Both legs
    run the full suite (no file list).
+<!-- change:commit-gate-in-hook -->
+3. **Shared branch without session identity** — human or CI context. Lint
+   makes a full run (Invariant 11).
+<!-- /planned-change:commit-gate-in-hook -->
 4. **Explicit files** — caller passes file arguments directly. Skip workspace
    scoping.
 
@@ -202,8 +207,13 @@ answer from session history.
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
 
+<!-- planned-change:commit-gate-in-hook -->
 7. **No session identity on a shared branch means full run.** Human and CI
    contexts have no session identity; both legs run the whole suite.
+<!-- change:commit-gate-in-hook -->
+7. **No session identity on a shared branch means full run.** Human and CI
+   contexts have no session identity; lint makes a full run (Invariant 11).
+<!-- /planned-change:commit-gate-in-hook -->
 8. **Tool environment is owned by make and the lane.** Scoping decides what to
    check; the project's `make` recipes own the native tool environment, and the
    guardrails lane owns the policy scripts. `telec code` invokes no tool of its
@@ -223,19 +233,21 @@ answer from session history.
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
 <!-- change:commit-gate-in-hook -->
-11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
-    make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
-    paths; on full runs neither is scoped. Because the make leg's paths travel
+11. **File-scoped vs full-run lives behind each check.** On file-scoped runs
+    the make leg gets a NUL-delimited `FILES_FROM` and TeleClaude's checks get
+    the scoped paths. A full run collects the homes in the repository's
+    committed tree and runs, per home, exactly the checks that home's
+    capabilities carry over that home's tracked files: the make leg without
+    `FILES_FROM` at a home carrying `code`, so the project's own lint defines
+    its full suite, and TeleClaude's checks over the home's tracked files,
+    whole-home doc-index cross-reference validation included. The full-run
+    option widens the files, never the checks: content git ignores, and another
+    repository nested inside the repository, are never graded, and a home that
+    carries no capability is not checked. Because the make leg's paths travel
     in a NUL file (not a command line), a filename with spaces or shell
-    metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
-    cross-reference validation runs inside the guardrails lane on full runs, so
-    an agent's scoped lint never fails on another agent's in-flight docs.
-    A full run collects the homes in the repository's committed tree and runs,
-    per home, exactly the checks that home's capabilities carry over that home's
-    tracked files. The full-run option widens the files, never the
-    checks: content git ignores, and another repository nested inside the
-    repository, are never graded, and a home that carries no capability is not
-    checked.
+    metacharacters cannot word-split or inject a make goal. Whole-home
+    cross-reference validation runs only on full runs, so an agent's scoped
+    lint never fails on another agent's in-flight docs.
 <!-- /planned-change:commit-gate-in-hook -->
 
 12. **Ownership is declared, never inferred.** A path with no live declaration is
@@ -313,10 +325,17 @@ telec code commit (not a worktree, session identity present)
 
 ### Shared branch flow (no session)
 
+<!-- planned-change:commit-gate-in-hook -->
 ```
 telec code lint (no args, not a worktree, no session identity)
   → make lint (no FILES_FROM) + guardrails lane (repo-wide) — the full suite
 ```
+<!-- change:commit-gate-in-hook -->
+```
+telec code lint (no args, not a worktree, no session identity)
+  → a full run, as in the Full-run flow
+```
+<!-- /planned-change:commit-gate-in-hook -->
 
 ### Explicit files flow
 
@@ -386,7 +405,12 @@ No silent fallback to a broader scope.
 
 No `teleclaude_identity.json` present. This is a human or CI context.
 
+<!-- planned-change:commit-gate-in-hook -->
 **Response:** Both legs run the full suite. Expected behavior for manual runs.
+<!-- change:commit-gate-in-hook -->
+**Response:** Lint makes a full run (Invariant 11). Expected behavior for
+manual runs.
+<!-- /planned-change:commit-gate-in-hook -->
 
 ### A scoped operation runs with nothing declared
 

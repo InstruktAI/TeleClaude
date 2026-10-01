@@ -385,7 +385,7 @@ selected by the directory the commit started from. Whether the gate runs, and
 which checks it runs, follow the capability rule in
 `projects/teleclaude/spec/feature/config/project-capability-manifest`: the gate
 runs where the owning home carries `code` or `docs`, a global, person, or
-company home counting as `docs` by its kind
+company home counting as `docs` and `agents` by its kind
 (`projects/teleclaude/spec/feature/config/tier-permissions`), and each capability
 contributes only its own checks. A home carrying neither is not gated, no check
 is applied in its place, and the commit proceeds directly. The checks run
@@ -921,7 +921,7 @@ Given an agent working in a person home, which declares no capability blocks
 And that home has changes in scope
 When the agent commits through the sealed surface
 Then the gate runs over the staged files
-And snippet validation runs over them, because the home counts as docs by its kind
+And snippet validation runs over them, and artifact validation over any agent artifacts among them, because the home counts as docs and agents by its kind
 And neither the native toolchain nor TeleClaude's code rules run, because the home does not carry code
 And no native toolchain contract is required at that root for the commit to proceed
 ```

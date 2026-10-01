@@ -311,7 +311,7 @@ todo worktree, a successful commit also publishes the todo's branch to
    capability rule in
    `projects/teleclaude/spec/feature/config/project-capability-manifest`: the
    gate runs where that home carries `code` or `docs`, a global, person, or
-   company home counting as `docs` by its kind, and each capability contributes
+   company home counting as `docs` and `agents` by its kind, and each capability contributes
    only its own checks — `code` the native toolchain and TeleClaude's code
    rules, `docs` snippet validation, `agents` artifact validation. A home
    carrying neither is not gated, and nothing is applied in its place. The
