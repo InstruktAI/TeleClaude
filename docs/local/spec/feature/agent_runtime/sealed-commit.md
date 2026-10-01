@@ -1047,6 +1047,15 @@ When raw git commit is attempted
 Then the hook refuses the commit and names the format command for that file
 And the file on disk and in the index is unchanged
 ```
+
+#### UC-TH-8 — A merge commit git creates on its own passes the same gate
+
+```gherkin
+Given a merge that git completes without conflicts and records as a merge commit
+When the merge runs, from a terminal or from an automated route
+Then the same gate grades the staged merge result before the merge commit is recorded
+And a refusal leaves no merge commit
+```
 <!-- /planned:commit-gate-in-hook -->
 
 #### UC-CGIP-49 — A file written through an edit tool is committed without an explicit declaration
