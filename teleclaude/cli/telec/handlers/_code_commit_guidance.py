@@ -36,6 +36,12 @@ _AGENT_ARTIFACT_LANE_INCORPORATED = (
     "only incorporated skill package bodies — no independent review; covered by the pre-adoption security gate"
 )
 _AGENT_ARTIFACT_LANE_NONE = "none — the pending scope touches no agent-artifact source"
+_REVIEW_VERDICT_GUIDANCE = (
+    "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
+    "   you for evidence-based rejection or in-scope remediation and re-review. What\n"
+    "   you and the reviewer cannot resolve, you hold: go idle with it and route it\n"
+    "   nowhere (general/principle/autonomy).\n"
+)
 _UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE = (
     "Malformed agent-artifact path(s) could not be classified: {paths}. "
     "The commit card continues so the author can reach lint's finding. "
@@ -235,9 +241,6 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         "       independent review; directive text follows the functional-code review path.\n"
         "\n"
         f"{review_dispatch}"
-        "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
-        "   you for evidence-based rejection or in-scope remediation and re-review. What\n"
-        "   you and the reviewer cannot resolve, you hold: go idle with it and route it\n"
-        "   nowhere (general/principle/autonomy).\n",
+        f"{_REVIEW_VERDICT_GUIDANCE}",
         file=sys.stderr,
     )

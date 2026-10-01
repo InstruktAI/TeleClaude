@@ -7,6 +7,18 @@ CREATION_VALIDITY_GATE_ITEM = (
     "   and create no lifecycle record.\n\n"
     "Authority: sdlc/policy/todo-creation-discipline.\n"
 )
+PENDING_DOCS_GATE_ITEM = (
+    "- Pending docs - functionality or process-contract work? Its pending\n"
+    "   snippets are written before planning by whoever holds the context\n"
+    "   (general/policy/documentation-discipline).\n\n"
+)
+OWNERSHIP_AUTHORITY_GATE_ITEM = (
+    "- Ownership & authority - owning project of the changed files correct\n"
+    "   (--project-root)? A process-layer change follows\n"
+    "   sdlc/policy/process-change-authority: agent-owned unless a consequence\n"
+    "   is on the human closed list.\n"
+    "   A human was present at this filing, declared (--human-involved)?\n\n"
+)
 
 
 def render_todo_creation_gate(approval_flag: str) -> str:
@@ -21,17 +33,16 @@ def render_todo_creation_gate(approval_flag: str) -> str:
         "   has not started build? Amend it instead of creating a sibling:\n"
         "     telec todo list\n"
         "     telec todo artifacts read <slug> input\n\n"
-        "- Pending docs - functionality or process-contract work? Its pending\n"
-        "   snippets are written before planning by whoever holds the context\n"
-        "   (general/policy/documentation-discipline).\n\n"
-        "- Ownership & authority - owning project of the changed files correct\n"
-        "   (--project-root)? A process-layer change follows\n"
-        "   sdlc/policy/process-change-authority: agent-owned unless a consequence\n"
-        "   is on the human closed list.\n"
-        "   A human was present at this filing, declared (--human-involved)?\n\n"
+        f"{PENDING_DOCS_GATE_ITEM}"
+        f"{OWNERSHIP_AUTHORITY_GATE_ITEM}"
         "Only once these are faced, create with:\n"
         f"  telec todo create {approval_flag} <slug> <content> --kind <feature|change|bug|task>\n"
     )
 
 
-__all__ = ["CREATION_VALIDITY_GATE_ITEM", "render_todo_creation_gate"]
+__all__ = [
+    "CREATION_VALIDITY_GATE_ITEM",
+    "OWNERSHIP_AUTHORITY_GATE_ITEM",
+    "PENDING_DOCS_GATE_ITEM",
+    "render_todo_creation_gate",
+]

@@ -904,7 +904,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract "
                     "(sdlc/policy/process-change-authority): when the defect seems to demand a behavioral "
                     "delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, "
-                    "lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.",
+                    "lifecycle procedures), do NOT file it as a bug — it is a process change, filed on the ordinary "
+                    "path under that policy.",
                     "Require the observed symptom plus its trigger context verbatim in the description or --body: "
                     "what happened, what was expected, and what preceded it. A report with no trigger context is "
                     "unauditable later — this is the reporting invitation the schema alone cannot supply.",

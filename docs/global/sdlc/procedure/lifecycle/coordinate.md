@@ -206,12 +206,10 @@ constraints require. For a todo that violates creation policy, flag its live
 claimant exactly as the reconciliation clause of
 `sdlc/policy/todo-creation-discipline` prescribes: complete
 first message, at most one grounded follow-up, never select or negotiate the
-claimant's exit. Settlement follows the clause itself: a grounded defense
-settles conversationally, state-changing exits are read from the todo record,
-and an unreconciled maintained defense is deadlock, which the flagger holds
-and goes idle with. This role may take up a deadlock it observes: it owns that
-disposition with its standing peer falsifying, and only residue the human
-contract assigns to the human is left for him. An unclaimed todo has no flag path — the reconciliation clause
+claimant's exit. Settlement follows the clause itself. This role may take up
+a deadlock it observes: it owns that disposition with its standing peer
+falsifying, and only residue the human contract assigns to the human is left
+for him. An unclaimed todo has no flag path — the reconciliation clause
 itself governs that boundary.
 
 ### 6. Log what is worth knowing later

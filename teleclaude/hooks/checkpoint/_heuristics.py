@@ -35,6 +35,15 @@ __all__ = ["_post_commit_review_instruction", "run_heuristics"]
 
 logger = get_logger("teleclaude.hooks.checkpoint")  # Preserve the package's record identity.
 
+_POST_COMMIT_REVIEW_INSTRUCTION = (
+    "A session-authored main-branch code commit is eligible for post-commit review. "
+    "Dispatch the commit(s) to independent review yourself and wait for REVIEW COMPLETE "
+    "before reporting completion. A REQUEST CHANGES verdict remains with this session "
+    "for evidence-based rejection or in-scope remediation and re-review. What you and the "
+    "reviewer cannot resolve, you hold: go idle with it and route it nowhere "
+    "(general/principle/autonomy)."
+)
+
 
 def run_heuristics(
     git_files: list[str],
@@ -209,11 +218,4 @@ def _action_has_evidence(
 
 def _post_commit_review_instruction() -> str:
     """Instruction emitted when a main-branch commit occurred in the turn."""
-    return (
-        "A session-authored main-branch code commit is eligible for post-commit review. "
-        "Dispatch the commit(s) to independent review yourself and wait for REVIEW COMPLETE "
-        "before reporting completion. A REQUEST CHANGES verdict remains with this session "
-        "for evidence-based rejection or in-scope remediation and re-review. What you and the "
-        "reviewer cannot resolve, you hold: go idle with it and route it nowhere "
-        "(general/principle/autonomy)."
-    )
+    return _POST_COMMIT_REVIEW_INSTRUCTION

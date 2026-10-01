@@ -66,14 +66,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   the creation and policy addresses. Then flag the live claimant with the complete first message the reconciliation
   clause of `sdlc/policy/todo-creation-discipline` defines; never
   perform the audit, decide validity, or select the claimant's exit.
-- **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up; a grounded defense settles conversationally, state-changing
-  exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which the flagger holds and goes idle with; this role
-  may take up a deadlock it observes, owning that disposition with its standing
-  peer falsifying, and only residue the human contract assigns to the human is
-  left for him.
+- **Stop and settlement:** the flag exchange and its settlement follow the
+  reconciliation clause of `sdlc/policy/todo-creation-discipline`; a deadlock
+  this role observes is taken up under `sdlc/procedure/lifecycle/coordinate`.
 
 ##### NC-02-b — Documentation-only work routed through the lifecycle
 
@@ -89,14 +84,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   flag the live claimant with the complete first message the reconciliation
   clause of `sdlc/policy/todo-creation-discipline` defines; never
   perform the audit, decide validity, or select the claimant's exit.
-- **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up; a grounded defense settles conversationally, state-changing
-  exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which the flagger holds and goes idle with; this role
-  may take up a deadlock it observes, owning that disposition with its standing
-  peer falsifying, and only residue the human contract assigns to the human is
-  left for him.
+- **Stop and settlement:** the flag exchange and its settlement follow the
+  reconciliation clause of `sdlc/policy/todo-creation-discipline`; a deadlock
+  this role observes is taken up under `sdlc/procedure/lifecycle/coordinate`.
 
 ##### NC-02-c — Process change past a human-owned consequence without its decision
 
@@ -116,14 +106,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   clause of `sdlc/policy/todo-creation-discipline` defines; never
   perform the audit, decide validity, or select the claimant's exit.
 - **Stop and settlement:** for a valid ordered beacon, deduplicated delivery stands
-  outside the flag path; otherwise the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up; a grounded defense settles conversationally, state-changing
-  exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which the flagger holds and goes idle with; this role
-  may take up a deadlock it observes, owning that disposition with its standing
-  peer falsifying, and only residue the human contract assigns to the human is
-  left for him.
+  outside the flag path; otherwise the flag exchange and its settlement follow the
+  reconciliation clause of `sdlc/policy/todo-creation-discipline`; a deadlock
+  this role observes is taken up under `sdlc/procedure/lifecycle/coordinate`.
 
 ##### NC-02-d — A role claims authority reserved elsewhere
 
@@ -153,14 +138,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   If no live claimant or recovery path exists, ground the broken mechanism, log it as
   `defect`, and dispose of it per the coordinate procedure's step 7 — an unclaimed
   todo has no flag path.
-- **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up; a grounded defense settles conversationally, state-changing
-  exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which the flagger holds and goes idle with; this role
-  may take up a deadlock it observes, owning that disposition with its standing
-  peer falsifying, and only residue the human contract assigns to the human is
-  left for him.
+- **Stop and settlement:** the flag exchange and its settlement follow the
+  reconciliation clause of `sdlc/policy/todo-creation-discipline`; a deadlock
+  this role observes is taken up under `sdlc/procedure/lifecycle/coordinate`.
   A logged-and-disposed defect settles separately.
 
 ##### NC-04 — Prepare's ordered process-authority beacon
@@ -168,8 +148,11 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Evidence available:** Prepare refusal, the process delta and rationale, the human
   decision record or its absence, and current delivery state
   (`sdlc/procedure/lifecycle/prepare/overview`).
-- **Ownership:** Human owns ratification; Prepare Orchestrator presents the question
-  and later executes the decision; the Prepare state machine records progression.
+- **Ownership:** Human owns only a consequence on the closed list of
+  `general/policy/human-contract` that the process delta carries
+  (`sdlc/policy/process-change-authority`); Prepare Orchestrator presents that
+  question and later executes the decision; the Prepare state machine records
+  progression.
 - **Coordinator:** leave a correctly delivered beacon alone. If the human-owned need
   is newly live and undelivered, add it once to the human batch with evidence and the
   smallest live question.
@@ -443,14 +426,9 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   as the grounding sources — flag the live claimant with the complete first message the reconciliation
   clause of `sdlc/policy/todo-creation-discipline` defines; never
   perform the audit, decide validity, or select the claimant's exit.
-- **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
-  grounded follow-up; a grounded defense settles conversationally, state-changing
-  exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and an unreconciled maintained
-  defense is deadlock, which the flagger holds and goes idle with; this role
-  may take up a deadlock it observes, owning that disposition with its standing
-  peer falsifying, and only residue the human contract assigns to the human is
-  left for him.
+- **Stop and settlement:** the flag exchange and its settlement follow the
+  reconciliation clause of `sdlc/policy/todo-creation-discipline`; a deadlock
+  this role observes is taken up under `sdlc/procedure/lifecycle/coordinate`.
 
 ##### NC-21 — Materially unjustified production or noise
 
@@ -517,17 +495,18 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** delivery ends the intervention. Settle when the human
   decision is durably recorded and Prepare produces resulting state/artifact evidence.
 
-##### NC-28 — Human-gated kickback
+##### NC-28 — Kickback
 
 - **Evidence available:** builder's unbuildable-plan reason, Work Orchestrator's read,
   reviewed plan, current state and delivery record
   (`sdlc/procedure/lifecycle/work/overview`, Kickback).
-- **Ownership:** Human judges whether kickback is the move; Work Orchestrator executes
-  the directed stamp; Work state machine mutates lifecycle state.
-- **Coordinator:** deliver the evidence/question once if undelivered. Never stamp,
-  recommend kickback from plausibility, or bypass the orchestrator.
-- **Stop and settlement:** delivery ends intervention. Settle when the human decision
-  is recorded and the orchestrator/state machine produces the resulting state.
+- **Ownership:** Work Orchestrator owns the technical kickback decision and executes
+  the stamp (`sdlc/procedure/lifecycle/work/overview`, Kickback); Work state machine
+  mutates lifecycle state.
+- **Coordinator:** never stamp, recommend kickback from plausibility, or bypass the
+  orchestrator.
+- **Stop and settlement:** settle when the orchestrator's recorded direction and the
+  state machine produce the resulting state.
 
 ##### NC-29 — Escalation answered by a governing contract
 
