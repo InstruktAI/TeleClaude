@@ -256,9 +256,10 @@ And the live snippet is still validated in full
   from the Source's path, so no id-to-path mismatch check exists.
 <!-- change:tier-validation-misses-authored-scope -->
 - `id`/`type`/`scope`/`domain` are derived from the Source's path, so no
-  id-to-path mismatch check exists. An authored classification field is
-  reported only on a person or company tier source; a project or global source
-  that authors one is accepted and the index build ignores the authored value.
+  id-to-path mismatch check exists. Validation detects an authored
+  classification field only on a person or company tier source; on a project or
+  global source it goes unreported, and the index build derives the field from
+  the path regardless.
 <!-- /planned-change:tier-validation-misses-authored-scope -->
 
 ## See Also
