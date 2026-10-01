@@ -158,6 +158,9 @@ And it names the person-launch door as the door it came through, never a termina
   and the headless binding (`projects/teleclaude/spec/feature/identity/whoami-resolution`);
   the terminal login remains the edge identity of a human at a terminal
   (`projects/teleclaude/spec/feature/identity/terminal-email-login`).
+- **agent_runtime** — text a bound program sends into a session is delivered
+  but never counts as that session's human input
+  (`projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
 - **config** — the roster the binding resolves against is config's; person
   creation and removal stay with the ordinary config surface, and the door
   creates no one.

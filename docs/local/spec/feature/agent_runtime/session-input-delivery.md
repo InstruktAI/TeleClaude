@@ -310,6 +310,19 @@ And platform commands, additional context, peer input, reminders, wakes, checkpo
 And no session-wide human-involvement state is created or persisted
 ```
 
+<!-- planned:headless-person-binding -->
+#### UC-SID17: Input from a program launched as a person is never human input
+
+```gherkin
+Given a program started with no terminal through the person-launch door for a registered person
+When it sends text to an accessible open session, or starts a session with an initial message
+Then the platform accepts and delivers the text as it does any other caller's
+And the accepted input records the person-launch door as its source, never a human's direct input
+And it never qualifies as human input when that session's recent human input is read for an involvement declaration
+```
+
+<!-- /planned:headless-person-binding -->
+
 #### UC-SID16: Additional context carries no involvement semantics
 
 ```gherkin
