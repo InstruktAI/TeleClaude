@@ -217,7 +217,6 @@ Then the build fails naming the project and the missing slug
 And no identity is derived from the project's directory name
 ```
 
-<!-- planned:tier-validation-misses-authored-scope -->
 #### UC-DIB19: A tier source that authors its own classification is refused before the index build
 
 ```gherkin
@@ -226,7 +225,6 @@ When source validation runs ahead of the index build
 Then a finding names that file and each classification field it authors
 And the index build does not write catalogs from that source state
 ```
-<!-- /planned:tier-validation-misses-authored-scope -->
 
 ### Cross-context references
 
