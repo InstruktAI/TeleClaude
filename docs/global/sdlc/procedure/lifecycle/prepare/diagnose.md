@@ -309,6 +309,6 @@ re-filing.
 If the grounded root cause is a **process-design gap** — removing it would require a
 behavioral delta to a process-layer contract — the bug lane does not plan that fix. The
 `diagnosis` is still written and settled (the cause is still the cause), then the driving
-session escalates per `sdlc/policy/process-change-authority`: package the
-implied process delta for human decision and go idle. The bug either fixes what is fixable
-within the existing contract or holds pending the human's call.
+session files the implied process delta as an ordinary process change
+(`sdlc/policy/process-change-authority`). The bug fixes what is fixable within the
+existing contract; only a consequence on the human's closed list holds it.

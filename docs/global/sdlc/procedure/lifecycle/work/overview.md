@@ -195,8 +195,9 @@ decomposition shows no plan defect and is no basis for kickback
 (`sdlc/policy/preparation-artifact-quality`); a review that asks for kickback on
 that ground alone is answered through the review loop, its finding and verdict
 intact (`sdlc/procedure/lifecycle/review`). A change
-to product intent, scope, the governing process contract, or a safety-gated
-action follows its human authority path. An unresolved technical question
+to product intent, scope, or a safety-gated action follows its human authority
+path; a change to the governing process contract follows
+`sdlc/policy/process-change-authority`. An unresolved technical question
 returns to evidence and its agent owner, never to a human merely because a
 fix round failed. Kickback supplies no approval of the revised plan; normal
 independent preparation review remains required.

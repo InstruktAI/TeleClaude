@@ -399,8 +399,10 @@ authoring new contract text. Only when the diagnosed cause is that the
 documented contract itself is wrong does any other snippet change enter the
 plan — bounded to correcting that contract.
 
-An ambiguous or stale symptom is resolved by the `diagnosis` or escalated to the
-human — never by interpretation (Recovery 1 does not apply to a `bug`).
+An ambiguous or stale symptom is resolved by the `diagnosis`; only an ambiguity
+in the intended behavior itself is held as one question for the human
+(`general/policy/human-contract`) — never resolved by interpretation (Recovery 1
+does not apply to a `bug`).
 
 ### 4. Anticipate review lanes
 
@@ -537,8 +539,8 @@ or kick back — then advance again.
    likely interpretation where it stays within existing authority, marking it
    `[inferred]`. An ambiguous product or business choice the input does not
    settle is returned as a human-owned decision instead of inferred. For a
-   `bug`, ambiguity resolves through the `diagnosis` or escalates to the human,
-   never by inference (step 3c).
+   `bug`, ambiguity resolves through the `diagnosis`, or is held for the human
+   only when it concerns the intended behavior, never by inference (step 3c).
 2. If planning reveals the work is not one coherent delivery under the
    scope-and-size gate (`sdlc/policy/definition-of-ready`), group it into
    children.
