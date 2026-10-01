@@ -306,6 +306,8 @@ And a session created before owners were recorded names its subject's owner afte
 
 <!-- /planned:subject-scope-reach -->
 
+#### UC-SL49:
+
 #### UC-SL33: A completed native command leaves the agent idle
 
 ```gherkin
