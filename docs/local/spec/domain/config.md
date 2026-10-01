@@ -154,7 +154,8 @@ Every platform event config emits states as its subject what its act concerned:
 
 - a job run's outcome: the project the run executes for, including a globally
   published job run in a subscribing project. Every job run executes for a
-  registered project.
+  registered project; an outcome recorded before runs were keyed by project,
+  whose project cannot be recovered from its record, states an unknown subject.
 - an effective configuration change: the project whose configuration changed.
   A machine or global configuration change has no subject.
 
