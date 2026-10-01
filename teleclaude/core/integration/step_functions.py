@@ -83,6 +83,7 @@ from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.quality.gate import LintGateOutcome, run_lint_gate
+from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust
 from teleclaude.runtime.environment import resolve_runtime_environment
 
 logger = get_logger(__name__)
@@ -189,6 +190,7 @@ def _step_idle(
     # Sweep worktrees for already-delivered slugs left by crashed integrations
     _sweep_stale_artifacts(cwd)
     reconcile_worktree_homes(Path(cwd), at_startup=False)
+    remove_vanished_worktree_trust(Path(cwd))
 
     exclude = checkpoint.candidate_slug
     parked_slugs = {parked["slug"] for parked in checkpoint.parked}

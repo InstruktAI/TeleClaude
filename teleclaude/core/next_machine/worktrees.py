@@ -30,6 +30,7 @@ from teleclaude.core.next_machine.state_io import _file_sha256
 from teleclaude.core.next_machine.worktree_home import ensure_worktree_home
 from teleclaude.core.reconciliation.config_schemas import converge_project_schema_link
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
+from teleclaude.runtime.agy_workspace_trust import add_worktree_trust
 
 logger = get_logger(__name__)
 _WORKTREE_SCHEMA_LINK_EVENT = "worktree_config_schema_link"
@@ -335,6 +336,7 @@ def ensure_worktree_with_policy(cwd: str, slug: str, *, build_start_sha: str = _
     """Ensure worktree exists and run prep only when policy says it's stale."""
     created = _create_or_attach_worktree(cwd, slug, build_start_sha=build_start_sha)
     worktree_root = Path(cwd) / WORKTREE_DIR / slug
+    add_worktree_trust(Path(cwd), worktree_root)
     try:
         schema_link = converge_project_schema_link(worktree_root)
     except (GitCommandError, OSError):

@@ -28,6 +28,7 @@ from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
+from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -230,7 +231,9 @@ class DaemonLifecycle:
         projects = await command_handlers.list_projects_with_todos()
         for project in projects:
             if project.path:
-                await asyncio.to_thread(reconcile_worktree_homes, Path(project.path), at_startup=True)
+                project_root = Path(project.path)
+                await asyncio.to_thread(reconcile_worktree_homes, project_root, at_startup=True)
+                await asyncio.to_thread(remove_vanished_worktree_trust, project_root)
 
     def _schedule_final_output_reconciliation(self) -> None:
         """Recover undelivered final output off the startup path, never inline.

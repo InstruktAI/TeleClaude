@@ -23,6 +23,7 @@ from teleclaude.core.next_machine.worktree_home import (
 )
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.paths import STORAGE_DIR
+from teleclaude.runtime.agy_workspace_trust import remove_worktree_trust
 
 logger = get_logger(__name__)
 
@@ -309,6 +310,8 @@ def cleanup_delivered_slug(
         except OSError as exc:
             logger.warning(_WORKTREE_REMOVAL_FAILED, slug, exc)
         _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=cwd, timeout=None)
+
+    remove_worktree_trust(worktree_path)
 
     try:
         release_worktree_home(project_root, slug)
