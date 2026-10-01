@@ -126,7 +126,7 @@ For AI-driven project analysis and quality-config assessment, start the sessions
 
 ### Antigravity permissions
 
-TeleClaude configures Antigravity (`agy`) through its global `~/.gemini/antigravity-cli/settings.json`. Managed sessions and direct invocations use the current JSON permission resources with tool and artifact approval set to always proceed, non-workspace access enabled, and terminal sandboxing disabled. TeleClaude manages Antigravity trust for active slug worktrees of trusted repositories; see `projects/teleclaude/spec/feature/agent_runtime/worktree-workspace-trust`.
+TeleClaude configures Antigravity (`agy`) through its global `~/.gemini/antigravity-cli/settings.json`. Managed sessions and direct invocations use the current JSON permission resources with tool and artifact approval set to always proceed, non-workspace access enabled, and terminal sandboxing disabled. TeleClaude manages Antigravity trust for active slug worktrees of trusted repositories; see `local/projects/teleclaude/spec/feature/agent_runtime/worktree-workspace-trust`.
 
 ### Agent environment access
 
