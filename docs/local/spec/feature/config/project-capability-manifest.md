@@ -87,6 +87,13 @@ Derivation rules:
   checks it counts as `docs` and `agents` by its kind
   (`local/projects/teleclaude/spec/feature/config/tier-permissions`), and never as
   `code`.
+- Every staged `teleclaude.yml` is validated in full at the commit gate, by the
+  same validation `telec config validate` applies, in every home that holds one
+  and whatever that home subscribes. In a home that enables neither `code` nor
+  `docs`, declaration validation is the gate's only check, and that home still
+  raises no commit obligation. A declaration that fails validation refuses the
+  commit, so committed state, which every consumer derives from, never holds an
+  invalid declaration (ADR-0108).
 <!-- /planned-change:commit-gate-in-hook -->
 - The sealed-commit surface (`telec code commit` / `add`) and the git wrapper's
   commit interception follow `code ∨ docs` — the same condition as the commit
@@ -449,6 +456,20 @@ When the capabilities are resolved by the runtime or by the installed plumbing
 Then both readers resolve the code capability to the value the .env holds
 And after that value changes in the .env, the next git invocation decides from the new value
 ```
+
+<!-- planned:commit-gate-in-hook -->
+#### UC-CFG-CAP-34: A staged declaration that fails validation refuses the commit in any home
+
+```
+Given a home of any kind, whatever capabilities it subscribes
+And a commit that stages its teleclaude.yml
+When the declaration fails the validation telec config validate applies
+Then the commit is refused with that validation's findings
+And this holds for a raw git commit and for telec code commit alike
+And a home subscribing neither code nor docs runs no other check and raises no commit obligation
+```
+
+<!-- /planned:commit-gate-in-hook -->
 
 ## Known caveats
 
