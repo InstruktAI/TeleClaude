@@ -34,7 +34,7 @@ jobs:
         run: uv run python -m tools.release.lanes --prompt-file release-prompt.txt --schema-file docs/local/spec/release-report-schema.md
 
       - name: Upload Reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ai-release-reports
           path: |
