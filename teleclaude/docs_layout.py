@@ -63,6 +63,8 @@ _UTF8: Final = "utf-8"
 _NUL_BYTE: Final = b"\0"
 
 _ADR_DIRNAME: Final = "adr"
+_H2_PREFIX: Final = "## "
+_SEE_ALSO_HEADING: Final = "## See Also"
 _CHANGELOG_GLOB: Final = "CHANGELOG*"
 _GENERATED_BASENAMES: Final[frozenset[str]] = frozenset({"AGENTS.md", "CLAUDE.md", "index.yaml"})
 #: Files a pull leaves behind in a retired directory that git no longer tracks:
@@ -242,10 +244,29 @@ def rewrite_layout_text(
     return _identity_rules(text, own_slug=own_slug, registered_pattern=_registered_slug_pattern(registered_slugs))
 
 
+def _is_decision_record(relative_path: str) -> bool:
+    return _ADR_DIRNAME in PurePosixPath(relative_path).parent.parts
+
+
+def _see_also_path_rules(text: str) -> str:
+    """Apply the path rules to a decision record's ``## See Also`` section only.
+
+    A decision record's body is immutable; its See Also list is navigation, and a
+    path into a moved folder follows the move or validation refuses it.
+    """
+    lines = text.splitlines(keepends=True)
+    in_see_also = False
+    for index, line in enumerate(lines):
+        if line.startswith(_H2_PREFIX):
+            in_see_also = line.strip() == _SEE_ALSO_HEADING
+            continue
+        if in_see_also:
+            lines[index] = _path_rules(line)
+    return "".join(lines)
+
+
 def _is_excluded(relative_path: str, excluded: Sequence[str]) -> bool:
     pure = PurePosixPath(relative_path)
-    if _ADR_DIRNAME in pure.parent.parts:
-        return True
     if fnmatch.fnmatch(pure.name, _CHANGELOG_GLOB) or pure.name in _GENERATED_BASENAMES:
         return True
     return any(fnmatch.fnmatch(relative_path, pattern) for pattern in (*MIGRATION_BOUNDARY_GLOBS, *excluded))
@@ -298,6 +319,11 @@ def _plan_rewrites(
         if content is None:
             continue
         raw, text = content
+        if _is_decision_record(relative_path):
+            rewritten = _see_also_path_rules(text)
+            if rewritten != text:
+                rewrites[relative_path] = (raw, rewritten.encode(_UTF8))
+            continue
         rewritten = _path_rules(text)
         if relative_path.endswith(_MARKDOWN_SUFFIX):
             published = relative_path.startswith(_PUBLISHED_DOCS_PREFIX)
@@ -327,9 +353,10 @@ def rewrite_layout_references(
     """Apply :func:`rewrite_layout_text` to a checkout's text files in place.
 
     The input set is every tracked and every untracked, non-ignored UTF-8 text
-    file. Decision records (any ``adr`` directory), ``CHANGELOG*``, generated
-    ``AGENTS.md``/``CLAUDE.md``/``index.yaml``, the migration-boundary files and
-    the caller's ``excluded`` globs are never rewritten. With
+    file. ``CHANGELOG*``, generated ``AGENTS.md``/``CLAUDE.md``/``index.yaml``,
+    the migration-boundary files and the caller's ``excluded`` globs are never
+    rewritten; a decision record (any ``adr`` directory) keeps its body and only
+    its ``## See Also`` paths follow the move. With
     :attr:`PublishedIdentityPolicy.REPORT`, ``docs/global`` keeps its identities
     (path rules still apply) and its identity mentions are returned for the owner.
     The function never inspects dirty state; that is the caller's precondition.
@@ -641,8 +668,12 @@ def converge_root(
                 worktrees=worktrees,
             )
         )
-    if written:
-        repository.git.add(_PATHSPEC_SEPARATOR, *written)
+    # Stage only the new side: the old paths stay unstaged deletions, so the
+    # sealed commit can see them, and the committer has nothing left to stage
+    # that this run's index snapshot does not already record.
+    added = sorted({_moved_path(path, plan.moves) for path in plan.tracked_moved} | set(written))
+    if added:
+        repository.git.add(_PATHSPEC_SEPARATOR, *added)
     index_snapshot = _index_entries(repository, touched)
 
     previous_head = repository.head.commit.hexsha

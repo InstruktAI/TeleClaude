@@ -39,8 +39,9 @@ A convergence consists of:
   repository's own unqualified local identities become `projects/<slug>/…`
   with the slug the repository declares; person and company identities become
   `people/<slug>/…` and `companies/<slug>/…`; identities prefixed with a
-  registered project's slug become `projects/<slug>/…`. Decision records,
-  changelogs, and generated files are never rewritten. Snippets in the
+  registered project's slug become `projects/<slug>/…`. Changelogs and
+  generated files are never rewritten; a decision record keeps its body, and
+  only the paths in its See Also list follow the move. Snippets in the
   repository's published half (`docs/global`) keep their identities; their
   occurrences are reported to the owner, who decides whether each mention means
   that repository or the project at hand.
@@ -142,7 +143,7 @@ And its docs/global snippets mention unqualified local identities
 When layout convergence completes for that root
 Then those docs/global mentions are unchanged
 And the root's report lists them for the repository's owner
-And decision records, changelogs, and generated files are unchanged
+And changelogs, generated files, and decision-record bodies are unchanged
 ```
 
 #### UC-DLC10: Every computer converges, tag deployments included
