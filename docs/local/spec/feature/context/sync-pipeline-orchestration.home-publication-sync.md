@@ -283,12 +283,23 @@ Then that home publishes as committed
 And no other home's publication waits on it
 ```
 
+#### UC-SPO33: A home removed from the committed tree leaves deployment
+
+```gherkin
+Given a person home whose documentation is deployed
+And a commit removes that home from the global home's committed tree
+When maintenance or telec sync publishes the global home
+Then that home's documentation and catalog entries are absent from the deployed output
+And every other home's deployed output is unchanged
+```
+
 ### Cross-context references
 
 - **workflow / integration** — own todo delivery state and delivery-time
   `delivered_by` reconciliation.
 - **config** — supplies project root and Mother-project resolution consumed by
-  the distribution step.
+  the distribution step, and the homes a committed tree holds with each path's
+  owning home.
 - **agent_runtime** — phase 3's distribution step deploys to the agent runtime
   boundary.
 
@@ -310,6 +321,10 @@ And no other home's publication waits on it
   working-tree source. The first canonical commit activates the project's
   subscribed outputs; `telec sync` in the project's home publishes its committed
   state at any time.
+- Commit-boundary maintenance owes publication only for the paths its
+  repository's maintenance bindings name, and those bindings are anchored at the
+  repository root. A project home nested below that root is therefore published
+  by `telec sync` in that home, not at the commit boundary.
 - Publication fails explicitly when its distribution implementation is
   unavailable; publication never reports success after omitting a
   runtime-output phase.
