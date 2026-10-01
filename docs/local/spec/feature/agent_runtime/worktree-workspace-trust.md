@@ -26,9 +26,10 @@ of the worktree's repository; the worktree holds the same repository content, so
 the entry extends a decision already made and trusts nothing new. The platform
 removes the path in the step that releases the worktree at delivery or removal,
 moves it with the worktree when its todo is renamed, and platform maintenance
-removes any path inside a project's worktree folder whose worktree no longer
-exists. A worktree path leaves the list with its worktree whoever added it. The
-integration worktree, which no session is started in, and every folder outside a
+removes the path of any slug worktree that no longer exists, including one at the
+retired location where released worktrees were once parked. A worktree path leaves the list with its worktree whoever added it. The
+integration worktree, which no session is started in, the folders a worktree's
+home clone occupies, subfolders of a worktree, and every folder outside a
 project's slug worktrees are never added or removed.
 
 Every other trusted workspace and every other Antigravity setting stay as they
@@ -83,10 +84,10 @@ And the former worktree path no longer appears among Antigravity's trusted works
 #### UC-WWT6: Maintenance removes trust whose worktree is gone
 
 ```gherkin
-Given Antigravity's trusted workspaces include a path inside a project's worktree folder whose worktree no longer exists
+Given Antigravity's trusted workspaces include the path of a project's slug worktree that no longer exists, at its current location or at the retired location where released worktrees were once parked
 When platform maintenance runs
 Then that path no longer appears among Antigravity's trusted workspaces
-And every entry outside that project's worktree folder is unchanged
+And every entry that is not such a worktree path is unchanged
 ```
 
 #### UC-WWT7: An unusable trust store never blocks the worktree
@@ -101,7 +102,7 @@ And Antigravity's settings are left as they were
 #### UC-WWT8: Folders other than slug worktrees are never touched
 
 ```gherkin
-Given Antigravity's trusted workspaces include folders that are not slug worktrees of a project, including the project's main checkout and its integration worktree
+Given Antigravity's trusted workspaces include folders that are not slug worktrees of a project, including the project's main checkout, its integration worktree, a worktree's home clone, and a subfolder of a worktree, whether or not those folders still exist
 When the platform creates, attaches, renames, or releases slug worktrees, or maintenance runs
 Then those entries remain among Antigravity's trusted workspaces
 ```
