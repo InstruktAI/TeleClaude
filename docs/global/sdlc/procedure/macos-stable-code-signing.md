@@ -56,8 +56,9 @@ the identifier stays unique per executable, and each executable keeps its own gr
    reproducible and the build free of a network call. A build that runs with no one at the
    screen keeps the authority in a keychain dedicated to signing, opened by a secret generated
    on the machine and stored outside that keychain, for a bounded window covering the run, and
-   gives every keychain and `codesign` call its own deadline: the login keychain opens only at a
-   graphical login, so a build that relies on it waits on a dialog or fails with
+   gives every keychain and `codesign` call its own deadline: the login keychain unlocks
+   automatically only at a graphical login, and unlocking it otherwise takes the user's login
+   password, so a build that relies on it waits on a dialog or fails with
    `errSecInternalComponent`. A build that cannot sign fails; it never waits for a person.
 <!-- /planned-change:unattended-launcher-signing -->
 4. **Confirm the authority and identifier on every run.** `codesign --verify --strict` passes
