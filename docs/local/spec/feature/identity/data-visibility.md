@@ -74,7 +74,8 @@ notifications.
 ```gherkin
 Given a person holding the platform administrator role, or an agent session whose lineage roots at the system principal
 When it lists or receives platform data on any computer
-Then every record is eligible, whatever its subject, except another person's private local documentation and a notification addressed to another person
+Then every record is eligible, whatever its subject, except a notification addressed to another person
+And a platform administrator who is not the system principal does not receive another person's private local documentation
 And records with no subject are included
 And records whose subject the showing computer does not know are included
 ```
