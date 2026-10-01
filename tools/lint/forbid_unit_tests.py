@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+_GIT_LS_FILES_FAILED = "Failed to inspect tracked Python test files with git ls-files."
+
 
 def _is_python_unit_test(path: str) -> bool:
     rel = Path(path).as_posix()
@@ -52,12 +54,18 @@ def _repo_offenders(repo_root: Path) -> list[str]:
         text=True,
         check=False,
     )
+    if result.returncode != 0:
+        print(_GIT_LS_FILES_FAILED, file=sys.stderr)
+        if result.stderr:
+            print(result.stderr.strip(), file=sys.stderr)
+        sys.exit(result.returncode)
     return sorted(line for line in result.stdout.splitlines() if _is_python_unit_test(line))
 
 
 def main(repo_root: Path | None = None, argv: list[str] | None = None) -> None:
     if repo_root is None:
-        repo_root = Path(__file__).resolve().parents[2]
+        # The lint lane runs this script with cwd set to the project being linted.
+        repo_root = Path.cwd().resolve()
     args = list(sys.argv[1:] if argv is None else argv)
     run_all = "--all" in args or not args
     paths = [arg for arg in args if arg != "--all"]

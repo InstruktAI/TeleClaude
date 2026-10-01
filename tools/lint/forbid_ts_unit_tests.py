@@ -93,7 +93,8 @@ def _selected_offenders(repo_root: Path, frontend_root: str, paths: list[str]) -
 
 def main(repo_root: Path | None = None, argv: list[str] | None = None) -> None:
     if repo_root is None:
-        repo_root = Path(__file__).resolve().parents[2]
+        # The lint lane runs this script with cwd set to the project being linted.
+        repo_root = Path.cwd().resolve()
     args = list(sys.argv[1:] if argv is None else argv)
     run_all = "--all" in args or not args
     paths = [arg for arg in args if arg != "--all"]
