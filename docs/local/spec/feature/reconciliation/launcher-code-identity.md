@@ -39,8 +39,7 @@ other permission; granting stays with a person or a managed device profile.
   sign every launcher. It is identified by its fingerprint, never by its name:
   another certificate carrying the same name is not this authority. Each
   machine creates its own authority; it is never imported from another machine
-  or shared with one, because Full Disk Access grants are held per machine and
-  a shared authority carries none of them.
+  or shared with one.
 - **Signing store.** The keychain that holds the signing authority and nothing
   the operator uses for anything else. A signing run unlocks it for a bounded
   window that covers that run, after which it locks again on its own.
@@ -167,7 +166,14 @@ Given a machine whose installed launchers were built from the current launcher i
 When the installer runs again, as an operator install or as post-commit maintenance for an unrelated change
 Then it does not open the signing store and signs nothing
 And every installed launcher is byte-identical to what it was before the run
-And a run after any launcher input changes rebuilds, re-signs and reinstalls the launcher set
+```
+
+#### UC-LCI10: A change to what a launcher is built from rebuilds the set
+
+```gherkin
+Given a machine whose installed launchers were built from earlier launcher inputs
+When an agent runs the installer after any launcher input has changed
+Then the launcher set is rebuilt, signed by the machine's signing authority and installed
 ```
 
 ## Known caveats
