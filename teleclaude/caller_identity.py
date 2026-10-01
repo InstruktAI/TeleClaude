@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, assert_never
 
+from teleclaude.agent_registry import LaunchProfile
 from teleclaude.config_roster import (
     CompanyMember,
     CompanyRole,
@@ -20,6 +21,7 @@ from teleclaude.config_roster import (
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CUSTOMER,
+    HUMAN_ROLE_MEMBER,
     HUMAN_ROLES,
     ROLE_INTEGRATOR,
     ROLE_JOB_RUNNER,
@@ -469,7 +471,7 @@ class CarriedIdentity:
         )
 
     @classmethod
-    def from_session_facts(cls, session: SessionIdentityFields) -> CarriedIdentity:
+    def from_session_facts(cls, session: ConfinedSessionIdentityFields) -> CarriedIdentity:
         """Resolve persisted session facts through the shared identity rule."""
         resolved = identity_for_session(session)
         return cls.from_session_identity(session.session_id, resolved, company=session.company)
@@ -519,6 +521,39 @@ class SessionIdentityFields(Protocol):
 
     @property
     def company(self) -> str | None: ...
+
+
+class ConfinedSessionIdentityFields(SessionIdentityFields, Protocol):
+    """Session facts plus the launch confinement recorded when the session was created."""
+
+    @property
+    def confinement_profile(self) -> str | None: ...
+
+
+def is_desk_role(system_role: str | None, human_role: str | None) -> bool:
+    """Whether a session's persisted roles place it at a help desk under desk confinement.
+
+    A session with no system role whose recorded person role is below member
+    (customer, newcomer, contributor) is placed at the help desk and runs
+    confined there.
+    """
+    return system_role is None and human_role is not None and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER)
+
+
+def is_desk_visitor(caller: CliCaller) -> bool:
+    """Whether a caller is an anonymous help-desk visitor: a customer with no person identity."""
+    return isinstance(caller, PersonCliCaller) and caller.email is None and caller.person_slug is None
+
+
+def _desk_visitor_caller(session: ConfinedSessionIdentityFields) -> CliCaller:
+    """Resolve a principal-less session to the anonymous desk visitor, or to no identity."""
+    if (
+        session.system_role is None
+        and session.human_role == HUMAN_ROLE_CUSTOMER
+        and session.confinement_profile == LaunchProfile.HELP_DESK
+    ):
+        return PersonCliCaller(human_role=HUMAN_ROLE_CUSTOMER)
+    return NoIdentityCliCaller()
 
 
 def resolve_session_principal(session: SessionIdentityFields) -> tuple[str, str]:
@@ -581,13 +616,18 @@ def derive_session_system_role(session: SessionIdentityFields) -> str | None:
     return None
 
 
-def identity_for_session(session: SessionIdentityFields) -> SessionIdentity:
-    """Resolve one session record into its CLI caller and role facts."""
+def identity_for_session(session: ConfinedSessionIdentityFields) -> SessionIdentity:
+    """Resolve one session record into its CLI caller and role facts.
+
+    A session with no principal, email or system role is the anonymous desk
+    visitor when it was created confined at a help desk with the customer
+    role; any other principal-less session carries no identity.
+    """
     try:
         principal, principal_role = resolve_session_principal(session)
     except SessionIdentityError:
         principal, principal_role = None, None
-        caller: CliCaller = NoIdentityCliCaller()
+        caller: CliCaller = _desk_visitor_caller(session)
     else:
         caller = caller_from_principal(principal)
         if isinstance(caller, NoIdentityCliCaller):

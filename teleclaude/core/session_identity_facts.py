@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
-system_role, working_slug, job, initiator_session_id, company, closed_at, project_path
+system_role, working_slug, job, initiator_session_id, company, closed_at, project_path,
+json_extract(origin_metadata, '$.confinement.profile')
 FROM sessions WHERE session_id = ?"""  # guard: raw-sql
 _LEGACY_IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
 system_role, working_slug, job, initiator_session_id, closed_at, project_path
@@ -32,6 +33,7 @@ class SessionIdentityFacts:
     company: str | None
     closed_at: str | None
     project_path: str | None
+    confinement_profile: str | None = None
 
 
 def read_session_identity_facts(db_path: str, session_id: str) -> SessionIdentityFacts | None:
@@ -68,6 +70,7 @@ def read_session_identity_facts(db_path: str, session_id: str) -> SessionIdentit
         company=str(company) if company is not None else None,
         closed_at=str(closed_at) if closed_at is not None else None,
         project_path=str(project_path) if project_path is not None else None,
+        confinement_profile=str(row[12]) if has_company and row[12] is not None else None,
     )
 
 

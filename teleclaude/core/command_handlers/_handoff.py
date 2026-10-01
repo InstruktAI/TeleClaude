@@ -21,6 +21,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.injected_text import EnvelopeName, render_bracket_envelope, semantic_envelope
 from teleclaude.core.models import Session, ThinkingMode
+from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_runtime_gate import SessionRuntimeLease
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_transcript_chain import append_transcript_once
@@ -75,13 +76,15 @@ async def execute_handoff(
         starts_with_prompt = bool(
             _get_agent_config(successor).interactive_flag or _get_agent_config(successor).prompt_at_launch
         )
+        successor_profile = resolve_session_launch_profile(session, successor)
         successor_command = get_agent_command(
             agent=successor,
             thinking_mode=mode,
             interactive=starts_with_prompt,
             exec=False,
             native_session_id=None,
-            profile=_agent._get_session_profile(session),
+            profile=successor_profile.profile,
+            launch_flags=successor_profile.flags,
             resolved_flags=launch.flags,
         )
         if starts_with_prompt:

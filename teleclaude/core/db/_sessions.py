@@ -17,7 +17,7 @@ from teleclaude.slug import replace_slug_token
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from ..models import OriginRevivalContext, Session, SessionField
+from ..models import JsonDict, OriginRevivalContext, Session, SessionField
 from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from ..session_status import SessionLifecycleStatus
 from ._agent_status import (
@@ -84,6 +84,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         thinking_mode: str | None = None,
         native_session_id: str | None = None,
         native_log_file: str | None = None,
+        origin_metadata: JsonDict | None = None,
         emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
@@ -113,6 +114,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             thinking_mode: Thinking mode (fast, med, slow)
             native_session_id: Optional native agent session identifier
             native_log_file: Optional native transcript or log path
+            origin_metadata: Optional root origin-metadata sections written with the row
             emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
 
         Returns:
@@ -148,6 +150,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             thinking_mode=thinking_mode,
             native_session_id=native_session_id,
             native_log_file=native_log_file,
+            origin_metadata=dict(origin_metadata) if origin_metadata else {},
         )
 
         # Serialize origin_metadata (accumulated platform sections, no "platform" key)

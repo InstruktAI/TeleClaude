@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from teleclaude.cli.telec.surface import CLI_SURFACE, CommandAuth
+from teleclaude.cli.telec.surface import CLI_SURFACE, CommandAuth, CommandDef
+
+_TELEC_PREFIX = "telec "
+_PATH_SEPARATOR = "."
+_WORD_SEPARATOR = " "
 
 
-def _resolve_command_auth(command_path: str) -> CommandAuth | None:
-    """Resolve a command path to its CommandAuth, or None if not found."""
+def _resolve_command(command_path: str) -> CommandDef | None:
+    """Resolve a command path to its declaration, or None if not found."""
     # Normalize: accept "sessions.start" or "telec sessions start" or "sessions start"
     path = command_path.strip()
-    if path.startswith("telec "):
-        path = path[len("telec ") :]
-    parts = path.replace(".", " ").split()
+    if path.startswith(_TELEC_PREFIX):
+        path = path[len(_TELEC_PREFIX) :]
+    parts = path.replace(_PATH_SEPARATOR, _WORD_SEPARATOR).split()
     if not parts:
         return None
     node = CLI_SURFACE.get(parts[0])
@@ -23,7 +27,19 @@ def _resolve_command_auth(command_path: str) -> CommandAuth | None:
         node = node.subcommands.get(part)
         if node is None:
             return None
-    return node.auth
+    return node
+
+
+def _resolve_command_auth(command_path: str) -> CommandAuth | None:
+    """Resolve a command path to its CommandAuth, or None if not found."""
+    node = _resolve_command(command_path)
+    return node.auth if node is not None else None
+
+
+def is_desk_command(command_path: str) -> bool:
+    """Whether a command path is declared safe for a confined help-desk session."""
+    node = _resolve_command(command_path)
+    return node is not None and node.desk
 
 
 def is_command_allowed(

@@ -33,6 +33,25 @@ def _collect_gated_paths() -> list[str]:
     return list(_walk(CLI_SURFACE))
 
 
+def desk_command_paths(human_role: str | None) -> list[str]:
+    """Return the CLI paths a confined help-desk session of this role may run.
+
+    The set is the leaves the surface declares safe for a desk whose
+    authorization admits the role; nothing else is ever offered to a desk
+    agent, whatever the role's ordinary band admits.
+    """
+
+    def _walk(surface: dict[str, CommandDef], prefix: str = "") -> Iterator[str]:
+        for name, cmd in surface.items():
+            path = f"{prefix} {name}".strip() if prefix else name
+            if cmd.subcommands:
+                yield from _walk(cmd.subcommands, path)
+            elif cmd.desk and is_command_allowed(path, None, human_role):
+                yield path
+
+    return list(_walk(CLI_SURFACE))
+
+
 def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:
     """Return set of tool names excluded for this human role.
 

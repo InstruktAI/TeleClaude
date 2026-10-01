@@ -92,6 +92,11 @@ configuration and availability never travel to a caller for speculative selectio
   fresh-session role. The initiating or producing session's agent does not narrow or
   reorder the candidate set.
 - Matrix order is stable. Configuration iteration order never becomes policy.
+- A session placed at a help desk takes its order from the help-desk session-kind row,
+  never from the command in its first message. Only agents whose registry declares a
+  verified desk confinement are eligible there, for automatic, manual and fixed
+  selection alike; each agent skipped for lacking it is recorded on the decision
+  record (`UC-SL48`).
 - An empty eligible set refuses creation instead of choosing outside the contract.
 
 ### Manual preference and fixed continuation

@@ -94,6 +94,27 @@ class OneShotSupport(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+class DeskConfinement(StrEnum):
+    """Whether an agent has a verified launch profile that confines a help-desk session.
+
+    ``VERIFIED`` means the agent declares a ``help_desk`` profile whose
+    confinement (file reads, commands, startup context, native tool surfaces)
+    was proven by a canary probe. ``NONE`` means it declares no such profile
+    and is unavailable for desk sessions.
+    """
+
+    VERIFIED = "verified"
+    NONE = "none"
+
+
+class LaunchProfile(StrEnum):
+    """The closed set of launch profiles an agent session can run under."""
+
+    DEFAULT = "default"
+    RESTRICTED = "restricted"
+    HELP_DESK = "help_desk"
+
+
 class CredentialCheckKind(StrEnum):
     """Closed set of mechanisms setup/preflight can dispatch a credential check by."""
 
@@ -222,6 +243,7 @@ class AgentDefinition:
     launcher_build: LauncherBuildSpec
     credential_check: CredentialCheck
     one_shot: OneShotSupport
+    desk_confinement: DeskConfinement
 
 
 def agent_permutation(*order: AgentName) -> tuple[str, ...]:
@@ -282,6 +304,13 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         f' --settings \'{{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}}\''
                         f" {claude_mount}"
                     ),
+                    # Static half of the desk confinement; the launch settings
+                    # (permission mode, read fence, allow list, instruction
+                    # selection, plugin switch-off) and the session's own upload
+                    # root are rendered per launch.
+                    LaunchProfile.HELP_DESK: (
+                        "--strict-mcp-config --disable-slash-commands --tools Bash,Read,Glob,Grep"
+                    ),
                 },
                 "mode_chains": {
                     "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5-5[1m]' --effort low"}],
@@ -326,6 +355,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                 keychain_services=("Claude Code-credentials",),
             ),
             one_shot=OneShotSupport.SUPPORTED,
+            desk_confinement=DeskConfinement.VERIFIED,
         ),
         AgentName.CODEX: AgentDefinition(
             key=AgentName.CODEX,
@@ -419,6 +449,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                 file_path="~/.codex/auth.json",
             ),
             one_shot=OneShotSupport.SUPPORTED,
+            desk_confinement=DeskConfinement.NONE,
         ),
         AgentName.GEMINI: AgentDefinition(
             key=AgentName.GEMINI,
@@ -479,6 +510,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                 file_path="~/.gemini/oauth_creds.json",
             ),
             one_shot=OneShotSupport.SUPPORTED,
+            desk_confinement=DeskConfinement.NONE,
         ),
         AgentName.DEEPSEEK: AgentDefinition(
             key=AgentName.DEEPSEEK,
@@ -587,6 +619,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             # one-shot call must be refused explicitly rather than dispatched
             # into a spec table with no entry for it.
             one_shot=OneShotSupport.UNSUPPORTED,
+            desk_confinement=DeskConfinement.NONE,
         ),
     }
 
@@ -598,7 +631,21 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
 _LOG_STATE_ROOT = f"{os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')}/instrukt-ai"  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 RESTRICTED_MOUNT_DIRS: tuple[str, ...] = ("~/.teleclaude/docs", _LOG_STATE_ROOT)
 
-AGENT_REGISTRY: dict[AgentName, AgentDefinition] = _build_definitions(RESTRICTED_MOUNT_DIRS)
+
+def _validate_desk_confinement(definitions: dict[AgentName, AgentDefinition]) -> dict[AgentName, AgentDefinition]:
+    """Fail at import when a desk confinement declaration and its profile disagree."""
+    for name, definition in definitions.items():
+        has_profile = LaunchProfile.HELP_DESK in definition.protocol["profiles"]
+        verified = definition.desk_confinement is DeskConfinement.VERIFIED
+        if verified != has_profile:
+            raise ValueError(
+                f"Agent '{name.value}' declares desk_confinement={definition.desk_confinement.value} "
+                f"but {'has' if has_profile else 'lacks'} a '{LaunchProfile.HELP_DESK.value}' profile"
+            )
+    return definitions
+
+
+AGENT_REGISTRY: dict[AgentName, AgentDefinition] = _validate_desk_confinement(_build_definitions(RESTRICTED_MOUNT_DIRS))
 
 
 def registry_digest() -> str:

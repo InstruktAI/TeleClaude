@@ -19,7 +19,7 @@ from teleclaude.cli.session_auth import (
     no_identity_refusal,
     resolve_cli_identity,
 )
-from teleclaude.cli.telec.auth import _resolve_command_auth
+from teleclaude.cli.telec.auth import _resolve_command_auth, is_desk_command
 
 
 class ClearanceKind(StrEnum):
@@ -164,6 +164,7 @@ def clearance_scope_refusal(scope: ClearanceScope, identity: ResolvedCliIdentity
             role_target=scope.role_target,
             target_computer=scope.target_computer,
             direct_conversation=scope.direct_conversation,
+            desk_command=is_desk_command(command_path),
         ).refusal
         if refusal is not None:
             return refusal

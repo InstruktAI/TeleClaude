@@ -27,6 +27,7 @@ from teleclaude.caller_identity import (
     SessionOf,
     human_principal_for_email,
     identity_for_session,
+    is_desk_visitor,
     person_entry_for_email,
     session_act_exception,
 )
@@ -139,6 +140,7 @@ _UNAUTHORIZED_ROLE = "unauthorized"
 _SESSION_END_PATH = "sessions end"
 _SESSION_RESTART_PATH = "sessions restart"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
+_DESK_COMMAND_REFUSAL_TEMPLATE = "permission denied — {command_path} is not available at a help desk"
 _PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
 _TELEC_COMMAND_PREFIX = "telec "
 _RELAYED_ACT_PATHS = frozenset(act.value.removeprefix(_TELEC_COMMAND_PREFIX) for act in RelayedAct)
@@ -397,10 +399,18 @@ def cli_clearance(
     role_target: RoleTarget | None = None,
     target_computer: str | None = None,
     direct_conversation: bool = False,
+    desk_command: bool = False,
 ) -> CliClearance:
-    """Decide one command's clearance without printing or exiting."""
+    """Decide one command's clearance without printing or exiting.
+
+    An anonymous help-desk visitor is admitted only to commands the surface
+    declares safe for a desk (``desk_command``), caller-independent ones
+    included; every other caller is decided as before.
+    """
     if auth is None:
         return CliClearance(identity=identity, refusal=_CALLER_INDEPENDENT_COMMAND_REFUSAL)
+    if identity is not None and is_desk_visitor(identity.caller) and not desk_command:
+        return CliClearance(identity=identity, refusal=_DESK_COMMAND_REFUSAL_TEMPLATE.format(command_path=command_path))
     if auth.caller_independent:
         return CliClearance(identity=None, refusal=None)
     if identity is None:
@@ -493,17 +503,18 @@ def require_cli_clearance(
     role_target: RoleTarget | None = None,
     target_computer: str | None = None,
     direct_conversation: bool = False,
+    desk_command: bool = False,
 ) -> ResolvedCliIdentity | None:
     """Resolve and enforce one local CLI command's declared authorization."""
-    identity = None if auth is not None and auth.caller_independent else resolve_cli_identity()
     clearance = cli_clearance(
         command_path,
-        identity,
+        resolve_cli_identity(),
         target_session_id,
         auth,
         role_target=role_target,
         target_computer=target_computer,
         direct_conversation=direct_conversation,
+        desk_command=desk_command,
     )
     if clearance.refusal is not None:
         print(f"Error: {clearance.refusal}", file=sys.stderr)

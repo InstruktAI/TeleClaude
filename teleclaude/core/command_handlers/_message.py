@@ -44,6 +44,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_cleanup import is_legacy_restricted_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
 from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+_LEGACY_RESTRICTED_SESSION_REFUSED_EVENT = "legacy_restricted_session_refused"
 _INBOUND_ORIGIN_METADATA_KEY = "origin_metadata"
 _INBOUND_COMMAND_INPUT_KEY = "command_input"
 _COMMAND_INPUT_SOURCE_TEXT_KEY = "source_text"
@@ -371,7 +373,11 @@ async def _session_message_delivery_available(session: Session) -> bool:
     Headless sessions are intentionally adoptable on-demand. Initializing sessions
     are allowed to queue input and will be gated later during delivery. All other
     sessions require an existing tmux session; missing tmux is not healed here.
+    A desk session that predates creation-time confinement never accepts input.
     """
+    if is_legacy_restricted_session(session):
+        logger.warning(_LEGACY_RESTRICTED_SESSION_REFUSED_EVENT, session_id=session.session_id)
+        return False
     if session.lifecycle_status in {"headless", "initializing"}:
         return True
     if not session.tmux_session_name:

@@ -14,12 +14,11 @@ from teleclaude.caller_identity import (
     SessionOf,
     caller_from_principal,
     human_principal_for_email,
+    is_desk_role,
 )
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import (
-    HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CUSTOMER,
-    HUMAN_ROLE_MEMBER,
     HUMAN_ROLES,
     WORKTREE_DIR,
     SlashCommand,
@@ -194,8 +193,8 @@ async def resolve_session_creation_identity(
         if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
         else os.path.join(WORKING_DIR, "help-desk")
     )
-    if not system_role and human_role and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER):
-        logger.info("Restricted session attempt from origin=%s role=%s. Jailing to help-desk.", origin, human_role)
+    if is_desk_role(system_role or None, human_role):
+        logger.info("Restricted session placed at the help desk: origin=%s role=%s", origin, human_role)
         project_path = configured_help_desk_path
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = working_slug = None

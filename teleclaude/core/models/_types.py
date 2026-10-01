@@ -76,6 +76,16 @@ class TerminalOriginSection(TypedDict):
     platform: NotRequired[str | None]
 
 
+CONFINEMENT_SECTION = "confinement"
+CONFINEMENT_PROFILE_KEY = "profile"
+
+
+class SessionConfinementSection(TypedDict):
+    """Root origin-metadata section recording the launch confinement chosen at creation."""
+
+    profile: str
+
+
 class SessionOriginMetadata(TypedDict):
     """Type-safe schema representing the merged/accumulated session origin metadata."""
 
@@ -94,6 +104,7 @@ class SessionOriginMetadata(TypedDict):
     redis: NotRequired[dict[str, object] | None]  # guard: loose-dict
     attention_observation: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote distress evidence
     inferred_stall_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote watchdog evidence
+    confinement: NotRequired[SessionConfinementSection | None]
 
 
 class _DataclassInstance(Protocol):

@@ -11,7 +11,14 @@ from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, TurnNotificationRecord
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
-from ._types import JsonDict, SessionOriginMetadata, to_json_dict, to_json_value
+from ._types import (
+    CONFINEMENT_PROFILE_KEY,
+    CONFINEMENT_SECTION,
+    JsonDict,
+    SessionOriginMetadata,
+    to_json_dict,
+    to_json_value,
+)
 
 if TYPE_CHECKING:
     from ._context import InlineKeyboardMarkup
@@ -305,6 +312,12 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
         if isinstance(section, dict):
             return dict(section)
         return {}
+
+    @property
+    def confinement_profile(self) -> str | None:
+        """The launch profile this session was confined to when it was created, if any."""
+        profile = self.get_origin_section(CONFINEMENT_SECTION).get(CONFINEMENT_PROFILE_KEY)
+        return profile if isinstance(profile, str) else None
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""

@@ -17,7 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.config._models import AgentConfig
-from teleclaude.constants import COMMAND_ROLE_MAP, HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
+from teleclaude.constants import COMMAND_ROLE_MAP, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -25,6 +25,7 @@ from teleclaude.core.agent_dispatch import (
     AgentDispatchOutcome,
     AgentDispatchStage,
     classify_fresh_agent_preference,
+    desk_session_kind,
     emit_agent_dispatch_decision,
     emit_agent_launch_started,
     resolve_agent_dispatch,
@@ -41,7 +42,6 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.identity import session_person_role
 from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedTextSourceFeature,
@@ -56,6 +56,7 @@ from teleclaude.core.models import (
     SessionEntryPoint,
     ThinkingMode,
 )
+from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import (
     acquire_session_runtime_lease,
@@ -164,13 +165,6 @@ class _RestartStopAttempt:
     agent_pid: int | None = None
     child_count: int = 0
     kill_returncode: int | None = None
-
-
-def _get_session_profile(session: Session) -> str:
-    """Determine agent profile based on human role."""
-    if session_person_role(session) == HUMAN_ROLE_ADMIN:
-        return "default"
-    return "restricted"
 
 
 def _launch_patch_entries(agent_cfg: AgentConfig, mode: str, profile: str) -> dict[str, dict[str, str]]:
@@ -297,11 +291,13 @@ async def start_agent(
                 session_id=session.session_id,
             )
         ).flags
+    launch_profile = resolve_session_launch_profile(session, start_args.agent_name)
     base_cmd = get_agent_command(
         start_args.agent_name,
         thinking_mode=start_args.thinking_mode.value,
         interactive=has_prompt,
-        profile=_get_session_profile(session),
+        profile=launch_profile.profile,
+        launch_flags=launch_profile.flags,
         resolved_flags=resolved_model_flags,
     )
 
@@ -314,7 +310,7 @@ async def start_agent(
     # launch, and discarded with the session — no static patch files exist.
     agent_cfg = _get_agent_config(start_args.agent_name)
     if agent_cfg.model_via_launch_patch:
-        entries = _launch_patch_entries(agent_cfg, start_args.thinking_mode.value, _get_session_profile(session))
+        entries = _launch_patch_entries(agent_cfg, start_args.thinking_mode.value, launch_profile.profile)
         if entries:
             patch_dir = session_tmp_dir(session.session_id)
             patch_dir.mkdir(parents=True, exist_ok=True)
@@ -431,13 +427,15 @@ async def resume_agent(
         if resume_args.thinking_mode
         else None
     )
+    launch_profile = resolve_session_launch_profile(session, resume_args.agent_name)
     command_str = get_agent_command(
         agent=resume_args.agent_name,
         thinking_mode=resume_args.thinking_mode.value if resume_args.thinking_mode else None,
         exec=False,
         resume=not resume_args.native_session_id,
         native_session_id=resume_args.native_session_id,
-        profile=_get_session_profile(session),
+        profile=launch_profile.profile,
+        launch_flags=launch_profile.flags,
         resolved_flags=launch.flags if launch else None,
     )
 
@@ -611,6 +609,7 @@ async def select_handoff_successor(
             fixed_agent=None,
             candidate_order=None,
             entry_point=SessionEntryPoint.AGENT_HANDOFF,
+            session_kind=desk_session_kind(session.system_role, session.human_role),
         )
     except AgentDispatchFailure as exc:
         emit_agent_dispatch_decision(
@@ -808,12 +807,14 @@ async def _restart_agent(
         ownership=launch_ownership(session.job),
         session_id=session.session_id,
     )
+    launch_profile = resolve_session_launch_profile(session, target_agent)
     restart_cmd = get_agent_command(
         agent=target_agent,
         thinking_mode=restart_mode,
         exec=False,
         native_session_id=native_session_id,
-        profile=_get_session_profile(session),
+        profile=launch_profile.profile,
+        launch_flags=launch_profile.flags,
         resolved_flags=launch.flags,
     )
 

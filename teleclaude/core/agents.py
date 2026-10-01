@@ -119,6 +119,9 @@ def render_mode_flags(agent: str, mode: str, model: str | None = None) -> str:
     raise ValueError(f"Invalid model '{model}' for agent '{agent}' mode '{mode}'")
 
 
+_COMMAND_PART_SEPARATOR = " "
+
+
 def get_agent_command(
     agent: str,
     thinking_mode: str | None = "slow",
@@ -126,7 +129,9 @@ def get_agent_command(
     resume: bool = False,
     native_session_id: str | None = None,
     interactive: bool = False,
-    profile: str = "default",
+    *,
+    profile: str,
+    launch_flags: str = "",
     resolved_flags: str | None = None,
 ) -> str:
     """
@@ -143,7 +148,8 @@ def get_agent_command(
         resume: If True and no native_session_id, uses continue_template when available (agent-specific "continue latest")
         native_session_id: If provided, uses resume_template with this session ID (ignores resume flag)
         interactive: If True, include interactive_flag at the end (right before prompt)
-        profile: Security profile ('default', 'restricted'). Default 'default'.
+        profile: Launch profile (``LaunchProfile``); required, so no launch falls back to another profile.
+        launch_flags: Flags rendered for this one launch, appended to the profile's flags.
 
     Returns:
         Assembled command string, ready for prompt to be appended.
@@ -153,17 +159,17 @@ def get_agent_command(
         - Without: {base_command} {exec_subcommand?} {model_flags} {--resume?} {interactive_flag?}
 
     Examples:
-        >>> get_agent_command("claude", thinking_mode="fast")
+        >>> get_agent_command("claude", thinking_mode="fast", profile="default")
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' -m haiku'
 
-        >>> get_agent_command("codex", thinking_mode="slow", exec=True)
+        >>> get_agent_command("codex", thinking_mode="slow", exec=True, profile="default")
         'codex exec --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.5'
 
-        >>> get_agent_command("claude", native_session_id="abc123")
+        >>> get_agent_command("claude", native_session_id="abc123", profile="default")
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' --resume abc123'
     """
     agent_cfg = _get_agent_config(agent)
-    base_cmd = agent_cfg.get_command(profile).strip()
+    base_cmd = _COMMAND_PART_SEPARATOR.join((agent_cfg.get_command(profile), launch_flags)).strip()
 
     if native_session_id:
         # Include model flag when resuming with explicit session ID (unless omitted)

@@ -65,6 +65,19 @@ When the session is created
 Then the session's project_path is confined to the computer's help-desk directory
 ```
 
+#### UC-SL48: A help-desk session below member is confined to its desk
+
+```gherkin
+Given a session at a help desk whose recorded human_role is below member
+When its agent runs
+Then it reads files only inside its desk folder and its own session's uploads, and never another session's uploads
+And it runs only the desk commands its recorded role admits, which for a customer are version, docs index, docs get, auth whoami and sessions escalate
+And no documentation corpus is mounted for it, so it reads documentation only through telec docs at its own depth and through its desk master
+And its startup context holds only its desk's own instructions, none from enclosing folders or the user's own instruction files
+And its agent is the first available one in the dispatch order for desk sessions (`projects/teleclaude/design/architecture/agent-dispatch`), which holds only agents that carry a desk confinement profile
+And when no agent in that order is available no session is created
+```
+
 #### Computer routing
 
 ```
@@ -459,7 +472,7 @@ And a platform administrator's listing is unchanged
 
 ## Known caveats
 
-- **The recorded human_role decides placement at creation.** It decides help-desk confinement when the session is created, and a confined session keeps its placement for its life. Every later decision about a session run for a person — its launch profile, customer-facing channel routing, projection defaults — reads that person's effective role for the session's project when the decision is made, whether or not the session is confined: a granted or withdrawn role applies from the next decision, and a person no longer registered holds none above customer (`projects/teleclaude/design/architecture/scoped-roles`). A session run for an unregistered platform user keeps its recorded role, customer.
+- **The recorded human_role decides placement at creation.** It decides help-desk confinement when the session is created, and a confined session keeps its placement for its life. A confined session also keeps its desk launch profile for its life (UC-SL48). Every other later decision about a session run for a person — the launch profile of an unconfined session, customer-facing channel routing, projection defaults — reads that person's effective role for the session's project when the decision is made, whether or not the session is confined: a granted or withdrawn role applies from the next decision, and a person no longer registered holds none above customer (`projects/teleclaude/design/architecture/scoped-roles`). A session run for an unregistered platform user keeps its recorded role, customer.
 - **Host-pane reference uses the full session id.** The format is `<teleclaude-prefix><session-id>` with the full id; the v2-target domain spec phrases it as a short id for readability, but no shortening occurs here.
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.

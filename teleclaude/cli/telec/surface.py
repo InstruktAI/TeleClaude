@@ -319,6 +319,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     system=_AGENT_REACH | _WORKER_REACH,
                     human=_HR_ALL_NON_ADMIN,
                 ),
+                desk=True,
             ),
         },
     ),
@@ -447,6 +448,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Print version, channel, and commit",
         flags=[F.FLAG_HELP],
         auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+        desk=True,
     ),
     "message": CommandDef(
         desc="Send a message to a person by slug",
@@ -492,6 +494,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Pending snippets (those with delivered_by) append ` (delivered by: slug1,slug2)` at the end of the phase-1 line.",
                 ],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                desk=True,
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
@@ -509,6 +512,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "The generated Activatable Procedures catalog uses `--closure` to load one delivered procedure and its eligible required-read closure in one pass.",
                 ],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                desk=True,
             ),
         },
         notes=[
@@ -1064,6 +1068,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Show the identity carried by this session or terminal",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+                desk=True,
             ),
             "logout": CommandDef(
                 desc="Clear terminal login identity for this TTY",

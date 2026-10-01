@@ -176,6 +176,7 @@ def _handle_cli_command(argv: list[str]) -> None:
         role_target=role_target,
         target_computer=target_computer,
         direct_conversation=direct_conversation,
+        desk_command=node.desk,
     )
 
     handler = _resolve_cli_handler(cmd_enum, args)

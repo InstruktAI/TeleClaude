@@ -9,6 +9,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude import __version__
+from teleclaude.agent_registry import LaunchProfile
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
@@ -22,7 +23,9 @@ from teleclaude.core.agent_dispatch import (
     AgentDispatchOutcome,
     AgentDispatchReason,
     AgentDispatchStage,
+    DispatchSessionKind,
     decision_basis_digest,
+    desk_session_kind,
     emit_agent_dispatch_decision,
     resolve_agent_dispatch,
     resolve_launch_model,
@@ -33,7 +36,16 @@ from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLaunchKind, SessionSnapshot
+from teleclaude.core.models import (
+    CONFINEMENT_PROFILE_KEY,
+    CONFINEMENT_SECTION,
+    ComputerInfo,
+    JsonDict,
+    ProjectInfo,
+    Session,
+    SessionLaunchKind,
+    SessionSnapshot,
+)
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_company import record_session_company_resolved
@@ -93,7 +105,10 @@ async def _resolve_prepare_todo_kind(project_path: str, slug: str) -> str:
 
 
 async def _resolve_launch_intent(
-    cmd: CreateSessionCommand, project_path: str, working_slug: str | None
+    cmd: CreateSessionCommand,
+    project_path: str,
+    working_slug: str | None,
+    session_kind: DispatchSessionKind | None,
 ) -> AgentDispatchDecision | None:
     intent = cmd.launch_intent
     if intent is None or intent.kind == SessionLaunchKind.EMPTY:
@@ -150,6 +165,7 @@ async def _resolve_launch_intent(
             fixed_agent=fixed_agent,
             candidate_order=intent.candidate_order,
             entry_point=cmd.entry_point,
+            session_kind=session_kind,
         )
     except AgentDispatchFailure as exc:
         emit_agent_dispatch_decision(
@@ -283,8 +299,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     initiator_session_id = resolved.initiator_session_id
     initiator_computer = resolved.initiator_computer
     cmd_system_role, cmd_job = cmd.system_role, cmd.job
+    session_kind = desk_session_kind(cmd_system_role, human_role)
 
-    decision = await _resolve_launch_intent(cmd, project_path, working_slug)
+    decision = await _resolve_launch_intent(cmd, project_path, working_slug, session_kind)
     launch = cmd.launch_intent
     if launch and launch.kind in {SessionLaunchKind.AGENT, SessionLaunchKind.AGENT_THEN_MESSAGE}:
         if not launch.agent or not launch.thinking_mode:
@@ -334,6 +351,14 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     _, _, command_args = command_line.partition(" ")
     title = cmd.title or (compose_command_session_title(cmd.command, command_args) if cmd.command is not None else "")
 
+    # A desk session records its confinement in the creating write, so no
+    # delivery or bootstrap ever observes it without the stamp.
+    creation_metadata: JsonDict = (
+        {CONFINEMENT_SECTION: {CONFINEMENT_PROFILE_KEY: LaunchProfile.HELP_DESK.value}}
+        if session_kind is DispatchSessionKind.HELP_DESK
+        else {}
+    )
+
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
     session = await db.create_session(
@@ -360,6 +385,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         thinking_mode=launch.thinking_mode if launch else None,
         native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
         native_log_file=cmd.native_log_file,
+        origin_metadata=creation_metadata,
         emit_session_started=False,
     )
 

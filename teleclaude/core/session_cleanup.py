@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_registry import AgentName
+from teleclaude.caller_identity import is_desk_role
 from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
@@ -44,6 +45,8 @@ if TYPE_CHECKING:
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
+_LEGACY_RESTRICTED_SESSION_ENDED_EVENT = "legacy_restricted_session_ended"
+_LEGACY_RESTRICTED_SESSION_REASON = "legacy_restricted_session"
 
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
@@ -551,6 +554,31 @@ async def emit_recently_closed_session_events(
         )
 
     return emitted
+
+
+def is_legacy_restricted_session(session: Session) -> bool:
+    """Whether a session sits at the help desk without the confinement recorded at its creation.
+
+    Every desk session created under desk confinement carries the stamp in
+    the write that created it, so a desk-role session without it predates the
+    confinement and is never delivered to.
+    """
+    return is_desk_role(session.system_role or None, session.human_role) and session.confinement_profile is None
+
+
+async def end_legacy_restricted_sessions(adapter_client: AdapterClient) -> int:
+    """End every open desk-role session that lacks the creation-time confinement stamp."""
+    sessions = await db.list_sessions(include_initializing=True, include_headless=True)
+    ended = 0
+    for session in sessions:
+        if not is_legacy_restricted_session(session):
+            continue
+        if await terminate_session(
+            session.session_id, adapter_client, reason=_LEGACY_RESTRICTED_SESSION_REASON, session=session
+        ):
+            ended += 1
+    logger.info(_LEGACY_RESTRICTED_SESSION_ENDED_EVENT, count=ended)
+    return ended
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: AdapterClient) -> bool:

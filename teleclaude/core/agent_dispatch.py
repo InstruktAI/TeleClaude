@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
-from teleclaude.agent_registry import agent_permutation, registry_digest
+from teleclaude.agent_registry import AGENT_REGISTRY, DeskConfinement, agent_permutation, registry_digest
+from teleclaude.caller_identity import is_desk_role
 from teleclaude.config import config
 from teleclaude.constants import SlashCommand
 from teleclaude.core.agent_availability import (
@@ -78,6 +79,8 @@ class AgentDispatchReason(StrEnum):
     MODEL_CHAIN_EXHAUSTED = "model_chain_exhausted"
     MODEL_AVAILABILITY_READ_FAILED = "model_availability_read_failed"
     JOB_DECLARATION = "job_declaration"
+    SESSION_KIND_POLICY = "session_kind_policy"
+    DESK_CONFINEMENT_UNVERIFIED = "desk_confinement_unverified"
 
 
 class AgentDispatchStage(StrEnum):
@@ -151,6 +154,13 @@ class AgentDispatchOrderBranch(StrEnum):
     COMMAND_POLICY = "command_policy"
     GLOBAL = "global"
     JOB_DECLARATION = "job_declaration"
+    SESSION_KIND = "session_kind"
+
+
+class DispatchSessionKind(StrEnum):
+    """Session kinds whose agent order the matrix decides before any command."""
+
+    HELP_DESK = "help_desk"
 
 
 @dataclass(frozen=True)
@@ -228,6 +238,13 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.ACTIVATE_PROCEDURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
 }
+# Desk sessions take their order from the session kind, never from the
+# visitor's first message; only agents with a verified desk confinement are
+# eligible (see ``_desk_confined``).
+_SESSION_KIND_POLICIES: dict[DispatchSessionKind, CommandDispatchPolicy] = {
+    DispatchSessionKind.HELP_DESK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+}
+_DESK_CONFINEMENT_UNVERIFIED_MESSAGE = "Agent '{agent}' has no verified desk confinement"
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 _MODEL_SKIP_REASON_PREFIX = "model_"
 _COMMAND_PREFIX = "/"
@@ -253,6 +270,23 @@ def _order_for(
         logger.error("agent_dispatch_policy_defect command=%s", slash_command.value)
         return _GLOBAL_ORDER, AgentDispatchReason.KNOWN_ROLE_POLICY_DEFECT, AgentDispatchOrderBranch.GLOBAL
     return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.COMMAND_POLICY
+
+
+def desk_session_kind(system_role: str | None, human_role: str | None) -> DispatchSessionKind | None:
+    """Return the help-desk session kind for a session whose roles place it at a desk."""
+    return DispatchSessionKind.HELP_DESK if is_desk_role(system_role, human_role) else None
+
+
+def _desk_confined(agent: str) -> bool:
+    return AGENT_REGISTRY[AgentName.from_str(agent)].desk_confinement is DeskConfinement.VERIFIED
+
+
+def _require_desk_confined(agent: str, session_kind: DispatchSessionKind | None) -> None:
+    if session_kind is DispatchSessionKind.HELP_DESK and not _desk_confined(agent):
+        raise AgentDispatchFailure(
+            AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED,
+            _DESK_CONFINEMENT_UNVERIFIED_MESSAGE.format(agent=agent),
+        )
 
 
 def _order_with_preference(order: tuple[str, ...], preferred_agent: str | None) -> tuple[str, ...]:
@@ -412,9 +446,14 @@ async def resolve_agent_dispatch(
     fixed_agent: str | None,
     candidate_order: tuple[str, ...] | None,
     entry_point: SessionEntryPoint | None,
+    session_kind: DispatchSessionKind | None = None,
 ) -> AgentDispatchDecision:
-    """Select one eligible agent without consulting the caller's machine state."""
-    del entry_point  # Kept typed at the boundary for structured decision evidence.
+    """Select one eligible agent without consulting the caller's machine state.
+
+    A ``session_kind`` takes the order from that kind's row instead of the
+    command; for a help-desk session every candidate must carry a verified
+    desk confinement, and each one skipped for lacking it is logged.
+    """
     ownership = LaunchOwnership.HUMAN if mode is AgentDispatchMode.MANUAL_PREFERENCE else LaunchOwnership.JOB_ROLE
 
     if mode is AgentDispatchMode.FIXED:
@@ -423,6 +462,7 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.FIXED_AGENT_REQUIRED, "Fixed launch intent requires an agent"
             )
         _known_enabled(fixed_agent)
+        _require_desk_confined(fixed_agent, session_kind)
         if not is_launchable(await _availability_facts(fixed_agent), ownership):
             raise AgentDispatchFailure(
                 AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
@@ -436,6 +476,7 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.PREFERRED_AGENT_REQUIRED, "Manual launch intent requires an agent"
             )
         _known_enabled(preferred_agent)
+        _require_desk_confined(preferred_agent, session_kind)
         status = await _availability_facts(preferred_agent)
         if not is_launchable(status, ownership):
             raise AgentDispatchFailure(
@@ -449,25 +490,47 @@ async def resolve_agent_dispatch(
         )
         return AgentDispatchDecision(agent=preferred_agent, reason=reason)
 
-    if candidate_order:
+    if session_kind is not None:
+        policy_order = _SESSION_KIND_POLICIES[session_kind].agent_order
+        reason = AgentDispatchReason.SESSION_KIND_POLICY
+        order_branch = AgentDispatchOrderBranch.SESSION_KIND
+    elif candidate_order:
         policy_order = candidate_order
         reason = AgentDispatchReason.JOB_DECLARATION
         order_branch = AgentDispatchOrderBranch.JOB_DECLARATION
     else:
         policy_order, reason, order_branch = _order_for(command)
     order = _order_with_preference(policy_order, preferred_agent)
-    eligible = [
-        agent
-        for agent in order
-        if _configured_enabled(agent) and is_launchable(await _availability_facts(agent), ownership)
-    ]
+    desk_skipped: list[str] = []
+    eligible: list[str] = []
+    for agent in order:
+        if session_kind is DispatchSessionKind.HELP_DESK and not _desk_confined(agent):
+            desk_skipped.append(agent)
+            emit_agent_dispatch_decision(
+                stage=AgentDispatchStage.RESOLVED,
+                outcome=AgentDispatchOutcome.REFUSED,
+                reason=AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED,
+                selected_agent=agent,
+                entry_point=entry_point,
+                candidate_order=policy_order,
+                order_branch=order_branch,
+            )
+            continue
+        if _configured_enabled(agent) and is_launchable(await _availability_facts(agent), ownership):
+            eligible.append(agent)
     if not eligible:
         raise AgentDispatchFailure(
             AgentDispatchReason.NO_ELIGIBLE_CANDIDATE,
             "No configured and available agent can run this session",
         )
 
-    fallback = AgentDispatchReason.DETERMINISTIC_INELIGIBILITY if eligible[0] != order[0] else None
+    fallback = None
+    if eligible[0] != order[0]:
+        fallback = (
+            AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED
+            if order[0] in desk_skipped
+            else AgentDispatchReason.DETERMINISTIC_INELIGIBILITY
+        )
     return AgentDispatchDecision(
         agent=eligible[0],
         reason=reason,

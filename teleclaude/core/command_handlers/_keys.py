@@ -14,6 +14,7 @@ from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.session_cleanup import host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
@@ -135,11 +136,14 @@ async def _ensure_tmux_for_headless(
             if session.thinking_mode
             else None
         )
+        launch_profile = resolve_session_launch_profile(session, session.active_agent)
         resume_cmd = get_agent_command(
             agent=session.active_agent,
             thinking_mode=session.thinking_mode,
             exec=False,
             native_session_id=session.native_session_id,
+            profile=launch_profile.profile,
+            launch_flags=launch_profile.flags,
             resolved_flags=launch.flags if launch else None,
         )
         await tmux_io.process_text(

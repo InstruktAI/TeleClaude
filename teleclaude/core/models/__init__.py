@@ -68,6 +68,8 @@ from ._snapshot import (
     parse_peer_session_snapshots,
 )
 from ._types import (
+    CONFINEMENT_PROFILE_KEY,
+    CONFINEMENT_SECTION,
     JsonDict,
     JsonPrimitive,
     JsonValue,
@@ -76,6 +78,8 @@ from ._types import (
 )
 
 __all__ = [
+    "CONFINEMENT_PROFILE_KEY",
+    "CONFINEMENT_SECTION",
     "FIELD_KIND",
     # _adapter
     "AdapterType",

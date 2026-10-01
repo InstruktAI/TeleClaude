@@ -37,6 +37,7 @@ from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_status import SessionLifecycleStatus
@@ -729,11 +730,14 @@ class MaintenanceService:
                     if session.thinking_mode
                     else None
                 )
+                launch_profile = resolve_session_launch_profile(session, session.active_agent)
                 cmd = get_agent_command(
                     agent=session.active_agent,
                     thinking_mode=session.thinking_mode,
                     exec=False,
                     native_session_id=session.native_session_id,
+                    profile=launch_profile.profile,
+                    launch_flags=launch_profile.flags,
                     resolved_flags=launch.flags if launch else None,
                 )
 

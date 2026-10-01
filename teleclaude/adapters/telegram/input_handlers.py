@@ -20,6 +20,7 @@ from telegram.ext import ContextTypes
 
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.file_handler import sanitize_filename
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+_UPLOAD_PATH_REFUSED_EVENT = "upload_path_refused"
 
 
 class ConversationModality(StrEnum):
@@ -73,6 +75,7 @@ class ConversationInputReason(StrEnum):
     SESSION_CREATION_FAILED = "session_creation_failed"
     UNBOUND_IDENTITY = "unbound_identity"
     UNSUPPORTED_INPUT = "unsupported_input"
+    UPLOAD_PATH_REFUSED = "upload_path_refused"
 
 
 class IncomingFileType(StrEnum):
@@ -353,7 +356,19 @@ class InputHandlersMixin:
             logger.error("file_name is None, cannot save file")
             decision.reject(ConversationInputReason.UNSUPPORTED_INPUT)
             return
-        file_path = session_workspace / file_name
+        # The sender names the file; it is reduced to a bare safe name and
+        # must land inside this session's upload directory before any write.
+        file_name = sanitize_filename(file_name)
+        upload_root = session_workspace.resolve()
+        file_path = (upload_root / file_name).resolve()
+        if file_path.parent != upload_root:
+            logger.warning(
+                _UPLOAD_PATH_REFUSED_EVENT,
+                session_id=session.session_id,
+                source_message_id=str(message.message_id),
+            )
+            decision.reject(ConversationInputReason.UPLOAD_PATH_REFUSED)
+            return
 
         try:
             # Download file to session workspace

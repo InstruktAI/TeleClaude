@@ -24,6 +24,7 @@ from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.next_machine.delivery import remove_legacy_worktree_trash
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
+from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
@@ -170,6 +171,10 @@ class DaemonLifecycle:
 
     async def _complete_startup_after_adapters(self) -> None:
         """Finish startup tasks that require adapters and routing to be ready."""
+        # Desk sessions that predate creation-time confinement are ended before
+        # any queued input can reach them.
+        await end_legacy_restricted_sessions(self.client)
+
         redis_transport_cache = self.client.transport
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
             redis_transport_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]

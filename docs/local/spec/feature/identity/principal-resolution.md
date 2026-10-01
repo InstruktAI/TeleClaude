@@ -46,6 +46,15 @@ Then a session-identity error is raised with a diagnostic naming the session_id
 And the identity context surfaces this as an authentication-required failure
 ```
 
+#### UC-PR-CUSTOMER-ROLE: A principal-less customer session still reads as a customer
+
+```gherkin
+Given a help-desk session with no principal, no human_email and no system_role, whose recorded human_role is customer
+When a decision asks for the person role that session acts under
+Then the answer is customer
+And principal resolution for that session still raises the session-identity error
+```
+
 ```
 Given a child session started by a session whose principal is "system:daemon"
 When principal resolution runs over the child

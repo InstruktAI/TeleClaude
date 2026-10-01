@@ -110,6 +110,7 @@ _TELEGRAM_MAPPING_ERROR = "Invalid config key `config.yml:telegram`: expected a 
 _DISCORD_MAPPING_ERROR = "Invalid config key `config.yml:discord`: expected a mapping."
 _WHATSAPP_MAPPING_ERROR = "Invalid config key `config.yml:whatsapp`: expected a mapping."
 _EMAIL_MAPPING_ERROR = "Invalid config key `config.yml:email`: expected a mapping."
+_MISSING_PROFILE_TEMPLATE = "Agent `{binary}` declares no launch profile `{profile}`."
 _BACKUP_MAPPING_ERROR = "Invalid config key `config.yml:backup`: expected a mapping."
 _TTS_DISCORD_VOICE_ERROR = "tts.services.{service}.discord_voice '{voice}' is not in this service's voices"
 _TTS_DEFAULT_INSTRUCT = "A clear, natural conversational voice."
@@ -343,8 +344,7 @@ class AgentConfig(ClosedModel):
         """Assembled base command: binary + profile flags."""
         flags = self.profiles.get(profile)
         if flags is None:
-            # Fallback to default if profile not found
-            flags = self.profiles.get("default", "")
+            raise ValueError(_MISSING_PROFILE_TEMPLATE.format(binary=self.binary, profile=profile))
         return f"{self.binary} {flags}".strip()
 
     @property
