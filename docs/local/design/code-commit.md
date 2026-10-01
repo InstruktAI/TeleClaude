@@ -304,10 +304,7 @@ todo worktree, a successful commit also publishes the todo's branch to
    each owning home as committed; the native leg runs on disk over the staged
    files. `telec code commit` formats `quality_paths` (the commit
    pathspec filtered to existing files) before staging and passes no
-   `--no-verify`, so its commits pass the same hook as a raw `git commit`. No
-   agent route passes `--no-verify`; a person who passes it to a raw
-   `git commit` makes a deliberate override that git always permits, and owns
-   that commit's content. A tier that
+   `--no-verify`, so its commits pass the same hook as a raw `git commit`. A tier that
 <!-- /planned-change:commit-gate-in-hook -->
    participates in documentation and carries no project subscriptions is gated,
    runs the guardrails lane, and requires no native toolchain contract at its
