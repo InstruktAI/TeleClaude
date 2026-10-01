@@ -195,7 +195,7 @@ Given a person whose reach does not include the project a record is about
 And the record is a conversation recorded under that person, an operation they started, or a session one of their sessions spawned
 When the person, or an agent session rooted at them, lists or reads that kind of record
 Then the record is shown to them
-And it is shown to no one else on that account
+And any other principal sees it exactly when their own reach admits it
 ```
 
 #### UC-DV13: A company administrator reads the shared documentation in full
