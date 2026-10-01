@@ -144,10 +144,12 @@ checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
 not declared that appear, as an exact path, at a write target of a successful
 shell command of that cycle. A write target is a redirection destination, a
 path a file-writing command creates, modifies, or removes (not a path it only
-reads, such as a copy source), or the destination that a recognized write call
-in an interpreter script names as a literal. A destination the script computes
-or holds in a variable is not a write target, because the engine never
-evaluates code. A path that appears only in a quoted argument of a command
+reads, such as a copy source), or the destination of a recognized write call
+in an interpreter script. When that call names its destination as a literal,
+the literal is the target and the script's other literals are data; when it
+does not, the destination is unresolved without evaluating code, which the
+engine never does, so every known dirty path the script names is a plausible
+target. A path that appears only in a quoted argument of a command
 that writes nothing, in heredoc data fed to a command that is not an
 interpreter, as data inside a script, or in other non-target text is not at a
 write target, so a
