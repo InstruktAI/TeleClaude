@@ -50,6 +50,7 @@ fi
 _DOCS_WATCH_SYSTEMD_SERVICE="teleclaude-docs-watch"
 _DOCS_WATCH_SYSTEMD_UNIT="${_DOCS_WATCH_SYSTEMD_SERVICE}.service"
 _DOCS_WATCH_SYSTEMD_PATH="/etc/systemd/system/${_DOCS_WATCH_SYSTEMD_UNIT}"
+DOCS_WATCH_WITHDRAW_SETTLE_SECONDS=10
 if [ "$PLATFORM" = "macos" ]; then
     V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
     DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
@@ -58,6 +59,8 @@ if [ "$PLATFORM" = "macos" ]; then
     SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
 else
     SERVICE_LABEL="teleclaude"
+    # bin/daemon-control.sh consumes SERVICE_PATH from this sourced module.
+    # shellcheck disable=SC2034
     SERVICE_PATH="/etc/systemd/system/$SERVICE_LABEL.service"
 fi
 
@@ -102,6 +105,24 @@ launchd_docs_watch_state() {
     else
         printf 'not-loaded\n'
     fi
+}
+
+wait_for_launchd_docs_watch_unloaded() {
+    local domain="$1"
+    local timeout_seconds="$2"
+    local deadline=$((SECONDS + timeout_seconds))
+    local state
+
+    while true; do
+        if ! state="$(launchd_docs_watch_state "$domain")"; then
+            return 1
+        fi
+        if [ "$state" = "not-loaded" ] || [ "$SECONDS" -ge "$deadline" ]; then
+            printf '%s\n' "$state"
+            return 0
+        fi
+        sleep 1
+    done
 }
 
 systemd_docs_watch_state() {
@@ -478,7 +499,7 @@ withdraw_docs_watch_launchd() {
         log_error "docs-watch: the launchd definition for $DOCS_WATCH_LABEL is still present; remove the remaining definition and rerun make install."
         return 1
     fi
-    if ! state_after="$(launchd_docs_watch_state "$domain")"; then
+    if ! state_after="$(wait_for_launchd_docs_watch_unloaded "$domain" "$DOCS_WATCH_WITHDRAW_SETTLE_SECONDS")"; then
         return 1
     fi
     log_info "docs-watch launchd manager answer after installation reconciliation: $state_after ($domain/$DOCS_WATCH_LABEL)"
