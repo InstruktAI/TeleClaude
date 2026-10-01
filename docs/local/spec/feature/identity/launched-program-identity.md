@@ -136,6 +136,7 @@ And the binding is not consulted
 Given one program bound through the person-launch door to one registered person, and a concurrent program bound to another
 When each runs commands
 Then each acts only as its own bound person
+And a process a bound program started keeps acting as that program's bound person after the program itself ends
 And once a bound program ends, a process started with no terminal outside the door resolves no identity
 And no record of either binding remains on the computer
 ```
