@@ -81,9 +81,12 @@ TeleClaudeNext.
     administrator;
   - a record recorded under the caller's own principal: the caller.
 
-  No subject, an unowned project, and an owner nothing resolves admit only the
-  first rule. A platform role below administrator admits nothing of its own; it
-  still counts where authorization reads the effective role.
+  A record with no subject, with a subject recorded as unknown because it could
+  not be established, about an unowned project, or whose owner nothing resolves
+  meets no subject rule: only platform reach and the caller's own principal
+  admit it. An unknown subject is never read as no subject or as a home. A
+  platform role below administrator admits nothing of its own; it still counts
+  where authorization reads the effective role.
 - **Published contract — reach:** one resolved value per principal with two
   appliers: a test of one record's facts, for streams and file-based data, and a
   query predicate over a store's subject, owner, and principal columns, applied

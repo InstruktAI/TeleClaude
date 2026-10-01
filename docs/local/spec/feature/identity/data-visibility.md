@@ -149,7 +149,7 @@ And a person with no relationship to that company does not see it
 #### UC-DV7: A record whose subject cannot be resolved stays with platform reach
 
 ```gherkin
-Given a record whose subject the showing computer cannot resolve to any reach
+Given a record whose subject the showing computer cannot resolve to any reach, or whose subject is recorded as unknown
 When a person who is not a platform administrator views that data
 Then the record is not shown
 And a platform administrator and the system principal still see it
