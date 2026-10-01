@@ -51,6 +51,7 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.next_machine.output_formatting import (
     MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE,
+    TERMINAL_DEPARTURE_DIRECTIVE,
     format_error,
     format_orchestration_watch_instruction,
     format_pending_classes_for_dispatch,
@@ -83,6 +84,14 @@ if TYPE_CHECKING:
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+
+_NO_CURRENT_WORK_SCRIPT = (
+    "NO_CURRENT_WORK_SLUG: Work orchestrator sessions are scoped to a single slug.\n\n"
+    "Execute:\n\n"
+    "telec sessions end\n\n"
+    f"{TERMINAL_DEPARTURE_DIRECTIVE}\n\n"
+    "No work-stage action is required. Daemon-runner pickup owns selecting future work."
+)
 
 logger = get_logger(__name__)
 
@@ -201,15 +210,7 @@ def _format_holder_work_commands(holder_slug: str, child_slugs: tuple[str, ...])
 
 def _format_no_current_work_slug() -> str:
     """Format the terminal no-slug response for per-slug work orchestration."""
-    return (
-        "NO_CURRENT_WORK_SLUG: Work orchestrator sessions are scoped to a single slug.\n\n"
-        "Execute:\n\n"
-        "telec sessions end\n\n"
-        "Then emit only a brief farewell, and arm your departure as the final action —\n"
-        "nothing comes after it:\n\n"
-        "telec reminders set session-departure\n\n"
-        "No work-stage action is required. Daemon-runner pickup owns selecting future work."
-    )
+    return _NO_CURRENT_WORK_SCRIPT
 
 
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:

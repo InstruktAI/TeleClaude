@@ -14,7 +14,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
-from teleclaude.core.next_machine.output_formatting import ToolCallRequest, dispatch_or_reuse, format_tool_call
+from teleclaude.core.next_machine.output_formatting import (
+    TERMINAL_DEPARTURE_DIRECTIVE,
+    ToolCallRequest,
+    dispatch_or_reuse,
+    format_tool_call,
+)
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 
 if TYPE_CHECKING:
@@ -93,9 +98,7 @@ def _creative_complete(slug: str, live_sessions: list[str]) -> str:
         f"claims it next.\n\n"
         f"Execute in order:\n\n"
         f"{end_step}"
-        f"Emit only a brief farewell, then arm your departure. Arming it is your final "
-        f"action — nothing comes after it:\n\n"
-        f"telec reminders set session-departure"
+        f"{TERMINAL_DEPARTURE_DIRECTIVE}"
     )
 
 

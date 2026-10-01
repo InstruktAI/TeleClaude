@@ -23,6 +23,7 @@ __all__ = [
     "PENDING_DRIFT_CONTEXT_PREFIX",
     "PREPARE_SLUG_REQUIRED_MESSAGE",
     "REVIEW_DIFF_NOTE",
+    "TERMINAL_DEPARTURE_DIRECTIVE",
     "ToolCallRequest",
     "dispatch_or_reuse",
     "format_blocker_resolution",
@@ -61,6 +62,29 @@ _ORCHESTRATION_WATCH_ARM_TEMPLATE = (
 _ORCHESTRATION_WATCH_REPLACE_TEMPLATE = (
     "Replace the durable orchestration-watch reminder with `telec reminders set orchestration-watch "
     "--slug {slug}` so its prescribed cadence restarts from this feedback."
+)
+_ORCHESTRATION_ACTIVE_STATUS_RULE = (
+    "- If `agent_status` is `active` or `unknown`, return to passive waiting only when the tail shows no "
+    "obstruction or attention evidence. If it shows a failure, a permission/input wait, or another "
+    "obstruction, assess it under the orchestration procedure's When Worker Needs Help / Agent "
+    "Degradation Handling rules before returning to waiting; status does not override that evidence."
+)
+_ORCHESTRATION_PRINCIPLE = (
+    "ORCHESTRATION PRINCIPLE:\n"
+    "You are an orchestrator. Reconcile this script with current human input and evidence, then "
+    "execute machine-owned lifecycle commands in the returned order. The machine owns lifecycle "
+    "sequencing, dispatch, phase transitions, fix relay, and terminal worker cleanup. You own "
+    "current-evidence assessment, recovery routing, and your session's remaining obligations. "
+    "Phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift "
+    "review). Trust the process gates (pre-commit hooks, stamp clerical checks)."
+)
+TERMINAL_DEPARTURE_DIRECTIVE = (
+    "Once the workflow handoff and any required worker cleanup are complete, this closes only the "
+    "workflow assignment; your session may still hold other live obligations. Assess departure "
+    "under `general/principle/session-lifecycle` against every "
+    "current obligation of this session; an unfinished human conversation remains a live obligation. "
+    "When that departure condition holds, emit a brief farewell, then run "
+    "`telec reminders set session-departure` as your final action. Nothing follows the reminder arm."
 )
 _PENDING_DRIFT_STATUS = "pending"
 _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
@@ -291,7 +315,7 @@ REMINDER RULE:
 - On notification arrival: tail once and act on what you read.
 - On reminder arrival (you heard nothing): tail once and judge what you see. Silence may be deep
   work, saturation, or a dead worker — that assessment is yours, never a script's.
-- If `agent_status` is `active` or `unknown`: the recurring reminder remains armed; return to passive waiting.
+{_ORCHESTRATION_ACTIVE_STATUS_RULE}
 - If `agent_status` is `idle`: run `telec reminders cancel orchestration-watch`, then proceed to the
   WHEN WORKER COMPLETES section below.
 - RECOVERY: `telec reminders list`; if orchestration-watch is absent, arm it with the STEP 2 command.
@@ -302,11 +326,7 @@ FEEDBACK MESSAGES:
 
 {post_block}
 
-ORCHESTRATION PRINCIPLE:
-You are an orchestrator. Execute the state machine's output verbatim. \
-The state machine owns session lifecycle and dispatch decisions; phase is derived \
-each call from stamped primitives (verdicts, approvals, skip stamps, drift review). \
-Trust the process gates (pre-commit hooks, stamp clerical checks)."""
+{_ORCHESTRATION_PRINCIPLE}"""
     note = str(request.get("note", ""))
     if note:
         result += f"\n\nNOTE: {note}"
@@ -415,11 +435,7 @@ def format_prepared(
             "in this same session."
         )
     else:
-        terminal_note = (
-            "Run the cleanup above, emit only a brief farewell, then run "
-            "`telec reminders set session-departure`. Arming it is your final action — "
-            "nothing comes after it."
-        )
+        terminal_note = TERMINAL_DEPARTURE_DIRECTIVE
 
     return f"PREPARED: {slug} is ready for work.\n\n{cleanup_block}\n\n{terminal_note}"
 
@@ -536,11 +552,7 @@ def format_finalize_handoff_complete(slug: str) -> str:
     )
 
     steps.append("2. End child sessions:\n   telec sessions end")
-    steps.append("3. Emit only a brief farewell.")
-    steps.append(
-        "4. Arm the departure reminder — this is your final action, and nothing comes after it:\n"
-        "   telec reminders set session-departure"
-    )
+    steps.append(TERMINAL_DEPARTURE_DIRECTIVE)
 
     instructions = "\n".join(steps)
     return f"""FINALIZE HANDOFF COMPLETE: {slug}
