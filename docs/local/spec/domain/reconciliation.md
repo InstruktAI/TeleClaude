@@ -52,6 +52,36 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   requires before coordinating, and what it does when a peer lacks it, is that
   consumer's own contract.
 
+<!-- planned:unattended-launcher-signing -->
+#### Launcher code identity
+
+- **State.** Per macOS machine: the signing authority, selected by its
+  fingerprint; the signing store that holds it; the unlock secret, generated on
+  the machine and kept outside that store; and the built-from record — the
+  digest of the launcher inputs together with the fingerprint of the authority
+  that signed the installed launchers. All of it is machine-local, sits outside
+  the home's retained set (the membership predicate answers `not-retained`),
+  and is never imported from or exported to another machine.
+- **Decision boundary (core).** One reconciliation core operation converges a
+  machine's launcher code identity. It decides whether to create, reuse or
+  refuse the authority; whether the launcher set must be rebuilt because its
+  inputs, the installed set or the authority changed, or whether there is
+  nothing to do; and whether a verified rebuilt set replaces the installed one.
+  It serializes runs on the machine and bounds every step with a deadline. A
+  deliberate renewal is the same operation invoked with explicit renewal
+  intent. Its published result names the authority it signed with, whether it
+  created it, whether anything was rebuilt, the cause and remedy of a failure,
+  and the launchers whose Full Disk Access is owed again.
+- **Infrastructure.** Keychain operations, code-signing tool invocations, the
+  launcher compile and the replacement of installed bundles execute behind
+  ports the core operation drives; they decide nothing.
+- **Consumers.** The full installer, the manual launcher rebuild, the renewal
+  door and the channel updater's install stage invoke the operation's entry
+  point and act only on its result: a failure fails the invoking step under
+  that step's own failure handling. Post-commit maintenance reaches it through
+  the full installer. No consumer reads the store, the secret or the record.
+
+<!-- /planned:unattended-launcher-signing -->
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities

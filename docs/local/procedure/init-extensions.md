@@ -62,11 +62,10 @@ compile and sign through that one builder:
 A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
 wrapper source and signs them into `bin/`. The bundles are gitignored build outputs, so
 a fresh checkout has none. `make install`, including the install post-commit
-maintenance runs, uses the same builder, but only when what the launchers are built
-from has changed, an installed bundle is missing or does not match, or the signing
-authority is new; otherwise it leaves `~/Applications/` untouched and signs nothing.
-A rebuild replaces the installed bundles only after the complete rebuilt set
-verifies. Every route compiles and signs through that one builder:
+maintenance runs, and the channel updater's install stage reach the same builder, which
+rebuilds only when the launcher code identity contract calls for it and otherwise
+leaves `~/Applications/` untouched. Every route compiles and signs through that one
+builder:
 <!-- /planned-change:unattended-launcher-signing -->
 
 - `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
@@ -98,33 +97,21 @@ After installing the bundles, `make install` compares each one's designated requ
 against the live authority and names any bundle whose grants no longer match, together
 with the remove-then-re-add remediation that a changed code identity requires.
 <!-- change:unattended-launcher-signing -->
-Each bundle is signed for a stable code identity that survives rebuilds, per
-`sdlc/procedure/macos-stable-code-signing`, under the contract in
-`local/projects/teleclaude/spec/feature/reconciliation/launcher-code-identity`: one
-machine-local signing authority with a per-executable identifier, so Full Disk Access
-grants keep matching after a recompile. The authority lives in a keychain dedicated to
-launcher signing, opened by an unlock secret that installation generates on the machine
-and keeps outside that keychain and outside the home's retained history. Neither the
-authority nor the secret is imported from or exported to another machine. A signing run
-opens the keychain for a bounded window, selects the authority by its fingerprint, and
-puts a deadline on every keychain and code-signing call, so a run with no terminal and
-no one at the screen either signs or fails with the cause and the remedy; it never
-waits on a macOS dialog. Runs on one machine are serialized.
+Each bundle is signed for a stable code identity that survives rebuilds
+(`sdlc/procedure/macos-stable-code-signing`). What signing guarantees — a machine-local
+authority in a dedicated keychain, unattended and bounded runs, verification before any
+installed bundle is replaced, and when a re-grant is owed — is the contract of
+`local/projects/teleclaude/spec/feature/reconciliation/launcher-code-identity`; the
+operation that converges it is owned by `local/projects/teleclaude/spec/domain/reconciliation`.
 
-The builder creates the authority only when the signing keychain holds none, and says
-so. An authority that exists is used as it stands and never reissued: a keychain that
-cannot be opened, an unavailable or rejected secret, a step past its deadline and a
-rebuilt set that fails verification each fail the run without touching the authority.
-An expired authority, or one whose private key is absent, stops the build with its
-fingerprint and the remedy, and `make launchers-renew-authority` is the only route that
-discards one — it states that every launcher grant dies with it.
+Its output names the authority it signed with and says whether it created that authority
+or found nothing to rebuild; a failure states its cause and remedy and fails the step that
+invoked it. `make launchers-renew-authority` is the only route that discards an authority,
+and it states that every launcher grant dies with it.
 
-The rebuilt set is verified — strict signature, the authority's fingerprint, each
-bundle's own identifier — before any installed bundle is replaced, and a failed run
-leaves `~/Applications/` as it was. When a newly created authority replaces launchers
-signed by another, `make install` names those bundles with the remove-then-re-add
-remediation that a changed code identity requires; that grant is made by a person at
-the machine's screen.
+When install names launchers whose Full Disk Access must be granted again, remove each
+stale entry under System Settings › Privacy & Security › Full Disk Access and add the
+bundle again at that machine's screen; a recovery session cannot make that grant.
 <!-- /planned-change:unattended-launcher-signing -->
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),

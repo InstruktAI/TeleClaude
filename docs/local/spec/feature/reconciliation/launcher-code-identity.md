@@ -175,6 +175,14 @@ When an agent runs the installer after any launcher input has changed
 Then the launcher set is rebuilt, signed by the machine's signing authority and installed
 ```
 
+#### UC-LCI11: An installation updating itself carries changed launchers along
+
+```gherkin
+Given an installation enrolled on a release channel, with no person present
+When it updates itself to a release that changes what its launchers are built from
+Then its installed launchers are rebuilt, signed by the machine's signing authority and installed as part of that update
+```
+
 ## Known caveats
 
 - The unlock secret is protected by the operating system's per-user file
