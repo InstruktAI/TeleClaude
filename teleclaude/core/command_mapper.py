@@ -243,6 +243,8 @@ class CommandMapper:
                     filename=str(payload.get("filename", "")),
                     caption=cast(str | None, payload.get("caption")),
                     file_size=cast(int, payload.get("file_size", 0)),
+                    origin=cast(str | None, payload.get("origin")) or metadata.origin,
+                    actor_id=cast(str | None, payload.get("actor_id")) or metadata.actor_id,
                 ),
                 computer,
             )

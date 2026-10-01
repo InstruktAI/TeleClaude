@@ -552,7 +552,7 @@ class IdentityResolver:
         return IdentityContext()
 
 
-def derive_identity_key(origin_metadata: dict[str, object]) -> str | None:  # guard: loose-dict
+def derive_identity_key(origin_metadata: Mapping[str, object]) -> str | None:
     """Derive identity key from origin_metadata.
 
     Format: {platform}:{platform_user_id}

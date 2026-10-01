@@ -15,6 +15,7 @@ SESSION_OBSERVED_STOP_FEATURE_ID = "project/spec/feature/integration/discord-per
 DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID = "project/spec/feature/integration/discord-admin-reflection-state"
 STORED_AGENT_STATUS_FEATURE_ID = "project/spec/feature/agent_runtime/session-lifecycle"
 CONVERSATION_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/conversation-entry"
+HELP_DESK_RELAY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation"
 
 
 class FeatureMark(StrEnum):
@@ -129,6 +130,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         ),
         FeatureID(
             identifier=CONVERSATION_ENTRY_FEATURE_ID,
+            mark=FeatureMark.MUST_NEGOTIATE,
+        ),
+        FeatureID(
+            identifier=HELP_DESK_RELAY_FEATURE_ID,
             mark=FeatureMark.MUST_NEGOTIATE,
         ),
     )

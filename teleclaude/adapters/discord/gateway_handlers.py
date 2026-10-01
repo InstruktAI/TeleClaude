@@ -24,6 +24,7 @@ from teleclaude.adapters.discord.session_launcher import (
     parse_launcher_custom_id,
 )
 from teleclaude.config import config
+from teleclaude.config.schema import MessagingChannel
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import parse_entry_identifier
@@ -34,6 +35,7 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
+from teleclaude.core.help_desk_relay import AdminReply
 from teleclaude.core.inbound import (
     BindOutcome,
     ConversationRef,
@@ -83,7 +85,6 @@ _CUSTOM_ID_FIELD = "custom_id"
 _DM_USER_ID_FIELD = "user_id"
 _DM_DISCORD_USER_ID_FIELD = "discord_user_id"
 _DM_PLATFORM_FIELD = "platform"
-_RELAY_ACTIVE = "active"
 _PROCESS_MESSAGE_EVENT = "process_message"
 
 
@@ -116,7 +117,6 @@ class GatewayHandlersMixin:
     - _is_help_desk_thread(message) -> bool
     - _is_bot_message(message) -> bool
     - _is_customer_session(session) -> bool
-    - _forward_to_relay_thread(session, text, message) (async)
     - _resolve_or_create_discord_session(message) -> tuple[Session | None, bool] (async)
     - _handle_voice_attachment(message, attachment) (async)
     - _handle_file_attachments(message, attachments) (async)
@@ -198,8 +198,6 @@ class GatewayHandlersMixin:
         async def _resolve_or_create_discord_session(
             self, message: object, *, first_message: str | None = None
         ) -> tuple[Session | None, bool]: ...
-
-        async def _forward_to_relay_thread(self, session: object, text: str, message: object) -> None: ...
 
         async def _handle_cancel_slash(self, interaction: object) -> None: ...
 
@@ -460,10 +458,6 @@ class GatewayHandlersMixin:
             )
 
         async def _deliver(session: Session) -> None:
-            # An escalated session's visitor input goes to its relay thread, not to the agent.
-            if session.relay_status == _RELAY_ACTIVE and session.relay_channel_id:
-                await self._forward_to_relay_thread(session, text, message)
-                return
             cmd = _command(session.session_id, sender_role_for_session(sender, session))
             metadata = self._metadata(  # type: ignore[attr-defined]
                 platform_message_id=message_id or None,
@@ -519,10 +513,25 @@ class GatewayHandlersMixin:
                 bind_invite=_bind,
                 remote_command=_remote,
                 modality=TurnModality.TEXT,
+                relay_reply=self._dm_relay_reply(message, user_id, message_id, actor_name),
             )
         )
         if outcome is ConversationOutcome.BEFORE_CUTOVER:
             await self._handle_discord_dm_before_cutover(message)
+
+    @staticmethod
+    def _dm_relay_reply(message: object, user_id: str, message_id: str, actor_name: str) -> AdminReply | None:
+        """What a direct message answers when it replies to an earlier message of the conversation."""
+        replied_id = getattr(getattr(message, "reference", None), "message_id", None)
+        if replied_id is None or not message_id:
+            return None
+        return AdminReply(
+            channel=MessagingChannel.DISCORD,
+            target=user_id,
+            replied_message_id=str(replied_id),
+            admin_message_id=message_id,
+            admin_name=actor_name,
+        )
 
     def _bind_discord_invite(self, message: object, user_id: str, person_slug: str) -> BindOutcome:
         """Bind the Discord account to the invited person, unless another account holds the invitation."""
@@ -625,11 +634,6 @@ class GatewayHandlersMixin:
                 session.session_id,
                 session_person_role(session),
             )
-            return
-
-        # Relay mode: divert customer messages to the relay thread instead of the AI session
-        if session.relay_status == "active" and session.relay_channel_id:
-            await self._forward_to_relay_thread(session, text, message)
             return
 
         # If the session was just created, the first message was bundled into

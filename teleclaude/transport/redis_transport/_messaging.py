@@ -32,6 +32,7 @@ from teleclaude.core.events import (
     SystemCommandContext,
     parse_command_string,
 )
+from teleclaude.core.help_desk_relay import RELAY_REPLY_OWNER_COMMAND, answer_owner_query
 from teleclaude.core.inbound.adoption import EXPORT_CONVERSATION_SESSIONS_COMMAND, export_local_conversation_sessions
 from teleclaude.core.inbound.models import ConversationRef
 from teleclaude.core.models import JsonDict, RedisInboundMessage
@@ -377,6 +378,13 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 await self.send_response(
                     message_id,
                     json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: [item.to_dict() for item in exported]}),
+                )
+                return
+
+            if cmd_name == RELAY_REPLY_OWNER_COMMAND:
+                owner_answer = await answer_owner_query(cmd_args)
+                await self.send_response(
+                    message_id, json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: owner_answer.value})
                 )
                 return
 

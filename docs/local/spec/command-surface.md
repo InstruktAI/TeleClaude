@@ -41,6 +41,7 @@ visibility: 'public'
 
 - Help-desk CLI mappings:
   - `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>` render that home's help-desk entry links, one per adapter configured on the computer that runs them, and fail when the desk is not enabled or not hosted there (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+  - `telec sessions escalate --customer <name> --reason <text> [--summary <text>]` hands a help-desk visitor to the admins of the home that owns the desk (`projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
 
 ## Known caveats
 

@@ -4,14 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import resolve_session_principal
-from teleclaude.config.loader import find_company_config_path, list_company_configs
-from teleclaude.config.schema import CompanyRole
+from teleclaude.config.loader import (
+    find_company_config_path,
+    list_company_configs,
+    load_company_config,
+    load_global_config,
+    load_person_config_for_entry,
+)
+from teleclaude.config.schema import CompanyRole, PersonConfig
 from teleclaude.config_roster import load_people_roster
+from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.paths import PEOPLE_DIR
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 if TYPE_CHECKING:
@@ -21,6 +30,7 @@ logger = get_logger(__name__)
 
 _ORGANIZATION_RESOLVED_EVENT = "organization_resolved"
 _ORGANIZATION_STALE_ASSIGNMENT_EVENT = "organization_stale_assignment"
+_PLATFORM_ADMIN_UNREADABLE_EVENT = "platform_admin_config_unreadable"
 
 
 @dataclass(frozen=True)
@@ -121,6 +131,35 @@ def resolve_organization(person_slug: str) -> OrganizationalMembership:
         stale=len(result.stale),
     )
     return result
+
+
+def platform_admin_people() -> list[tuple[str, PersonConfig]]:
+    """Each platform admin's slug and person configuration, from the global roster.
+
+    An admin whose person configuration cannot be read is left out and logged.
+    """
+    admins: list[tuple[str, PersonConfig]] = []
+    for person in load_global_config().people:
+        if person.role != HUMAN_ROLE_ADMIN:
+            continue
+        slug = person.slug or person.name
+        try:
+            person_config = load_person_config_for_entry(person, PEOPLE_DIR)
+        except (OSError, ValueError) as exc:
+            logger.warning(_PLATFORM_ADMIN_UNREADABLE_EVENT, person=slug, error=str(exc))
+            continue
+        if person_config is not None:
+            admins.append((slug, person_config))
+    return admins
+
+
+def company_admin_slugs(company_slug: str, companies_root: Path | None = None) -> list[str]:
+    """The admins on a company's roster, in slug order; none when the company is unknown."""
+    declaration = find_company_config_path(company_slug, companies_root)
+    if declaration is None:
+        return []
+    company = load_company_config(declaration)
+    return sorted(slug for slug, member in company.members.items() if member.role is CompanyRole.ADMIN)
 
 
 def company_role(person_slug: str, company_slug: str) -> str | None:

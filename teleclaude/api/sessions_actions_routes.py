@@ -961,11 +961,11 @@ async def escalate_session(
     request: EscalateRequest,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Escalate a customer session to an admin via Discord.
+    """Escalate a help-desk session to the admins of the home that owns its desk.
 
     Dispatches through CommandService.escalate_session() as an IMMEDIATE
-    SystemCommand and returns 200 with the result. Requires dual-factor
-    caller identity.
+    SystemCommand and returns 200 with the result; a refused or undelivered
+    escalation is 503 with the reason. Requires dual-factor caller identity.
     """
     cmd = SystemCommand(
         command="escalate_session",
@@ -983,6 +983,7 @@ async def escalate_session(
             content={
                 "status": "success",
                 "thread_id": result.get("thread_id") if isinstance(result, dict) else None,  # type: ignore[union-attr]
+                "notified": result.get("notified") if isinstance(result, dict) else None,  # type: ignore[union-attr]
             },
         )
     except ValueError as e:

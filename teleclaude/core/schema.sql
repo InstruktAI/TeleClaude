@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     relay_status TEXT,
     relay_channel_id TEXT,
     relay_started_at TEXT,
+    relay_targets TEXT NOT NULL DEFAULT '[]',
+    relay_exchange TEXT NOT NULL DEFAULT '[]',
     char_offset INTEGER DEFAULT 0,
     transcript_files TEXT DEFAULT '[]',
     visibility TEXT DEFAULT 'private',

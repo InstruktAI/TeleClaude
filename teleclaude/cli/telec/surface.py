@@ -329,7 +329,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB),
             ),
             "escalate": CommandDef(
-                desc="Escalate to an admin via Discord",
+                desc="Escalate a help-desk visitor to the admins of the home that owns the desk",
                 args="[--customer <name>] [--reason <text>] [--summary <text>]",
                 flags=[
                     F.FLAG_HELP,

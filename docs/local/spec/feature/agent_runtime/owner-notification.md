@@ -112,11 +112,11 @@ And the invoking session remains the beacon the back-link targets
 #### UC-ON7: Distinct from customer escalation
 
 ```
-Given the existing `telec sessions escalate` surface routes a customer conversation to a human admin
+Given `telec sessions escalate` routes a help-desk conversation to the admins of the home that owns the desk
 When an agent invokes `telec todo notify "<message>"`
 Then the todo's human owner is targeted, not an admin
 And invoking notify never triggers escalate
-And the `telec sessions escalate` behavior and audience are unchanged
+And `telec sessions escalate` keeps its own recipients
 ```
 
 #### UC-ON8: Ownerless todo is a contract breach that fails hard

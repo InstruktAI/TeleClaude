@@ -11,6 +11,11 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
+from teleclaude.types.discord_thread_claims import (
+    DiscordThreadClaimAction,
+    DiscordThreadClaimKind,
+    DiscordThreadClaimLifecycle,
+)
 from teleclaude.types.media import MediaRef
 
 
@@ -42,30 +47,6 @@ class ResponseMode(str, Enum):
 
     IMMEDIATE = "immediate"
     RECEIPT = "receipt"
-
-
-class DiscordThreadClaimAction(str, Enum):
-    """Typed mutations accepted by the shared Discord child claim ledger."""
-
-    OBSERVE = "observe"
-    CLAIM = "claim"
-    COMPLETE_INVENTORY = "complete_inventory"
-    OPEN_EPOCH = "open_epoch"
-
-
-class DiscordThreadClaimKind(str, Enum):
-    """Shared Discord child kinds accepted by the command boundary."""
-
-    HELP_DESK_SESSION = "help_desk_session"
-    ESCALATION_RELAY = "escalation_relay"
-
-
-class DiscordThreadClaimLifecycle(str, Enum):
-    """Lifecycle values accepted by the command boundary."""
-
-    PENDING = "pending"
-    ACTIVE = "active"
-    TERMINAL = "terminal"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -582,6 +563,8 @@ class HandleFileCommand(InternalCommand):
     caption: str | None = None
     file_size: int = 0
     media_ref: MediaRef | None = None
+    origin: str | None = None
+    actor_id: str | None = None
 
     def __init__(
         self,
@@ -592,6 +575,8 @@ class HandleFileCommand(InternalCommand):
         caption: str | None = None,
         file_size: int = 0,
         media_ref: MediaRef | None = None,
+        origin: str | None = None,
+        actor_id: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_FILE, request_id=request_id)
@@ -601,6 +586,8 @@ class HandleFileCommand(InternalCommand):
         self.caption = caption
         self.file_size = file_size
         self.media_ref = media_ref
+        self.origin = origin
+        self.actor_id = actor_id
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -611,6 +598,10 @@ class HandleFileCommand(InternalCommand):
         }
         if self.caption is not None:
             payload["caption"] = self.caption
+        if self.origin is not None:
+            payload["origin"] = self.origin
+        if self.actor_id is not None:
+            payload["actor_id"] = self.actor_id
         return payload
 
 

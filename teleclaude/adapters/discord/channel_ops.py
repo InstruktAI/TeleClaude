@@ -25,7 +25,7 @@ from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, Disc
 from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
 from teleclaude.core.session_utils import get_short_project_name
 from teleclaude.services.project_catalog import get_project_catalog_service
-from teleclaude.types.commands import DiscordThreadClaimKind, DiscordThreadClaimLifecycle
+from teleclaude.types.discord_thread_claims import DiscordThreadClaimKind, DiscordThreadClaimLifecycle
 
 if TYPE_CHECKING:
     pass
@@ -591,7 +591,7 @@ class ChannelOperationsMixin:
             UNKNOWN — no session record found; caller may classify durable thread-side identity
         """
         if match_type == ThreadMatchField.RELAY:
-            session = await db.get_session_by_field("relay_channel_id", str(thread_id))
+            session = await db.get_session_by_field("relay_channel_id", str(thread_id), include_initializing=True)
             if session is None:
                 return ThreadOwnership.UNKNOWN
             return ThreadOwnership.ACTIVE if session.relay_status == ThreadOwnership.ACTIVE else ThreadOwnership.CLOSED

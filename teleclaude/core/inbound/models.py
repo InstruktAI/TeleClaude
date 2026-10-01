@@ -21,6 +21,7 @@ from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
     from teleclaude.core.endpoints import EntryIdentifier
+    from teleclaude.core.help_desk_relay import AdminReply
     from teleclaude.core.identity import IdentityContext
     from teleclaude.types.commands import InternalCommand
 
@@ -136,7 +137,8 @@ class ConversationTurn:
     """One inbound message of a conversation, as an adapter hands it to the core.
 
     The adapter carries the identifier and supplies its own delivery, reply
-    and invitation binding; it decides nothing. ``deliver`` runs the adapter's
+    and invitation binding; it decides nothing. ``relay_reply`` carries what a
+    reply to one of the platform's messages answers. ``deliver`` runs the adapter's
     existing local dispatch of this message into a session on this computer;
     ``remote_command`` builds the same input as a command for a session that
     runs on another computer.
@@ -153,6 +155,8 @@ class ConversationTurn:
     remote_command: Callable[[str], InternalCommand | None]
     identifier: EntryIdentifier | None = None
     modality: TurnModality = TurnModality.TEXT
+    # Set when the message replies to one of the platform's own messages: it may answer an escalation relay.
+    relay_reply: AdminReply | None = None
 
 
 __all__ = [

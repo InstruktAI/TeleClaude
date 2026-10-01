@@ -17,7 +17,7 @@ from teleclaude.slug import replace_slug_token
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from ..models import JsonDict, OriginRevivalContext, Session, SessionField
+from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField
 from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from ..session_status import SessionLifecycleStatus
 from ._agent_status import (
@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+_RELAY_RECORD_FIELDS = frozenset({SessionField.RELAY_TARGETS.value, SessionField.RELAY_EXCHANGE.value})
+_DIGEST_ONLY_UPDATES = ({"last_output_digest"}, {"last_projected_output_digest"})
+
 _AGENT_STATUS_UPDATE_REFUSAL = "agent-status fields are owned by the agent-status transition seam"
 
 _AGENT_STATUS_OWNED_FIELDS = frozenset(
@@ -43,6 +46,15 @@ _AGENT_STATUS_OWNED_FIELDS = frozenset(
         SessionField.TURN_NOTIFICATIONS_SENT.value,
     }
 )
+
+
+def _is_unannounced_update(fields: set[str]) -> bool:
+    """Whether an update is internal state the cluster is not told about.
+
+    Output digests are routing dedupe state written very often; a relay's admin
+    addresses and exchange stay on the escalating computer.
+    """
+    return fields in _DIGEST_ONLY_UPDATES or fields <= _RELAY_RECORD_FIELDS
 
 
 class _LifecycleTransitionFields(TypedDict):
@@ -571,8 +583,8 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         # Digest updates are internal dedupe state for output routing and can occur
         # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
         # unnecessary event fan-out and cache churn.
-        if set(updates) in ({"last_output_digest"}, {"last_projected_output_digest"}):
-            logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id)
+        if updates and _is_unannounced_update(set(updates)):
+            logger.trace("Skipping SESSION_UPDATED emit for internal-only update: %s", session_id)
             return
 
         if not updates:
@@ -930,6 +942,16 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             result = await db_session.exec(stmt)
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
+
+    async def list_relaying_sessions(self) -> list[Session]:
+        """Open sessions whose escalation relay is active, in any lifecycle state."""
+        stmt = select(db_models.Session).where(
+            db_models.Session.closed_at.is_(None),
+            db_models.Session.relay_status == RelayStatus.ACTIVE.value,
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return [self._to_core_session(row) for row in result.all()]
 
     async def get_active_sessions(self) -> list[Session]:
         """Get all sessions ordered by last activity."""

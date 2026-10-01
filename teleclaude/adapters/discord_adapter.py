@@ -46,12 +46,11 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, MessageMetadata
-from teleclaude.types.commands import (
+from teleclaude.types.commands import DiscordThreadClaimCommand, SetVoiceFocusCommand
+from teleclaude.types.discord_thread_claims import (
     DiscordThreadClaimAction,
-    DiscordThreadClaimCommand,
     DiscordThreadClaimKind,
     DiscordThreadClaimLifecycle,
-    SetVoiceFocusCommand,
 )
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,

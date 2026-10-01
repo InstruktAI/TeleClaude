@@ -22,7 +22,7 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 4. Only an orchestrator drives a todo state machine. The integrator alone holds integration and maintenance.
 5. The daemon's own `system` credential grants no role-based command reach. Caller-independent commands pass without resolving that credential.
 6. A command that does not depend on its caller admits a caller with no identity.
-7. Customers reach only `version`, `docs`, `auth` and `sessions escalate`. Admins are the escalation target and do not escalate. Member, contributor and newcomer keep distinct reach.
+7. Customers reach only the desk commands: `version`, `docs index`, `docs get`, `auth whoami` and `sessions escalate`. `sessions escalate` is admitted to every person band below admin, and it succeeds only from a session running in a help desk (`projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). The admins of the home that owns the desk are the escalation target, and admins do not escalate. Member, contributor and newcomer keep distinct reach.
 8. Who may change machine, global, company or another person's configuration is decided by configuration target clearance (`projects/teleclaude/spec/feature/identity/configuration-target-clearance`), by object and principal, never by a command's band.
 
 Bands keep an agent inside its brief; they are focus, not integrity (`general/principle/trust-and-guardrails`), which is why every non-worker agent role shares one band and object rules stay with the object's owner.

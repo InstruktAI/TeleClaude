@@ -15,10 +15,10 @@ from instrukt_ai_logging import get_logger
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config
 from teleclaude.config.loader import load_project_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
+from teleclaude.core.organization import platform_admin_people
 from teleclaude.core.reconciliation import WEBHOOK_INGRESS_FEATURE_ID
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
@@ -67,7 +67,7 @@ from teleclaude.hooks.normalizers import register_builtin_normalizers
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, HookEvent, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
-from teleclaude.paths import PEOPLE_DIR, ConfigFileName
+from teleclaude.paths import ConfigFileName
 from teleclaude.transport.cluster_bridge import WEBHOOK_PREFIX
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -193,21 +193,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _iter_admin_people_configs(self) -> list[tuple[str, PersonConfig]]:
         """Load admin person configs from the global people directory."""
-        from teleclaude.config.loader import load_global_config, load_person_config_for_entry  # startup boundary
-
-        global_cfg = load_global_config()
-        admin_configs: list[tuple[str, PersonConfig]] = []
-        for person in global_cfg.people:
-            if person.role != HUMAN_ROLE_ADMIN:
-                continue
-            try:
-                person_cfg = load_person_config_for_entry(person, PEOPLE_DIR)
-            except Exception:
-                continue
-            if person_cfg is None:
-                continue
-            admin_configs.append((person.slug or person.name, person_cfg))
-        return admin_configs
+        return platform_admin_people()
 
     def _build_push_callbacks(self) -> list[Callable[..., object]]:
         """Build notification push callbacks for event projections."""

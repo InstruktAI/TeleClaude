@@ -1,5 +1,6 @@
 """Session model and related types for TeleClaude."""
 
+import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -244,6 +245,8 @@ class SessionField(Enum):
     TURN_NOTIFICATIONS_SENT = "turn_notifications_sent"
     LIFECYCLE_TRANSITIONED_AT = "lifecycle_transitioned_at"
     TURN_ANCHOR_SHA = "turn_anchor_sha"
+    RELAY_TARGETS = "relay_targets"
+    RELAY_EXCHANGE = "relay_exchange"
 
 
 class TranscriptFormat(str, Enum):
@@ -251,6 +254,132 @@ class TranscriptFormat(str, Enum):
 
     MARKDOWN = "markdown"
     HTML = "html"
+
+
+class RelayStatus(StrEnum):
+    """A session's escalation relay state; a session not relaying stores none."""
+
+    ACTIVE = "active"
+
+
+class RelayExchangeRole(StrEnum):
+    """Who spoke in an escalation relay's exchange."""
+
+    VISITOR = "Customer"
+    ADMIN = "Admin"
+
+
+class RelayRecordField(StrEnum):
+    """Persisted key names of a relay target and an exchange entry."""
+
+    PERSON = "person"
+    CHANNEL = "channel"
+    TARGET = "target"
+    MESSAGE_IDS = "message_ids"
+    ROLE = "role"
+    NAME = "name"
+    CONTENT = "content"
+
+
+@dataclass(frozen=True)
+class RelayTarget:
+    """One notified admin's side of an escalation relay.
+
+    ``channel`` is the messaging channel the admin was reached on, ``target``
+    that channel's address for them, and ``message_ids`` every relay message
+    sent to them there, any of which they may reply to.
+    """
+
+    person: str
+    channel: str
+    target: str
+    message_ids: tuple[str, ...] = ()
+
+    def with_message(self, message_id: str) -> "RelayTarget":
+        """This target with one more relay message recorded."""
+        return RelayTarget(self.person, self.channel, self.target, (*self.message_ids, message_id))
+
+    def to_dict(self) -> JsonDict:
+        """Serialize to the stored record."""
+        return {
+            RelayRecordField.PERSON.value: self.person,
+            RelayRecordField.CHANNEL.value: self.channel,
+            RelayRecordField.TARGET.value: self.target,
+            RelayRecordField.MESSAGE_IDS.value: list(self.message_ids),
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> "RelayTarget | None":
+        """Deserialize a stored record; one missing an address is no target."""
+        person, channel, target = (raw.get(key) for key in _RELAY_TARGET_ADDRESS_FIELDS)
+        if not (isinstance(person, str) and isinstance(channel, str) and isinstance(target, str)):
+            return None
+        ids = raw.get(RelayRecordField.MESSAGE_IDS.value)
+        message_ids = tuple(item for item in ids if isinstance(item, str)) if isinstance(ids, list) else ()
+        return cls(person=person, channel=channel, target=target, message_ids=message_ids)
+
+
+_RELAY_TARGET_ADDRESS_FIELDS = (RelayRecordField.PERSON, RelayRecordField.CHANNEL, RelayRecordField.TARGET)
+
+
+@dataclass(frozen=True)
+class RelayExchangeEntry:
+    """One message of an escalation relay's exchange between the visitor and the admins."""
+
+    role: RelayExchangeRole
+    name: str
+    content: str
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialize to the stored record, which is also the relay-context message shape."""
+        return {
+            RelayRecordField.ROLE.value: self.role.value,
+            RelayRecordField.NAME.value: self.name,
+            RelayRecordField.CONTENT.value: self.content,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> "RelayExchangeEntry | None":
+        """Deserialize a stored record; an unknown role is no entry."""
+        name, content = raw.get(RelayRecordField.NAME.value), raw.get(RelayRecordField.CONTENT.value)
+        try:
+            role = RelayExchangeRole(str(raw.get(RelayRecordField.ROLE.value)))
+        except ValueError:
+            return None
+        if not isinstance(name, str) or not isinstance(content, str):
+            return None
+        return cls(role=role, name=name, content=content)
+
+
+def encode_relay_targets(targets: tuple[RelayTarget, ...]) -> str:
+    """The stored text of a relay's targets."""
+    return json.dumps([target.to_dict() for target in targets])
+
+
+def encode_relay_exchange(exchange: tuple[RelayExchangeEntry, ...]) -> str:
+    """The stored text of a relay's exchange."""
+    return json.dumps([entry.to_dict() for entry in exchange])
+
+
+def _decoded_records(raw: object) -> list[Mapping[str, object]]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw or "[]")
+        except json.JSONDecodeError:
+            return []
+    return [item for item in raw if isinstance(item, Mapping)] if isinstance(raw, list) else []
+
+
+def decode_relay_targets(raw: object) -> tuple[RelayTarget, ...]:
+    """A relay's targets from their stored text or list."""
+    decoded = (RelayTarget.from_dict(item) for item in _decoded_records(raw))
+    return tuple(target for target in decoded if target is not None)
+
+
+def decode_relay_exchange(raw: object) -> tuple[RelayExchangeEntry, ...]:
+    """A relay's exchange from its stored text or list."""
+    decoded = (RelayExchangeEntry.from_dict(item) for item in _decoded_records(raw))
+    return tuple(entry for entry in decoded if entry is not None)
 
 
 @dataclass
@@ -302,6 +431,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     relay_status: str | None = None
     relay_channel_id: str | None = None
     relay_started_at: datetime | None = None
+    relay_targets: tuple[RelayTarget, ...] = ()
+    relay_exchange: tuple[RelayExchangeEntry, ...] = ()
     transcript_files: str = "[]"
     char_offset: int = 0
     visibility: str | None = "private"
@@ -369,6 +500,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["help_desk_processed_at"] = self.help_desk_processed_at.isoformat()
         if self.relay_started_at:
             data["relay_started_at"] = self.relay_started_at.isoformat()
+        data[SessionField.RELAY_TARGETS.value] = to_json_value([target.to_dict() for target in self.relay_targets])
+        data[SessionField.RELAY_EXCHANGE.value] = to_json_value([entry.to_dict() for entry in self.relay_exchange])
         data["lifecycle_status"] = self.lifecycle_status
         return data
 
@@ -556,6 +689,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             relay_started_at=parse_iso_datetime(data.get("relay_started_at"))
             if isinstance(data.get("relay_started_at"), str)
             else None,
+            relay_targets=decode_relay_targets(data.get(SessionField.RELAY_TARGETS.value)),
+            relay_exchange=decode_relay_exchange(data.get(SessionField.RELAY_EXCHANGE.value)),
         )
 
 

@@ -34,7 +34,7 @@ from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
 from teleclaude.core.endpoints import platform_help_desk_folder
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
+from teleclaude.core.inbound import InboundSessionPolicy, resolve_binding_key, resolve_or_create_bound_session
 from teleclaude.core.models import (
     AgentDispatchMode,
     DiscordAdapterMetadata,
@@ -67,6 +67,7 @@ _USER_FIELD = "user"
 _ID_FIELD = "id"
 _SESSION_ID_FIELD = "session_id"
 _DISCORD_USER_ID_FIELD = "discord_user_id"
+_USER_ID_FIELD = "user_id"
 _PLATFORM_FIELD = "platform"
 _DISCORD_PLATFORM = "discord"
 _SLOW_THINKING_MODE = "slow"
@@ -194,6 +195,7 @@ class InputHandlersMixin:
         attachment: object,
         index: int,
         caption: str | None,
+        actor_id: str | None,
     ) -> None:
         """Save one Discord attachment and dispatch it through the command service."""
         filename, file_path, is_image = self._prepare_attachment_target(session, attachment, index)
@@ -206,6 +208,8 @@ class InputHandlersMixin:
                 file_path=str(file_path),
                 filename=filename,
                 caption=caption if index == 0 else None,
+                origin=InputOrigin.DISCORD.value,
+                actor_id=actor_id,
             )
         )
 
@@ -370,12 +374,14 @@ class InputHandlersMixin:
 
         # Get text caption for the first attachment only (to avoid duplication)
         caption = getattr(message, "content", None)
+        sender_id = str(getattr(getattr(message, "author", None), "id", "")).strip()
+        sender_key = resolve_binding_key(InputOrigin.DISCORD.value, {_USER_ID_FIELD: sender_id}) if sender_id else None
         if not isinstance(caption, str) or not caption.strip():
             caption = None
 
         for index, attachment in enumerate(attachments):
             try:
-                await self._process_attachment(session, attachment, index, caption)
+                await self._process_attachment(session, attachment, index, caption, sender_key)
             except recoverable_errors as exc:
                 filename = getattr(attachment, "filename", None) or f"file_{index}.dat"
                 error_msg = str(exc) if str(exc).strip() else "Unknown error"

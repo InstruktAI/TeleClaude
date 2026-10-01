@@ -15,10 +15,11 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
 from teleclaude.config import config
-from teleclaude.config.schema import WhatsAppCreds
+from teleclaude.config.schema import MessagingChannel, WhatsAppCreds
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import parse_entry_identifier, platform_help_desk_folder
+from teleclaude.core.help_desk_relay import AdminReply
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound import (
     BindOutcome,
@@ -43,6 +44,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.hooks.normalizers.whatsapp import CONTEXT_MESSAGE_ID_PROPERTY
 from teleclaude.hooks.webhook_models import Contract, HookEvent
 from teleclaude.services.whatsapp import send_whatsapp_message
 from teleclaude.types.commands import (
@@ -219,7 +221,14 @@ def _media_command(
             origin_metadata=_received_metadata(phone_number, message_id, timestamp),
             media_ref=media_ref,
         )
-    return HandleFileCommand(session_id=session_id, file_path="", filename="", media_ref=media_ref)
+    return HandleFileCommand(
+        session_id=session_id,
+        file_path="",
+        filename="",
+        media_ref=media_ref,
+        origin=InputOrigin.WHATSAPP.value,
+        actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
+    )
 
 
 async def _deliver_text(session: Session, phone_number: str, message_id: str, text: str, timestamp: str) -> None:
@@ -263,6 +272,8 @@ async def _deliver_media(session: Session, phone_number: str, message_id: str, m
         file_path=str(local_path),
         filename=local_path.name,
         file_size=local_path.stat().st_size,
+        origin=InputOrigin.WHATSAPP.value,
+        actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
     )
     await _dispatch_whatsapp_command(
         session=session,
@@ -339,6 +350,21 @@ async def _reply(phone_number: str, text: str) -> None:
         logger.warning(_REPLY_FAILED_EVENT, error=str(exc))
 
 
+def _relay_reply(event: HookEvent, phone_number: str, message_id: str) -> AdminReply | None:
+    """What a message answers when it replies to an earlier message of the conversation."""
+    replied_id = str(event.properties.get(CONTEXT_MESSAGE_ID_PROPERTY) or "")
+    if not replied_id or not message_id:
+        return None
+    sender = get_identity_resolver().resolve(InputOrigin.WHATSAPP.value, {WHATSAPP_KEY_FIELD: phone_number})
+    return AdminReply(
+        channel=MessagingChannel.WHATSAPP,
+        target=phone_number,
+        replied_message_id=replied_id,
+        admin_message_id=message_id,
+        admin_name=(sender.person_name or "").strip() or phone_number,
+    )
+
+
 async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
     """Hand one normalized WhatsApp message to the conversation seam."""
     del contract
@@ -395,6 +421,7 @@ async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
             bind_invite=_bind,
             remote_command=_remote,
             modality=TurnModality.TEXT if is_text else TurnModality.MEDIA,
+            relay_reply=_relay_reply(event, phone_number, message_id) if is_text else None,
         )
     )
     if outcome is ConversationOutcome.BEFORE_CUTOVER:

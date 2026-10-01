@@ -21,8 +21,9 @@ from telegram.ext import ContextTypes
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.file_handler import sanitize_filename
-from teleclaude.core.inbound import EntryGesture, TurnModality
+from teleclaude.core.inbound import EntryGesture, TurnModality, resolve_binding_key
 from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _UPLOAD_PATH_REFUSED_EVENT = "upload_path_refused"
+_USER_ID_FIELD = "user_id"
 
 
 class ConversationModality(StrEnum):
@@ -356,6 +358,7 @@ class InputHandlersMixin:
         safe_name = sanitize_filename(file_name)
         incoming_file = file_obj
         incoming_type = file_type
+        sender_key = resolve_binding_key(InputOrigin.TELEGRAM.value, {_USER_ID_FIELD: str(update.effective_user.id)})
 
         async def _deliver_file(session: Session) -> None:
             decision.bind_session(session)
@@ -387,6 +390,8 @@ class InputHandlersMixin:
                         caption=message.caption.strip() if message.caption else None,
                         # Telegram may omit size; zero keeps the upload notice size-free.
                         file_size=incoming_file.file_size if incoming_file.file_size is not None else 0,
+                        origin=InputOrigin.TELEGRAM.value,
+                        actor_id=sender_key,
                     )
                 )
                 decision.accept()

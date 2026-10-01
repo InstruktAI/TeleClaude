@@ -13,19 +13,19 @@ Use this when you need to:
 
 - Send formatted text or files to a user session.
 - Create webhook contracts (including ephemeral/TTL) for external integrations.
-- Escalate a customer conversation to a human operator.
+- Escalate a help-desk conversation to the admins of the home that owns the desk.
 - Understand which messaging surface to use for a given task.
 
 ## Canonical fields
 
 ### Messaging command surface
 
-| Command                   | Purpose                                  | Key params               |
-| ------------------------- | ---------------------------------------- | ------------------------ |
-| `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`    |
-| `telec sessions file`     | Send a file for download                 | `--path`, `--caption`    |
-| `telec sessions escalate` | Escalate customer to human admin         | `--customer`, `--reason` |
-| `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`      |
+| Command                   | Purpose                                                  | Key params                            |
+| ------------------------- | -------------------------------------------------------- | ------------------------------------- |
+| `telec sessions result`   | Send markdown/html as a separate message                 | `content`, `--format`                 |
+| `telec sessions file`     | Send a file for download                                 | `--path`, `--caption`                 |
+| `telec sessions escalate` | Escalate a help-desk visitor to the owning home's admins | `--customer`, `--reason`, `--summary` |
+| `telec channels publish`  | Publish to internal Redis channel                        | `channel`, `--data`                   |
 
 | `telec message` | Send a message to a person by slug | `<slug> <text>`, `--file <path>`, `--subject <text>`, `--channel <name>` |
 
@@ -197,6 +197,6 @@ TTL behavior:
 
 - Expired contracts are excluded from matching immediately but only deactivated in the database every 60 seconds by the sweep loop.
 - `send_result` and `send_file` require a valid `session_id` from `TMPDIR/teleclaude_session_id`.
-- `escalate` is only available in customer sessions (Discord help desk flow).
+- `escalate` is accepted only from a session running in a help desk; the recipients, the relay and the hand-back are `projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`.
 - Hook contract delivery to external URLs uses HMAC-SHA256 with the contract's `secret` field for authentication.
 - The hook API is on the internal Unix socket only; it is not exposed publicly.

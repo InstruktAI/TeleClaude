@@ -167,7 +167,7 @@ and `—` a route that carries no command at all; neither has a response mode to
 | POST   | /sessions/self/file          | IMMEDIATE | Deliver file attachment to user    |
 | POST   | /sessions/self/result        | IMMEDIATE | Send formatted result to user      |
 | POST   | /sessions/{id}/agent-restart | RECEIPT   | Restart agent                      |
-| POST   | /sessions/self/escalate      | IMMEDIATE | Escalate customer session          |
+| POST   | /sessions/self/escalate      | IMMEDIATE | Escalate a help-desk session       |
 | POST   | /sessions/run                | IMMEDIATE | Create session + run slash command |
 | DELETE | /sessions/{id}               | RECEIPT   | Request async session close        |
 | POST   | /jobs/{name}/run             | —         | Run background job                 |

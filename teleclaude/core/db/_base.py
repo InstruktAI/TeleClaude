@@ -24,7 +24,7 @@ from teleclaude.project_root import is_slug_worktree, resolve_invocation_roots
 
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
-from ..models import Session
+from ..models import Session, decode_relay_exchange, decode_relay_targets
 from ..models._types import JsonDict, to_json_dict
 from ..session_status import AgentStatusReason, AgentStatusValue
 from ._agent_status import decode_open_tool_calls, decode_turn_notifications
@@ -214,6 +214,8 @@ class DbBase:
             relay_status=row.relay_status,
             relay_channel_id=row.relay_channel_id,
             relay_started_at=DbBase._coerce_datetime(row.relay_started_at),
+            relay_targets=decode_relay_targets(row.relay_targets),
+            relay_exchange=decode_relay_exchange(row.relay_exchange),
             transcript_files=row.transcript_files or "[]",
             char_offset=int(row.char_offset) if row.char_offset is not None else 0,
             visibility=row.visibility if hasattr(row, "visibility") else "private",
