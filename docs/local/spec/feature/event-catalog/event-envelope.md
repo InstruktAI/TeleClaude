@@ -161,13 +161,12 @@ And the event states neither no subject nor a guessed home
 
 ## Known caveats
 
-- **The subject is as truthful as the declarations it is resolved from.** None
-  can be relied on while the declaration governing the act is valid, which the
-  commit gate guarantees wherever its hooks are installed
+- **The subject is resolved from valid declarations.** The commit gate
+  guarantees a valid declaration wherever its hooks are installed
   (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
-  An invalid declaration is outside this contract: in a registered project that
-  carries no commit-gate hooks, or in a working copy broken mid-edit, an event
-  about that project may state none.
+  An invalid declaration — committed in a registered project that carries no
+  commit-gate hooks, or in a working copy broken mid-edit — is outside this
+  contract.
 
 ## See Also
 
