@@ -3,7 +3,7 @@
 Resolves a person by slug and dispatches a message on their routed channel,
 reusing the existing per-channel outbound send primitives
 (``teleclaude.services.{telegram,discord,whatsapp,email}``) — no new
-transport, per ``projects/teleclaude/spec/messaging`` (Person-addressed delivery).
+transport, per ``local/projects/teleclaude/spec/messaging`` (Person-addressed delivery).
 """
 
 from __future__ import annotations

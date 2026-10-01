@@ -67,7 +67,7 @@ def attach_tmux_session(
     For local sessions the split runs ``<tmux> attach -t <name>``. For peer
     sessions the same split runs ``ssh -t <user>@<host> 'tmux attach -t <name>'``,
     relying on SSH key auth between computers (documented prerequisite — see
-    ``projects/teleclaude/procedure/multi-computer-setup``).
+    ``local/projects/teleclaude/procedure/multi-computer-setup``).
 
     Returns True if a split was opened. Returns False — and logs a warning
     naming the peer — when the requested attach is remote but the peer's

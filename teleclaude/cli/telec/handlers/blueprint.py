@@ -41,7 +41,7 @@ def handle_code_blueprint(args: list[str]) -> None:
 
 def _resolve_main_sha(state_root: str) -> str | None:
     # Resolve origin/main, the ref class the integrator stamps the Blueprint
-    # baseline_sha from (see projects/teleclaude/spec/codebase-blueprint). Comparing against
+    # baseline_sha from (see local/projects/teleclaude/spec/codebase-blueprint). Comparing against
     # local main instead would report a current Blueprint as stale whenever local
     # main is ahead — the steady state, since doc-only commits land on local main
     # but are not pushed synchronously. When origin/main cannot be resolved (fresh

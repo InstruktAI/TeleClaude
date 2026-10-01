@@ -18,8 +18,14 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.db.connection_factory import create_async_db_engine, create_sync_db_engine
+from teleclaude.docs_layout import registered_project_slugs
+from teleclaude.project_manifest import load_registered_roots
 
-from ._docs_local_rename import migrate_docs_local_rename
+from ._docs_local_rename import (
+    ensure_local_snippet_identity_cutover_table,
+    migrate_docs_local_rename,
+    migrate_local_snippet_identities,
+)
 from ._legacy_import import maybe_auto_import_legacy_markdown_todos
 from ._models import TODOS_DB_TABLES
 from ._sdlc_rename import migrate_sdlc_rename
@@ -611,6 +617,10 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _drop_dispatch_claims_table(conn)
         migrate_sdlc_rename(conn)
         migrate_docs_local_rename(conn, db_path)
+        ensure_local_snippet_identity_cutover_table(conn)
+        roots = load_registered_roots(strict=True)
+        registered_slugs = registered_project_slugs([entry.path for entry in roots if entry.is_present])
+        migrate_local_snippet_identities(conn, db_path, registered_slugs=registered_slugs)
         conn.commit()
     finally:
         conn.close()

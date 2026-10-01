@@ -160,12 +160,18 @@ FLAG_DOCS_AREAS = Flag(
 FLAG_DOCS_DOMAINS = Flag("--domains", "-d", "Filter by published domain; omit for all", arity=VALUE)
 FLAG_DOCS_SCOPE = Flag(
     "--scope",
-    desc=f"Filter to the named tier's snippets: global, project, person, or company ({SCOPE_VALUES})",
+    desc=f"Filter by snippet kind ({SCOPE_VALUES}); a no-op with --local",
     arity=VALUE,
 )
-FLAG_DOCS_PROJECT = Flag("--project", desc="Select the project tier by slug", arity=VALUE)
-FLAG_DOCS_PERSON = Flag("--person", desc="Select the person tier by slug", arity=VALUE)
-FLAG_DOCS_COMPANY = Flag("--company", desc="Select the company tier by slug", arity=VALUE)
+FLAG_DOCS_GET_SCOPE = Flag(
+    "--scope",
+    desc=f"Filter by snippet kind ({SCOPE_VALUES})",
+    arity=VALUE,
+)
+FLAG_DOCS_PROJECT = Flag("--project", desc="Select the project's published snippets by slug", arity=VALUE)
+FLAG_DOCS_PERSON = Flag("--person", desc="Select the person's published snippets by slug", arity=VALUE)
+FLAG_DOCS_COMPANY = Flag("--company", desc="Select the company's published snippets by slug", arity=VALUE)
+FLAG_DOCS_LOCAL = Flag("--local", desc="Select local snippets from the named or landed home", arity=SWITCH)
 FLAG_DOCS_TARGET = Flag("--target", desc="Filter to snippets delivered by slug", arity=VALUE)
 FLAG_DOCS_GET_CLOSURE = Flag(
     "--closure",

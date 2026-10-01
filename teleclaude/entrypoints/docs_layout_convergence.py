@@ -5,7 +5,7 @@ the roots named on the command line), resolves an attributable commit party
 before touching anything, and wires the sealed ``telec code commit`` and a
 bounded fetch into each root's convergence. Prints one line per root and one
 run line, and exits non-zero on any blocked, deferred, restored or conflicted
-root. Contract: ``projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
+root. Contract: ``local/projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
 """
 
 from __future__ import annotations
@@ -14,11 +14,14 @@ import argparse
 import os
 import shutil
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
+from stat import S_ISREG
 from typing import Final
 from uuid import uuid4
 
+import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.session_auth import resolve_cli_identity
@@ -30,17 +33,15 @@ from teleclaude.docs_layout import (
     LayoutConvergenceResult,
     assess_root,
     converge_root,
+    registered_project_slugs,
 )
-from teleclaude.domains import valid_domains
 from teleclaude.git import GitCommandError, Repo
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import REPO_ROOT, TELECLAUDE_HOME
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.runtime.config import require_own_checkout
-from teleclaude.snippet_validation import (
-    RESERVED_SNIPPET_ID_PREFIXES,
-    UndeclaredProjectSlugError,
-    read_declared_project_slug,
-)
+from teleclaude.snippet_roots import iter_tier_snippet_roots
+from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES
+from teleclaude.sync import PublicationOutcome, publish_recorded_commit
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,21 @@ _LABEL_COMMIT: Final = "commit"
 _LABEL_MENTION: Final = "published mention (owner decides)"
 _LABEL_WORKTREE: Final = "linked worktree"
 _LABEL_RESIDUE: Final = "removed residue"
+_LABEL_CATALOG_REFRESH: Final = "local catalog refresh"
+_CATALOG_REFRESHED: Final = "refreshed"
+_CATALOG_REFRESH_FAILED: Final = "failed"
+_LOCAL_CATALOG_INDEX: Final = Path("docs/local/index.yaml")
+_LOCAL_CATALOG_SNIPPETS_KEY: Final = "snippets"
+_LOCAL_CATALOG_ID_KEY: Final = "id"
+_IDENTITY_SEPARATOR: Final = "/"
+_UTF8: Final = "utf-8"
+_LEGACY_HOME_IDENTITY_PREFIXES: Final = frozenset(HOME_IDENTITY_PREFIXES.values())
+_LOCAL_CATALOG_INSPECTION_FAILED_EVENT: Final = "docs_layout_local_catalog_inspection_failed"
+_LOCAL_CATALOG_REFRESH_FAILED_EVENT: Final = "docs_layout_local_catalog_refresh_failed"
+_CATALOG_REFRESH_DETAIL_TEMPLATE: Final = "{name}={status}"
+_CATALOG_REFRESH_SEPARATOR: Final = "; "
+_PROJECT_CATALOG_NAME: Final = "project"
+_PLATFORM_TIER_CATALOG_NAME: Final = "platform tiers"
 _LABEL_RERUN: Final = "re-run with an agent session or terminal login"
 _RUN_OK: Final = "ok"
 _RUN_FAILED: Final = "failed"
@@ -79,6 +95,76 @@ _PARSER_DESCRIPTION: Final = "Converge repositories to the docs/local documentat
 _ROOTS_ARGUMENT: Final = "roots"
 _ROOTS_NARGS: Final = "*"
 _ROOTS_HELP: Final = "Converge only these roots instead of the project registry."
+
+
+def _local_catalog_has_unqualified_home_ids(root: Path, *, log_inspection_error: bool = True) -> bool:
+    """Whether a local catalog needs refresh because it is stale or unreadable."""
+    index_path = root / _LOCAL_CATALOG_INDEX
+    try:
+        index_stat = index_path.stat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        if log_inspection_error:
+            logger.warning(_LOCAL_CATALOG_INSPECTION_FAILED_EVENT, path=str(index_path), entry_count=-1)
+        return True
+    if not S_ISREG(index_stat.st_mode):
+        if log_inspection_error:
+            logger.warning(_LOCAL_CATALOG_INSPECTION_FAILED_EVENT, path=str(index_path), entry_count=-1)
+        return True
+    try:
+        payload = yaml.safe_load(index_path.read_text(encoding=_UTF8))
+    except (OSError, yaml.YAMLError):
+        if log_inspection_error:
+            logger.warning(_LOCAL_CATALOG_INSPECTION_FAILED_EVENT, path=str(index_path), entry_count=-1)
+        return True
+    snippets = payload.get(_LOCAL_CATALOG_SNIPPETS_KEY) if isinstance(payload, dict) else None
+    if not isinstance(snippets, list):
+        if log_inspection_error:
+            logger.warning(_LOCAL_CATALOG_INSPECTION_FAILED_EVENT, path=str(index_path), entry_count=-1)
+        return True
+    return any(
+        isinstance(snippet_id, str) and snippet_id.split(_IDENTITY_SEPARATOR, 1)[0] in _LEGACY_HOME_IDENTITY_PREFIXES
+        for entry in snippets
+        if isinstance(entry, dict)
+        for snippet_id in (entry.get(_LOCAL_CATALOG_ID_KEY),)
+    )
+
+
+def _platform_tier_catalogs_have_unqualified_ids(*, log_inspection_error: bool = True) -> bool:
+    """Whether any platform person or company local catalog needs rebuilding."""
+    return any(
+        _local_catalog_has_unqualified_home_ids(tier_root, log_inspection_error=log_inspection_error)
+        for tier_root, _kind in iter_tier_snippet_roots(TELECLAUDE_HOME)
+    )
+
+
+def _publish_catalog_refresh(publisher_root: Path, still_stale: Callable[[], bool]) -> bool:
+    """Publish the root's current commit and verify its local catalog is current."""
+    try:
+        after_sha = Repo(str(publisher_root)).head.commit.hexsha
+        publication = publish_recorded_commit(publisher_root, after_sha)
+    except (GitCommandError, OSError, ValueError):
+        logger.exception(_LOCAL_CATALOG_REFRESH_FAILED_EVENT, project_root=str(publisher_root))
+        return False
+    if publication.outcome not in (PublicationOutcome.PUBLISHED, PublicationOutcome.SUPERSEDED):
+        logger.error(
+            _LOCAL_CATALOG_REFRESH_FAILED_EVENT,
+            project_root=str(publisher_root),
+            reason=publication.reason.value,
+        )
+        return False
+    try:
+        stale = still_stale()
+    except (OSError, ValueError):
+        logger.exception(_LOCAL_CATALOG_REFRESH_FAILED_EVENT, project_root=str(publisher_root))
+        return False
+    if stale:
+        logger.error(
+            _LOCAL_CATALOG_REFRESH_FAILED_EVENT, project_root=str(publisher_root), reason=publication.reason.value
+        )
+        return False
+    return True
 
 
 def _telec_executable() -> Path:
@@ -138,24 +224,12 @@ def _has_attributable_party() -> bool:
     return True
 
 
-def _registered_slugs(roots: Sequence[Path]) -> tuple[str, ...]:
-    """Declared slugs of present registered roots that cannot be mistaken for a domain."""
-    excluded = valid_domains() | RESERVED_SNIPPET_ID_PREFIXES
-    slugs: set[str] = set()
-    for root in roots:
-        try:
-            slug = read_declared_project_slug(root)
-        except (UndeclaredProjectSlugError, ValueError):
-            continue
-        if slug not in excluded:
-            slugs.add(slug)
-    return tuple(sorted(slugs))
-
-
 def _print_result(result: LayoutConvergenceResult) -> None:
     print(_ROOT_LINE.format(root=result.root, outcome=result.outcome.value))
     if result.commit is not None:
         print(_DETAIL_LINE.format(label=_LABEL_COMMIT, value=result.commit))
+    if result.catalog_refresh is not None:
+        print(_DETAIL_LINE.format(label=_LABEL_CATALOG_REFRESH, value=result.catalog_refresh))
     for path in result.blocking_paths:
         print(_DETAIL_LINE.format(label=_LABEL_BLOCKING, value=path))
     for mention in result.published_mentions:
@@ -171,10 +245,40 @@ def _print_result(result: LayoutConvergenceResult) -> None:
 def _converge_one(root: Path, *, attributable: bool, registered_slugs: Sequence[str]) -> LayoutConvergenceResult:
     require_own_checkout(root)
     try:
-        return _converge_checked(root, attributable=attributable, registered_slugs=registered_slugs)
+        result = _converge_checked(root, attributable=attributable, registered_slugs=registered_slugs)
     except (GitCommandError, OSError):
         logger.exception(_LOG_ROOT_FAILED_EVENT, project_root=str(root))
         return LayoutConvergenceResult(root=root, outcome=LayoutConvergenceOutcome.FAILED)
+    if result.outcome not in (LayoutConvergenceOutcome.CURRENT, LayoutConvergenceOutcome.MIGRATED_COMMITTED):
+        return result
+    refresh_details: list[str] = []
+    refresh_failed = False
+    if _local_catalog_has_unqualified_home_ids(root):
+        project_refreshed = _publish_catalog_refresh(
+            root, lambda: _local_catalog_has_unqualified_home_ids(root, log_inspection_error=False)
+        )
+        project_status = _CATALOG_REFRESHED if project_refreshed else _CATALOG_REFRESH_FAILED
+        refresh_details.append(
+            _CATALOG_REFRESH_DETAIL_TEMPLATE.format(name=_PROJECT_CATALOG_NAME, status=project_status)
+        )
+        refresh_failed = refresh_failed or not project_refreshed
+    if root.resolve() == REPO_ROOT.resolve() and _platform_tier_catalogs_have_unqualified_ids():
+        tiers_refreshed = _publish_catalog_refresh(
+            TELECLAUDE_HOME,
+            lambda: _platform_tier_catalogs_have_unqualified_ids(log_inspection_error=False),
+        )
+        tiers_status = _CATALOG_REFRESHED if tiers_refreshed else _CATALOG_REFRESH_FAILED
+        refresh_details.append(
+            _CATALOG_REFRESH_DETAIL_TEMPLATE.format(name=_PLATFORM_TIER_CATALOG_NAME, status=tiers_status)
+        )
+        refresh_failed = refresh_failed or not tiers_refreshed
+    if not refresh_details:
+        return result
+    return replace(
+        result,
+        outcome=LayoutConvergenceOutcome.FAILED if refresh_failed else result.outcome,
+        catalog_refresh=_CATALOG_REFRESH_SEPARATOR.join(refresh_details),
+    )
 
 
 def _converge_checked(root: Path, *, attributable: bool, registered_slugs: Sequence[str]) -> LayoutConvergenceResult:
@@ -192,7 +296,7 @@ def run(roots: Sequence[Path], present: Sequence[bool], *, slug_roots: Sequence[
     """Converge ``roots`` and print the report; return the process exit code."""
     run_id = uuid4().hex
     attributable = _has_attributable_party()
-    registered_slugs = _registered_slugs(slug_roots)
+    registered_slugs = registered_project_slugs(slug_roots)
     results: list[LayoutConvergenceResult] = []
     for root, is_present in zip(roots, present, strict=True):
         if not is_present:
@@ -201,7 +305,9 @@ def run(roots: Sequence[Path], present: Sequence[bool], *, slug_roots: Sequence[
             result = _converge_one(root, attributable=attributable, registered_slugs=registered_slugs)
         _print_result(result)
         results.append(result)
-    failed = any(result.outcome in FAILING_OUTCOMES for result in results)
+    failed = any(
+        result.outcome in FAILING_OUTCOMES or result.catalog_refresh == _CATALOG_REFRESH_FAILED for result in results
+    )
     outcome = _RUN_FAILED if failed else _RUN_OK
     logger.info(_LOG_RUN_EVENT, run_id=run_id, outcome=outcome, root_count=len(results), attributable=attributable)
     print(_RUN_LINE.format(outcome=outcome, count=len(results), run_id=run_id))

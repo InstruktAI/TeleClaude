@@ -499,7 +499,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--person <slug>] [--company <slug>] [--target <slug>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--person <slug>] [--company <slug>] [--local] [--target <slug>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_DOCS_BASELINE_ONLY,
@@ -510,6 +510,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_DOCS_PROJECT,
                     F.FLAG_DOCS_PERSON,
                     F.FLAG_DOCS_COMPANY,
+                    F.FLAG_DOCS_LOCAL,
                     F.FLAG_DOCS_TARGET,
                 ],
                 notes=[
@@ -524,7 +525,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_DOCS_GET_CLOSURE,
-                    F.FLAG_DOCS_SCOPE,
+                    F.FLAG_DOCS_GET_SCOPE,
                     F.FLAG_DOCS_PROJECT,
                     F.FLAG_DOCS_PERSON,
                     F.FLAG_DOCS_COMPANY,
@@ -541,7 +542,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.",
             "Omitting --areas and/or --domains returns all values for that dimension; pass a comma-separated subset to filter.",
             "Example phase 1: telec docs index --areas policy,procedure --domains sdlc",
-            "Example phase 2: telec docs get sdlc/policy/testing projects/teleclaude/spec/command-surface",
+            "Example phase 2: telec docs get sdlc/policy/testing local/projects/teleclaude/spec/command-surface",
         ],
     ),
     "todo": CommandDef(

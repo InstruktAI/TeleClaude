@@ -56,7 +56,7 @@ def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
     its acting session, when present, rides additively in the same value. Only
     a caller without a principal may derive a human root from its email. Every
     other unresolvable identity is refused before any roadmap row, state,
-    artifact, or event is written (see projects/teleclaude/spec/domain/workflow, UC-WTC23).
+    artifact, or event is written (see local/projects/teleclaude/spec/domain/workflow, UC-WTC23).
     """
     if identity is not None:
         if identity.principal:

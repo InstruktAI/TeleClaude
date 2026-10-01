@@ -2,7 +2,7 @@
 
 Four fields, stamped once at creation and immutable thereafter:
 ``lineage``, ``entry_point``, ``human_involved``, ``context``. See
-``projects/teleclaude/spec/domain/workflow`` for the full contract.
+``local/projects/teleclaude/spec/domain/workflow`` for the full contract.
 """
 
 from __future__ import annotations

@@ -21,7 +21,7 @@ class InvalidDestinationOverrideError(ValueError):
 class DeliveryScope(StrEnum):
     """Recipient policy for a delivered message.
 
-    Closed vocabulary per projects/teleclaude/spec/session-output-routing#allowed-values.
+    Closed vocabulary per local/projects/teleclaude/spec/session-output-routing#allowed-values.
     """
 
     ORIGIN_ONLY = "ORIGIN_ONLY"
@@ -41,7 +41,7 @@ MessageIntent = Literal[
 ]
 
 # Message intent to delivery scope, per
-# projects/teleclaude/spec/session-output-routing#message-intent-to-scope-mapping.
+# local/projects/teleclaude/spec/session-output-routing#message-intent-to-scope-mapping.
 MESSAGE_INTENT_TO_SCOPE: dict[MessageIntent, DeliveryScope] = {
     "feedback_notice_error_status": DeliveryScope.ORIGIN_ONLY,
     "last_output_summary": DeliveryScope.ORIGIN_ONLY,

@@ -41,7 +41,6 @@ from teleclaude.resource_validation._models import (
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
-    DOCS_HALVES,
     SnippetClassification,
     SnippetScope,
     SnippetTaxonomy,
@@ -51,7 +50,6 @@ from teleclaude.snippet_validation import (
     is_baseline_index,
     is_companion,
     is_generated_domain_artifact_source,
-    is_half_root_baseline_manifest,
     is_retirement_companion,
     load_domains,
     validate_inline_ref_format,
@@ -842,7 +840,6 @@ def _validate_scoped_paths(
     project_root: Path, paths: list[Path], *, snippet_roots: list[Path], tier_roots: list[Path], domains: set[str]
 ) -> None:
     """Validate an explicit path list, matching each against project then tier roots."""
-    collision_checked: set[Path] = set()
     for path in paths:
         if path.name == "index.yaml" or path.suffix != ".md":
             continue
@@ -877,45 +874,12 @@ def _validate_scoped_paths(
             continue
         if is_excluded_snippet_path(path, tier_root / _DOCS_DIRNAME):
             continue
-        if tier_root not in collision_checked:
-            collision_checked.add(tier_root)
-            _validate_tier_half_collisions(tier_root)
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             _error("snippet_read_failed", path=str(path), error=str(exc))
             continue
         validate_snippet(path, text, tier_root, domains=domains)
-
-
-def _validate_tier_half_collisions(tier_root: Path) -> None:
-    """Report each relative path present in both halves of a tier home.
-
-    Both halves derive the same owner-qualified identity, so a shared relative
-    path would publish one identity twice. One finding names both files.
-    """
-    docs_root = tier_root / _DOCS_DIRNAME
-    halves = [docs_root / half for half in DOCS_HALVES]
-    if not all(half.is_dir() for half in halves):
-        return
-    published_root, local_root = halves
-    published = {
-        path.relative_to(published_root)
-        for path in published_root.rglob("*.md")
-        if not is_excluded_snippet_path(path, published_root)
-        and not is_half_root_baseline_manifest(path, docs_root=docs_root)
-    }
-    for path in sorted(local_root.rglob("*.md")):
-        if is_excluded_snippet_path(path, local_root) or is_half_root_baseline_manifest(path, docs_root=docs_root):
-            continue
-        relative = path.relative_to(local_root)
-        if relative in published:
-            _error(
-                "snippet_tier_half_collision",
-                path=str(published_root / relative),
-                other=str(path),
-                reason="the same relative path in both halves derives one identity twice",
-            )
 
 
 def _validate_tier_roots(
@@ -930,7 +894,6 @@ def _validate_tier_roots(
         tier_docs_root = tier_root / _DOCS_DIRNAME
         if not tier_docs_root.exists():
             continue
-        _validate_tier_half_collisions(tier_root)
         for path in sorted(tier_docs_root.rglob("*.md")):
             if path.name == "index.yaml":
                 continue

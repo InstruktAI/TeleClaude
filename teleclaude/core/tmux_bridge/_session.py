@@ -229,7 +229,7 @@ async def _create_tmux_session(
 
         # COLORTERM and CLAUDE_CODE_TMUX_TRUECOLOR are static terminal hints
         # and live in the agent-shell rc tree (install/shell/{zshenv,bashenv,
-        # profile}) — single source of truth. See projects/teleclaude/spec/agent-shell-path.
+        # profile}) — single source of truth. See local/projects/teleclaude/spec/agent-shell-path.
         # Per-session and runtime-resolved vars stay here in the tmux env path.
 
         # Prevent `uv run` from auto-syncing the project venv inside worker

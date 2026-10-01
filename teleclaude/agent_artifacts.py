@@ -4,7 +4,7 @@ One answer to "what is an agent-artifact source, and who may publish it?" for
 every consumer that used to carry its own local tuple or glob: artifact
 validation, checkpoint/watch scope, onboarding capability inference,
 slug-worktree source protection, and sealed-commit review routing. See
-``projects/teleclaude/design/architecture/agent-artifact-distribution`` for the approved
+``local/projects/teleclaude/design/architecture/agent-artifact-distribution`` for the approved
 design this registry implements.
 
 ``.agents/`` is never a source — it is the delivery location the local phase

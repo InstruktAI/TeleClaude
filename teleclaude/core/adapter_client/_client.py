@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 
 # The four destination-addressed delivery methods (base_adapter.py); every
 # other UiAdapter/BaseAdapter method dispatched through _route_to_ui stays
-# session-addressed. See projects/teleclaude/design/architecture/adapter-client
+# session-addressed. See local/projects/teleclaude/design/architecture/adapter-client
 # (Destination-Addressed Seam invariant).
 _DESTINATION_ADDRESSED_METHODS = frozenset({"send_message", "edit_message", "delete_message", "send_file"})
 

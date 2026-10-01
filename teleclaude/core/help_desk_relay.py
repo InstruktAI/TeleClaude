@@ -1,6 +1,6 @@
 """The help-desk escalation relay: who an escalation reaches, and the relay between them and the visitor.
 
-Escalation is a help-desk act (`projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
+Escalation is a help-desk act (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
 It reaches the admins of the home that owns the desk, each in their own
 conversation with the platform, and falls back to the platform's admins.
 While the relay is active the visitor's input goes to those admins instead of

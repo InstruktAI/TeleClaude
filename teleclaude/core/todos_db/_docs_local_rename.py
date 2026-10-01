@@ -2,21 +2,24 @@
 
 Local documentation moved from `docs/project` to `docs/local`, local agent
 artifacts from `agents/project` to `agents/local`, and snippet identities are
-qualified by their owning home (`projects/<slug>/…`, `people/<slug>/…`,
-`companies/<slug>/…`). Current artifact bodies of live todos cite the retired
-forms, so a worker reading them would be sent to paths and ids that no longer
-resolve. The migration only rewrites content written before the layout change;
-later-authored content may quote retired forms as evidence and must remain as
-written across every database bootstrap. It records each converted artifact as
-a new version, exactly as an artifact write does, and carries every converted
-artifact's new digest through that todo's state. Version history and delivered
-or removed records are left as written.
+qualified by their owning home: local project, person and company snippets use
+`local/projects/<slug>/…`, `local/people/<slug>/…` and
+`local/companies/<slug>/…`; published person and company snippets retain
+`people/<slug>/…` and `companies/<slug>/…`. Current artifact bodies of live
+todos cite the retired forms, so a worker reading them would be sent to paths
+and ids that no longer resolve. The path migration preserves its original
+timestamp boundary. The identity migration runs once per database against every
+then-current live artifact and state; later-authored content may quote old IDs
+as evidence and is left as written. Converted artifacts gain a new version,
+and their new digests are carried through the todo's state. Version history and
+settled records are left as written.
 """
 
 from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -56,9 +59,20 @@ _SELECT_STATE_BY_ID_SQL: Final = "SELECT id, state, updated_at FROM todo_state W
 _UPDATE_STATE_SQL: Final = "UPDATE todo_state SET state = ? WHERE id = ?"
 _BEGIN_IMMEDIATE_SQL: Final = "BEGIN IMMEDIATE"
 _TABLE_EXISTS_SQL: Final = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+_IDENTITY_CUTOVER_MARK: Final = "local-snippet-identity-v1"
+_CUTOVER_MARK_TABLE: Final = "todo_docs_local_identity_cutovers"
+_SELECT_CUTOVER_MARK_SQL: Final = f"SELECT 1 FROM {_CUTOVER_MARK_TABLE} WHERE migration_key = ?"
+_INSERT_CUTOVER_MARK_SQL: Final = f"INSERT INTO {_CUTOVER_MARK_TABLE} (migration_key, completed_at) VALUES (?, ?)"
+_CREATE_CUTOVER_MARK_TABLE_SQL: Final = f"""
+CREATE TABLE IF NOT EXISTS {_CUTOVER_MARK_TABLE} (
+    migration_key TEXT PRIMARY KEY,
+    completed_at TEXT NOT NULL
+)
+"""
 _REQUIRED_TABLES: Final = ("todo", "todo_artifacts", "todo_artifact_versions", "todo_state")
 _MIGRATION_COMPLETE_EVENT: Final = "todo docs/local rename migration complete"
 _UNDECLARED_SLUG_EVENT: Final = "todo docs/local rename: owning project declares no slug; unqualified ids kept"
+_IDENTITY_MIGRATION_COMPLETE_EVENT: Final = "todo local snippet identity migration complete"
 
 
 def _owning_project_slug(db_path: str) -> str | None:
@@ -73,8 +87,8 @@ def _owning_project_slug(db_path: str) -> str | None:
         return None
 
 
-def _rename_text(text: str, own_slug: str | None) -> str:
-    return rewrite_layout_text(text, own_slug=own_slug, registered_slugs=(), markdown=True)
+def _rename_text(text: str, own_slug: str | None, registered_slugs: Sequence[str] = ()) -> str:
+    return rewrite_layout_text(text, own_slug=own_slug, registered_slugs=registered_slugs, markdown=True)
 
 
 def _sha256(content: str) -> str:
@@ -102,10 +116,18 @@ def _has_required_tables(conn: sqlite3.Connection) -> bool:
     return all(conn.execute(_TABLE_EXISTS_SQL, (table,)).fetchone() for table in _REQUIRED_TABLES)
 
 
+def ensure_local_snippet_identity_cutover_table(conn: sqlite3.Connection) -> None:
+    """Create the cutover mark table during database bootstrap when absent."""
+    conn.execute(_CREATE_CUTOVER_MARK_TABLE_SQL)  # guard: raw-sql
+
+
 def _rewrite_artifacts(
     conn: sqlite3.Connection,
     own_slug: str | None,
     candidates: set[tuple[str, str]],
+    *,
+    registered_slugs: Sequence[str] = (),
+    include_later_records: bool = False,
 ) -> dict[str, dict[str, str]]:
     """Rewrite eligible current artifacts; return old-to-new digests per todo id."""
     now = datetime.now(UTC).isoformat()
@@ -118,9 +140,9 @@ def _rewrite_artifacts(
         if row is None:
             continue
         todo_id, slug, name, content, old_digest, updated_by, updated_at = row
-        if not _artifact_is_migration_input(updated_by, updated_at):
+        if not include_later_records and not _artifact_is_migration_input(updated_by, updated_at):
             continue
-        renamed = _rename_text(content, own_slug)
+        renamed = _rename_text(content, own_slug, registered_slugs)
         if renamed == content:
             continue
         new_digest = _sha256(renamed)
@@ -135,6 +157,9 @@ def _rewrite_states(
     digest_moves: dict[str, dict[str, str]],
     candidates: set[str],
     own_slug: str | None,
+    *,
+    registered_slugs: Sequence[str] = (),
+    include_later_records: bool = False,
 ) -> int:
     rewritten = 0
     for todo_id in candidates | digest_moves.keys():
@@ -145,7 +170,8 @@ def _rewrite_states(
         if row is None:
             continue
         todo_id, state, updated_at = row
-        renamed = _rename_text(state, own_slug) if _state_is_migration_input(updated_at) else state
+        eligible = include_later_records or _state_is_migration_input(updated_at)
+        renamed = _rename_text(state, own_slug, registered_slugs) if eligible else state
         for old_digest, new_digest in digest_moves.get(todo_id, {}).items():
             renamed = renamed.replace(old_digest, new_digest)
         if renamed != state:
@@ -192,3 +218,63 @@ def migrate_docs_local_rename(conn: sqlite3.Connection, db_path: str) -> None:
             artifacts=rewritten_artifacts,
             states=rewritten_states,
         )
+
+
+def migrate_local_snippet_identities(
+    conn: sqlite3.Connection,
+    db_path: str,
+    *,
+    registered_slugs: Sequence[str],
+) -> None:
+    """Run the one-time identity cutover across every live artifact and state."""
+    if not _has_required_tables(conn):
+        return
+    if not conn.execute(_TABLE_EXISTS_SQL, (_CUTOVER_MARK_TABLE,)).fetchone():
+        return
+    conn.execute(_BEGIN_IMMEDIATE_SQL)
+    try:
+        if conn.execute(_SELECT_CUTOVER_MARK_SQL, (_IDENTITY_CUTOVER_MARK,)).fetchone():
+            conn.commit()
+            return
+        own_slug = _owning_project_slug(db_path)
+        artifact_candidates = {
+            (todo_id, name)
+            for todo_id, _, name, content, _, _, _ in conn.execute(
+                _SELECT_ARTIFACTS_SQL, _SETTLED_STATUSES
+            ).fetchall()  # guard: raw-sql
+            if _rename_text(content, own_slug, registered_slugs) != content
+        }
+        state_candidates = {
+            todo_id
+            for todo_id, state, _updated_at in conn.execute(
+                _SELECT_STATES_SQL, _SETTLED_STATUSES
+            ).fetchall()  # guard: raw-sql
+            if _rename_text(state, own_slug, registered_slugs) != state
+        }
+        digest_moves = _rewrite_artifacts(
+            conn,
+            own_slug,
+            artifact_candidates,
+            registered_slugs=registered_slugs,
+            include_later_records=True,
+        )
+        rewritten_states = _rewrite_states(
+            conn,
+            digest_moves,
+            state_candidates,
+            own_slug,
+            registered_slugs=registered_slugs,
+            include_later_records=True,
+        )
+        now = datetime.now(UTC).isoformat()
+        conn.execute(_INSERT_CUTOVER_MARK_SQL, (_IDENTITY_CUTOVER_MARK, now))  # guard: raw-sql
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    rewritten_artifacts = sum(len(moves) for moves in digest_moves.values())
+    logger.info(
+        _IDENTITY_MIGRATION_COMPLETE_EVENT,
+        artifacts=rewritten_artifacts,
+        states=rewritten_states,
+    )

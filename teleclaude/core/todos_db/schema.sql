@@ -60,3 +60,8 @@ CREATE TABLE IF NOT EXISTS todo_deps (
     depends_on      TEXT NOT NULL,
     PRIMARY KEY (slug, depends_on)
 );
+
+CREATE TABLE IF NOT EXISTS todo_docs_local_identity_cutovers (
+    migration_key   TEXT PRIMARY KEY,
+    completed_at    TEXT NOT NULL
+);

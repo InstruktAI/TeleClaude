@@ -1140,7 +1140,7 @@ install_deps_only() {
 }
 
 # Pinned Blueprint engine. Graphify ships daily; pin exactly so the graph.json
-# contract the blueprint depends on stays stable (projects/teleclaude/adr/0016).
+# contract the blueprint depends on stays stable (local/projects/teleclaude/adr/0016).
 GRAPHIFY_PINNED_VERSION="0.9.48"
 
 # Full transitive dependency closure, version-pinned with SHA256 hashes
@@ -1153,7 +1153,7 @@ GRAPHIFY_LOCK_FILE="$INSTALL_DIR/graphifyy-$GRAPHIFY_PINNED_VERSION.requirements
 # ── Canonical CLI publish location ────────────────────────────────────────────
 # Every platform CLI (telec, graphify) publishes to one
 # OS-agnostic location: ~/.local/bin. The daemon and all agent shells guarantee
-# it on PATH (projects/teleclaude/spec/agent-shell-path), so it always resolves. We create it
+# it on PATH (local/projects/teleclaude/spec/agent-shell-path), so it always resolves. We create it
 # if missing and never scatter binaries to brew/usr-local.
 TELEC_BIN_DIR="$HOME/.local/bin"
 _TELEC_PATH_PROMPTED=0

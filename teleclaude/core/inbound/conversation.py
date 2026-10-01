@@ -2,7 +2,7 @@
 
 An adapter recognises and carries an entry identifier and hands each turn to
 ``handle_conversation_turn``; this module decides where it goes
-(`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`):
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`):
 
 - an entry creates a session at the resolved endpoint and then supersedes
   the conversation's earlier binding: a superseded desk session ends, a

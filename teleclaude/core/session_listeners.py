@@ -394,7 +394,7 @@ async def _notify_listeners(
         # target. The active-conversation channel supersedes passive notification
         # for the duration of the link. The listener row is preserved — delivery
         # resumes on the next event after the link is severed. See
-        # projects/teleclaude/spec/session-subscriptions.
+        # local/projects/teleclaude/spec/session-subscriptions.
         active_link = await db.get_active_link_between_sessions(
             listener.caller_session_id,
             target_session_id,

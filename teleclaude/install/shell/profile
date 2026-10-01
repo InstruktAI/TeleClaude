@@ -2,7 +2,7 @@
 # points here. Implements the agent-shell PATH-pin and terminal-hint
 # contract; the body below is kept byte-identical across zshenv, bashenv,
 # and profile.
-# See projects/teleclaude/spec/agent-shell-path.
+# See local/projects/teleclaude/spec/agent-shell-path.
 #
 # Honors $TELECLAUDE_HOME (matches teleclaude.paths.TELECLAUDE_HOME),
 # falling back to ~/.teleclaude when the override is unset.

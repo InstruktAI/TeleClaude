@@ -36,9 +36,14 @@ from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import iter_tier_snippet_roots
-from teleclaude.snippet_scope import HOME_SCOPES, home_identity_prefix, home_scope_for_prefix
+from teleclaude.snippet_scope import (
+    HOME_SCOPES,
+    RESERVED_HOME_IDENTITY_PREFIXES,
+    HomeSnippetHalf,
+    home_identity_prefix,
+    parse_home_snippet_id,
+)
 from teleclaude.snippet_validation import (
-    DOCS_HALVES,
     SnippetClassification,
     SnippetScope,
     companion_slug,
@@ -52,17 +57,19 @@ logger = get_logger(__name__)
 
 SCOPE_ORDER = {"global": 0, "company": 1, "project": 2, "person": 3}
 GLOBAL_SOURCE_PROJECT = "global"
+_GLOBAL_HALF = "global"
 ACTIVATION_CLOSURE_REQUEST_ERROR = (
     "ERROR: --closure requires exactly one requested snippet ID and no --scope, --project, or --target filter."
 )
 ACTIVATION_CLOSURE_ROOT_ERROR = "ERROR: --closure requires one delivered taxonomy procedure."
 ACTIVATION_CLOSURE_UNREADABLE_ERROR = "ERROR: Unable to read eligible required-read snippet: {}"
+LOCAL_SELECTION_WITHOUT_HOME_ERROR = "--local requires --project, --person, --company, or a landed home."
+OWNER_LOCAL_DOCS_PRIVATE_ERROR = "The owner's local documentation is private; work in the owner's workspace to read it."
+STALE_LOCAL_CATALOG_EVENT = "stale_local_catalog_entries_excluded"
 _DOCS_DIRNAME = "docs"
 _LOCAL_HALF = "local"
 _BASELINE_MANIFEST_FILENAME = "baseline.md"
 _INDEX_FILENAME = "index.yaml"
-#: ``<prefix>/<slug>/<taxonomy>/<rest>`` — the shortest home-qualified identity.
-_HOME_IDENTITY_MIN_SEGMENTS = 4
 #: ``<domain>/<taxonomy>/<rest>`` — the shortest domain identity.
 _DOMAIN_IDENTITY_MIN_SEGMENTS = 3
 
@@ -87,6 +94,10 @@ class DocsSelectionSource(StrEnum):
 
 class ActivationClosureError(ValueError):
     """Raised when a requested activation closure cannot be complete."""
+
+
+class DocsSelectionError(ValueError):
+    """Raised when a documentation selector cannot be resolved safely."""
 
 
 @dataclass(frozen=True)
@@ -435,14 +446,9 @@ class HomeResolver:
 
 
 def home_tier_for_snippet_id(snippet_id: str) -> TierKey | None:
-    """Parse the owning home from a qualified identity (``projects|people|companies/<slug>/…``)."""
-    segments = snippet_id.strip().split("/")
-    if len(segments) < _HOME_IDENTITY_MIN_SEGMENTS or not segments[1]:
-        return None
-    scope = home_scope_for_prefix(segments[0])
-    if scope is None:
-        return None
-    return TierKey(scope, segments[1])
+    """Parse the owning home from a half-qualified snippet identity."""
+    identity = parse_home_snippet_id(snippet_id)
+    return TierKey(identity.scope, identity.owner) if identity is not None else None
 
 
 def _load_index(
@@ -564,7 +570,22 @@ def _load_index(
 
 def _load_home_local(home: HomeCatalog) -> list[SnippetMeta]:
     """Load a home's local catalog, served in place from the home's own files."""
-    return _load_index(home.local_index, source_project=home.source_project, project_root=home.root)
+    entries = _load_index(home.local_index, source_project=home.source_project, project_root=home.root)
+    accepted: list[SnippetMeta] = []
+    excluded_count = 0
+    for snippet in entries:
+        identity = parse_home_snippet_id(snippet.snippet_id)
+        if (
+            identity is None
+            or identity.half is not HomeSnippetHalf.LOCAL
+            or TierKey(identity.scope, identity.owner) != home.tier
+        ):
+            excluded_count += 1
+            continue
+        accepted.append(snippet)
+    if excluded_count:
+        logger.warning(STALE_LOCAL_CATALOG_EVENT, path=str(home.local_index), entry_count=excluded_count)
+    return accepted
 
 
 def resolve_caller_read_depth(
@@ -610,6 +631,11 @@ def resolve_caller_read_depth(
         reached = {ref.project_slug for ref in (*membership.assignments, *membership.covered)}
         return TierDepth.FULL if tier.owner in reached else TierDepth.PUBLIC_ONLY
     return TierDepth.PUBLIC_ONLY
+
+
+def _person_local_docs_admitted(caller: CliCaller | None, owner: str) -> bool:
+    """Whether a caller carries the owner's person identity or system identity."""
+    return isinstance(caller, SystemCliCaller) or (isinstance(caller, PersonCliCaller) and caller.person_slug == owner)
 
 
 def resolve_default_read_set(
@@ -727,8 +753,12 @@ def _apply_baseline_filter(
     return [snippet for snippet in snippets if snippet.snippet_id in baseline_ids]
 
 
-def _tier_read_set_lines(read_set: Mapping[TierKey, TierDepth], snippets: Iterable[SnippetMeta]) -> list[str]:
-    """Render one line per person/company tier in the caller's read set, with its entry count.
+def _tier_read_set_lines(
+    read_set: Mapping[TierKey, TierDepth],
+    halves: Mapping[TierKey, frozenset[HomeSnippetHalf]],
+    snippets: Iterable[SnippetMeta],
+) -> list[str]:
+    """Render one line per assembled person/company half, with its entry count.
 
     An empty participating tier is named with a zero count, so a reader can
     distinguish it from a tier that does not exist; a tier outside the read
@@ -737,15 +767,24 @@ def _tier_read_set_lines(read_set: Mapping[TierKey, TierDepth], snippets: Iterab
     tier_keys = [key for key in read_set if key.scope in (SnippetScope.PERSON, SnippetScope.COMPANY)]
     if not tier_keys:
         return []
-    counts: dict[TierKey, int] = dict.fromkeys(tier_keys, 0)
+    counts: dict[tuple[TierKey, HomeSnippetHalf], int] = {
+        (key, half): 0 for key in tier_keys for half in halves.get(key, frozenset())
+    }
     for snippet in snippets:
         if snippet.scope not in _HOME_SCOPE_VALUES:
             continue
-        key = _tier_key_for_snippet(snippet)
+        identity = parse_home_snippet_id(snippet.snippet_id)
+        if identity is None:
+            continue
+        tier = TierKey(identity.scope, identity.owner)
+        key = (tier, identity.half)
         if key in counts:
             counts[key] += 1
-    ordered_keys = sorted(tier_keys, key=lambda key: (key.scope.value, key.owner or ""))
-    return [f"# Tier {home_identity_prefix(key.scope)}/{key.owner}: {counts[key]} snippet(s)" for key in ordered_keys]
+    ordered_halves = sorted(counts, key=lambda item: (item[0].scope.value, item[0].owner or "", item[1].value))
+    return [
+        f"# Tier {home_identity_prefix(key.scope, local=half is HomeSnippetHalf.LOCAL)}/{key.owner}: {counts[(key, half)]} snippet(s)"
+        for key, half in ordered_halves
+    ]
 
 
 def _build_phase1_output(
@@ -754,6 +793,7 @@ def _build_phase1_output(
     *,
     areas: list[str],
     read_set: Mapping[TierKey, TierDepth],
+    halves: Mapping[TierKey, frozenset[HomeSnippetHalf]],
     test_agent: str | None,
     test_mode: str | None,
     test_request: str | None,
@@ -763,7 +803,7 @@ def _build_phase1_output(
         "# PHASE 1: Snippet Index (IDs + descriptions)",
         "# Review the snippets below and select the IDs you need.",
         f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(sorted(valid_domains()))}> (omit for all)",
-        *_tier_read_set_lines(read_set, snippets_for_selection),
+        *_tier_read_set_lines(read_set, halves, snippets_for_selection),
         "",
     ]
     ordered = sorted(
@@ -932,15 +972,13 @@ def _snippet_meta_from_file(
     )
 
 
-def _resolve_home_scope_meta(requested: str, taxonomy: str, rest: str, *, home: HomeCatalog) -> SnippetMeta | None:
-    """Resolve a home-qualified identity from whichever half of that home holds it.
-
-    A project's local half is its only home half; a person or company home
-    serves both halves under one identity.
-    """
-    halves = (_LOCAL_HALF,) if home.tier.scope is SnippetScope.PROJECT else DOCS_HALVES
-    for half in halves:
-        candidate = home.root / _DOCS_DIRNAME / half / taxonomy / f"{rest}.md"
+def _resolve_home_scope_meta(
+    requested: str, taxonomy: str, rest: str, *, half: HomeSnippetHalf, home: HomeCatalog
+) -> SnippetMeta | None:
+    """Resolve a home-qualified identity from the half named by its identity."""
+    path_halves = (_LOCAL_HALF,) if half is HomeSnippetHalf.LOCAL else (_GLOBAL_HALF,)
+    for path_half in path_halves:
+        candidate = home.root / _DOCS_DIRNAME / path_half / taxonomy / f"{rest}.md"
         if not candidate.is_file():
             continue
         classification, _ = derive_snippet_classification(
@@ -994,8 +1032,8 @@ def resolve_snippet_meta(
 ) -> SnippetMeta | None:
     """Resolve one taxonomy snippet ID from its publisher or home source tree.
 
-    A home-qualified identity (``projects|people|companies/<slug>/…``) resolves
-    against that home's files wherever the caller runs; a domain identity
+    A home-qualified identity resolves against the named half of that home's
+    files wherever the caller runs; a domain identity
     resolves against its publisher's source — never the deployed index — so
     resolution never depends on a documentation deployment having run yet. An
     owner that names no declared home resolves to nothing. Third-party IDs are
@@ -1004,23 +1042,20 @@ def resolve_snippet_meta(
     requested = snippet_id.strip()
     if not requested:
         return None
-    home_tier = home_tier_for_snippet_id(requested)
-    if home_tier is not None:
-        segments = requested.split("/")
-        taxonomy, rest_parts = segments[2], segments[3:]
-        if not rest_parts or not all(rest_parts):
-            return None
+    identity = parse_home_snippet_id(requested)
+    if identity is not None:
+        home_tier = TierKey(identity.scope, identity.owner)
         home = (home_resolver or HomeResolver()).resolve(home_tier)
         if home is None:
             return None
-        return _resolve_home_scope_meta(requested, taxonomy, "/".join(rest_parts), home=home)
+        return _resolve_home_scope_meta(requested, identity.taxonomy, identity.rest, half=identity.half, home=home)
     segments = requested.split("/")
     if len(segments) < _DOMAIN_IDENTITY_MIN_SEGMENTS:
         return None
     scope_segment, taxonomy, *rest_parts = segments
     if not taxonomy or not rest_parts or not all(rest_parts):
         return None
-    if home_scope_for_prefix(scope_segment) is not None:
+    if scope_segment in RESERVED_HOME_IDENTITY_PREFIXES:
         return None
     return _resolve_global_scope_meta(
         requested, scope_segment, taxonomy, "/".join(rest_parts), project_root=project_root
@@ -1089,6 +1124,7 @@ class AssembledCandidates:
     third_party_entries: list[ThirdPartyMeta]
     current_project_slug: str | None
     reach: dict[TierKey, TierDepth]
+    halves: dict[TierKey, frozenset[HomeSnippetHalf]]
     project_roots: set[Path]
     source_reason: DocsSelectionSource
     global_root: Path
@@ -1143,14 +1179,10 @@ def _named_homes(
     projects: list[str] | None,
     person: str | None,
     company: str | None,
-    scope: SnippetScope | None,
     landing: Landing,
+    local: bool,
 ) -> list[TierKey] | None:
-    """Homes named by selector, or ``None`` when the default read set applies.
-
-    ``--scope project`` without ``--project`` names the landed project; with no
-    landed project it names no home, so the listing is empty.
-    """
+    """Homes named by selector, or ``None`` when the default read set applies."""
     named: list[TierKey] = []
     for name in projects or []:
         key = name.strip().lower()
@@ -1160,10 +1192,10 @@ def _named_homes(
         named.append(TierKey(SnippetScope.PERSON, person))
     if company is not None:
         named.append(TierKey(SnippetScope.COMPANY, company))
-    if scope is SnippetScope.PROJECT and not projects:
-        if landing.project_slug is not None:
-            named.append(TierKey(SnippetScope.PROJECT, landing.project_slug))
-        return named
+    if local and not named:
+        if landing.home is None:
+            raise DocsSelectionError(LOCAL_SELECTION_WITHOUT_HOME_ERROR)
+        named.append(landing.home)
     return named or None
 
 
@@ -1175,13 +1207,29 @@ def _resolve_reach(
     role_resolver: RoleResolver,
     resolver: HomeResolver,
     snippet_ids: list[str] | None,
-) -> dict[TierKey, TierDepth]:
+    local: bool,
+) -> tuple[dict[TierKey, TierDepth], dict[TierKey, frozenset[HomeSnippetHalf]]]:
     """Answer which homes are assembled and at what depth.
 
     Reach is the default read set, or the named homes instead of it; a home
     named by a requested qualified identity joins from any location. A named
     home that does not exist joins nothing.
     """
+    requested_identities = [
+        identity for snippet_id in snippet_ids or [] if (identity := parse_home_snippet_id(snippet_id)) is not None
+    ]
+    if named_homes is not None and local:
+        for key in named_homes:
+            if key.scope is SnippetScope.PERSON and not _person_local_docs_admitted(caller, key.owner or ""):
+                raise DocsSelectionError(OWNER_LOCAL_DOCS_PRIVATE_ERROR)
+    for identity in requested_identities:
+        if (
+            identity.scope is SnippetScope.PERSON
+            and identity.half is HomeSnippetHalf.LOCAL
+            and not _person_local_docs_admitted(caller, identity.owner)
+        ):
+            raise DocsSelectionError(OWNER_LOCAL_DOCS_PRIVATE_ERROR)
+
     if named_homes is None:
         reach = resolve_default_read_set(
             caller,
@@ -1196,22 +1244,34 @@ def _resolve_reach(
             for key in named_homes
             if resolver.resolve(key) is not None
         }
-    for snippet_id in snippet_ids or []:
-        requested_home = home_tier_for_snippet_id(snippet_id)
-        if requested_home is None or requested_home in reach or resolver.resolve(requested_home) is None:
-            continue
-        reach[requested_home] = resolve_caller_read_depth(caller, requested_home, role_resolver=role_resolver)
-    return reach
+    halves: dict[TierKey, set[HomeSnippetHalf]]
+    if named_homes is None:
+        halves = {key: set(HomeSnippetHalf) for key in reach}
+        for key in reach:
+            if key.scope is SnippetScope.PERSON and not _person_local_docs_admitted(caller, key.owner or ""):
+                halves[key].discard(HomeSnippetHalf.LOCAL)
+    else:
+        selected_half = HomeSnippetHalf.LOCAL if local else HomeSnippetHalf.PUBLISHED
+        halves = {key: {selected_half} for key in reach}
+    for identity in requested_identities:
+        requested_home = TierKey(identity.scope, identity.owner)
+        if requested_home not in reach:
+            if resolver.resolve(requested_home) is None:
+                continue
+            reach[requested_home] = resolve_caller_read_depth(caller, requested_home, role_resolver=role_resolver)
+        halves.setdefault(requested_home, set()).add(identity.half)
+    return reach, {key: frozenset(selected) for key, selected in halves.items()}
 
 
 def _load_reached_snippets(
     *,
     reach: Mapping[TierKey, TierDepth],
+    halves: Mapping[TierKey, frozenset[HomeSnippetHalf]],
     named: bool,
     resolver: HomeResolver,
     global_root: Path,
 ) -> tuple[list[SnippetMeta], set[Path]]:
-    """Load global material and both halves of every reached home; return them with the reached project roots.
+    """Load the selected halves of each reached home and return reached project roots.
 
     A home's published half arrives through the merged global index; its local
     half is loaded from the home's own local catalog. With named homes, global
@@ -1231,14 +1291,21 @@ def _load_reached_snippets(
             # The published tree carries no project's local identity.
             continue
         if snippet.scope in _HOME_SCOPE_VALUES:
-            if _tier_key_for_snippet(snippet) in reach:
+            identity = parse_home_snippet_id(snippet.snippet_id)
+            if (
+                identity is not None
+                and identity.half is HomeSnippetHalf.PUBLISHED
+                and identity.half in halves.get(TierKey(identity.scope, identity.owner), frozenset())
+                and TierKey(identity.scope, identity.owner) in reach
+            ):
                 snippets.append(snippet)
             continue
         if not named or snippet.domain in owned_domains:
             snippets.append(snippet)
 
     for home in homes:
-        snippets.extend(_load_home_local(home))
+        if HomeSnippetHalf.LOCAL in halves.get(home.tier, frozenset()):
+            snippets.extend(_load_home_local(home))
     project_roots = {home.root for home in homes if home.tier.scope is SnippetScope.PROJECT}
     return snippets, project_roots
 
@@ -1277,20 +1344,22 @@ def _assemble_candidate_snippets(
     role_resolver: RoleResolver,
     snippet_ids: list[str] | None,
     include_third_party: bool,
+    local: bool,
 ) -> AssembledCandidates:
-    """Load global material and both halves of every home in reach into one candidate list."""
+    """Load global material and selected home halves into one candidate list."""
     global_root = GLOBAL_DOCS_DIR.parent.parent
     resolver = HomeResolver(landed=landing.catalog())
-    reach = _resolve_reach(
+    reach, halves = _resolve_reach(
         landing=landing,
         named_homes=named_homes,
         caller=caller,
         role_resolver=role_resolver,
         resolver=resolver,
         snippet_ids=snippet_ids,
+        local=local,
     )
     snippets, project_roots = _load_reached_snippets(
-        reach=reach, named=named_homes is not None, resolver=resolver, global_root=global_root
+        reach=reach, halves=halves, named=named_homes is not None, resolver=resolver, global_root=global_root
     )
 
     if landing.project_company and named_homes is None and not (COMPANIES_ROOT / landing.project_company).exists():
@@ -1310,6 +1379,7 @@ def _assemble_candidate_snippets(
         third_party_entries=third_party_entries,
         current_project_slug=landing.project_slug,
         reach=reach,
+        halves=halves,
         project_roots=project_roots,
         source_reason=_selection_source(landing, named_homes),
         global_root=global_root,
@@ -1326,14 +1396,14 @@ def _apply_content_selection_filters(
     domains: list[str] | None,
     snippet_ids: list[str] | None,
     target_slug: str | None,
+    local: bool,
 ) -> tuple[list[SnippetMeta], list[ThirdPartyMeta]]:
     """Narrow the assembled list by scope, domain, and target.
 
-    Each only narrows. ``--scope project`` already assembled exactly one project
-    home's owned set, so it applies no further scope equality; every other scope
-    keeps its own snippets. Named homes carry no third-party material.
+    Each only narrows. ``--scope`` is a kind filter; with ``--local`` it is a
+    no-op. Named homes carry no third-party material.
     """
-    if scope is not None and scope is not SnippetScope.PROJECT:
+    if scope is not None and not local:
         snippets = [snippet for snippet in snippets if snippet.scope == scope]
         third_party_entries = [entry for entry in third_party_entries if entry.scope == scope]
     if named:
@@ -1377,6 +1447,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
     projects: list[str] | None = None,
     person: str | None = None,
     company: str | None = None,
+    local: bool = False,
     caller: CliCaller | None = None,
     config: AppConfig | None = None,
     test_agent: str | None = None,
@@ -1407,11 +1478,12 @@ def build_context_output(  # TODO: refactor to reduce complexity
     assembled = _assemble_candidate_snippets(
         project_root=project_root,
         landing=landing,
-        named_homes=_named_homes(projects=projects, person=person, company=company, scope=scope, landing=landing),
+        named_homes=_named_homes(projects=projects, person=person, company=company, landing=landing, local=local),
         caller=caller,
         role_resolver=role_resolver,
         snippet_ids=snippet_ids,
         include_third_party=include_third_party,
+        local=local,
     )
     snippets = assembled.snippets
     snippets_by_path = assembled.snippets_by_path
@@ -1442,6 +1514,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
         domains=domains,
         snippet_ids=snippet_ids,
         target_slug=target_slug,
+        local=local,
     )
 
     areas_set = set(areas)
@@ -1473,6 +1546,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
             third_party_entries,
             areas=areas,
             read_set=read_set,
+            halves=assembled.halves,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,

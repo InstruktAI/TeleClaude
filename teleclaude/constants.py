@@ -90,7 +90,7 @@ SYSTEM_DAEMON_PRINCIPAL = "system:daemon"
 # A job-runner session is a recurring scheduled job, e.g. log_bug_hunter or a
 # generic cron agent job. It is one of the standing roles (see
 # STANDING_SYSTEM_ROLES / is_standing_role below) permitted a no-human lineage
-# root at todo/bug creation — see projects/teleclaude/spec/domain/workflow.
+# root at todo/bug creation — see local/projects/teleclaude/spec/domain/workflow.
 ROLE_JOB_RUNNER = SystemRole.JOB_RUNNER
 
 
@@ -325,7 +325,7 @@ class SlashCommand(StrEnum):
 
     Values are domain-qualified (``<domain>/<name>``), matching the
     partitioned global corpus each names — see
-    ``teleclaude.agent_artifacts`` and ``projects/teleclaude/design/architecture/agent-artifact-distribution#corpus-layout-and-names``.
+    ``teleclaude.agent_artifacts`` and ``local/projects/teleclaude/design/architecture/agent-artifact-distribution#corpus-layout-and-names``.
     """
 
     BUILD = "sdlc/build"
@@ -464,7 +464,7 @@ TODO_WORKTREE_WRITER_JOB_ROLES: frozenset[str] = frozenset(
 # the job runner is identified by `system_role`, because its own command
 # argument displaces the mapped `job` value before it reaches
 # COMMAND_ROLE_MAP. Neither field alone resolves all three — see
-# projects/teleclaude/spec/feature/agent_runtime/session-authority.
+# local/projects/teleclaude/spec/feature/agent_runtime/session-authority.
 STANDING_JOB_ROLES: frozenset[str] = frozenset(
     {
         JobRole.INTEGRATOR.value,

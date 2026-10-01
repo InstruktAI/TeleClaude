@@ -1,16 +1,19 @@
 """Converge a repository to the documentation layout the context domain reads.
 
 The layout is local documentation under ``docs/local``, local agent artifacts
-under ``agents/local``, and snippet references in the qualified identity form
-(``projects/<slug>/…``, ``people/<slug>/…``, ``companies/<slug>/…``). This module
-is the migration boundary: it is the one place that names the retired layout,
-because its job is to read it as input.
+under ``agents/local``, and snippet references in qualified identity forms.
+Project-local, person-local and company-local snippets use
+``local/projects/<slug>/…``, ``local/people/<slug>/…`` and
+``local/companies/<slug>/…``. Published person and company snippets retain
+``people/<slug>/…`` and ``companies/<slug>/…``. This module is the migration
+boundary: it is the one place that names the retired layout, because its job is
+to read it as input.
 
 ``rewrite_layout_text`` is the pure identifier-level rewrite shared by every
 caller. ``rewrite_layout_references`` applies it to a checkout's text files,
 and ``converge_root`` moves one repository and commits it through an injected
 committer, restoring only its own changes when that commit is refused.
-The contract is ``projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
+The contract is ``local/projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
 """
 
 from __future__ import annotations
@@ -29,8 +32,13 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.domains import valid_domains
 from teleclaude.git import GitCommandError, Repo
-from teleclaude.snippet_validation import UndeclaredProjectSlugError, read_declared_project_slug
+from teleclaude.snippet_validation import (
+    RESERVED_SNIPPET_ID_PREFIXES,
+    UndeclaredProjectSlugError,
+    read_declared_project_slug,
+)
 
 logger = get_logger(__name__)
 
@@ -54,11 +62,15 @@ _RETIRED_AGENTS_PATTERN: Final = re.compile(r"(?<![\w.-])agents/project(?=/|\b)"
 _LOCAL_DOCS_REPLACEMENT: Final = "docs/local"
 _LOCAL_AGENTS_REPLACEMENT: Final = "agents/local"
 _UNQUALIFIED_PROJECT_PATTERN: Final = re.compile(rf"(?<![\w./-])project/({_TAXONOMY_ALTERNATION})/")
-_PROJECT_IDENTITY_TEMPLATE: Final = "projects/{slug}/{taxonomy}/"
+_PROJECT_IDENTITY_TEMPLATE: Final = "local/projects/{slug}/{taxonomy}/"
+_QUALIFIED_PROJECT_IDENTITY_TEMPLATE: Final = "local/projects/{slug}/{tail}"
 _SINGULAR_TIER_PATTERN: Final = re.compile(rf"(?<![\w./-])(person|company)/([a-z0-9-]+)/({_TAXONOMY_ALTERNATION})/")
 _TIER_PREFIX_BY_SINGULAR: Final[dict[str, str]] = {"person": "people", "company": "companies"}
 _TIER_IDENTITY_TEMPLATE: Final = "{prefix}/{owner}/{taxonomy}/"
 _REGISTERED_SLUG_PATTERN_TEMPLATE: Final = r"(?<![\w./-])({slugs})/({taxonomies})/"
+_QUALIFIED_PROJECT_PATTERN_TEMPLATE: Final = r"(?<![\w./-])projects/({slugs})/((?:{taxonomies}/)|…)"
+_REGEX_ALTERNATION_SEPARATOR: Final = "|"
+_PROJECT_IDENTITY_PLACEHOLDERS: Final = ("<slug>", "{slug}", "{project}")
 _MARKDOWN_SUFFIX: Final = ".md"
 _UTF8: Final = "utf-8"
 _NUL_BYTE: Final = b"\0"
@@ -167,6 +179,7 @@ class LayoutConvergenceResult:
     worktrees: tuple[str, ...] = ()
     commit: str | None = None
     removed_residue: tuple[str, ...] = ()
+    catalog_refresh: str | None = None
 
 
 @dataclass(frozen=True)
@@ -206,11 +219,36 @@ def _registered_slug_pattern(registered_slugs: Iterable[str]) -> re.Pattern[str]
     )
 
 
+def _qualified_project_pattern(registered_slugs: Iterable[str]) -> re.Pattern[str] | None:
+    slugs = sorted({slug for slug in registered_slugs if slug}, key=lambda slug: (-len(slug), slug))
+    slug_alternation = _REGEX_ALTERNATION_SEPARATOR.join(
+        [*(re.escape(slug) for slug in slugs), *(re.escape(value) for value in _PROJECT_IDENTITY_PLACEHOLDERS)]
+    )
+    return re.compile(
+        _QUALIFIED_PROJECT_PATTERN_TEMPLATE.format(slugs=slug_alternation, taxonomies=_TAXONOMY_ALTERNATION)
+    )
+
+
+def registered_project_slugs(roots: Sequence[Path]) -> tuple[str, ...]:
+    """Return present registered project slugs that cannot be mistaken for domains."""
+    excluded = valid_domains() | RESERVED_SNIPPET_ID_PREFIXES
+    slugs: set[str] = set()
+    for root in roots:
+        try:
+            slug = read_declared_project_slug(root)
+        except (UndeclaredProjectSlugError, ValueError):
+            continue
+        if slug not in excluded:
+            slugs.add(slug)
+    return tuple(sorted(slugs))
+
+
 def _identity_rules(
     text: str,
     *,
     own_slug: str | None,
     registered_pattern: re.Pattern[str] | None,
+    qualified_project_pattern: re.Pattern[str] | None,
 ) -> str:
     if own_slug:
         text = _UNQUALIFIED_PROJECT_PATTERN.sub(
@@ -226,6 +264,11 @@ def _identity_rules(
     if registered_pattern is not None:
         text = registered_pattern.sub(
             lambda match: _PROJECT_IDENTITY_TEMPLATE.format(slug=match.group(1), taxonomy=match.group(2)),
+            text,
+        )
+    if qualified_project_pattern is not None:
+        text = qualified_project_pattern.sub(
+            lambda match: _QUALIFIED_PROJECT_IDENTITY_TEMPLATE.format(slug=match.group(1), tail=match.group(2)),
             text,
         )
     return text
@@ -247,15 +290,21 @@ def rewrite_layout_text(
 
     R1 ``docs/project`` → ``docs/local`` and R5 ``agents/project`` → ``agents/local``
     apply to any text. In Markdown only: R2 ``project/<taxonomy>/`` →
-    ``projects/<own_slug>/<taxonomy>/`` (only when ``own_slug`` is known), R3
+    ``local/projects/<own_slug>/<taxonomy>/`` (only when ``own_slug`` is known), R3
     ``person|company/<slug>/<taxonomy>/`` → ``people|companies/<slug>/<taxonomy>/``,
-    and R4 ``<registered slug>/<taxonomy>/`` → ``projects/<slug>/<taxonomy>/``.
-    Rewritten text matches no rule, so the function is idempotent.
+    and R4 ``<registered slug>/<taxonomy>/`` → ``local/projects/<slug>/<taxonomy>/``;
+    qualified project identities with a registered slug or a supported placeholder
+    are prefixed with ``local/``. Rewritten text matches no rule, so the function is idempotent.
     """
     text = _path_rules(text)
     if not markdown:
         return text
-    return _identity_rules(text, own_slug=own_slug, registered_pattern=_registered_slug_pattern(registered_slugs))
+    return _identity_rules(
+        text,
+        own_slug=own_slug,
+        registered_pattern=_registered_slug_pattern(registered_slugs),
+        qualified_project_pattern=_qualified_project_pattern(registered_slugs),
+    )
 
 
 def _is_decision_record(relative_path: str) -> bool:
@@ -324,6 +373,7 @@ def _plan_rewrites(
     published_policy: PublishedIdentityPolicy,
 ) -> _RewritePlan:
     registered_pattern = _registered_slug_pattern(registered_slugs)
+    qualified_project_pattern = _qualified_project_pattern(registered_slugs)
     rewrites: dict[str, tuple[bytes, bytes]] = {}
     mentions: list[str] = []
     for relative_path in candidates:
@@ -346,11 +396,21 @@ def _plan_rewrites(
                     _line_mentions(
                         relative_path,
                         rewritten,
-                        lambda line: _identity_rules(line, own_slug=own_slug, registered_pattern=registered_pattern),
+                        lambda line: _identity_rules(
+                            line,
+                            own_slug=own_slug,
+                            registered_pattern=registered_pattern,
+                            qualified_project_pattern=qualified_project_pattern,
+                        ),
                     )
                 )
             else:
-                rewritten = _identity_rules(rewritten, own_slug=own_slug, registered_pattern=registered_pattern)
+                rewritten = _identity_rules(
+                    rewritten,
+                    own_slug=own_slug,
+                    registered_pattern=registered_pattern,
+                    qualified_project_pattern=qualified_project_pattern,
+                )
         if rewritten != text:
             rewrites[relative_path] = (raw, rewritten.encode(_UTF8))
     return _RewritePlan(rewrites=rewrites, published_mentions=tuple(mentions))
@@ -510,7 +570,7 @@ def _plan_convergence(
     root: Path,
     repository: Repo,
     *,
-    own_slug: str,
+    own_slug: str | None,
     registered_slugs: Sequence[str],
 ) -> _MovePlan:
     moves = _present_moves(root, repository)
@@ -750,6 +810,7 @@ def _log_result(result: LayoutConvergenceResult) -> LayoutConvergenceResult:
         worktrees=len(result.worktrees),
         commit=result.commit,
         removed_residue=len(result.removed_residue),
+        catalog_refresh=result.catalog_refresh,
     )
     return result
 
@@ -773,7 +834,19 @@ def assess_root(
             worktrees=worktrees,
         )
     if not moves:
-        return LayoutConvergenceResult(root=root, outcome=LayoutConvergenceOutcome.CURRENT, worktrees=worktrees)
+        try:
+            own_slug = read_declared_project_slug(root)
+        except UndeclaredProjectSlugError:
+            own_slug = None
+        plan = _plan_convergence(root, repository, own_slug=own_slug, registered_slugs=registered_slugs)
+        if not plan.rewrite_plan.rewrites:
+            return LayoutConvergenceResult(root=root, outcome=LayoutConvergenceOutcome.CURRENT, worktrees=worktrees)
+        blocking = _dirty_touched_paths(repository, plan)
+        if blocking:
+            return LayoutConvergenceResult(
+                root=root, outcome=LayoutConvergenceOutcome.BLOCKED_DIRTY, blocking_paths=blocking, worktrees=worktrees
+            )
+        return None
     both = tuple(str(target) for _, target in moves if (root / target).exists())
     if both:
         return LayoutConvergenceResult(
@@ -818,7 +891,10 @@ def converge_root(
         return _log_result(replace(terminal, removed_residue=removed_residue))
     repository = Repo(str(root))
     worktrees = _linked_worktrees(repository, root)
-    own_slug = read_declared_project_slug(root)
+    try:
+        own_slug = read_declared_project_slug(root)
+    except UndeclaredProjectSlugError:
+        own_slug = None
     plan = _plan_convergence(root, repository, own_slug=own_slug, registered_slugs=registered_slugs)
     mentions = plan.rewrite_plan.published_mentions
 

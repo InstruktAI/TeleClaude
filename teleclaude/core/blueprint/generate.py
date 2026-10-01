@@ -76,7 +76,7 @@ def _run_graphify_update(repo_root: Path) -> int:
     """Run ``graphify update`` over the repo, returning its exit code.
 
     graphify is an off-the-shelf AST engine adopted behind the graph.json seam
-    (projects/teleclaude/adr/0016); it has no Python binding, so a subprocess call is the
+    (local/projects/teleclaude/adr/0016); it has no Python binding, so a subprocess call is the
     sanctioned escape hatch from the no-shell-out policy. graphify honors
     ``.gitignore``, so worktrees, ``.venv`` and ``node_modules`` are skipped.
     """

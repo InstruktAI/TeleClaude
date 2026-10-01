@@ -619,7 +619,7 @@ def handle_sessions_unsubscribe(args: list[str]) -> None:
 
     Use `sessions send --close-link` instead if you only want to end the
     direct conversation but keep passive notifications. See
-    projects/teleclaude/spec/session-subscriptions for the contract.
+    local/projects/teleclaude/spec/session-subscriptions for the contract.
 
     Examples:
       telec sessions unsubscribe abc123def456

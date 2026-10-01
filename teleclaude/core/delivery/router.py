@@ -160,7 +160,7 @@ class Router:
     ) -> DeliveryPlan:
         """Resolve ``(session, message_intent)`` to a full :class:`DeliveryPlan`.
 
-        Scope follows ``projects/teleclaude/spec/session-output-routing#message-intent-to-scope-mapping``.
+        Scope follows ``local/projects/teleclaude/spec/session-output-routing#message-intent-to-scope-mapping``.
         """
         scope = MESSAGE_INTENT_TO_SCOPE[message_intent]
         if scope is DeliveryScope.CTRL:

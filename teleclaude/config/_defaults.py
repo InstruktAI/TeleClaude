@@ -2,7 +2,7 @@
 
 ``DEFAULT_CONFIG`` is the defaults/constants blob, not the public contract. What is
 public and human-editable is declared by the per-field ``tier`` markers on
-``TeleclaudeConfig`` (``projects/teleclaude/policy/config-public-surface``); the generated
+``TeleclaudeConfig`` (``local/projects/teleclaude/policy/config-public-surface``); the generated
 ``templates/config.yml`` sample follows from those markers, not from this blob.
 """
 

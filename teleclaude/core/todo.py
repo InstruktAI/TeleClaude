@@ -140,7 +140,7 @@ def _apply_holder_status(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]
     Keyed throughout by durable id (``todo_id``/``group_id``), never by
     slug: a retained delivered or removed row may legitimately share a slug
     with a live holder (see
-    projects/teleclaude/spec/feature/workflow/todo-management#known-caveats), and a
+    local/projects/teleclaude/spec/feature/workflow/todo-management#known-caveats), and a
     slug-keyed map would silently collide the two.
     """
     by_id = {t.todo_id: t for t in todos if t.todo_id}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Structural reservation-collision check for feature-spec scenario bindings.
 
-Prepare-time binding reservation (projects/teleclaude/spec/feature/workflow/prepare-state-machine
+Prepare-time binding reservation (local/projects/teleclaude/spec/feature/workflow/prepare-state-machine
 UC-WPS14) claims every scenario a plan will bind on ``main`` before the build-time
 ``@pytest.mark.spec`` act: a newly authored scenario carries the claim as its own
 ``<!-- planned:<slug> -->`` block; an existing live-and-unbound scenario is claimed by

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -17,7 +18,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import DOCS_GET, DOCS_INDEX
 from teleclaude.config.loader import load_app_config
 from teleclaude.config.schema import ConfigKind
-from teleclaude.context_selector import ActivationClosureError, build_context_output
+from teleclaude.context_selector import ActivationClosureError, DocsSelectionError, build_context_output
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.snippet_scope import SnippetScope
 
@@ -28,6 +29,7 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+DOCS_SELECTION_ERROR_PREFIX = "Error: "
 
 
 class DocsRetrievalEvent(StrEnum):
@@ -199,6 +201,7 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
 
     baseline_only = parsed.has(F.FLAG_DOCS_BASELINE_ONLY)
     third_party = parsed.has(F.FLAG_DOCS_THIRD_PARTY)
+    local = parsed.has(F.FLAG_DOCS_LOCAL)
     areas_raw = parsed.value(F.FLAG_DOCS_AREAS)
     areas = [a.strip() for a in areas_raw.split(",") if a.strip()] if areas_raw is not None else []
     domains_raw = parsed.value(F.FLAG_DOCS_DOMAINS)
@@ -216,7 +219,7 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
 
     _emit_retrieval_accepted(
         context,
-        default_index=not any((areas, domains, target_slug, scope, projects, baseline_only, third_party)),
+        default_index=not any((areas, domains, target_slug, scope, projects, baseline_only, third_party, local)),
         explicit_project_filter=projects is not None,
         target_filter=target_slug is not None,
         scope_filter=scope is not None,
@@ -228,24 +231,29 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
     docs_context = _resolve_docs_context()
     caller = resolve_cli_caller()
     config = load_app_config(docs_context.project_root)
-    output = build_context_output(
-        areas=areas,
-        project_root=docs_context.project_root,
-        snippet_ids=None,
-        baseline_only=baseline_only,
-        include_third_party=third_party,
-        domains=domains,
-        target_slug=target_slug,
-        scope=scope,
-        projects=projects,
-        person=person,
-        company=company,
-        caller=caller,
-        config=config,
-        landing_kind=docs_context.landing_kind,
-        retrieval_id=context.retrieval_id,
-        verb=context.verb.value,
-    )
+    try:
+        output = build_context_output(
+            areas=areas,
+            project_root=docs_context.project_root,
+            snippet_ids=None,
+            baseline_only=baseline_only,
+            include_third_party=third_party,
+            domains=domains,
+            target_slug=target_slug,
+            scope=scope,
+            projects=projects,
+            person=person,
+            company=company,
+            local=local,
+            caller=caller,
+            config=config,
+            landing_kind=docs_context.landing_kind,
+            retrieval_id=context.retrieval_id,
+            verb=context.verb.value,
+        )
+    except DocsSelectionError as error:
+        print(f"{DOCS_SELECTION_ERROR_PREFIX}{error}", file=sys.stderr)
+        raise SystemExit(1) from error
     print(output)
 
 
@@ -267,7 +275,7 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
     closure = parsed.has(F.FLAG_DOCS_GET_CLOSURE)
     target_raw = parsed.value(F.FLAG_DOCS_GET_TARGET)
     target_slug = target_raw.strip() if target_raw is not None else None
-    scope_raw = parsed.value(F.FLAG_DOCS_SCOPE)
+    scope_raw = parsed.value(F.FLAG_DOCS_GET_SCOPE)
     scope = _parse_scope(scope_raw.strip(), "get") if scope_raw is not None else None
     project_raw = parsed.value(F.FLAG_DOCS_PROJECT)
     projects = [project_raw.strip().lower()] if project_raw is not None else None
@@ -310,6 +318,9 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
             retrieval_id=context.retrieval_id,
             verb=context.verb.value,
         )
+    except DocsSelectionError as error:
+        print(f"{DOCS_SELECTION_ERROR_PREFIX}{error}", file=sys.stderr)
+        raise SystemExit(1) from error
     except ActivationClosureError as error:
         print(error)
         raise SystemExit(1) from error

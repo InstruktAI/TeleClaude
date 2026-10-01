@@ -3,7 +3,7 @@
 Mirrors ``core/delivery/models.py`` on the inbound side — see
 docs/local/design/architecture/ui-adapter.md for the resolve-or-create
 seam invariants these types implement, and the conversation-entry spec
-(`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`) for the
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`) for the
 conversation turn contract.
 """
 

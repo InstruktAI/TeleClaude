@@ -16,7 +16,7 @@ from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES, HOME_SCOPES, home_identity_prefix
+from teleclaude.snippet_scope import HOME_SCOPES, RESERVED_HOME_IDENTITY_PREFIXES, home_identity_prefix
 from teleclaude.snippet_scope import SnippetScope as SnippetScope
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
@@ -57,12 +57,12 @@ class TierAuthoredClassificationKey(StrEnum):
 
 
 #: Snippet-id prefixes reserved by the identity grammar, never a domain name:
-#: the home identity prefixes (``projects``, ``people``, ``companies``, owned by
-#: ``HOME_IDENTITY_PREFIXES``), the home-kind domain literals, and the structural
+#: reserved home identity prefixes, owned by ``RESERVED_HOME_IDENTITY_PREFIXES``,
+#: the home-kind domain literals, and the structural
 #: markers that are not domains (``third-party``, ``baseline``).
 RESERVED_SNIPPET_ID_PREFIXES: frozenset[str] = (
     frozenset({"third-party", "baseline"})
-    | frozenset(HOME_IDENTITY_PREFIXES.values())
+    | RESERVED_HOME_IDENTITY_PREFIXES
     | frozenset(scope.value for scope in HOME_SCOPES)
 )
 
@@ -96,7 +96,8 @@ class SnippetIdParts:
     """Parsed components of a snippet ID.
 
     ``owner`` is set only for home snippets, whose identity carries the home
-    prefix and its owning slug (``projects|people|companies/<slug>/<taxonomy>/<rest>``);
+    prefix and its owning slug (``local/projects/<slug>/…`` or
+    ``people|companies/<slug>/…``);
     a domain snippet renders ``<domain>/<taxonomy>/<rest>``.
     """
 
@@ -104,11 +105,12 @@ class SnippetIdParts:
     taxonomy: str
     rest: str
     owner: str | None = None
+    local: bool = False
 
     def value(self) -> str:
         """Return the full snippet ID string."""
         if self.owner:
-            prefix = home_identity_prefix(SnippetScope(self.scope))
+            prefix = home_identity_prefix(SnippetScope(self.scope), local=self.local)
             base = f"{prefix}/{self.owner}/{self.taxonomy}"
         else:
             base = f"{self.scope}/{self.taxonomy}"
@@ -315,7 +317,7 @@ def derive_snippet_classification(
 
     For a declared company or person tier, ``project_root`` is the tier root and
     the layout is ``<tier root>/docs/{global,local}/<taxonomy>/<rest>`` — no domain
-    segment; both halves derive the same owner-qualified identity. See
+    segment; each half derives a distinct identity. See
     :func:`tier_root_kind`.
     """
     tier_kind = tier_root_kind(project_root)
@@ -362,17 +364,19 @@ def derive_tier_snippet_classification(
     """Derive a tier snippet's classification from its path under either half.
 
     Path-derived, never authored: ``<tier root>/docs/{global,local}/<taxonomy>/<rest>``
-    → ``people|companies/<slug>/<taxonomy>/<rest>``. Both halves derive the same
-    identity, which is why the same relative path in both halves is a
-    validation error. The tier's slug is its folder name, the identity the tier
+    → ``people|companies/<slug>/<taxonomy>/<rest>`` for the published half and
+    ``local/people|companies/<slug>/<taxonomy>/<rest>`` for the local half. The
+    tier's slug is its folder name, the identity the tier
     is discovered and registered by. The domain is the tier's kind literal.
     """
     id_path = companion_parent(path) or path
     docs_root = tier_root / _DOCS_DIRNAME
     rel: Path | None = None
+    matched_half: str | None = None
     for half in DOCS_HALVES:
         try:
             rel = id_path.resolve().relative_to((docs_root / half).resolve())
+            matched_half = half
             break
         except (ValueError, OSError):
             continue
@@ -390,7 +394,13 @@ def derive_tier_snippet_classification(
     if not rest:
         return None, "missing_slug"
     owner_slug = tier_root.expanduser().resolve().name
-    snippet_id = SnippetIdParts(scope=tier_kind.value, taxonomy=raw_taxonomy, rest=rest, owner=owner_slug).value()
+    snippet_id = SnippetIdParts(
+        scope=tier_kind.value,
+        taxonomy=raw_taxonomy,
+        rest=rest,
+        owner=owner_slug,
+        local=matched_half == _LOCAL_HALF,
+    ).value()
     return (
         SnippetClassification(
             id=snippet_id, type=SnippetTaxonomy(raw_taxonomy), scope=tier_kind, domain=tier_kind.value
@@ -500,7 +510,16 @@ def _expected_from_local(
         owner = read_declared_project_slug(project_root)
     except UndeclaredProjectSlugError:
         return None, "undeclared_project_slug"
-    return SnippetIdParts(scope=SnippetScope.PROJECT.value, taxonomy=taxonomy, rest=rest, owner=owner).value(), None
+    return (
+        SnippetIdParts(
+            scope=SnippetScope.PROJECT.value,
+            taxonomy=taxonomy,
+            rest=rest,
+            owner=owner,
+            local=True,
+        ).value(),
+        None,
+    )
 
 
 def _tail(parts: tuple[str, ...], start_idx: int, path: Path) -> str:
