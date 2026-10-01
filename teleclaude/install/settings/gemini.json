@@ -4,15 +4,7 @@
   "allowNonWorkspaceAccess": true,
   "enableTerminalSandbox": false,
   "permissions": {
-    "allow": [
-      "read_file(*)",
-      "write_file(*)",
-      "read_url(*)",
-      "execute_url(*)",
-      "command(*)",
-      "unsandboxed(*)",
-      "mcp(*)"
-    ],
+    "allow": ["read_file(*)", "write_file(*)", "read_url(*)", "execute_url(*)", "command(*)", "mcp(*)"],
     "ask": [],
     "deny": []
   },

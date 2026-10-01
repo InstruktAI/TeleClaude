@@ -39,6 +39,11 @@ when terminal sandboxing is enabled.
 
 ## Gaps / Unknowns
 
+- The installed CLI 1.2.14 rejects `unsandboxed(*)` in the user
+  `settings.json` permission rules at startup as an invalid rule that grants
+  nothing, and directs the user to `command(...)` instead. The vendor pages
+  cited below listed `unsandboxed` as an action when this summary was written;
+  whether it was retired or renamed is unresolved.
 - The combined effective behavior of `--sandbox`,
   `--dangerously-skip-permissions`, and wildcard `write_file` or `unsandboxed`
   rules has not been exercised against the installed CLI.
