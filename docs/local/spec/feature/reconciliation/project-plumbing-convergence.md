@@ -58,23 +58,10 @@ remains outside every synchronization path.
 
 ## Canonical fields
 
-<!-- planned-change:commit-gate-in-hook -->
 - **Hooks.** A project receives the TeleClaude-owned hook set when any enabled
   capability or declared binding can resolve an executable action. A hook the
   project authored itself is preserved rather than overwritten. A project with
-  no executable binding receives no TeleClaude-owned hook.
-<!-- change:commit-gate-in-hook -->
-- **Hooks.** Every adopted project receives the TeleClaude-owned commit-gate
-  hooks (`pre-commit` and `pre-merge-commit`), because the commit gate validates
-  any staged declaration whatever the project subscribes
-  (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
-  The rest of the hook set is received when any enabled capability or declared
-  binding can resolve an executable action. A hook the project authored itself is
-  preserved rather than overwritten. A project with no executable binding
-  receives only the commit-gate hooks, which activate no maintenance, no sealed
-  commit surface and no commit obligation.
-<!-- /planned-change:commit-gate-in-hook -->
-  A project-authored
+  no executable binding receives no TeleClaude-owned hook. A project-authored
   hook may itself invoke `telec code <hook-name>` as one of its own steps, so
   TeleClaude's dispatch and logic the platform cannot express run from the same
   file; it still carries no sentinel and is still preserved exactly as any
@@ -167,7 +154,6 @@ Then that hook is left in place, unmodified
 And it is not converged when the platform's hook template next changes
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
 #### UC-RPC4: A project subscribing neither receives no git plumbing
 
 ```gherkin
@@ -177,18 +163,6 @@ When an agent runs project initialization for that repository
 Then no TeleClaude-owned git hook is installed for it
 And no docs filter driver is configured for it
 ```
-<!-- change:commit-gate-in-hook -->
-#### UC-RPC4: A project subscribing neither receives only the commit-gate hooks
-
-```gherkin
-Given a repository whose declaration activates no executable action binding
-And whose declaration does not subscribe docs
-When an agent runs project initialization for that repository
-Then only TeleClaude's commit-gate hooks are installed for it
-And no other TeleClaude-owned git hook is installed for it
-And no docs filter driver is configured for it
-```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-RPC7: Machine installation converges the platform home's plumbing
 
