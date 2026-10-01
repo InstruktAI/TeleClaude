@@ -64,10 +64,7 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 ```
 <home>/help-desk/
 ├── AGENTS.master.md                      # operator brain, the rendering of its kind's help-desk template
-├── .gitignore                            # project help desks only: ignores the runtime dirs
-├── inbox/                                # never retained — items to process during idle time
-├── logs/                                 # never retained — interaction logs
-└── outcomes/                             # never retained — extracted actionable items
+├── .gitignore                            # ignore everything except the one AGENTS.master.md file
 ```
 
 #### Entry and routing
