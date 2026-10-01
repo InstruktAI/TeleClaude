@@ -27,8 +27,8 @@ The machine keeps one signing authority in a signing store dedicated to
 launcher signing. Installation creates the authority once, when that store
 holds none, and from then on signs with that same authority on every run, so
 Full Disk Access grants survive every rebuild. Installed launchers are replaced
-only by a complete, verified set; a run that fails for any reason leaves the
-launchers already installed exactly as they were.
+only by a complete, verified set; a signing or build failure or timeout leaves
+the launchers already installed exactly as they were.
 
 Signing establishes code identity only. It never grants Full Disk Access or any
 other permission; granting stays with a person or a managed device profile.
@@ -65,6 +65,10 @@ other permission; granting stays with a person or a managed device profile.
   inputs produce, or when the signing authority is new. Otherwise it neither
   opens the signing store nor signs, and leaves the installed launchers
   untouched.
+- **Unattended readiness.** Before signing, a run confirms that the signing store
+  opens, the authority is present and valid, and its key is authorized for
+  unattended use by the signing tool. Any of these failing fails the run at
+  once, naming the cause; signing never relies on a prompt.
 - **Authority creation.** Happens only when the signing store holds no
   authority. A store that is locked is opened with the unlock secret and signs
   as usual. A store that cannot be opened, an unavailable or rejected unlock
@@ -117,7 +121,7 @@ And where launchers signed by a different authority were installed, it states th
 
 ```gherkin
 Given a machine with launchers installed and in use
-When a signing run fails for any reason
+When signing or building the launcher set fails or times out
 Then every installed launcher is byte-identical to what it was before the run
 And the installer exits unsuccessfully with a message naming what failed and how to resolve it
 ```

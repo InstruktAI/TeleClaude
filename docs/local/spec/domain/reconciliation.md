@@ -67,7 +67,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   refuse the authority; whether the launcher set must be rebuilt because its
   inputs, the installed set or the authority changed, or whether there is
   nothing to do; and whether a verified rebuilt set replaces the installed one.
-  It serializes runs on the machine and bounds every step with a deadline. A
+  It confirms unattended readiness before signing and bounds every keychain and
+  signing call with a timeout. A
   deliberate renewal is the same operation invoked with explicit renewal
   intent. Its published result names the authority it signed with, whether it
   created it, whether anything was rebuilt, the cause and remedy of a failure,
