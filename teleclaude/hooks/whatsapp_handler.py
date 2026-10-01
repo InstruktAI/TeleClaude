@@ -32,7 +32,7 @@ from teleclaude.core.inbound import (
     resolve_or_create_bound_session,
 )
 from teleclaude.core.inbound.adoption import WHATSAPP_KEY_FIELD
-from teleclaude.core.inbound.conversation import ConversationOutcome, handle_conversation_turn
+from teleclaude.core.inbound.conversation import handle_conversation_turn
 from teleclaude.core.inbound_media import download_whatsapp_media, is_voice_event
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
@@ -411,7 +411,12 @@ async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
     async def _send_reply(reply_text: str) -> None:
         await _reply(phone_number, reply_text)
 
-    outcome = await handle_conversation_turn(
+    async def _before_cutover() -> None:
+        session = await _resolve_or_create_session_before_cutover(phone_number)
+        if session is not None:
+            await _deliver(session)
+
+    await handle_conversation_turn(
         ConversationTurn(
             conversation=whatsapp_conversation(phone_number),
             sender=get_identity_resolver().resolve(InputOrigin.WHATSAPP.value, {WHATSAPP_KEY_FIELD: phone_number}),
@@ -431,9 +436,6 @@ async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
             remote_command=_remote,
             modality=TurnModality.TEXT if is_text else TurnModality.MEDIA,
             relay_reply=_relay_reply(event, phone_number, message_id) if is_text else None,
+            before_cutover=_before_cutover,
         )
     )
-    if outcome is ConversationOutcome.BEFORE_CUTOVER:
-        session = await _resolve_or_create_session_before_cutover(phone_number)
-        if session is not None:
-            await _deliver(session)

@@ -46,7 +46,7 @@ from teleclaude.core.inbound import (
     resolve_binding_key,
 )
 from teleclaude.core.inbound.adoption import DISCORD_DM_KEY_FIELD
-from teleclaude.core.inbound.conversation import ConversationOutcome, handle_conversation_turn
+from teleclaude.core.inbound.conversation import handle_conversation_turn
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     DiscordMetadataField,
@@ -493,7 +493,10 @@ class GatewayHandlersMixin:
         async def _bind(person_slug: str) -> BindOutcome:
             return self._bind_discord_invite(message, user_id, person_slug)
 
-        outcome = await handle_conversation_turn(
+        async def _before_cutover() -> None:
+            await self._handle_discord_dm_before_cutover(message)
+
+        await handle_conversation_turn(
             ConversationTurn(
                 conversation=ConversationRef(
                     origin=InputOrigin.DISCORD,
@@ -521,10 +524,9 @@ class GatewayHandlersMixin:
                 remote_command=_remote,
                 modality=TurnModality.TEXT,
                 relay_reply=self._dm_relay_reply(message, user_id, message_id, actor_name),
+                before_cutover=_before_cutover,
             )
         )
-        if outcome is ConversationOutcome.BEFORE_CUTOVER:
-            await self._handle_discord_dm_before_cutover(message)
 
     @staticmethod
     def _dm_relay_reply(message: object, user_id: str, message_id: str, actor_name: str) -> AdminReply | None:

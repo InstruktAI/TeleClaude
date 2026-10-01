@@ -91,13 +91,20 @@ open conversation sessions: the mesh master then activates and publishes the
 activation in a shared, durable place. Every computer that learns of it — from
 that publication, or from any live computer announcing it — stops handling
 those conversations on its own before its next message, including a computer
-that was away and returns while the master is unavailable, and announces that
-it has. The master starts routing only when every live computer receiving those
-adapters has announced it; it then takes every such computer's export once
-more and binds each conversation to its newest open session. A message reaching
-the master in between waits for the start rather than being handled twice. A
-computer away at the start has its sessions bound once it returns and has
-announced it. The unavailability behaviour above applies from activation on.
+that was away and returns while the master is unavailable. It announces that
+it has only once every message it had already taken on itself has finished. A
+computer that cannot read the publication and sees no computer announcing it
+cannot tell whether the cutover began, so it handles nothing on its own and
+the lowest-named live computer running the adapter sends the
+temporarily-unavailable reply. The master starts routing only when every live
+computer receiving those adapters has announced it; it then takes every such
+computer's export once more and binds each conversation to its newest open
+session. A message reaching the master in between waits for the start rather
+than being handled twice. A computer away at the start has its sessions bound
+once it returns and has announced it; until then a conversation with no
+binding may be one of its own, so a message there starts no session by role
+and gets the temporarily-unavailable reply. The unavailability behaviour above
+applies from activation on.
 
 **Reflection.** Only platform help-desk sessions are reflected into the
 platform's shared Discord guild. Company and project help-desk sessions appear
@@ -408,6 +415,9 @@ Scenario Outline: <case>
     | changing over          | the master has activated and a live computer receiving the adapter has not announced it        | the master holds the message until routing starts and no computer handles it on its own                   |
     | returning computer     | the master has activated and a computer returns while the master is unavailable                | that computer learns the activation before handling the message and does not handle it on its own        |
     | newer session          | a computer opened a newer session for the conversation after its first export                  | at the start the conversation is bound to that newer session and the message reaches it                  |
+    | still handling         | a computer arms while a message it took on itself is still being handled                       | it announces the cutover only after that message finishes, and the master starts routing only then       |
+    | publication unreadable | a computer that has not armed cannot read the publication and sees no computer announcing it   | it handles nothing on its own and the lowest-named live computer sends the temporarily-unavailable reply |
+    | source away at start   | a computer named in the adoption run is away when routing starts and the conversation is unbound | no session starts by role and the temporarily-unavailable reply is sent until that computer returns    |
 ```
 
 ### Cross-context references

@@ -36,7 +36,12 @@ from teleclaude.core.inbound.adoption import (
     parse_exported_sessions,
     utc_now_iso,
 )
-from teleclaude.core.inbound.cutover import CUTOVER_PUBLICATION_KEY
+from teleclaude.core.inbound.cutover import (
+    CUTOVER_PUBLICATION_KEY,
+    LEGACY_HANDLING,
+    CutoverUnreadable,
+    LegacyHandlingGate,
+)
 from teleclaude.core.inbound.fleet import FleetView, observe_fleet
 from teleclaude.core.inbound.gates import ConversationLocks, CooldownGate
 from teleclaude.core.inbound.models import ConversationRef
@@ -77,6 +82,7 @@ class ConversationEnvironment:
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     now_iso: Callable[[], str] = utc_now_iso
     changeover_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    legacy: LegacyHandlingGate = field(default_factory=lambda: LEGACY_HANDLING)
     neutral_gate: CooldownGate = field(default_factory=CooldownGate)
     unavailable_gate: CooldownGate = field(default_factory=CooldownGate)
     locks: ConversationLocks = field(default_factory=ConversationLocks)
@@ -93,13 +99,16 @@ def _shared_store() -> Redis:
 
 
 async def _read_cutover_publication() -> str | None:
-    """The master's published activation time, from the shared store; ``None`` when absent or unreadable."""
+    """The master's published activation time from the shared store; ``None`` when it is absent.
+
+    Raises ``CutoverUnreadable`` when the store cannot be read: an unread key is not an absent one.
+    """
     store = _shared_store()
     try:
         value = await store.get(CUTOVER_PUBLICATION_KEY)
     except (RedisError, OSError) as exc:
         logger.warning(_CUTOVER_READ_FAILED_EVENT, error=str(exc))
-        return None
+        raise CutoverUnreadable(str(exc)) from exc
     finally:
         await store.aclose()
     if isinstance(value, bytes):

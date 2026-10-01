@@ -8,20 +8,28 @@ while the master routes them:
 1. Activation. Once every expected source has answered the adoption run, the
    master records the activation and publishes it under a durable shared key.
 2. Arming. Every computer that learns of the activation (from that key, or
-   from any live computer announcing it) records it, stops handling these
-   conversations on its own, and announces that it has armed. A computer that
-   was away learns it before it handles another message.
+   from any live computer announcing it) records it and stops admitting these
+   conversations to its own handling. It announces that it has armed only once
+   every message it had already admitted has finished, so an armed computer
+   creates nothing on its own any more. A computer that was away learns it
+   before it handles another message; one that cannot read the key and sees
+   no armed computer cannot tell, and handles nothing on its own.
 3. Changeover. The master starts routing only when every live computer
    receiving these conversations has armed. It then takes each one's export
    once more (no computer creates sessions on its own any more), binds every
    conversation to its newest open session, and records the start. Messages
    reaching the master meanwhile wait for the start instead of being handled
    twice; a computer that comes back later is exported once it has armed.
+   While a computer named in the adoption run has not been exported at the
+   changeover, a conversation with no binding may be one of its own, so the
+   master starts no session for it by role.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -63,6 +71,40 @@ _CHANGEOVER_EXPORTED_EVENT = "conversation_changeover_exported"
 _ROUTING_STARTED_EVENT = "conversation_routing_started"
 _CHANGEOVER_TIMED_OUT_EVENT = "conversation_changeover_timed_out"
 _UPKEEP_FAILED_EVENT = "conversation_upkeep_failed"
+_ACTIVATION_UNKNOWN_EVENT = "conversation_activation_unreadable"
+
+
+class CutoverUnreadable(Exception):
+    """The shared store holding the published activation could not be read."""
+
+
+class LegacyHandlingGate:
+    """Counts the messages this computer admitted to its own, pre-cutover handling and has not finished.
+
+    A message is admitted before its computer's cutover state is read and
+    released when its handling ends, so once the computer has armed, the gate
+    being idle means nothing it admitted on its own is still running.
+    """
+
+    def __init__(self) -> None:
+        self._in_flight = 0
+
+    @asynccontextmanager
+    async def admit(self) -> AsyncIterator[None]:
+        """Hold one message's admission for as long as it is handled."""
+        self._in_flight += 1
+        try:
+            yield
+        finally:
+            self._in_flight -= 1
+
+    def idle(self) -> bool:
+        """Whether no admitted message is still being handled."""
+        return self._in_flight == 0
+
+
+# This computer's one gate: the seam admits through it and the heartbeat reads it.
+LEGACY_HANDLING = LegacyHandlingGate()
 
 
 class SharedRoutingState(StrEnum):
@@ -70,13 +112,22 @@ class SharedRoutingState(StrEnum):
 
     # Not armed: the adapter handles the conversation as before the cutover.
     BEFORE_CUTOVER = "before_cutover"
+    # Not armed, and whether the master activated cannot be told: nothing is handled on its own.
+    UNKNOWN = "unknown"
     # The master has armed and waits for every receiving computer before it routes.
     CHANGING_OVER = "changing_over"
     # Armed; the master routes, every other computer leaves it to the master.
     ACTIVE = "active"
 
 
+class _Publication(StrEnum):
+    PUBLISHED = "published"
+    ABSENT = "absent"
+    UNREADABLE = "unreadable"
+
+
 class _HeldReason(StrEnum):
+    LOCAL_HANDLING_IN_FLIGHT = "local_handling_in_flight"
     LACKING_FEATURE = "computers_lack_conversation_entry"
     NOT_ARMED = "computers_not_armed"
     EXPORT_UNANSWERED = "export_unanswered"
@@ -93,16 +144,29 @@ def receives_shared_conversations(member: FleetMember) -> bool:
     return adapters is None or bool(adapters & SHARED_ORIGINS)
 
 
-async def _activation_published(env: ConversationEnvironment, fleet: FleetView) -> bool:
+async def routing_announced(db: Db) -> bool:
+    """What this computer announces: armed, and nothing it admitted on its own still running."""
+    return await shared_routing_activated(db) and LEGACY_HANDLING.idle()
+
+
+async def _activation_publication(env: ConversationEnvironment, fleet: FleetView) -> _Publication:
     if any(member.routing_active for member in fleet.peers):
-        return True
-    return await env.read_cutover() is not None
+        return _Publication.PUBLISHED
+    try:
+        published = await env.read_cutover()
+    except CutoverUnreadable:
+        return _Publication.UNREADABLE
+    return _Publication.PUBLISHED if published is not None else _Publication.ABSENT
 
 
 async def shared_routing_state(env: ConversationEnvironment, fleet: FleetView) -> SharedRoutingState:
     """This computer's side of the cutover, arming it when the activation has been published."""
     if not await shared_routing_activated(env.db):
-        if not await _activation_published(env, fleet):
+        publication = await _activation_publication(env, fleet)
+        if publication is _Publication.UNREADABLE:
+            logger.warning(_ACTIVATION_UNKNOWN_EVENT, computer=env.host)
+            return SharedRoutingState.UNKNOWN
+        if publication is _Publication.ABSENT:
             return SharedRoutingState.BEFORE_CUTOVER
         await env.db.set_system_setting(ROUTING_ACTIVATED_AT_SETTING, env.now_iso())
         logger.info(_ARMED_EVENT, computer=env.host)
@@ -149,6 +213,9 @@ async def try_start_routing(env: ConversationEnvironment) -> bool:
         fleet = await env.observe_fleet()
         if not fleet.local.is_master or not await shared_routing_activated(env.db):
             return False
+        if not env.legacy.idle():
+            logger.info(_CHANGEOVER_HELD_EVENT, reason=_HeldReason.LOCAL_HANDLING_IN_FLIGHT.value, computers=[env.host])
+            return False
         lacking = fleet.lacking_conversation_entry()
         if lacking:
             logger.info(_CHANGEOVER_HELD_EVENT, reason=_HeldReason.LACKING_FEATURE.value, computers=lacking)
@@ -165,6 +232,16 @@ async def try_start_routing(env: ConversationEnvironment) -> bool:
         await env.db.set_system_setting(ROUTING_STARTED_AT_SETTING, env.now_iso())
         logger.info(_ROUTING_STARTED_EVENT)
         return True
+
+
+async def changeover_exports_outstanding(env: ConversationEnvironment) -> list[str]:
+    """The computers named in the adoption run that have not been exported at the changeover."""
+    sources = await env.db.list_conversation_adoption_sources()
+    return [
+        source.computer
+        for source in sources
+        if await env.db.get_system_setting(_changeover_export_setting(source.computer)) is None
+    ]
 
 
 async def await_routing_start(env: ConversationEnvironment) -> bool:
@@ -213,14 +290,19 @@ __all__ = [
     "CHANGEOVER_WAIT_S",
     "CONVERSATION_UPKEEP_INTERVAL_S",
     "CUTOVER_PUBLICATION_KEY",
+    "LEGACY_HANDLING",
     "ROUTING_ACTIVATED_AT_SETTING",
     "ROUTING_STARTED_AT_SETTING",
     "SHARED_ORIGINS",
+    "CutoverUnreadable",
+    "LegacyHandlingGate",
     "SharedRoutingState",
     "activate_routing",
     "await_routing_start",
+    "changeover_exports_outstanding",
     "export_returning_computers",
     "receives_shared_conversations",
+    "routing_announced",
     "run_conversation_upkeep",
     "shared_routing_activated",
     "shared_routing_state",

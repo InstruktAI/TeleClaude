@@ -157,6 +157,8 @@ class ConversationTurn:
     modality: TurnModality = TurnModality.TEXT
     # Set when the message replies to one of the platform's own messages: it may answer an escalation relay.
     relay_reply: AdminReply | None = None
+    # How the adapter handles the message on its own while this computer has not reached the master-routing cutover.
+    before_cutover: Callable[[], Awaitable[None]] | None = None
 
 
 __all__ = [

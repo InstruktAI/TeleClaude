@@ -54,7 +54,12 @@ from teleclaude.core.help_desk_relay import (
 )
 from teleclaude.core.inbound.adoption import is_superseded
 from teleclaude.core.inbound.conversation_env import ConversationEnvironment, default_conversation_environment
-from teleclaude.core.inbound.cutover import SharedRoutingState, await_routing_start, shared_routing_state
+from teleclaude.core.inbound.cutover import (
+    SharedRoutingState,
+    await_routing_start,
+    changeover_exports_outstanding,
+    shared_routing_state,
+)
 from teleclaude.core.inbound.fleet import FleetView
 from teleclaude.core.inbound.models import BindOutcome, ConversationTurn, EntryGesture, TurnModality
 from teleclaude.core.models import (
@@ -96,6 +101,7 @@ class ConversationDecision(StrEnum):
     TURN_DELIVERED = "conversation_turn_delivered"
     TURN_RETURNING_CUSTOMER = "conversation_turn_returning_customer"
     TURN_ROLE_FALLBACK = "conversation_turn_role_fallback"
+    TURN_FALLBACK_HELD = "conversation_turn_fallback_held_for_changeover"
     TURN_NOT_MASTER = "conversation_turn_not_master"
     BINDING_RECORDED = "conversation_binding_recorded"
     REMOTE_CREATE_FAILED = "conversation_remote_create_failed"
@@ -482,6 +488,12 @@ async def _ordinary_turn(
     endpoint = _role_endpoint(turn, env)
     if endpoint is None:
         return await _miss(turn, env)
+    if turn.conversation.reaches_every_computer:
+        outstanding = await changeover_exports_outstanding(env)
+        if outstanding:
+            # The conversation may be open on a computer whose sessions are not bound yet.
+            _log(ConversationDecision.TURN_FALLBACK_HELD, turn, computers=outstanding)
+            return await _unavailable(turn, env)
     outcome = await _start_at(turn, env, endpoint)
     if outcome is ConversationOutcome.SESSION_STARTED:
         _log(ConversationDecision.TURN_ROLE_FALLBACK, turn, role=_sender_role(turn), endpoint=endpoint.kind.value)
@@ -537,9 +549,21 @@ async def handle_conversation_turn(
         async with environment.locks.hold(conversation.hashed_key):
             return await _decide(turn, environment, None)
     fleet = await environment.observe_fleet()
-    state = await shared_routing_state(environment, fleet)
-    if state is SharedRoutingState.BEFORE_CUTOVER:
-        return await _held_relay_reply(turn, fleet) or ConversationOutcome.BEFORE_CUTOVER
+    # Admitted before the state is read and held through any handling on its own, so an armed
+    # computer announces only once nothing it handled on its own is still running.
+    async with environment.legacy.admit():
+        state = await shared_routing_state(environment, fleet)
+        if state is SharedRoutingState.BEFORE_CUTOVER:
+            held = await _held_relay_reply(turn, fleet)
+            if held is not None:
+                return held
+            if turn.before_cutover is not None:
+                await turn.before_cutover()
+            return ConversationOutcome.BEFORE_CUTOVER
+    if state is SharedRoutingState.UNKNOWN:
+        if fleet.unavailable_replier(conversation.origin) == environment.host:
+            return await _unavailable(turn, environment)
+        return ConversationOutcome.NOT_ROUTED_HERE
     router = fleet.routing_master(conversation.origin)
     if router is None:
         if fleet.unavailable_replier(conversation.origin) == environment.host:
