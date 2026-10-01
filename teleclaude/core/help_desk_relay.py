@@ -174,6 +174,13 @@ class _AnswerOutcome(StrEnum):
     RELAY_ENDED = "relay_ended"
 
 
+# What an admin is told when their answer did not reach the visitor, per answer outcome.
+_UNANSWERED_NOTICES: dict[_AnswerOutcome, str] = {
+    _AnswerOutcome.UNDELIVERED: RELAY_ANSWER_UNDELIVERED,
+    _AnswerOutcome.RELAY_ENDED: RELAY_ANSWER_AFTER_HAND_BACK,
+}
+
+
 class RelayDeliveryFailed(RuntimeError):
     """No notified admin received the visitor's input; it was neither relayed nor recorded."""
 
@@ -732,12 +739,11 @@ async def answer_from_admin(reply: AdminReply, text: str, env: RelayEnvironment 
                 outcome = _AnswerOutcome.DELIVERED
             else:
                 outcome = await _answer(session.session_id, reply.admin_name, text, environment)
-            if outcome is _AnswerOutcome.UNDELIVERED:
-                await _tell_admin(session, target, RELAY_ANSWER_UNDELIVERED, environment)
-            else:
+            if outcome is not _AnswerOutcome.UNDELIVERED:
                 environment.answered[key] = time.monotonic()
-            if outcome is _AnswerOutcome.RELAY_ENDED:
-                await _tell_admin(session, target, RELAY_ANSWER_AFTER_HAND_BACK, environment)
+            notice = _UNANSWERED_NOTICES.get(outcome)
+            if notice is not None:
+                await _tell_admin(session, target, notice, environment)
             return True
     return False
 
@@ -745,20 +751,22 @@ async def answer_from_admin(reply: AdminReply, text: str, env: RelayEnvironment 
 async def answer_in_thread(
     session: Session, admin_name: str, text: str, hand_back_requested: bool, env: RelayEnvironment | None = None
 ) -> None:
-    """Take a post in a platform desk's escalation thread: hand back, or answer the visitor."""
+    """Take a post in a platform desk's escalation thread: hand back, or answer the visitor.
+
+    An answer that did not reach the visitor, or reached the relay only after
+    its hand-back, is reported in the thread, as a private answer is reported
+    to its admin.
+    """
     environment = env if env is not None else default_relay_environment()
     if hand_back_requested:
         await hand_back(session, environment)
         return
     outcome = await _answer(session.session_id, admin_name, text, environment)
-    if outcome is not _AnswerOutcome.UNDELIVERED:
-        return
+    notice = _UNANSWERED_NOTICES.get(outcome)
     adapter = environment.admin_adapter()
-    if adapter is not None and session.relay_channel_id:
+    if notice is not None and adapter is not None and session.relay_channel_id:
         try:
-            await adapter.forward_to_escalation_thread(
-                session.relay_channel_id, _RELAY_SYSTEM_LABEL, RELAY_ANSWER_UNDELIVERED
-            )
+            await adapter.forward_to_escalation_thread(session.relay_channel_id, _RELAY_SYSTEM_LABEL, notice)
         except AdapterError as exc:
             logger.warning(_UNDELIVERED_NOTICE_FAILED_EVENT, session_id=session.session_id, error=str(exc))
 
