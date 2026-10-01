@@ -114,9 +114,16 @@ stale entry under System Settings › Privacy & Security › Full Disk Access an
 bundle again at that machine's screen; a recovery session cannot make that grant.
 <!-- /planned-change:unattended-launcher-signing -->
 
+<!-- planned-change:unattended-launcher-signing -->
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),
 `src/Launcher/build.sh` via the `make launchers` target (build/sign),
 `src/Launcher/signing-authority.sh` (authority lifecycle and bundle identity audit)
+<!-- change:unattended-launcher-signing -->
+Source: `teleclaude/core/reconciliation/launcher_identity.py` (decisions and result),
+`teleclaude/project_setup/launcher_signing.py` (keychain, signing and compile effects),
+`teleclaude/project_setup/macos_setup.py:install_launchers()` (verified replacement),
+`teleclaude/install/launcher_identity.py` (entry point for install, `make launchers` and renewal)
+<!-- /planned-change:unattended-launcher-signing -->
 
 ### 2a. macOS tmux server service (`make install`)
 
