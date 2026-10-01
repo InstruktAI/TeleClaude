@@ -69,6 +69,8 @@ RESERVED_SNIPPET_ID_PREFIXES: frozenset[str] = (
 _DOCS_DIRNAME = "docs"
 _GLOBAL_HALF = "global"
 _LOCAL_HALF = "local"
+_PATH_TRAVERSAL_SEGMENTS: frozenset[str] = frozenset({".", ".."})
+_INVALID_PROJECT_LOCAL_REF_PATH = "invalid_project_local_ref_path"
 #: The two halves of every documentation home, in classification order.
 DOCS_HALVES: tuple[str, str] = (_GLOBAL_HALF, _LOCAL_HALF)
 _BASELINE_MANIFEST_NAMES: frozenset[str] = frozenset({"baseline.md", "baseline-progressive.md"})
@@ -528,14 +530,14 @@ def _tail(parts: tuple[str, ...], start_idx: int, path: Path) -> str:
     return "/".join([p for p in tail_parts if p])
 
 
-def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | None:
+def validate_inline_ref_format(ref: str, *, domains: Iterable[str], project_root: Path) -> str | None:
     """Validate an inline @ref and return an error code or None if valid."""
     if not ref:
         return "missing_ref"
     if not ref.startswith("@"):
         return "missing_at_prefix"
     if ref.startswith("@docs/"):
-        return _validate_project_ref(ref[len("@docs/") :], domains)
+        return _validate_project_ref(ref[len("@docs/") :], domains, project_root=project_root)
     for abs_prefix in _global_ref_prefixes():
         if ref.startswith(abs_prefix):
             return _validate_global_ref(ref, ref[len(abs_prefix) :], domains)
@@ -637,20 +639,25 @@ def _is_frontmatter_continuation(stripped_line: str) -> bool:
     return ":" not in stripped_line
 
 
-def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
+def _validate_project_ref(rel: str, domains: Iterable[str], *, project_root: Path) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
-    if rel == "baseline.md":
-        return None
-    if rel == f"{_LOCAL_HALF}/baseline.md":
-        return None
     parts, has_empty = _split_parts(rel)
     if has_empty:
         return "empty_segment"
+    if any(part in _PATH_TRAVERSAL_SEGMENTS for part in parts):
+        return _INVALID_PROJECT_LOCAL_REF_PATH
+    if rel == "baseline.md":
+        return None
+    if rel == f"{_LOCAL_HALF}/baseline.md":
+        return _validate_project_local_ref_path(rel, project_root=project_root)
     if len(parts) < 3:
         return "missing_segments"
     if parts[0] != _LOCAL_HALF:
         return "invalid_project_scope"
+    path_error = _validate_project_local_ref_path(rel, project_root=project_root)
+    if path_error is not None:
+        return path_error
     if parts[1] == "baseline":
         if len(parts) < 4:
             return "missing_segments"
@@ -665,6 +672,26 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
         return "invalid_taxonomy"
     if not parts[-1].endswith(".md"):
         return "missing_md_extension"
+    return None
+
+
+def _validate_project_local_ref_path(rel: str, *, project_root: Path) -> str | None:
+    try:
+        resolved_project_root = project_root.resolve()
+        docs_root = (project_root / _DOCS_DIRNAME).resolve()
+        local_docs_root = (project_root / _DOCS_DIRNAME / _LOCAL_HALF).resolve()
+        global_docs_root = (project_root / _DOCS_DIRNAME / _GLOBAL_HALF).resolve()
+        snippet_path = (project_root / _DOCS_DIRNAME / rel).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return _INVALID_PROJECT_LOCAL_REF_PATH
+    if not docs_root.is_relative_to(resolved_project_root):
+        return _INVALID_PROJECT_LOCAL_REF_PATH
+    if not local_docs_root.is_relative_to(docs_root):
+        return _INVALID_PROJECT_LOCAL_REF_PATH
+    if not snippet_path.is_relative_to(local_docs_root):
+        return _INVALID_PROJECT_LOCAL_REF_PATH
+    if snippet_path.is_relative_to(global_docs_root):
+        return _INVALID_PROJECT_LOCAL_REF_PATH
     return None
 
 

@@ -36,6 +36,11 @@ from teleclaude.core.next_machine.git_ops import (
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_DOCS_DIR
+from teleclaude.snippet_validation import (
+    derive_snippet_classification,
+    load_domains,
+    validate_inline_ref_format,
+)
 from teleclaude.types.todos import ArtifactEntry, TodoState
 
 if TYPE_CHECKING:
@@ -59,6 +64,8 @@ _ARTIFACT_REVIEW_FIELDS: dict[str, str] = {
 }
 
 _INLINE_REF_RE = re.compile(r"@(?:docs/[^\s)]+\.md|/[^\s)]+/\.teleclaude/docs/[^\s)]+\.md)")
+_PROJECT_DOCS_REF_PREFIX = "@docs/"
+_PROJECT_DOCS_DIRECTORY = "docs"
 
 
 async def sync_artifact_provenance(
@@ -219,12 +226,22 @@ async def read_referenced_snippet_digests(
 def extract_snippet_refs(artifact_body: str, project_root: str) -> list[str]:
     """Extract canonical snippet IDs from validator-accepted inline @ references."""
     refs: set[str] = set()
+    root = Path(project_root)
+    domains = load_domains(root)
     for match in _INLINE_REF_RE.finditer(artifact_body):
         ref = match.group(0)
-        if ref.startswith("@docs/"):
-            snippet_id = _project_ref_to_id(ref[len("@docs/") :])
-        else:
-            snippet_id = _global_ref_to_id(ref)
+        if ref.startswith(_PROJECT_DOCS_REF_PREFIX):
+            if validate_inline_ref_format(ref, domains=domains, project_root=root) is not None:
+                continue
+            classification, _ = derive_snippet_classification(
+                root / _PROJECT_DOCS_DIRECTORY / ref.removeprefix(_PROJECT_DOCS_REF_PREFIX),
+                project_root=root,
+                domains=domains,
+            )
+            if classification is not None:
+                refs.add(classification.id)
+            continue
+        snippet_id = _global_ref_to_id(ref)
         if snippet_id:
             refs.add(snippet_id)
     return sorted(refs)
@@ -256,12 +273,6 @@ def _clear_rewrite_drift_state(writer: StateWriter, artifact_name: str) -> None:
         getattr(writer.state, review_field).cleared_by_substantive_drift = False
     if key == STATE_KEY_IMPLEMENTATION_PLAN:
         writer.state.artifacts.implementation_plan.seeded = False
-
-
-def _project_ref_to_id(rel_ref: str) -> str:
-    if not rel_ref.endswith(".md"):
-        return ""
-    return rel_ref.removesuffix(".md")
 
 
 def _global_ref_to_id(ref: str) -> str:

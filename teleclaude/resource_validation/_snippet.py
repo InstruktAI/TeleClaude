@@ -137,7 +137,7 @@ def collect_inline_ref_errors(
         if not ref.startswith(allowed_prefixes):
             errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
             continue
-        format_error = validate_inline_ref_format(ref, domains=domains)
+        format_error = validate_inline_ref_format(ref, domains=domains, project_root=project_root)
         if format_error:
             errors.append(
                 {
