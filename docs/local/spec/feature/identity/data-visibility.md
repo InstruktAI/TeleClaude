@@ -18,20 +18,27 @@ project subject also names its owner, as resolved where the record was made
 Identity resolves each principal's reach once and publishes it. The rule lives
 only there:
 
-| Subject                  | Reached by                                                       |
-| ------------------------ | ---------------------------------------------------------------- |
-| any, or none             | a platform administrator, and the system principal               |
-| a company                | every person on that company's roster                            |
-| a person                 | that person                                                      |
-| a project a company owns | that company's administrators, and roster members assigned to it |
-| a project a person owns  | that person                                                      |
-| a project with no owner  | a platform administrator, and the system principal, only         |
+| Subject                             | Reached by                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| any, or none                        | a platform administrator, and the system principal                              |
+| a company                           | every person on that company's roster                                           |
+| a person                            | that person                                                                     |
+| a project a company owns            | that company's administrators, and roster members assigned to it                |
+| a project a person owns             | that person                                                                     |
+| a project with no owner             | a platform administrator, and the system principal, only                        |
+| the platform's shared documentation | a platform administrator, the system principal, and every company administrator |
 
 A platform administrator and the system principal reach everything
 unconditionally, including records with no subject and subjects the receiving
 computer does not know. A platform role below administrator grants no reach of
 its own. An agent session is judged by the principal at the root of its lineage
 (`projects/teleclaude/spec/feature/identity/principal-resolution`).
+
+Beside the subject, reach admits a principal's own records wherever they are:
+conversations recorded under that principal, its own spawned chains included;
+operations it started; and sessions its sessions spawned. Reading the outcome of
+one's own act and following one's own workers do not depend on where that work
+landed.
 
 Every surface that lists or pushes platform data to a principal applies that
 reach and holds no visibility rule of its own: session listings and live session
@@ -75,7 +82,7 @@ And records whose subject the showing computer does not know are included
 ```gherkin
 Given a person who is not a platform administrator
 When the person, or an agent session rooted at them, lists or receives platform data
-Then a record is shown only when its subject is one their reach admits
+Then a record is shown only when their reach admits it: its subject is one they reach, or it is their own work
 And no record outside that reach is shown, counted, or distinguishable from an absent one, apart from documentation its author published as public
 
 Examples:
@@ -86,6 +93,7 @@ Examples:
   | a project owned by a person             | that person                                          |
   | a project with no owner                 | nobody at this level                                 |
   | none                                    | nobody at this level                                 |
+  | the platform's shared documentation     | every company administrator                          |
 ```
 
 #### UC-DV3: A platform role below administrator reaches nothing by itself
@@ -178,6 +186,25 @@ Given a notification addressed to one person
 When any other principal, a platform administrator included, views the shared notification list or receives live notification pushes in the TUI or web console
 Then that notification is not shown to them
 And the addressed person receives it through their own channel
+```
+
+#### UC-DV12: A principal's own work stays visible outside its reach
+
+```gherkin
+Given a person whose reach does not include the project a record is about
+And the record is a conversation recorded under that person, an operation they started, or a session one of their sessions spawned
+When the person, or an agent session rooted at them, lists or reads that kind of record
+Then the record is shown to them
+And it is shown to no one else on that account
+```
+
+#### UC-DV13: A company administrator reads the shared documentation in full
+
+```gherkin
+Given a person who administers a company and holds no platform role
+When an agent session rooted at them reads the platform's shared documentation
+Then every shared snippet is returned at full depth, internal ones included
+And a member of that company below administrator receives only the shared snippets published as public
 ```
 
 ## Known caveats
