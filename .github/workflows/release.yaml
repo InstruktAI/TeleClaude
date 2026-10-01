@@ -25,6 +25,9 @@ jobs:
         run: uv run python -m tools.ci.resolve_credentials
 
       - name: Full TeleClaude Bootstrap
+        # Isolate install writes to this job's temp home; later analysis steps keep the operator's live config.
+        env:
+          TELECLAUDE_HOME: ${{ runner.temp }}/tc-home
         run: make install
 
       - name: Prepare Analysis Context
@@ -72,6 +75,9 @@ jobs:
       - name: Use repo-local telec
         run: python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
       - name: Bootstrap Environment
+        # Keep install writes out of the runner's live home; later steps retain their existing home.
+        env:
+          TELECLAUDE_HOME: ${{ runner.temp }}/tc-home
         run: make install
       - name: Download Arbiter Decision
         uses: actions/download-artifact@v8
