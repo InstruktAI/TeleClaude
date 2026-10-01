@@ -142,9 +142,10 @@ in its text is structural; the engine never extracts paths from command text.
 On a shared branch, the engine derives advisory candidates from the same
 checkpoint-cycle timeline as Invariant 5: dirty paths the stopping session has
 not declared that appear, as an exact path, at a write target of a successful
-shell command of that cycle. A write target is a redirection destination, an
-operand of a file-writing command, or the script of an interpreter invocation
-that writes files. A path that appears only in a quoted argument of a command
+shell command of that cycle. A write target is a redirection destination, a
+path a file-writing command creates, modifies, or removes (not a path it only
+reads, such as a copy source), or the script of an interpreter invocation that
+writes files. A path that appears only in a quoted argument of a command
 that writes nothing, in heredoc data fed to a command that is not an
 interpreter, or in other non-target text is not at a write target, so a
 command that writes one file while carrying another path as data raises no
