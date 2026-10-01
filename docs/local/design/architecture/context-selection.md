@@ -192,10 +192,10 @@ half — for a project, the published snippets of the domains it publishes as
 owner. The local selector names the local half of the named home, or of the
 landed home when none is named; with neither, there is no half to read and the
 command is refused, naming the selectors that name a home. A snippet identity
-names the half its `local/` prefix states. The project kind filter with no
-project named names the landed project's owned set: its local snippets and the
-published snippets of the domains it publishes as owner. A kind filter adds
-nothing next to the local selector, which already names one home's half. The
+names the half its `local/` prefix states. A kind filter keeps only the
+snippets of that tier kind among what is assembled and names no home of its
+own; next to the local selector, which already names one home's half, it adds
+nothing. The
 named half is read at the depth this stage grants the caller for it. Naming
 never changes depth. A caller with no resolvable identity gains no tier from a
 relationship it does not have.

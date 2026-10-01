@@ -172,14 +172,15 @@ And that home's owned set is returned: its local snippets (IDs beginning project
 And snippets owned by any other home or domain publisher are excluded
 ```
 <!-- change:local-doc-ids-and-person-privacy -->
-#### UC-DSP2: Scope filter keeps only one project home's owned set
+#### UC-DSP2: Scope filter keeps only project snippets
 
 ```
-Given --scope project passed by the caller, with or without --project <slug>
+Given --scope project passed by the caller
 When the Selection policy applies the scope filter
-Then with no project named, the landed project's owned set is returned: its local snippets (IDs beginning local/projects/<slug>/) and the published snippets of the domains it publishes as owner
-And with a project named, that project's published snippets — those of the domains it publishes as owner — are returned
-And snippets owned by any other home or domain publisher are excluded
+Then only snippets in the project tier are returned — local project snippets, IDs beginning local/projects/<slug>/
+And snippets of every other tier, published domain snippets included, are excluded
+And combined with --project <slug>, whose published half holds only domain snippets, nothing is returned
+And combined with --local, the filter adds nothing
 ```
 <!-- /planned-change:local-doc-ids-and-person-privacy -->
 
