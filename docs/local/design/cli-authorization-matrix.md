@@ -41,10 +41,6 @@ Bands keep an agent inside its brief; they are focus, not integrity (`general/pr
 | Coordinator  | Every agent command except the reservations. It reads and talks to the fleet and may start a peer; which lifecycle roles a session may dispatch is the run-session dispatch privilege (`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`), under which the coordinator dispatches none.                                                                                                                                                                                                                                                                                                                                                                         |
 | System       | No role-based command reach. Caller-independent commands pass without consulting this credential.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-<!-- planned:worker-message-gate -->
-A worker never reaches `message`. A worker addresses only its own process: its
-results reach people through the session that dispatched it.
-<!-- /planned:worker-message-gate -->
 
 A role's reach is declared once, as a group, in the CLI surface schema; a command joins a role's reach by joining its group, never by naming the role in its own entry.
 

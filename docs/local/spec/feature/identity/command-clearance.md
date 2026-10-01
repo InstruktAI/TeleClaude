@@ -371,16 +371,6 @@ Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
 ```
 
-<!-- planned:worker-message-gate -->
-#### UC-CCR6: A worker sends no message to a person
-
-```
-Given an agent inside a session whose resolved system role is `worker`
-When it runs `telec message` for any person
-Then the command is refused with the not-permitted failure naming `worker` and the verb
-And no message is delivered
-```
-<!-- /planned:worker-message-gate -->
 
 ### Local read clearance
 
