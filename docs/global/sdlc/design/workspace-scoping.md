@@ -131,16 +131,6 @@ path; each is an owner, and no arbitration selects between them.
 
 ### Undeclared-write questions
 
-<!-- planned-change:checkpoint-refires-on-foreign-dirty-file -->
-A shell write leaves no declaration. At agent stop on a shared branch, the
-checkpoint names the dirty paths that match the session's own shell activity in
-the current checkpoint cycle and that the session has not declared, and asks the
-session to declare the ones that are its own. A path matches when a successful
-shell command that writes files carries that exact path in its text; read-only
-commands and read-only tools match nothing. The question is advice: it adds
-nothing to scope, writes no declaration, and gates no commit. The session
-remains the only party that knows whether it wrote the file.
-<!-- change:checkpoint-refires-on-foreign-dirty-file -->
 A shell write leaves no declaration. At agent stop on a shared branch, the
 checkpoint names the dirty paths that match the session's own shell activity in
 the current checkpoint cycle and that the session has not declared, and asks the
@@ -154,7 +144,6 @@ nothing, and neither do
 read-only commands and read-only tools. The question is advice: it adds
 nothing to scope, writes no declaration, and gates no commit. The session
 remains the only party that knows whether it wrote the file.
-<!-- /planned-change:checkpoint-refires-on-foreign-dirty-file -->
 
 ### Ownership query
 
