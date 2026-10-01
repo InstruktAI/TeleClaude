@@ -396,10 +396,15 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             if cmd_name == RELAY_REPLY_OWNER_COMMAND:
-                owner_answer = await answer_owner_query(cmd_args)
-                await self.send_response(
-                    message_id, json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: owner_answer.value})
-                )
+                try:
+                    owner_answer = await answer_owner_query(cmd_args, parsed.caller_principal)
+                    owner_envelope: JsonDict = {_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: owner_answer.value}
+                except PermissionError as exc:
+                    owner_envelope = {
+                        _STATUS_FIELD: _ERROR_STATUS,
+                        _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: str(exc)},
+                    }
+                await self.send_response(message_id, json.dumps(owner_envelope))
                 return
 
             if cmd_name in {

@@ -81,6 +81,7 @@ ESCALATION_ALREADY_ACTIVE = "This conversation is already escalated"
 ESCALATION_SESSION_NOT_ACTIVE = "Escalation needs an active session"
 ESCALATION_UNDELIVERED = "The escalation did not happen: no admin could be notified"
 RELAY_RESEND_REPLY = "Couldn't match your reply right now; please resend."
+OWNER_QUERY_REFUSED = "relay reply ownership is answered only to a peer daemon"
 
 RELAY_REPLY_OWNER_COMMAND = "relay_reply_owner"
 # How long the asking computer waits for a peer's ownership answer.
@@ -124,6 +125,7 @@ _HANDED_BACK_EVENT = "help_desk_relay_handed_back"
 _DELIVERY_FAILED_EVENT = "help_desk_relay_visitor_delivery_failed"
 _OWNER_UNCERTAIN_EVENT = "relay_reply_owner_uncertain"
 _OWNED_ELSEWHERE_EVENT = "relay_reply_owned_elsewhere"
+_OWNER_QUERY_REFUSED_EVENT = "relay_reply_owner_query_refused"
 
 # Failures of one person-addressed send: unknown person, no credential, provider refusal.
 _SEND_ERRORS = (ValueError, RuntimeError, OSError, httpx.HTTPError)
@@ -693,8 +695,18 @@ async def claim_admin_reply(
     return RelayReplyDisposition.NOT_RELAY
 
 
-async def answer_owner_query(arguments: list[str], env: RelayEnvironment | None = None) -> RelayOwnerAnswer:
-    """Answer a peer's ownership query: take the reply when a relay here holds it."""
+async def answer_owner_query(
+    arguments: list[str], caller_principal: str, env: RelayEnvironment | None = None
+) -> RelayOwnerAnswer:
+    """Answer a peer's ownership query: take the reply when a relay here holds it.
+
+    Taking a reply delivers an admin's answer or hands the conversation back,
+    so only a peer daemon asking under its own authority is admitted; any other
+    caller is refused before anything is matched.
+    """
+    if caller_principal != SYSTEM_DAEMON_PRINCIPAL:
+        logger.warning(_OWNER_QUERY_REFUSED_EVENT, caller=caller_principal)
+        raise PermissionError(OWNER_QUERY_REFUSED)
     parsed = AdminReply.from_command_arguments(arguments)
     if parsed is None:
         return RelayOwnerAnswer.NONE
