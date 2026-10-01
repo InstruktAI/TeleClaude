@@ -429,13 +429,13 @@ And the pre-commit hook lints the staged file set after formatting
 ```
 <!-- /planned-change:commit-gate-in-hook -->
 
+<!-- planned-change:commit-gate-in-hook -->
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
 
 ```
 Given pathspec contains only a deleted file
 When agent invokes telec code commit --approved "<msg>"
 Then quality_paths is empty
-<!-- planned-change:commit-gate-in-hook -->
 And neither handle_format nor handle_lint is invoked
 And git commit --no-verify proceeds
 ```
@@ -449,6 +449,12 @@ Then repo.git.commit is called with "--no-verify" in its args
 And no framework stash occurs
 ```
 <!-- change:commit-gate-in-hook -->
+#### UC-CGIP-3 — Deletion-only commit bypasses format/lint
+
+```
+Given pathspec contains only a deleted file
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths is empty
 And handle_format is not invoked
 And git commit proceeds, and the pre-commit hook has nothing to lint
 ```
