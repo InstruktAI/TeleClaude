@@ -66,6 +66,7 @@ tooling.
 7.  Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8.  If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
 
+<!-- planned-change:home-publication-sync -->
 9.  Publication happens only from recorded committed state: the commit gate
     validates the batch and commit or merge maintenance publishes that recorded
     range, so authoring a snippet invokes no publication of its own. Initial
@@ -75,6 +76,16 @@ tooling.
     eventual commit — they are build outputs and reflect the committed truth of
     the docs directory. This step supplies neither authoring nor commit
     authority.
+<!-- change:home-publication-sync -->
+9.  Publication happens only from committed state: the commit gate validates
+    the batch, and commit or merge maintenance publishes the committed result,
+    so authoring a snippet invokes no publication of its own. `telec sync`, run
+    from a home's own directory, republishes that home's committed state when
+    maintenance did not. No path publishes the caller's working tree. Keep
+    regenerated index files with the eventual commit — they are build outputs
+    and reflect the committed truth of the docs directory. This step supplies
+    neither authoring nor commit authority.
+<!-- /planned-change:home-publication-sync -->
 10. Do not edit `docs/index.yaml` directly; the internal committed-state index build owns it.
 
 11. Avoid creating index.md files; only baseline.md manifests are allowed.

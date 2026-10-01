@@ -39,10 +39,16 @@ remote setup never gates project setup.
 
 `telec config project init` materializes the declaration and converges the project's
 filters and hooks. It does not publish documentation or agent artifacts from
+<!-- planned-change:home-publication-sync -->
 the setup working tree. The first validated canonical commit activates those
 sources through commit maintenance; an initial activation before that boundary
 must identify and validate a clean recorded `HEAD` rather than deploying the
 current working tree.
+<!-- change:home-publication-sync -->
+the setup working tree. The first canonical commit activates those sources
+through commit maintenance, and `telec sync` from the project's home directory
+publishes its committed state at any time; neither deploys the working tree.
+<!-- /planned-change:home-publication-sync -->
 
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
