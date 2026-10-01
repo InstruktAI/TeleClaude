@@ -168,12 +168,29 @@ action is delivered once and only a material escalation can interrupt again.
   any of them. When the change carries no recipient, delivery is the admin
   fan-out unchanged. Addressing is opt-in per notification and additive — an
   existing producer that addresses no one keeps the broadcast audience.
+<!-- planned-change:subject-scope-reach -->
 - **The addressed row is retained but withheld from the operator broadcast.** The
   durable notification row records the recipient so the projection stays
   faithful, but the shared operator surfaces — the WebSocket push and the
   unfiltered notification list — exclude addressed rows; the addressed
   notification is delivered through its principal's channel rather than shown on
   the shared console.
+<!-- change:subject-scope-reach -->
+- **The addressed row is retained but withheld from the operator broadcast.** The
+  durable notification row records the recipient so the projection stays
+  faithful, but the shared operator surfaces — the WebSocket push and the
+  shared notification list — exclude addressed rows; the addressed
+  notification is delivered through its principal's channel rather than shown on
+  the shared console.
+- **Broadcast notifications on the shared console follow the viewer's reach.**
+  The notification row records the subject of the event it projects and that
+  subject's owner. The notification list a TUI or web-console client receives
+  and every live push to it carry only the broadcast notifications whose subject
+  the viewing principal's reach admits
+  (`projects/teleclaude/spec/feature/identity/data-visibility`); a platform
+  administrator and the system principal receive every broadcast notification.
+  The external DM admin fan-out keeps its audience, the platform administrators.
+<!-- /planned-change:subject-scope-reach -->
 - **Recipient routing reuses the existing person-to-channel resolution and covers
   every configured channel.** The channel for an addressed principal comes from
   the per-person preferred-channel configuration and per-channel credential, and

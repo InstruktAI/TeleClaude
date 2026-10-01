@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:subject-scope-reach -->
 The Selection policy is the single pure-function composition point for every
 filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
@@ -24,6 +25,22 @@ snippet's own public-or-internal declaration is the only gate. Given the same In
 same inputs, the policy produces a byte-identical set of snippet IDs every
 time. This determinism is what lets the retrieval flow be cached, replayed, and
 reasoned about.
+<!-- change:subject-scope-reach -->
+The Selection policy is the single pure-function composition point for every
+filter that narrows the Index down to the snippets a caller actually wants.
+Visibility, taxonomy areas, business domains, scope across the four tiers,
+baseline-manifest anchoring, target-slug filtering, and the tier selectors all
+flow through one place. Visibility is resolved against the caller's reach for each
+tier (`projects/teleclaude/spec/feature/identity/data-visibility`): a tier the
+caller's reach admits is read in full — every tier for a platform administrator,
+and for a company administrator also the platform's shared documentation — and
+the shared documentation is otherwise read at public-only depth; where reach does
+not admit a tier, the snippet's own public-or-internal declaration is the only
+gate. Given the same Index and the
+same inputs, the policy produces a byte-identical set of snippet IDs every
+time. This determinism is what lets the retrieval flow be cached, replayed, and
+reasoned about.
+<!-- /planned-change:subject-scope-reach -->
 
 ## Canonical fields
 

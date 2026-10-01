@@ -72,6 +72,7 @@ session's role and its help-desk confinement in
    is judged by that person's effective role for the object it acts on. An
    agent's system role still narrows what it may do and never widens the
    person's role.
+<!-- planned-change:subject-scope-reach -->
 9. **The computer holding the object decides.** A command that acts on an
    object another computer holds — a session running there, a session to start
    there, an operation it owns — is authorized on that computer, the person band
@@ -94,6 +95,44 @@ session's role and its help-desk confinement in
    except that a session sees its own direct children, whose parent link the
    holding computer recorded when it admitted their start
    (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+<!-- change:subject-scope-reach -->
+9. **The computer holding the object decides.** A command that acts on an
+   object another computer holds — a session running there, a session to start
+   there, an operation it owns — is authorized on that computer, the person band
+   and the object's rules together as one decision; the caller's computer does
+   not clear the person band for it. The caller's computer establishes who is
+   calling and carries only the caller's principal over the daemon relay — a
+   command the daemon forwards on its own account carries the daemon's system
+   principal — as remote history search already does
+   (`projects/teleclaude/spec/feature/session_mirrors/cross-computer-history-federation`).
+   The target resolves that principal's roles from its own person registry,
+   company rosters, and project registry; a role or scope carried with the
+   request is never an input. The caller's computer decides only what it alone
+   holds about its own caller: that the caller is identified, that a session
+   caller's system role is admitted by the command's agent band (invariant 8),
+   and that the caller's dispatch chain permits the act; each narrows and none
+   widens. A listing or search that names another computer is answered there the
+   same way: that computer returns only what the caller's reach admits there
+   (invariant 10). Records a computer receives from its peers without a request
+   — replicated session records, relayed events — carry their subject and the
+   subject's owner as the computer that produced them resolved them; the
+   receiving computer admits them by the caller's reach over those facts, and a
+   caller still sees the records recorded under its own principal
+   (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+<!-- /planned-change:subject-scope-reach -->
+<!-- planned:subject-scope-reach -->
+10. **Seeing reads reach, not the effective role.** Which records a person may
+    see in a listing, search, push, or documentation read is read from
+    identity's reach over the record's subject, never from the effective role
+    (`projects/teleclaude/spec/domain/identity`,
+    `projects/teleclaude/spec/feature/identity/data-visibility`). A platform
+    administrator reaches every record. Below that, reach follows company
+    membership, project assignment, project ownership, and the person's own
+    home, the company scope's shared-documentation lineage reaches a company
+    administrator, and a person always sees records recorded under their own
+    principal. A platform role below administrator clears commands at platform
+    scope (invariant 4) but makes no record visible by itself.
+<!-- /planned:subject-scope-reach -->
 
 ## Primary flows
 

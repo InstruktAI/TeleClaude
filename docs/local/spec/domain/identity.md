@@ -59,6 +59,41 @@ TeleClaudeNext.
   survives a restart because the record does. Readers consume the published
   answer and never re-validate it.
 
+<!-- planned:subject-scope-reach -->
+- **Also owns:** reach — which platform records a principal may see. Identity
+  resolves it once per request from the principal and its own facts (platform
+  role, company rosters and their project assignments) together with config's
+  project ownership. A long-lived consumer holds the resolved reach until a
+  declaration identity reads changes, and never past that change. Reach admits a
+  record by three facts the record carries — its subject, the subject's owner as
+  resolved where the record was made, and the principal it is recorded under:
+  - a platform administrator and the system principal: every record;
+  - a company subject: every person on that company's roster;
+  - a person subject: that person;
+  - a project subject this computer registers: the owning company's
+    administrators and the roster members assigned to it, or the owning person,
+    read from the current ownership;
+  - a project subject this computer does not register: the same test against the
+    owner the record carries — an administrator of the carried owning company, a
+    member whose roster in that company assigns the project, or the carried
+    owning person;
+  - the platform's shared documentation: additionally every company
+    administrator;
+  - a record recorded under the caller's own principal: the caller.
+
+  No subject, an unowned project, and an owner nothing resolves admit only the
+  first rule. A platform role below administrator admits nothing of its own; it
+  still counts where authorization reads the effective role.
+- **Published contract — reach:** one resolved value per principal with two
+  appliers: a test of one record's facts, for streams and file-based data, and a
+  query predicate over a store's subject, owner, and principal columns, applied
+  before paging. Neither performs a lookup per record. Consumers own which facts
+  their records carry and their own audience facts — public and person-local
+  documentation, addressed notifications — and never add, relax, or re-derive
+  reach. The behavioral contract is
+  `projects/teleclaude/spec/feature/identity/data-visibility`.
+<!-- /planned:subject-scope-reach -->
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

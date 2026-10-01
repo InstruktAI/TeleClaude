@@ -19,6 +19,7 @@ claims the transcript through the queries agent_runtime publishes for its sessio
 records, and never reads those records' storage itself. It records what that
 record establishes, in two places.
 
+<!-- planned-change:subject-scope-reach -->
 - **The session attribution.** Each TeleClaude session with a mirrored
   transcript holds one session attribution in the mirror store: its TeleClaude
   session id, the principal it ran under, the registered project it ran in, its
@@ -26,6 +27,18 @@ record establishes, in two places.
   agent started it, the scheduled job it ran for, and when it started and closed.
   Every mirror of the session links to that attribution and records its position
   in the session's transcript chain.
+<!-- change:subject-scope-reach -->
+- **The session attribution.** Each TeleClaude session with a mirrored
+  transcript holds one session attribution in the mirror store: its TeleClaude
+  session id, the principal it ran under, the registered project it ran in, the
+  subject the session recorded — the project, person, or company home it landed
+  in, or none — with that subject's owner, its subfolder, the session that
+  started it and that session's computer, whether an agent started it, the
+  scheduled job it ran for, and when it started and closed. Every mirror of the
+  session links to that attribution and records its position in the session's
+  transcript chain. An attribution written before sessions recorded a subject
+  receives the subject its session record carries, once.
+<!-- /planned-change:subject-scope-reach -->
 - **The mirror itself.** `human_email`, `visibility`, `project_path` (the
   checkout the session ran in), `computer`, the launch command and the todo it
   worked, the worker classification, the title, and the origin channel with its

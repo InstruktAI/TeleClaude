@@ -48,12 +48,21 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
   `state: "completed"|"failed"|"stale"` and `result` or `error`.
 - **Output (delivery):** the caller recorded on the row is woken with an address —
   operation identity, outcome, and the command that reads the record.
+<!-- planned-change:subject-scope-reach -->
 - Operation rows are keyed to the caller session; a caller may inspect its own, and a caller whose
   effective role for the operation's project is `admin` (`projects/teleclaude/design/architecture/scoped-roles`)
   may inspect any in that project; an operation acting on a session belongs to that session's project.
   A read from another computer carries no session
   (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`), so there a caller's own operation is
   one whose command the caller's principal started.
+<!-- change:subject-scope-reach -->
+- Operation rows are keyed to the caller session and record the subject the operation runs in —
+  the subject of its working folder, or of the session it acts on. A caller may inspect its own,
+  and any operation whose subject its reach admits
+  (`projects/teleclaude/spec/feature/identity/data-visibility`). A read from another computer
+  carries no session (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+  so there a caller's own operation is one whose command the caller's principal started.
+<!-- /planned-change:subject-scope-reach -->
 
 ## Invariants
 

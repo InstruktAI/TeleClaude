@@ -64,12 +64,25 @@ contracts and never creates shared ownership.
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 
+<!-- planned-change:subject-scope-reach -->
 - `context` resolves a caller's documentation reach from `identity`'s resolved
   person and resolved organizational membership, and from `config`'s project-tier
   declaration of an owning company. `identity` owns what those facts mean;
   `config` owns the declarations behind them; `context` owns only what a given
   set of relationships permits a caller to read, and never infers a relationship
   the resolved facts do not state.
+<!-- change:subject-scope-reach -->
+- `identity` publishes each principal's reach — which records it may see, by
+  each record's subject, the subject's owner, and the principal it is recorded
+  under — built from its own membership facts and `config`'s project ownership.
+  The surfaces that show records to principals consume it: `agent_runtime`
+  (session listings, live session updates, and operation status),
+  `session_mirrors` (history), `context` (documentation depth), the event platform's
+  notifications, and `config`'s project listing. Each consumer owns which facts
+  its records carry and its own audience facts, such as public and
+  person-local documentation or addressed notifications; none adds, relaxes, or
+  re-derives reach, and `identity` never decides a consumer's audience facts.
+<!-- /planned-change:subject-scope-reach -->
 
 - The sealed commit surface (`agent_runtime`) reads tier answers from `config`
   at two coordinates — the repository root's declared tier, and the acting

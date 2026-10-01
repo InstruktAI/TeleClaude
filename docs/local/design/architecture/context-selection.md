@@ -185,6 +185,7 @@ so its default read set is global and what the invocation offers. Its depth is
 full on every tier it reaches, as a platform administrator's is, so a tier it
 names is read in full.
 
+<!-- planned-change:subject-scope-reach -->
 **Depth follows the effective role.** A person's depth on a tier is decided by
 their effective role for it (`projects/teleclaude/design/architecture/scoped-roles`). An
 `admin` effective role reads the tier in full; a company administrator therefore
@@ -193,6 +194,17 @@ documentation in full, as a platform administrator reads every tier. Any other
 role reads its own company tier, the projects it reaches, and its own person tier
 in full, and the platform's shared documentation at public-only depth. A tier no
 role reaches is read at public-only depth.
+<!-- change:subject-scope-reach -->
+**Depth follows reach.** A person's depth on a tier is decided by identity's
+reach over that tier as a subject
+(`projects/teleclaude/spec/feature/identity/data-visibility`): a tier the reach
+admits is read in full. A platform administrator therefore reads every tier; a
+company administrator reads their company, every project it owns, and the
+platform's shared documentation in full; any other person reads their company
+tiers, the projects they are assigned to or own, and their own person tier in
+full, and the platform's shared documentation at public-only depth. A tier reach
+does not admit is read at public-only depth.
+<!-- /planned-change:subject-scope-reach -->
 
 **A person's local half is owner-only.** Its depth is not decided by effective
 role or `visibility`: a caller carrying that person's identity, or a system
