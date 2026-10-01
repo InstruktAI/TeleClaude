@@ -20,14 +20,16 @@ separately governed replacement program.
   **project** home. "Home" alone means a teleclaude home.
 - **Global home:** the platform's home at `TELECLAUDE_HOME`.
 - **Nested home:** a home inside another home's folder within the same
-  repository's committed tree, such as the company and person homes inside the
-  global home, or project homes inside a monorepo.
+  repository's committed tree: the company and person homes inside the global
+  home. The global home's repository is the only one that holds nested homes,
+  because a project home is always the root of its own repository.
 - **Owning home:** the nearest home above a path in the same repository's
   committed tree. It owns that path.
 - **Home material:** every path a home owns, including folders that hold no
   `teleclaude.yml` of their own, such as a help desk.
 - **Foreign root:** a separate repository inside a home's folder. It is never
-  part of that home, and its homes belong to its own repository.
+  part of that home, and its homes belong to its own repository. A project a
+  person keeps inside their home's folder is a foreign root of the global home.
 - **Tier:** the code's name for the kind of a company or person home.
 
 ### Maintenance and authority
