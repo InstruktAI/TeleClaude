@@ -12,6 +12,11 @@ from teleclaude.core.models import (
     SessionFinalOutput,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.transport.peer_heartbeat import (
+    CONVERSATION_ADAPTERS_FIELD,
+    CONVERSATION_ROUTING_FIELD,
+    HELP_DESKS_FIELD,
+)
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
@@ -100,6 +105,10 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
                     if peer_info.is_master is not None:
                         peer_dict["is_master"] = peer_info.is_master
                     peer_dict["capability_set"] = peer_info.capability_set
+                    peer_dict[HELP_DESKS_FIELD] = peer_info.help_desks
+                    if peer_info.conversation_adapters is not None:
+                        peer_dict[CONVERSATION_ADAPTERS_FIELD] = peer_info.conversation_adapters
+                    peer_dict[CONVERSATION_ROUTING_FIELD] = peer_info.conversation_routing
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
             except Exception as e:

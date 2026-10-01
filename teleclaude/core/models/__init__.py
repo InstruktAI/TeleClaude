@@ -4,10 +4,15 @@ Re-exports all public names from submodules for backward compatibility.
 """
 
 from ._adapter import (
+    ENDPOINT_SECTION,
     AdapterType,
     DiscordAdapterMetadata,
     DiscordMetadataField,
+    EndpointKind,
+    EndpointStamp,
+    EndpointStampField,
     GenerationHandle,
+    HelpDeskKind,
     ObservedStopPublication,
     PeerCapabilityMissing,
     PeerInfo,
@@ -80,6 +85,7 @@ from ._types import (
 __all__ = [
     "CONFINEMENT_PROFILE_KEY",
     "CONFINEMENT_SECTION",
+    "ENDPOINT_SECTION",
     "FIELD_KIND",
     # _adapter
     "AdapterType",
@@ -97,9 +103,13 @@ __all__ = [
     "ContentFormat",
     "DiscordAdapterMetadata",
     "DiscordMetadataField",
+    "EndpointKind",
+    "EndpointStamp",
+    "EndpointStampField",
     "FileContext",
     # _adapter
     "GenerationHandle",
+    "HelpDeskKind",
     # _human_message
     "HumanActionIntent",
     "HumanFacingMessage",

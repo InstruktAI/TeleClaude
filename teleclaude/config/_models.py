@@ -294,7 +294,6 @@ class ComputerConfig(ClosedModel):
     role: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
     timezone: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
     default_working_dir: TEXT = Field(json_schema_extra={"tier": Tier.INTERNAL})
-    help_desk_dir: TEXT = Field(json_schema_extra={"tier": Tier.INTERNAL})
     is_master: TRUTHY = Field(json_schema_extra={"tier": Tier.TUI})
     # Optional LAN address override; auto-detected when unset.
     host: TEXT | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})

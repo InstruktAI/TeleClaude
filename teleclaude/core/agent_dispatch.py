@@ -23,6 +23,7 @@ from teleclaude.core.agent_availability import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
+from teleclaude.core.models._adapter import EndpointStamp
 from teleclaude.core.models._session import AgentDispatchMode
 from teleclaude.core.session_startup_message import resolve_slash_command
 
@@ -272,9 +273,19 @@ def _order_for(
     return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.COMMAND_POLICY
 
 
-def desk_session_kind(system_role: str | None, human_role: str | None) -> DispatchSessionKind | None:
-    """Return the help-desk session kind for a session whose roles place it at a desk."""
-    return DispatchSessionKind.HELP_DESK if is_desk_role(system_role, human_role) else None
+def desk_session_kind(
+    system_role: str | None,
+    human_role: str | None,
+    endpoint: EndpointStamp | None = None,
+) -> DispatchSessionKind | None:
+    """Return the help-desk session kind for a session placed at a desk.
+
+    A session is a desk session when its roles place it at a desk (below
+    member, no system role) or when its endpoint is a help desk, whatever the
+    entering person's role.
+    """
+    at_desk = is_desk_role(system_role, human_role) or (endpoint is not None and endpoint.is_help_desk)
+    return DispatchSessionKind.HELP_DESK if at_desk else None
 
 
 def _desk_confined(agent: str) -> bool:

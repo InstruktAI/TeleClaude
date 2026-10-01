@@ -90,9 +90,10 @@ from teleclaude.core.adapter_errors import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, VoiceFocusSetContext
-from teleclaude.core.identity import session_person_role
+from teleclaude.core.inbound.adoption import shared_conversation_of
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
-from teleclaude.core.models import ContentFormat, MessageMetadata
+from teleclaude.core.models import ContentFormat, EndpointStamp, MessageMetadata
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.protocols import AdminReflectionAdapter
 from teleclaude.core.session_links import close_link_for_member
 from teleclaude.core.session_listeners import unregister_listener
@@ -104,6 +105,7 @@ _UNSUBSCRIBE_CALLER_SESSION_REQUIRED = "unsubscribe always carries a verified ca
 _DELIVER_RESULT_SESSION_REQUIRED = "deliver_result always carries the caller's session id"
 _DELIVER_FILE_SESSION_REQUIRED = "deliver_file always carries the caller's session id"
 _ESCALATE_SESSION_ID_REQUIRED = "escalate_session always carries the caller's session id"
+_ESCALATION_NOT_AVAILABLE = "Escalation is not available for this desk yet"
 
 
 class UnsubscribeSessionPayload(TypedDict):
@@ -440,13 +442,20 @@ class CommandService:
         }
 
     async def _handle_escalate_session(self, cmd: SystemCommand) -> object:
-        """Escalate a customer session to an admin via Discord."""
+        """Escalate a platform help-desk session whose conversation is on Discord.
+
+        Only there does a relay to the shared escalation thread exist; every
+        other session is refused as not available for its desk yet.
+        """
         assert cmd.session_id is not None, _ESCALATE_SESSION_ID_REQUIRED
         session = await db.get_session(cmd.session_id)
         if not session:
             raise ValueError(f"Session {cmd.session_id} not found")
-        if session_person_role(session) != "customer":
-            raise ValueError("Escalation is only available in customer sessions")
+        endpoint = EndpointStamp.from_session(session)
+        conversation = shared_conversation_of(session)
+        on_discord = conversation is not None and conversation[0] is InputOrigin.DISCORD
+        if endpoint is None or not endpoint.is_platform_desk or not on_discord:
+            raise ValueError(_ESCALATION_NOT_AVAILABLE)
 
         admin_adapter: AdminReflectionAdapter | None = None
         for adapter in self.client.adapters.values():

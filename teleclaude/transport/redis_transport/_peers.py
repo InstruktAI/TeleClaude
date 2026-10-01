@@ -14,7 +14,15 @@ from teleclaude.core.models import JsonDict, MessageMetadata, PeerInfo
 from teleclaude.core.reconciliation import decode_capability_set
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
-from teleclaude.transport.peer_heartbeat import decode_heartbeat_payload, heartbeat_scan_pattern
+from teleclaude.transport.peer_heartbeat import (
+    CONVERSATION_ADAPTERS_FIELD,
+    CONVERSATION_ROUTING_FIELD,
+    HELP_DESKS_FIELD,
+    decode_announced_strings,
+    decode_heartbeat_payload,
+    decode_optional_announced_strings,
+    heartbeat_scan_pattern,
+)
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
@@ -211,6 +219,9 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             channel=self._optional_text(computer_info.get("channel")),
             capability_set=capability_set,
             is_master=self._optional_bool(computer_info.get("is_master")),
+            help_desks=decode_announced_strings(computer_info.get(HELP_DESKS_FIELD)),
+            conversation_adapters=decode_optional_announced_strings(computer_info.get(CONVERSATION_ADAPTERS_FIELD)),
+            conversation_routing=computer_info.get(CONVERSATION_ROUTING_FIELD) is True,
         )
 
     def _optional_text(self, value: object) -> str | None:

@@ -11,6 +11,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
+from typing import Protocol
 
 from teleclaude.types import SystemStats
 
@@ -66,6 +67,12 @@ class PeerInfo:
     channel: str | None = None
     capability_set: list[str] = field(default_factory=list)
     is_master: bool | None = None
+    # Desk identifiers the peer announces hosting; empty when it announces none.
+    help_desks: list[str] = field(default_factory=list)
+    # Conversation adapters the peer runs; ``None`` when it does not announce them.
+    conversation_adapters: list[str] | None = None
+    # Whether the peer routes shared-adapter conversations through the mesh master.
+    conversation_routing: bool = False
 
 
 @dataclass(frozen=True)
@@ -225,6 +232,99 @@ class WhatsAppAdapterMetadata:
 
     def to_dict(self) -> JsonDict:
         """Serialize to dict, excluding None fields."""
+        return dict(asdict_exclude_none(self))
+
+
+ENDPOINT_SECTION = "endpoint"
+
+
+class EndpointKind(StrEnum):
+    """What a session was created at: a person's assistant or a home's help desk."""
+
+    ASSISTANT = "assistant"
+    HELP_DESK = "help_desk"
+
+
+class HelpDeskKind(StrEnum):
+    """The kind of home a help desk belongs to."""
+
+    PLATFORM = "platform"
+    COMPANY = "company"
+    PROJECT = "project"
+
+
+class EndpointStampField(StrEnum):
+    """Persisted key names in a session's root ``endpoint`` origin section."""
+
+    KIND = "kind"
+    DESK_KIND = "desk_kind"
+    SLUG = "slug"
+    PERSON = "person"
+    SUPERSEDED_AT = "superseded_at"
+
+
+class _OriginMetadataHolder(Protocol):
+    origin_metadata: JsonDict
+
+
+@dataclass(frozen=True)
+class EndpointStamp:
+    """The endpoint a session was created at, stamped beside its adapter origin metadata.
+
+    ``slug`` names the desk's home for a help desk; ``person`` names the
+    assistant's person. ``superseded_at`` is set once a later entry of the same
+    conversation took the conversation elsewhere.
+    """
+
+    kind: EndpointKind
+    desk_kind: HelpDeskKind | None = None
+    slug: str | None = None
+    person: str | None = None
+    superseded_at: str | None = None
+
+    @property
+    def is_help_desk(self) -> bool:
+        """Whether this stamp names a help desk of any kind."""
+        return self.kind is EndpointKind.HELP_DESK
+
+    @property
+    def is_tenant_desk(self) -> bool:
+        """Whether this stamp names a company or project help desk."""
+        return self.is_help_desk and self.desk_kind in (HelpDeskKind.COMPANY, HelpDeskKind.PROJECT)
+
+    @property
+    def is_platform_desk(self) -> bool:
+        """Whether this stamp names the platform help desk."""
+        return self.is_help_desk and self.desk_kind is HelpDeskKind.PLATFORM
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> "EndpointStamp | None":
+        """Deserialize a stored section; a section without a known kind is no stamp."""
+        try:
+            kind = EndpointKind(str(raw.get(EndpointStampField.KIND)))
+        except ValueError:
+            return None
+        desk_kind_raw = raw.get(EndpointStampField.DESK_KIND)
+        try:
+            desk_kind = HelpDeskKind(str(desk_kind_raw)) if desk_kind_raw is not None else None
+        except ValueError:
+            return None
+        return cls(
+            kind=kind,
+            desk_kind=desk_kind,
+            slug=_str_or_none(raw.get(EndpointStampField.SLUG)),
+            person=_str_or_none(raw.get(EndpointStampField.PERSON)),
+            superseded_at=_str_or_none(raw.get(EndpointStampField.SUPERSEDED_AT)),
+        )
+
+    @classmethod
+    def from_session(cls, session: _OriginMetadataHolder) -> "EndpointStamp | None":
+        """Read the root ``endpoint`` section a session was created with, if any."""
+        section = session.origin_metadata.get(ENDPOINT_SECTION)
+        return cls.from_dict(section) if isinstance(section, dict) else None
+
+    def to_dict(self) -> JsonDict:
+        """Serialize to the stored section, excluding absent fields."""
         return dict(asdict_exclude_none(self))
 
 

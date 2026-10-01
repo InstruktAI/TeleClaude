@@ -30,6 +30,11 @@ another. Both scope session resolution by channel through the same seam and pers
 channel binding on the session for outbound delivery — the DM policy keys on the DM channel
 with the session's guild id unset.
 
+A direct message that is exactly an entry identifier is an entry: the core resolves
+it and creates a new session at that endpoint, and the DM channel's latest session is
+then that one (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A help desk's identifier therefore moves the DM to that
+desk, and the person's own invitation token moves it back to their personal assistant.
+
 ## Canonical fields
 
 ### Use cases
@@ -61,4 +66,14 @@ Given a personal-assistant session bound to a Discord DM channel
 When the assistant produces output for that session
 Then the output destination resolves to the originating DM channel
 And no guild forum thread is created for the session
+```
+
+#### UC-DM-HELP-DESK-ENTRY: An entry identifier sent as a DM moves the DM channel to that endpoint
+
+```
+Given a person bound to a Discord account whose DM channel reaches their personal assistant
+When the person sends a help desk's entry identifier as a direct message
+Then a new session is created at that desk and their next direct messages reach it
+When the person later sends their own invitation token as a direct message
+Then a new personal-assistant session is created and their next direct messages reach it
 ```

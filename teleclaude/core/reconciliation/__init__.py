@@ -2,6 +2,7 @@
 
 from teleclaude.core.reconciliation.capability_map import FleetCapabilityEntry, FleetCapabilityMap
 from teleclaude.core.reconciliation.feature_ids import (
+    CONVERSATION_ENTRY_FEATURE_ID,
     DEFAULT_FEATURE_ID_REGISTRY,
     DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
     FLEET_CROSS_VERSION_INTEROP_FEATURE_ID,
@@ -15,6 +16,7 @@ from teleclaude.core.reconciliation.feature_ids import (
 )
 
 __all__ = [
+    "CONVERSATION_ENTRY_FEATURE_ID",
     "DEFAULT_FEATURE_ID_REGISTRY",
     "DETERMINISTIC_AGENT_ROUTING_FEATURE_ID",
     "FLEET_CROSS_VERSION_INTEROP_FEATURE_ID",

@@ -39,6 +39,9 @@ visibility: 'public'
   - `telec mcp list-tools <slug>` initializes or reuses the daemon-owned lease for one server and prints its tool catalog.
   - `telec mcp call <slug> <tool> --json '<arguments>'` invokes one MCP tool through the daemon-owned lease and returns the tool result.
 
+- Help-desk CLI mappings:
+  - `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>` render that home's help-desk entry links, one per adapter configured on the computer that runs them, and fail when the desk is not enabled or not hosted there (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+
 ## Known caveats
 
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).

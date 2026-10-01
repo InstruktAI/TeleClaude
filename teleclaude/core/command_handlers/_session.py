@@ -34,11 +34,15 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.db import db
+from teleclaude.core.endpoints import hosted_help_desks
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.inbound.adoption import shared_routing_activated
+from teleclaude.core.inbound.fleet import local_conversation_adapters
 from teleclaude.core.models import (
     CONFINEMENT_PROFILE_KEY,
     CONFINEMENT_SECTION,
+    ENDPOINT_SECTION,
     ComputerInfo,
     JsonDict,
     ProjectInfo,
@@ -299,7 +303,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     initiator_session_id = resolved.initiator_session_id
     initiator_computer = resolved.initiator_computer
     cmd_system_role, cmd_job = cmd.system_role, cmd.job
-    session_kind = desk_session_kind(cmd_system_role, human_role)
+    session_kind = desk_session_kind(cmd_system_role, human_role, cmd.endpoint)
 
     decision = await _resolve_launch_intent(cmd, project_path, working_slug, session_kind)
     launch = cmd.launch_intent
@@ -358,6 +362,10 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         if session_kind is DispatchSessionKind.HELP_DESK
         else {}
     )
+    # The endpoint is a root section beside the adapter sections, written with
+    # the row, so every reader finds it through `EndpointStamp.from_session`.
+    if cmd.endpoint is not None:
+        creation_metadata[ENDPOINT_SECTION] = cmd.endpoint.to_dict()
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
@@ -598,6 +606,9 @@ async def get_computer_info() -> ComputerInfo:
         channel=config.deployment.channel,
         capability_set=sorted(DEFAULT_FEATURE_ID_REGISTRY.carried_set()),
         is_master=config.computer.is_master,
+        help_desks=[desk.render() for desk in await asyncio.to_thread(hosted_help_desks)],
+        conversation_adapters=sorted(local_conversation_adapters()),
+        conversation_routing=await shared_routing_activated(db),
     )
 
     logger.debug("get_computer_info() returning info: %s", info)

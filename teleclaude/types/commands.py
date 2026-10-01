@@ -9,8 +9,9 @@ from uuid import uuid4
 
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
+from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
+from teleclaude.types.media import MediaRef
 
 
 class CommandType(str, Enum):
@@ -168,8 +169,8 @@ class InternalCommand:
                 payload[name] = value.value
             elif name == "launch_intent":
                 payload[name] = cast("SessionLaunchIntent", value).to_dict()
-            elif name == "caller":
-                payload[name] = cast(CallerProvenance, value).to_dict()
+            elif isinstance(value, CallerProvenance | EndpointStamp | MediaRef):
+                payload[name] = value.to_dict()
             elif isinstance(value, Mapping):
                 payload[name] = _json_dict(value)
             elif isinstance(value, list):
@@ -240,6 +241,7 @@ class CreateSessionCommand(InternalCommand):
     entry_point: SessionEntryPoint | None = None
     command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
     command_input_source_text: str | None = None
+    endpoint: EndpointStamp | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -507,6 +509,7 @@ class HandleVoiceCommand(InternalCommand):
     origin_metadata: Mapping[str, object] | None = None
     voice_transcription_id: int | None = None
     notice_message_id: str | None = None
+    media_ref: MediaRef | None = None
 
     def __init__(
         self,
@@ -523,6 +526,7 @@ class HandleVoiceCommand(InternalCommand):
         origin_metadata: Mapping[str, object] | None = None,
         voice_transcription_id: int | None = None,
         notice_message_id: str | None = None,
+        media_ref: MediaRef | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
@@ -538,6 +542,7 @@ class HandleVoiceCommand(InternalCommand):
         self.origin_metadata = origin_metadata
         self.voice_transcription_id = voice_transcription_id
         self.notice_message_id = notice_message_id
+        self.media_ref = media_ref
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -576,6 +581,7 @@ class HandleFileCommand(InternalCommand):
     filename: str
     caption: str | None = None
     file_size: int = 0
+    media_ref: MediaRef | None = None
 
     def __init__(
         self,
@@ -585,6 +591,7 @@ class HandleFileCommand(InternalCommand):
         filename: str,
         caption: str | None = None,
         file_size: int = 0,
+        media_ref: MediaRef | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_FILE, request_id=request_id)
@@ -593,6 +600,7 @@ class HandleFileCommand(InternalCommand):
         self.filename = filename
         self.caption = caption
         self.file_size = file_size
+        self.media_ref = media_ref
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -963,6 +971,10 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             value = DiscordThreadClaimLifecycle(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
+        elif name == "endpoint" and isinstance(raw_value, dict):
+            value = EndpointStamp.from_dict(raw_value)
+        elif name == "media_ref" and isinstance(raw_value, dict):
+            value = MediaRef.from_dict(raw_value)
         kwargs[name] = value
 
     command = cast(InternalCommand, cast(Any, command_cls)(**kwargs))

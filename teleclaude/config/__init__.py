@@ -108,9 +108,6 @@ from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL as DIRECTORY_CHECK_INTERVAL,
 )
 from teleclaude.constants import (
-    HELP_DESK_SUBDIR as HELP_DESK_SUBDIR,
-)
-from teleclaude.constants import (
     OUTPUT_CADENCE_S as OUTPUT_CADENCE_S,
 )
 from teleclaude.constants import (

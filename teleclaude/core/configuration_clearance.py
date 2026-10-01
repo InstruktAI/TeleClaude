@@ -51,6 +51,7 @@ class ConfigurationOperation(StrEnum):
     REMOVE = "remove"
     INVITE = "invite"
     BIND_VOICE_BOT = "bind_voice_bot"
+    HELP_DESK_LINKS = "help_desk_links"
 
 
 class RequiredStanding(StrEnum):

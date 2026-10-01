@@ -13,6 +13,12 @@ from teleclaude.paths import MAIN_DB_PATH
 from ._agent_stops import DbAgentStopsMixin
 from ._base import DbBase
 from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
+from ._conversation_bindings import (
+    ConversationAdoptionSource,
+    ConversationBinding,
+    ConversationBindingOrphan,
+    DbConversationBindingsMixin,
+)
 from ._conversation_delivery import DbConversationDeliveryMixin
 from ._discord_reflection import DbDiscordReflectionMixin
 from ._hooks import DbHooksMixin
@@ -51,6 +57,7 @@ from ._webhooks import DbWebhooksMixin
 
 
 class Db(
+    DbConversationBindingsMixin,
     DbDiscordReflectionMixin,
     DbAgentStopsMixin,
     DbControlDeliveryMixin,
@@ -101,6 +108,9 @@ async def get_db() -> Db:
 __all__ = [
     "AcceptedTurnBindingRecord",
     "ControlDeliveryRecord",
+    "ConversationAdoptionSource",
+    "ConversationBinding",
+    "ConversationBindingOrphan",
     "Db",
     "DiscordSendIntent",
     "HookOutboxRow",

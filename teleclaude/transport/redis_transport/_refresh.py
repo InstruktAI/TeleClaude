@@ -16,6 +16,13 @@ from teleclaude.core.models import ComputerInfo, JsonDict
 from teleclaude.core.reconciliation import decode_capability_set
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
+from teleclaude.transport.peer_heartbeat import (
+    CONVERSATION_ADAPTERS_FIELD,
+    CONVERSATION_ROUTING_FIELD,
+    HELP_DESKS_FIELD,
+    decode_announced_strings,
+    decode_optional_announced_strings,
+)
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
@@ -109,6 +116,9 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 channel=peer.channel,
                 capability_set=peer.capability_set,
                 is_master=peer.is_master,
+                help_desks=peer.help_desks,
+                conversation_adapters=peer.conversation_adapters,
+                conversation_routing=peer.conversation_routing,
             )
             self.cache.update_computer(computer_info)
 
@@ -280,6 +290,9 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                     channel=cast("str | None", info.get("channel")),
                     capability_set=decode_capability_set(info.get("capability_set")),
                     is_master=(cast(bool, info["is_master"]) if isinstance(info.get("is_master"), bool) else None),
+                    help_desks=decode_announced_strings(info.get(HELP_DESKS_FIELD)),
+                    conversation_adapters=decode_optional_announced_strings(info.get(CONVERSATION_ADAPTERS_FIELD)),
+                    conversation_routing=info.get(CONVERSATION_ROUTING_FIELD) is True,
                 )
                 self.cache.update_computer(computer_info)
 

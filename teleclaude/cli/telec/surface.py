@@ -77,6 +77,9 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
 
 
 _HELP_DESK_ADMIN_NOTE = "--help-desk requires administrator authority over the home."
+_HELP_DESK_LINKS_NOTE = (
+    "Renders only where the desk is enabled; a Discord visitor sends the identifier as their first message."
+)
 # Enabling a help desk is judged at the home it opens, at the admin band; plain init stays a
 # platform-scope member act.
 _HELP_DESK_COMPANY_INIT_AUTH = CommandAuth(
@@ -1295,6 +1298,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
                     ),
+                    "help-desk-links": CommandDef(
+                        desc="Print the entry links of a company's help desk hosted on this computer",
+                        args="<slug> [--json]",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                        notes=[_HELP_DESK_LINKS_NOTE],
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.CONFIG_SUBJECT),
+                    ),
                 },
             ),
             "project": CommandDef(
@@ -1346,6 +1356,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             human=_HR_ADMIN,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
+                    ),
+                    "help-desk-links": CommandDef(
+                        desc="Print the entry links of a project's help desk hosted on this computer",
+                        args="<slug> [--json]",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                        notes=[_HELP_DESK_LINKS_NOTE],
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.CONFIG_SUBJECT),
                     ),
                 },
             ),
@@ -1792,3 +1809,5 @@ CONFIG_PROJECT_LIST = CLI_SURFACE["config"].subcommands["project"].subcommands["
 CONFIG_PROJECT_GET = CLI_SURFACE["config"].subcommands["project"].subcommands["get"]
 CONFIG_PROJECT_INIT = CLI_SURFACE["config"].subcommands["project"].subcommands["init"]
 CONFIG_PROJECT_PATCH = CLI_SURFACE["config"].subcommands["project"].subcommands["patch"]
+CONFIG_COMPANY_HELP_DESK_LINKS = CLI_SURFACE["config"].subcommands["company"].subcommands["help-desk-links"]
+CONFIG_PROJECT_HELP_DESK_LINKS = CLI_SURFACE["config"].subcommands["project"].subcommands["help-desk-links"]

@@ -11,7 +11,13 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.core import command_handlers
-from teleclaude.transport.peer_heartbeat import heartbeat_key
+from teleclaude.core.inbound.fleet import FleetView, fleet_member_from_peer_info, local_fleet_member
+from teleclaude.transport.peer_heartbeat import (
+    CONVERSATION_ADAPTERS_FIELD,
+    CONVERSATION_ROUTING_FIELD,
+    HELP_DESKS_FIELD,
+    heartbeat_key,
+)
 
 logger = get_logger(__name__)
 
@@ -19,6 +25,7 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
 
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.models import PeerInfo
 
 
 class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
@@ -44,6 +51,10 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             _ = (_context, _exc)
             raise NotImplementedError
 
+        async def discover_peers(self) -> list[PeerInfo]:
+            """Return every live peer from its heartbeat."""
+            raise NotImplementedError
+
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
 
@@ -67,6 +78,10 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         key = heartbeat_key(self.computer_name)
 
         info = await command_handlers.get_computer_info()
+        fleet = FleetView(
+            local=local_fleet_member(info.help_desks),
+            peers=tuple(fleet_member_from_peer_info(peer) for peer in await self.discover_peers()),
+        )
         payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
             "computer_name": self.computer_name,
             "last_seen": datetime.now(UTC).isoformat(),
@@ -78,6 +93,11 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             "channel": info.channel,
             "capability_set": info.capability_set,
             "is_master": info.is_master,
+            # Desks are announced only once every live computer carries endpoint
+            # routing, so no older receiver is ever named as a desk's host.
+            HELP_DESKS_FIELD: info.help_desks if fleet.conversation_entry_safe() else [],
+            CONVERSATION_ADAPTERS_FIELD: info.conversation_adapters,
+            CONVERSATION_ROUTING_FIELD: info.conversation_routing,
         }
 
         # Set key with auto-expiry

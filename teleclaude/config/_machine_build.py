@@ -37,7 +37,6 @@ from teleclaude.config._remote_computers import RemoteComputerConfig
 from teleclaude.config.observation import credential_field_sources, credential_section_availability
 from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL,
-    HELP_DESK_SUBDIR,
     OUTPUT_CADENCE_S,
     WHATSAPP_API_VERSION,
 )
@@ -93,7 +92,6 @@ class _MachineField(StrEnum):
     EMAIL = "email"
     EVENT_RELIABILITY = "event_reliability"
     EXPERIMENTS = "experiments"
-    HELP_DESK_DIR = "help_desk_dir"
     HOST = "host"
     LOAD_ID = "load_id"
     MESSAGE = "message"
@@ -389,7 +387,6 @@ class _MachineConfigDerivation:
     login: str
     lan_ip: str
     working_dir: str
-    help_desk_dir: str
     tmux_binary: str
     whatsapp_api_version: str
     initial_issues: tuple[ConfigValidationIssue, ...] = ()
@@ -429,13 +426,6 @@ class _MachineConfigDerivation:
                     (_MachineField.COMPUTER.value, field.value),
                     issues,
                 )
-            if _MachineField.HELP_DESK_DIR in computer_data:
-                _scalar_input_issue(
-                    computer_data[_MachineField.HELP_DESK_DIR],
-                    (_MachineField.COMPUTER.value, _MachineField.HELP_DESK_DIR.value),
-                    issues,
-                )
-            computer_data[_MachineField.HELP_DESK_DIR] = self.help_desk_dir
             computer_data[_MachineField.TMUX_BINARY] = self.tmux_binary
             prepared[_MachineField.COMPUTER] = computer_data
 
@@ -630,7 +620,6 @@ def build_config_from_raw(
             login=getpass.getuser() if not computer_user else str(computer_user),
             lan_ip=detect_lan_ip() if not computer_host else str(computer_host),
             working_dir=WORKING_DIR,
-            help_desk_dir=str(Path.home() / HELP_DESK_SUBDIR),
             tmux_binary=resolve_tmux_binary(),
             whatsapp_api_version=WHATSAPP_API_VERSION,
             initial_issues=tuple(initial_issues),

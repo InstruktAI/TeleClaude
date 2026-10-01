@@ -109,6 +109,15 @@ implementation remain the current appliance contract.
   addressed to its own computer with a durable operation receipt, so the
   operation exists before any fallible step; a submission that itself fails is
   emitted as a platform error event. It takes no further decision.
+- **Owns (conversation entry, adapter side):** recognising an entry identifier
+  in what a person sent — however the adapter carries it — and handing it to the
+  core; on a per-computer adapter, keeping its lookup of a person's latest
+  session by origin metadata; and delivering to the endpoint the core returns
+  (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+- **Does not own (conversation entry):** resolving an identifier to an endpoint,
+  the endpoint registry, the neutral reply, which computer acts, or the
+  escalation relay — the core's (`agent_runtime`); whether a home runs a desk
+  (`config`); what a desk session may read (`context`).
 
 ## See Also
 

@@ -405,6 +405,12 @@ class ComputerInfo:
     channel: str | None = None
     capability_set: list[str] = field(default_factory=list)
     is_master: bool | None = None
+    # Desk identifiers this computer hosts (enabled company and project desks).
+    help_desks: list[str] = field(default_factory=list)
+    # Conversation adapters this computer runs; ``None`` when unknown.
+    conversation_adapters: list[str] | None = None
+    # Whether this computer routes shared-adapter conversations through the mesh master.
+    conversation_routing: bool = False
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert computer info to a JSON-compatible dictionary."""

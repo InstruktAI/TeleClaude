@@ -31,7 +31,7 @@ And the session's notices and answer return to that human on the same origin ada
 Given a human is using a non-Discord adapter
 When the adapter publishes or handles its interactive surface
 Then it offers no agent selection, session lifecycle, raw-key, channel-management, or admin-reflection controls
-And identity or invitation binding remains available as the entry into conversation
+And identity binding, invitation binding and help-desk entry remain available as the entries into conversation
 ```
 
 #### UC-COA3: Discord retains the admin surface
@@ -53,8 +53,9 @@ And the non-Discord adapters remain conversation input→response surfaces
 
 ## Known caveats
 
-- Identity and invitation binding may use provider-native entry gestures such
-  as a start link; those gestures establish conversation identity and are not
+- Identity binding, invitation binding and help-desk entry may use
+  provider-native entry gestures such as a start link; those gestures establish
+  conversation identity or the conversation's help desk and are not
   operator-console controls.
 - Person-addressed outbound notifications use the messaging-provider contract,
   not the conversation adapter, and are unchanged by this capability.

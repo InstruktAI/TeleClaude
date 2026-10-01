@@ -32,6 +32,7 @@ visibility: public
 **Inputs:**
 
 - Telegram bot commands from users (/start, /cancel, /kill, /clear, etc.)
+- Private-chat `/start <parameter>` from a deep link, carrying an entry identifier: a member invitation token or a help desk's identifier
 
 - Text messages (user input to AI)
 
@@ -239,6 +240,22 @@ sequenceDiagram
 | Image     | Download → send to AI with caption             | AI analyzes image content            |
 | Audio     | Download → transcribe → send text to AI        | AI receives transcribed text         |
 
+### 9. Private-Chat Entry
+
+A private chat is one person's conversation with this computer's bot. The adapter carries the entry identifier as the `/start` parameter (`third-party/telegram/deep-linking`); it recognises the identifier, hands it to the core, and otherwise finds the person's latest session by its origin metadata, as for every adapter (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). It holds no routing rules of its own.
+
+```mermaid
+flowchart TD
+    IN[Private message or /start with parameter] --> ID{Carries an entry identifier?}
+    ID -->|Yes| CORE[Core resolves it to an endpoint]
+    CORE -->|Endpoint hosted here| NEW[New session at the endpoint]
+    CORE -->|Nothing servable here| NEUTRAL[Neutral reply, no session]
+    ID -->|No| LOOKUP[Latest session by origin metadata]
+    LOOKUP --> DECIDE[Core decides: that session, the role fallback, or the neutral reply]
+```
+
+Voice messages and files in a private chat take the same path as text: a sender whose chat reaches no endpoint gets the neutral reply instead of a silent drop.
+
 ## Failure modes
 
 - **Topic Creation Race**: Two events try to create topic simultaneously. Lock prevents duplicate creation; second attempt skips.
@@ -251,3 +268,4 @@ sequenceDiagram
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
 - **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.
+- **Entry Identifier for an Endpoint Hosted Elsewhere**: The identifier resolves to an endpoint this computer does not host. The sender gets the neutral reply; no session is created here or on the hosting computer, because this bot is the only one the sender reached.

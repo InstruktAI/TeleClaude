@@ -22,6 +22,13 @@ that TeleClaude creates or adopts to reflect its operational structure: admin
 categories, shared channels, help-desk forums, per-machine project forums, team
 channels, and session-launcher forum threads/messages.
 
+The shared guild reflects the platform help desk only. A session at a company's
+or a project's help desk, and its escalation, is reflected into no forum of the
+guild — not the help-desk forum, not the escalation forum, not the all-sessions
+forum, and not the forum of the project that holds the desk — so no tenant's
+customer conversation is visible to another
+(`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+
 The desired operational shape comes from configuration and the project
 registry: machine identity, master/non-master role, enabled agents, every entry
 on the machine's project registry — projects and person or company homes alike —
@@ -294,6 +301,15 @@ Given a registry folder is present on the machine but its configuration fails to
 And that folder's forum is in the machine's project category
 When the Discord reconciler runs
 Then an operator reading Discord still sees that folder's forum
+```
+
+#### UC-DARS-20: Company and project help-desk sessions stay out of the shared guild
+
+```gherkin
+Given a customer session at a project's help desk and a contributor's session at the platform help desk
+When the Discord adapter reflects sessions and escalations into the shared guild
+Then the platform desk session and its escalation are reflected in the help-desk and escalation forums
+And the project desk session and its escalation appear in no forum of the guild, the project's own forum included
 ```
 
 ### Cross-context references

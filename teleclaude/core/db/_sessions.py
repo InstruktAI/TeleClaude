@@ -861,7 +861,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             metadata_value: Value to match
 
         Returns:
-            List of matching sessions
+            Matching sessions, most recently created first
         """
         # SQLite JSON path: $.{adapter_type}.{metadata_key}
         json_path = f"$.{adapter_type}.{metadata_key}"
@@ -876,6 +876,8 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         stmt = select(db_models.Session).where(condition)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
+        # Newest first, so the first match is a conversation's latest session.
+        stmt = stmt.order_by(db_models.Session.created_at.desc())
 
         async with self._session() as db_session:
             result = await db_session.exec(stmt)

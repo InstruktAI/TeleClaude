@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.dm_before_cutover import sender_role_for_session
 from teleclaude.adapters.discord.session_launcher import (
     LauncherComponentGeneration,
     LauncherEvent,
@@ -22,10 +23,10 @@ from teleclaude.adapters.discord.session_launcher import (
     LauncherOwnershipReason,
     parse_launcher_custom_id,
 )
-from teleclaude.caller_identity import PersonCliCaller, RoleResolver, SessionOf
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db
+from teleclaude.core.endpoints import parse_entry_identifier
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     ProjectRefreshTrigger,
@@ -34,19 +35,21 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.inbound import (
-    InboundSessionPolicy,
-    handle_inbound_message,
+    BindOutcome,
+    ConversationRef,
+    ConversationTurn,
+    EntryGesture,
+    TurnCreation,
+    TurnModality,
     resolve_binding_key,
-    resolve_or_create_bound_session,
 )
+from teleclaude.core.inbound.adoption import DISCORD_DM_KEY_FIELD
+from teleclaude.core.inbound.conversation import ConversationOutcome, handle_conversation_turn
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
-    AgentDispatchMode,
-    DiscordAdapterMetadata,
     DiscordMetadataField,
+    Session,
     SessionEntryPoint,
-    SessionLaunchIntent,
-    SessionLaunchKind,
 )
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.events.envelope import EventVisibility
@@ -55,45 +58,33 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from teleclaude.adapters.discord.voice_room import VoiceRoom
-    from teleclaude.core.models import Session
 import asyncio
 from datetime import datetime
 
-from teleclaude.cli.config_handlers import get_global_config
-from teleclaude.config.invitations import find_person_by_invite_token
+from teleclaude.cli.config_handlers import get_person_config
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
     DiscordAvatarBindingReason,
-    IdentityContext,
     get_identity_resolver,
     observe_discord_avatar_binding,
     session_person_role,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.invite import bind_discord_credentials, scaffold_personal_workspace
-from teleclaude.slug import normalize_slug
-from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
+from teleclaude.invite import bind_discord_credentials
+from teleclaude.types.commands import InternalCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
 _DATA_FIELD = "data"
 _CUSTOM_ID_FIELD = "custom_id"
-
-
-def _sender_role_for_session(identity: IdentityContext | None, session: Session) -> str | None:
-    if identity is None:
-        return None
-    if not identity.person_slug:
-        return HUMAN_ROLE_CUSTOMER
-    caller = PersonCliCaller(
-        email=identity.person_email,
-        person_slug=identity.person_slug,
-        human_role=identity.person_role,
-    )
-    return RoleResolver().role_for(caller, SessionOf(session.project_path))
+_DM_USER_ID_FIELD = "user_id"
+_DM_DISCORD_USER_ID_FIELD = "discord_user_id"
+_DM_PLATFORM_FIELD = "platform"
+_RELAY_ACTIVE = "active"
+_PROCESS_MESSAGE_EVENT = "process_message"
 
 
 class GatewayHandlersMixin:
@@ -183,6 +174,8 @@ class GatewayHandlersMixin:
         async def _resolve_launcher_interaction_source(self, interaction: object) -> LauncherInteractionSource: ...
 
         async def _handle_discord_dm(self, message: object) -> None: ...
+
+        async def _handle_discord_dm_before_cutover(self, message: object) -> None: ...
 
         async def _handle_relay_thread_message(self, message: object, text: str) -> None: ...
 
@@ -426,179 +419,33 @@ class GatewayHandlersMixin:
     # =========================================================================
 
     async def _handle_discord_dm(self, message: object) -> None:
-        """Handle Direct Message (no guild) — invite token binding or bound user messaging."""
+        """Hand one direct message to the conversation seam: an identifier is an entry, else an ordinary turn."""
         author = getattr(message, "author", None)
         if not author:
             return
 
         user_id = str(getattr(author, "id", ""))
         text = getattr(message, "content", None)
-
         if not isinstance(text, str) or not text.strip():
             return
-
         text = text.strip()
-
-        # Check if message is an invite token
-        if text.startswith("inv_"):
-            await self._handle_discord_invite_token(message, user_id, text)
-            return
-
-        # Resolve identity
-        identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
-
-        if not identity or not identity.person_name:
-            # Unknown user
-            channel = getattr(message, "channel", None)
-            if channel:
-                await channel.send(
-                    "I don't recognize your account. Send me your invite token to get started, or contact your admin."
-                )
-            return
-
-        person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
-        policy = self._build_dm_session_policy(message, user_id, person_slug, identity.person_name, first_message=text)
-        await handle_inbound_message(policy)
-
-    async def _handle_discord_invite_token(self, message: object, user_id: str, token: str) -> None:
-        """Handle invite token binding in Discord DM."""
-        result = find_person_by_invite_token(token)
-        if not result:
-            channel = getattr(message, "channel", None)
-            if channel:
-                await channel.send("I don't recognize this invite. Please contact your admin.")
-            return
-
-        person_slug, person_config = result
-        display_name = next((p.name for p in get_global_config().people if p.slug == person_slug), person_slug)
-
-        # Check if credentials are already bound
-        existing_user_id = person_config.creds.discord.user_id if person_config.creds.discord else None
-
-        if existing_user_id:
-            if existing_user_id == user_id:
-                # Same user - proceed to session (already bound)
-                pass
-            else:
-                # Different user - reject
-                channel = getattr(message, "channel", None)
-                if channel:
-                    await channel.send("This invite is already associated with another account.")
-                return
-        else:
-            # Bind credentials
-            author = getattr(message, "author", None)
-            avatar_url = self._discord_actor_avatar_url(author)
-            binding_id = str(getattr(message, "id", "")).strip()
-            observe_discord_avatar_binding(
-                binding_id=binding_id,
-                outcome=DiscordAvatarBindingOutcome.ACCEPTED,
-                reason=DiscordAvatarBindingReason.UNBOUND_INVITE,
-                avatar_present=avatar_url is not None,
-            )
-            bind_discord_credentials(
-                person_slug,
-                user_id,
-                avatar_url=avatar_url,
-                binding_id=binding_id,
-            )
-
-        # Find or create the DM-bound personal-assistant session — no first message here
-        # (the token itself is not agent input), so a plain AGENT launch intent.
-        policy = self._build_dm_session_policy(message, user_id, person_slug, display_name, first_message=None)
-        session, _is_new = await resolve_or_create_bound_session(policy)
-        if not session:
-            channel = getattr(message, "channel", None)
-            if channel:
-                await channel.send("Failed to create session. Please contact your admin.")
-            return
-
-        # Send greeting
         channel = getattr(message, "channel", None)
-        if channel:
-            await channel.send(f"Hi {display_name}, I'm your personal assistant. What would you like to work on?")
+        dm_channel_id = self._parse_optional_int(getattr(channel, "id", None))
+        if dm_channel_id is None:
+            return
+        identifier = parse_entry_identifier(text)
+        message_id = str(getattr(message, "id", "")).strip()
+        actor_id = resolve_binding_key(InputOrigin.DISCORD.value, {_DM_USER_ID_FIELD: user_id})
+        sender = get_identity_resolver().resolve(
+            InputOrigin.DISCORD.value, {_DM_USER_ID_FIELD: user_id, _DM_DISCORD_USER_ID_FIELD: user_id}
+        )
+        actor_name = (sender.person_name or "").strip() or self._discord_actor_name(author, user_id)
+        actor_avatar_url = self._discord_actor_avatar_url(author)
 
-    def _build_dm_session_policy(
-        self,
-        message: object,
-        user_id: str,
-        person_slug: str,
-        person_name: str,
-        *,
-        first_message: str | None,
-    ) -> InboundSessionPolicy:
-        """Build the DM-channel-scoped resolve-or-create policy shared by the invite and text flows.
-
-        Scoping the lookup to the DM channel id (rather than any discord session for
-        this user) keeps a direct message from being absorbed into an unrelated guild
-        session the same user also holds (team channel, project forum, launcher).
-        """
-        dm_channel_id = self._parse_optional_int(getattr(getattr(message, "channel", None), "id", None))
-
-        async def _find() -> Session | None:
-            if dm_channel_id is None:
-                return None
-            candidates = await db.get_sessions_by_origin_metadata("discord", "channel_id", dm_channel_id)
-            for candidate in candidates:
-                discord_meta = DiscordAdapterMetadata.from_dict(candidate.get_origin_section("discord"))
-                if discord_meta.user_id == user_id and discord_meta.guild_id is None:
-                    return candidate
-            return None
-
-        async def _create() -> Session | None:
-            workspace_path = scaffold_personal_workspace(person_slug)
-            create_cmd = CreateSessionCommand(
-                project_path=str(workspace_path),
-                initial_input=first_message,
-                origin=InputOrigin.DISCORD.value,
-                origin_metadata={
-                    "user_id": user_id,
-                    "discord_user_id": user_id,
-                    "platform": "discord",
-                },
-                launch_intent=SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT_THEN_MESSAGE if first_message else SessionLaunchKind.AGENT,
-                    thinking_mode="slow",
-                    message=first_message,
-                    dispatch_mode=AgentDispatchMode.AUTOMATIC,
-                ),
-                entry_point=SessionEntryPoint.DISCORD,
-                command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-            )
-            result = await get_command_service().create_session(create_cmd)
-            session_id = str(result.get("session_id", ""))
-            if not session_id:
-                logger.error("Discord DM session creation failed for %s", person_name)
-                return None
-
-            session = await db.get_session(session_id)
-            if not session:
-                logger.error("Session %s not found after creation for %s", session_id, person_name)
-                return None
-            return session
-
-        async def _reconcile(session: Session) -> Session:
-            if dm_channel_id is None:
-                return session
-            discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-            if discord_meta.channel_id == dm_channel_id:
-                return session
-            await db.update_origin_metadata(
-                session.session_id, "discord", {DiscordMetadataField.CHANNEL_ID: dm_channel_id}
-            )
-            return await db.get_session(session.session_id) or session
-
-        async def _dispatch(session: Session) -> None:
-            author = getattr(message, "author", None)
-            actor_id = resolve_binding_key("discord", {"user_id": user_id})
-            actor_name = (person_name or "").strip() or self._discord_actor_name(author, user_id)
-            actor_avatar_url = self._discord_actor_avatar_url(author)
-            sender_identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
-            message_id = str(getattr(message, "id", "")).strip()
-            channel_id_str = str(dm_channel_id) if dm_channel_id is not None else None
-            cmd = ProcessMessageCommand(
-                session_id=session.session_id,
-                text=first_message or "",
+        def _command(session_id: str, sender_role: str | None) -> ProcessMessageCommand:
+            return ProcessMessageCommand(
+                session_id=session_id,
+                text=text,
                 origin=InputOrigin.DISCORD.value,
                 text_kind=TranscriptEntryKind.ORDINARY,
                 source_feature=InjectedTextSourceFeature.DISCORD,
@@ -607,10 +454,17 @@ class GatewayHandlersMixin:
                 actor_name=actor_name,
                 actor_avatar_url=actor_avatar_url,
                 source_message_id=message_id or None,
-                source_channel_id=channel_id_str,
+                source_channel_id=str(dm_channel_id),
                 command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-                sender_human_role=_sender_role_for_session(sender_identity, session),
+                sender_human_role=sender_role,
             )
+
+        async def _deliver(session: Session) -> None:
+            # An escalated session's visitor input goes to its relay thread, not to the agent.
+            if session.relay_status == _RELAY_ACTIVE and session.relay_channel_id:
+                await self._forward_to_relay_thread(session, text, message)
+                return
+            cmd = _command(session.session_id, sender_role_for_session(sender, session))
             metadata = self._metadata(  # type: ignore[attr-defined]
                 platform_message_id=message_id or None,
                 actor_id=actor_id,
@@ -621,12 +475,71 @@ class GatewayHandlersMixin:
                 session,
                 message_id or None,
                 metadata,
-                "process_message",
+                _PROCESS_MESSAGE_EVENT,
                 cmd.to_payload(),
                 lambda: get_command_service().process_message(cmd),
             )
 
-        return InboundSessionPolicy(find=_find, create=_create, reconcile=_reconcile, dispatch=_dispatch)
+        def _remote(session_id: str) -> InternalCommand | None:
+            # Its host resolves no role against a project path elsewhere: an unregistered
+            # sender is a customer, and anyone else carries no role, so commands are refused.
+            return _command(session_id, None if sender.person_slug else HUMAN_ROLE_CUSTOMER)
+
+        async def _reply(reply_text: str) -> None:
+            if channel is not None:
+                await channel.send(reply_text)
+
+        async def _bind(person_slug: str) -> BindOutcome:
+            return self._bind_discord_invite(message, user_id, person_slug)
+
+        outcome = await handle_conversation_turn(
+            ConversationTurn(
+                conversation=ConversationRef(
+                    origin=InputOrigin.DISCORD,
+                    key_field=DISCORD_DM_KEY_FIELD,
+                    key=str(dm_channel_id),
+                    reaches_every_computer=True,
+                ),
+                sender=sender,
+                text=text,
+                gesture=EntryGesture.IDENTIFIER if identifier is not None else EntryGesture.NONE,
+                identifier=identifier,
+                creation=TurnCreation(
+                    entry_point=SessionEntryPoint.DISCORD,
+                    origin_metadata={
+                        _DM_USER_ID_FIELD: user_id,
+                        _DM_DISCORD_USER_ID_FIELD: user_id,
+                        _DM_PLATFORM_FIELD: InputOrigin.DISCORD.value,
+                        DiscordMetadataField.CHANNEL_ID.value: dm_channel_id,
+                    },
+                    command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
+                ),
+                deliver=_deliver,
+                reply=_reply,
+                bind_invite=_bind,
+                remote_command=_remote,
+                modality=TurnModality.TEXT,
+            )
+        )
+        if outcome is ConversationOutcome.BEFORE_CUTOVER:
+            await self._handle_discord_dm_before_cutover(message)
+
+    def _bind_discord_invite(self, message: object, user_id: str, person_slug: str) -> BindOutcome:
+        """Bind the Discord account to the invited person, unless another account holds the invitation."""
+        person_config = get_person_config(person_slug)
+        bound = person_config.creds.discord.user_id if person_config.creds.discord else None
+        if bound:
+            return BindOutcome.ACCEPTED if bound == user_id else BindOutcome.CONFLICT
+        avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))
+        binding_id = str(getattr(message, "id", "")).strip()
+        observe_discord_avatar_binding(
+            binding_id=binding_id,
+            outcome=DiscordAvatarBindingOutcome.ACCEPTED,
+            reason=DiscordAvatarBindingReason.UNBOUND_INVITE,
+            avatar_present=avatar_url is not None,
+        )
+        bind_discord_credentials(person_slug, user_id, avatar_url=avatar_url, binding_id=binding_id)
+        return BindOutcome.ACCEPTED
 
     async def _handle_on_message(self, message: object) -> None:
         author = getattr(message, "author", None)
@@ -751,7 +664,7 @@ class GatewayHandlersMixin:
             source_message_id=message_id or None,
             source_channel_id=channel_id_str,
             command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-            sender_human_role=_sender_role_for_session(sender_identity, session),
+            sender_human_role=sender_role_for_session(sender_identity, session),
         )
         await self._dispatch_command(  # type: ignore[attr-defined]
             session,

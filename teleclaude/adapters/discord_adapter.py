@@ -16,6 +16,7 @@ from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisioned
 from teleclaude.adapters.discord import (
     AdminReflectionMixin,
     ChannelOperationsMixin,
+    DirectMessagesBeforeCutoverMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
     InputHandlersMixin,
@@ -90,6 +91,7 @@ class DiscordClientLike(Protocol):
 class DiscordAdapter(
     ChannelOperationsMixin,
     GatewayHandlersMixin,
+    DirectMessagesBeforeCutoverMixin,
     InfrastructureMixin,
     InputHandlersMixin,
     MessageOperationsMixin,

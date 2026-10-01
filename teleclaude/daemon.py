@@ -66,6 +66,8 @@ from teleclaude.config import (  # config.py loads .env at import time
     restart_required_sections,
 )
 from teleclaude.core.config_watcher import ConfigWatcher
+from teleclaude.core.inbound.adoption import run_conversation_upkeep
+from teleclaude.core.inbound.conversation_env import default_conversation_environment
 
 _record_import_timing("teleclaude.config", _t)
 
@@ -428,6 +430,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._hook_outbox_claim_paused_sessions: set[str] = set()
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.process_janitor_task: asyncio.Task[object] | None = None
+        self.conversation_upkeep_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self.config_watch_task: asyncio.Task[object] | None = None
         self.projects_watch_task: asyncio.Task[object] | None = None
@@ -925,6 +928,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
             self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop(), name="wal-checkpoint")
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
+
+            self.conversation_upkeep_task = asyncio.create_task(
+                run_conversation_upkeep(default_conversation_environment(), self.shutdown_event),
+                name="conversation-upkeep",
+            )
+            self.conversation_upkeep_task.add_done_callback(self._log_background_task_exception("conversation_upkeep"))
             logger.info("WAL checkpoint task started (interval=300s)")
 
             self.monitoring_service.log_resource_snapshot("startup")
@@ -1002,6 +1011,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("resource_monitor_task", "Resource monitor stopped"),
             ("process_janitor_task", "Process janitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
+            ("conversation_upkeep_task", "Conversation upkeep stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
             ("_contract_sweep_task", "Contract sweep stopped"),
         ):

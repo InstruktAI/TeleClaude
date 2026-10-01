@@ -56,13 +56,14 @@ When a terminal caller POSTs to /sessions
 Then the session record's human_role is admin, taken from the caller identity the request carries, not by a model default
 ```
 
-#### UC-SL21: Restricted role is jailed to the help-desk
+#### UC-SL21: A restricted role runs only inside an enabled help desk
 
 ```
 Given the session's human_role for the requested project is neither admin nor member
 And the request carries no system_role
 When the session is created
-Then the session's project_path is confined to the computer's help-desk directory
+Then the session's project_path is an enabled help desk: the endpoint its entry resolved to, the desk of a returning customer's latest session, or the platform help desk for a registered person below member who entered through none
+And a request that names no enabled help desk is refused and creates no session
 ```
 
 #### UC-SL48: A help-desk session below member is confined to its desk
@@ -462,7 +463,7 @@ And a platform administrator's listing is unchanged
 ### Cross-context references
 
 - **identity** — origin resolution plus the identity resolver resolve principal binding (human_email, human_role, person identity) for the Session aggregate.
-- **config** — the computer name, host-pane binary, help-desk directory, enabled agents and defaults flow in via configuration resolution.
+- **config** — the computer name, host-pane binary, enabled agents and defaults flow in via configuration resolution, and each home's help-desk declaration decides whether that home's help desk exists.
 - **session_mirrors** — downstream consumer of the session-lifecycle events emitted as the Session moves through `initializing -> active -> closed`. The lifecycle write here is the source of those events.
 - **workflow** — orchestrators dispatched as child sessions via this surface receive completion notifications through the one-shot stop-listener wired during create-session.
 
@@ -483,7 +484,7 @@ And a platform administrator's listing is unchanged
 <!-- change:session-listing-selection -->
 - **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions whose recorded configuration subject — a project, a company home, or a person home — is one where that person's effective role is above customer (`projects/teleclaude/design/architecture/scoped-roles`), so a session that recorded no configuration subject is listed only for a platform role. Sessions other computers share with this one are listed only for a platform role held here, except that a session sees its own direct children wherever they run; a listing that names another computer is answered by that computer (`projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
 <!-- /planned-change:session-listing-selection -->
-- **Sessions below member without a system role are jailed to the help-desk directory.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
+- **Sessions below member without a system role run only inside an enabled help desk.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path must be an enabled help desk (`projects/teleclaude/spec/feature/agent_runtime/conversation-entry`): a customer's is the desk its entry resolved to, or for a returning customer the desk of their latest session, and a registered person below member who entered through no desk gets the platform help desk. `subfolder` / `working_slug` are cleared. A request naming no enabled help desk is refused and creates no session; nothing is silently redirected.
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 
 ## See Also

@@ -15,6 +15,7 @@ from teleclaude.config.migrations import (
     v008_declare_effective_capabilities,
     v009_fold_trusted_directories,
     v010_declare_help_desk,
+    v011_retire_help_desk_dir,
 )
 
 STEPS: Final = (
@@ -28,4 +29,5 @@ STEPS: Final = (
     v008_declare_effective_capabilities,
     v009_fold_trusted_directories,
     v010_declare_help_desk,
+    v011_retire_help_desk_dir,
 )

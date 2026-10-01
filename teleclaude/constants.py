@@ -53,7 +53,6 @@ VOICE_TRANSCRIPTION_TERMINAL_STATES = (
     VOICE_TRANSCRIPTION_STATE_SUCCEEDED,
     VOICE_TRANSCRIPTION_STATE_FAILED,
 )
-HELP_DESK_SUBDIR = ".teleclaude/help-desk"
 WHATSAPP_API_VERSION = "v21.0"
 UI_MESSAGE_MAX_CHARS = 3900  # Char budget for content selection (format + fit)
 TELEGRAM_MAX_MESSAGE_BYTES = 4096  # Telegram API hard limit for message text

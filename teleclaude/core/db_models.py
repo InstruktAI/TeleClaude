@@ -181,6 +181,42 @@ class DiscordSharedThreadContenderRow(SQLModel, table=True):
     protocol_generation: int
 
 
+class ConversationBindingRow(SQLModel, table=True):
+    """The mesh master's binding of one shared-adapter conversation to its latest session."""
+
+    __tablename__ = "conversation_bindings"
+    __table_args__ = {"extend_existing": True}
+
+    origin: str = Field(primary_key=True)
+    key_field: str = Field(primary_key=True)
+    conversation_key: str = Field(primary_key=True)
+    host: str
+    session_id: str
+    endpoint: str
+    entered_at: str
+
+
+class ConversationAdoptionSourceRow(SQLModel, table=True):
+    """One computer whose open conversation sessions seed the master's bindings."""
+
+    __tablename__ = "conversation_bindings_adoption"
+    __table_args__ = {"extend_existing": True}
+
+    computer: str = Field(primary_key=True)
+    answered_at: str | None = None
+
+
+class ConversationBindingOrphanRow(SQLModel, table=True):
+    """A session a lost remote-create answer may have left on its host, to be closed by id."""
+
+    __tablename__ = "conversation_binding_orphans"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    host: str
+    recorded_at: str
+
+
 class DiscordSharedThreadOwnerRow(SQLModel, table=True):
     """The single winning owner for a shared Discord child after activation."""
 

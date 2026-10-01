@@ -23,6 +23,7 @@ from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principa
 from teleclaude.core import command_handlers
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
+from teleclaude.core.endpoints import LIVE_ROOTS
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentAttentionObservation,
@@ -31,8 +32,11 @@ from teleclaude.core.events import (
     SystemCommandContext,
     parse_command_string,
 )
+from teleclaude.core.inbound.adoption import EXPORT_CONVERSATION_SESSIONS_COMMAND, export_local_conversation_sessions
+from teleclaude.core.inbound.models import ConversationRef
 from teleclaude.core.models import JsonDict, RedisInboundMessage
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.relayed_intake import (
     RelayedReadNotFound,
     RelayRead,
@@ -75,6 +79,7 @@ _GET_SESSION_FINAL_OUTPUT_COMMAND = "get_session_final_output"
 _LAST_OUTPUT_RAW_FIELD = "last_output_raw"
 _LAST_OUTPUT_STOP_AT_FIELD = "last_output_stop_at"
 _SESSION_ID_FIELD = "session_id"
+_EXPORT_CONVERSATION_ARGUMENT_COUNT = 3
 _RELAYED_READ_COMMANDS = frozenset(
     {
         RelayRead.SESSION_MESSAGES.value,
@@ -355,6 +360,24 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: str(exc)},
                     }
                 await self.send_response(message_id, json.dumps(response_envelope))
+                return
+
+            if cmd_name == EXPORT_CONVERSATION_SESSIONS_COMMAND:
+                conversation = (
+                    ConversationRef(
+                        origin=InputOrigin(cmd_args[0]),
+                        key_field=cmd_args[1],
+                        key=cmd_args[2],
+                        reaches_every_computer=True,
+                    )
+                    if len(cmd_args) == _EXPORT_CONVERSATION_ARGUMENT_COUNT
+                    else None
+                )
+                exported = await export_local_conversation_sessions(db, LIVE_ROOTS, conversation)
+                await self.send_response(
+                    message_id,
+                    json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: [item.to_dict() for item in exported]}),
+                )
                 return
 
             if cmd_name in {

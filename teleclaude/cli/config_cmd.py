@@ -9,6 +9,7 @@ and exits non-zero before any configuration is read.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 import sys
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from redis.exceptions import RedisError
 
 from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
@@ -25,6 +27,7 @@ from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import (
     CONFIG_COMPANY_GET,
+    CONFIG_COMPANY_HELP_DESK_LINKS,
     CONFIG_COMPANY_INIT,
     CONFIG_COMPANY_LIST,
     CONFIG_COMPANY_PATCH,
@@ -43,6 +46,7 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PERSON_LIST,
     CONFIG_PERSON_PATCH,
     CONFIG_PROJECT_GET,
+    CONFIG_PROJECT_HELP_DESK_LINKS,
     CONFIG_PROJECT_INIT,
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
@@ -77,9 +81,17 @@ from teleclaude.core.configuration_clearance import (
     is_administrator,
     standing_for,
 )
+from teleclaude.core.endpoints import (
+    TELEGRAM_START_PARAMETER_MAX,
+    DeskIdentifier,
+    desk_home_present,
+    local_desk_endpoint,
+)
+from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
+from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import person_roles
 from teleclaude.docs_index import get_project_slug
-from teleclaude.invite import invite_person
+from teleclaude.invite import invite_person, render_help_desk_links
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.slug import normalize_slug
 
@@ -106,6 +118,19 @@ _PARTIAL_COMMIT_MESSAGE = (
 _PROJECT_INIT_COMPLETE = "telec config project init complete."
 _SLUG_FIELD = "slug"
 _REDACTED_VALUE = "<redacted: platform administrator required>"
+_HELP_DESK_LINKS_VERB = "help-desk-links"
+_DESK_NOT_ENABLED_ERROR = "Error: help desk of {kind} {slug} is not enabled{request}"
+_DESK_NOT_HOSTED_ERROR = "Error: this computer does not host the help desk of {kind} {slug}{request}"
+_FLEET_UNOBSERVABLE_ERROR = "Error: cannot observe the fleet: {error}{request}"
+_FLEET_LAGGING_ERROR = (
+    "Error: help-desk entry is not served until every computer runs it; lagging: {computers}{request}"
+)
+_NO_LINKS_LINE = "No entry links could be generated for {identifier}."
+_LINK_LINE = "  {adapter}: {link}"
+_DISCORD_LINK_LINE = "  {adapter}: {link} (send {identifier} as your first message)"
+_LINKS_HEADING = "Entry links for {identifier}:"
+_DISCORD_ADAPTER = "discord"
+_LIST_SEPARATOR = ", "
 
 _KIND_TO_SUBJECT: dict[str, ConfigSubjectKind] = {
     "computer": ConfigSubjectKind.COMPUTER,
@@ -172,6 +197,8 @@ def handle_config_kind_command(kind: str, args: list[str]) -> None:
         _handle_invite(verb_args, request_id)
     elif verb == "discord-voice-bot" and subject_kind is ConfigSubjectKind.PERSON:
         _handle_discord_voice_bot(verb_args, request_id)
+    elif verb == _HELP_DESK_LINKS_VERB and subject_kind in _HELP_DESK_LINKS_COMMAND_DEFS:
+        _handle_help_desk_links(kind, subject_kind, verb_args, request_id)
     else:
         print(_UNKNOWN_VERB_ERROR.format(kind=kind, verb=verb))
         raise SystemExit(1)
@@ -574,6 +601,66 @@ def _handle_discord_voice_bot(args: list[str], request_id: str) -> None:
         print(json.dumps({"ok": True, "slug": slug, "updated": fields, "request_id": request_id}))
     else:
         print(f"Updated {slug}: {', '.join(fields)}.{_REQUEST_SUFFIX.format(request_id=request_id)}")
+
+
+# --- company / project help-desk-links ---
+
+_HELP_DESK_LINKS_COMMAND_DEFS = {
+    ConfigSubjectKind.COMPANY: CONFIG_COMPANY_HELP_DESK_LINKS,
+    ConfigSubjectKind.PROJECT: CONFIG_PROJECT_HELP_DESK_LINKS,
+}
+_DESK_KIND_BY_SUBJECT = {
+    ConfigSubjectKind.COMPANY: HelpDeskKind.COMPANY,
+    ConfigSubjectKind.PROJECT: HelpDeskKind.PROJECT,
+}
+
+
+def _handle_help_desk_links(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
+    parsed = parse_command_args(_HELP_DESK_LINKS_COMMAND_DEFS[subject_kind], args)
+    if not parsed.positionals:
+        print(_MISSING_INSTANCE_ERROR.format(kind=kind))
+        raise SystemExit(1)
+    slug = parsed.positionals[0]
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+    _gate(
+        kind,
+        _HELP_DESK_LINKS_VERB,
+        subject_kind,
+        instance=slug,
+        operation=ConfigurationOperation.HELP_DESK_LINKS,
+        sections=frozenset(),
+        request_id=request_id,
+    )
+    request = _REQUEST_SUFFIX.format(request_id=request_id)
+    identifier = DeskIdentifier(_DESK_KIND_BY_SUBJECT[subject_kind], slug)
+    if local_desk_endpoint(identifier, config.computer.name) is None:
+        template = _DESK_NOT_ENABLED_ERROR if desk_home_present(identifier) else _DESK_NOT_HOSTED_ERROR
+        print(template.format(kind=kind, slug=slug, request=request))
+        raise SystemExit(1)
+    try:
+        fleet = asyncio.run(observe_fleet_from_heartbeats())
+    except (OSError, RedisError) as error:
+        print(_FLEET_UNOBSERVABLE_ERROR.format(error=error, request=request))
+        raise SystemExit(1) from error
+    if not fleet.conversation_entry_safe():
+        computers = _LIST_SEPARATOR.join(fleet.lacking_conversation_entry())
+        print(_FLEET_LAGGING_ERROR.format(computers=computers, request=request))
+        raise SystemExit(1)
+    rendered = identifier.render()
+    links = asyncio.run(
+        render_help_desk_links(rendered, telegram_allowed=len(rendered) <= TELEGRAM_START_PARAMETER_MAX)
+    )
+    if use_json:
+        print(json.dumps({"identifier": rendered, "links": links, "request_id": request_id}))
+        return
+    available = {adapter: link for adapter, link in links.items() if link}
+    if not available:
+        print(_NO_LINKS_LINE.format(identifier=rendered))
+        return
+    print(_LINKS_HEADING.format(identifier=rendered))
+    for adapter, link in available.items():
+        line = _DISCORD_LINK_LINE if adapter == _DISCORD_ADAPTER else _LINK_LINE
+        print(line.format(adapter=adapter, link=link, identifier=rendered))
 
 
 # --- rendering (shared across verbs) ---

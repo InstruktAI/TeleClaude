@@ -18,9 +18,10 @@ from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
+from teleclaude.core.endpoints import platform_help_desk_folder
 from teleclaude.core.identity import session_person_role
 from teleclaude.core.integration.discord_admin_state import session_launcher_key
-from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, Session
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, EndpointStamp, Session
 from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
 from teleclaude.core.session_utils import get_short_project_name
 from teleclaude.services.project_catalog import get_project_catalog_service
@@ -185,8 +186,15 @@ class ChannelOperationsMixin:
         return refreshed or session
 
     def _resolve_target_forum(self, session: Session) -> int | None:
-        """Determine which Discord forum this session's thread belongs in."""
-        if self._is_customer_session(session):
+        """Determine which Discord forum this session's thread belongs in.
+
+        The shared guild reflects the platform help desk only: a company or
+        project desk session belongs in no forum, its project's own included.
+        """
+        endpoint = EndpointStamp.from_session(session)
+        if endpoint is not None and endpoint.is_tenant_desk:
+            return None
+        if endpoint is not None and endpoint.is_platform_desk:
             return self._help_desk_channel_id
         # Check project-specific forums
         forum_id = self._match_project_forum(session)
@@ -220,7 +228,8 @@ class ChannelOperationsMixin:
         """Determine forum type and project path for an incoming message.
 
         Returns (forum_type, project_path) where forum_type is one of:
-        'help_desk', 'project', 'all_sessions', 'team'.
+        'help_desk', 'project', 'all_sessions', 'team', 'unknown'. Neither the
+        help-desk forum nor an unknown forum names a project path.
         """
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
@@ -238,11 +247,12 @@ class ChannelOperationsMixin:
             parent_id = channel_id
 
         if parent_id is not None and parent_id == self._help_desk_channel_id:
-            return "help_desk", teleclaude_config.config.computer.help_desk_dir
+            # The shared help-desk forum reflects platform-desk sessions; it is no entry point.
+            return "help_desk", None
 
         if parent_id is not None and parent_id == self._all_sessions_channel_id:
             entries = get_project_catalog_service().list_entries()
-            project_path = str(entries[0].root) if entries else teleclaude_config.config.computer.help_desk_dir
+            project_path = str(entries[0].root) if entries else str(platform_help_desk_folder())
             return "all_sessions", project_path
 
         for path, forum_id in self._project_forum_map.items():
@@ -251,14 +261,14 @@ class ChannelOperationsMixin:
 
         if parent_id is not None:
             logger.warning(
-                "Unrecognized forum parent_id=%s; routing to help_desk. "
+                "Unrecognized forum parent_id=%s; ignoring the message. "
                 "Known forums: help_desk=%s all_sessions=%s projects=%s",
                 parent_id,
                 self._help_desk_channel_id,
                 self._all_sessions_channel_id,
                 list(self._project_forum_map.values()),
             )
-        return "help_desk", teleclaude_config.config.computer.help_desk_dir
+        return "unknown", None
 
     def title_body(self, session: Session) -> str:
         """Discord-specific decoration: prefix the project short-name for the catch-all forum.

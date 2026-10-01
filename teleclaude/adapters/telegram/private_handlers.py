@@ -1,38 +1,41 @@
 """Private chat handlers mixin for Telegram adapter.
 
-Handles /start invite binding and private text routing.
+Carries a private chat's turns to the conversation seam: the start parameter
+or a message that is exactly an entry identifier, the bare start link, and
+ordinary text, voice and files. The seam decides where each goes; this mixin
+supplies the chat's key, its delivery into a session, its reply, and the
+invitation binding of a Telegram account.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import Update
+from telegram import Update, User
 from telegram.ext import ContextTypes
 
 import teleclaude.core.identity as identity_module
-import teleclaude.invite as invite_module
-from teleclaude.cli.config_handlers import get_global_config, save_person_config
-from teleclaude.config.invitations import find_person_by_invite_token
+from teleclaude.cli.config_handlers import get_person_config, save_person_config
 from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
-from teleclaude.core.db import db
-from teleclaude.core.inbound import InboundSessionPolicy, handle_inbound_message, resolve_binding_key
-from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from teleclaude.core.models import (
-    AgentDispatchMode,
-    Session,
-    SessionEntryPoint,
-    SessionLaunchIntent,
-    SessionLaunchKind,
-    TelegramAdapterMetadata,
+from teleclaude.core.endpoints import EntryIdentifier, parse_entry_identifier
+from teleclaude.core.inbound import (
+    BindOutcome,
+    ConversationRef,
+    ConversationTurn,
+    EntryGesture,
+    TurnCreation,
+    TurnModality,
+    resolve_binding_key,
 )
+from teleclaude.core.inbound.conversation import ConversationOutcome, handle_conversation_turn
+from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
+from teleclaude.core.models import Session, SessionEntryPoint, TelegramAdapterMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.slug import normalize_slug
-from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
+from teleclaude.types.commands import InternalCommand, ProcessMessageCommand
 
 from .input_handlers import ConversationInputDecision, ConversationInputReason, ConversationModality
 
@@ -59,9 +62,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-PRIVATE_SESSION_CREATION_EMPTY_EVENT = "telegram_private_session_creation_empty"
-PRIVATE_SESSION_CREATION_FAILED_EVENT = "telegram_private_session_creation_failed"
-PRIVATE_SESSION_MISSING_EVENT = "telegram_private_session_missing"
+_KEY_FIELD = "user_id"
+_TELEGRAM_USER_ID_FIELD = "telegram_user_id"
+_PLATFORM_FIELD = "platform"
+_CHAT_TYPE_FIELD = "chat_type"
+_PRIVATE_CHAT_TYPE = "private"
+_UNKNOWN_USER_NAME = "unknown"
+_PROCESS_MESSAGE_EVENT = "process_message"
+_ACCEPTED_OUTCOMES = frozenset({ConversationOutcome.DELIVERED, ConversationOutcome.SESSION_STARTED})
 
 
 def get_command_service() -> CommandService:
@@ -74,6 +82,56 @@ def get_command_service() -> CommandService:
     return command_registry.get_command_service()
 
 
+def _is_private_chat_session(session: Session) -> bool:
+    """A session of the private chat, not one of the user's supergroup topics."""
+    return TelegramAdapterMetadata.from_dict(session.get_origin_section(InputOrigin.TELEGRAM.value)).topic_id is None
+
+
+def telegram_conversation(user_id: int) -> ConversationRef:
+    """A Telegram private chat: this computer's bot's conversation with one user."""
+    return ConversationRef(
+        origin=InputOrigin.TELEGRAM,
+        key_field=_KEY_FIELD,
+        key=str(user_id),
+        reaches_every_computer=False,
+        refine=_is_private_chat_session,
+    )
+
+
+def _creation(user_id: int) -> TurnCreation:
+    return TurnCreation(
+        entry_point=SessionEntryPoint.TELEGRAM,
+        origin_metadata={
+            _KEY_FIELD: user_id,
+            _TELEGRAM_USER_ID_FIELD: user_id,
+            _PLATFORM_FIELD: InputOrigin.TELEGRAM.value,
+            _CHAT_TYPE_FIELD: _PRIVATE_CHAT_TYPE,
+        },
+    )
+
+
+def _no_remote_command(_session_id: str) -> InternalCommand | None:
+    """A Telegram conversation's sessions always run on this computer."""
+    return None
+
+
+async def _no_content(_session: Session) -> None:
+    """An entry gesture carries nothing to deliver."""
+
+
+def _bind_telegram_invite(person_slug: str, user: User) -> BindOutcome:
+    """Bind the Telegram account to the invited person, unless another account holds the invitation."""
+    person_config = get_person_config(person_slug)
+    bound = person_config.creds.telegram.user_id if person_config.creds.telegram else None
+    if bound:
+        return BindOutcome.ACCEPTED if str(bound) == str(user.id) else BindOutcome.CONFLICT
+    person_config.creds.telegram = TelegramCreds(
+        user_id=user.id, user_name=user.username or user.first_name or _UNKNOWN_USER_NAME
+    )
+    save_person_config(person_slug, person_config)
+    return BindOutcome.ACCEPTED
+
+
 class PrivateHandlersMixin:
     """Mixin providing private-chat handlers for TelegramAdapter.
 
@@ -82,86 +140,67 @@ class PrivateHandlersMixin:
     - _dispatch_command(session, message_id, metadata, event, payload, fn) -> None
     """
 
-    async def _handle_private_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /start command in private chats (invite token binding)."""
+    async def _route_private_turn(
+        self,
+        update: Update,
+        *,
+        text: str,
+        gesture: EntryGesture,
+        identifier: EntryIdentifier | None,
+        deliver: Callable[[Session], Awaitable[None]],
+        modality: TurnModality,
+    ) -> ConversationOutcome:
+        """Hand one private-chat turn to the conversation seam."""
         assert update.effective_user is not None
         assert update.effective_message is not None
+        user = update.effective_user
+        message = update.effective_message
+        user_id = str(user.id)
 
-        # Extract payload from /start command
-        payload = context.args[0] if context.args else None
+        async def _reply(reply_text: str) -> None:
+            await message.reply_text(reply_text)
 
-        # Check if payload is an invite token
-        if not payload or not payload.startswith("inv_"):
-            await update.effective_message.reply_text(
-                "Send me your invite token to get started, or contact your admin for an invite link."
-            )
-            return
+        async def _bind(person_slug: str) -> BindOutcome:
+            return _bind_telegram_invite(person_slug, user)
 
-        result = find_person_by_invite_token(payload)
-        if not result:
-            await update.effective_message.reply_text("I don't recognize this invite. Please contact your admin.")
-            return
-
-        person_slug, person_config = result
-        display_name = next((p.name for p in get_global_config().people if p.slug == person_slug), person_slug)
-        user_id = str(update.effective_user.id)
-        user_name = update.effective_user.username or update.effective_user.first_name or "unknown"
-
-        # Check if credentials are already bound
-        existing_user_id = person_config.creds.telegram.user_id if person_config.creds.telegram else None
-
-        if existing_user_id:
-            if str(existing_user_id) == user_id:
-                # Same user - proceed to session (already bound)
-                pass
-            else:
-                # Different user - reject
-                await update.effective_message.reply_text("This invite is already associated with another account.")
-                return
-        else:
-            # Bind credentials
-            person_config.creds.telegram = TelegramCreds(user_id=int(user_id), user_name=user_name)
-            save_person_config(person_slug, person_config)
-
-        # Scaffold personal workspace and create session
-        workspace_path = invite_module.scaffold_personal_workspace(person_slug)
-
-        # Create session in personal workspace
-        create_cmd = CreateSessionCommand(
-            project_path=str(workspace_path),
-            origin=InputOrigin.TELEGRAM.value,
-            origin_metadata={
-                "user_id": int(user_id),
-                "telegram_user_id": int(user_id),
-                "platform": "telegram",
-                "chat_type": "private",
-            },
-            launch_intent=SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT,
-                thinking_mode="slow",
-                dispatch_mode=AgentDispatchMode.AUTOMATIC,
+        turn = ConversationTurn(
+            conversation=telegram_conversation(user.id),
+            sender=identity_module.get_identity_resolver().resolve(
+                InputOrigin.TELEGRAM.value, {_KEY_FIELD: user_id, _TELEGRAM_USER_ID_FIELD: user_id}
             ),
-            entry_point=SessionEntryPoint.TELEGRAM,
+            text=text,
+            gesture=gesture,
+            identifier=identifier,
+            creation=_creation(user.id),
+            deliver=deliver,
+            reply=_reply,
+            bind_invite=_bind,
+            remote_command=_no_remote_command,
+            modality=modality,
         )
-        result_dict = await get_command_service().create_session(create_cmd)
-        session_id = str(result_dict.get("session_id", ""))
-        if not session_id:
-            logger.error(PRIVATE_SESSION_CREATION_EMPTY_EVENT)
-            await update.effective_message.reply_text("Failed to create session. Please contact your admin.")
-            return
+        return await handle_conversation_turn(turn)
 
-        session = await db.get_session(session_id)
-        if not session:
-            logger.error(PRIVATE_SESSION_MISSING_EVENT)
-            return
-
-        # Send greeting
-        await update.effective_message.reply_text(
-            f"Hi {display_name}, I'm your personal assistant. What would you like to work on?"
+    async def _handle_private_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /start: the start parameter is an entry; a bare start is the entry gesture."""
+        payload = context.args[0] if context.args else None
+        identifier = parse_entry_identifier(payload) if payload is not None else None
+        if payload is None:
+            gesture = EntryGesture.BARE
+        elif identifier is None:
+            gesture = EntryGesture.UNRESOLVABLE
+        else:
+            gesture = EntryGesture.IDENTIFIER
+        await self._route_private_turn(
+            update,
+            text="",
+            gesture=gesture,
+            identifier=identifier,
+            deliver=_no_content,
+            modality=TurnModality.TEXT,
         )
 
     async def _handle_private_text(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle text messages in private chats from bound users."""
+        """Handle text messages in private chats."""
         assert update.effective_user is not None
         assert update.effective_message is not None
         decision = ConversationInputDecision(
@@ -184,132 +223,45 @@ class PrivateHandlersMixin:
         assert update.effective_message is not None
 
         user_id = str(update.effective_user.id)
-
-        identity = identity_module.get_identity_resolver().resolve(
-            "telegram",
-            {"user_id": user_id, "telegram_user_id": user_id},
-        )
-
-        if not identity or not identity.person_name:
-            decision.reject(ConversationInputReason.UNBOUND_IDENTITY)
-            # Unknown user
-            await update.effective_message.reply_text(
-                "I don't recognize your account. Use an invite link to get started."
-            )
-            return
-
         text = update.effective_message.text or ""
         msg_id = str(update.effective_message.message_id)
-        person_slug = identity.person_slug or normalize_slug(identity.person_name or "")
-        binding_key = resolve_binding_key("telegram", {"user_id": user_id})
-
-        async def _create() -> Session | None:
-            result_dict = await self._create_private_session_for_identity(
-                user_id,
-                person_slug,
-                text,
-            )
-            session_id = str(result_dict.get("session_id", ""))
-            if not session_id:
-                logger.error(PRIVATE_SESSION_CREATION_FAILED_EVENT)
-                decision.reject(ConversationInputReason.SESSION_CREATION_FAILED)
-                return None
-            session = await db.get_session(session_id)
-            if session is None:
-                logger.error(PRIVATE_SESSION_MISSING_EVENT)
-                decision.reject(ConversationInputReason.SESSION_CREATION_FAILED)
-                return None
-            decision.bind_session(session)
-            decision.accept()
-            return session
-
-        async def _reconcile(session: Session) -> Session:
-            return session
+        binding_key = resolve_binding_key(InputOrigin.TELEGRAM.value, {_KEY_FIELD: user_id})
+        identifier = parse_entry_identifier(text)
 
         async def _dispatch(session: Session) -> None:
             decision.bind_session(session)
             host = cast("_PrivateHandlersHost", self)
-            metadata = host._metadata()
+            sender = identity_module.get_identity_resolver().resolve(InputOrigin.TELEGRAM.value, {_KEY_FIELD: user_id})
             cmd = ProcessMessageCommand(
                 session_id=session.session_id,
                 text=text,
-                origin="telegram",
+                origin=InputOrigin.TELEGRAM.value,
                 text_kind=TranscriptEntryKind.ORDINARY,
                 source_feature=InjectedTextSourceFeature.TELEGRAM,
                 occurrence_key=msg_id,
                 actor_id=binding_key,
-                actor_name=identity.person_name or binding_key,
+                actor_name=sender.person_name or binding_key,
                 request_id=msg_id,
                 source_message_id=msg_id,
             )
             await host._dispatch_command(
                 session,
                 msg_id,
-                metadata,
-                "process_message",
+                host._metadata(),
+                _PROCESS_MESSAGE_EVENT,
                 cmd.to_payload(),
                 lambda: get_command_service().process_message(cmd),
             )
+
+        outcome = await self._route_private_turn(
+            update,
+            text=text,
+            gesture=EntryGesture.IDENTIFIER if identifier is not None else EntryGesture.NONE,
+            identifier=identifier,
+            deliver=_dispatch,
+            modality=TurnModality.TEXT,
+        )
+        if outcome in _ACCEPTED_OUTCOMES:
             decision.accept()
-
-        policy = InboundSessionPolicy(
-            find=lambda: self._find_private_session(user_id),
-            create=_create,
-            reconcile=_reconcile,
-            dispatch=_dispatch,
-        )
-
-        await handle_inbound_message(policy)
-
-    async def _find_private_session(self, user_id: str) -> Session | None:
-        """Return the active private-chat session for a Telegram user, if one exists."""
-        sessions = await db.list_sessions(last_input_origin="telegram", include_closed=False)
-        for session in sessions:
-            tg = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
-            if tg.user_id == int(user_id):
-                return session
-        return None
-
-    async def _get_private_session_for_update(self, update: Update) -> Session | None:
-        """Resolve a bound session for a private Telegram update."""
-        user = update.effective_user
-        chat = update.effective_chat
-        if user is None or chat is None or chat.type != "private":
-            return None
-
-        identity = identity_module.get_identity_resolver().resolve(
-            "telegram",
-            {"user_id": str(user.id), "telegram_user_id": str(user.id)},
-        )
-        if identity.person_name is None:
-            return None
-
-        return await self._find_private_session(str(user.id))
-
-    async def _create_private_session_for_identity(
-        self,
-        user_id: str,
-        person_slug: str,
-        text: str,
-    ) -> dict[str, str]:
-        """Create a private-chat session with the initial message bundled into launch_intent."""
-        workspace_path = invite_module.scaffold_personal_workspace(person_slug)
-        create_cmd = CreateSessionCommand(
-            project_path=str(workspace_path),
-            initial_input=text,
-            origin=InputOrigin.TELEGRAM.value,
-            origin_metadata={
-                "user_id": int(user_id),
-                "telegram_user_id": int(user_id),
-                "platform": "telegram",
-                "chat_type": "private",
-            },
-            launch_intent=SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                thinking_mode="slow",
-                message=text,
-                dispatch_mode=AgentDispatchMode.AUTOMATIC,
-            ),
-            entry_point=SessionEntryPoint.TELEGRAM,
-        )
-        return await get_command_service().create_session(create_cmd)
+        else:
+            decision.reject(ConversationInputReason.NO_ENDPOINT)

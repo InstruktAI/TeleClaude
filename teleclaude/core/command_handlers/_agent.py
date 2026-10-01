@@ -51,6 +51,7 @@ from teleclaude.core.injected_text import (
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
+    EndpointStamp,
     HumanActionIntent,
     Session,
     SessionEntryPoint,
@@ -609,7 +610,9 @@ async def select_handoff_successor(
             fixed_agent=None,
             candidate_order=None,
             entry_point=SessionEntryPoint.AGENT_HANDOFF,
-            session_kind=desk_session_kind(session.system_role, session.human_role),
+            session_kind=desk_session_kind(
+                session.system_role, session.human_role, EndpointStamp.from_session(session)
+            ),
         )
     except AgentDispatchFailure as exc:
         emit_agent_dispatch_decision(

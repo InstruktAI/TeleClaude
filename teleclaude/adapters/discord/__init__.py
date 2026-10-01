@@ -1,6 +1,7 @@
 """Discord adapter helper package."""
 
 from teleclaude.adapters.discord.channel_ops import ChannelOperationsMixin
+from teleclaude.adapters.discord.dm_before_cutover import DirectMessagesBeforeCutoverMixin
 from teleclaude.adapters.discord.gateway_handlers import GatewayHandlersMixin
 from teleclaude.adapters.discord.infra import InfrastructureMixin
 from teleclaude.adapters.discord.input_handlers import InputHandlersMixin
@@ -12,6 +13,7 @@ from teleclaude.adapters.discord.team_channels import TeamChannelsMixin
 __all__ = [
     "AdminReflectionMixin",
     "ChannelOperationsMixin",
+    "DirectMessagesBeforeCutoverMixin",
     "GatewayHandlersMixin",
     "InfrastructureMixin",
     "InputHandlersMixin",

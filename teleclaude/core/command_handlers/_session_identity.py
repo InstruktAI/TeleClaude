@@ -16,7 +16,7 @@ from teleclaude.caller_identity import (
     human_principal_for_email,
     is_desk_role,
 )
-from teleclaude.config import WORKING_DIR, config
+from teleclaude.config import config
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,
@@ -30,6 +30,7 @@ from teleclaude.core.command_input import (
     ResolvedCommandInput,
     admit_command_input,
 )
+from teleclaude.core.endpoints import desk_endpoint_for_stamp, desk_for_folder, platform_help_desk_folder
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import Session
 from teleclaude.core.session_company import resolve_session_creation_company
@@ -41,7 +42,12 @@ logger = get_logger(__name__)
 
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
-_DESK_PLACEMENT_LOG = "Restricted session placed at the help desk: origin=%s role=%s"
+_RESTRICTED_SESSION_REFUSED_EVENT = "restricted_session_refused"
+_RESTRICTED_SESSION_REFUSED_TEMPLATE = (
+    "Session creation refused: a {role} session runs only inside an enabled help desk"
+)
+_DEFAULT_PLACEMENT_EVENT = "session_creation_default_placement"
+_DESK_NOT_HOSTED_TEMPLATE = "Session creation refused: the requested help desk is not enabled on this computer"
 _WORKTREE_SUBDIR_TEMPLATE = "{worktree_dir}/{slug}"
 _WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
@@ -188,21 +194,30 @@ async def resolve_session_creation_identity(
         raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
 
     system_role = cmd_system_role
-    raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
-    configured_help_desk_path = (
-        raw_help_desk_path
-        if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
-        else os.path.join(WORKING_DIR, "help-desk")
-    )
-    if is_desk_role(system_role or None, human_role):
-        logger.info(_DESK_PLACEMENT_LOG, origin, human_role)
-        project_path = configured_help_desk_path
+    if cmd.endpoint is not None and cmd.endpoint.is_help_desk:
+        # A request naming a desk endpoint is placed in this computer's own folder
+        # for that desk, which must be enabled here; any role runs there confined.
+        desk = desk_endpoint_for_stamp(cmd.endpoint, config.computer.name)
+        if desk is None:
+            logger.warning(_RESTRICTED_SESSION_REFUSED_EVENT, origin=origin, role=human_role)
+            raise ValueError(_DESK_NOT_HOSTED_TEMPLATE)
+        project_path = str(desk.folder)
+        Path(project_path).mkdir(parents=True, exist_ok=True)
+        subfolder = working_slug = None
+    elif is_desk_role(system_role or None, human_role):
+        # A role below member runs only inside an enabled help desk, and only the
+        # one its request names: nothing is redirected to a desk of the jail's choosing.
+        desk = desk_for_folder(cmd.project_path, config.computer.name) if cmd.project_path else None
+        if desk is None:
+            logger.warning(_RESTRICTED_SESSION_REFUSED_EVENT, origin=origin, role=human_role)
+            raise ValueError(_RESTRICTED_SESSION_REFUSED_TEMPLATE.format(role=human_role))
+        project_path = str(desk.folder)
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = working_slug = None
     else:
-        project_path = cmd.project_path or configured_help_desk_path
+        project_path = cmd.project_path or str(platform_help_desk_folder())
         if not cmd.project_path:
-            logger.info("Session creation missing project_path from origin=%s; defaulting to help-desk.", origin)
+            logger.info(_DEFAULT_PLACEMENT_EVENT, origin=origin)
             Path(project_path).mkdir(parents=True, exist_ok=True)
             subfolder = working_slug = None
     project_path = os.path.expanduser(os.path.expandvars(project_path))

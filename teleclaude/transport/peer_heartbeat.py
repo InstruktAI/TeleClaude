@@ -10,6 +10,9 @@ from typing import cast
 _HEARTBEAT_KEY_PREFIX = "computer:"
 _HEARTBEAT_KEY_SUFFIX = ":heartbeat"
 _HEARTBEAT_KEY_ENCODING = "utf-8"
+HELP_DESKS_FIELD = "help_desks"
+CONVERSATION_ADAPTERS_FIELD = "conversation_adapters"
+CONVERSATION_ROUTING_FIELD = "conversation_routing"
 _COMPUTER_NAME_FIELD = "computer_name"
 _USER_FIELD = "user"
 _HOST_FIELD = "host"
@@ -53,6 +56,23 @@ def decode_heartbeat_payload(payload: bytes) -> Mapping[str, object] | None:
         return None
     decoded: object = json.loads(payload)
     return cast(Mapping[str, object], decoded) if isinstance(decoded, dict) else None
+
+
+def decode_announced_strings(value: object) -> list[str]:
+    """Decode an announced list of strings; an absent or malformed field announces nothing."""
+    if not isinstance(value, list):
+        return []
+    return sorted({item for item in value if isinstance(item, str) and item})
+
+
+def decode_optional_announced_strings(value: object) -> list[str] | None:
+    """Decode an announced list of strings, keeping an absent field apart from an empty one.
+
+    ``None`` means the peer does not announce the field at all (an older build).
+    """
+    if value is None:
+        return None
+    return decode_announced_strings(value)
 
 
 async def lookup_peer_address(computer_name: str) -> PeerAddress | PeerNotOnline:

@@ -32,6 +32,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
+from teleclaude.core.endpoints import platform_help_desk_folder
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound import InboundSessionPolicy, resolve_or_create_bound_session
 from teleclaude.core.models import (
@@ -49,8 +50,6 @@ from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.slug import normalize_slug
 from teleclaude.types.commands import (
     CreateSessionCommand,
-    DiscordThreadClaimKind,
-    DiscordThreadClaimLifecycle,
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
@@ -76,13 +75,16 @@ _FOLLOWUP_SEND_LABEL = "Discord interaction followup.send"
 _STARTING_AGENT_TEMPLATE = "Starting {agent_name}..."
 _FAILED_AGENT_TEMPLATE = "Failed to start {agent_name}."
 _EMPTY_VALUE = ""
+_HELP_DESK_FORUM = "help_desk"
+_UNKNOWN_FORUM = "unknown"
+_HELP_DESK_FORUM_NOT_ENTRY_EVENT = "help_desk_forum_thread_not_entry"
 
 
 @dataclass(frozen=True, slots=True)
 class _SessionCreationContext:
     """Context used while creating a new Discord-backed session."""
 
-    forum_type: str = "help_desk"
+    forum_type: str = "project"
     project_path: str | None = None
     first_message: str | None = None
 
@@ -155,26 +157,6 @@ class InputHandlersMixin:
         def _discord_actor_avatar_url(author: object) -> str | None: ...
 
         async def ensure_channel(self, session: Session) -> Session: ...
-
-        async def _observe_discord_shared_thread(
-            self,
-            *,
-            thread_id: int,
-            parent_id: int,
-            kind: DiscordThreadClaimKind,
-            local_identity: str,
-            lifecycle: DiscordThreadClaimLifecycle,
-        ) -> None: ...
-
-        async def _claim_discord_shared_thread(
-            self,
-            *,
-            thread_id: int,
-            parent_id: int,
-            kind: DiscordThreadClaimKind,
-            local_identity: str,
-            lifecycle: DiscordThreadClaimLifecycle,
-        ) -> bool: ...
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
         """Public wrapper for Discord session resolution or creation."""
@@ -249,17 +231,13 @@ class InputHandlersMixin:
         context: _SessionCreationContext,
     ) -> tuple[str, str | None]:
         """Resolve the effective project path and human_role override for a new session."""
-        if context.forum_type == "help_desk":
-            return context.project_path or teleclaude_config.config.computer.help_desk_dir, "customer"
         if context.forum_type == "team":
             user_id = str(getattr(getattr(message, "author", None), "id", ""))
             identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
 
             human_role = None if identity.person_slug else identity.person_role
 
-            project_path = context.project_path
-            if not project_path:
-                project_path = teleclaude_config.config.computer.help_desk_dir
+            project_path = context.project_path or str(platform_help_desk_folder())
 
             if identity.person_name:
                 person_slug = identity.person_slug or normalize_slug(identity.person_name)
@@ -275,7 +253,7 @@ class InputHandlersMixin:
         forum_id, _ = self._extract_channel_ids(message)
         forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         return (
-            forum_project_path or context.project_path or teleclaude_config.config.computer.help_desk_dir,
+            forum_project_path or context.project_path or str(platform_help_desk_folder()),
             None,
         )
 
@@ -451,22 +429,12 @@ class InputHandlersMixin:
 
         async def _create() -> Session | None:
             forum_type, project_path = self._resolve_forum_context(message)
-            if forum_type == "help_desk" and routing_ids.thread_id is not None and routing_ids.channel_id is not None:
-                await self._observe_discord_shared_thread(
-                    thread_id=routing_ids.thread_id,
-                    parent_id=routing_ids.channel_id,
-                    kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
-                    local_identity=str(routing_ids.thread_id),
-                    lifecycle=DiscordThreadClaimLifecycle.PENDING,
-                )
-                if not await self._claim_discord_shared_thread(
-                    thread_id=routing_ids.thread_id,
-                    parent_id=routing_ids.channel_id,
-                    kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
-                    local_identity=str(routing_ids.thread_id),
-                    lifecycle=DiscordThreadClaimLifecycle.PENDING,
-                ):
-                    return None
+            if forum_type == _HELP_DESK_FORUM:
+                # A help desk is entered by its identifier; a new thread in the shared forum starts nothing.
+                logger.info(_HELP_DESK_FORUM_NOT_ENTRY_EVENT, thread_id=routing_ids.thread_id)
+                return None
+            if forum_type == _UNKNOWN_FORUM:
+                return None
             return await self._create_session_for_message(
                 message,
                 user_id,

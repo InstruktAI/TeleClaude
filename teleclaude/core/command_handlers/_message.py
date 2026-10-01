@@ -25,6 +25,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import FileEventContext, SessionLifecycleContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
+from teleclaude.core.inbound_media import fetch_media_ref
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.injected_text import (
     EnvelopeName,
@@ -391,6 +392,8 @@ async def handle_voice(
     start_polling: StartPollingFunc,
 ) -> None:
     """Handle voice input for a session."""
+    if cmd.media_ref is not None:
+        cmd.file_path = str(await fetch_media_ref(cmd.media_ref, cmd.session_id))
     session = await db.get_session(cmd.session_id)
     if session:
         await client.pre_handle_command(session, cmd.origin)
@@ -502,6 +505,9 @@ async def handle_file(
     client: "AdapterClient",
 ) -> None:
     """Handle file upload for a session."""
+    if cmd.media_ref is not None:
+        fetched = await fetch_media_ref(cmd.media_ref, cmd.session_id)
+        cmd.file_path, cmd.filename, cmd.file_size = str(fetched), fetched.name, fetched.stat().st_size
 
     async def _send_notice(
         session_id: str,

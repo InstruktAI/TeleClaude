@@ -40,6 +40,9 @@ _PEOPLE_DIR = PEOPLE_DIR
 _PROJECT_ROOT = Path(__file__).parent.parent  # teleclaude package parent
 _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
 _PERSON_SLUG_FIELD = "slug"
+_LINK_BOT_UNRESOLVED_EVENT = "help_desk_link_bot_unresolved"
+_TELEGRAM_ADAPTER = "telegram"
+_DISCORD_ADAPTER = "discord"
 
 
 # --- Bot Resolution ---
@@ -120,6 +123,27 @@ def generate_invite_links(
         links["whatsapp"] = None
 
     return links
+
+
+async def render_help_desk_links(identifier: str, *, telegram_allowed: bool) -> dict[str, str | None]:
+    """Render a hosted help desk's entry links per adapter, with this computer's bots.
+
+    ``telegram_allowed`` is false when the identifier cannot be a Telegram
+    start parameter; that adapter then has no link. A bot whose identity
+    cannot be resolved has no link either.
+    """
+    telegram_username: str | None = None
+    discord_bot_id: str | None = None
+    if telegram_allowed:
+        try:
+            telegram_username = await resolve_telegram_bot_username()
+        except ValueError as e:
+            logger.warning(_LINK_BOT_UNRESOLVED_EVENT, adapter=_TELEGRAM_ADAPTER, error=str(e))
+    try:
+        discord_bot_id = await resolve_discord_bot_user_id()
+    except ValueError as e:
+        logger.warning(_LINK_BOT_UNRESOLVED_EVENT, adapter=_DISCORD_ADAPTER, error=str(e))
+    return generate_invite_links(identifier, telegram_username, discord_bot_id, config.whatsapp.business_number)
 
 
 # --- Workspace Scaffolding ---

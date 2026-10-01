@@ -17,7 +17,7 @@ from teleclaude.agent_registry import AgentName, LaunchProfile
 from teleclaude.caller_identity import is_desk_role
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.identity import session_person_role
-from teleclaude.core.models import Session
+from teleclaude.core.models import EndpointStamp, Session
 from teleclaude.core.session_utils import get_session_output_dir, resolve_working_dir
 from teleclaude.core.tool_access import desk_command_paths
 from teleclaude.install.configure_agent_cli import claude_platform_hooks
@@ -94,16 +94,22 @@ _DESK_RENDERERS: dict[AgentName, Callable[[Session], str]] = {
 def resolve_session_launch_profile(session: Session, agent: str) -> SessionLaunchProfile:
     """Choose the launch profile for a session's agent and render its per-launch flags.
 
-    A session placed at a help desk runs under the desk profile; an admin's
-    session under the default profile; every other session under the
-    restricted profile. An agent without a desk rendering cannot launch a desk
-    session.
+    A session placed at a help desk runs under the desk profile: a role below
+    member always, and a registered member who entered a desk too, whose own
+    role widens none of the desk's confinement. An admin's session runs under
+    the default profile, every other session under the restricted profile. An
+    agent without a desk rendering cannot launch a desk session.
     """
-    if is_desk_role(session.system_role, session.human_role):
+    person_role = session_person_role(session)
+    endpoint = EndpointStamp.from_session(session)
+    at_desk = is_desk_role(session.system_role, session.human_role) or (
+        endpoint is not None and endpoint.is_help_desk and person_role != HUMAN_ROLE_ADMIN
+    )
+    if at_desk:
         renderer = _DESK_RENDERERS.get(AgentName.from_str(agent))
         if renderer is None:
             raise ValueError(_NO_DESK_RENDERER_TEMPLATE.format(agent=agent))
         return SessionLaunchProfile(LaunchProfile.HELP_DESK, renderer(session))
-    if session_person_role(session) == HUMAN_ROLE_ADMIN:
+    if person_role == HUMAN_ROLE_ADMIN:
         return SessionLaunchProfile(LaunchProfile.DEFAULT)
     return SessionLaunchProfile(LaunchProfile.RESTRICTED)

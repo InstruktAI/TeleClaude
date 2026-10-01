@@ -63,8 +63,8 @@ a refused read returns no configuration.
 | company              | init                                                                                    | none beyond the verb band                       |
 | project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
 | project              | patch                                                                                   | `admin` effective role for that project         |
-| company              | init with `--help-desk`                                                                 | `admin` effective role for that company         |
-| project              | init of the caller's checkout with `--help-desk`                                        | `admin` effective role for that project         |
+| company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
+| project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
 
 ### Use cases
 
@@ -165,6 +165,16 @@ When it reads or patches that company's roster with valid relationships
 Then clearance accepts the targeted operation
 And the same person's read or patch of a different company is refused
 And their attempt to list every company is refused
+```
+
+#### UC-CTC10: Opening a home to outsiders requires that home's administrator
+
+```gherkin
+Given an agent acts for a person whose effective role for a company is member
+When it initializes that company with a help desk, or asks for that company's help-desk links
+Then the operation is refused before any configuration is read or written
+And the refusal names the company administrator standing it requires
+And the same operation for a person holding that company's admin role is accepted
 ```
 
 ## Known caveats

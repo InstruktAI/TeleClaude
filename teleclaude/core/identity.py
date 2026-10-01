@@ -496,6 +496,11 @@ class IdentityResolver:
                             platform_user_id=str(uid_int),
                             avatar_url=self._avatar_url_for(person),
                         )
+                    return IdentityContext(
+                        person_role=HUMAN_ROLE_CUSTOMER,
+                        platform="telegram",
+                        platform_user_id=str(uid_int),
+                    )
                 except (ValueError, TypeError):
                     pass
 
