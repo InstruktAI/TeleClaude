@@ -61,16 +61,6 @@ Organizational material maps to taxonomy types. The analysis session decides
 which snippets to produce based on what it finds — this mapping is guidance,
 not a fixed checklist.
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-| Source Material                                      | Taxonomy Type | Snippet ID Pattern                      |
-| ---------------------------------------------------- | ------------- | --------------------------------------- |
-| Company values, engineering principles, culture docs | `principle`   | `companies/{company}/principle/{topic}` |
-| Org structure, team topology, domain model, products | `concept`     | `companies/{company}/concept/{topic}`   |
-| HR policies, security standards, compliance rules    | `policy`      | `companies/{company}/policy/{topic}`    |
-| Onboarding flows, deployment SOPs, incident response | `procedure`   | `companies/{company}/procedure/{topic}` |
-| System architecture, infrastructure topology         | `design`      | `companies/{company}/design/{topic}`    |
-| API contracts, data schemas, service inventory       | `spec`        | `companies/{company}/spec/{topic}`      |
-<!-- change:local-doc-ids-and-person-privacy -->
 | Source Material                                      | Taxonomy Type | Snippet ID Pattern                      |
 | ---------------------------------------------------- | ------------- | --------------------------------------- |
 | Company values, engineering principles, culture docs | `principle`   | `local/companies/{company}/principle/{topic}` |
@@ -79,42 +69,19 @@ not a fixed checklist.
 | Onboarding flows, deployment SOPs, incident response | `procedure`   | `local/companies/{company}/procedure/{topic}` |
 | System architecture, infrastructure topology         | `design`      | `local/companies/{company}/design/{topic}`    |
 | API contracts, data schemas, service inventory       | `spec`        | `local/companies/{company}/spec/{topic}`      |
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ### Snippet ID Conventions
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-Generated snippet IDs follow the pattern `companies/{company}/{taxonomy}/{topic}` where:
-<!-- change:local-doc-ids-and-person-privacy -->
 Generated snippet IDs follow the pattern `local/companies/{company}/{taxonomy}/{topic}` where:
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 - `{company}` is the company's declared slug.
 - `{taxonomy}` is one of: `principle`, `concept`, `policy`, `procedure`, `design`, `spec`.
 - `{topic}` is a lowercase kebab-case name derived from the content topic.
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-- IDs are derived from the snippet's path, identical in either half, and must be
-  unique across both halves of the company home.
-<!-- change:local-doc-ids-and-person-privacy -->
 - IDs are derived from the snippet's path; a generated snippet lives in the local
   half, so its ID carries the `local/` prefix.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 Reserved snippet IDs (standard set, used as applicable):
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-```
-companies/{company}/concept/organization
-companies/{company}/concept/domain-model
-companies/{company}/concept/team-topology
-companies/{company}/policy/security
-companies/{company}/policy/coding-standards
-companies/{company}/procedure/onboarding
-companies/{company}/procedure/incident-response
-companies/{company}/design/architecture
-companies/{company}/spec/service-inventory
-```
-<!-- change:local-doc-ids-and-person-privacy -->
 ```
 local/companies/{company}/concept/organization
 local/companies/{company}/concept/domain-model
@@ -126,7 +93,6 @@ local/companies/{company}/procedure/incident-response
 local/companies/{company}/design/architecture
 local/companies/{company}/spec/service-inventory
 ```
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ### Frontmatter Template
 
@@ -164,33 +130,6 @@ in any format the AI can read (markdown, PDF, plain text).
 
 **Bookkeeping in meta.yaml:**
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-```yaml
-company_name: 'Acme Corp'
-slug: 'acme'
-created_at: '2024-01-15T10:30:00Z'
-last_onboarded_at: '2024-03-20T14:00:00Z'
-onboard_count: 3
-processed_files:
-  - path: 'handbook.pdf'
-    sha256: 'abc123...'
-    processed_at: '2024-01-15T10:30:00Z'
-    snippets_produced:
-      - companies/acme/policy/security
-      - companies/acme/procedure/onboarding
-  - path: 'architecture-overview.md'
-    sha256: 'def456...'
-    processed_at: '2024-03-20T14:00:00Z'
-    snippets_produced:
-      - companies/acme/design/architecture
-snippets_generated:
-  - companies/acme/concept/organization
-  - companies/acme/policy/security
-  - companies/acme/procedure/onboarding
-  - companies/acme/design/architecture
-snippets_preserved: []
-```
-<!-- change:local-doc-ids-and-person-privacy -->
 ```yaml
 company_name: 'Acme Corp'
 slug: 'acme'
@@ -216,7 +155,6 @@ snippets_generated:
   - local/companies/acme/design/architecture
 snippets_preserved: []
 ```
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ### Merge Rules for Re-onboarding
 
@@ -241,17 +179,9 @@ Additionally for re-onboarding:
 
 The enrichment writer validates all output before persistence:
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-- Snippet IDs must match the pattern `companies/{company}/{taxonomy}/{topic}`.
-- File destinations must resolve to paths under
-  `~/.teleclaude/companies/{company}/docs/local/`.
-- No destination may take a relative path that already exists under the other
-  half; both files would carry the same identity.
-<!-- change:local-doc-ids-and-person-privacy -->
 - Snippet IDs must match the pattern `local/companies/{company}/{taxonomy}/{topic}`.
 - File destinations must resolve to paths under
   `~/.teleclaude/companies/{company}/docs/local/`.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - Frontmatter authors only `description`; classification (`id`/`type`/`scope`/`domain`) is path-derived, never authored.
 - Company ownership is enforced by the snippet's path under `~/.teleclaude/companies/{company}/docs/`, not a frontmatter field.
 

@@ -152,26 +152,6 @@ project that company owns — taken as one answer. This stage never recomputes
 coverage from a role: the roster resolves it once, and documentation reads the
 result.
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-Reach and depth are separate answers and are never traded for one another. Reach
-decides which tiers are assembled; depth decides how much of an assembled tier is
-read. The default read set is the caller's own person tier, every company they
-belong to, global, and what the invocation offers — the home it lands in (the
-project being worked in, or a person's home) and the company a landed project
-declares as its owner — the last two met at whatever depth the caller's
-relationship grants, public-only where there is none. Every home in the set
-contributes both of its halves: its published material from the deployed corpus
-and its local material from that home's local catalog. The other projects a
-caller reaches through the roster are not in the default set; they are read in
-full when worked in or named. When the invocation lands in no home, it offers
-nothing of its own: the default read set is the relationship-derived part and
-global. Naming a tier, by selector or by snippet identity, changes reach: the
-named tier is assembled instead of the default set, from wherever the caller
-stands and with both of its halves — for a project, its local snippets and the
-published snippets of the domains it publishes as owner — at the depth this
-stage grants the caller for it. Naming never changes depth. A caller with no resolvable identity gains no
-tier from a relationship it does not have.
-<!-- change:local-doc-ids-and-person-privacy -->
 Reach and depth are separate answers and are never traded for one another. Reach
 decides which tiers are assembled and which of their halves; depth decides how
 much of an assembled half is read. The default read set is the caller's own
@@ -199,7 +179,6 @@ nothing. The
 named half is read at the depth this stage grants the caller for it. Naming
 never changes depth. A caller with no resolvable identity gains no tier from a
 relationship it does not have.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 A caller acting as a system principal holds no person tier and no relationship,
 so its default read set is global and what the invocation offers. Its depth is
@@ -214,7 +193,6 @@ documentation in full, as a platform administrator reads every tier. Any other
 role reads its own company tier, the projects it reaches, and its own person tier
 in full, and the platform's shared documentation at public-only depth. A tier no
 role reaches is read at public-only depth.
-<!-- planned:local-doc-ids-and-person-privacy -->
 
 **A person's local half is owner-only.** Its depth is not decided by effective
 role or `visibility`: a caller carrying that person's identity, or a system
@@ -226,7 +204,6 @@ Where the caller names it, by the local selector or by a `local/people/<slug>/�
 identity, the command is refused whether or not that person is declared, and the
 refusal names the owner's local documentation as private and working in the
 owner's workspace as the way in.
-<!-- /planned:local-doc-ids-and-person-privacy -->
 
 **Layer placement.** Identity owns resolving who is calling and publishes the
 answer as one typed caller: a person carrying their slug and platform role, a
@@ -242,20 +219,6 @@ reading a login document, a session record, the environment, or the identity
 service — has taken identity's ownership. A command edge that inspects a
 relationship to choose what to load has taken the reach decision.
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-**Naming a tier.** One rule covers every selector that names a tier — a person,
-a company, or a project — and every snippet identity that names one: the named
-tier is assembled at the depth the caller's effective role for it grants — in
-full where that role grants it, at what its snippets declare public where it does
-not — and a caller whose effective role for the named tier is `admin` reads it in
-full. Naming adds the
-tier to what is assembled; it grants nothing about how deeply it is read. A
-selector naming a tier that yields nothing at the caller's depth returns the
-same empty answer as one naming a tier that does not exist, so a selector
-discloses nothing. A direct snippet identity keeps the retrieval contract's
-per-identity answer: content where the caller's depth admits it, a withheld
-notice where it does not, and an unknown-identity error where nothing exists.
-<!-- change:local-doc-ids-and-person-privacy -->
 **Naming a tier.** One rule covers every selector that names a tier's half — a
 person, a company, or a project, published or local — and every snippet identity
 that names one: the named half is assembled at the depth the caller's effective
@@ -271,7 +234,6 @@ is declared, so it discloses nothing either. A direct snippet identity keeps the
 retrieval contract's per-identity answer: content where the caller's depth
 admits it, a withheld notice where it does not, a refusal for another person's
 local identity, and an unknown-identity error where nothing exists.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 Authorization therefore lives in one place — the depth the resolution stage
 assigns — and no selector carries a gate of its own. Command clearance authorizes
@@ -280,19 +242,6 @@ resolution every unselected read goes through.
 
 ### 6. Qualified Identity
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-Every snippet has one identity, the same from every location
-(`general/spec/snippet-authoring-schema`). A home's snippet carries the home's
-kind prefix and declared slug as its first two segments —
-`projects/<slug>/<taxonomy>/<rest>`, `people/<slug>/<taxonomy>/<rest>`,
-`companies/<slug>/<taxonomy>/<rest>` — and a domain snippet carries its domain.
-The selector reads the owner from the identity itself: a home-qualified identity
-names the home whose catalogs serve it, and assembly loads that home's local
-catalog wherever the invocation runs. Catalogs store identities in this form, so
-loading rewrites no prefix, and an identity whose owner is no registered project,
-declared person, or declared company is unknown — the selector never guesses an
-owner from an unrecognised first segment.
-<!-- change:local-doc-ids-and-person-privacy -->
 Every snippet has one identity, the same from every location
 (`general/spec/snippet-authoring-schema`). A home's published snippet carries the
 home's kind prefix and declared slug as its first two segments —
@@ -306,23 +255,16 @@ invocation runs. Catalogs store identities in this form, so loading rewrites no
 prefix, and an identity whose owner is no registered project, declared person,
 or declared company is unknown — the selector never guesses an owner or a half
 from an unrecognised segment.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ### 7. Tier Catalog Construction
 
 Every home keeps one catalog per documentation half. A home's published half
 (`docs/global`) is cataloged by the same publication pass that builds the global
 catalogs and enters the staged generation and the merged index; its local half
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-(`docs/local`) is cataloged in place in that home, and that local catalog is what
-assembly loads whenever the home is in the read set. Both catalogs carry the
-same qualified identities. Whether a person or company tier participates is read
-<!-- change:local-doc-ids-and-person-privacy -->
 (`docs/local`) is cataloged in place in that home, and that local catalog is what
 assembly loads whenever the home's local half is in the read set. Each catalog
 carries its half's qualified identities, the local catalog's carrying the
 `local/` prefix. Whether a person or company tier participates is read
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 from that tier's own declaration, never inferred from its location on disk.
 Participation is answered per tier by the tier-permissions contract, on an axis
 independent of whether the tier is an invocation context or carries project
@@ -346,14 +288,9 @@ corpus.
 Deployed tier material shares the deployed corpus with global material, so
 location inside it never decides depth: a tier snippet is read at the depth its
 tier resolves to for the caller, and is never admitted as global material because
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-of where its copy lives. Likewise, the half a snippet lives in decides where it
-is served from, never how deeply it is read.
-<!-- change:local-doc-ids-and-person-privacy -->
 of where its copy lives. Likewise, the half a snippet lives in decides where it
 is served from, never how deeply it is read, except for a person's local half,
 which is owner-only.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 The platform home declares no project, yet its recorded-commit publication is a
 target for one contribution: the participating tiers it holds. That activation
@@ -393,7 +330,6 @@ with zero entries to a caller who may see it, and invisible to one who may not.
   slug name no registered project, declared person, or declared company is
   reported as an unknown snippet ID; no other home is searched for a similar
   identity.
-<!-- planned:local-doc-ids-and-person-privacy -->
 - **Another person's local half named**: A caller who is not that person and
   not a system principal names a person's local half, by the local selector or
   by identity. The command is refused before anything is listed or rendered,
@@ -402,11 +338,8 @@ with zero entries to a caller who may see it, and invisible to one who may not.
 - **Local selector with no home**: The local selector is given with no named
   home and the invocation landed in none. There is no local half to read; the
   command is refused, naming the selectors that name a home.
-<!-- /planned:local-doc-ids-and-person-privacy -->
 
-<!-- planned:local-doc-ids-and-person-privacy -->
 ## See Also
 
 - docs/local/adr/0106-a-homes-local-half-is-its-own-identity-namespace.md
 - docs/local/adr/0107-a-persons-local-half-is-owner-only.md
-<!-- /planned:local-doc-ids-and-person-privacy -->

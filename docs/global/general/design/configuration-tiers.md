@@ -152,14 +152,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
   meets. Public material is readable by anyone with a legitimate reason to reach
   it; internal material is not readable without belonging.
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-- **Every documentation home has a published half and a local half.** A
-  repository's, a person's, and a company's `docs/global` is published into the
-  shared corpus; its `docs/local` is never published and is served in place from
-  that home's own index. Both halves carry the same identity form, so a snippet
-  is named identically from every location. Which half a snippet lives in
-  decides where it is served from, never who may read it.
-<!-- change:local-doc-ids-and-person-privacy -->
 - **Every documentation home has a published half and a local half.** A
   repository's, a person's, and a company's `docs/global` is published into the
   shared corpus; its `docs/local` is never published and is served in place from
@@ -169,7 +161,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
   in decides where it is served from; it decides who may read it only for a
   person's local half, which only that person and the system principal read
   (`general/policy/artifact-scope`).
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - **Landing and reading are two mechanisms.** Where a session may run is decided
   by routing and folder scoping; what a caller may read is decided by identity,
   visibility, and the selectors the caller supplies. They meet at one point: the
@@ -177,18 +168,12 @@ one index entry, listed on demand — rather than autoloaded into every session.
   for a project, the company it declares as its owner), the caller's own person
   tier, the companies they belong to, and global documentation. Location never
   sets depth.
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-- **Any home is readable from anywhere by naming it.** A selector or a qualified
-  identity names a home, and the named home — its local half included — is read
-  from wherever the caller stands, at the depth the caller's relationship grants.
-<!-- change:local-doc-ids-and-person-privacy -->
 - **Any home is readable from anywhere by naming it.** A home selector names the
   home's published half, the local selector names its local half, and a qualified
   identity names the half its prefix states. The named half is read from
   wherever the caller stands, at the depth the caller's relationship grants; a
   person's local half refuses every caller but that person and the system
   principal.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ## Primary flows
 
@@ -213,19 +198,12 @@ in full when they work in one or name it; they do not enter the default listing.
 Someone with no relationship to a company is not shut out of it — they meet the
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-people who do not belong to it. Explicit selectors naming a person, a company, or
-a project narrow the read to that tier and never widen it: the named tier is
-loaded from wherever the caller stands, both of its halves, and read at the depth
-the caller's relationship grants; a platform admin reads any named tier in full.
-<!-- change:local-doc-ids-and-person-privacy -->
 people who do not belong to it. Explicit selectors naming a person, a company, or
 a project narrow the read to that tier's published half, or with the local
 selector to its local half, and never widen it: the named half is loaded from
 wherever the caller stands and read at the depth the caller's relationship
 grants; a platform admin reads any named half in full except another person's
 local half, which is refused.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 
 ## Failure modes
 
@@ -239,17 +217,11 @@ local half, which is refused.
   thing that decides how deeply a caller may read produces an authorization model
   that changes when someone changes directory, which is not an authorization
   model. Location chooses only which homes are listed by default.
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-- **Reading confidentiality from the half.** Treating `docs/local` as private or
-  `docs/global` as public puts a snippet's audience in the folder it was filed
-  in. Visibility and the caller's relationship decide reading in both halves.
-<!-- change:local-doc-ids-and-person-privacy -->
 - **Reading confidentiality from the half.** Treating `docs/local` as private or
   `docs/global` as public puts a snippet's audience in the folder it was filed
   in. Visibility and the caller's relationship decide reading in both halves of
   every project and company home; a person's local half is the one exception,
   owner-only by rule rather than by `visibility`.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 - **Collapsing the two role axes.** Deriving a company role from a platform role,
   or the reverse, misreads identity across domains and grants authority nobody
   declared.

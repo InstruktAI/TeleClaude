@@ -40,15 +40,10 @@ company's own local catalog.
 
 ### Identity
 
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-Every company snippet carries the identity `companies/{slug}/<taxonomy>/<rest>`,
-whichever half holds it, and that identity is the same from every location.
-<!-- change:local-doc-ids-and-person-privacy -->
 A company's published snippet carries the identity
 `companies/{slug}/<taxonomy>/<rest>` and its local snippet
 `local/companies/{slug}/<taxonomy>/<rest>`; each identity is the same from every
 location.
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 Identities of different companies, projects, people, and domains never collide,
 so no tier overrides another and there is no precedence to resolve.
 
@@ -63,14 +58,9 @@ project without the declaration offers no company beyond the caller's own.
 
 A company's documentation enters the default read set of every member wherever
 they work, and of every invocation in a project that declares the company as its
-<!-- planned-change:local-doc-ids-and-person-privacy -->
-owner. Any caller reaches it from any location by naming the company, through a
-selector or a `companies/{slug}/…` identity; both halves are read. Depth follows
-<!-- change:local-doc-ids-and-person-privacy -->
 owner. Any caller reaches it from any location by naming the company: the
 company selector reads its published half, the local selector its local half,
 and a qualified identity the half its prefix states. Depth follows
-<!-- /planned-change:local-doc-ids-and-person-privacy -->
 the caller's relationship, never the location or the half: a member of the
 company, or a platform admin, reads it in full; anyone else reads its
 `visibility: public` snippets only. The relationship rules themselves are owned
