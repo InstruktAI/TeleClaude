@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from xml.sax.saxutils import unescape
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.injected_text import is_checkpoint_text
@@ -52,7 +53,8 @@ def _is_codex_stop_checkpoint_prompt(text: str) -> bool:
     match = _CODEX_STOP_HOOK_PROMPT_RE.match(text)
     if not match:
         return False
-    return _is_checkpoint_body(text[match.end() :])
+    body = unescape(text[match.end() :])
+    return _is_checkpoint_body(body)
 
 
 def _is_claude_stop_checkpoint_feedback(text: str) -> bool:
