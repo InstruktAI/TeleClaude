@@ -2,3 +2,4 @@
 @docs/local/policy/agent-artifact-governance.md
 @docs/local/policy/test-moratorium.md
 @docs/local/policy/no-inline-logic.md
+@docs/local/spec/domain/glossary.md
