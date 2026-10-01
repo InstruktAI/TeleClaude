@@ -901,11 +901,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the up-front check missed.",
                     "Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
                     "Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' "
-                    "is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract "
-                    "(sdlc/policy/process-change-authority): when the defect seems to demand a behavioral "
-                    "delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, "
-                    "lifecycle procedures), do NOT file it as a bug — it is a process change, filed on the ordinary "
-                    "path under that policy.",
+                    "is a fix wearing a symptom's clothes). A bug whose cause is a process defect may correct that "
+                    "defect within its symptom and causal scope (sdlc/policy/process-change-authority).",
                     "Require the observed symptom plus its trigger context verbatim in the description or --body: "
                     "what happened, what was expected, and what preceded it. A report with no trigger context is "
                     "unauditable later — this is the reporting invitation the schema alone cannot supply.",

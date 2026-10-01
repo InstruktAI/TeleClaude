@@ -203,10 +203,8 @@ checklist to sweep; most sessions match no case and need nothing.
 
 Send the smallest pointer that restores awareness, in the form the Goal's
 constraints require. For a todo that violates creation policy, flag its live
-claimant exactly as the reconciliation clause of
-`sdlc/policy/todo-creation-discipline` prescribes: complete
-first message, at most one grounded follow-up, never select or negotiate the
-claimant's exit. Settlement follows the clause itself. This role may take up
+claimant under the reconciliation clause of
+`sdlc/policy/todo-creation-discipline`, which also governs settlement. This role may take up
 a deadlock it observes: it owns that disposition with its standing peer
 falsifying, and only residue the human contract assigns to the human is left
 for him. An unclaimed todo has no flag path — the reconciliation clause
