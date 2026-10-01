@@ -32,11 +32,10 @@ home that curates it (`general/policy/agent-artifact-governance`).
 <!-- change:home-scoped-commits -->
 `AGENTS.master.md` is the rendering of its template and is refreshed whenever it
 differs, while a local baseline manifest is created once and then belongs to the
-home that curates it (`general/policy/agent-artifact-governance`). Once the
-home's history is active, a target carrying a change no one has recorded is
-someone's work in progress: installation leaves it untouched and reports it,
-and converges it on the first installation after that change is recorded or
-discarded.
+home that curates it (`general/policy/agent-artifact-governance`). A target
+carrying a change no one has recorded is someone's work in progress:
+installation leaves it untouched and reports it, and converges it on the first
+installation after that change is recorded or discarded.
 <!-- /planned-change:home-scoped-commits -->
 
 Materialization precedes home-repository activation. The retained-set
@@ -97,13 +96,13 @@ project's initialization enables its help desk
   is rewritten; an identical target is left untouched. A create-once target
   that exists is kept whatever its content. An unresolved placeholder fails
   installation before any target is written.
-- **Unrecorded changes are held.** Once the TeleClaude home's history is
-  active, a retained target that differs from its last record — modified,
-  staged, or present but never recorded — is held: left byte for byte as it
-  is, never recorded by activation, and reported by path. The held set is read
-  before the first write, under the lock the sealed commit holds, and that
-  lock is kept until activation has recorded. Before the history exists, and
-  for a target the retained set excludes, nothing is held.
+- **Unrecorded changes are held.** A retained target that differs from its
+  last record — modified, staged, or present but never recorded, including
+  before the history exists — is held: left byte for byte as it is, never
+  recorded by activation, and reported by path. The held set is read before the
+  first write, under the lock the sealed commit holds, and that lock is kept
+  until activation has recorded. A target the retained set excludes is never
+  held.
 <!-- /planned-change:home-scoped-commits -->
 - **Conflict posture.** Every target of every home is validated before the first
   write. A source or target whose filesystem type is not a regular file fails

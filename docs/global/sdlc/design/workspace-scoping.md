@@ -223,10 +223,12 @@ answer from session history.
     in a NUL file (not a command line), a filename with spaces or shell
     metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
     cross-reference validation runs inside the guardrails lane on full runs, so
-    an agent's scoped lint never fails on another agent's in-flight docs. Where
-    a guardrails step enumerates files itself on a full run, it draws them from
-    the files git tracks for the repository: content git ignores, and the
-    content of another repository nested inside it, are never graded.
+    an agent's scoped lint never fails on another agent's in-flight docs. On a
+    full run, every file the guardrails lane grades, the doc-index and
+    agent-artifact validations included, is one git tracks for the repository:
+    content git ignores, and the content of another repository nested inside
+    it, are never graded. Untracked files reach the lane through file-scoped
+    runs and the commit gate.
 <!-- /planned-change:home-scoped-commits -->
 
 12. **Ownership is declared, never inferred.** A path with no live declaration is

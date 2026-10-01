@@ -49,11 +49,12 @@ retained set. What a commit boundary does with that answer belongs to the commit
 surface that asks it, not to the home's own membership rule.
 
 <!-- planned:home-scoped-commits -->
-Once the history exists, activation records only what activation itself
-writes. Each record holds the files activation wrote that were unchanged since
-the last record, or absent, before it wrote them. Material other authors have
+Activation records only what activation itself writes. Each record holds the
+files activation wrote that were unchanged since the last record, or absent,
+before it wrote them; when the history is first created there is no last
+record, so it holds only files that were absent. Material other authors have
 not recorded, whether untracked, modified, or staged, stays exactly as they
-left it. The record is authored under the installation's own identity, never a
+left it, and enters history only through its author's own commit. The record is authored under the installation's own identity, never a
 person's, and passes the same commit gate as every other commit. An activation
 that writes nothing records nothing.
 <!-- /planned:home-scoped-commits -->
@@ -64,6 +65,7 @@ that writes nothing records nothing.
 
 #### UC-HOME-1: Activation over a populated home retains only qualifying material
 
+<!-- planned-change:home-scoped-commits -->
 ```
 Given a home directory holding authored configuration, per-person material, secrets, runtime databases, generated projections, and links into other repositories
 And the home is not yet under version control
@@ -72,6 +74,17 @@ Then the authored, home-owned, safely retainable material is retained
 And the secrets, runtime databases, generated projections, and links into other repositories are not retained
 And no material is retained merely because it sits inside an otherwise retained directory
 ```
+<!-- change:home-scoped-commits -->
+```
+Given a home directory holding authored configuration, per-person material, secrets, runtime databases, generated projections, and links into other repositories
+And the home is not yet under version control
+When an operator activates the home's history
+Then the history is created with no remote
+And its first record holds only the retained files activation itself wrote where none existed before
+And the authored material already present stays unrecorded and untouched until its author commits it
+And the secrets, runtime databases, generated projections, and links into other repositories are not recorded
+```
+<!-- /planned-change:home-scoped-commits -->
 
 #### UC-HOME-2: Repeating activation changes nothing
 

@@ -106,17 +106,17 @@ findings as its own outcome, distinct from a retained-set refusal.
 <!-- /planned:commit-gate-in-hook -->
 <!-- planned:home-scoped-commits -->
 
-### Over an active history, activation records only its own writes
+### Activation records only its own writes
 
-Activation that finds a record already present records nothing it did not
-write in that run. It holds the lock the sealed commit holds
+Activation records nothing it did not write in that run. It holds the lock the sealed commit holds
 (`projects/teleclaude/design/code-commit`, Invariant 1) from before it reads
 the home's state until after it has recorded, so no commit interleaves with
 it. Under that lock it reads which retained template targets carry an
 unrecorded change and holds them
 (`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 Its candidate set is exactly the retained targets it then wrote. It enumerates
-no untracked material.
+no untracked material, whether or not a record already exists: material present
+before the history is created is someone's unrecorded work like any other.
 
 The record is a pathspec commit of that candidate set, so content another
 session has staged stays staged and unrecorded. It carries the installation's
@@ -126,10 +126,6 @@ wrote to its earlier content, or removes it when it was absent, provided the
 file still holds exactly what activation wrote. A file someone changed in the
 meantime is left as it is and reported.
 
-Activation that finds no record, from an unversioned home or a repository
-whose record is empty, records the qualifying material already present
-(`projects/teleclaude/spec/feature/reconciliation/home-repository`, UC-HOME-1)
-and holds nothing.
 <!-- /planned:home-scoped-commits -->
 
 ### Path identity is canonical before any answer is given
@@ -219,11 +215,8 @@ flowchart TD
     C --> E[Take the commit lock]
     D --> E
     E --> V[Establish the retained-set declaration]
-    V --> P{Record present?}
-    P -- no --> Q[Materialize templates; candidates = qualifying material present]
-    P -- yes --> R[Hold targets with unrecorded changes; materialize the rest; candidates = retained targets written]
-    Q --> F[Exact candidate set]
-    R --> F
+    V --> R[Hold targets with unrecorded changes; materialize the rest]
+    R --> F[Candidates = retained targets written]
     F --> G{Every candidate admitted by the predicate?}
     G -- no --> H[Refuse; write nothing; name the offending paths]
     G -- yes --> S{Candidate set empty?}
