@@ -78,8 +78,8 @@ Derivation rules:
 - The commit obligation is active iff `code ∨ docs` is enabled.
 - `telec code lint` and the commit gate run iff `code ∨ docs` is enabled at a
   file's owning home, over that home's changed files: staged files at the
-  commit gate, declared or named files for a scoped lint, and the home's
-  tracked files for a full run. Each capability contributes only its own
+  commit gate, declared or named files for a scoped lint, and every file of the
+  home that git does not ignore for a full run. Each capability contributes only its own
   checks — `code` the native toolchain and TeleClaude's code rules, `docs`
   snippet validation, `agents` artifact validation — so a home without `code`
   never runs a code check. A full run widens the files, never the checks.

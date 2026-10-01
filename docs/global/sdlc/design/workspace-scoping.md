@@ -237,9 +237,9 @@ answer from session history.
     the make leg gets a NUL-delimited `FILES_FROM` and TeleClaude's checks get
     the scoped paths. A full run collects the homes in the repository's
     committed tree and runs, per home, exactly the checks that home's
-    capabilities carry over that home's tracked files: the make leg without
+    capabilities carry over every file of that home git does not ignore: the make leg without
     `FILES_FROM` at a home carrying `code`, so the project's own lint defines
-    its full suite, and TeleClaude's checks over the home's tracked files,
+    its full suite, and TeleClaude's checks over those files,
     whole-home doc-index cross-reference validation included. The full-run
     option widens the files, never the checks: content git ignores, and another
     repository nested inside the repository, are never graded, and a home that
@@ -382,7 +382,7 @@ telec code lint --all   (or CI, no-session shared branch)
 ```
 telec code lint --all   (or CI, no-session shared branch)
   → collect the homes in the repository's committed tree
-  → per home, over its tracked files: the checks its capabilities carry
+  → per home, over its files git does not ignore: the checks its capabilities carry
     (code → make lint at the home root plus TeleClaude's code rules;
      docs → snippet validation; agents → artifact validation)
   → a home that carries no capability is not checked
