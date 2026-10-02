@@ -42,7 +42,7 @@ _COORDINATE_ENDPOINT = "/sessions/self/coordinate"
 _SESSIONS_RUN_PA_SUBCOMMAND: Final[str] = "run-pa"
 _SESSIONS_RUN_PA_ENDPOINT: Final[str] = "/sessions/run-pa"
 _SESSIONS_RUN_PA_BRIEF_FIELD: Final[str] = "brief"
-_SESSIONS_RUN_PA_ARGUMENT_ERROR: Final[str] = "Error: provide exactly one brief."
+_SESSIONS_RUN_PA_ARGUMENT_ERROR: Final[str] = "Error: provide at most one brief."
 _POST_METHOD = "POST"
 _BULK_END_TIMEOUT_S = 30.0
 _BULK_END_POLL_INTERVAL_S = 0.25
@@ -400,18 +400,18 @@ def handle_sessions_run(args: list[str]) -> None:
 def handle_sessions_run_pa(args: list[str]) -> None:
     """Start the caller's personal assistant.
 
-    Usage: telec sessions run-pa <brief>
+    Usage: telec sessions run-pa [<brief>]
     """
     parsed = parse_command_args(SESSIONS_RUN_PA, args)
-    if len(parsed.positionals) != 1:
+    if len(parsed.positionals) > 1:
         print(_SESSIONS_RUN_PA_ARGUMENT_ERROR, file=sys.stderr)
         raise SystemExit(1)
 
-    data = tool_api_call(
-        _POST_METHOD,
-        _SESSIONS_RUN_PA_ENDPOINT,
-        json_body={_SESSIONS_RUN_PA_BRIEF_FIELD: parsed.positionals[0]},
-    )
+    body: dict[str, str] = {}
+    if parsed.positionals:
+        body[_SESSIONS_RUN_PA_BRIEF_FIELD] = parsed.positionals[0]
+
+    data = tool_api_call(_POST_METHOD, _SESSIONS_RUN_PA_ENDPOINT, json_body=body)
     print_json(data)
 
 

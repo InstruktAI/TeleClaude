@@ -892,11 +892,11 @@ class RunSessionRequest(BaseModel):
 
 
 class RunPersonalAssistantRequest(BaseModel):
-    """Brief-only request to launch the caller's personal assistant."""
+    """Optional-brief request to launch the caller's personal assistant."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    brief: str = Field(..., min_length=1)
+    brief: str | None = Field(default=None, min_length=1)
 
 
 class SendResultRequest(BaseModel):

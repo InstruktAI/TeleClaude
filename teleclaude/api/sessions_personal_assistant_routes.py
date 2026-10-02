@@ -42,11 +42,6 @@ _SESSION_ID_FIELD: Final[str] = "session_id"
 _TMUX_SESSION_NAME_FIELD: Final[str] = "tmux_session_name"
 _AGENT_FIELD: Final[str] = "agent"
 _SUCCESS_STATUS: Final[Literal["success"]] = "success"
-_FRAMING: Final[str] = (
-    "This is an in-the-moment request from another session. "
-    "Work a schedule owns stays with that schedule under your conduct policy."
-)
-_SEPARATOR: Final[str] = "\n\n"
 _NO_PERSON_DETAIL: Final[str] = "No person resolved for the caller."
 _MAPPING_ERROR: Final[str] = "Personal assistant launch did not map to session creation."
 _CREATION_ERROR: Final[str] = "Failed to create personal assistant session."
@@ -67,7 +62,7 @@ async def run_personal_assistant(
     request: RunPersonalAssistantRequest,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> CreateSessionResponseDTO:
-    """Launch the caller's assistant with a brief and no parent session."""
+    """Launch the caller's assistant with an optional brief and no parent session."""
     request_id = str(uuid.uuid4())
     entry_point = SessionEntryPoint.PERSONAL_ASSISTANT_LAUNCH
     dispatch_mode = AgentDispatchMode.AUTOMATIC
@@ -107,10 +102,10 @@ async def run_personal_assistant(
     workspace = scaffold_personal_workspace(caller.person_slug)
     caller_session = await db.get_session(identity.session_id) if identity.session_id else None
     company = caller_session.company if caller_session is not None else None
-    opening_input = f"{_FRAMING}{_SEPARATOR}{request.brief}"
+    opening_input = request.brief
     metadata = build_metadata(project_path=str(workspace), company=company, human_email=caller.email)
     metadata.launch_intent = SessionLaunchIntent(
-        kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+        kind=SessionLaunchKind.AGENT_THEN_MESSAGE if opening_input is not None else SessionLaunchKind.AGENT,
         thinking_mode=RunSessionThinkingMode.SLOW.value,
         message=opening_input,
         dispatch_mode=dispatch_mode,

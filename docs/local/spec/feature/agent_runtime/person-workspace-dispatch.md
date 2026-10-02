@@ -1,6 +1,6 @@
 ---
-description: Any agent that recognises personal work starts that person's assistant
-  with a brief alone; the destination is derived from the authenticated caller, and
+description: A caller starts their personal assistant with an optional brief;
+  the destination is derived from the authenticated caller, and
   the launched assistant has no parent and ends itself.
 ---
 
@@ -10,11 +10,12 @@ description: Any agent that recognises personal work starts that person's assist
 
 Person workspace dispatch is how an agent session that recognises work belonging
 to a person starts that person's assistant without working out where to point
-it. The session invokes `telec sessions run-pa "<brief>"` — a sibling of `run`
-and `start` — and the session it starts lands in that person's own workspace
-carrying the brief.
+it. The caller invokes `telec sessions run-pa` — a sibling of `run` and `start` —
+and the session it starts lands in that person's own workspace. An optional brief
+is passed through as the opening instruction, without added framing. Without a
+brief, the assistant starts with no opening message.
 
-The caller supplies a brief and nothing else. The person, the workspace, and the
+The caller may supply a brief and nothing else. The person, the workspace, and the
 computer are derived from the authenticated caller, and the surface exposes no
 parameter naming a person in any form. A platform admin's invocation takes the
 same single form and reaches that admin's own workspace. A caller that resolves
@@ -25,8 +26,7 @@ start a session in a person's workspace exactly as they do in any other folder.
 
 The session the launch starts has no parent. Nothing waits on it and nothing
 decides its ending but itself; it tells the person what it did by sending a
-message and then ends. It receives the brief as a request made in the moment, so
-work a schedule owns stays with that schedule (`personal/policy/assistant-conduct`).
+message and then ends. Its conduct is governed by `personal/policy/assistant-conduct`.
 
 ## Canonical fields
 
@@ -47,7 +47,7 @@ And the agent supplied no path, no subfolder, no computer, and no person
 ```gherkin
 Given an agent inspects the personal-assistant launch command
 When the agent reads its accepted arguments
-Then the brief is the only value the command accepts
+Then an optional brief is the only value the command accepts
 And no argument, flag, or alternate form names a person
 And an invocation that attempts to name a person is rejected rather than honored or ignored
 ```
@@ -85,7 +85,7 @@ And nothing refuses the request because of whose workspace it is
 
 ```gherkin
 Given an agent recognises work that belongs to a person
-When it invokes the personal-assistant launch command
+When it invokes the personal-assistant launch command with a brief
 Then it states the need in the brief and names no command or procedure to run
 And the launched session determines for itself which of the person's procedures the brief calls for
 ```
@@ -100,16 +100,25 @@ And the session ends itself rather than waiting to be ended
 And anything the person needs to see was delivered as a message rather than as a result a caller collects
 ```
 
-#### UC-PWD8: The brief arrives as an in-the-moment request
+#### UC-PWD8: The brief arrives without added framing
 
 ```gherkin
-Given a person's recurring work is owned by a schedule
-When an agent invokes the personal-assistant launch command with a brief that would touch that work
-Then the launched session receives the brief together with the statement that it is an in-the-moment request
-And it handles the brief under the schedule rule (`personal/policy/assistant-conduct`) rather than as the recurring work itself
+Given an authenticated agent session resolves to a person
+When that agent invokes the personal-assistant launch command with a brief
+Then the launched assistant receives the supplied brief unchanged
+And the launch adds no instructions or framing to the brief
+```
+
+#### UC-PWD9: A caller starts an assistant without a brief
+
+```gherkin
+Given an authenticated operator resolves to a person
+When that operator invokes the personal-assistant launch command without a brief
+Then an assistant session starts in that person's own workspace
+And the assistant receives no opening message
 ```
 
 ## See Also
 
-- ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the conduct an assistant follows once it has arrived, including the location gate, the ending rule, and the schedule rule the launch's framing invokes.
+- ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the conduct an assistant follows once it has arrived.
 - docs/local/design/architecture/ai-to-ai-dispatch.md — the dispatch flow this launch joins, and its invariants.
