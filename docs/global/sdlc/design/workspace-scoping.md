@@ -328,6 +328,15 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 **Response:** Lint makes a full run (Invariant 11). Expected behavior for
 manual runs.
 
+### Full lint before the first commit
+
+An unborn repository has no committed declaration tree from which full lint can
+discover owning homes.
+
+**Response:** Exit non-zero with guidance to pass files explicitly or commit the
+initial staged set through the commit gate. The first commit still receives the
+same staged-content checks.
+
 ### A scoped operation runs with nothing declared
 
 A session invokes `telec code commit` while holding no live declarations of its

@@ -37,6 +37,10 @@ _EMPTY_SCOPE_ERROR = (
 )
 _LINT_GATE_UNAVAILABLE = "ERROR: telec code lint requires a code or documentation gate in this context."
 _LINT_FAILURE_TEMPLATE = "ERROR: {reason}"
+_FULL_LINT_UNBORN_HEAD = (
+    "ERROR: full lint needs a committed tree to discover owning homes. "
+    "Pass files explicitly or commit the initial staged set through the commit gate."
+)
 _ROOT_HOME = Path(".")
 _GIT_DIRECTORY = ".git"
 
@@ -118,6 +122,9 @@ def _home_relative_path(path: str, home: OwningHome) -> str:
 def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
     """Run a full lint over committed homes and each home's Git-visible files."""
     repo = Repo(str(project_root))
+    if not repo.head.is_valid():
+        print(_FULL_LINT_UNBORN_HEAD, file=sys.stderr)
+        raise SystemExit(2)
     source = TreeSource.recorded_commit(project_root, repo.head.commit.hexsha)
     tree_paths = list_tree_paths(source)
     tree_path_set = set(tree_paths)
