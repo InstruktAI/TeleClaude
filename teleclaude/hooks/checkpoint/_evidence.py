@@ -3,6 +3,9 @@
 from pathlib import Path
 
 from teleclaude.checkpoint_model import scope_matches
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
+from teleclaude.cli.telec.surface import SESSIONS_SEND
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_COMMIT_EVIDENCE,
@@ -23,9 +26,6 @@ from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 _SHELL_TOOL_NAMES = frozenset({"bash", "shell", "terminal", "run_shell_command", "exec_command"})
 _SESSIONS_SEND_PREFIX = ("telec", "sessions", "send")
-_SEND_SESSION_FLAGS = frozenset({"--session", "-s"})
-_SEND_VALUE_FLAGS = _SEND_SESSION_FLAGS | {"--computer", "-c"}
-_FLAG_PREFIX = "-"
 
 __all__ = [
     "_check_blast_radius",
@@ -91,22 +91,16 @@ def _segment_sends_to(segment: str, session_ids: frozenset[str]) -> bool:
 
 
 def _send_target(arguments: list[str]) -> str | None:
-    """Return the target session of ``telec sessions send`` arguments: ``--session`` or the first positional."""
-    pending_value_flag: str | None = None
-    target: str | None = None
-    for token in arguments:
-        if pending_value_flag is not None:
-            if pending_value_flag in _SEND_SESSION_FLAGS:
-                return token
-            pending_value_flag = None
-            continue
-        if token in _SEND_VALUE_FLAGS:
-            pending_value_flag = token
-        elif token.startswith(_FLAG_PREFIX):
-            continue
-        elif target is None:
-            target = token
-    return target
+    """Return the session ``telec sessions send`` would address, parsed as the CLI parses it."""
+    try:
+        parsed = parse_command_args(SESSIONS_SEND, arguments)
+    except CliUsageError:
+        return None
+    positional_target = parsed.positionals[0] if parsed.positionals else None
+    if not parsed.has(F.FLAG_SESSION):
+        return positional_target
+    # The CLI refuses a positional target combined with --session; nothing is sent.
+    return None if positional_target is not None else parsed.value(F.FLAG_SESSION)
 
 
 def _has_commit_evidence(timeline: TurnTimeline) -> bool:
