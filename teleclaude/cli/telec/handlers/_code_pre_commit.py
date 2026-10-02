@@ -26,7 +26,7 @@ from teleclaude.git import (
     hook_free_environment,
 )
 from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree, read_tree_path
-from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
+from teleclaude.paths import ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
     QualityCheckFamily,
@@ -192,7 +192,7 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
     snapshot_needed = any(_home_needs_snapshot(home) for home in homes)
     content_context = materialize_tree(tree_source) if snapshot_needed else nullcontext(None)
     child_environment = hook_free_environment(project_root)
-    platform_home_subject = project_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+    platform_home_subject = is_platform_home(project_root)
     with content_context as content_root:
         failures = [
             _run_home_gate(
@@ -306,9 +306,7 @@ def _run_home_gate(
     """Run native and guardrail checks for one selected home."""
     first_failure = 0
     native_paths = sorted(
-        _home_relative_path(change.path, home.owner)
-        for change in home.changes
-        if change.status in _STAGED_ACMR_STATUSES
+        home.owner.relative_path(change.path) for change in home.changes if change.status in _STAGED_ACMR_STATUSES
     )
     if QualityGateLeg.NATIVE in home.legs and native_paths:
         native_result = run_lint_gate(
@@ -345,18 +343,13 @@ def _run_home_gate(
     return _record_gate_result(guardrail_result.exit_code, guardrail_result.failure_reason, first_failure)
 
 
-def _home_relative_path(relative_path: str, home: OwningHome) -> str:
-    """Convert a repository-relative path to its owning home's coordinates."""
-    return Path(relative_path).relative_to(home.root).as_posix()
-
-
 def _deleted_home_validation_paths(tree_paths: list[str], home: OwningHome) -> list[str]:
     """Select remaining Markdown and artifact files to revalidate after a deletion."""
     selected: list[str] = []
     for relative_path in tree_paths:
         path = Path(relative_path)
         try:
-            home_path = path.relative_to(home.root)
+            home_path = Path(home.relative_path(path))
         except ValueError:
             continue
         if home_path.suffix == _STAGED_MARKDOWN_SUFFIX or AGENT_ARTIFACT_ROOT_DIRNAME in home_path.parts:

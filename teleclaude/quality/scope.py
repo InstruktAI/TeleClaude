@@ -17,7 +17,7 @@ import yaml
 
 from teleclaude.core.reconciliation.home_retained_set import HomeMembership, home_membership
 from teleclaude.git import GitCommandError, Repo, is_linked_worktree
-from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
+from teleclaude.paths import ConfigFileName, is_platform_home
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
     collect_declared_paths,
@@ -346,7 +346,7 @@ def _is_eligible_path(
         candidate.relative_to(context)
     except ValueError:
         return False
-    if repository == TELECLAUDE_HOME.resolve():
+    if is_platform_home(repository):
         return home_membership(candidate, home=repository) is HomeMembership.RETAINED
     return True
 

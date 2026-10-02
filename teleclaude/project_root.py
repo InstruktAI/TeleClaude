@@ -21,7 +21,7 @@ from teleclaude.core.worktree_layout import (
 from teleclaude.core.worktree_layout import (
     worktree_home_for_checkout,
 )
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import is_platform_home
 
 DOC_LAYER_PATTERN = "docs/**"
 _PROJECT_ROOT_ERROR = "cwd does not resolve to a project checkout: {invocation_dir}"
@@ -70,7 +70,7 @@ class InvocationRoots:
         if (
             self.context_kind is ConfigKind.GLOBAL
             and self.context_root is not None
-            and self.context_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+            and is_platform_home(self.context_root)
         ):
             return self.context_root
         raise FileNotFoundError(_PROJECT_ROOT_ERROR.format(invocation_dir=self.invocation_dir))

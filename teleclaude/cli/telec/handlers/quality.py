@@ -14,7 +14,7 @@ from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_LINT, CODE_TEST
 from teleclaude.config.context_root import OwningHome, group_paths_by_owning_home
 from teleclaude.git import Repo
 from teleclaude.git_tree import TreeSource, list_tree_paths
-from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
+from teleclaude.paths import ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.quality.gate import (
     LintGateResult,
@@ -84,7 +84,7 @@ def _run_scoped_lint_gates(project_root: Path, paths: list[str]) -> list[LintGat
         families = select_quality_check_families(permissions.project_subscriptions, permissions)
         if not legs:
             continue
-        home_paths = [_home_relative_path(path, owner) for path in repository_paths]
+        home_paths = [owner.relative_path(path) for path in repository_paths]
         if QualityGateLeg.NATIVE in legs:
             results.append(
                 run_lint_gate(
@@ -108,15 +108,10 @@ def _run_scoped_lint_gates(project_root: Path, paths: list[str]) -> list[LintGat
                     selection=frozenset({QualityGateLeg.GUARDRAILS}),
                     check_families=families,
                     request_subject_checkout_grading=True,
-                    platform_home_subject=_is_platform_home(project_root),
+                    platform_home_subject=is_platform_home(project_root),
                 )
             )
     return results
-
-
-def _home_relative_path(path: str, home: OwningHome) -> str:
-    """Return one scoped path in its owning home's coordinates."""
-    return Path(path).relative_to(home.root).as_posix()
 
 
 def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
@@ -176,15 +171,10 @@ def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
                     check_families=families,
                     full_run=True,
                     request_subject_checkout_grading=True,
-                    platform_home_subject=_is_platform_home(execution_root),
+                    platform_home_subject=is_platform_home(execution_root),
                 )
             )
     return results
-
-
-def _is_platform_home(project_root: Path) -> bool:
-    """Return whether the lint subject is the machine's platform home."""
-    return project_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
 
 
 def _raise_for_lint_failures(results: list[LintGateResult]) -> None:

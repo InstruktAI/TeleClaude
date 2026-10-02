@@ -30,7 +30,7 @@ from teleclaude.install.distribution import (
     inflate_home_entrypoint,
     inflate_home_entrypoints,
 )
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import TELECLAUDE_HOME, is_platform_home
 from teleclaude.resource_validation import (
     _error,
     clear_errors,
@@ -248,7 +248,7 @@ def _execute_publication(
     with materialize_tree(TreeSource.recorded_commit(canonical_root, after_sha)) as snapshot_root:
         capabilities = resolve_capabilities(snapshot_root)
         if not capabilities.is_target:
-            if _is_platform_home(canonical_root):
+            if is_platform_home(canonical_root):
                 # This validates every participating tier's snippet sources, installs
                 # both catalogs of each tier (docs/global and docs/local) at its home in
                 # the canonical home checkout, then composes only the published half
@@ -385,11 +385,6 @@ def _install_home_entrypoints(
         [(entrypoint.output, entrypoint.text.encode(_UTF8)) for entrypoint in entrypoints],
     )
     retract_retired_pointers(snapshot_root=snapshot_root, canonical_root=canonical_root, candidates=retired_pointers)
-
-
-def _is_platform_home(canonical_root: Path) -> bool:
-    """Return whether the published repository is the machine's platform home."""
-    return canonical_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
 
 
 def _reroot_written_outputs(

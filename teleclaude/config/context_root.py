@@ -31,6 +31,10 @@ class OwningHome(NamedTuple):
     root: Path
     kind: ConfigKind
 
+    def relative_path(self, repository_path: str | Path) -> str:
+        """Return a repository path in this home's coordinates."""
+        return Path(repository_path).relative_to(self.root).as_posix()
+
 
 class ContextRoot(NamedTuple):
     """An anchoring configuration declaration and its root directory."""

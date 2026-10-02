@@ -24,7 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import is_platform_home
 from teleclaude.resource_validation import _error, clear_errors, get_errors, validate_all_snippets
 
 # Directories to scan for markdown files
@@ -235,11 +235,6 @@ def _validate_files(file_paths: list[Path], repo_root: Path) -> list[str]:
     return all_errors
 
 
-def _is_platform_home(repo_root: Path) -> bool:
-    """Return whether repo_root is the machine's platform home."""
-    return repo_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
-
-
 def _validate_snippets(
     repo_root: Path,
     *,
@@ -261,7 +256,7 @@ def _validate_snippets(
     if content_root is not None and paths is None:
         raise ValueError(_CONTENT_ROOT_REQUIRES_PATHS)
     tier_home = (
-        validation_root if platform_home_subject or (content_root is None and _is_platform_home(repo_root)) else None
+        validation_root if platform_home_subject or (content_root is None and is_platform_home(repo_root)) else None
     )
     validation_paths = (
         [validation_root / path.resolve().relative_to(repo_root.resolve()) for path in paths]

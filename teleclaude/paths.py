@@ -36,6 +36,13 @@ def invocation_cwd() -> Path:
 
 
 TELECLAUDE_HOME = get_runtime_config().home
+
+
+def is_platform_home(path: Path) -> bool:
+    """Return whether a path resolves to this machine's platform home."""
+    return path.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+
+
 STATE_DIR = TELECLAUDE_HOME / "state"
 LOGS_DIR = TELECLAUDE_HOME / "logs"
 GLOBAL_DOCS_DIR = TELECLAUDE_HOME / "docs"

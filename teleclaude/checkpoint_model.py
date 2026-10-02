@@ -33,7 +33,7 @@ from teleclaude.constants import (
     MaintenanceAction,
     _compile_glob,
 )
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import is_platform_home
 
 logger = get_logger(__name__)
 
@@ -323,14 +323,9 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
         model = base_checkpoint_model(fallback_slug)
     else:
         model = checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
-    if _is_teleclaude_home(root):
+    if is_platform_home(root):
         model = _append_home_publication_binding(model)
     return model
-
-
-def _is_teleclaude_home(root: Path) -> bool:
-    """Return whether ``root`` resolves to the machine's platform home."""
-    return root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
 
 
 def _append_home_publication_binding(model: CheckpointModel) -> CheckpointModel:

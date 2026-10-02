@@ -305,7 +305,7 @@ class _SourceValidationStep:
         validation_root = content_root.resolve() if content_root is not None else self._project_root.resolve()
         for home, repository_paths in grouped.items():
             home_root = validation_root / home.root
-            home_paths = [Path(path).relative_to(home.root).as_posix() for path in repository_paths]
+            home_paths = [home.relative_path(path) for path in repository_paths]
             if validate_artifacts:
                 findings.extend(validate_all_artifacts(home_root, paths=home_paths))
             if str(ConfigFileName.OVERLAY) in home_paths:
