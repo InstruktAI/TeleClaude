@@ -19,7 +19,7 @@ from teleclaude.api import (
     settings_routes,
 )
 from teleclaude.api.auth import CallerIdentity, carried_caller
-from teleclaude.api.sessions_routes import ListSessionsQuery
+from teleclaude.api.session_listing_route import ListSessionsQuery
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
     ChiptunesStatusDTO,
