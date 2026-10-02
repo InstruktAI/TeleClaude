@@ -423,7 +423,6 @@ Then the observing agent still reads the same substantive output as the session'
 And the silent completion does not replace it with an empty output or deliver it again as new output
 ```
 
-<!-- planned:fix-tmux-pane-snapshot-polling-emits-enoent -->
 #### UC-OPD19: Tmux binary momentarily not found when starting snapshot collection
 
 ```
@@ -435,7 +434,6 @@ And it does not treat the failure as host-pane or session death — no terminati
 And it skips the current tick and retries snapshot collection on the next poll cadence
 And when the tmux binary can be started again the same polling task resumes delivering output without needing re-registration
 ```
-<!-- /planned:fix-tmux-pane-snapshot-polling-emits-enoent -->
 
 ### Cross-context references
 
