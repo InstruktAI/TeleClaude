@@ -22,7 +22,7 @@ from teleclaude.core.models import SessionSnapshot
 from teleclaude.utils.transcript_discovery import SessionId
 
 CLOSED_SESSION_LISTING_WINDOW = timedelta(days=7)
-# 200 UUIDs fit within the daemon's 16 KiB h11 request-head limit with room for other headers.
+# Keep an ID batch below the daemon request-head limit with room for other headers.
 SESSION_LISTING_MAX_IDS = 200
 SESSION_IDS_FIELD = "ids"
 SESSION_LISTING_ID_LIMIT_DETAIL = f"Session listing accepts at most {SESSION_LISTING_MAX_IDS} session IDs"
