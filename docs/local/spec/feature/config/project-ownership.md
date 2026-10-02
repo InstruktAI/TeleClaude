@@ -45,9 +45,12 @@ recorded and no fallback owner is inferred from the project's surroundings.
 - A declaration naming an unregistered company or an unregistered person is
   refused.
 <!-- planned:personal-assistant-project-creation -->
-- A person may declare themselves the owner of a project they adopt, at
-  adoption and only for themselves: the declaration names the adopting person
-  and no one else, and it never replaces an owner already declared.
+- A person may declare themselves the owner of a project they adopt inside
+  their own person home, at adoption and only for themselves: the declaration
+  names the adopting person and no one else, it is refused for a folder outside
+  that person's home, and it never replaces an owner already declared. Where the
+  project sits decides only whether the person may make this declaration; the
+  declaration alone makes them the owner.
 <!-- /planned:personal-assistant-project-creation -->
 
 ### Use cases
@@ -102,7 +105,7 @@ And the project is left with no owner rather than a partial one
 #### UC-POWN-6: A person declares themselves owner when adopting a project
 
 ```gherkin
-Given a registered person adopts a folder that declares no owner
+Given a registered person adopts a folder inside their own person home that declares no owner
 And they ask adoption to record them as its owner
 When the project's owner is resolved
 Then the owner is that person
@@ -116,6 +119,15 @@ Given a folder whose configuration declares an owner
 When a different person adopts it and asks to be recorded as its owner
 Then the adoption is refused, naming the declared owner
 And the declared owner is unchanged
+```
+
+#### UC-POWN-8: Self-declared ownership stops at the person's own home
+
+```gherkin
+Given a folder outside a registered person's own person home that declares no owner
+When that person adopts it and asks to be recorded as its owner
+Then the adoption is refused before anything is written
+And the folder is neither adopted nor given an owner
 ```
 
 <!-- /planned:personal-assistant-project-creation -->

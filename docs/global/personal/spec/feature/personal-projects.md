@@ -17,9 +17,11 @@ every respect (`local/projects/teleclaude/spec/feature/config/tier-permissions`)
 that belongs to the person by declaration, never by where it sits
 (`local/projects/teleclaude/spec/feature/config/project-ownership`).
 
-Placement is the default the assistant applies without asking. A destination the
-person names themselves is their instruction; a project placed there takes no
-owner from this behavior.
+Placement in the person's own projects area is the default the assistant applies
+without asking. A destination the person names themselves is their instruction.
+A project created anywhere in the person's own space is theirs, whether the
+assistant chose the spot or the person named it; one the person sends outside
+their own space takes no owner from this behavior.
 
 The assistant's part ends when the project exists. Building it out is ordinary
 project work in that project, and a change to a project that already exists is
@@ -67,7 +69,7 @@ And the person's workspace is not listed in its place
 #### UC-PPROJ5: The person owns the project their assistant created in their space
 
 ```gherkin
-Given a person's assistant has created a project in that person's own projects area
+Given a person's assistant has created a project in that person's own space, at the default spot or one the person named
 When an agent resolves that project's owner
 Then the owner is that person
 ```

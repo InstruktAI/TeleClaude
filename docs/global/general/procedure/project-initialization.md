@@ -24,18 +24,9 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ### 1. Ensure git repository
 
-<!-- planned-change:personal-assistant-project-creation -->
 Initializes a git repository on the `main` branch when the folder is not already
 inside one. A folder that is already inside a repository keeps its repository and
 branches as they are.
-<!-- change:personal-assistant-project-creation -->
-Initializes a git repository on the `main` branch when the folder is not already
-inside one, or when the repository it is inside is the global home's. The global
-home's repository holds home material and never a project, so a folder adopted
-beneath it receives its own repository and is a foreign root of the home
-(`local/projects/teleclaude/design/architecture/home-repository`). A folder inside
-any other repository keeps its repository and branches as they are.
-<!-- /planned-change:personal-assistant-project-creation -->
 
 Source: `teleclaude/project_setup/git_repo.py:ensure_git_repo()`
 
@@ -74,19 +65,6 @@ is the template's rendering after every such run, and no other file in the
 folder is replaced. The files land in the working tree for the project to commit
 (`projects/teleclaude/spec/feature/config/kind-addressed-configuration`).
 
-<!-- planned:personal-assistant-project-creation -->
-### 2d. Record the adopting person as owner (`--own` only)
-
-With `--own`, the project declaration names the person the caller's verified
-identity carries as the project's owner. The request names no one: the owner it
-records is always the caller, and a caller carrying no person identity is
-refused. A declaration that already names that person is left as it is; one
-that names any other owner is refused before any step writes, so adoption never
-reassigns a project
-(`local/projects/teleclaude/spec/feature/config/project-ownership`). Without
-`--own`, adoption declares no owner.
-
-<!-- /planned:personal-assistant-project-creation -->
 ### 3. Update .gitattributes (`docs` only)
 
 Adds filter patterns so that `docs/**/*.md` and `agents/docs/**/*.md` use the
@@ -207,9 +185,6 @@ Source: `teleclaude/project_manifest.py:register_root()`
 - Event domains seeded in global config (if not already populated).
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
-<!-- planned:personal-assistant-project-creation -->
-- With `--own`: the adopting person declared as the project's owner in `teleclaude.yml`.
-<!-- /planned:personal-assistant-project-creation -->
 
 ## Recovery
 

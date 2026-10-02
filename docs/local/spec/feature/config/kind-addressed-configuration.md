@@ -62,10 +62,10 @@ requires its home's local documentation
 
 <!-- planned:personal-assistant-project-creation -->
 `init --own` on `project` records the caller's own person as the adopted
-project's owner. It names no one, so it can declare nobody but the caller, and it
-never replaces an owner the project already declares
-(`local/projects/teleclaude/spec/feature/config/project-ownership`). Any caller
-`init` admits may use it.
+project's owner, for a folder inside that person's own home only. It names no
+one, so it can declare nobody but the caller, and it never replaces an owner the
+project already declares
+(`local/projects/teleclaude/spec/feature/config/project-ownership`).
 <!-- /planned:personal-assistant-project-creation -->
 
 `list` enumerates registered instances; for a singleton it reports that one
