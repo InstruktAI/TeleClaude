@@ -140,7 +140,7 @@ And installation is given a seed whose person is not registered as platform admi
 When installation runs
 Then the registered people are unchanged and nobody is added or promoted
 And installation reports the mismatch, naming the seeded person and what the registry holds for them
-And no installation step that depends on the owner runs
+And installation does not report success
 ```
 
 #### UC-FMB9: An unowned machine without a terminal or a seed fails before claiming success
@@ -175,8 +175,9 @@ Then owner establishment changes nothing and does not fail the installation
 
 ```gherkin
 Given a fresh machine whose home has never received published documentation
+And the installed checkout's main branch holds the installed commit
 When installation completes
-Then the home serves the documentation and agent artifacts committed in the installed checkout
+Then the home serves the documentation and agent artifacts committed on the installed checkout's main branch
 And a published snippet can be read through the documentation surface
 And the platform starts without failing to find its published documentation
 And uncommitted changes in the checkout are not published
@@ -208,6 +209,12 @@ And uncommitted changes in the checkout are not published
   machine's operating-system user can already edit the person registry
   directly. The seed adds no capability that user lacks, and it acts only
   while no person is registered.
+- Installation publishes what publication itself publishes: the checkout's
+  committed `main` tip
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`). A
+  checkout without a local `main`, such as one checked out at a release tag,
+  publishes nothing at install. Installation reports that, names the cause and
+  still completes.
 - A program with no terminal still cannot act as a registered person
   (`local/projects/teleclaude/spec/feature/identity/terminal-email-login`).
   Establishing the owner registers a person; it does not let unattended

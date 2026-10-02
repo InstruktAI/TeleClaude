@@ -185,6 +185,15 @@ And the same operation for a person holding that company's admin role is accepte
   configuration files directly. Clearance directs agents through the
   configuration surface; it is not a boundary against that account's own file
   access.
+<!-- planned:startable-unattended-install -->
+- A machine's first platform administrator is established by installation from
+  its own input while no person is registered
+  (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
+  That act is not a configuration operation and is not cleared here: on an empty
+  registry no administrator exists to clear it, and the account running
+  installation can already edit the registry. Once a person is registered,
+  every addition passes this clearance.
+<!-- /planned:startable-unattended-install -->
 
 ## See Also
 

@@ -18,11 +18,22 @@ publication derives and never validates: it resolves committed source, rebuilds
 derived indexes, and distributes runtime artifacts. It never reads a working
 tree.
 
+<!-- planned-change:startable-unattended-install -->
 Two entry points run the same routine:
+<!-- change:startable-unattended-install -->
+Three entry points run the same routine:
+<!-- /planned-change:startable-unattended-install -->
 
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+<!-- planned:startable-unattended-install -->
+- **Installation** — the full installer publishes the installed checkout's home
+  when it is owed, so a fresh machine serves that checkout's committed
+  documentation and agent artifacts before anything is committed on it
+  (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
+  It consumes the routine's result and owns none of its rules.
+<!-- /planned:startable-unattended-install -->
 - **`telec sync`** — an operator command that publishes the home at the
   invocation directory and every nested home beneath it in the committed tree:
   in the global home, its company and person homes. It runs only when the invocation directory itself holds a

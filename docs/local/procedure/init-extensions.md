@@ -193,6 +193,30 @@ skipped in CI mode and in the deps-only install a git worktree resolves to.
 
 Source: `teleclaude/core/reconciliation/config_schemas.py`
 
+<!-- planned:startable-unattended-install -->
+### 6. Fresh-machine bootstrap (`make install`)
+
+`make install` leaves a fresh machine startable, owned and serving its published
+documentation, with or without a person present. The guarantees are
+`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`. The decision
+boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
+
+- **Unattended runs.** A run without a terminal never waits for a person. Provide
+  the owner seed up front. A step that needs input it was not given fails at once
+  and names the input.
+- **Owner.** While no person is registered, installation registers the seeded
+  person as platform administrator, or asks the operator at a terminal for one. A
+  seed that conflicts with the registered people fails the install and changes
+  nobody.
+- **Environment.** Installation writes the checkout's environment file with local
+  defaults only when none exists. Integrations are added afterwards through
+  `telec config wizard`.
+- **Publication.** Installation publishes the checkout's committed `main` tip. When
+  it publishes nothing, it says why; recover with `telec sync` from the checkout.
+- **Optional apps.** LM Studio, its llmster service and Handy are installed only
+  when chosen at a terminal.
+
+<!-- /planned:startable-unattended-install -->
 ## Outputs
 
 - Launcher apps installed to `~/Applications/` by `make install` (macOS only).
@@ -201,6 +225,11 @@ Source: `teleclaude/core/reconciliation/config_schemas.py`
 - Logging runtime present, current, and wired by `make install`, with the resolved log
   root and health status reported to the user.
 - Configuration schemas published into the TeleClaude home by `make install`.
+<!-- planned:startable-unattended-install -->
+- A startable checkout, a registered first administrator and the checkout's
+  committed documentation published into the home, from `make install`, with or
+  without a person present.
+<!-- /planned:startable-unattended-install -->
 
 ## Recovery
 

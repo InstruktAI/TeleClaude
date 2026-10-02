@@ -91,6 +91,47 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   the full installer. No consumer reads the store, the secret or the record.
 
 <!-- /planned:unattended-launcher-signing -->
+<!-- planned:startable-unattended-install -->
+#### Fresh-machine bootstrap
+
+- **Decision boundary (core).** One reconciliation operation decides the
+  machine's owner from the installation's owner seed, the person registry and
+  whether the run has a terminal. With no person registered, a seed
+  establishes its person as platform administrator, and a terminal operator
+  without a seed is asked for one. A run with no terminal and no seed is
+  refused. With people registered, a matching seed is a no-op, no seed needs
+  nothing, and a conflicting seed is refused. A refusal writes nothing and fails
+  the installation, naming the mismatch or the missing seed. The decision is
+  taken before any long-running installation step, and its write happens after
+  configuration is migrated and validated and before home activation.
+- **Writes it delegates.** The owner's registration (the registry entry and the
+  person's declaration) is made through config's person registration, never
+  through the configuration surface. No caller holds clearance on an empty
+  registry. The person home's template layer is left to home activation, which
+  writes it over absent targets and records it as its own write. The
+  registration itself stays outside installation's record, as every registration
+  made through the configuration surface does.
+- **Startable checkout.** When the checkout has no environment settings file,
+  installation writes one through config's environment writer, holding only the
+  local defaults for services installation itself provisions. An existing file
+  is never rewritten.
+- **Install-time publication.** After home activation, installation invokes
+  context's publication routine for the installed checkout's home in owed mode,
+  and acts only on its result. Publication's rules stay context's: it publishes
+  the checkout's committed `main` tip, so a checkout without a local `main`
+  publishes nothing. A run that publishes nothing or skips a home is reported
+  with its cause and the recovery command, and does not fail the installation.
+  The routine is not given the global home: that home's own publication
+  follows its commits.
+- **Unattended execution.** The installation's own tool directory is on its
+  search path from the start of the run. In a run without a terminal, external
+  installers receive no terminal input and privilege escalation never prompts;
+  either fails at once and is reported. Optional desktop applications and their
+  companion services are declined unless chosen.
+- **Consumers.** The full installer runs every part; post-commit maintenance
+  reaches them through it. No other surface establishes an owner.
+
+<!-- /planned:startable-unattended-install -->
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
@@ -100,6 +141,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 <!-- planned:unattended-launcher-signing -->
 - **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
 <!-- /planned:unattended-launcher-signing -->
+<!-- planned:startable-unattended-install -->
+- **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
+<!-- /planned:startable-unattended-install -->
 
 
 ### Event subjects
