@@ -85,15 +85,14 @@ def snapshot_reached_by_subject(
     *,
     resolver: RoleResolver,
 ) -> bool:
-    """Apply the store selection's subject rule to one local snapshot."""
+    """Apply the store selection's subject rule, refusing malformed stored tokens."""
     if isinstance(caller, SystemCliCaller):
         return True
+    if resolver.role_for(caller, Platform()) != HUMAN_ROLE_CUSTOMER:
+        return True
     if session.config_subject is None:
-        return resolver.role_for(caller, Platform()) != HUMAN_ROLE_CUSTOMER
-    try:
-        subject = SubjectRef.from_token(session.config_subject)
-    except ValueError:
         return False
+    subject = SubjectRef.from_token(session.config_subject)
     return resolver.role_for(caller, RecordedSubject(subject)) != HUMAN_ROLE_CUSTOMER
 
 
