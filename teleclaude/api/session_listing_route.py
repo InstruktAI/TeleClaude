@@ -9,15 +9,12 @@ from fastapi import HTTPException, Query
 
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution
 from teleclaude.caller_identity import RoleResolver
-from teleclaude.config import config
 from teleclaude.core import command_handlers
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.session_listing import build_session_listing_selection, normalize_session_ids, sessions_reached_by
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
-
-_LOCAL_COMPUTER_NAMES = ("", "local")
 
 
 @dataclass(frozen=True)
@@ -72,11 +69,7 @@ async def build_local_session_listing(
     if cache is None or query.computer:
         merged = list(local_sessions)
     else:
-        remote_cached_sessions = [
-            session
-            for session in cache.get_sessions()
-            if session.computer not in (None, *_LOCAL_COMPUTER_NAMES, config.computer.name)
-        ]
+        remote_cached_sessions = cache.get_sessions()
         if query.session_ids is not None:
             remote_cached_sessions = [
                 session for session in remote_cached_sessions if session.session_id in query.session_ids
