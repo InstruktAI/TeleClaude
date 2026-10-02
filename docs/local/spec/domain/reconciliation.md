@@ -76,6 +76,14 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Infrastructure.** Keychain operations, code-signing tool invocations, the
   launcher compile and the replacement of installed bundles execute behind
   ports the core operation drives; they decide nothing.
+- **Signing-store discovery.** Before checking readiness for a signing run,
+  the operation ensures the dedicated store is registered in the user's
+  keychain search list. It appends the store only when absent, preserves every
+  existing entry and its order, and never changes the default keychain. The
+  registration persists; a run with nothing to rebuild leaves it untouched.
+  The operation bounds registration with the same per-call deadline and
+  reports a registration failure before signing. Unrelated keychain state
+  stays outside the operation's scope (`sdlc/policy/security-awareness`).
 - **Consumers.** The full installer, the manual launcher rebuild, the renewal
   door and the channel updater's install stage invoke the operation's entry
   point and act only on its result: a failure fails the invoking step under
