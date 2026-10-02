@@ -166,7 +166,8 @@ _PRE_DISPATCH_THIRD_PARTY_ROOTS = frozenset(
         "yaml",
     }
 )
-_PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS = frozenset({"_virtualenv"})
+# These .pth shims load before any TeleClaude import, so neither is a CLI dependency.
+_PRE_DISPATCH_IGNORED_ENVIRONMENT_ROOTS = frozenset({"_virtualenv", "_distutils_hack"})
 _CALLER_IDENTITY_MODULE = "teleclaude.caller_identity"
 _IDENTITY_INTERNAL_ROLE_NAMES = frozenset(
     {
