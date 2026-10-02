@@ -78,7 +78,7 @@ _ROOT_RELATIVE_PATH = Path(".")
 _ERROR_SEPARATOR = ", "
 _UTF8 = "utf-8"
 _EMPTY_STRING = ""
-_BUILD_FAILURES = (
+_HOME_FAILURES = (
     DocsPublisherResolutionError,
     GitCommandError,
     HomeMasterInflationError,
@@ -87,7 +87,18 @@ _BUILD_FAILURES = (
     subprocess.CalledProcessError,
     ValueError,
     yaml.YAMLError,
+)
+_BUILD_FAILURES = (
+    *_HOME_FAILURES,
     SystemExit,
+)
+_DIAGNOSTIC_FAILURES = (
+    DocsPublisherResolutionError,
+    GitCommandError,
+    OSError,
+    subprocess.CalledProcessError,
+    ValueError,
+    yaml.YAMLError,
 )
 
 
@@ -322,7 +333,7 @@ def _publish_project_home(
             *((source, source.read_bytes()) for source in distribution.outputs),
             *((retired, None) for retired in retired_outputs),
         ]
-    except _BUILD_FAILURES as exc:
+    except _BUILD_FAILURES as exc:  # Distribution bundle compilation signals a home-local refusal with SystemExit.
         if distribution is not None:
             distribution.undo()
         return _skipped_home(home, tip, mode, _HOME_BUILD_FAILED.format(error=exc), canonical_root, snapshot_root)
@@ -348,7 +359,7 @@ def _publish_project_home(
                         error=_ERROR_SEPARATOR.join(path.as_posix() for path in failed_refreshes)
                     ),
                 )
-    except _BUILD_FAILURES as exc:
+    except _HOME_FAILURES as exc:
         return HomePublicationResult(
             home, tip, mode, HomePublicationOutcome.FAILED, _HOME_INSTALL_FAILED.format(error=exc)
         )
@@ -372,7 +383,7 @@ def _publish_global_and_tier_homes(
         try:
             built_home = _build_tree_home(snapshot_root, canonical_root, home, category)
             built[home.root.as_posix()] = built_home
-        except _BUILD_FAILURES as exc:
+        except _BUILD_FAILURES as exc:  # Distribution bundle compilation signals a home-local refusal with SystemExit.
             results[home.root.as_posix()] = _skipped_home(
                 home,
                 tip,
@@ -414,7 +425,7 @@ def _publish_global_and_tier_homes(
                 candidates=item.retired_pointers,
             )
             installed.add(root_key)
-        except _BUILD_FAILURES as exc:
+        except _HOME_FAILURES as exc:
             results[root_key] = HomePublicationResult(
                 item.home,
                 tip,
@@ -432,7 +443,7 @@ def _publish_global_and_tier_homes(
     if tier_homes or global_retractions:
         try:
             distribute_tier_homes(tier_homes, global_retractions)
-        except _BUILD_FAILURES as exc:
+        except _HOME_FAILURES as exc:
             for root_key in shared_generation_homes:
                 item = built[root_key]
                 results[root_key] = HomePublicationResult(
@@ -516,7 +527,7 @@ def _skipped_home(
                 content_root=snapshot_root,
                 platform_home_subject=is_platform_home(canonical_root),
             )
-        except Exception as exc:
+        except _DIAGNOSTIC_FAILURES as exc:
             diagnostic_error = _HOME_DIAGNOSTIC_FAILED.format(error=exc)
     return HomePublicationResult(
         home,
