@@ -56,8 +56,8 @@ and the machine's health report never depends on it.
 - **Optional desktop applications.** Graphical applications installation can
   add for features the operator may want but the platform does not need to run,
   together with any background service that comes with them. Each is installed
-  only when the operator chooses it in that run. An application already present
-  is not a choice made for its companion service.
+  only by the operator's explicit choice. An application already present is not
+  a choice made for its companion service.
 
 ### Use cases
 
