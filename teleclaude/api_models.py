@@ -890,6 +890,14 @@ class RunSessionRequest(BaseModel):
     company: str | None = None
 
 
+class RunPersonalAssistantRequest(BaseModel):
+    """Brief-only request to launch the caller's personal assistant."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    brief: str = Field(..., min_length=1)
+
+
 class SendResultRequest(BaseModel):
     """Request to send a formatted result to the session's user (POST /sessions/self/result)."""
 

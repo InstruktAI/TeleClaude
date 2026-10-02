@@ -42,6 +42,12 @@ from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_result_routes import router as session_result_router
 from teleclaude.api.session_route_helpers import dispatch_caller_command, http_exception_for_relay_failure
 from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
+from teleclaude.api.sessions_personal_assistant_routes import (
+    configure as configure_personal_assistant_routes,
+)
+from teleclaude.api.sessions_personal_assistant_routes import (
+    router as personal_assistant_router,
+)
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -144,7 +150,6 @@ NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.REVIEW_COMMITS, SlashCommand.RUN_JOB,
 
 _JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job and activate-procedure must be dispatched through /sessions/run"
 _RUN_JOB_INSTRUCTION_FORMAT: Final[str] = "/{command} {job_name} {procedure_id}"
-
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
 }
@@ -160,12 +165,14 @@ router = APIRouter()
 router.include_router(sessions_coordinate_router)
 router.include_router(session_pane_router)
 router.include_router(session_result_router)
+router.include_router(personal_assistant_router)
 
 
 def configure(client: AdapterClient | None = None) -> None:
     """Wire client; called from APIServer at construction."""
     if client is not None:
         _STATE.client = client
+        configure_personal_assistant_routes(client=client)
     configure_session_pane_routes(client)
 
 

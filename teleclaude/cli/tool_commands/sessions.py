@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 import time
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Final, TypedDict
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
@@ -23,6 +23,7 @@ from teleclaude.cli.telec.surface import (
     SESSIONS_RESTART,
     SESSIONS_RESULT,
     SESSIONS_RUN,
+    SESSIONS_RUN_PA,
     SESSIONS_SEND,
     SESSIONS_START,
     SESSIONS_TAIL,
@@ -38,6 +39,10 @@ if TYPE_CHECKING:
 _COORDINATE_SUBCOMMAND = "coordinate"
 _COORDINATE_HELP_FLAGS = ("-h", "--help")
 _COORDINATE_ENDPOINT = "/sessions/self/coordinate"
+_SESSIONS_RUN_PA_SUBCOMMAND: Final[str] = "run-pa"
+_SESSIONS_RUN_PA_ENDPOINT: Final[str] = "/sessions/run-pa"
+_SESSIONS_RUN_PA_BRIEF_FIELD: Final[str] = "brief"
+_SESSIONS_RUN_PA_ARGUMENT_ERROR: Final[str] = "Error: provide exactly one brief."
 _POST_METHOD = "POST"
 _BULK_END_TIMEOUT_S = 30.0
 _BULK_END_POLL_INTERVAL_S = 0.25
@@ -85,6 +90,8 @@ def handle_sessions(args: list[str]) -> None:
         handle_sessions_tail(rest)
     elif sub == "run":
         handle_sessions_run(rest)
+    elif sub == _SESSIONS_RUN_PA_SUBCOMMAND:
+        handle_sessions_run_pa(rest)
     elif sub == "revive":
         # Keep revive behavior centralized in telec CLI entrypoint since it
         # includes post-revive kick and optional tmux attach semantics.
@@ -411,6 +418,24 @@ def handle_sessions_run(args: list[str]) -> None:
         body["project"] = str(resolve_invocation_cwd())
 
     data = tool_api_call("POST", "/sessions/run", json_body=body)
+    print_json(data)
+
+
+def handle_sessions_run_pa(args: list[str]) -> None:
+    """Start the caller's personal assistant.
+
+    Usage: telec sessions run-pa <brief>
+    """
+    parsed = parse_command_args(SESSIONS_RUN_PA, args)
+    if len(parsed.positionals) != 1:
+        print(_SESSIONS_RUN_PA_ARGUMENT_ERROR, file=sys.stderr)
+        raise SystemExit(1)
+
+    data = tool_api_call(
+        _POST_METHOD,
+        _SESSIONS_RUN_PA_ENDPOINT,
+        json_body={_SESSIONS_RUN_PA_BRIEF_FIELD: parsed.positionals[0]},
+    )
     print_json(data)
 
 

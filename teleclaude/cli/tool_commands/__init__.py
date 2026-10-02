@@ -30,6 +30,7 @@ handle_sessions_list = _sessions.handle_sessions_list
 handle_sessions_restart = _sessions.handle_sessions_restart
 handle_sessions_result = _sessions.handle_sessions_result
 handle_sessions_run = _sessions.handle_sessions_run
+handle_sessions_run_pa = _sessions.handle_sessions_run_pa
 handle_sessions_send = _sessions.handle_sessions_send
 handle_sessions_start = _sessions.handle_sessions_start
 handle_sessions_tail = _sessions.handle_sessions_tail
@@ -62,6 +63,7 @@ __all__ = [
     "handle_sessions_restart",
     "handle_sessions_result",
     "handle_sessions_run",
+    "handle_sessions_run_pa",
     "handle_sessions_send",
     "handle_sessions_start",
     "handle_sessions_tail",
