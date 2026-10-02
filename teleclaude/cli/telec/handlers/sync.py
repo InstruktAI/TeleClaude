@@ -21,7 +21,8 @@ from teleclaude.sync import (
 __all__ = ["handle_sync"]
 
 _SYNC_HOME_REQUIRED = "telec sync runs only from a directory holding its own teleclaude.yml: {directory}"
-_SYNC_OWNING_CHECKOUT_UNAVAILABLE = "Could not resolve the owning checkout for the invocation directory: {directory}"
+_SYNC_OWNING_CHECKOUT_UNAVAILABLE = "Could not resolve the owning checkout for {directory}: {error}"
+_NO_OWNING_CHECKOUT = "no checkout owns this directory"
 _SYNC_HOME_NOT_COMMITTED = "The invocation home is not present in the committed main tip: {directory}"
 _SYNC_RUN_FAILED = "telec sync failed: {error}"
 _SYNC_POSITIONALS_REFUSED = "telec sync accepts no positional arguments."
@@ -54,12 +55,17 @@ def handle_sync(args: list[str]) -> None:
         raise SystemExit(_FAILED_EXIT_CODE)
 
     active_checkout = roots.repository_root.expanduser().resolve()
+    checkout_error = _NO_OWNING_CHECKOUT
     try:
         canonical_root = resolve_owning_checkout(active_checkout)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
         canonical_root = None
+        checkout_error = str(exc)
     if canonical_root is None:
-        print(_SYNC_OWNING_CHECKOUT_UNAVAILABLE.format(directory=invocation_directory), file=sys.stderr)
+        print(
+            _SYNC_OWNING_CHECKOUT_UNAVAILABLE.format(directory=invocation_directory, error=checkout_error),
+            file=sys.stderr,
+        )
         raise SystemExit(_FAILED_EXIT_CODE)
     home_relative_path = invocation_directory.relative_to(active_checkout)
 
