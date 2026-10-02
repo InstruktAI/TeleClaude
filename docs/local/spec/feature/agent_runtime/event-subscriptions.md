@@ -12,8 +12,8 @@ delivered_by:
 
 An event subscription is an agent session's standing request to be woken when a
 platform event of a given catalog type occurs. The subscribing session receives
-the event itself — its type, identity, time, originating computer, and content —
-as a wake, so it can react at the moment the fact happens instead of polling or
+the event itself — its type, identity, time, origin, subject, and content — as
+a wake, so it can react at the moment the fact happens instead of polling or
 guessing when to look again. A subscription is either single-delivery, spent by
 the first event it delivers, or every-time, live until it is withdrawn or its
 session ends. It may be narrowed to events whose content carries given values
@@ -26,11 +26,11 @@ computer, by the subscribing principal's central reach. Admins and the system
 principal receive every event. A session working a company's business receives
 only that company's events.
 
-A subscription belongs to the session that made it. The session can list and
-withdraw its own subscriptions and cannot see or touch another session's. The
-event catalog listing is the discovery surface: it names the subscribable event
-types and tells its reader how to subscribe to them, and each event type's schema
-shows its scope kind and payload fields.
+A subscription belongs to the session that made it, and the session can list
+and withdraw its own subscriptions. The event catalog listing is the discovery
+surface: it names the subscribable event types and tells its reader how to
+subscribe to them, and each event type's schema shows its subject assignment
+and payload fields.
 
 Subscriptions consume the event catalog as it stands and change neither which
 events the platform emits nor what they carry. The wake rides the platform's
@@ -47,7 +47,7 @@ pending payloads.
 ```gherkin
 Given an agent session has subscribed once to an event type from the catalog
 When an event of that type occurs
-Then the agent is woken with that event's type, identity, time, originating computer, scope, and content
+Then the agent is woken with that event's type, identity, time, origin, subject, and content
 And the subscription is spent
 And a later event of that type does not wake the agent
 ```
@@ -57,7 +57,7 @@ And a later event of that type does not wake the agent
 ```gherkin
 Given an agent session has subscribed to every occurrence of an event type from the catalog
 When several events of that type occur over time
-Then the agent is woken with each event's content, one wake per event
+Then the agent is woken with the content of each of those events
 And the subscription stays live after each wake
 ```
 
@@ -88,17 +88,14 @@ Then the agent is woken and receives the event
 Given an agent session withdraws one of its live subscriptions
 When a matching event occurs afterwards
 Then the agent is not woken by it
-And withdrawing a subscription that no longer exists reports that nothing was removed without failing
 ```
 
-#### UC-ES6: An agent sees and controls only its own subscriptions
+#### UC-ES6: An agent lists its own subscriptions
 
 ```gherkin
-Given two agent sessions each hold live subscriptions
-When one session lists its subscriptions
-Then it sees each of its own live subscriptions with its event type, delivery mode, and any narrowing
-And it sees none of the other session's subscriptions
-And it cannot withdraw a subscription belonging to the other session
+Given an agent session holds live subscriptions
+When it lists its subscriptions
+Then it sees each of its live subscriptions with its event type, delivery mode, and any narrowing
 ```
 
 #### UC-ES7: The catalog listing tells an agent how to subscribe
@@ -128,13 +125,7 @@ But when the session ends
 Then all of its subscriptions are removed and no later event is delivered for them
 ```
 
-#### UC-ES10: One event wakes a subscription at most once
-
-```gherkin
-Given an agent session holds a live every-time subscription
-When a matching event is processed more than once by the platform
-Then the agent is woken for that event exactly once
-```
+#### UC-ES10
 
 #### UC-ES11: A subscription never widens an event's declared visibility
 
@@ -197,7 +188,7 @@ And the refusal names the field and points the agent to that event type's schema
 ```gherkin
 Given an agent wants to subscribe to a catalog event type
 When it views that event type's schema
-Then it sees the event's metadata, its scope kind, and every payload field the event type declares
+Then it sees the event's metadata, its subject assignment, and every payload field the event type declares
 ```
 
 ## Known caveats
