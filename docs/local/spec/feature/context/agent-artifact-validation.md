@@ -129,17 +129,6 @@ Scenario: Scoped validation grades the artifacts in its path set
   And a supporting file inside a skill package resolves to that package's SKILL.md
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-AAV4: The commit gate validates the artifacts in its pathspec
-
-```
-Scenario: The commit gate validates the artifacts in its pathspec
-  Given a commit pathspec naming a command or skill source
-  When telec code commit runs
-  Then artifact validation runs scoped to that pathspec
-  And a validation finding refuses the commit
-```
-<!-- change:commit-gate-in-hook -->
 #### UC-AAV4: The commit gate validates the artifacts in its pathspec
 
 ```
@@ -149,7 +138,6 @@ Scenario: The commit gate validates the artifacts in its pathspec
   Then artifact validation runs scoped to the staged file set, reading the staged content
   And a validation finding refuses the commit
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-AAV5: An empty command companion is accepted as a retirement
 
@@ -175,7 +163,6 @@ Scenario: An agent runs full lint with an ignored file and a stray file under ag
   And that finding appears in the lint output the agent reads
 ```
 
-<!-- planned:commit-gate-in-hook -->
 #### UC-AAV7: A company or person home's own artifact sources are validated in their flat layout
 
 ```gherkin
@@ -187,7 +174,6 @@ Scenario: An agent commits agent artifacts in a company or person home
   And a file under that home's agents/ outside commands/ or skills/ is refused with a finding naming it
   And no global or local tier directory is required in that home
 ```
-<!-- /planned:commit-gate-in-hook -->
 
 ### Cross-context references
 

@@ -94,7 +94,6 @@ compared against the predicate's result for each; any path not returning
 this context owns. Every later path into the record belongs to the commit
 boundary that performs it, which consults the predicate under its own contract.
 
-<!-- planned:commit-gate-in-hook -->
 The activation's own record also passes the commit gate every other commit
 passes (`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
 Activation converges the TeleClaude-owned hook set before it records, so the
@@ -103,7 +102,6 @@ an upgrade alike. A gate refusal refuses that activation as the predicate does:
 nothing is recorded, the index entries activation added are restored, entries
 it did not add are untouched, and the refusal is reported with the gate's
 findings as its own outcome, distinct from a retained-set refusal.
-<!-- /planned:commit-gate-in-hook -->
 <!-- planned:install-records-own-writes -->
 
 ### Activation records only its own writes

@@ -17,15 +17,9 @@ own. `telec code lint` composes **two decoupled legs**:
 
 1. the project's own `make lint` — native tools (ruff/pyright/mypy/jscpd, eslint/tsc,
    cargo) with **zero TeleClaude dependency**; and
-<!-- planned-change:commit-gate-in-hook -->
-2. TeleClaude's **guardrails lane** — the policy checks
-   (`tools/lint/{guardrails,markdown,home_paths,snapshot_testing}.py`
-   plus the doc-index resource-validation).
-<!-- change:commit-gate-in-hook -->
 2. TeleClaude's own checks — its code rules, snippet validation, and artifact
    validation — each run only where the owning home carries the capability it
    belongs to: `code`, `docs`, or `agents` in that home's `teleclaude.yml`.
-<!-- /planned-change:commit-gate-in-hook -->
 
 `make lint` never contains the guardrails lane and never calls `telec`; the
 guardrails lane is never plumbed into any `Makefile`. The native Makefile shape
@@ -42,13 +36,8 @@ Three execution contexts drive file resolution:
    the task.
 2. **Shared branch with session identity** — multiple agents may have
    uncommitted work. Scope to the current session's declared dirty files.
-<!-- planned-change:commit-gate-in-hook -->
-3. **Shared branch without session identity** — human or CI context. Both legs
-   run the full suite (no file list).
-<!-- change:commit-gate-in-hook -->
 3. **Shared branch without session identity** — human or CI context. Lint
    makes a full run (Invariant 11).
-<!-- /planned-change:commit-gate-in-hook -->
 4. **Explicit files** — caller passes file arguments directly. Skip workspace
    scoping.
 
@@ -61,19 +50,11 @@ and runs the guardrails lane over the same scoped paths. A `make lint` with no
 `FILES_FROM` runs the whole suite. There is no `telec code → make → telec code`
 cycle.
 
-<!-- planned-change:commit-gate-in-hook -->
-`telec code commit` runs format then lint in-process against `quality_paths`
-(the declared set filtered to existing files) before `git commit --no-verify`.
-No framework stash, no working-tree reset outside the declared set. The installed
-`.git/hooks/pre-commit` is a thin telec-owned guard performing only a
-partial-staging check as a backstop for raw `git commit` invocations.
-<!-- change:commit-gate-in-hook -->
 `telec code commit` formats `quality_paths` (the declared set filtered to
 existing files) and then runs `git commit`. The installed `.git/hooks/pre-commit`
 runs `telec code pre-commit`, which is the commit gate for every route into a
 commit: the partial-staging guard, then lint over the staged file set. No
 framework stash, no working-tree reset outside the declared set.
-<!-- /planned-change:commit-gate-in-hook -->
 
 Tool invocation is separate from file scoping. `telec code` decides which files
 are in play; the `make` recipes own how the native tools run, and the guardrails
@@ -185,12 +166,6 @@ answer from session history.
    from linting or committing other agents' in-progress work.
 4. **Explicit files override everything.** When the caller passes files as
    arguments, scoping is skipped and those files drive both legs.
-<!-- planned-change:commit-gate-in-hook -->
-5. **Commit gates run in-process, no stash.** `telec code commit` runs format
-   then lint against `quality_paths` before `git commit --no-verify`; the thin
-   `.git/hooks/pre-commit` performs only a partial-staging backstop. No
-   framework stash, no working-tree reset outside the declared set.
-<!-- change:commit-gate-in-hook -->
 5. **The pre-commit hook is the commit gate, no stash.** `telec code commit`
    formats `quality_paths`, then runs `git commit`, and git runs
    `.git/hooks/pre-commit`. The hook applies the partial-staging guard, then
@@ -201,19 +176,13 @@ answer from session history.
    the native leg runs on disk over the staged files, which the partial-staging
    guard makes identical to what is staged. No framework stash, no working-tree
    reset outside the declared set.
-<!-- /planned-change:commit-gate-in-hook -->
 
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
 
-<!-- planned-change:commit-gate-in-hook -->
-7. **No session identity on a shared branch means full run.** Human and CI
-   contexts have no session identity; both legs run the whole suite.
-<!-- change:commit-gate-in-hook -->
 7. **No session identity on a shared branch means full run.** Human and CI
    contexts have no session identity; lint makes a full run (Invariant 11).
-<!-- /planned-change:commit-gate-in-hook -->
 8. **Tool environment is owned by make and the lane.** Scoping decides what to
    check; the project's `make` recipes own the native tool environment, and the
    guardrails lane owns the policy scripts. `telec code` invokes no tool of its
@@ -224,15 +193,6 @@ answer from session history.
     leg first (ruff `--fix` may edit), then the guardrails lane; it exits
     non-zero if either leg fails. `make lint` carries no guardrails; the
     guardrails lane carries no native tools.
-<!-- planned-change:commit-gate-in-hook -->
-11. **File-scoped vs full-run lives behind each leg.** On file-scoped runs the
-    make leg gets a NUL-delimited `FILES_FROM` and the lane gets the scoped
-    paths; on full runs neither is scoped. Because the make leg's paths travel
-    in a NUL file (not a command line), a filename with spaces or shell
-    metacharacters cannot word-split or inject a make goal. Repo-wide doc-index
-    cross-reference validation runs inside the guardrails lane on full runs, so
-    an agent's scoped lint never fails on another agent's in-flight docs.
-<!-- change:commit-gate-in-hook -->
 11. **File-scoped vs full-run lives behind each check.** On file-scoped runs
     the make leg gets a NUL-delimited `FILES_FROM` and TeleClaude's checks get
     the scoped paths. A full run collects the homes in the repository's
@@ -248,7 +208,6 @@ answer from session history.
     metacharacters cannot word-split or inject a make goal. Whole-home
     cross-reference validation runs only on full runs, so an agent's scoped
     lint never fails on another agent's in-flight docs.
-<!-- /planned-change:commit-gate-in-hook -->
 
 12. **Ownership is declared, never inferred.** A path with no live declaration is
     unowned — that is a fact about the record, not a judgment about the work.
@@ -284,15 +243,9 @@ telec code commit (worktree detected)
   → resolve dirty paths once
   → git add dirty paths, including deletions
   → quality_paths = staged set filtered to existing files
-<!-- planned-change:commit-gate-in-hook -->
-  → handle_format(quality_paths)                          (in-process, no stash)
-  → handle_lint(quality_paths)                            (in-process, no stash)
-  → git commit --no-verify
-<!-- change:commit-gate-in-hook -->
   → handle_format(quality_paths)                          (before committing, no stash)
   → git commit
     → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
-<!-- /planned-change:commit-gate-in-hook -->
 ```
 
 ### Shared branch flow (session available)
@@ -311,31 +264,18 @@ telec code commit (not a worktree, session identity present)
   → declared set = live declarations ∩ dirty paths  (--only narrows it)
   → git add the declared set, including deletions
   → quality_paths = declared set filtered to existing files
-<!-- planned-change:commit-gate-in-hook -->
-  → handle_format / handle_lint                           (in-process, no stash)
-  → git commit --no-verify
-  → clear the declarations this commit carried
-<!-- change:commit-gate-in-hook -->
   → handle_format(quality_paths)                          (before committing, no stash)
   → git commit
     → .git/hooks/pre-commit → telec code pre-commit (partial-staging guard, lint staged set)
   → clear the declarations this commit carried
-<!-- /planned-change:commit-gate-in-hook -->
 ```
 
 ### Shared branch flow (no session)
 
-<!-- planned-change:commit-gate-in-hook -->
-```
-telec code lint (no args, not a worktree, no session identity)
-  → make lint (no FILES_FROM) + guardrails lane (repo-wide) — the full suite
-```
-<!-- change:commit-gate-in-hook -->
 ```
 telec code lint (no args, not a worktree, no session identity)
   → a full run, as in the Full-run flow
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 ### Explicit files flow
 
@@ -345,17 +285,6 @@ telec code lint <files...>
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-### Thin hook flow
-
-```
-raw git commit (partial-staging backstop)
-  → .git/hooks/pre-commit (thin telec-owned guard)
-  → NUL-safe Python partial-staging check only
-  → exits non-zero if staged + unstaged overlap detected
-  → quality gates NOT re-run (they ran in-process via telec code commit)
-```
-<!-- change:commit-gate-in-hook -->
 ### Hook gate flow
 
 ```
@@ -368,17 +297,9 @@ git commit (raw, or invoked by telec code commit)
     as committed; the native leg runs on disk over the staged files)
   → exits non-zero on any finding; git produces no commit
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 ### Full-run flow
 
-<!-- planned-change:commit-gate-in-hook -->
-```
-telec code lint --all   (or CI, no-session shared branch)
-  → make lint (no FILES_FROM) + guardrails lane (repo-wide)
-  → doc-index cross-reference validation runs inside the guardrails lane
-```
-<!-- change:commit-gate-in-hook -->
 ```
 telec code lint --all   (or CI, no-session shared branch)
   → collect the homes in the repository's committed tree
@@ -387,7 +308,6 @@ telec code lint --all   (or CI, no-session shared branch)
      docs → snippet validation; agents → artifact validation)
   → a home that carries no capability is not checked
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 ## Failure modes
 
@@ -405,12 +325,8 @@ No silent fallback to a broader scope.
 
 No `teleclaude_identity.json` present. This is a human or CI context.
 
-<!-- planned-change:commit-gate-in-hook -->
-**Response:** Both legs run the full suite. Expected behavior for manual runs.
-<!-- change:commit-gate-in-hook -->
 **Response:** Lint makes a full run (Invariant 11). Expected behavior for
 manual runs.
-<!-- /planned-change:commit-gate-in-hook -->
 
 ### A scoped operation runs with nothing declared
 

@@ -357,26 +357,6 @@ And the session's effective scope is the same as for a bare invocation of the sa
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
-<!-- planned-change:commit-gate-in-hook -->
-### Commit-time gates — in-process, no framework stash
-
-`telec code commit` runs the gates the acting invocation context root's declared
-tier carries, read from that tier's published answers
-(`local/projects/teleclaude/spec/feature/config/tier-permissions`). Whether the gate runs follows
-the tier: a tier carrying project subscriptions, or whose material participates
-in documentation, is gated; a tier carrying neither is not, no check is applied
-in its place, and the commit proceeds directly. Which checks run follows what the
-tier carries, never where its root sits: the native toolchain leg runs where the
-tier carries `code`, and TeleClaude's guardrails lane runs wherever the gate
-runs. Both run in-process against `quality_paths` (the commit pathspec filtered
-to existing files) before `git commit --no-verify`, in that order where both
-apply. A tier participating in documentation that carries no project
-subscriptions is gated, runs the guardrails lane, and requires no native
-toolchain contract at its root — by no separate mechanism. No framework stash
-occurs; files outside the pathspec are not touched. The installed
-`.git/hooks/pre-commit` is a thin telec-owned guard performing only a
-partial-staging check as a backstop for raw `git commit` invocations.
-<!-- change:commit-gate-in-hook -->
 ### Commit-time gates — the pre-commit hook, no framework stash
 
 The installed `.git/hooks/pre-commit` (`telec code pre-commit`) runs, for every
@@ -398,7 +378,6 @@ identical to what is staged. `telec code commit` formats `quality_paths` (the
 commit pathspec filtered to existing files) and then runs `git commit` without
 `--no-verify`, so it passes the same hook as a raw `git commit`. No framework
 stash occurs; files outside the pathspec are not touched.
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
@@ -408,17 +387,6 @@ When agent invokes telec code commit --approved "<bad-message>"
 Then SystemExit(1) before format/lint/git-commit invoked
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-CGIP-2 — Gates run format-before-lint against quality_paths
-
-```
-Given the acting invocation context's tier carries project subscriptions
-And pathspec contains existing and deleted files
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths = pathspec filtered to existing files only
-And handle_format(quality_paths) is called before handle_lint(quality_paths)
-```
-<!-- change:commit-gate-in-hook -->
 #### UC-CGIP-2 — Format runs on quality_paths before the hook lints
 
 ```
@@ -429,28 +397,7 @@ Then quality_paths = pathspec filtered to existing files only
 And handle_format(quality_paths) runs before git commit is invoked
 And the pre-commit hook lints the staged file set after formatting
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-CGIP-3 — Deletion-only commit bypasses format/lint
-
-```
-Given pathspec contains only a deleted file
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths is empty
-And neither handle_format nor handle_lint is invoked
-And git commit --no-verify proceeds
-```
-
-#### UC-CGIP-4 — Clean commit proceeds with --no-verify
-
-```
-Given format and lint both pass on quality_paths
-When agent invokes telec code commit --approved "<msg>"
-Then repo.git.commit is called with "--no-verify" in its args
-And no framework stash occurs
-```
-<!-- change:commit-gate-in-hook -->
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
 
 ```
@@ -472,7 +419,6 @@ Then repo.git.commit is called without "--no-verify"
 And the pre-commit hook runs and exits 0
 And no framework stash occurs
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-5 — Format failure blocks commit
 
@@ -482,15 +428,6 @@ When agent invokes telec code commit --approved "<msg>"
 Then SystemExit(1) before repo.git.commit invoked
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-CGIP-6 — Lint failure blocks commit
-
-```
-Given lint fails on quality_paths (after format passed)
-When agent invokes telec code commit --approved "<msg>"
-Then SystemExit(1) before repo.git.commit invoked
-```
-<!-- change:commit-gate-in-hook -->
 #### UC-CGIP-6 — Lint failure blocks commit
 
 ```
@@ -499,7 +436,6 @@ When agent invokes telec code commit --approved "<msg>"
 Then the pre-commit hook exits non-zero naming each finding
 And git produces no commit, and telec code commit exits non-zero
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-48 — A repository's first commit passes through the same gates
 
@@ -513,15 +449,6 @@ And when every gate passes, the first commit lands carrying exactly the declared
 And when a gate fails, no commit is created and the repository still has no commits
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-CGIP-7 — Lock releases cleanly on gate failure
-
-```
-Given handle_lint raises SystemExit(1)
-When telec code commit --approved "<msg>" is invoked
-Then main_branch_lock __exit__ is called (lock released)
-```
-<!-- change:commit-gate-in-hook -->
 #### UC-CGIP-7 — Lock releases cleanly on gate failure
 
 ```
@@ -529,7 +456,6 @@ Given the pre-commit hook rejects the commit
 When telec code commit --approved "<msg>" is invoked
 Then main_branch_lock __exit__ is called (lock released)
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CGIP-8 — Bare commit surfaces the gate and exits 0
 
@@ -566,15 +492,9 @@ Given MERGE_HEAD is present (an active merge, resolved via repo.git_dir so it ho
 And the repository's own root is not a declared non-project invocation context
 And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
 When agent invokes telec code commit --approved "<msg>"
-<!-- planned-change:commit-gate-in-hook -->
-Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
-And the gates the acting tier carries run over the full merge diff, and a tier carrying none runs no gate
-And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
-<!-- change:commit-gate-in-hook -->
 Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
 And format runs over quality_paths, and the pre-commit hook grades the full staged merge result; a tier carrying no gate runs none
 And repo.git.commit is called without "--no-verify" and with no trailing "--" pathspec
-<!-- /planned-change:commit-gate-in-hook -->
 And the resulting commit records origin/main as a merge parent
 ```
 
@@ -898,22 +818,6 @@ Then no subscription-gated check runs, and no check is applied in place of one
 And the commit is produced
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-NCR-14 — A tier participating in documentation without project subscriptions is gated and runs the guardrails lane
-
-```
-Given an agent working in an invocation context root whose tier carries no project subscriptions
-And whose tier's material participates in documentation
-And that context root has changes in scope
-When the agent commits through the sealed surface
-Then the gate runs, receiving quality_paths
-And TeleClaude's guardrails lane runs over them
-And the native toolchain leg does not run, because the tier does not carry code
-And no native toolchain contract is required at that root for the commit to proceed
-And a failing gate blocks the commit exactly as it does for a subscribed project
-```
-
-<!-- change:commit-gate-in-hook -->
 #### UC-NCR-14 — A home declaring no capabilities gets only the documentation checks
 
 ```
@@ -925,7 +829,6 @@ And snippet validation runs over them, and artifact validation over any agent ar
 And neither the native toolchain nor TeleClaude's code rules run, because the home does not carry code
 And no native toolchain contract is required at that root for the commit to proceed
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-NCR-15 — A tier carrying code still requires its native toolchain
 
@@ -978,11 +881,7 @@ Then the wrapper refuses rather than passing through to the real git binary
 And the repository's history is not mutated by that invocation
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-### Thin hook backstop
-<!-- change:commit-gate-in-hook -->
 ### Pre-commit hook gate
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-TH-1 — Thin hook partial-staging backstop
 
@@ -994,16 +893,6 @@ And exits non-zero naming the partially staged paths
 And no INSTALL_PYTHON is present in .git/hooks/pre-commit
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-TH-2 — Thin hook passes clean commits
-
-```
-Given working tree has no partially staged files
-When raw git commit is attempted
-Then .git/hooks/pre-commit exits 0
-And the commit proceeds (gates were enforced in-process by telec code commit)
-```
-<!-- change:commit-gate-in-hook -->
 #### UC-TH-2 — The hook passes clean commits
 
 ```
@@ -1013,7 +902,6 @@ When raw git commit is attempted
 Then .git/hooks/pre-commit exits 0
 And the commit proceeds
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-TH-3 — Thin hook fails closed on git status probe failure
 
@@ -1025,7 +913,6 @@ And the commit is aborted
 And the partial-staging check is NOT silently bypassed
 ```
 
-<!-- planned:commit-gate-in-hook -->
 #### UC-TH-4 — A raw git commit and telec code commit get the same verdict
 
 ```gherkin
@@ -1073,7 +960,6 @@ When the merge runs, from a terminal or from an automated route
 Then the same gate grades the staged merge result before the merge commit is recorded
 And a refusal leaves no merge commit
 ```
-<!-- /planned:commit-gate-in-hook -->
 
 #### UC-CGIP-49 — A file written through an edit tool is committed without an explicit declaration
 

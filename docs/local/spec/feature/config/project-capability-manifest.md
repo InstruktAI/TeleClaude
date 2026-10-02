@@ -23,21 +23,6 @@ independent on/off flag for the engine itself.
 
 Three toggles, each gating a set of mechanisms:
 
-<!-- planned-change:commit-gate-in-hook -->
-- `code: { enabled }` — the project holds code under the TeleClaude lifecycle.
-  Owns the quality toolchain (`telec code lint` / `test` / `format` /
-  `install`), git hooks, worktree rules, and the checkpoint toolchain and
-  log-check bindings. The toolchain verbs refuse cleanly ("not a code project")
-  when disabled. The sealed-commit surface (`telec code commit` / `add`) and the
-  git wrapper's commit interception are not owned by `code` alone — they follow
-  `code ∨ docs` (see the derivation rules), because they are the surface that
-  records and evidences the commit obligation.
-- `docs: { enabled }` — the snippet pipeline: the `docs/**` publication base
-  binding, the `.gitattributes` docs filters, and snippet validation, indexing,
-  and publication.
-- `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
-  and artifact transpilation and deployment.
-<!-- change:commit-gate-in-hook -->
 - `code: { enabled }` — the project holds code under the TeleClaude lifecycle.
   Owns `telec code test` / `format` / `install`, the code checks of
   `telec code lint` and the commit gate (the project's native `make lint` and
@@ -54,7 +39,6 @@ Three toggles, each gating a set of mechanisms:
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding,
   artifact transpilation and deployment, and artifact validation within
   `telec code lint` and the commit gate.
-<!-- /planned-change:commit-gate-in-hook -->
 
 An unsubscribed capability means the project has no TeleClaude-supported
 structure of that kind, so none of the functionality around it activates for that
@@ -72,9 +56,6 @@ Derivation rules:
 - The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
   or the project declares at least one custom binding. Otherwise `agent_stop`
   passes through with no timeline extraction and no evidence scanning.
-<!-- planned-change:commit-gate-in-hook -->
-- The commit obligation is active iff `code ∨ docs` is enabled.
-<!-- change:commit-gate-in-hook -->
 - The commit obligation is active iff `code ∨ docs` is enabled.
 - `telec code lint` and the commit gate run iff `code ∨ docs` is enabled at a
   file's owning home, over that home's changed files: staged files at the
@@ -95,7 +76,6 @@ Derivation rules:
   raises no commit obligation. A declaration that fails validation refuses the
   commit, so committed state, which every consumer derives from, never holds an
   invalid declaration (ADR-0108).
-<!-- /planned-change:commit-gate-in-hook -->
 - The sealed-commit surface (`telec code commit` / `add`) and the git wrapper's
   commit interception follow `code ∨ docs` — the same condition as the commit
   obligation — because `telec code commit` is what records and evidences that
@@ -251,17 +231,6 @@ Then it is made through ordinary git rather than the sealed-commit surface
 And no commit obligation is recorded for that project
 ```
 
-<!-- planned-change:commit-gate-in-hook -->
-#### UC-CFG-CAP-9: The code capability gates the toolchain, not the commit surface
-
-```
-Given a project that subscribes docs but not code
-When an operator invokes a telec code toolchain subcommand — lint, test, format, or install
-Then the command refuses with a message naming the code capability
-And telec code commit and telec code add remain available because docs is subscribed
-```
-
-<!-- change:commit-gate-in-hook -->
 #### UC-CFG-CAP-9: Lint follows code or docs; the other toolchain verbs follow code
 
 ```
@@ -272,7 +241,6 @@ And no code check runs, neither the native toolchain nor TeleClaude's code rules
 And telec code test, format, and install refuse with a message naming the code capability
 And telec code commit and telec code add remain available because docs is subscribed
 ```
-<!-- /planned-change:commit-gate-in-hook -->
 
 #### UC-CFG-CAP-10:
 
@@ -457,7 +425,6 @@ Then both readers resolve the code capability to the value the .env holds
 And after that value changes in the .env, the next git invocation decides from the new value
 ```
 
-<!-- planned:commit-gate-in-hook -->
 #### UC-CFG-CAP-34: A staged declaration that fails validation refuses the commit
 
 ```
@@ -469,7 +436,6 @@ And no other configuration is validated
 And this holds for a raw git commit and for telec code commit alike
 And a home subscribing neither code nor docs runs no other check and raises no commit obligation
 ```
-<!-- /planned:commit-gate-in-hook -->
 
 ## Known caveats
 
