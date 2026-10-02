@@ -11,7 +11,8 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.capabilities import Capabilities, PermissionSurface, TierPermissions
+from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
+from teleclaude.capabilities import Capabilities, PermissionSurface, TierPermissions, resolve_tier_permissions
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.checkout_grading import (
@@ -46,6 +47,7 @@ _UTF8 = "utf-8"
 _EMPTY_BYTES = b""
 _NUL_BYTE = b"\0"
 _DEFAULT_FAILURE_EXIT_CODE = 1
+_MARKDOWN_SUFFIX = ".md"
 
 
 class LintGateOutcome(StrEnum):
@@ -234,6 +236,60 @@ def run_lint_gate(
         result = _build_in_process_result(subject_sha, execution_head, native_exit_code, guardrails_exit_code)
     _log_checkout_grading(execution_root, decision, selection, result)
     return result
+
+
+def run_home_guardrail_gate(
+    execution_root: Path,
+    home_root: Path,
+    selected_paths: list[str],
+    tree_paths: list[str],
+    child_env: Mapping[str, str] | None,
+    *,
+    check_families: frozenset[QualityCheckFamily] | None = None,
+    content_root: Path | None = None,
+    platform_home_subject: bool = False,
+) -> LintGateResult | None:
+    """Grade one home's changed and deletion-dependent files with its guardrails."""
+    paths = set(selected_paths)
+    paths.update(_home_validation_paths(tree_paths, home_root))
+    ordered_paths = sorted(paths)
+    if not ordered_paths:
+        return None
+    if check_families is None:
+        validation_root = content_root if content_root is not None else execution_root
+        home_permissions = resolve_tier_permissions(validation_root / home_root)
+        check_families = select_quality_check_families(
+            home_permissions.project_subscriptions,
+            home_permissions,
+        )
+    if not check_families:
+        return None
+    return run_lint_gate(
+        execution_root,
+        None,
+        ordered_paths,
+        False,
+        child_env,
+        selection=frozenset({QualityGateLeg.GUARDRAILS}),
+        check_families=check_families,
+        request_subject_checkout_grading=True,
+        content_root=content_root,
+        platform_home_subject=platform_home_subject,
+    )
+
+
+def _home_validation_paths(tree_paths: list[str], home_root: Path) -> set[str]:
+    """Select the existing Markdown and agent-artifact candidate set for a home."""
+    selected: set[str] = set()
+    for relative_path in tree_paths:
+        path = Path(relative_path)
+        try:
+            home_path = path.relative_to(home_root)
+        except ValueError:
+            continue
+        if home_path.suffix == _MARKDOWN_SUFFIX or AGENT_ARTIFACT_ROOT_DIRNAME in home_path.parts:
+            selected.add(relative_path)
+    return selected
 
 
 def _run_in_process_legs(

@@ -298,6 +298,7 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.MCP: _lazy("teleclaude.cli.telec.handlers.mcp", "_handle_mcp"),
         TelecCommand.CODE: _lazy("teleclaude.cli.telec.handlers.code", "handle_code"),
         TelecCommand.MESSAGE: _lazy("teleclaude.cli.telec.handlers.message", "_handle_message"),
+        TelecCommand.SYNC: _lazy("teleclaude.cli.telec.handlers.sync", "handle_sync"),
     }
     if cmd_enum is None:
         return None

@@ -1708,6 +1708,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
+    "sync": CommandDef(
+        desc="Publish this home and nested homes from the committed main tip",
+        args="[--help]",
+        flags=[F.FLAG_HELP],
+        notes=[
+            "Runs only from a directory holding its own teleclaude.yml; it never resolves a parent home.",
+            "Publishes committed main state and ignores uncommitted changes.",
+            "Homes build independently; skipped or failed homes are reported and make the command exit non-zero.",
+        ],
+        examples=["telec sync"],
+        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+    ),
 }
 HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}
 
@@ -1777,6 +1789,8 @@ MEMORIES_DELETE = CLI_SURFACE["memories"].subcommands["delete"]
 MEMORIES_TIMELINE = CLI_SURFACE["memories"].subcommands["timeline"]
 
 MESSAGE = CLI_SURFACE["message"]
+
+SYNC = CLI_SURFACE["sync"]
 
 CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 

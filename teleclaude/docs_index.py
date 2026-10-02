@@ -30,7 +30,6 @@ from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import (
     is_excluded_snippet_path,
     iter_snippet_roots,
-    iter_tier_snippet_roots,
     snippet_files,
 )
 from teleclaude.snippet_scope import SnippetScope
@@ -59,6 +58,7 @@ _INDEX_SNIPPETS_ROOT_FIELD: Final = "snippets_root"
 _INVALID_INDEX_DOCUMENT_MESSAGE: Final = (
     "Index document must contain a string snippets_root field and an optional string project_root field."
 )
+_UNSUPPORTED_TIER_KIND: Final = "Cannot build a tier index for home kind {kind}"
 
 
 def _teleclaude_root() -> str:
@@ -660,17 +660,12 @@ def build_all_indexes(project_root: Path) -> list[Path]:
     return written
 
 
-def build_tier_indexes(platform_home_snapshot: Path) -> list[Path]:
-    """Build index.yaml for every declared, participating company and person tier.
-
-    Invoked only from the platform-home publication branch, against the
-    materialized committed snapshot — never the ambient home working tree. Each
-    written catalog records paths against the snapshot; ``reroot_index_document``
-    re-expresses them at whichever location installs or deploys the tier's
-    material, since the snapshot itself is removed once publication ends.
-    """
-    written: list[Path] = []
-    for root, kind in iter_tier_snippet_roots(platform_home_snapshot):
-        tier_kind = SnippetScope.COMPANY if kind is ConfigKind.COMPANY else SnippetScope.PERSON
-        written.extend(write_tier_indexes(root, tier_kind))
-    return written
+def build_tier_index(tier_root: Path, kind: ConfigKind) -> list[Path]:
+    """Build both catalogs for one declared company or person home."""
+    if kind is ConfigKind.COMPANY:
+        tier_kind = SnippetScope.COMPANY
+    elif kind is ConfigKind.PERSON:
+        tier_kind = SnippetScope.PERSON
+    else:
+        raise ValueError(_UNSUPPORTED_TIER_KIND.format(kind=kind.value))
+    return write_tier_indexes(tier_root, tier_kind)

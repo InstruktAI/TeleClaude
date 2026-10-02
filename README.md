@@ -205,6 +205,9 @@ TeleClaude is not a framework — it's infrastructure. It doesn't abstract agent
 **Can I add my own knowledge and skills?**
 Yes. Documentation is authored as typed snippets (Principle, Policy, Procedure, Spec, etc.) using `/author-knowledge` for conversational extraction or direct Markdown authoring. Agent skills and commands are written as single Markdown source files and automatically transpiled into optimized formats for each agent CLI. `telec code lint --all` validates authored sources; canonical commits publish their recorded contents automatically. Unsaved edits remain local.
 
+**How do I republish a home's committed documentation?**
+Run `telec sync` from a directory holding its own `teleclaude.yml`. It rebuilds that home and any nested homes from committed main; uncommitted changes are not published.
+
 **Can a team use this?**
 Yes. The People registry maps identities across platforms — one person, many accounts, one role. Roles gate tool access: admins get full control, members get project tools, customers get help desk tools only. The help desk platform handles external users with identity-scoped memory and escalation to human admins.
 

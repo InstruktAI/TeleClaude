@@ -103,7 +103,13 @@ def resolve_post_merge_activation_range(project_root: Path) -> ActivationRange:
     )
 
 
-def activation_range_owes_action(project_root: Path, activation_range: ActivationRange, action_id: str) -> bool:
+def activation_range_owes_action(
+    project_root: Path,
+    activation_range: ActivationRange,
+    action_id: str,
+    *,
+    changed_paths: tuple[str, ...] | None = None,
+) -> bool:
     """Check that one literal range is on canonical main and owes the named action."""
     root = project_root.resolve()
     if root != resolve_project_root(root):
@@ -114,11 +120,27 @@ def activation_range_owes_action(project_root: Path, activation_range: Activatio
             return False
         if not _is_literal_range(repository, activation_range):
             return False
-        changed_files = _changed_files(repository, activation_range)
+        changed_files = changed_paths if changed_paths is not None else _changed_files(repository, activation_range)
         action_ids = main_only_maintenance_action_ids_for_files(list(changed_files), root)
     except _GIT_FAILURES:
         return False
     return action_id in action_ids
+
+
+def activation_range_changed_paths(project_root: Path, activation_range: ActivationRange) -> tuple[str, ...] | None:
+    """Return changed paths for one literal canonical-main activation range."""
+    root = project_root.resolve()
+    if root != resolve_project_root(root):
+        return None
+    try:
+        repository = Repo(str(root))
+        if repository.head.is_detached or repository.active_branch.name != _MAIN_BRANCH_NAME:
+            return None
+        if not _is_literal_range(repository, activation_range):
+            return None
+        return _changed_files(repository, activation_range)
+    except _GIT_FAILURES:
+        return None
 
 
 def record_activation(project_root: Path, activation_range: ActivationRange) -> bool:

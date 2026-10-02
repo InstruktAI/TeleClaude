@@ -31,6 +31,7 @@ from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
     QualityCheckFamily,
     QualityGateLeg,
+    run_home_guardrail_gate,
     run_lint_gate,
     select_quality_check_families,
     select_quality_gate_legs,
@@ -322,39 +323,23 @@ def _run_home_gate(
 
     if QualityGateLeg.GUARDRAILS not in home.legs:
         return first_failure
-    guardrail_paths = [change.path for change in home.changes if change.status in _STAGED_ACMR_STATUSES]
-    if any(change.status is StagedPathStatus.DELETED for change in home.changes):
-        guardrail_paths.extend(_deleted_home_validation_paths(tree_paths, home.owner))
-    guardrail_paths = sorted(set(guardrail_paths))
-    if not guardrail_paths:
-        return first_failure
-    guardrail_result = run_lint_gate(
+    changed_paths = [change.path for change in home.changes if change.status in _STAGED_ACMR_STATUSES]
+    deletion_tree_paths = (
+        tree_paths if any(change.status is StagedPathStatus.DELETED for change in home.changes) else []
+    )
+    guardrail_result = run_home_guardrail_gate(
         project_root,
-        None,
-        guardrail_paths,
-        _FORMAT_SCOPED,
+        home.owner.root,
+        changed_paths,
+        deletion_tree_paths,
         child_environment,
-        selection=frozenset({QualityGateLeg.GUARDRAILS}),
         check_families=home.families,
-        request_subject_checkout_grading=True,
         content_root=content_root,
         platform_home_subject=platform_home_subject,
     )
+    if guardrail_result is None:
+        return first_failure
     return _record_gate_result(guardrail_result.exit_code, guardrail_result.failure_reason, first_failure)
-
-
-def _deleted_home_validation_paths(tree_paths: list[str], home: OwningHome) -> list[str]:
-    """Select remaining Markdown and artifact files to revalidate after a deletion."""
-    selected: list[str] = []
-    for relative_path in tree_paths:
-        path = Path(relative_path)
-        try:
-            home_path = Path(home.relative_path(path))
-        except ValueError:
-            continue
-        if home_path.suffix == _STAGED_MARKDOWN_SUFFIX or AGENT_ARTIFACT_ROOT_DIRNAME in home_path.parts:
-            selected.append(relative_path)
-    return selected
 
 
 def _record_gate_result(exit_code: int, reason: str | None, first_failure: int) -> int:

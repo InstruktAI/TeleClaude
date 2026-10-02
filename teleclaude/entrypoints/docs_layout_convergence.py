@@ -41,7 +41,7 @@ from teleclaude.project_manifest import load_registered_roots
 from teleclaude.runtime.config import require_own_checkout
 from teleclaude.snippet_roots import iter_tier_snippet_roots
 from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES
-from teleclaude.sync import PublicationOutcome, publish_recorded_commit
+from teleclaude.sync import HomePublicationOutcome, PublicationMode, publish_homes
 
 logger = get_logger(__name__)
 
@@ -58,6 +58,7 @@ _INTEGRATION_WORKTREE: Final = "_integration"
 _FETCH_TIMEOUT_SECONDS: Final = 30
 _FETCH_QUIET: Final = "--quiet"
 _GIT_TERMINAL_PROMPT: Final = "GIT_TERMINAL_PROMPT"
+_ROOT_RELATIVE_PATH: Final = Path(".")
 _GIT_TERMINAL_PROMPT_OFF: Final = "0"
 _RERUN_COMMAND: Final = "uv run --directory {repo_root} python -m teleclaude.entrypoints.docs_layout_convergence"
 
@@ -140,28 +141,48 @@ def _platform_tier_catalogs_have_unqualified_ids(*, log_inspection_error: bool =
 
 
 def _publish_catalog_refresh(publisher_root: Path, still_stale: Callable[[], bool]) -> bool:
-    """Publish the root's current commit and verify its local catalog is current."""
+    """Rebuild the root's committed homes, then verify its local catalog is current."""
     try:
-        after_sha = Repo(str(publisher_root)).head.commit.hexsha
-        publication = publish_recorded_commit(publisher_root, after_sha)
+        publication = publish_homes(publisher_root, PublicationMode.REBUILD, directory=_ROOT_RELATIVE_PATH)
     except (GitCommandError, OSError, ValueError):
         logger.exception(_LOCAL_CATALOG_REFRESH_FAILED_EVENT, project_root=str(publisher_root))
         return False
-    if publication.outcome not in (PublicationOutcome.PUBLISHED, PublicationOutcome.SUPERSEDED):
+    non_published_homes = [
+        {
+            "home": item.home.root.as_posix(),
+            "outcome": item.outcome.value,
+            "error": item.error,
+        }
+        for item in publication.homes
+        if item.outcome in (HomePublicationOutcome.SKIPPED, HomePublicationOutcome.FAILED)
+    ]
+    if publication.exit_code:
         logger.error(
             _LOCAL_CATALOG_REFRESH_FAILED_EVENT,
             project_root=str(publisher_root),
-            reason=publication.reason.value,
+            tip=publication.tip,
+            non_published_homes=non_published_homes,
+            error=publication.error,
         )
         return False
     try:
         stale = still_stale()
-    except (OSError, ValueError):
-        logger.exception(_LOCAL_CATALOG_REFRESH_FAILED_EVENT, project_root=str(publisher_root))
+    except (OSError, ValueError) as exc:
+        logger.exception(
+            _LOCAL_CATALOG_REFRESH_FAILED_EVENT,
+            project_root=str(publisher_root),
+            tip=publication.tip,
+            non_published_homes=non_published_homes,
+            error=str(exc),
+        )
         return False
     if stale:
         logger.error(
-            _LOCAL_CATALOG_REFRESH_FAILED_EVENT, project_root=str(publisher_root), reason=publication.reason.value
+            _LOCAL_CATALOG_REFRESH_FAILED_EVENT,
+            project_root=str(publisher_root),
+            tip=publication.tip,
+            non_published_homes=non_published_homes,
+            stale=True,
         )
         return False
     return True

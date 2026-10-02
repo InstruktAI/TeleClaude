@@ -1,0 +1,247 @@
+"""Deploy tier documentation and compile entrypoints for individual homes."""
+
+from __future__ import annotations
+
+import shutil
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final, NamedTuple
+
+import yaml
+
+from teleclaude.artifact_ownership import retired_pointer_candidate
+from teleclaude.config.schema import ConfigKind
+from teleclaude.docs_index import reroot_index_document
+from teleclaude.docs_publication import publish_generation
+from teleclaude.docs_publishers import DocsResolutionMode
+from teleclaude.install.distribution import (
+    _GENERATED_ENTRYPOINT_FILENAME,
+    _HELP_DESK_DIRNAME,
+    _INDEX_DEPLOY_ROOT,
+    _INDEX_FILE_NAME,
+    _INDEX_PROJECT_ROOT_KEY,
+    _INDEX_SCOPE_ROOT,
+    _INDEX_SNIPPETS_KEY,
+    _INDEX_SNIPPETS_ROOT_KEY,
+    _PROJECT_MASTER_FILENAME,
+    _SOURCE_PROJECT_KEY,
+    _TIER_COMPANY_DEPLOY_DIRNAME,
+    _TIER_PERSON_DEPLOY_DIRNAME,
+    _TIER_PUBLISHED_DOCS_RELATIVE_PATH,
+    _UTF8,
+    DistributionObservation,
+    EntrypointCompositionError,
+    HomeMasterInflationError,
+    _index_entry_sort_key,
+    inflate_master,
+)
+from teleclaude.paths import GLOBAL_DOCS_DIR
+from teleclaude.snippet_roots import iter_declared_tier_roots
+
+_COMPANY_SOURCE_PROJECT_PREFIX: Final = "company:"
+_PERSON_SOURCE_PROJECT_PREFIX: Final = "person:"
+_INDEX_PATH_KEY: Final = "path"
+_DEPLOYED_DOCS_DIRECTORY: Final = Path("docs")
+_UNSUPPORTED_TIER_KIND: Final = "Tier deployment does not support home kind {kind}"
+_DOCS_STAGING_PREFIX: Final = ".docs.next-"
+
+
+class TierHome(NamedTuple):
+    """One committed tier contribution to the deployed documentation corpus."""
+
+    root: Path
+    kind: ConfigKind
+    slug: str
+
+
+@dataclass(frozen=True)
+class HomeEntrypoint:
+    """One home master's compiled entrypoint text, rooted in the home snapshot."""
+
+    master: Path
+    output: Path
+    text: str
+
+
+@dataclass(frozen=True)
+class HomeEntrypoints:
+    """Every compiled home entrypoint plus the pointer paths beside their masters."""
+
+    entrypoints: tuple[HomeEntrypoint, ...]
+    retired_pointers: tuple[Path, ...]
+
+
+def distribute_tier_homes(
+    tier_homes: list[TierHome],
+    retracted: set[tuple[ConfigKind, str]],
+    deploy_docs_root: Path = GLOBAL_DOCS_DIR,
+) -> None:
+    """Replace selected tier contributions and retract absent homes in one generation."""
+    staged_root = Path(tempfile.mkdtemp(prefix=_DOCS_STAGING_PREFIX, dir=deploy_docs_root.parent))
+    try:
+        if deploy_docs_root.is_dir():
+            shutil.copytree(deploy_docs_root, staged_root, dirs_exist_ok=True, symlinks=False)
+
+        replaced = {(home.kind, home.slug) for home in tier_homes}
+        affected = replaced | retracted
+        existing_payload = (
+            yaml.safe_load((staged_root / _INDEX_FILE_NAME).read_text(encoding=_UTF8))
+            if (staged_root / _INDEX_FILE_NAME).is_file()
+            else {}
+        )
+        existing_entries = existing_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
+        if not isinstance(existing_entries, list):
+            existing_entries = []
+        tier_identity_values = {_source_project_value(kind, slug) for kind, slug in affected}
+        retained = [
+            entry
+            for entry in existing_entries
+            if not (isinstance(entry, dict) and entry.get(_SOURCE_PROJECT_KEY) in tier_identity_values)
+        ]
+        for kind, slug in affected:
+            deploy_dirname = _tier_deploy_dirname(kind)
+            stale = staged_root / deploy_dirname / slug
+            if stale.is_dir():
+                shutil.rmtree(stale)
+
+        tier_entries: list[object] = []
+        for home in tier_homes:
+            deploy_dirname = _tier_deploy_dirname(home.kind)
+            staged_tier_root = staged_root / deploy_dirname / home.slug
+            deployed_tier_root = deploy_docs_root / deploy_dirname / home.slug
+            source_docs = home.root / _TIER_PUBLISHED_DOCS_RELATIVE_PATH
+            if source_docs.is_dir():
+                shutil.copytree(source_docs, staged_tier_root, symlinks=False)
+            else:
+                staged_tier_root.mkdir(parents=True, exist_ok=True)
+            snapshot_index_text = (source_docs / _INDEX_FILE_NAME).read_text(encoding=_UTF8)
+            rerooted_text = reroot_index_document(snapshot_index_text, source_docs, deployed_tier_root)
+            (staged_tier_root / _INDEX_FILE_NAME).write_text(rerooted_text, encoding=_UTF8)
+            payload = yaml.safe_load(rerooted_text)
+            source_project_value = _source_project_value(home.kind, home.slug)
+            for entry in payload[_INDEX_SNIPPETS_KEY]:
+                tier_entries.append(
+                    {
+                        **entry,
+                        _INDEX_PATH_KEY: (
+                            _DEPLOYED_DOCS_DIRECTORY / deploy_dirname / home.slug / entry[_INDEX_PATH_KEY]
+                        ).as_posix(),
+                        _SOURCE_PROJECT_KEY: source_project_value,
+                    }
+                )
+
+        merged_entries: list[object] = [*retained, *tier_entries]
+        merged_entries.sort(key=_index_entry_sort_key)
+        index_path = staged_root / _INDEX_FILE_NAME
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            yaml.safe_dump(
+                {
+                    _INDEX_PROJECT_ROOT_KEY: _INDEX_SCOPE_ROOT,
+                    _INDEX_SNIPPETS_ROOT_KEY: _INDEX_DEPLOY_ROOT,
+                    _INDEX_SNIPPETS_KEY: merged_entries,
+                },
+                sort_keys=False,
+                width=1000,
+                allow_unicode=True,
+            ),
+            encoding=_UTF8,
+        )
+        previous_root = publish_generation(staged_root, deploy_docs_root)
+    except Exception:
+        shutil.rmtree(staged_root, ignore_errors=True)
+        raise
+    if previous_root is not None:
+        if previous_root.is_symlink():
+            previous_root.unlink()
+        else:
+            shutil.rmtree(previous_root)
+
+
+def home_masters(home_snapshot: Path, kind: ConfigKind) -> list[tuple[Path, Path]]:
+    """Return only the masters owned by one home with their read roots."""
+    candidates = [(home_snapshot / _PROJECT_MASTER_FILENAME, home_snapshot)]
+    if kind in (ConfigKind.GLOBAL, ConfigKind.COMPANY):
+        candidates.append((home_snapshot / _HELP_DESK_DIRNAME / _PROJECT_MASTER_FILENAME, home_snapshot))
+    return [(master, root) for master, root in candidates if master.is_file()]
+
+
+def inflate_home_entrypoint(
+    master: Path, *, project_root: Path, observation: DistributionObservation | None
+) -> HomeEntrypoint:
+    """Compile one home master against the deployed corpus."""
+    try:
+        text = inflate_master(
+            master,
+            project_root=project_root,
+            root_extras=False,
+            warn_only=False,
+            observation=observation,
+            resolution=DocsResolutionMode.DEPLOYED,
+        )
+    except EntrypointCompositionError as exc:
+        raise HomeMasterInflationError(master, exc) from exc
+    return HomeEntrypoint(master=master, output=master.parent / _GENERATED_ENTRYPOINT_FILENAME, text=text)
+
+
+def inflate_home_entrypoints(
+    home_snapshot: Path,
+    kind: ConfigKind,
+    *,
+    observation: DistributionObservation | None = None,
+) -> HomeEntrypoints:
+    """Compile every master owned by one home, failing on the first invalid master."""
+    masters = home_masters(home_snapshot, kind)
+    return HomeEntrypoints(
+        entrypoints=tuple(
+            inflate_home_entrypoint(master, project_root=root, observation=observation) for master, root in masters
+        ),
+        retired_pointers=tuple(retired_pointer_candidate(master.parent) for master, _ in masters),
+    )
+
+
+def _tier_deploy_dirname(kind: ConfigKind) -> str:
+    """Return the deployed directory for a company or person home."""
+    if kind is ConfigKind.COMPANY:
+        return _TIER_COMPANY_DEPLOY_DIRNAME
+    if kind is ConfigKind.PERSON:
+        return _TIER_PERSON_DEPLOY_DIRNAME
+    raise ValueError(_UNSUPPORTED_TIER_KIND.format(kind=kind.value))
+
+
+def _source_project_value(kind: ConfigKind, slug: str) -> str:
+    """Return the existing merged-index identity for one tier home."""
+    prefix = _COMPANY_SOURCE_PROJECT_PREFIX if kind is ConfigKind.COMPANY else _PERSON_SOURCE_PROJECT_PREFIX
+    return f"{prefix}{slug}"
+
+
+def declared_tier_homes(platform_home_snapshot: Path) -> list[TierHome]:
+    """Build deployment identities for the declared company and person homes."""
+    return [
+        TierHome(root=root, kind=kind, slug=root.name)
+        for root, kind in iter_declared_tier_roots(platform_home_snapshot)
+    ]
+
+
+def deployed_tier_identities(deploy_docs_root: Path = GLOBAL_DOCS_DIR) -> set[tuple[ConfigKind, str]]:
+    """Read the tier identities currently recorded in the deployed merged index."""
+    index_path = deploy_docs_root / _INDEX_FILE_NAME
+    if not index_path.is_file():
+        return set()
+    payload = yaml.safe_load(index_path.read_text(encoding=_UTF8))
+    entries = payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(payload, dict) else []
+    if not isinstance(entries, list):
+        return set()
+    identities: set[tuple[ConfigKind, str]] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        source_project = entry.get(_SOURCE_PROJECT_KEY)
+        if not isinstance(source_project, str):
+            continue
+        if source_project.startswith(_COMPANY_SOURCE_PROJECT_PREFIX):
+            identities.add((ConfigKind.COMPANY, source_project.removeprefix(_COMPANY_SOURCE_PROJECT_PREFIX)))
+        elif source_project.startswith(_PERSON_SOURCE_PROJECT_PREFIX):
+            identities.add((ConfigKind.PERSON, source_project.removeprefix(_PERSON_SOURCE_PROJECT_PREFIX)))
+    return identities

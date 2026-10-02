@@ -9,8 +9,12 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.checkpoint_model import ActivationRange
-from teleclaude.core.integration.post_commit_maintenance import _SYNC_ACTION_ID, activation_range_owes_action
-from teleclaude.sync import PublicationOutcome, publish_recorded_commit
+from teleclaude.core.integration.post_commit_maintenance import (
+    _SYNC_ACTION_ID,
+    activation_range_changed_paths,
+    activation_range_owes_action,
+)
+from teleclaude.sync import HomePublicationOutcome, PublicationMode, publish_homes
 
 logger = get_logger(__name__)
 
@@ -22,22 +26,27 @@ _PUBLISH_FAILED = 1
 
 def run_sync_action(activation_range: ActivationRange, project_root: Path) -> int:
     """Publish only a literal range whose main-only maintenance owes ``sync``."""
-    if not activation_range_owes_action(project_root, activation_range, _SYNC_ACTION_ID):
+    changed_paths = activation_range_changed_paths(project_root, activation_range)
+    if changed_paths is None or not activation_range_owes_action(
+        project_root,
+        activation_range,
+        _SYNC_ACTION_ID,
+        changed_paths=changed_paths,
+    ):
         print(_PUBLISH_RANGE_NOT_OWED, file=sys.stderr)
         return _PUBLISH_FAILED
-    result = publish_recorded_commit(project_root, activation_range.after_sha)
-    published = result.outcome in (PublicationOutcome.PUBLISHED, PublicationOutcome.SUPERSEDED)
-    exit_code = _PUBLISH_SUCCEEDED if published else _PUBLISH_FAILED
+    run = publish_homes(project_root, PublicationMode.OWED, changed_paths=list(changed_paths))
+    exit_code = _PUBLISH_FAILED if run.exit_code else _PUBLISH_SUCCEEDED
+    outcomes = {outcome.value: sum(item.outcome is outcome for item in run.homes) for outcome in HomePublicationOutcome}
     logger.info(
         _PUBLISH_ACTION_FINISHED_EVENT,
         before_sha=activation_range.before_sha,
         after_sha=activation_range.after_sha,
         action_id=_SYNC_ACTION_ID,
         exit_code=exit_code,
-        outcome=result.outcome,
-        reason=result.reason,
-        published_generation=result.published_generation,
-        unfinished_publication=result.unfinished_publication,
+        tip=run.tip,
+        outcomes=outcomes,
+        error=run.error,
     )
     return exit_code
 

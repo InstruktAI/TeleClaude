@@ -9,7 +9,8 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import Literal, NamedTuple, cast
@@ -31,10 +32,8 @@ from teleclaude.artifact_ownership import (
     retract_retired_native_artifacts,
 )
 from teleclaude.capabilities import resolve_capabilities
-from teleclaude.config.schema import ConfigKind
 from teleclaude.constants import ArtifactKind
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
-from teleclaude.docs_index import reroot_index_document
 from teleclaude.docs_publication import publish_generation
 from teleclaude.docs_publishers import (
     DocsPublisherResolutionError,
@@ -55,7 +54,6 @@ from teleclaude.paths import (
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
-from teleclaude.snippet_roots import iter_declared_tier_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
     GENERATED_DOMAIN_BUNDLE_FILENAME,
     RETIRED_DOMAIN_BUNDLE_FILENAME,
@@ -131,7 +129,6 @@ _INDEX_DEPLOY_ROOT = "~/.teleclaude/docs"
 _INDEX_SCOPE_KEY = "scope"
 _TIER_COMPANY_DEPLOY_DIRNAME = "companies"
 _TIER_PERSON_DEPLOY_DIRNAME = "people"
-_TIER_SCOPE_VALUES = (SnippetScope.PERSON.value, SnippetScope.COMPANY.value)
 _COMMITTED_OWNER_COLLISION = "committed publication conflicts with an already deployed snippet id: {snippet_id}"
 #: The generated per-domain record of who published a deployed domain and the
 #: trigger that publisher declared in the published revision.
@@ -158,6 +155,14 @@ _UNRESOLVED_IMPORT = "Generated entrypoint {entrypoint} is not self-contained; i
 _GENERATED_ENTRYPOINT_FILENAME = "AGENTS.md"
 _HOME_MASTER_INFLATION_FAILED = "Home master {master} cannot be compiled: {cause}"
 _HELP_DESK_DIRNAME = "help-desk"
+_PUBLICATION_BUILD_RESULT_REQUIRED = "Committed distribution did not return a publication build."
+_PUBLICATION_DOCUMENTATION_TARGET_REQUIRED = "Publication build lost its documentation target."
+_OUT_OF_REACH_COMMAND_WARNING = "out_of_reach_global_command_excluded"
+_GLOBAL_DISTRIBUTION_TEMP_PREFIX = "teleclaude-dist-global-"
+_LOCAL_DISTRIBUTION_TEMP_PREFIX = "teleclaude-dist-local-"
+_AGENT_CONFIG_HOME_ROOT_KEY = "home_root"
+_AGENT_CONFIG_PROJECT_DIR_KEY = "project_dir"
+_AGENT_CONFIG_MASTER_DEST_KEY = "master_dest"
 
 logger = get_logger(__name__)
 
@@ -199,7 +204,7 @@ class DistributionObservation:
     process_correlation_id: str
 
 
-@dataclass(frozen=True)
+@dataclass
 class DistributionRequest:
     """Inputs for the internal committed-source distribution operation."""
 
@@ -210,6 +215,11 @@ class DistributionRequest:
     warn_only: bool = False
     agents_enabled: bool | None = None
     docs_enabled: bool | None = None
+    preserve_previous_documentation: bool = False
+    documentation_published: bool = False
+    previous_documentation_root: Path | None = None
+    documentation_target: Path | None = None
+    staging_roots: list[Path] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -225,27 +235,158 @@ class DistributionResult:
     retired_pointers: tuple[Path, ...]
 
 
+@dataclass(frozen=True)
+class StagedPublicationPhase:
+    """One agent phase rendered and waiting for the publication install step."""
+
+    dist_dir: Path
+    built_agents: tuple[str, ...]
+    deploy_root: str
+    is_global_phase: bool
+    scope_key: str
+    commands_dist_dir: Path
+
+
+@dataclass
+class DistributionBuild:
+    """An undoable publication build whose staged effects deploy only on request."""
+
+    result: DistributionResult
+    phases: tuple[StagedPublicationPhase, ...]
+    agents_config: dict[str, AgentConfig]
+    request: DistributionRequest
+    staging_roots: tuple[Path, ...]
+    completed: bool = False
+
+    @property
+    def outputs(self) -> tuple[Path, ...]:
+        return self.result.outputs
+
+    @property
+    def retired_pointers(self) -> tuple[Path, ...]:
+        return self.result.retired_pointers
+
+    def deploy(self) -> None:
+        """Install every rendered phase and finalize the held documentation generation."""
+        if self.completed:
+            return
+        try:
+            for phase in self.phases:
+                for agent_name in phase.built_agents:
+                    config = self.agents_config[agent_name]
+                    config_strings = cast(Mapping[str, str], config)
+                    target_root = (
+                        config_strings[_AGENT_CONFIG_HOME_ROOT_KEY]
+                        if phase.is_global_phase
+                        else os.path.join(phase.deploy_root, config_strings[_AGENT_CONFIG_PROJECT_DIR_KEY])
+                    )
+                    _deploy_agent(
+                        dist_agent_root=str(phase.dist_dir / agent_name),
+                        target_root=target_root,
+                    )
+                if phase.is_global_phase:
+                    shutil.copytree(phase.commands_dist_dir, COMMANDS_DIR, dirs_exist_ok=True)
+                    reconcile_deployed_files(scope_key=phase.scope_key, staged_commands_dir=phase.commands_dist_dir)
+                retract_retired_native_artifacts(
+                    scope_key=phase.scope_key,
+                    scope_root=Path(phase.deploy_root),
+                    is_global_scope=phase.is_global_phase,
+                    replacement_master_written=(
+                        phase.dist_dir
+                        / _GEMINI_AGENT_NAME
+                        / os.path.basename(
+                            cast(Mapping[str, str], self.agents_config[_GEMINI_AGENT_NAME])[
+                                _AGENT_CONFIG_MASTER_DEST_KEY
+                            ]
+                        )
+                    ).is_file(),
+                )
+        except Exception:
+            _discard_previous_documentation(self.request)
+            self._cleanup_staging()
+            self.completed = True
+            raise
+        _discard_previous_documentation(self.request)
+        self._cleanup_staging()
+        self.completed = True
+
+    def undo(self) -> None:
+        """Restore the displaced documentation generation and discard staged output."""
+        if self.completed:
+            return
+        _restore_previous_documentation(self.request)
+        self._cleanup_staging()
+        self.completed = True
+
+    def _cleanup_staging(self) -> None:
+        for root in self.staging_roots:
+            _remove_publication_path(root)
+
+
 def distribute_committed(
     project_root: Path,
     canonical_root: Path,
     *,
     agents_enabled: bool,
     docs_enabled: bool,
-) -> DistributionResult:
-    """Build and deploy artifacts from a caller-materialized committed snapshot."""
+) -> DistributionBuild:
+    """Build committed-source artifacts and return an undoable, not-yet-deployed result."""
     original_directory = Path.cwd()
+    request = DistributionRequest(
+        project_root=project_root,
+        deploy_root=canonical_root,
+        deploy=True,
+        agents_enabled=agents_enabled,
+        docs_enabled=docs_enabled,
+        preserve_previous_documentation=True,
+    )
     try:
-        return main(
-            DistributionRequest(
-                project_root=project_root,
-                deploy_root=canonical_root,
-                deploy=True,
-                agents_enabled=agents_enabled,
-                docs_enabled=docs_enabled,
-            )
-        )
+        result = main(request)
+    except BaseException:
+        _restore_previous_documentation(request)
+        for staging_root in request.staging_roots:
+            _remove_publication_path(staging_root)
+        raise
     finally:
         os.chdir(original_directory)
+    if not isinstance(result, DistributionBuild):
+        raise TypeError(_PUBLICATION_BUILD_RESULT_REQUIRED)
+    return result
+
+
+def _restore_previous_documentation(request: DistributionRequest) -> None:
+    """Restore the generation displaced by an incomplete committed build."""
+    if not request.documentation_published:
+        return
+    target = request.documentation_target
+    if target is None:
+        raise RuntimeError(_PUBLICATION_DOCUMENTATION_TARGET_REQUIRED)
+    previous = request.previous_documentation_root
+    if previous is None:
+        _remove_publication_path(target)
+    else:
+        displaced = publish_generation(previous, target)
+        if displaced is not None:
+            _remove_publication_path(displaced)
+    request.documentation_published = False
+    request.previous_documentation_root = None
+
+
+def _discard_previous_documentation(request: DistributionRequest) -> None:
+    """Discard the old generation after publication effects have completed."""
+    previous = request.previous_documentation_root
+    if previous is not None:
+        _remove_publication_path(previous)
+    request.documentation_published = False
+    request.previous_documentation_root = None
+
+
+def _remove_publication_path(path: Path) -> None:
+    """Remove a temporary publication root, including a symlink root."""
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path)
 
 
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
@@ -1487,7 +1628,8 @@ def deploy_documentation(
     deploy_docs_root: Path | None = None,
     observation: DistributionObservation | None = None,
     committed_owner: bool = False,
-) -> None:
+    preserve_previous: bool = False,
+) -> Path | None:
     """The documentation deployment step: publish one complete docs generation.
 
     Gathers every contributing publisher (the current project contributes from
@@ -1495,10 +1637,11 @@ def deploy_documentation(
     resolves the one owner per domain — hard-blocking on a split before any
     publication — then materializes domains, support fragments, indexes, and
     baseline bundles beside the deployed root. The completed staging generation
-    exchanges with the live root atomically.
+    exchanges with the live root atomically; callers may retain the displaced
+    generation until their build finishes.
     """
     if not docs_source_dir.is_dir():
-        return
+        return None
     target = deploy_docs_root if deploy_docs_root is not None else GLOBAL_DOCS_DIR
     print("\nDeploying documentation...")
     publishers = gather_publishers(project_root, docs_source_dir.resolve())
@@ -1539,11 +1682,12 @@ def deploy_documentation(
                 raise
     except DocsPublisherResolutionError as exc:
         raise SystemExit(str(exc)) from exc
-    if previous_root is not None:
+    if previous_root is not None and not preserve_previous:
         if previous_root.is_symlink():
             previous_root.unlink()
         else:
             shutil.rmtree(previous_root)
+    return previous_root
 
 
 def _materialize_committed_owner(
@@ -1647,99 +1791,6 @@ def _materialize_committed_owner(
         domain: publisher for domain, publisher in owner_by_domain.items() if publisher.slug == current.slug
     }
     generate_domain_baselines(current_domains, staged_root, project_root, observation)
-
-
-def distribute_committed_tiers(platform_home_snapshot: Path, deploy_docs_root: Path = GLOBAL_DOCS_DIR) -> None:
-    """Compose every participating tier's documentation into the deployed corpus.
-
-    Invoked only from the platform-home publication branch, after
-    :func:`teleclaude.docs_index.build_tier_indexes` has installed each tier's
-    catalog at its documentation home in the canonical checkout. Replaces the
-    tier contribution as a unit inside a copy of the prior deployed generation:
-    removes the deployed ``companies/``/``people/`` subtrees and every
-    person- or company-scoped merged-index entry, then materializes each
-    declared, participating tier from ``platform_home_snapshot`` — the
-    validated commit, never the ambient home working tree — at its deploy
-    location. A tier absent from the recorded commit, including one whose
-    declaration the commit just removed, is therefore absent from the next
-    generation. Every non-tier contribution and merged-index entry carries
-    over unchanged, since the home is not a registered publisher and owns no
-    domain.
-    """
-    staged_root = Path(tempfile.mkdtemp(prefix=".docs.next-", dir=deploy_docs_root.parent))
-    try:
-        if deploy_docs_root.is_dir():
-            shutil.copytree(deploy_docs_root, staged_root, dirs_exist_ok=True, symlinks=False)
-        for stale in (staged_root / _TIER_COMPANY_DEPLOY_DIRNAME, staged_root / _TIER_PERSON_DEPLOY_DIRNAME):
-            if stale.is_dir():
-                shutil.rmtree(stale)
-
-        index_path = staged_root / _INDEX_FILE_NAME
-        existing_payload = yaml.safe_load(index_path.read_text(encoding=_UTF8)) if index_path.is_file() else {}
-        existing_entries = existing_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
-        if not isinstance(existing_entries, list):
-            existing_entries = []
-        retained: list[object] = [
-            entry
-            for entry in existing_entries
-            if not (isinstance(entry, dict) and entry.get(_INDEX_SCOPE_KEY) in _TIER_SCOPE_VALUES)
-        ]
-
-        tier_entries: list[object] = []
-        for root, kind in iter_tier_snippet_roots(platform_home_snapshot):
-            slug = root.name
-            is_company = kind is ConfigKind.COMPANY
-            deploy_dirname = _TIER_COMPANY_DEPLOY_DIRNAME if is_company else _TIER_PERSON_DEPLOY_DIRNAME
-            # Only the tier's published half (<tier root>/docs/global/) is deployed, at
-            # <deploy_dirname>/<slug>/ directly, matching the published address form
-            # (`companies/<slug>/<taxonomy>/<rest>`). The local half and its catalog
-            # never enter the corpus.
-            staged_tier_root = staged_root / deploy_dirname / slug
-            deployed_tier_root = deploy_docs_root / deploy_dirname / slug
-            source_docs = root / _TIER_PUBLISHED_DOCS_RELATIVE_PATH
-            if source_docs.is_dir():
-                shutil.copytree(source_docs, staged_tier_root, symlinks=False)
-            else:
-                staged_tier_root.mkdir(parents=True, exist_ok=True)
-            snapshot_index_text = (source_docs / _INDEX_FILE_NAME).read_text(encoding=_UTF8)
-            rerooted_text = reroot_index_document(snapshot_index_text, source_docs, deployed_tier_root)
-            (staged_tier_root / _INDEX_FILE_NAME).write_text(rerooted_text, encoding=_UTF8)
-            payload = yaml.safe_load(rerooted_text)
-            source_project_value = f"{'company' if is_company else 'person'}:{slug}"
-            for entry in payload["snippets"]:
-                tier_entries.append(
-                    {
-                        **entry,
-                        "path": f"docs/{deploy_dirname}/{slug}/{entry['path']}",
-                        "source_project": source_project_value,
-                    }
-                )
-
-        merged_entries: list[object] = [*retained, *tier_entries]
-        merged_entries.sort(key=_index_entry_sort_key)
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-        index_path.write_text(
-            yaml.safe_dump(
-                {
-                    _INDEX_PROJECT_ROOT_KEY: _INDEX_SCOPE_ROOT,
-                    _INDEX_SNIPPETS_ROOT_KEY: _INDEX_DEPLOY_ROOT,
-                    _INDEX_SNIPPETS_KEY: merged_entries,
-                },
-                sort_keys=False,
-                width=1000,
-                allow_unicode=True,
-            ),
-            encoding=_UTF8,
-        )
-        previous_root = publish_generation(staged_root, deploy_docs_root)
-    except Exception:
-        shutil.rmtree(staged_root, ignore_errors=True)
-        raise
-    if previous_root is not None:
-        if previous_root.is_symlink():
-            previous_root.unlink()
-        else:
-            shutil.rmtree(previous_root)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -1995,76 +2046,6 @@ def _write_project_agents(
     return agents_path
 
 
-@dataclass(frozen=True)
-class HomeEntrypoint:
-    """One home master's compiled entrypoint text, rooted in the home snapshot."""
-
-    master: Path
-    output: Path
-    text: str
-
-
-@dataclass(frozen=True)
-class HomeEntrypoints:
-    """Every compiled home entrypoint plus the pointer paths beside their masters."""
-
-    entrypoints: tuple[HomeEntrypoint, ...]
-    retired_pointers: tuple[Path, ...]
-
-
-def home_masters(home_snapshot: Path) -> list[tuple[Path, Path]]:
-    """Return the home masters present in a home snapshot, each with the root its reads resolve against.
-
-    The set is fixed: the home's own master and its platform desk master
-    (resolved against the home), then every declared tier's master and every
-    declared company's desk master (resolved against the tier). No other file
-    in a home is a home master.
-    """
-    candidates = [
-        (home_snapshot / _PROJECT_MASTER_FILENAME, home_snapshot),
-        (home_snapshot / _HELP_DESK_DIRNAME / _PROJECT_MASTER_FILENAME, home_snapshot),
-    ]
-    for tier_root, kind in iter_declared_tier_roots(home_snapshot):
-        candidates.append((tier_root / _PROJECT_MASTER_FILENAME, tier_root))
-        if kind is ConfigKind.COMPANY:
-            candidates.append((tier_root / _HELP_DESK_DIRNAME / _PROJECT_MASTER_FILENAME, tier_root))
-    return [(master, root) for master, root in candidates if master.is_file()]
-
-
-def inflate_home_entrypoint(
-    master: Path, *, project_root: Path, observation: DistributionObservation | None
-) -> HomeEntrypoint:
-    """Compile one home master against the deployed corpus; raise ``HomeMasterInflationError`` on failure.
-
-    A home entrypoint carries no root extras (no baseline index or catalog).
-    """
-    try:
-        text = inflate_master(
-            master,
-            project_root=project_root,
-            root_extras=False,
-            warn_only=False,
-            observation=observation,
-            resolution=DocsResolutionMode.DEPLOYED,
-        )
-    except EntrypointCompositionError as exc:
-        raise HomeMasterInflationError(master, exc) from exc
-    return HomeEntrypoint(master=master, output=master.parent / _GENERATED_ENTRYPOINT_FILENAME, text=text)
-
-
-def inflate_home_entrypoints(
-    home_snapshot: Path, *, observation: DistributionObservation | None = None
-) -> HomeEntrypoints:
-    """Compile every home master of a home snapshot, failing on the first that cannot be compiled."""
-    masters = home_masters(home_snapshot)
-    return HomeEntrypoints(
-        entrypoints=tuple(
-            inflate_home_entrypoint(master, project_root=root, observation=observation) for master, root in masters
-        ),
-        retired_pointers=tuple(retired_pointer_candidate(master.parent) for master, _ in masters),
-    )
-
-
 def _render_global_skill_catalog(
     catalog_master: Path,
     *,
@@ -2132,7 +2113,7 @@ def _global_command_reach_findings(project_root_path: Path) -> list[str]:
     return findings
 
 
-def main(request: DistributionRequest | None = None) -> DistributionResult:  # noqa: C901
+def main(request: DistributionRequest | None = None) -> DistributionResult | DistributionBuild:  # noqa: C901
     """Build agent artifacts for supported CLIs; deployment requires an internal request."""
     if request is None:
         parser = argparse.ArgumentParser(description="Validate and build agent outputs into dist/.")
@@ -2168,6 +2149,8 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
             docs_enabled=request.docs_enabled,
         )
     deploy = request is not None and request.deploy
+    committed_publication = request is not None and deploy
+    publication_build = committed_publication and request.preserve_previous_documentation
 
     # Get the project root and main TeleClaude repo root.
     teleclaude_root = str(_REPO_ROOT)
@@ -2177,6 +2160,8 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
     project_root_path = Path(project_root)
     checkout_local_outputs: list[Path] = []
     retired_pointers: list[Path] = []
+    staged_publication_phases: list[StagedPublicationPhase] = []
+    publication_staging_roots = request.staging_roots if publication_build and request is not None else []
     agents_enabled, docs_enabled = _resolve_pipeline_capabilities(
         deploy=deploy,
         agents_enabled=args.agents_enabled,
@@ -2198,12 +2183,17 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
             process_correlation_id=observation.process_correlation_id,
         )
     if deploy and docs_enabled:
-        deploy_documentation(
+        previous_root = deploy_documentation(
             project_root_path,
             Path(docs_source_dir),
             observation=observation,
             committed_owner=request is not None,
+            preserve_previous=publication_build,
         )
+        if request is not None:
+            request.documentation_target = GLOBAL_DOCS_DIR
+            request.documentation_published = Path(docs_source_dir).is_dir()
+            request.previous_documentation_root = previous_root
 
     # Agent rendering consumes publisher declarations to build domain awareness,
     # so resolve and validate them only when the agents pipeline is enabled.
@@ -2393,11 +2383,15 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
 
     errors: list[str] = []
     if agents_enabled:
-        errors.extend(_validate_sources(global_sources))
-        errors.extend(_validate_sources(local_sources))
-        errors.extend(_global_command_reach_findings(project_root_path))
-        errors.extend(_validate_global_command_files(global_command_files))
-        errors.extend(_validate_project_command_sources(project_root_path))
+        if committed_publication:
+            for finding in _global_command_reach_findings(project_root_path):
+                logger.warning(_OUT_OF_REACH_COMMAND_WARNING, finding=finding)
+        else:
+            errors.extend(_validate_sources(global_sources))
+            errors.extend(_validate_sources(local_sources))
+            errors.extend(_global_command_reach_findings(project_root_path))
+            errors.extend(_validate_global_command_files(global_command_files))
+            errors.extend(_validate_project_command_sources(project_root_path))
     if errors:
         for error in errors:
             print(error)
@@ -2454,9 +2448,10 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
         for relative_path, command_source_path in sorted(command_files.items()):
             with command_source_path.open(encoding=_UTF8) as file_obj:
                 post = frontmatter.load(file_obj)
-            validate_artifact(
-                post, str(command_source_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root)
-            )
+            if not committed_publication:
+                validate_artifact(
+                    post, str(command_source_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root)
+                )
             content = process_file(post.content, commands_config["prefix"], _CODEX_AGENT_NAME)
             content = expand_inline_refs(
                 content,
@@ -2564,12 +2559,13 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
                     with open(item_path, encoding="utf-8") as f:
                         try:
                             post = frontmatter.load(f)
-                            validate_artifact(
-                                post,
-                                item_path,
-                                kind=spec.artifact_kind,
-                                project_root=Path(project_root),
-                            )
+                            if not committed_publication:
+                                validate_artifact(
+                                    post,
+                                    item_path,
+                                    kind=spec.artifact_kind,
+                                    project_root=Path(project_root),
+                                )
                             prepared = _prepare_post(
                                 post,
                                 agent_prefix=config["prefix"],
@@ -2633,39 +2629,51 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
         print("\nTranspilation complete.")
 
         if deploy and deploy_enabled:
-            print("Deploying files...")
-            for agent_name in built_agents:
-                config = agents_config[agent_name]
-
-                print(f"Deploying {agent_name}...")
-
-                target_root = (
-                    config["home_root"] if is_global_phase else os.path.join(deploy_root, config["project_dir"])
+            if publication_build:
+                staged_publication_phases.append(
+                    StagedPublicationPhase(
+                        dist_dir=Path(dist_dir),
+                        built_agents=tuple(built_agents),
+                        deploy_root=deploy_root,
+                        is_global_phase=is_global_phase,
+                        scope_key=scope_key,
+                        commands_dist_dir=commands_dist_dir,
+                    )
                 )
-                dist_agent_root = os.path.join(dist_dir, agent_name)
-                _deploy_agent(
-                    dist_agent_root=dist_agent_root,
-                    target_root=target_root,
+            else:
+                print("Deploying files...")
+                for agent_name in built_agents:
+                    config = agents_config[agent_name]
+
+                    print(f"Deploying {agent_name}...")
+
+                    target_root = (
+                        config["home_root"] if is_global_phase else os.path.join(deploy_root, config["project_dir"])
+                    )
+                    dist_agent_root = os.path.join(dist_dir, agent_name)
+                    _deploy_agent(
+                        dist_agent_root=dist_agent_root,
+                        target_root=target_root,
+                    )
+
+                # Only the global phase stages commands. Its scope key is the publishing checkout's
+                # canonical root, which the project-local phase of that same checkout shares, so a
+                # local-phase reconcile would retract the corpus the global phase just deployed.
+                if is_global_phase:
+                    shutil.copytree(commands_dist_dir, COMMANDS_DIR, dirs_exist_ok=True)
+                    reconcile_deployed_files(scope_key=scope_key, staged_commands_dir=commands_dist_dir)
+                retract_retired_native_artifacts(
+                    scope_key=scope_key,
+                    scope_root=Path(deploy_root),
+                    is_global_scope=is_global_phase,
+                    replacement_master_written=(
+                        Path(dist_dir)
+                        / _GEMINI_AGENT_NAME
+                        / os.path.basename(agents_config[_GEMINI_AGENT_NAME]["master_dest"])
+                    ).is_file(),
                 )
 
-            # Only the global phase stages commands. Its scope key is the publishing checkout's
-            # canonical root, which the project-local phase of that same checkout shares, so a
-            # local-phase reconcile would retract the corpus the global phase just deployed.
-            if is_global_phase:
-                shutil.copytree(commands_dist_dir, COMMANDS_DIR, dirs_exist_ok=True)
-                reconcile_deployed_files(scope_key=scope_key, staged_commands_dir=commands_dist_dir)
-            retract_retired_native_artifacts(
-                scope_key=scope_key,
-                scope_root=Path(deploy_root),
-                is_global_scope=is_global_phase,
-                replacement_master_written=(
-                    Path(dist_dir)
-                    / _GEMINI_AGENT_NAME
-                    / os.path.basename(agents_config[_GEMINI_AGENT_NAME]["master_dest"])
-                ).is_file(),
-            )
-
-            print("Deployment complete.")
+                print("Deployment complete.")
 
     def _run_phase(
         *,
@@ -2705,7 +2713,14 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
         )
         retired_pointers.append(retired_pointer_candidate(global_skill_source_root(project_root_path)))
         if agents_enabled:
-            with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
+            global_dist_context: AbstractContextManager[str]
+            if publication_build:
+                global_dist = tempfile.mkdtemp(prefix=_GLOBAL_DISTRIBUTION_TEMP_PREFIX)
+                publication_staging_roots.append(Path(global_dist))
+                global_dist_context = nullcontext(global_dist)
+            else:
+                global_dist_context = tempfile.TemporaryDirectory(prefix=_GLOBAL_DISTRIBUTION_TEMP_PREFIX)
+            with global_dist_context as global_dist:
                 if global_sources or global_command_files:
                     _run_phase(
                         sources=global_sources,
@@ -2717,7 +2732,14 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
                         is_global_phase=True,
                         scope_key=str(canonical_root.resolve()),
                     )
-            with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
+            local_dist_context: AbstractContextManager[str]
+            if publication_build:
+                local_dist = tempfile.mkdtemp(prefix=_LOCAL_DISTRIBUTION_TEMP_PREFIX)
+                publication_staging_roots.append(Path(local_dist))
+                local_dist_context = nullcontext(local_dist)
+            else:
+                local_dist_context = tempfile.TemporaryDirectory(prefix=_LOCAL_DISTRIBUTION_TEMP_PREFIX)
+            with local_dist_context as local_dist:
                 if local_sources:
                     _run_phase(
                         sources=local_sources,
@@ -2759,7 +2781,16 @@ def main(request: DistributionRequest | None = None) -> DistributionResult:  # n
                 scope_key=project_root,
             )
 
-    return DistributionResult(tuple(checkout_local_outputs), tuple(retired_pointers))
+    result = DistributionResult(tuple(checkout_local_outputs), tuple(retired_pointers))
+    if publication_build and request is not None:
+        return DistributionBuild(
+            result=result,
+            phases=tuple(staged_publication_phases),
+            agents_config=agents_config,
+            request=request,
+            staging_roots=tuple(publication_staging_roots),
+        )
+    return result
 
 
 if __name__ == "__main__":
