@@ -180,7 +180,10 @@ boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
   defaults only when none exists. Integrations are added afterwards through
   `telec config wizard`.
 - **Publication.** Installation publishes the checkout's committed `main` tip. When
-  it publishes nothing, it says why; recover with `telec sync` from the checkout.
+  it publishes nothing, it says why. A home that was skipped or failed to build
+  recovers with `telec sync` from the checkout once the cause is fixed. A checkout
+  with no local `main` has nothing publication can read, so `telec sync` cannot
+  help it.
 - **Optional apps.** LM Studio, its llmster service and Handy are installed only
   when chosen at a terminal.
 

@@ -112,7 +112,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   and acts only on its result. Publication's rules stay context's: it publishes
   the checkout's committed `main` tip, so a checkout without a local `main`
   publishes nothing. A run that publishes nothing or skips a home is reported
-  with its cause and the recovery command, and does not fail the installation.
+  with its cause, and does not fail the installation. Where the cause is one
+  that republication can clear, the report also names the recovery command.
   The routine is not given the global home: that home's own publication
   follows its commits.
 - **Unattended execution.** The installation's own tool directory is on its
