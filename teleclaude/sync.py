@@ -75,7 +75,6 @@ _HOME_PUBLICATION_RUN_EVENT = "home_publication_run"
 _HOME_REFRESH_FAILED_EVENT = "home_entrypoint_refresh_failed"
 _HOME_REFRESH_SKIPPED_EVENT = "home_entrypoint_refresh_skipped"
 _NO_PUBLISHED_HOME_GENERATIONS = "no_published_home_generations"
-_OUTCOME_COUNTS = ("published", "unchanged", "skipped", "failed")
 _ROOT_RELATIVE_PATH = Path(".")
 _ERROR_SEPARATOR = ", "
 _UTF8 = "utf-8"
@@ -634,7 +633,7 @@ def _finish_run(
             error=result.error,
             diagnostic_error=result.diagnostic_error,
         )
-    counts = {outcome: sum(result.outcome.value == outcome for result in ordered) for outcome in _OUTCOME_COUNTS}
+    counts = {outcome: sum(result.outcome is outcome for result in ordered) for outcome in HomePublicationOutcome}
     run = PublicationRun(tip=tip, mode=mode, homes=ordered)
     logger.info(
         _HOME_PUBLICATION_RUN_EVENT,
