@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -16,6 +17,12 @@ from teleclaude.paths import REPO_ROOT
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 logger = get_logger(__name__)
+
+_CRON_RUNNER_JOB_FLAG = "--job"
+_CRON_RUNNER_FORCE_FLAG = "--force"
+_CRON_RUNNER_STARTUP_PROBE_SECONDS = 1
+_CRON_RUNNER_START_FAILURE_DETAIL = "Failed to start job runner."
+_CRON_RUNNER_START_FAILURE_LOG = "Failed to start cron runner process"
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -60,27 +67,58 @@ async def list_jobs() -> list[JobDTO]:
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {exc}") from exc
 
 
+class _CronRunnerStartupError(Exception):
+    def __init__(self, exit_status: int) -> None:
+        super().__init__()
+        self.exit_status = exit_status
+
+
 def _spawn_cron_runner(name: str, project: str | None) -> None:
+    """Start a detached runner and check its outcome during a bounded startup probe.
+
+    A clean quick exit or a runner still active when the probe expires is accepted;
+    a nonzero exit during the probe is a start failure.
+    """
     script = REPO_ROOT / "scripts" / "cron_runner.py"
     job_filter = f"{project}:{name}" if project else name
     # The runner process boundary contains hung in-process jobs; no daemon-native helper can reap that thread.
-    subprocess.Popen(
-        [str(script), "--job", job_filter, "--force"],
+    process = subprocess.Popen(
+        [sys.executable, str(script), _CRON_RUNNER_JOB_FLAG, job_filter, _CRON_RUNNER_FORCE_FLAG],
         cwd=str(REPO_ROOT),
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=None,
         start_new_session=True,
     )
+    try:
+        exit_status = process.wait(timeout=_CRON_RUNNER_STARTUP_PROBE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return
+    if exit_status != 0:
+        raise _CronRunnerStartupError(exit_status)
 
 
 @router.post("/{name:path}/run", status_code=202)
 async def run_job(name: str, project: str | None = None) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Run a scheduled job immediately (fire-and-forget)."""
+    """Start a scheduled job and report failures observed during startup."""
     try:
-        _spawn_cron_runner(name, project)
-    except OSError as exc:
-        logger.error("Failed to start cron runner process (job=%s): %s", name, exc, exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Failed to start job runner: {exc}") from exc
+        await run_in_threadpool(_spawn_cron_runner, name, project)
+    except (_CronRunnerStartupError, OSError) as exc:
+        if isinstance(exc, _CronRunnerStartupError):
+            if project is None:
+                logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, exit_status=exc.exit_status)
+            else:
+                logger.error(
+                    _CRON_RUNNER_START_FAILURE_LOG,
+                    job=name,
+                    project=project,
+                    exit_status=exc.exit_status,
+                )
+        else:
+            if project is None:
+                logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, errno=exc.errno)
+            else:
+                logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, project=project, errno=exc.errno)
+        raise HTTPException(status_code=502, detail=_CRON_RUNNER_START_FAILURE_DETAIL) from exc
     return {"status": "accepted", "job": name, "project": project}
 
 
