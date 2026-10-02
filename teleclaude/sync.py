@@ -69,6 +69,8 @@ _HOME_DECLARATION_FAILED = "Home declaration could not be read: {error}"
 _HOME_BUILD_FAILED = "Home build failed: {error}"
 _HOME_INSTALL_FAILED = "Home install failed: {error}"
 _HOME_DIAGNOSTIC_FAILED = "Findings unavailable: {error}"
+_HOME_DIAGNOSTIC_EMPTY = "Findings unavailable: no committed files belong to this home."
+_HOME_DIAGNOSTIC_NO_GATE = "Findings unavailable: this home has no applicable guardrail checks."
 _HOME_PUBLICATION_EVENT = "home_publication_outcome"
 _HOME_PUBLICATION_RUN_EVENT = "home_publication_run"
 _HOME_REFRESH_FAILED_EVENT = "home_entrypoint_refresh_failed"
@@ -219,33 +221,38 @@ def _publish_under_lease(
         home.root == _ROOT_RELATIVE_PATH and home.kind is ConfigKind.GLOBAL and home.error is None for home in all_homes
     )
     results: dict[str, HomePublicationResult] = {}
+    skipped: list[tuple[TreeHome, str]] = []
     pending: list[tuple[TreeHome, _HomeCategory]] = []
     for home in scoped_homes:
         root_key = home.root.as_posix()
         if home.error is not None:
-            results[root_key] = _skipped_home(home, tip, mode, _HOME_DECLARATION_FAILED.format(error=home.error))
+            skipped.append((home, _HOME_DECLARATION_FAILED.format(error=home.error)))
             continue
         category = _home_category(home, global_home_exists)
         if category is None:
             kind = home.kind.value
             error = _UNSUPPORTED_HOME_POSITION.format(kind=kind, root=root_key)
-            results[root_key] = _skipped_home(home, tip, mode, error)
+            skipped.append((home, error))
             continue
         if mode is PublicationMode.OWED and generations.get(root_key) == tip:
             results[root_key] = HomePublicationResult(home, tip, mode, HomePublicationOutcome.UNCHANGED)
             continue
         pending.append((home, category))
-    if not pending:
+    if not pending and not skipped:
         return _finish_run(canonical_root, tip, mode, results, generations, all_homes, tree_paths)
 
     with materialize_tree(source) as snapshot_root:
+        for home, error in skipped:
+            results[home.root.as_posix()] = _skipped_home(
+                home, tip, mode, error, canonical_root, snapshot_root, source, tree_paths
+            )
         project_homes = [(home, category) for home, category in pending if category is _HomeCategory.PROJECT]
         scoped_non_project: list[tuple[TreeHome, _HomeCategory]] = [
             (home, category) for home, category in pending if category is not _HomeCategory.PROJECT
         ]
         if project_homes:
             for home, _ in project_homes:
-                result = _publish_project_home(canonical_root, snapshot_root, home, tip, mode)
+                result = _publish_project_home(canonical_root, snapshot_root, source, tree_paths, home, tip, mode)
                 results[home.root.as_posix()] = result
         if scoped_non_project:
             _publish_global_and_tier_homes(
@@ -307,6 +314,8 @@ def _designated_tier_kind(home_root: Path) -> ConfigKind | None:
 def _publish_project_home(
     canonical_root: Path,
     snapshot_root: Path,
+    source: TreeSource,
+    tree_paths: list[str],
     home: TreeHome,
     tip: str,
     mode: PublicationMode,
@@ -336,7 +345,9 @@ def _publish_project_home(
     except _BUILD_FAILURES as exc:  # Distribution bundle compilation signals a home-local refusal with SystemExit.
         if distribution is not None:
             distribution.undo()
-        return _skipped_home(home, tip, mode, _HOME_BUILD_FAILED.format(error=exc), canonical_root, snapshot_root)
+        return _skipped_home(
+            home, tip, mode, _HOME_BUILD_FAILED.format(error=exc), canonical_root, snapshot_root, source, tree_paths
+        )
 
     try:
         distribution.deploy()
@@ -503,21 +514,23 @@ def _skipped_home(
     tip: str,
     mode: PublicationMode,
     error: str,
-    canonical_root: Path | None = None,
-    snapshot_root: Path | None = None,
-    source: TreeSource | None = None,
-    tree_paths: list[str] | None = None,
+    canonical_root: Path,
+    snapshot_root: Path,
+    source: TreeSource,
+    tree_paths: list[str],
 ) -> HomePublicationResult:
-    """Build a skipped result and run the shared diagnostic grade when substrate is available."""
+    """Build a skipped result and try the shared grade over its committed files."""
     diagnostic: LintGateResult | None = None
     diagnostic_error: str | None = None
-    if canonical_root is not None and snapshot_root is not None and source is not None and tree_paths is not None:
-        try:
-            grouped = group_paths_by_owning_home_tolerant(tree_paths, source, tree_paths=set(tree_paths))
-            candidates = next(
-                (paths for entry, paths in grouped.items() if entry.root == home.root),
-                [],
-            )
+    try:
+        grouped = group_paths_by_owning_home_tolerant(tree_paths, source, tree_paths=set(tree_paths))
+        candidates = next(
+            (paths for entry, paths in grouped.items() if entry.root == home.root),
+            [],
+        )
+        if not candidates:
+            diagnostic_error = _HOME_DIAGNOSTIC_EMPTY
+        else:
             diagnostic = run_home_guardrail_gate(
                 canonical_root,
                 home.root,
@@ -527,8 +540,10 @@ def _skipped_home(
                 content_root=snapshot_root,
                 platform_home_subject=is_platform_home(canonical_root),
             )
-        except _DIAGNOSTIC_FAILURES as exc:
-            diagnostic_error = _HOME_DIAGNOSTIC_FAILED.format(error=exc)
+            if diagnostic is None:
+                diagnostic_error = _HOME_DIAGNOSTIC_NO_GATE
+    except _DIAGNOSTIC_FAILURES as exc:
+        diagnostic_error = _HOME_DIAGNOSTIC_FAILED.format(error=exc)
     return HomePublicationResult(
         home,
         tip,
