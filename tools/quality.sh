@@ -534,7 +534,11 @@ lint_scoped() {
 
     if [ "${#prettier_root[@]}" -gt 0 ]; then
         filter_pending_marker_markdown "${prettier_root[@]}"
-        prettier_root=("${FILTERED_TARGETS[@]}")
+        if [ "${#FILTERED_TARGETS[@]}" -gt 0 ]; then
+            prettier_root=("${FILTERED_TARGETS[@]}")
+        else
+            prettier_root=()
+        fi
     fi
 
     if [ "$py_full" -eq 1 ]; then
