@@ -175,6 +175,18 @@ And an agent reading the machine configuration finds no trusted-directory list
 And the company home is still not on the registry
 ```
 
+<!-- planned:personal-assistant-project-creation -->
+#### UC-CFG-REG10: A project adopted inside the global home is registered as itself
+
+```gherkin
+Given a folder inside a person's workspace in the global home, holding no repository of its own
+When an operator or agent adopts that folder as a project
+Then the folder holds its own repository on main
+And the registry lists that folder under its own identity
+And the global home is not listed as a project
+```
+
+<!-- /planned:personal-assistant-project-creation -->
 ## Known caveats
 
 - A project cloned onto a machine and never adopted there is absent from the

@@ -7,6 +7,7 @@ description: One kind-addressed CLI contract for initializing, listing, reading,
 
 ## What it is
 
+<!-- planned-change:personal-assistant-project-creation -->
 `telec config <kind> init|list|get|patch` is the agent-facing resource surface
 for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
@@ -17,6 +18,20 @@ addressed by its stable slug, except that project initialization addresses the
 checkout the caller stands in: the owning checkout of the repository that holds
 the caller's current directory, or that directory itself when no repository
 holds it.
+<!-- change:personal-assistant-project-creation -->
+`telec config <kind> init|list|get|patch` is the agent-facing resource surface
+for configuration. The singular kind is `computer`, `global`, `person`,
+`company`, or `project`; an overlay subject's kind matches its declared
+`kind`. `computer` identifies the machine configuration by its fixed location
+in the machine home and does not become an overlay tier or a context root.
+`computer` and `global` are singletons. A person, company, or project is
+addressed by its stable slug, except that project initialization addresses the
+checkout the caller stands in: the owning checkout of the repository that holds
+the caller's current directory, or that directory itself when no repository
+holds it or when the repository holding it is the global home's. The global
+home's repository is never a project's checkout
+(`general/procedure/project-initialization`).
+<!-- /planned-change:personal-assistant-project-creation -->
 
 The operation names describe the result, regardless of the subject's storage
 shape. `init` creates missing declarations and scaffolding and converges an
@@ -44,6 +59,14 @@ administrator role in the company that owns the home. Running it again
 converges the help desk's master to its template. A help desk's master never
 requires its home's local documentation
 (`general/policy/agent-artifact-governance`).
+
+<!-- planned:personal-assistant-project-creation -->
+`init --own` on `project` records the caller's own person as the adopted
+project's owner. It names no one, so it can declare nobody but the caller, and it
+never replaces an owner the project already declares
+(`local/projects/teleclaude/spec/feature/config/project-ownership`). Any caller
+`init` admits may use it.
+<!-- /planned:personal-assistant-project-creation -->
 
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a
