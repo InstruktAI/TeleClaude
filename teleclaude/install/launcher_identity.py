@@ -23,7 +23,7 @@ from teleclaude.core.reconciliation.launcher_identity import (
 )
 from teleclaude.paths import LAUNCHER_SIGNING_RECORD_PATH
 from teleclaude.project_setup import launcher_signing as effects
-from teleclaude.project_setup.macos_setup import install_verified_launchers, is_macos
+from teleclaude.project_setup.macos_setup import default_applications_directory, install_verified_launchers, is_macos
 
 _ARGUMENT_INTENT = "--intent"
 _ARGUMENT_PROJECT_ROOT = "--project-root"
@@ -40,6 +40,13 @@ _RESULT_REBUILT_TEMPLATE = "Rebuilt and installed launchers with authority {fing
 _RESULT_NOOP_TEMPLATE = "Launcher inputs and installed identities are current; signed with authority {fingerprint}."
 _RESULT_BUILD_TEMPLATE = "Built and signed launcher bundles with authority {fingerprint}."
 _RESULT_FAILURE_TEMPLATE = "Launcher signing failed ({cause}): {remedy}"
+_RESULT_FAILURE_DETAIL_TEMPLATE = "Failed step: {detail}"
+_BUNDLE_ERROR_DETAIL_TEMPLATE = "{bundle}: {error}"
+_RECORD_READ_DETAIL_TEMPLATE = "Cannot read launcher build record at {path}: {error}"
+_RECORD_WRITE_DETAIL_TEMPLATE = "Cannot write launcher build record at {path}: {error}"
+_INSTALLED_BUNDLE_UNVERIFIED = "{bundle}: installed launcher is missing or fails verification after copy"
+_INCOMPLETE_BUILD_SET = "Launcher build omitted: {names}"
+_COMMA_SPACE = ", "
 _REGRANT_NOTICE = "Full Disk Access grants for these launchers must be granted again:"
 _REGRANT_GUIDANCE = (
     "Remove each stale launcher entry in System Settings > Privacy & Security > Full Disk Access, "
@@ -50,10 +57,15 @@ _FAILURE_EXIT = 1
 _NON_MACOS_EXIT = 0
 _WRITE_MODE = "w"
 _READ_MODE = "r"
-_CREATE_TEMPORARY = "w"
 _TEMPORARY_SUFFIX = ".tmp"
 _ARGUMENT_DESCRIPTION = "Converge or build the machine's launcher signing identity."
 _NON_MACOS_MESSAGE = "No macOS launchers are installed on this platform."
+_SIGNING_KIND_CAUSES = {
+    effects.SigningCommandKind.TIMEOUT: LauncherIdentityFailureCause.TIMEOUT,
+    effects.SigningCommandKind.COMPILER_UNAVAILABLE: LauncherIdentityFailureCause.COMPILER_UNAVAILABLE,
+    effects.SigningCommandKind.COMPILE_FAILED: LauncherIdentityFailureCause.COMPILE_FAILED,
+    effects.SigningCommandKind.ROSTER_GAP: LauncherIdentityFailureCause.ROSTER_GAP,
+}
 
 
 class _LauncherEffects:
@@ -86,14 +98,9 @@ class _LauncherEffects:
         try:
             return effects.launcher_input_digest(self.project_root)
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.COMPILE_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.COMPILE_FAILED) from error
         except OSError as error:
-            raise LauncherIdentityError(LauncherIdentityFailureCause.COMPILE_FAILED) from error
+            raise LauncherIdentityError(LauncherIdentityFailureCause.COMPILE_FAILED, str(error)) from error
 
     def read_build_record(self) -> LauncherBuildRecord | None:
         if not self.record_path.is_file():
@@ -110,7 +117,10 @@ class _LauncherEffects:
                 raise ValueError
             return LauncherBuildRecord(input_digest, fingerprint, tuple(sorted(hashes.items())))
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
-            raise LauncherIdentityError(LauncherIdentityFailureCause.RECORD_INVALID) from error
+            raise LauncherIdentityError(
+                LauncherIdentityFailureCause.RECORD_INVALID,
+                _RECORD_READ_DETAIL_TEMPLATE.format(path=self.record_path, error=error),
+            ) from error
 
     def write_build_record(self, record: LauncherBuildRecord) -> None:
         self.record_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,7 +144,10 @@ class _LauncherEffects:
             temporary_path.chmod(_RECORD_MODE)
             temporary_path.replace(self.record_path)
         except OSError as error:
-            raise LauncherIdentityError(LauncherIdentityFailureCause.RECORD_INVALID) from error
+            raise LauncherIdentityError(
+                LauncherIdentityFailureCause.RECORD_WRITE_FAILED,
+                _RECORD_WRITE_DETAIL_TEMPLATE.format(path=self.record_path, error=error),
+            ) from error
         finally:
             if temporary_path is not None and temporary_path.exists():
                 temporary_path.unlink()
@@ -146,19 +159,16 @@ class _LauncherEffects:
         return effects.launcher_bundle_names()
 
     def installed_bundle_signature(self, bundle_name: str) -> LauncherBundleSignature | None:
-        applications_directory = self.applications_directory or _APPLICATIONS_DIRECTORY
+        applications_directory = self.applications_directory or default_applications_directory()
         bundle = applications_directory / bundle_name
         if not bundle.is_dir():
             return None
         try:
             signature = effects.verify_bundle(bundle)
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.VERIFICATION_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            if error.kind is effects.SigningCommandKind.MISMATCH:
+                return None
+            raise _identity_error(error, LauncherIdentityFailureCause.VERIFICATION_FAILED, bundle_name) from error
         return LauncherBundleSignature(
             bundle_name,
             bundle,
@@ -171,9 +181,7 @@ class _LauncherEffects:
         try:
             return effects.ensure_signing_store(directory=self.signing_directory)
         except effects.SigningCommandError as error:
-            if error.kind is effects.SigningCommandKind.TIMEOUT:
-                cause = LauncherIdentityFailureCause.TIMEOUT
-            elif effects.signing_keychain_exists(keychain=effects.launcher_keychain_path(self.signing_directory)):
+            if effects.signing_keychain_exists(keychain=effects.launcher_keychain_path(self.signing_directory)):
                 cause = LauncherIdentityFailureCause.SECRET_UNAVAILABLE
             else:
                 cause = LauncherIdentityFailureCause.STORE_UNOPENABLE
@@ -183,12 +191,7 @@ class _LauncherEffects:
         try:
             effects.register_signing_store(keychain=effects.launcher_keychain_path(self.signing_directory))
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.STORE_REGISTRATION_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.STORE_REGISTRATION_FAILED) from error
 
     def authority_readiness(self, secret: str) -> LauncherAuthorityReadiness:
         try:
@@ -197,12 +200,7 @@ class _LauncherEffects:
                 keychain=effects.launcher_keychain_path(self.signing_directory),
             )
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.AUTHORITY_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.AUTHORITY_FAILED) from error
         return LauncherAuthorityReadiness(fingerprint, not unexpired, has_private_key, authorized)
 
     def create_authority(self, secret: str) -> str:
@@ -213,12 +211,7 @@ class _LauncherEffects:
                 temporary_root=self.staging_directory,
             )
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.AUTHORITY_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.AUTHORITY_FAILED) from error
 
     def renew_authority(self, secret: str, fingerprint: str) -> str:
         try:
@@ -226,23 +219,13 @@ class _LauncherEffects:
             effects.delete_signing_authority(fingerprint, secret, keychain=keychain)
             return effects.create_signing_authority(secret, keychain=keychain, temporary_root=self.staging_directory)
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.AUTHORITY_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.AUTHORITY_FAILED) from error
 
     def current_authority_fingerprint(self) -> str | None:
         try:
             return effects.authority_fingerprint(effects.launcher_keychain_path(self.signing_directory))
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.AUTHORITY_FAILED
-            )
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.AUTHORITY_FAILED) from error
 
     def build_verified_set(self, fingerprint: str) -> tuple[LauncherBundleSignature, ...]:
         binary_directory = self.staging_directory or self.build_output_directory
@@ -260,21 +243,13 @@ class _LauncherEffects:
                         keychain=effects.launcher_keychain_path(self.signing_directory),
                     )
                 except effects.SigningCommandError as error:
-                    cause = (
-                        LauncherIdentityFailureCause.TIMEOUT
-                        if error.kind is effects.SigningCommandKind.TIMEOUT
-                        else LauncherIdentityFailureCause.SIGN_FAILED
-                    )
-                    raise _identity_error(error, cause) from error
+                    raise _identity_error(error, LauncherIdentityFailureCause.SIGN_FAILED, bundle.name) from error
                 try:
                     signature = effects.verify_bundle(bundle, fingerprint)
                 except effects.SigningCommandError as error:
-                    cause = (
-                        LauncherIdentityFailureCause.TIMEOUT
-                        if error.kind is effects.SigningCommandKind.TIMEOUT
-                        else LauncherIdentityFailureCause.VERIFICATION_FAILED
-                    )
-                    raise _identity_error(error, cause) from error
+                    raise _identity_error(
+                        error, LauncherIdentityFailureCause.VERIFICATION_FAILED, bundle.name
+                    ) from error
                 verified.append(
                     LauncherBundleSignature(
                         bundle.name,
@@ -284,38 +259,41 @@ class _LauncherEffects:
                         signature.code_directory_hash,
                     )
                 )
-            if tuple(bundle.bundle_name for bundle in verified) != self.required_bundle_names():
-                raise LauncherIdentityError(LauncherIdentityFailureCause.COMPILE_FAILED)
+            missing_names = set(self.required_bundle_names()) - {bundle.bundle_name for bundle in verified}
+            if missing_names:
+                raise LauncherIdentityError(
+                    LauncherIdentityFailureCause.COMPILE_FAILED,
+                    _INCOMPLETE_BUILD_SET.format(names=_COMMA_SPACE.join(sorted(missing_names))),
+                )
             return tuple(verified)
         except effects.SigningCommandError as error:
-            cause = (
-                LauncherIdentityFailureCause.TIMEOUT
-                if error.kind is effects.SigningCommandKind.TIMEOUT
-                else LauncherIdentityFailureCause.VERIFICATION_FAILED
-            )
-            if error.args and error.args[0] == _EFFECT_COMPILE_FAILURE:
-                cause = LauncherIdentityFailureCause.COMPILE_FAILED
-            raise _identity_error(error, cause) from error
+            raise _identity_error(error, LauncherIdentityFailureCause.COMPILE_FAILED) from error
         except OSError as error:
             self.cleanup_staging()
-            raise LauncherIdentityError(LauncherIdentityFailureCause.COMPILE_FAILED) from error
+            raise LauncherIdentityError(LauncherIdentityFailureCause.COMPILE_FAILED, str(error)) from error
         except LauncherIdentityError:
             self.cleanup_staging()
             raise
 
-    def installed_bundle_signatures(self) -> tuple[LauncherBundleSignature, ...]:
+    def installed_bundle_signatures(self, *, require_valid: bool = False) -> tuple[LauncherBundleSignature, ...]:
         signatures: list[LauncherBundleSignature] = []
         for name in self.required_bundle_names():
             signature = self.installed_bundle_signature(name)
-            if signature is not None:
-                signatures.append(signature)
+            if signature is None:
+                if require_valid:
+                    raise LauncherIdentityError(
+                        LauncherIdentityFailureCause.VERIFICATION_FAILED,
+                        _INSTALLED_BUNDLE_UNVERIFIED.format(bundle=name),
+                    )
+                continue
+            signatures.append(signature)
         return tuple(signatures)
 
     def install_verified_set(self, bundles: tuple[LauncherBundleSignature, ...]) -> None:
         try:
             install_verified_launchers(bundles, applications_directory=self.applications_directory)
         except OSError as error:
-            raise LauncherIdentityError(LauncherIdentityFailureCause.PUBLISH_FAILED) from error
+            raise LauncherIdentityError(LauncherIdentityFailureCause.PUBLISH_FAILED, str(error)) from error
 
     def publish_build_set(self, bundles: tuple[LauncherBundleSignature, ...]) -> None:
         try:
@@ -325,7 +303,7 @@ class _LauncherEffects:
                     shutil.rmtree(target)
                 shutil.copytree(bundle.path, target, symlinks=True)
         except OSError as error:
-            raise LauncherIdentityError(LauncherIdentityFailureCause.PUBLISH_FAILED) from error
+            raise LauncherIdentityError(LauncherIdentityFailureCause.PUBLISH_FAILED, str(error)) from error
 
     def cleanup_staging(self) -> None:
         if self._staging_context is not None:
@@ -375,6 +353,8 @@ def run_and_present_launcher_identity(
 def _present_result(intent: LauncherIdentityIntent, result: LauncherIdentityResult) -> None:
     if result.failure_cause is not None:
         print(_RESULT_FAILURE_TEMPLATE.format(cause=result.failure_cause.value, remedy=result.remedy))
+        if result.failure_detail is not None:
+            print(_RESULT_FAILURE_DETAIL_TEMPLATE.format(detail=result.failure_detail))
         return
     fingerprint = result.authority_fingerprint or _EMPTY
     if result.disposition is LauncherBuildDisposition.NOTHING_TO_DO:
@@ -395,16 +375,22 @@ def _present_result(intent: LauncherIdentityIntent, result: LauncherIdentityResu
         print(_REGRANT_GUIDANCE)
 
 
-def _identity_error(error: effects.SigningCommandError, cause: LauncherIdentityFailureCause) -> LauncherIdentityError:
-    return LauncherIdentityError(cause)
+def _identity_error(
+    error: effects.SigningCommandError,
+    default_cause: LauncherIdentityFailureCause,
+    bundle_name: str | None = None,
+) -> LauncherIdentityError:
+    cause = _SIGNING_KIND_CAUSES.get(error.kind, default_cause)
+    detail = str(error)
+    if bundle_name is not None and not detail.startswith(bundle_name):
+        detail = _BUNDLE_ERROR_DETAIL_TEMPLATE.format(bundle=bundle_name, error=detail)
+    return LauncherIdentityError(cause, detail)
 
 
-_APPLICATIONS_DIRECTORY = Path.home() / "Applications"
 _BIN_DIRECTORY = "bin"
 _EMPTY = ""
 _JSON_NEWLINE = "\n"
 _RECORD_MODE = 0o600
-_EFFECT_COMPILE_FAILURE = "launcher compilation failed"
 
 
 if __name__ == "__main__":

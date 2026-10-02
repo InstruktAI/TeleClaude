@@ -41,7 +41,7 @@ the identifier stays unique per executable, and each executable keeps its own gr
    identifier from the build and can embed a build-specific suffix, which changes across
    rebuilds exactly like the content hash does.
 3. **Sign as part of the build:** `codesign --force --options runtime --timestamp=none
---identifier <reverse-dns-name> --sign <authority-fingerprint> <artifact>`, run from the
+--keychain <dedicated-keychain> --identifier <reverse-dns-name> --sign <authority-fingerprint> <artifact>`, run from the
    project's build target immediately after the artifact is produced. Selecting the authority
    by fingerprint rather than name keeps a second certificate carrying the same name from ever
    being chosen. `--force` replaces any existing signature, so repeating the step on an
@@ -49,6 +49,10 @@ the identifier stays unique per executable, and each executable keeps its own gr
    reproducible and the build free of a network call. A build that runs with no one at the
    screen keeps the authority in a keychain dedicated to signing, opened by a secret generated
    on the machine and stored outside that keychain, for a bounded window covering the run, and
+   registers that keychain in the user's search list before signing if it is absent. Append it
+   without removing or reordering existing entries or changing the default keychain; on current
+   macOS, explicit `--keychain` selection does not replace search-list discovery. Confirm the
+   registration before using the key, and leave an existing registration untouched. The build
    gives every keychain and `codesign` call its own deadline: the login keychain unlocks
    automatically only at a graphical login, and unlocking it otherwise takes that keychain's
    password, normally the user's login password, so a build that relies on it waits on a dialog or fails with

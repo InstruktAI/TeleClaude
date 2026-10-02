@@ -15,11 +15,14 @@ _REMEDY_EXPIRED = "Renew the launcher authority deliberately; its Full Disk Acce
 _REMEDY_KEY = "Restore the private key for the existing authority or renew it deliberately."
 _REMEDY_TIMEOUT = "Resolve the blocked signing step and rerun install."
 _REMEDY_BUILD = "Resolve the launcher build failure and rerun install."
+_REMEDY_COMPILER = "Install the Xcode Command Line Tools with xcode-select --install, then rerun install."
+_REMEDY_ROSTER = "Add the missing canonical launcher definition, then rerun install."
 _REMEDY_VERIFY = "Resolve the launcher signature mismatch and rerun install."
 _REMEDY_SIGN = "Resolve the signing tool failure or key access, then rerun install."
 _REMEDY_PUBLISH = "Resolve the destination filesystem failure, then rerun install."
 _REMEDY_GENERAL = "Resolve the reported launcher signing cause and rerun install."
-_INVALID_RECORD = "The stored launcher build record is invalid."
+_REMEDY_INVALID_RECORD = "Remove the invalid local launcher build record, then rerun install to rebuild it."
+_REMEDY_RECORD_WRITE = "Restore write access to the launcher state directory, then rerun install."
 
 
 class LauncherIdentityIntent(StrEnum):
@@ -48,11 +51,14 @@ class LauncherIdentityFailureCause(StrEnum):
     NO_KEY = "no_key"
     TIMEOUT = "timeout"
     COMPILE_FAILED = "compile_failed"
+    COMPILER_UNAVAILABLE = "compiler_unavailable"
+    ROSTER_GAP = "roster_gap"
     SIGN_FAILED = "sign_failed"
     PUBLISH_FAILED = "publish_failed"
     VERIFICATION_FAILED = "verification_failed"
     AUTHORITY_FAILED = "authority_failed"
     RECORD_INVALID = "record_invalid"
+    RECORD_WRITE_FAILED = "record_write_failed"
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,7 @@ class LauncherIdentityResult:
     failure_cause: LauncherIdentityFailureCause | None
     remedy: str
     regrant_bundle_names: tuple[str, ...]
+    failure_detail: str | None = None
 
 
 class LauncherIdentityEffects(Protocol):
@@ -128,7 +135,7 @@ class LauncherIdentityEffects(Protocol):
 
     def build_verified_set(self, fingerprint: str) -> tuple[LauncherBundleSignature, ...]: ...
 
-    def installed_bundle_signatures(self) -> tuple[LauncherBundleSignature, ...]: ...
+    def installed_bundle_signatures(self, *, require_valid: bool = False) -> tuple[LauncherBundleSignature, ...]: ...
 
     def install_verified_set(self, bundles: tuple[LauncherBundleSignature, ...]) -> None: ...
 
@@ -147,7 +154,7 @@ def converge_launcher_identity(
             record = effects.read_build_record()
             current = record is not None and _installed_set_is_current(effects, record)
         except LauncherIdentityError as error:
-            return _failed(error.cause)
+            return _failed(error.cause, detail=error.detail)
         if current and record is not None:
             return LauncherIdentityResult(
                 LauncherBuildDisposition.NOTHING_TO_DO,
@@ -161,7 +168,7 @@ def converge_launcher_identity(
     try:
         secret = effects.ensure_signing_store()
     except LauncherIdentityError as error:
-        return _failed(error.cause)
+        return _failed(error.cause, detail=error.detail)
 
     try:
         current_fingerprint = effects.current_authority_fingerprint()
@@ -177,7 +184,7 @@ def converge_launcher_identity(
         effects.register_signing_store()
         readiness = effects.authority_readiness(secret)
     except LauncherIdentityError as error:
-        return _failed(error.cause)
+        return _failed(error.cause, detail=error.detail)
 
     if readiness.expired:
         return _failed(LauncherIdentityFailureCause.EXPIRED, fingerprint)
@@ -191,14 +198,14 @@ def converge_launcher_identity(
         bundles = effects.build_verified_set(fingerprint)
     except LauncherIdentityError as error:
         effects.cleanup_staging()
-        return _failed(error.cause, fingerprint, created)
+        return _failed(error.cause, fingerprint, created, error.detail)
 
     if intent is LauncherIdentityIntent.BUILD:
         try:
             effects.publish_build_set(bundles)
         except LauncherIdentityError as error:
             effects.cleanup_staging()
-            return _failed(error.cause, fingerprint, created)
+            return _failed(error.cause, fingerprint, created, error.detail)
         effects.cleanup_staging()
         return LauncherIdentityResult(LauncherBuildDisposition.REBUILT, fingerprint, created, None, _EMPTY, ())
 
@@ -209,7 +216,7 @@ def converge_launcher_identity(
         )
         effects.install_verified_set(bundles)
         input_digest = effects.current_input_digest()
-        installed = effects.installed_bundle_signatures()
+        installed = effects.installed_bundle_signatures(require_valid=True)
         if {signature.bundle_name for signature in installed} != set(effects.required_bundle_names()):
             raise LauncherIdentityError(LauncherIdentityFailureCause.VERIFICATION_FAILED)
         record = LauncherBuildRecord(
@@ -220,7 +227,7 @@ def converge_launcher_identity(
         effects.write_build_record(record)
     except LauncherIdentityError as error:
         effects.cleanup_staging()
-        return _failed(error.cause, fingerprint, created)
+        return _failed(error.cause, fingerprint, created, error.detail)
     effects.cleanup_staging()
     return LauncherIdentityResult(LauncherBuildDisposition.REBUILT, fingerprint, created, None, _EMPTY, regrant_names)
 
@@ -235,10 +242,7 @@ def _installed_set_is_current(effects: LauncherIdentityEffects, record: Launcher
     if set(hashes) != set(names):
         return False
     for bundle_name in names:
-        try:
-            signature = effects.installed_bundle_signature(bundle_name)
-        except LauncherIdentityError:
-            return False
+        signature = effects.installed_bundle_signature(bundle_name)
         if signature is None:
             return False
         if signature.fingerprint != record.authority_fingerprint:
@@ -251,15 +255,17 @@ def _installed_set_is_current(effects: LauncherIdentityEffects, record: Launcher
 class LauncherIdentityError(RuntimeError):
     """A typed failure reported by one of the signing effects."""
 
-    def __init__(self, cause: LauncherIdentityFailureCause) -> None:
-        super().__init__(cause.value)
+    def __init__(self, cause: LauncherIdentityFailureCause, detail: str | None = None) -> None:
+        super().__init__(detail or cause.value)
         self.cause = cause
+        self.detail = detail
 
 
 def _failed(
     cause: LauncherIdentityFailureCause,
     fingerprint: str | None = None,
     created: bool = False,
+    detail: str | None = None,
 ) -> LauncherIdentityResult:
     remedies = {
         LauncherIdentityFailureCause.STORE_UNOPENABLE: _REMEDY_STORE,
@@ -270,13 +276,16 @@ def _failed(
         LauncherIdentityFailureCause.NO_KEY: _REMEDY_KEY,
         LauncherIdentityFailureCause.TIMEOUT: _REMEDY_TIMEOUT,
         LauncherIdentityFailureCause.COMPILE_FAILED: _REMEDY_BUILD,
+        LauncherIdentityFailureCause.COMPILER_UNAVAILABLE: _REMEDY_COMPILER,
+        LauncherIdentityFailureCause.ROSTER_GAP: _REMEDY_ROSTER,
         LauncherIdentityFailureCause.SIGN_FAILED: _REMEDY_SIGN,
         LauncherIdentityFailureCause.PUBLISH_FAILED: _REMEDY_PUBLISH,
         LauncherIdentityFailureCause.VERIFICATION_FAILED: _REMEDY_VERIFY,
         LauncherIdentityFailureCause.AUTHORITY_FAILED: _REMEDY_GENERAL,
-        LauncherIdentityFailureCause.RECORD_INVALID: _INVALID_RECORD,
+        LauncherIdentityFailureCause.RECORD_INVALID: _REMEDY_INVALID_RECORD,
+        LauncherIdentityFailureCause.RECORD_WRITE_FAILED: _REMEDY_RECORD_WRITE,
     }
-    return LauncherIdentityResult(None, fingerprint, created, cause, remedies[cause], ())
+    return LauncherIdentityResult(None, fingerprint, created, cause, remedies[cause], (), detail)
 
 
 _EMPTY = ""

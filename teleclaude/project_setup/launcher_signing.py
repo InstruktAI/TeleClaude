@@ -29,9 +29,7 @@ _KEYCHAIN_SUFFIX = ".keychain-db"
 _KEYCHAIN_FILE_NAME = "launcher-signing" + _KEYCHAIN_SUFFIX
 _SECRET_FILE_NAME = "unlock-secret"
 _SOURCE_FILE_NAME = "main.swift"
-_APP_DIRECTORY = "bin"
 _CONTENTS_DIRECTORY = "Contents"
-_MACOS_DIRECTORY = "MacOS"
 _INFO_PLIST = "Info.plist"
 _EXECUTABLE_DIRECTORY = "MacOS"
 _PROBE_DIRECTORY_PREFIX = "teleclaude-launcher-signing-"
@@ -54,9 +52,6 @@ _TMUX_VERSION = "1.2"
 _BUNDLE_PREFIX = "ai.instrukt."
 _BUNDLE_SUFFIX = "launcher"
 _SWIFT_OPTIMIZATION = "-O"
-_SWIFT_ENTRYPOINT = "LauncherConfig"
-_AGENT_LIST_MODULE = "teleclaude.codegen.agent_registry"
-_AGENT_LIST_ACTION = "--list"
 _NPM_PREFIX_ACTION = "prefix"
 _NPM_GLOBAL_FLAG = "-g"
 _TMUX_EXECUTABLE = "tmux"
@@ -91,9 +86,7 @@ _CERTIFICATE_HASH_PATTERN = re.compile(r"SHA-1 hash: ([A-Fa-f0-9]{40})")
 _IDENTIFIER_PATTERN = re.compile(r"Identifier=([^\s]+)")
 _LEAF_PATTERN = re.compile(r'certificate leaf = H"([A-Fa-f0-9]+)"')
 _CDHASH_PATTERN = re.compile(r"CDHash=([A-Fa-f0-9]+)")
-_EXPIRY_PATTERN = re.compile(r"notAfter=(.+)")
 _AUTHORIZATION_PATTERN = re.compile(r"^\s*\d+: /usr/bin/codesign \(OK\)$", re.MULTILINE)
-_KEYCHAIN_NAME_PATTERN = re.compile(r'^\s*0x00000001 <blob>="([^"]+)"$', re.MULTILINE)
 _OPENSSL_SUBJECT = "/CN=" + _NAME
 _OPENSSL_BASE_CONSTRAINT = "basicConstraints=critical,CA:false"
 _OPENSSL_KEY_USAGE = "keyUsage=critical,digitalSignature"
@@ -101,7 +94,6 @@ _OPENSSL_EXTENDED_USAGE = "extendedKeyUsage=critical,codeSigning"
 _P12_CERTIFICATE_PBE = "PBE-SHA1-3DES"
 _P12_KEY_PBE = "PBE-SHA1-3DES"
 _P12_MAC_ALGORITHM = "sha1"
-_P12_EXPORT_FORMAT = "pkcs12"
 _TEXT_ENCODING = "utf-8"
 _WRITE_MODE = "w"
 _OPENSSL_REQUEST_ACTION = "req"
@@ -134,9 +126,6 @@ _DOUBLE_QUOTE = '"'
 _CODE_SIGNING_POLICY = "codesigning"
 _LINE_SEPARATOR = "\n"
 _EMPTY = ""
-_SPACE = " "
-_QUOTED_EMPTY = '""'
-_USAGE_FAILURE = "launcher-signing command failed"
 _TIMEOUT_FAILURE = "launcher-signing command timed out"
 _MISSING_TOOL_FAILURE = "required macOS signing tool is unavailable"
 _STORE_FAILURE = "the launcher signing store could not be opened"
@@ -145,6 +134,16 @@ _AUTHORITY_FAILURE = "the launcher signing authority is missing or ambiguous"
 _UNAUTHORIZED_FAILURE = "the launcher signing key is not authorized for unattended use"
 _STORE_DISCOVERY_FAILURE = "the user keychain search list could not be read reliably"
 _STORE_REGISTRATION_FAILURE = "the dedicated launcher signing store could not be registered"
+_ROSTER_GAP_FAILURE = "launcher definitions do not cover canonical agent(s): {agents}"
+_SWIFTC_UNAVAILABLE_FAILURE = "swiftc is unavailable"
+_STRICT_SIGNATURE_FAILURE = "{bundle}: strict signature verification failed: {reason}"
+_SIGNATURE_DETAILS_FAILURE = "{bundle}: signature details could not be read"
+_SIGNATURE_REQUIREMENT_FAILURE = "{bundle}: signing requirement could not be read"
+_SIGNATURE_FINGERPRINT_MISSING = "{bundle}: signing certificate fingerprint is missing"
+_SIGNATURE_IDENTIFIER_MISMATCH = "{bundle}: identifier {observed} differs from expected {expected}"
+_SIGNATURE_HASH_MISSING = "{bundle}: code-directory hash is missing"
+_SIGNATURE_FINGERPRINT_MISMATCH = "{bundle}: signing fingerprint {observed} differs from expected {expected}"
+_EMPTY_VERIFICATION_REASON = "codesign returned a nonzero status without diagnostics"
 
 
 class SigningCommandKind(StrEnum):
@@ -153,6 +152,10 @@ class SigningCommandKind(StrEnum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
+    COMPILER_UNAVAILABLE = "compiler_unavailable"
+    COMPILE_FAILED = "compile_failed"
+    ROSTER_GAP = "roster_gap"
+    MISMATCH = "mismatch"
 
 
 @dataclass(frozen=True)
@@ -291,14 +294,6 @@ def launcher_secret_path(directory: Path | None = None) -> Path:
     return (directory or LAUNCHER_SIGNING_DIR) / _SECRET_FILE_NAME
 
 
-def _keychain_path(directory: Path | None) -> Path:
-    return (directory or launcher_signing_directory()) / _KEYCHAIN_FILE_NAME
-
-
-def _secret_path(directory: Path | None) -> Path:
-    return (directory or launcher_signing_directory()) / _SECRET_FILE_NAME
-
-
 def _run_command(
     argv: Sequence[str],
     *,
@@ -318,6 +313,8 @@ def _run_command(
     except subprocess.TimeoutExpired as error:
         raise SigningCommandError(SigningCommandKind.TIMEOUT, _TIMEOUT_FAILURE) from error
     except FileNotFoundError as error:
+        if argv[0] == _SWIFTC:
+            raise SigningCommandError(SigningCommandKind.COMPILER_UNAVAILABLE, _SWIFTC_UNAVAILABLE_FAILURE) from error
         raise SigningCommandError(SigningCommandKind.UNAVAILABLE, _MISSING_TOOL_FAILURE) from error
     return SigningCommandResult(tuple(argv), result.returncode, result.stdout, result.stderr)
 
@@ -328,9 +325,13 @@ def _run_security_script(commands: Sequence[Sequence[str]]) -> SigningCommandRes
     return _run_command((_SECURITY, _SECURITY_INTERACTIVE_FLAG), input_text=script)
 
 
-def _require_success(result: SigningCommandResult, message: str) -> None:
+def _require_success(
+    result: SigningCommandResult,
+    message: str,
+    kind: SigningCommandKind = SigningCommandKind.FAILED,
+) -> None:
     if result.returncode != 0:
-        raise SigningCommandError(SigningCommandKind.FAILED, message)
+        raise SigningCommandError(kind, message)
 
 
 def ensure_signing_store(*, directory: Path | None = None) -> str:
@@ -338,8 +339,8 @@ def ensure_signing_store(*, directory: Path | None = None) -> str:
     signing_directory = directory or launcher_signing_directory()
     signing_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     signing_directory.chmod(0o700)
-    secret_path = _secret_path(signing_directory)
-    keychain = _keychain_path(signing_directory)
+    secret_path = launcher_secret_path(signing_directory)
+    keychain = launcher_keychain_path(signing_directory)
     if not secret_path.exists() and keychain.is_file():
         raise SigningCommandError(SigningCommandKind.FAILED, _SECRET_FAILURE)
     if not secret_path.exists():
@@ -599,18 +600,14 @@ def _launcher_definitions() -> tuple[LauncherDefinition, ...]:
     expected = {target.value for target in LauncherId if target is not LauncherId.TMUX}
     present = {agent.value for agent in AgentName}
     if present != expected:
-        raise SigningCommandError(SigningCommandKind.FAILED, _AUTHORITY_FAILURE)
+        gap = _COMMA_SPACE.join(sorted(expected.symmetric_difference(present)))
+        raise SigningCommandError(SigningCommandKind.ROSTER_GAP, _ROSTER_GAP_FAILURE.format(agents=gap))
     return tuple(_DEFINITIONS[target] for target in LauncherId)
 
 
 def launcher_bundle_names() -> tuple[str, ...]:
     """Return the complete launcher application roster in stable order."""
     return tuple(definition.display_name + _APP_SUFFIX for definition in _launcher_definitions())
-
-
-def launcher_identifier(bundle_name: str) -> str:
-    """Return the expected stable code identifier for one canonical launcher bundle."""
-    return _definition_for_name(bundle_name).bundle_identifier
 
 
 def launcher_input_digest(project_root: Path) -> str:
@@ -626,19 +623,10 @@ def launcher_input_digest(project_root: Path) -> str:
         digest.update(_SWIFT_OPTIMIZATION.encode(_TEXT_ENCODING))
         digest.update(_BUNDLE_HASH_SEPARATOR)
         digest.update(_render_configuration(definition, _candidates_for(definition)).encode(_TEXT_ENCODING))
-        plist_values = {
-            _PLIST_NAME: definition.display_name,
-            _PLIST_IDENTIFIER: definition.bundle_identifier,
-            _PLIST_VERSION: definition.version,
-            _PLIST_SHORT_VERSION: definition.version,
-            _PLIST_EXECUTABLE: definition.executable,
-            _PLIST_PACKAGE_TYPE: _PLIST_APPLICATION,
-            _PLIST_UI_ELEMENT: True,
-        }
         digest.update(_BUNDLE_HASH_SEPARATOR)
-        digest.update(plistlib.dumps(plist_values))
+        digest.update(plistlib.dumps(_launcher_plist(definition)))
     version = _run_command((_SWIFTC, _SWIFT_VERSION_FLAG))
-    _require_success(version, _COMPILE_FAILURE)
+    _require_success(version, _COMPILE_FAILURE, SigningCommandKind.COMPILE_FAILED)
     digest.update(_BUNDLE_HASH_SEPARATOR)
     digest.update(version.stdout.encode(_TEXT_ENCODING))
     return digest.hexdigest()
@@ -653,6 +641,19 @@ def _render_configuration(definition: LauncherDefinition, fixed_candidates: str)
         strict_exit_code=definition.strict_exit_code,
         argv_policy=definition.argv_policy,
     )
+
+
+def _launcher_plist(definition: LauncherDefinition) -> dict[str, str | bool]:
+    """Build the Info.plist fields used by both the digest and emitted bundle."""
+    return {
+        _PLIST_NAME: definition.display_name,
+        _PLIST_IDENTIFIER: definition.bundle_identifier,
+        _PLIST_VERSION: definition.version,
+        _PLIST_SHORT_VERSION: definition.version,
+        _PLIST_EXECUTABLE: definition.executable,
+        _PLIST_PACKAGE_TYPE: _PLIST_APPLICATION,
+        _PLIST_UI_ELEMENT: True,
+    }
 
 
 def compile_launcher_set(project_root: Path, staging_root: Path) -> tuple[Path, ...]:
@@ -681,23 +682,11 @@ def compile_launcher_set(project_root: Path, staging_root: Path) -> tuple[Path, 
                 str(configuration),
             )
         )
-        _require_success(compiled, _COMPILE_FAILURE)
+        _require_success(compiled, _COMPILE_FAILURE, SigningCommandKind.COMPILE_FAILED)
         executable_path.chmod(0o755)
         plist_path = application / _CONTENTS_DIRECTORY / _INFO_PLIST
         plist_path.parent.mkdir(parents=True, exist_ok=True)
-        plist_path.write_bytes(
-            plistlib.dumps(
-                {
-                    _PLIST_NAME: definition.display_name,
-                    _PLIST_IDENTIFIER: definition.bundle_identifier,
-                    _PLIST_VERSION: definition.version,
-                    _PLIST_SHORT_VERSION: definition.version,
-                    _PLIST_EXECUTABLE: definition.executable,
-                    _PLIST_PACKAGE_TYPE: _PLIST_APPLICATION,
-                    _PLIST_UI_ELEMENT: True,
-                }
-            )
-        )
+        plist_path.write_bytes(plistlib.dumps(_launcher_plist(definition)))
         applications.append(application)
     return tuple(applications)
 
@@ -706,6 +695,7 @@ def _candidates_for(definition: LauncherDefinition) -> str:
     if definition.target is LauncherId.DEEPSEEK:
         npm = shutil.which(_NPM_EXECUTABLE)
         if npm is not None:
+            # npm owns its effective global prefix; Python has no equivalent read of npm's configuration.
             result = _run_command((npm, _NPM_PREFIX_ACTION, _NPM_GLOBAL_FLAG))
             if result.returncode == 0:
                 npm_candidate = result.stdout.strip() + _NPM_BIN_SUFFIX
@@ -739,19 +729,40 @@ def sign_bundle(bundle: Path, fingerprint: str, *, keychain: Path | None = None)
 def verify_bundle(bundle: Path, fingerprint: str | None = None) -> LauncherSignature:
     """Strictly verify one signed launcher and return its observed identity."""
     verified = _run_command((_CODESIGN, _CODESIGN_VERIFY_FLAG, _CODESIGN_STRICT_FLAG, str(bundle)))
-    _require_success(verified, _VERIFY_FAILURE)
+    if verified.returncode != 0:
+        reason = verified.stderr.strip() or verified.stdout.strip() or _EMPTY_VERIFICATION_REASON
+        raise SigningCommandError(
+            SigningCommandKind.MISMATCH,
+            _STRICT_SIGNATURE_FAILURE.format(bundle=bundle.name, reason=reason),
+        )
     details = _run_command((_CODESIGN, _CODESIGN_DISPLAY_FLAG, _CODESIGN_VERBOSE_FLAG, str(bundle)))
-    _require_success(details, _VERIFY_FAILURE)
+    _require_success(details, _SIGNATURE_DETAILS_FAILURE.format(bundle=bundle.name))
     requirement = _run_command((_CODESIGN, _CODESIGN_DISPLAY_FLAG, _CODESIGN_REQUIREMENT_FLAG, str(bundle)))
-    _require_success(requirement, _VERIFY_FAILURE)
+    _require_success(requirement, _SIGNATURE_REQUIREMENT_FAILURE.format(bundle=bundle.name))
     observed_fingerprint = _parse_signature_fingerprint(requirement.stderr + requirement.stdout)
     identifier = _parse_signature_identifier(details.stderr + details.stdout)
     code_directory_hash = _parse_code_directory_hash(details.stderr + details.stdout)
     definition = _definition_for_bundle(bundle)
-    if observed_fingerprint == _EMPTY or identifier != definition.bundle_identifier or not code_directory_hash:
-        raise SigningCommandError(SigningCommandKind.FAILED, _VERIFIED_BUNDLE_FAILURE)
+    if observed_fingerprint == _EMPTY:
+        raise SigningCommandError(
+            SigningCommandKind.MISMATCH, _SIGNATURE_FINGERPRINT_MISSING.format(bundle=bundle.name)
+        )
+    if identifier != definition.bundle_identifier:
+        raise SigningCommandError(
+            SigningCommandKind.MISMATCH,
+            _SIGNATURE_IDENTIFIER_MISMATCH.format(
+                bundle=bundle.name, observed=identifier, expected=definition.bundle_identifier
+            ),
+        )
+    if not code_directory_hash:
+        raise SigningCommandError(SigningCommandKind.MISMATCH, _SIGNATURE_HASH_MISSING.format(bundle=bundle.name))
     if fingerprint is not None and observed_fingerprint != fingerprint:
-        raise SigningCommandError(SigningCommandKind.FAILED, _VERIFY_FAILURE)
+        raise SigningCommandError(
+            SigningCommandKind.MISMATCH,
+            _SIGNATURE_FINGERPRINT_MISMATCH.format(
+                bundle=bundle.name, observed=observed_fingerprint, expected=fingerprint
+            ),
+        )
     return LauncherSignature(observed_fingerprint, identifier, code_directory_hash)
 
 
@@ -826,7 +837,6 @@ _DARWIN_PLATFORM = "darwin"
 _NPM_EXECUTABLE = "npm"
 _NPM_BIN_SUFFIX = "/bin/dsh"
 _BUNDLE_HASH_SEPARATOR = b"\0"
-_VERIFIED_BUNDLE_FAILURE = "launcher bundle signature does not match its pinned code identity"
 _SWIFT_VERSION_FLAG = "--version"
 _SECURITY_DELETE_IDENTITY = "delete-identity"
 _SECURITY_HASH_OPTION = "-Z"
@@ -843,4 +853,3 @@ _CONFIGURATION_TEMPLATE = (
 )
 _COMPILE_FAILURE = "launcher compilation failed"
 _SIGN_FAILURE = "launcher signing failed"
-_VERIFY_FAILURE = "launcher signature verification failed"

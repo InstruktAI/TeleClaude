@@ -39,6 +39,11 @@ def is_macos() -> bool:
     return sys.platform == "darwin"
 
 
+def default_applications_directory() -> Path:
+    """Return the destination shared by launcher inspection and installation."""
+    return Path.home() / _APPLICATIONS_DIRECTORY_NAME
+
+
 def install_verified_launchers(
     bundles: tuple[LauncherBundleSignature, ...],
     *,
@@ -48,7 +53,7 @@ def install_verified_launchers(
     if not is_macos():
         return
 
-    applications_dir = applications_directory or Path.home() / _APPLICATIONS_DIRECTORY_NAME
+    applications_dir = applications_directory or default_applications_directory()
     applications_dir.mkdir(parents=True, exist_ok=True)
     for bundle in bundles:
         target_app = applications_dir / bundle.bundle_name

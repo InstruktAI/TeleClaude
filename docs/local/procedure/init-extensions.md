@@ -83,7 +83,7 @@ bundle again at that machine's screen; a recovery session cannot make that grant
 
 Source: `teleclaude/core/reconciliation/launcher_identity.py` (decisions and result),
 `teleclaude/project_setup/launcher_signing.py` (keychain, signing and compile effects),
-`teleclaude/project_setup/macos_setup.py:install_launchers()` (verified replacement),
+`teleclaude/project_setup/macos_setup.py:install_verified_launchers()` (verified replacement),
 `teleclaude/install/launcher_identity.py` (entry point for install, `make launchers` and renewal)
 
 ### 2a. macOS tmux server service (`make install`)
