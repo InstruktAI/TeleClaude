@@ -9,7 +9,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.events import EventLevel, EventProducer, EventVisibility
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.envelope import EventEnvelope, EventSubjectMarker
 
 logger = get_logger(__name__)
 
@@ -46,6 +46,7 @@ class TaskScheduleClock:
                     source="daemon",
                     level=EventLevel.WORKFLOW,
                     domain="sdlc",
+                    subject=EventSubjectMarker.NONE,
                     visibility=EventVisibility.CLUSTER,
                     description="Lifecycle scheduler minute tick",
                     payload={

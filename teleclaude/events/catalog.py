@@ -7,7 +7,7 @@ from importlib import import_module
 
 from pydantic import BaseModel, model_validator
 
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import EventHomeKind, EventLevel, EventVisibility
 
 
 class LifecycleFamily(StrEnum):
@@ -38,6 +38,33 @@ class LifecycleFamily(StrEnum):
     CREATIVE_ASSET_TRANSCODE = "creative_asset_transcode"
 
 
+class PayloadValueKind(StrEnum):
+    """JSON value kinds declared for event payload fields."""
+
+    STRING = "string"
+    INTEGER = "integer"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    ARRAY = "array"
+    OBJECT = "object"
+    ANY = "any"
+
+
+class PayloadField(BaseModel):
+    """One declared event payload field and its wire value shape."""
+
+    name: str
+    kind: PayloadValueKind
+    nullable: bool
+
+
+class SubjectAssignment(BaseModel):
+    """The homes an event type concerns and a short statement of that meaning."""
+
+    kinds: list[EventHomeKind]
+    about: str
+
+
 class NotificationLifecycle(BaseModel):
     """Notification projection semantics for an event type."""
 
@@ -58,7 +85,7 @@ class NotificationLifecycle(BaseModel):
 
 
 class EventSchema(BaseModel):
-    """Schema metadata describing how an event should be classified and projected."""
+    """Classification, subject assignment, and payload-field contract for one event type."""
 
     event_type: str
     description: str
@@ -71,6 +98,8 @@ class EventSchema(BaseModel):
     default_visibility: EventVisibility = EventVisibility.CLUSTER
     lifecycle: NotificationLifecycle | None = None
     actionable: bool = False
+    subject_assignment: SubjectAssignment
+    payload_fields: list[PayloadField]
     # Per-event delivery-debounce override: None inherits the platform default
     # (15s), a positive value sets the window, <= 0 delivers immediately.
     delivery_debounce_s: float | None = None

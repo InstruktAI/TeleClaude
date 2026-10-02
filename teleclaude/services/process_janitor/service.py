@@ -14,7 +14,7 @@ from typing import Any, Protocol
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.paths import CHIPTUNES_SOCKET_PATH
 
@@ -194,6 +194,7 @@ class ProcessJanitorService:
             source="process-janitor",
             level=EventLevel.OPERATIONAL,
             domain="system",
+            subject=EventSubjectMarker.NONE,
             description="Process janitor reaped a matched process",
             payload=payload,
             visibility=EventVisibility.LOCAL,

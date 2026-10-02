@@ -42,7 +42,7 @@ from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import EventHomeRef, EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
@@ -307,6 +307,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 level=EventLevel.OPERATIONAL,
                 domain="system",
                 visibility=EventVisibility.CLUSTER,
+                subject=(
+                    EventHomeRef.from_token(session.config_subject)
+                    if session.config_subject
+                    else EventSubjectMarker.NONE
+                ),
                 human_action=HumanActionIntent(
                     topic="Session bootstrap failed",
                     summary="The session is stranded in initializing.",

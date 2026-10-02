@@ -65,7 +65,7 @@ from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.domain_config import AutonomyLevel, AutonomyMatrix, DomainConfig
 from teleclaude.events.domain_handlers import DomainHandler, DomainHandlerSpec
 from teleclaude.events.domain_pipeline import DomainPipeline, DomainPipelineRunner
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.pipeline import Pipeline, PipelineContext
 from teleclaude.events.processor import EventProcessor
 
@@ -445,6 +445,7 @@ class EventBus:
             source=f"{_INTERNAL_EVENT_SOURCE}:{self._role}",
             level=EventLevel.WORKFLOW,
             domain="internal",
+            subject=EventSubjectMarker.NONE,
             visibility=visibility,
             payload=self._context_payload(context),
             idempotency_key=str(uuid.uuid4()),

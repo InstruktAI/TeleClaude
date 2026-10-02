@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.models import HumanActionIntent
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.pipeline import Pipeline, failing_stage_from_exception
 from teleclaude.events.producer import emit_event
 
@@ -339,6 +339,7 @@ class EventProcessor:
             level=EventLevel.OPERATIONAL,
             domain="system",
             visibility=EventVisibility.CLUSTER,
+            subject=EventSubjectMarker.NONE,
             human_action=HumanActionIntent(
                 topic="Dead-letter queue requires attention",
                 summary="An event exhausted its retries.",

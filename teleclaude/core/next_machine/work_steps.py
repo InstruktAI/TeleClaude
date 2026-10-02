@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import shlex
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.constants import ARTIFACT_REVIEW_FINDINGS, WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_review_approved
@@ -60,6 +62,7 @@ from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_p
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventSubjectMarker
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
@@ -745,12 +748,23 @@ async def _work_step_review_approved(
         )
 
     session_id = get_session_id() or ""
+    ownership = load_project_ownership_index().for_path(Path(cwd))
+    subject = (
+        EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
+        if ownership is not None
+        else EventSubjectMarker.NONE
+    )
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     round_raw = build_review.get("round", 0)
     review_round = round_raw if isinstance(round_raw, int) else 0
     try:
-        await emit_review_approved(slug=slug, reviewer_session_id=session_id, review_round=max(review_round, 1))
+        await emit_review_approved(
+            slug=slug,
+            reviewer_session_id=session_id,
+            review_round=max(review_round, 1),
+            subject=subject,
+        )
     except Exception:
         logger.warning("Failed to emit review.approved event for %s", slug, exc_info=True)
 

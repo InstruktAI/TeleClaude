@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.signal.ai import SignalAIClient
 from teleclaude.events.signal.clustering import (
     ClusteringConfig,
@@ -121,6 +121,7 @@ class SignalClusterCartridge:
                 level=EventLevel.OPERATIONAL,
                 domain="signal",
                 visibility=EventVisibility.LOCAL,
+                subject=EventSubjectMarker.NONE,
                 description=summary,
                 idempotency_key=f"signal.cluster.formed:{cluster_key}",
                 payload={

@@ -44,6 +44,7 @@ from teleclaude.api.auth import (
     CallerIdentity,
     caller_for_role_resolution,
     carried_caller,
+    carried_caller_session_id,
     principal_for_carried_caller,
 )
 from teleclaude.api.event_serialization import agent_availability_event_dto
@@ -84,6 +85,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
+from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.hooks.api_routes import router as hooks_router
@@ -443,10 +445,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                     path=request.url.path,
                     operation=operation,
                 )
+            caller_token = set_caller_session_id(carried_caller_session_id(request))
             try:
                 return await call_next(request)
             finally:
                 self._inflight_requests.pop(req_id, None)
+                reset_caller_session_id(caller_token)
 
         @self.app.get("/health")
         async def health() -> dict[str, str]:  # pyright: ignore

@@ -25,7 +25,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import EventLevel, EventSubject, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.events.schemas.sdlc import IntegrationEventType
 from teleclaude.session_identity import get_session_id
@@ -50,6 +50,7 @@ async def emit_review_approved(
     reviewer_session_id: str,
     review_round: int,
     *,
+    subject: EventSubject,
     approved_at: str | None = None,
 ) -> str:
     """Emit review.approved when a build review verdict stamps as approve."""
@@ -59,6 +60,7 @@ async def emit_review_approved(
         source=f"orchestrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="sdlc",
+        subject=subject,
         description=f"Review approved for {slug} (round {review_round})",
         entity=slug,
         payload={
@@ -76,6 +78,7 @@ async def emit_deployment_completed(
     sha: str,
     merge_commit: str,
     *,
+    subject: EventSubject,
     integrated_at: str | None = None,
 ) -> str:
     """Emit deployment.completed after successful integration to main."""
@@ -85,6 +88,7 @@ async def emit_deployment_completed(
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="sdlc",
+        subject=subject,
         description=f"Deployment completed for {slug} (merge {merge_commit[:8]})",
         entity=slug,
         payload={
@@ -102,6 +106,7 @@ async def emit_deployment_failed(
     branch: str,
     sha: str,
     *,
+    subject: EventSubject,
     conflict_evidence: list[str] | None = None,
     diagnostics: list[str] | None = None,
     next_action: str = "",
@@ -114,6 +119,7 @@ async def emit_deployment_failed(
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
         domain="sdlc",
+        subject=subject,
         description=f"Deployment failed for {slug} ({branch}@{sha[:8]})",
         entity=slug,
         payload={
@@ -143,6 +149,8 @@ async def emit_integration_started(
     slug: str,
     session_id: str,
     queue_depth: int,
+    *,
+    subject: EventSubject,
 ) -> str:
     """Emit integration.started when the state machine begins processing a candidate."""
     return await emit_event(
@@ -150,6 +158,7 @@ async def emit_integration_started(
         source=f"integrator/{session_id or (get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="sdlc",
+        subject=subject,
         description=f"Integration started for {slug} (queue depth: {queue_depth})",
         entity=slug,
         payload={
@@ -165,6 +174,7 @@ async def emit_integration_candidate_delivered(
     branch: str,
     merge_commit_sha: str,
     *,
+    subject: EventSubject,
     integrated_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.delivered after a candidate is fully integrated."""
@@ -174,6 +184,7 @@ async def emit_integration_candidate_delivered(
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="sdlc",
+        subject=subject,
         description=f"Candidate delivered: {slug} ({branch} \u2192 main, merge {merge_commit_sha[:8]})",
         entity=slug,
         payload={
@@ -190,6 +201,7 @@ async def emit_integration_candidate_blocked(
     branch: str,
     sha: str,
     *,
+    subject: EventSubject,
     reason: str = "",
     blocked_at: str | None = None,
 ) -> str:
@@ -200,6 +212,7 @@ async def emit_integration_candidate_blocked(
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
         domain="sdlc",
+        subject=subject,
         description=f"Integration blocked for {slug} ({branch}@{sha[:8]}): {reason or 'unknown reason'}",
         entity=slug,
         payload={
@@ -219,6 +232,7 @@ async def emit_integration_candidate_parked(
     sha: str,
     reason: str,
     *,
+    subject: EventSubject,
     parked_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.parked when a candidate is set aside."""
@@ -229,6 +243,7 @@ async def emit_integration_candidate_parked(
         source=_INTEGRATOR_SOURCE.format(session_id=session_id),
         level=EventLevel.BUSINESS,
         domain=_SDLC_DOMAIN,
+        subject=subject,
         description=_CANDIDATE_PARKED_DESCRIPTION.format(
             slug=slug,
             branch=branch,
@@ -252,6 +267,7 @@ async def emit_integration_drain_completed(
     delivered_count: int,
     parked: list[ParkedCandidate],
     *,
+    subject: EventSubject,
     completed_at: str | None = None,
 ) -> str:
     """Emit integration.drain.completed with the drain's complete outcome."""
@@ -262,6 +278,7 @@ async def emit_integration_drain_completed(
         source=_INTEGRATOR_SOURCE.format(session_id=source_session_id),
         level=EventLevel.BUSINESS,
         domain=_SDLC_DOMAIN,
+        subject=subject,
         description=_DRAIN_COMPLETED_DESCRIPTION.format(
             delivered_count=delivered_count,
             parked_count=len(parked),

@@ -9,14 +9,18 @@ import asyncio
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope import EventLevel, EventSubject
 from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
 
-def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
+def _emit_prepare_event(
+    event_type: str,
+    payload: dict[str, str | list[str]],
+    subject: EventSubject,
+) -> None:
     """Emit a best-effort prepare lifecycle notification.
 
     The event is published after the source-of-truth state is committed and has
@@ -34,6 +38,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 source=f"orchestrator/{(get_session_id() or 'unknown')}",
                 level=EventLevel.WORKFLOW,
                 domain="sdlc",
+                subject=subject,
                 description=description,
                 entity=slug,
                 payload=dict(payload),

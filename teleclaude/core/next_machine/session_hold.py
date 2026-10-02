@@ -9,11 +9,13 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config_roster import load_project_ownership_index
+from teleclaude.config_subjects import SubjectRef
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import TodosDb, get_todos_db
-from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventLevel, EventSubjectMarker
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import is_project_checkout, resolve_project_root
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -86,16 +88,23 @@ def _workflow_project_path(session_project_path: str | None) -> tuple[str | None
     return project_path, _WORKFLOW_PROJECT_PATH_RESOLVED_REASON
 
 
-async def _emit_todo_updated(*, slug: str, project_path: str, source: str) -> None:
+async def emit_todo_updated(*, slug: str, project_root: str, source: str) -> None:
+    ownership = load_project_ownership_index().for_path(Path(project_root))
+    subject = (
+        EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
+        if ownership is not None
+        else EventSubjectMarker.NONE
+    )
     try:
         await emit_event(
             event="workflow.todo.updated",
             source=source,
             level=EventLevel.WORKFLOW,
             domain="sdlc",
+            subject=subject,
             payload={
                 "slug": slug,
-                "project_path": project_path,
+                "project_path": project_root,
                 "updated_at": datetime.now(UTC).isoformat(),
             },
         )
@@ -103,13 +112,19 @@ async def _emit_todo_updated(*, slug: str, project_path: str, source: str) -> No
         logger.info("workflow.todo.updated not emitted: event producer unavailable", slug=slug)
 
 
-async def _emit_session_ended(*, session_id: str, project_path: str) -> None:
+async def _emit_session_ended(*, session_id: str, project_path: str, config_subject: str | None) -> None:
+    subject = (
+        EventHomeRef.from_subject_ref(SubjectRef.from_token(config_subject))
+        if config_subject
+        else EventSubjectMarker.NONE
+    )
     try:
         await emit_event(
             event="agent_runtime.session.ended",
             source="agent_runtime",
             level=EventLevel.WORKFLOW,
             domain="agent_runtime",
+            subject=subject,
             payload={
                 "session_id": session_id,
                 "project_path": project_path,
@@ -196,14 +211,14 @@ def _log_manual_close_driver_correlation(*, session_id: str, correlation: Manual
     )
 
 
-async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | None, str]:
+async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | None, str, str | None]:
     session = await db.get_session(session_id)
     if session is None:
-        return None, "session-not-found"
+        return None, "session-not-found", None
     project_path, reason = _workflow_project_path(session.project_path)
     if project_path is None:
-        return None, reason
-    return project_path, "ok"
+        return None, reason, session.config_subject
+    return project_path, "ok", session.config_subject
 
 
 async def reconcile_driver_ownership_for_session(todos_db: TodosDb, session_id: str) -> DriverOwnershipReconciliation:
@@ -281,9 +296,9 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
     )
     await writer.commit(todos_db, correlation.slug)
     _log_manual_close_driver_correlation(session_id=session_id, correlation=correlation)
-    await _emit_todo_updated(
+    await emit_todo_updated(
         slug=correlation.slug,
-        project_path=correlation.project_path,
+        project_root=correlation.project_path,
         source=_SESSION_CLOSE_EVENT_SOURCE,
     )
     return ActiveRunnerMutationResult(
@@ -295,9 +310,13 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
 
 
 async def clear_active_runner_for_session_end(db: Db, session_id: str) -> ActiveRunnerMutationResult:
-    project_path, reason = await _project_path_for_session_end(db, session_id)
+    project_path, reason, config_subject = await _project_path_for_session_end(db, session_id)
     if project_path is not None:
-        await _emit_session_ended(session_id=session_id, project_path=project_path)
+        await _emit_session_ended(
+            session_id=session_id,
+            project_path=project_path,
+            config_subject=config_subject,
+        )
     if project_path is None:
         return ActiveRunnerMutationResult(slug=None, project_path=None, mutated=False, reason=reason)
     todos_db = await get_todos_db(project_path)
@@ -332,7 +351,7 @@ async def notify_runner_of_gate_approval(cwd: str, slug: str, *, acting_session_
     """
     project_path = resolve_project_root(cwd)
     todos_db = await get_todos_db(project_path)
-    await _emit_todo_updated(slug=slug, project_path=str(project_path), source=_GATE_APPROVAL_EVENT_SOURCE)
+    await emit_todo_updated(slug=slug, project_root=str(project_path), source=_GATE_APPROVAL_EVENT_SOURCE)
     state = await todos_db.read_state(slug)
     if state is None:
         return False

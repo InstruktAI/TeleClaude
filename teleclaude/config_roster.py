@@ -21,6 +21,7 @@ _MEMBERS_KEY = "members"
 _PROJECT_SLUG_KEY = "project_slug"
 _PROJECT_NAME_KEY = "project_name"
 _COMPANY_KEY = "company"
+_PERSON_KEY = "person"
 _COMPUTER_KEY = "computer"
 _NAME_KEY = "name"
 _ENV_REFERENCE_PREFIX = "${"
@@ -57,10 +58,11 @@ class CompanyMember(ClosedModel):
 
 @dataclass(frozen=True)
 class ProjectOwnership:
-    """The registered project's canonical slug and declared company owner."""
+    """The registered project's canonical slug and declared owner."""
 
     project_slug: str
     company: str | None
+    person: str | None
 
 
 @dataclass(frozen=True)
@@ -169,7 +171,12 @@ def _project_ownership_for_root(root: Path) -> ProjectOwnership | None:
     if project_slug is None:
         return None
     company = raw.get(_COMPANY_KEY)
-    return ProjectOwnership(project_slug, company if isinstance(company, str) and company.strip() else None)
+    person = raw.get(_PERSON_KEY)
+    return ProjectOwnership(
+        project_slug,
+        company if isinstance(company, str) and company.strip() else None,
+        person if isinstance(person, str) and person.strip() else None,
+    )
 
 
 class PersonEntry(ClosedModel):

@@ -15,7 +15,8 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CONTENT_DUMP
 from teleclaude.config import config
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
-from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope import EventLevel, EventSubjectMarker
+from teleclaude.events.envelope_facts import cli_envelope_fact_resolver
 from teleclaude.events.producer import emit_event, loop_local_producer
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.slug import normalize_slug
@@ -125,6 +126,9 @@ def _emit_content_dump_event(
         return
 
     async def emit() -> None:
+        resolver = cli_envelope_fact_resolver()
+        session_id = resolver.session_id()
+        origin_home = await resolver.session_home(session_id) if session_id else None
         async with loop_local_producer() as producer:
             await emit_event(
                 _CONTENT_DUMPED_EVENT,
@@ -132,6 +136,7 @@ def _emit_content_dump_event(
                 level=EventLevel.WORKFLOW,
                 producer=producer,
                 domain=_CONTENT_DOMAIN,
+                subject=origin_home if origin_home is not None else EventSubjectMarker.NONE,
                 description=_CONTENT_DUMPED_DESCRIPTION.format(path=relative_path),
                 payload=payload,
             )

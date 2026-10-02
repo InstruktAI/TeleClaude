@@ -5,7 +5,7 @@ from __future__ import annotations
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
-from teleclaude.core.next_machine.session_hold import _emit_todo_updated
+from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db
@@ -81,7 +81,7 @@ async def unclaim_todo_for_caller(
             cleared_active_runner = True
 
     if cleared_active_runner or cleared_working_slug:
-        await _emit_todo_updated(slug=slug, project_path=str(project_root), source="workflow.unclaim")
+        await emit_todo_updated(slug=slug, project_root=str(project_root), source="workflow.unclaim")
     return _summary(
         slug=slug,
         cleared_active_runner=cleared_active_runner,

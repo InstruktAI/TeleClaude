@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config
 from teleclaude.config.loader import load_project_config
+from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
@@ -54,6 +55,8 @@ from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebounc
 from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
+from teleclaude.events.envelope import EventHomeRef, EventSubjectMarker
+from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.hooks import procedure_activation
 from teleclaude.hooks.api_routes import set_contract_registry
@@ -186,7 +189,20 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _configure_event_producer(self, redis_client: object) -> EventProducer:
         """Build and register the event producer."""
-        event_producer = EventProducer(redis_client=redis_client)
+
+        async def _session_home(session_id: str) -> EventHomeRef | None:
+            db = await get_db()
+            session = await db.get_session(session_id)
+            if session is None or session.config_subject is None:
+                return None
+            return EventHomeRef.from_token(session.config_subject)
+
+        resolver = EnvelopeFactResolver(
+            session_id=lambda: None,
+            session_home=_session_home,
+            ownership_index=load_project_ownership_index,
+        )
+        event_producer = EventProducer(redis_client=redis_client, fact_resolver=resolver)
         configure_producer(event_producer)
         logger.info("EventProducer configured")
         return event_producer
@@ -406,6 +422,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 level=EventLevel.INFRASTRUCTURE,
                 domain="system",
                 visibility=EventVisibility.CLUSTER,
+                subject=EventSubjectMarker.NONE,
                 description=f"Daemon restarted on {computer_label}",
                 payload={"computer": computer_label, "pid": os.getpid()},
             )

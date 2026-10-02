@@ -9,18 +9,149 @@ full release.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, StrEnum
 from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 from teleclaude.core.models import HumanActionIntent
+from teleclaude.slug import validate_slug
 
 #: Current envelope schema generation. Used as the default for EventEnvelope.version.
-SCHEMA_VERSION: int = 4
+SCHEMA_VERSION: int = 5
 _HUMAN_ACTION_STREAM_KEY = "human_action"
+_ORIGIN_SESSION_STREAM_KEY = "originating_session_id"
+_ORIGIN_HOME_STREAM_KEY = "origin_home"
+_SUBJECT_STREAM_KEY = "subject"
+_SUBJECT_OWNER_STREAM_KEY = "subject_owner"
+_EVENT_HOME_KIND_TYPE_ERROR = "event home kind must be an EventHomeKind"
+_EVENT_HOME_SUBJECT_REF_ERROR = "event homes must name registered project, person, or company subjects"
+_EVENT_OWNER_KIND_TYPE_ERROR = "event owner kind must be an EventOwnerKind"
+_EVENT_OWNER_SUBJECT_REF_ERROR = "event owners must name registered company or person subjects"
+
+
+class EventSubjectMarker(str, Enum):
+    """Explicit subject states that are not registered homes."""
+
+    NONE = "none"
+    UNKNOWN = "unknown"
+
+
+class EventSubjectOwnerMarker(str, Enum):
+    """Explicit project-owner states that are not registry references."""
+
+    NONE = "none"
+    OWNERLESS = "ownerless"
+    UNRESOLVED = "unresolved"
+
+
+class EventHomeKind(StrEnum):
+    """Configuration homes that may appear as an event subject or origin."""
+
+    PROJECT = "project"
+    PERSON = "person"
+    COMPANY = "company"
+
+
+class EventOwnerKind(StrEnum):
+    """Registered project-owner kinds that may appear on an event."""
+
+    COMPANY = "company"
+    PERSON = "person"
+
+
+@dataclass(frozen=True)
+class EventHomeRef:
+    """One registered project, person, or company in the event vocabulary."""
+
+    kind: EventHomeKind
+    instance: str
+
+    def __post_init__(self) -> None:
+        if type(self.kind) is not EventHomeKind:
+            raise TypeError(_EVENT_HOME_KIND_TYPE_ERROR)
+        validate_slug(self.instance)
+
+    def to_token(self) -> str:
+        return SubjectRef(ConfigSubjectKind(self.kind.value), self.instance).to_token()
+
+    @classmethod
+    def from_token(cls, token: str) -> EventHomeRef:
+        return cls.from_subject_ref(SubjectRef.from_token(token))
+
+    @classmethod
+    def from_subject_ref(cls, subject: SubjectRef) -> EventHomeRef:
+        if subject.source is not SubjectSource.REGISTRY or subject.instance is None:
+            raise ValueError(_EVENT_HOME_SUBJECT_REF_ERROR)
+        try:
+            kind = EventHomeKind(subject.kind.value)
+        except ValueError as exc:
+            raise ValueError(_EVENT_HOME_SUBJECT_REF_ERROR) from exc
+        return cls(kind=kind, instance=subject.instance)
+
+
+@dataclass(frozen=True)
+class EventOwnerRef:
+    """One registered company or person that owns an event's project subject."""
+
+    kind: EventOwnerKind
+    instance: str
+
+    def __post_init__(self) -> None:
+        if type(self.kind) is not EventOwnerKind:
+            raise TypeError(_EVENT_OWNER_KIND_TYPE_ERROR)
+        validate_slug(self.instance)
+
+    def to_token(self) -> str:
+        return SubjectRef(ConfigSubjectKind(self.kind.value), self.instance).to_token()
+
+    @classmethod
+    def from_token(cls, token: str) -> EventOwnerRef:
+        return cls.from_subject_ref(SubjectRef.from_token(token))
+
+    @classmethod
+    def from_subject_ref(cls, subject: SubjectRef) -> EventOwnerRef:
+        if subject.source is not SubjectSource.REGISTRY or subject.instance is None:
+            raise ValueError(_EVENT_OWNER_SUBJECT_REF_ERROR)
+        try:
+            kind = EventOwnerKind(subject.kind.value)
+        except ValueError as exc:
+            raise ValueError(_EVENT_OWNER_SUBJECT_REF_ERROR) from exc
+        return cls(kind=kind, instance=subject.instance)
+
+
+EventSubject = EventHomeRef | EventSubjectMarker
+EventSubjectOwner = EventOwnerRef | EventSubjectOwnerMarker
+
+
+def _subject_token(subject: EventSubject) -> str:
+    if isinstance(subject, EventHomeRef):
+        return subject.to_token()
+    return subject.value
+
+
+def _subject_from_token(token: str) -> EventSubject:
+    try:
+        return EventSubjectMarker(token)
+    except ValueError:
+        return EventHomeRef.from_token(token)
+
+
+def _subject_owner_token(owner: EventSubjectOwner) -> str:
+    if isinstance(owner, EventOwnerRef):
+        return owner.to_token()
+    return owner.value
+
+
+def _subject_owner_from_token(token: str) -> EventSubjectOwner:
+    try:
+        return EventSubjectOwnerMarker(token)
+    except ValueError:
+        return EventOwnerRef.from_token(token)
 
 
 class EventVisibility(str, Enum):
@@ -49,7 +180,7 @@ class ActionDescriptor(BaseModel):
 
 
 class EventEnvelope(BaseModel):
-    """Canonical event payload stored on the stream and in downstream projections."""
+    """Event payload with required subject and composed origin facts for stream consumers."""
 
     model_config = ConfigDict(extra="allow")
 
@@ -59,6 +190,10 @@ class EventEnvelope(BaseModel):
     version: int = SCHEMA_VERSION
     source: str
     originating_computer: str | None = None
+    originating_session_id: str | None = None
+    origin_home: EventHomeRef | None = None
+    subject: EventSubject
+    subject_owner: EventSubjectOwner = EventSubjectOwnerMarker.NONE
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     idempotency_key: str | None = None
     # Semantic
@@ -97,6 +232,10 @@ class EventEnvelope(BaseModel):
             "version": str(self.version),
             "source": self.source,
             "originating_computer": self.originating_computer or "",
+            _ORIGIN_SESSION_STREAM_KEY: self.originating_session_id or "",
+            _ORIGIN_HOME_STREAM_KEY: self.origin_home.to_token() if self.origin_home else "",
+            _SUBJECT_STREAM_KEY: _subject_token(self.subject),
+            _SUBJECT_OWNER_STREAM_KEY: _subject_owner_token(self.subject_owner),
             "timestamp": cast(str, dumped["timestamp"]),
             "idempotency_key": self.idempotency_key or "",
             "level": str(int(self.level)),
@@ -150,6 +289,12 @@ class EventEnvelope(BaseModel):
             version=int(d.get("version", str(SCHEMA_VERSION))),
             source=d["source"],
             originating_computer=d.get("originating_computer") or None,
+            originating_session_id=d.get(_ORIGIN_SESSION_STREAM_KEY) or None,
+            origin_home=EventHomeRef.from_token(d[_ORIGIN_HOME_STREAM_KEY]) if d.get(_ORIGIN_HOME_STREAM_KEY) else None,
+            subject=_subject_from_token(d.get(_SUBJECT_STREAM_KEY, EventSubjectMarker.UNKNOWN.value)),
+            subject_owner=_subject_owner_from_token(
+                d.get(_SUBJECT_OWNER_STREAM_KEY, EventSubjectOwnerMarker.NONE.value)
+            ),
             timestamp=datetime.fromisoformat(d["timestamp"]),
             idempotency_key=d.get("idempotency_key") or None,
             level=EventLevel(int(d["level"])),

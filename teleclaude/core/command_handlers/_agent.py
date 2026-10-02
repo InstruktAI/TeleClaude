@@ -66,7 +66,7 @@ from teleclaude.core.session_runtime_gate import (
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_slash_command
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import EventHomeRef, EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.paths import session_tmp_dir
 from teleclaude.types.commands import (
@@ -144,6 +144,9 @@ async def _emit_restart_failed(session: Session, *, reason: str, phase: RestartF
         level=EventLevel.OPERATIONAL,
         domain="agent_runtime",
         visibility=EventVisibility.LOCAL,
+        subject=(
+            EventHomeRef.from_token(session.config_subject) if session.config_subject else EventSubjectMarker.NONE
+        ),
         human_action=HumanActionIntent(
             topic="Agent restart failed",
             summary="The session was kept alive for inspection.",

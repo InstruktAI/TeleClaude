@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from pathlib import Path
 from typing import Any, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.integration.checkpoint import ParkedCandidate
+from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventSubject, EventSubjectMarker
 
 logger = get_logger(__name__)
 
@@ -23,10 +26,19 @@ _EVENT_INTEGRATION_CANDIDATE_PARKED = "integration.candidate.parked"
 _EVENT_INTEGRATION_DRAIN_COMPLETED = "integration.drain.completed"
 
 
+def _workflow_subject_for_path(path: str | Path) -> EventSubject:
+    """Resolve the registered workflow project for an integration root."""
+    ownership = load_project_ownership_index().for_path(Path(path))
+    if ownership is None:
+        return EventSubjectMarker.NONE
+    return EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
+
+
 # guard: loose-dict-func - lifecycle event payload shape varies per event type
 async def _bridge_emit(
     event_type: str,
     payload: dict[str, Any],
+    subject: EventSubject,
 ) -> None:
     """Dispatch lifecycle event to the appropriate integration_bridge helper."""
     # Lazy import to avoid circular dependency at module load time
@@ -36,12 +48,14 @@ async def _bridge_emit(
                 slug=payload.get("slug", ""),
                 session_id=payload.get("session_id", ""),
                 queue_depth=int(payload.get("queue_depth", 0)),
+                subject=subject,
             )
         elif event_type == "integration.candidate.delivered":
             await bridge.emit_integration_candidate_delivered(
                 slug=payload.get("slug", ""),
                 branch=payload.get("branch", ""),
                 merge_commit_sha=payload.get("merge_commit_sha", ""),
+                subject=subject,
             )
         elif event_type == "integration.candidate.blocked":
             await bridge.emit_integration_candidate_blocked(
@@ -49,6 +63,7 @@ async def _bridge_emit(
                 branch=payload.get("branch", ""),
                 sha=payload.get("sha", ""),
                 reason=payload.get("reason", ""),
+                subject=subject,
             )
         elif event_type == _EVENT_INTEGRATION_CANDIDATE_PARKED:
             await bridge.emit_integration_candidate_parked(
@@ -57,6 +72,7 @@ async def _bridge_emit(
                 sha=payload.get("sha", ""),
                 reason=payload.get("reason", ""),
                 parked_at=payload.get("parked_at") or None,
+                subject=subject,
             )
         elif event_type == _EVENT_INTEGRATION_DRAIN_COMPLETED:
             await bridge.emit_integration_drain_completed(
@@ -64,6 +80,7 @@ async def _bridge_emit(
                 delivered_count=int(payload.get("delivered_count", 0)),
                 parked=cast(list[ParkedCandidate], payload.get("parked", [])),
                 completed_at=payload.get("completed_at") or None,
+                subject=subject,
             )
         # Other event types are observability-only; logged below, not wired to bridge
     except Exception:
@@ -74,6 +91,7 @@ async def _bridge_emit(
 def _emit_lifecycle_event(
     event_type: str,
     payload: dict[str, Any],
+    subject: EventSubject,
 ) -> None:
     """Fire-and-forget lifecycle event emission via bridge (threadsafe)."""
     logger.info("INTEGRATION_LIFECYCLE_EVENT type=%s payload=%s", event_type, payload)
@@ -81,7 +99,7 @@ def _emit_lifecycle_event(
     if loop is None or not loop.is_running():
         return
     try:
-        asyncio.run_coroutine_threadsafe(_bridge_emit(event_type, payload), loop)
+        asyncio.run_coroutine_threadsafe(_bridge_emit(event_type, payload, subject), loop)
     except Exception:
         logger.debug("_emit_lifecycle_event scheduling failed for %s", event_type, exc_info=True)
 
@@ -91,4 +109,5 @@ __all__ = [
     "_EVENT_INTEGRATION_DRAIN_COMPLETED",
     "_emit_lifecycle_event",
     "_tls",
+    "_workflow_subject_for_path",
 ]

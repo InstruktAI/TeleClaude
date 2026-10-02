@@ -44,8 +44,21 @@ from teleclaude.config.loader import load_person_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job
 from teleclaude.constants import SlashCommand
 from teleclaude.core.models import HumanActionIntent
-from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.cron.state import (
+    CronState,
+    JobRunStatus,
+    PendingEmission,
+    compose_job_key,
+    project_slug_for_job_key,
+)
+from teleclaude.events.envelope import (
+    EventEnvelope,
+    EventHomeKind,
+    EventHomeRef,
+    EventLevel,
+    EventSubjectMarker,
+    EventVisibility,
+)
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.events.schemas.jobs import JobRunEventType
 from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, TELECLAUDE_HOME, ConfigFileName
@@ -488,11 +501,16 @@ def _envelope_for_pending_emission(emission: PendingEmission) -> EventEnvelope:
             summary=emission.message,
             action="Investigate the job",
         )
+    project_slug = project_slug_for_job_key(emission.job_name)
+    subject = (
+        EventHomeRef(EventHomeKind.PROJECT, project_slug) if project_slug is not None else EventSubjectMarker.UNKNOWN
+    )
     return EventEnvelope(
         event=emission.event_type,
         source="cron.runner",
         level=_event_level_for_status(emission.status),
         domain="jobs",
+        subject=subject,
         description=emission.message,
         visibility=EventVisibility.CLUSTER,
         entity=emission.job_name,
@@ -716,7 +734,7 @@ def run_due_jobs(
             logger.error("effective job load failed", project=project.slug, error=str(exc))
             continue
         for job in effective:
-            job_key = f"{project.slug}:{job.identity}"
+            job_key = compose_job_key(project.slug, job.identity)
             project_jobs.append((project, job))
             schedules[job_key] = job.declaration
     now = datetime.now(UTC)
@@ -731,7 +749,7 @@ def run_due_jobs(
     logger.info("checking jobs", count=len(project_jobs), force=force, dry_run=dry_run)
 
     for project, effective_job in project_jobs:
-        job_name = f"{project.slug}:{effective_job.identity}"
+        job_name = compose_job_key(project.slug, effective_job.identity)
         if job_filter and job_filter not in {job_name, effective_job.identity}:
             continue
 

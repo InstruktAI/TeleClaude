@@ -26,6 +26,7 @@ async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelo
         source="feed-monitor",
         level=EventLevel.WORKFLOW,
         domain="marketing",
+        subject=event.subject,
         description="Signal synthesis ready for marketing review",
         human_action=HumanActionIntent(
             topic="Marketing synthesis ready",

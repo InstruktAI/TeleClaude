@@ -71,6 +71,7 @@ from teleclaude.config import (  # config.py loads .env at import time
     reload_config,
     restart_required_sections,
 )
+from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.inbound.conversation_env import default_conversation_environment
 from teleclaude.core.inbound.cutover import run_conversation_upkeep
@@ -196,9 +197,24 @@ _record_import_timing("teleclaude.daemon_session", _t)
 
 _t = time.perf_counter()
 from teleclaude.events import EventDB
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import (
+    EventHomeKind,
+    EventHomeRef,
+    EventLevel,
+    EventSubject,
+    EventSubjectMarker,
+    EventVisibility,
+)
 from teleclaude.events.producer import emit_event
 from teleclaude.hooks.webhook_models import HookEvent
+
+
+def _workflow_event_subject(project_path: str) -> EventSubject:
+    ownership = load_project_ownership_index().for_path(Path(project_path))
+    if ownership is None:
+        return EventSubjectMarker.NONE
+    return EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
+
 
 _record_import_timing("teleclaude.events", _t)
 
@@ -599,6 +615,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     domain="sdlc",
                     visibility=EventVisibility.LOCAL,
                     entity=slug,
+                    subject=_workflow_event_subject(project_root),
                     description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
                     payload={
                         "slug": slug,
@@ -617,6 +634,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     level=EventLevel.WORKFLOW,
                     domain="sdlc",
                     entity=slug,
+                    subject=_workflow_event_subject(project_root),
                     description=f"Lifecycle phase advanced for {slug}: {prior_phase} -> {new_phase}",
                     payload={
                         "slug": slug,
@@ -634,6 +652,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     domain="sdlc",
                     visibility=EventVisibility.LOCAL,
                     entity=slug,
+                    subject=_workflow_event_subject(project_root),
                     description=f"Delivered {slug}",
                     payload={
                         "slug": slug,
@@ -1154,6 +1173,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 source="daemon.config_watcher",
                 level=EventLevel.WORKFLOW,
                 domain="config",
+                subject=EventSubjectMarker.NONE,
                 payload={
                     "project_path": str(WORKING_DIR),
                     "changed_sections": sorted(changed),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -11,6 +11,8 @@ from typing import TypedDict, cast
 
 from jobs.base import JobResult
 from teleclaude.paths import CRON_STATE_PATH
+
+_JOB_KEY_SEPARATOR = ":"
 
 
 class JobRunStatus(StrEnum):
@@ -201,6 +203,10 @@ class CronState:
                             state.legacy_pending_emissions[key] = emission
                             needs_migration = True
                         else:
+                            migrated_name = _migrate_job_key(emission.job_name, legacy_project_slug)
+                            if migrated_name != emission.job_name:
+                                emission = replace(emission, job_name=migrated_name)
+                                needs_migration = True
                             state.pending_emissions[key] = emission
                     except (KeyError, TypeError, ValueError):
                         needs_migration = True
@@ -332,8 +338,19 @@ class CronState:
         ]
 
 
+def compose_job_key(project_slug: str, job_identity: str) -> str:
+    """Compose the project-qualified identity used to track a scheduled job."""
+    return _JOB_KEY_SEPARATOR.join((project_slug, job_identity))
+
+
+def project_slug_for_job_key(job_key: str) -> str | None:
+    """Return the project slug from a qualified job key, or None for a legacy key."""
+    project_slug, separator, job_identity = job_key.partition(_JOB_KEY_SEPARATOR)
+    return project_slug if separator and job_identity else None
+
+
 def _migrate_job_key(job_name: str, legacy_project_slug: str | None) -> str:
     """Qualify a pre-cutover ordinary job with its known runner project."""
-    if legacy_project_slug is None or ":" in job_name:
+    if legacy_project_slug is None or _JOB_KEY_SEPARATOR in job_name:
         return job_name
-    return f"{legacy_project_slug}:{job_name}"
+    return compose_job_key(legacy_project_slug, job_name)

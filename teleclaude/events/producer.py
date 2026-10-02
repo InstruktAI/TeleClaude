@@ -10,6 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, complete_envelope_facts
 from teleclaude.transport.redis_client import create_redis_client
 
 logger = get_logger(__name__)
@@ -24,13 +25,21 @@ _PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
 class EventProducer:
     """Publish event envelopes to the configured Redis stream."""
 
-    def __init__(self, redis_client: Any, stream: str = "teleclaude:events", maxlen: int = 10000) -> None:
+    def __init__(
+        self,
+        redis_client: Any,
+        fact_resolver: EnvelopeFactResolver,
+        stream: str = "teleclaude:events",
+        maxlen: int = 10000,
+    ) -> None:
         self._redis = redis_client
+        self._fact_resolver = fact_resolver
         self._stream = stream
         self._maxlen = maxlen
 
     async def emit(self, envelope: EventEnvelope) -> str:
         """Serialize and append an event envelope to the Redis stream."""
+        await complete_envelope_facts(envelope, self._fact_resolver)
         if envelope.originating_computer is None:
             envelope.originating_computer = config.computer.name
         data = envelope.to_stream_dict()
@@ -74,7 +83,7 @@ def _build_producer_from_config() -> EventProducer:
         max_connections=redis_cfg.max_connections,
         socket_timeout=redis_cfg.socket_timeout,
     )
-    return EventProducer(client)
+    return EventProducer(client, cli_envelope_fact_resolver())
 
 
 def ensure_event_producer() -> EventProducer:

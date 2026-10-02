@@ -11,12 +11,21 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as _global_config
 from teleclaude.core.models import HumanActionIntent, JsonDict
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.envelope import (
+    EventEnvelope,
+    EventHomeRef,
+    EventLevel,
+    EventSubject,
+    EventSubjectMarker,
+    EventVisibility,
+)
 from teleclaude.events.pipeline import PipelineContext
 
 logger = get_logger(__name__)
 
 _FAILURE_TYPE_KEYWORDS = ("crash", "fail", "error")
+_ENTITY_DEGRADATION_EVENT_TYPE = "system.entity.degraded"
+_UNKNOWN_CORRELATION_SUBJECT = "unknown"
 
 
 def _is_failure_type(event_type: str) -> bool:
@@ -48,7 +57,7 @@ class CorrelationCartridge:
         self._emitted_bursts: set[tuple[str, int]] = set()
         # Burst identity is deterministic per host, type, and bucket; durable
         # pipeline idempotency suppresses replays across restarts.
-        self._degraded_entities: set[tuple[str, str]] = set()
+        self._degraded_entities: set[tuple[str, str, str]] = set()
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Update correlation windows and emit synthetic alerts when thresholds are crossed."""
@@ -58,14 +67,15 @@ class CorrelationCartridge:
 
         config = context.correlation_config
         now = config.clock()
+        subject_key = _subject_key(event.subject)
         window_start = now - timedelta(seconds=config.window_seconds)
         prune_before = now - timedelta(seconds=2 * config.window_seconds)
 
         await context.db.prune_correlation_windows(older_than=prune_before)
-        await context.db.increment_correlation_window(event.event, event.entity, now)
+        await context.db.increment_correlation_window(event.event, subject_key, event.entity, now)
 
         # Burst detection: N events of same type in window — emit once per window bucket
-        burst_count = await context.db.get_correlation_count(event.event, None, window_start)
+        burst_count = await context.db.get_correlation_count(event.event, subject_key, None, window_start)
         if burst_count >= config.burst_threshold:
             window_bucket = int(now.timestamp() // config.window_seconds)
             burst_key = (event.event, window_bucket)
@@ -78,6 +88,7 @@ class CorrelationCartridge:
                         "count": burst_count,
                     },
                     context,
+                    subject=EventSubjectMarker.NONE,
                     event_id=self._burst_event_id(event.event, window_bucket),
                 )
                 if emitted:
@@ -85,7 +96,9 @@ class CorrelationCartridge:
 
         # Crash cascade detection
         if event.event == "system.worker.crashed":
-            crash_count = await context.db.get_correlation_count("system.worker.crashed", None, window_start)
+            crash_count = await context.db.get_correlation_count(
+                "system.worker.crashed", subject_key, None, window_start
+            )
             if crash_count >= config.crash_cascade_threshold:
                 workers = [event.entity] if event.entity else []
                 await self._emit_synthetic(
@@ -101,22 +114,26 @@ class CorrelationCartridge:
                         summary="Repeated worker crashes were detected.",
                         action="Investigate the crashing workers",
                     ),
+                    subject=EventSubjectMarker.NONE,
                 )
 
         # Entity failure detection
         if event.entity is not None and _is_failure_type(event.event):
-            entity_fail_count = await context.db.get_correlation_count(event.event, event.entity, window_start)
-            entity_key = (event.event, event.entity)
+            entity_fail_count = await context.db.get_correlation_count(
+                event.event, subject_key, event.entity, window_start
+            )
+            entity_key = (event.event, subject_key, event.entity)
             if entity_fail_count >= config.entity_failure_threshold and entity_key not in self._degraded_entities:
                 self._degraded_entities.add(entity_key)
                 await self._emit_synthetic(
-                    "system.entity.degraded",
+                    _ENTITY_DEGRADATION_EVENT_TYPE,
                     {
                         "entity": event.entity,
                         "failure_count": entity_fail_count,
                         "window_start": window_start.isoformat(),
                     },
                     context,
+                    subject=event.subject,
                 )
             elif entity_fail_count < config.entity_failure_threshold:
                 self._degraded_entities.discard(entity_key)
@@ -130,6 +147,8 @@ class CorrelationCartridge:
         context: PipelineContext,
         human_action: HumanActionIntent | None = None,
         event_id: str | None = None,
+        *,
+        subject: EventSubject,
     ) -> bool:
         """Emit a synthetic correlation event through the configured producer."""
         if context.producer is None:
@@ -148,6 +167,7 @@ class CorrelationCartridge:
             source="correlation",
             level=level,
             domain="system",
+            subject=subject,
             visibility=visibility,
             payload=payload,
             human_action=human_action,
@@ -165,3 +185,11 @@ class CorrelationCartridge:
     def identifier(self) -> str:
         """Return the stable cartridge identifier."""
         return self.name
+
+
+def _subject_key(subject: EventSubject) -> str:
+    if isinstance(subject, EventHomeRef):
+        return subject.to_token()
+    if subject is EventSubjectMarker.UNKNOWN:
+        return _UNKNOWN_CORRELATION_SUBJECT
+    return str(subject.value)

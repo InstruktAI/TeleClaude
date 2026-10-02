@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 _CLEARANCE_REFUSAL = "permission denied — role is not permitted to call {command_path}"
+_DAEMON_TOKEN_HEADER = "x-teleclaude-daemon-token"
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,12 @@ def carried_caller(
     )
 
 
+def carried_caller_session_id(request: HTTPConnection) -> str | None:
+    """Return the session id carried by this request, or None for automation."""
+    identity = carried_caller(request, request.headers.get(_DAEMON_TOKEN_HEADER))
+    return identity.session_id or None
+
+
 def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
     """Return a route dependency enforcing the CLI verb's declared caller clearance."""
 
@@ -182,6 +189,7 @@ __all__ = [
     "CallerIdentity",
     "caller_from_carried_identity",
     "carried_caller",
+    "carried_caller_session_id",
     "principal_for_carried_caller",
     "require_clearance",
     "resolve_caller_provenance",

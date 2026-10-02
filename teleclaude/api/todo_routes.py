@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -42,6 +43,7 @@ from teleclaude.api.todo_update_support import (
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
+from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_DIAGNOSIS,
@@ -68,6 +70,7 @@ from teleclaude.core.next_machine.kind_migration import (
 )
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.provenance import sync_artifact_provenance
+from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
@@ -75,7 +78,7 @@ from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused, get_todos_db
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
-from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventLevel, EventSubjectMarker
 from teleclaude.events.producer import emit_event
 from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
@@ -105,6 +108,7 @@ _CLAIMED_HOLD_WARNING = (
     "Hold affects future dispatch only; claimed session {session_id} keeps running. "
     "Contact it with `telec sessions send {session_id} <message>`."
 )
+_TODO_UPDATE_EVENT_SOURCE = "api.todo.update"
 
 
 # ── Response models ─────────────────────────────────────────────────────────
@@ -418,7 +422,11 @@ async def todo_update(  # pyright: ignore
         hold_value=hold_value,
         unclaim_summary=unclaim_summary,
     ):
-        await _emit_todo_updated(slug=slug, cwd=cwd)
+        await emit_todo_updated(
+            slug=slug,
+            project_root=str(resolve_project_root(cwd)),
+            source=_TODO_UPDATE_EVENT_SOURCE,
+        )
 
     group_result = await resolve_current_group_slug(todos_db, slug)
     logger.info(
@@ -443,24 +451,6 @@ async def todo_update(  # pyright: ignore
         warnings=warnings,
         folded_artifact=migration_result.get("folded_artifact") if migration_result else None,
     )
-
-
-async def _emit_todo_updated(*, slug: str, cwd: str) -> None:
-    project_root = str(resolve_project_root(cwd))
-    try:
-        await emit_event(
-            event="workflow.todo.updated",
-            source="api.todo.update",
-            level=EventLevel.WORKFLOW,
-            domain="sdlc",
-            payload={
-                "slug": slug,
-                "updated_at": datetime.now(UTC).isoformat(),
-                "project_path": project_root,
-            },
-        )
-    except RuntimeError:
-        logger.info("workflow.todo.updated not emitted: event producer unavailable", slug=slug)
 
 
 def _validate_slug_for_update(slug: str, *, field_name: str) -> None:
@@ -709,11 +699,18 @@ async def todo_content_create(
 
         lifecycle_phase = state.get("lifecycle_phase")
         event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
+        project_ownership = load_project_ownership_index().for_path(Path(effective_cwd))
+        event_subject = (
+            EventHomeRef(EventHomeKind.PROJECT, project_ownership.project_slug)
+            if project_ownership is not None
+            else EventSubjectMarker.NONE
+        )
         await emit_event(
             event="workflow.todo.created",
             source="api.todo.create",
             level=EventLevel.WORKFLOW,
             domain="sdlc",
+            subject=event_subject,
             payload={
                 "slug": slug,
                 "kind": map_v1_kind_to_canonical(request.kind),

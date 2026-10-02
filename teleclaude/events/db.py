@@ -131,11 +131,26 @@ _CREATE_CORRELATION_TABLE = """
 CREATE TABLE IF NOT EXISTS correlation_windows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
+    subject TEXT,
     entity TEXT,
     window_start TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 1
 );
 """
+_CORRELATION_TABLE_INFO_SQL = "PRAGMA table_info(correlation_windows)"
+_CORRELATION_SUBJECT_COLUMN = "subject"
+_ADD_CORRELATION_SUBJECT_SQL = "ALTER TABLE correlation_windows ADD COLUMN subject TEXT"
+_INSERT_CORRELATION_WINDOW_SQL = (
+    "INSERT INTO correlation_windows (event_type, subject, entity, window_start, count) VALUES (?, ?, ?, ?, 1)"
+)
+_SELECT_CORRELATION_COUNT_BY_EVENT_SQL = (
+    "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND window_start >= ?"
+)
+_SELECT_CORRELATION_COUNT_BY_SUBJECT_SQL = (
+    "SELECT COALESCE(SUM(count), 0) FROM correlation_windows "
+    "WHERE event_type = ? AND COALESCE(subject, ?) = ? AND entity = ? AND window_start >= ?"
+)
+_UNKNOWN_CORRELATION_SUBJECT = "unknown"
 
 _RETIRED_DOCS_WATCHER_EVENT_TYPE = "system.docs_watcher.sync_failed"
 _RESOLVED_AGENT_STATUS = "resolved"
@@ -161,6 +176,7 @@ _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_quarantined_reviewed ON quarantined_events (reviewed, received_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_correlation_windows ON correlation_windows (event_type, entity, window_start);",
+    "CREATE INDEX IF NOT EXISTS idx_correlation_windows_subject ON correlation_windows (event_type, subject, entity, window_start);",
 ]
 
 
@@ -200,6 +216,10 @@ class EventDB:
         await self._conn.execute(_CREATE_TABLE)
         await self._conn.execute(_CREATE_QUARANTINED_TABLE)
         await self._conn.execute(_CREATE_CORRELATION_TABLE)
+        correlation_info_cursor = await self._conn.execute(_CORRELATION_TABLE_INFO_SQL)
+        existing_correlation_columns = {row[1] for row in await correlation_info_cursor.fetchall()}
+        if _CORRELATION_SUBJECT_COLUMN not in existing_correlation_columns:
+            await self._conn.execute(_ADD_CORRELATION_SUBJECT_SQL)
         # Forward migration: a pre-recipient `notifications` table predates this column.
         table_info_cursor = await self._conn.execute("PRAGMA table_info(notifications)")
         existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
@@ -524,28 +544,33 @@ class EventDB:
 
     # --- Correlation window methods ---
 
-    async def increment_correlation_window(self, event_type: str, entity: str | None, ts: datetime) -> None:
+    async def increment_correlation_window(
+        self, event_type: str, subject: str, entity: str | None, ts: datetime
+    ) -> None:
         """Insert one correlation-window bucket entry for an event occurrence."""
         await self._db().execute(
-            "INSERT INTO correlation_windows (event_type, entity, window_start, count) VALUES (?, ?, ?, 1)",
-            (event_type, entity, ts.isoformat()),
+            _INSERT_CORRELATION_WINDOW_SQL,
+            (event_type, subject, entity, ts.isoformat()),
         )
         await self._db().commit()
 
-    async def get_correlation_count(self, event_type: str, entity: str | None, since: datetime) -> int:
+    async def get_correlation_count(
+        self,
+        event_type: str,
+        subject: str,
+        entity: str | None,
+        since: datetime,
+    ) -> int:
         """Return the total correlation count for an event since the given time."""
         if entity is None:
             cursor = await self._db().execute(
-                "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND window_start >= ?",
+                _SELECT_CORRELATION_COUNT_BY_EVENT_SQL,
                 (event_type, since.isoformat()),
             )
         else:
             cursor = await self._db().execute(
-                (
-                    "SELECT COALESCE(SUM(count), 0) FROM correlation_windows "
-                    "WHERE event_type = ? AND entity = ? AND window_start >= ?"
-                ),
-                (event_type, entity, since.isoformat()),
+                _SELECT_CORRELATION_COUNT_BY_SUBJECT_SQL,
+                (event_type, _UNKNOWN_CORRELATION_SUBJECT, subject, entity, since.isoformat()),
             )
         row = await cursor.fetchone()
         return int(row[0]) if row else 0

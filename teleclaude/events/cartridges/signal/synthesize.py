@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
 from teleclaude.events.signal.ai import SignalAIClient
 from teleclaude.events.signal.db import SignalDB
 from teleclaude.events.signal.fetch import fetch_full_content
@@ -102,6 +102,7 @@ class SignalSynthesizeCartridge:
             level=EventLevel.WORKFLOW,
             domain="signal",
             visibility=EventVisibility.LOCAL,
+            subject=EventSubjectMarker.NONE,
             description=description,
             idempotency_key=f"signal.synthesis.ready:{cluster_id}",
             payload={
