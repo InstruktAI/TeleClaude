@@ -70,15 +70,21 @@ The drift classes:
     already detected the digest mismatch; the analyzer's job is to read
     the upstream change and judge whether THIS artifact's claims still
     hold.
-  - **owned-snippet** — read each owned snippet at its current digest
-    (`telec docs get <snippet-id>`) and compare to the recorded digest's
-    content. A sibling delivery may have edited a snippet this todo owns
-    via `delivered_by`; judge whether the edit changes anything THIS
-    artifact relies on.
-  - **upstream-snippet** — read each referenced non-owned snippet at its
-    current digest (`telec docs get <snippet-id>`) and compare. Judge
-    whether the referenced snippet's edit changes the contract THIS
-    artifact references.
+  - **owned-snippet** — read each owned snippet's current body through
+    this todo's pending view (`telec docs get <snippet-id> --target {slug}`);
+    the default view omits the body of a snippet still pending under a
+    todo. Read the edit itself from the snippet source file's history over
+    the same window as the code class:
+    `git log --follow -p <codebase_sha_at_write>..origin/main -- <snippet-file>`.
+    A sibling delivery may have edited a snippet this todo owns via
+    `delivered_by`; judge whether the edit changes anything THIS artifact
+    relies on.
+  - **upstream-snippet** — read each referenced non-owned snippet's
+    current body with `telec docs get <snippet-id>`, adding
+    `--target <owner-slug>` when `telec docs index` lists the snippet as
+    delivered by another todo, and read the edit from its source file's
+    history as for owned-snippet. Judge whether the referenced snippet's
+    edit changes the contract THIS artifact references.
   - **age** — the artifact has aged past its configured freshness window.
     Re-ground against current code/snippets/deps and judge whether the
     artifact still holds; an aged artifact whose claims happen to remain
