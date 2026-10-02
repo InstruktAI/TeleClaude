@@ -254,13 +254,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Start the caller's personal assistant in their own workspace",
                 args="[<brief>]",
                 flags=[F.FLAG_HELP],
-                notes=[
-                    "The optional brief is passed through without added framing; omit it to start without a message.",
-                    "The person, workspace, and computer derive from the caller.",
-                    "No argument names a person.",
-                    "The launched assistant has no parent and ends itself.",
-                    "run and start remain open to any folder.",
-                ],
+                default_help_note=False,
                 examples=["telec sessions run-pa", 'telec sessions run-pa "Check the latest message"'],
                 auth=CommandAuth(
                     system=_AGENT_REACH | _WORKER_REACH,

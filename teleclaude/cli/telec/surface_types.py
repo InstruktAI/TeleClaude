@@ -143,6 +143,7 @@ class _CommandPresentation:
 
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
     runtime_notes: list[str] = field(default_factory=list)  # leaf-help notes excluded from generated documentation
+    default_help_note: bool = True  # synthesize a note when no explicit notes are declared
     examples: list[str] = field(default_factory=list)  # curated examples shown in help output
     hidden: bool = False  # hide from help output and completion
     standalone: bool = False  # bare invocation has behavior (not just help text)

@@ -12,6 +12,8 @@ from teleclaude.cli.telec.surface_types import strip_hidden_flag_tokens
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
 _COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
 DEFAULT_HELP_NOTE = "Use this command to {}."
+_NOTES_HEADING = "\nNotes:"
+_NOTE_LINE = "  {}"
 
 
 __all__ = [
@@ -125,10 +127,7 @@ def _usage_node_leaf(path: list[str], node: CommandDef) -> str:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
             lines.append(f"{flag_label:<25s} {f.desc}")
 
-    notes = node.notes + node.runtime_notes or [DEFAULT_HELP_NOTE.format(node.desc.lower())]
-    lines.append("\nNotes:")
-    for note in notes:
-        lines.append(f"  {note}")
+    _append_leaf_notes(lines, node)
 
     if node.examples:
         lines.append("\nExamples:")
@@ -289,6 +288,16 @@ def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandD
             lines.append(f"  {note}")
 
 
+def _append_leaf_notes(lines: list[str], cmd: CommandDef) -> None:
+    """Render declared notes and an optional default note for a leaf command."""
+    notes = cmd.notes + cmd.runtime_notes
+    if not notes and cmd.default_help_note:
+        notes = [DEFAULT_HELP_NOTE.format(cmd.desc.lower())]
+    if notes:
+        lines.append(_NOTES_HEADING)
+        lines.extend(_NOTE_LINE.format(note) for note in notes)
+
+
 def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef) -> None:
     cleaned_args = strip_hidden_flag_tokens(cmd.args, cmd.flags)
     args_str = f" {cleaned_args}" if cleaned_args else ""
@@ -296,10 +305,7 @@ def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef)
     lines.append(f"  telec {cmd_name}{args_str}")
     _append_flag_section(lines, "Options", visible)
 
-    notes = cmd.notes + cmd.runtime_notes or [DEFAULT_HELP_NOTE.format(cmd.desc.lower())]
-    lines.append("\nNotes:")
-    for note in notes:
-        lines.append(f"  {note}")
+    _append_leaf_notes(lines, cmd)
     _append_examples(lines, cmd.examples or [])
 
 
@@ -363,10 +369,7 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
             lines.append(f"{flag_label:<25s} {f.desc}")
 
-    notes = sub.notes + sub.runtime_notes or [DEFAULT_HELP_NOTE.format(sub.desc.lower())]
-    lines.append("\nNotes:")
-    for note in notes:
-        lines.append(f"  {note}")
+    _append_leaf_notes(lines, sub)
 
     if sub.examples:
         lines.append("\nExamples:")
