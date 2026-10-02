@@ -62,6 +62,8 @@ os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = GIT_EXECUTABLE  # fmt: skip  # guard: 
 import time as _time  # noqa: E402
 from typing import Any, cast  # noqa: E402
 
+from git import Actor as Actor  # noqa: E402
+from git import IndexFile as IndexFile  # noqa: E402
 from git import Repo as Repo  # noqa: E402
 from git.cmd import Git as _Git  # noqa: E402
 from git.exc import GitCommandError as GitCommandError  # noqa: E402
@@ -141,9 +143,11 @@ _Git.execute = _logged_execute  # type: ignore[method-assign]
 
 __all__ = [
     "GIT_EXECUTABLE",
+    "Actor",
     "BadName",
     "GitCommandError",
     "HookExecutionError",
+    "IndexFile",
     "InvalidGitRepositoryError",
     "NoSuchPathError",
     "Repo",

@@ -20,6 +20,7 @@ class HomeTemplateDisposition(StrEnum):
     WRITTEN = "written"
     UNCHANGED = "unchanged"
     PRESERVED = "preserved"
+    HELD = "held"
 
 
 class HomeTemplateConflictKind(StrEnum):
@@ -222,12 +223,19 @@ def plan_template_installation(
     return TemplateInstallationPlan(planned_targets)
 
 
-def apply_template_installation(plan: TemplateInstallationPlan) -> tuple[HomeTemplateOutcome, ...]:
-    """Write a validated plan, keeping existing create-once targets and identical targets untouched."""
+def apply_template_installation(
+    plan: TemplateInstallationPlan,
+    *,
+    held_targets: frozenset[Path] = frozenset(),
+) -> tuple[HomeTemplateOutcome, ...]:
+    """Write a validated plan, leaving held targets unread and unchanged."""
     outcomes: list[HomeTemplateOutcome] = []
     for planned in plan.targets:
         _require_or_create_directory(planned.root, HomeTemplateConflictKind.TARGET_ROOT)
         for file in planned.files:
+            if file.target in held_targets:
+                outcomes.append(HomeTemplateOutcome(file.source, file.target, HomeTemplateDisposition.HELD))
+                continue
             _ensure_target_parents(file.target.parent, planned.root)
             if file.create_once:
                 disposition = _write_if_absent(file.content, file.target)
@@ -243,10 +251,11 @@ def materialize_template_targets(
     values: Mapping[str, str],
     environ: Mapping[str, str],
     templates_root: Path = _TEMPLATES_ROOT,
+    held_targets: frozenset[Path] = frozenset(),
 ) -> tuple[HomeTemplateOutcome, ...]:
-    """Plan and apply a layered installation into every target."""
+    """Plan and apply a layered installation, leaving held targets unchanged."""
     plan = plan_template_installation(targets, values=values, environ=environ, templates_root=templates_root)
-    return apply_template_installation(plan)
+    return apply_template_installation(plan, held_targets=held_targets)
 
 
 def _render_target(

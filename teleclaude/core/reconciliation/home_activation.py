@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Sequence
+import stat
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from tempfile import TemporaryFile
+from tempfile import TemporaryDirectory, TemporaryFile
 from typing import cast
 
-from git.index.typ import IndexEntry
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.reconciliation.home_convergence import home_installation_targets
@@ -19,21 +19,27 @@ from teleclaude.core.reconciliation.home_retained_set import (
     historical_home_membership,
     home_membership,
     home_retained_set_digest,
-    home_retained_set_path,
 )
 from teleclaude.core.reconciliation.template_installation import (
     HomeTemplateDisposition,
     HomeTemplateOutcome,
-    materialize_template_targets,
+    PlannedTemplateFile,
+    TemplateInstallationPlan,
+    apply_template_installation,
+    plan_template_installation,
 )
 from teleclaude.git import (
     GIT_EXECUTABLE,
+    Actor,
     GitCommandError,
     HookExecutionError,
+    IndexFile,
     InvalidGitRepositoryError,
     NoSuchPathError,
     Repo,
+    no_autostash_env,
 )
+from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.paths import (
     BIN_DIR,
     COMPANIES_ROOT,
@@ -93,13 +99,28 @@ class HomeActivationResult:
     created_repository: bool
     recorded_paths: int
     gate_findings: tuple[str, ...] = ()
+    held_paths: tuple[Path, ...] = ()
+    unrestored_paths: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
+class _RecordedGitEntry:
+    mode: str
+    object_id: str
+
+
+@dataclass(frozen=True)
+class _IndexGitEntry:
+    mode: str
+    object_id: str
+    stage: int
+    assume_unchanged: bool
+    skip_worktree: bool
 
 
 _LOGGER = get_logger("teleclaude.reconciliation.home_repository")
 _NUL = "\0"
 _NUL_BYTES = b"\0"
-_LS_FILES_OTHERS_OPTION = "--others"
-_LS_FILES_EXCLUDE_STANDARD_OPTION = "--exclude-standard"
 _LS_FILES_NUL_OPTION = "-z"
 _LS_TREE_RECURSIVE_OPTION = "-r"
 _REMOTE_CONFIG_SECTION_PREFIX = "remote."
@@ -121,6 +142,7 @@ _COMPANIES_DIRECTORY = COMPANIES_ROOT.name
 _GIT_DIRECTORY = ".git"
 _ACTIVATION_COMMIT_MESSAGE = "Activate local TeleClaude home history"
 _PRE_COMMIT_HOOK_NAME = "pre-commit"
+_POST_COMMIT_HOOK_NAME = "post-commit"
 _ACTIVATION_EVENT = "home_repository_activation"
 _BREACH_EVENT = "home_repository_breach"
 _REFUSAL_EVENT = "home_repository_refused"
@@ -133,13 +155,48 @@ _REASON_FIELD = "reason"
 _PATH_CLASSES_FIELD = "path_classes"
 _TEMPLATES_WRITTEN_FIELD = "templates_written"
 _TEMPLATES_PRESERVED_FIELD = "templates_preserved"
+_TEMPLATES_HELD_FIELD = "templates_held"
 _GATE_FINDINGS_FIELD = "gate_findings"
 _GIT_INDEX_INFO_FLAG = "--index-info"
-_GIT_FORCE_REMOVE_FLAG = "--force-remove"
-_GIT_STDIN_FLAG = "--stdin"
 _GIT_NUL_FLAG = "-z"
 _GIT_LITERAL_PATHSPECS_ARGUMENT = "--literal-pathspecs"
 _GIT_UPDATE_INDEX_COMMAND = "update-index"
+_GIT_LS_TREE_COMMAND = "ls-tree"
+_GIT_LS_FILES_COMMAND = "ls-files"
+_GIT_HASH_OBJECT_COMMAND = "hash-object"
+_GIT_CONFIG_COMMAND = "config"
+_GIT_READ_TREE_COMMAND = "read-tree"
+_GIT_ADD_COMMAND = "add"
+_GIT_BOOL_OPTION = "--bool"
+_GIT_GET_OPTION = "--get"
+_GIT_FORCE_OPTION = "--force"
+_GIT_FILE_MODE_KEY = "core.filemode"
+_GIT_HEAD_REVISION = "HEAD"
+_GIT_EMPTY_TREE_OPTION = "--empty"
+_TEMPORARY_INDEX_ENVIRONMENT_VARIABLE = "GIT_INDEX_FILE"
+_TEMPORARY_INDEX_DIRECTORY_PREFIX = "teleclaude-home-activation-"
+_TEMPORARY_INDEX_FILENAME = "index"
+_GIT_BLOB_KIND = "blob"
+_INDEX_STAGE_ZERO = "0"
+_SKIP_WORKTREE_TAG = "S"
+_WORKING_HASH_COUNT_ERROR = "git returned an unexpected number of working file object identifiers"
+_COMMITTED_REVISION_MISSING_ERROR = "activation commit completed without a readable HEAD revision"
+_CANDIDATE_TREE_ENTRY_INVALID_ERROR = "activation commit contains a non-blob candidate path"
+_CANDIDATE_TREE_PATHS_MISMATCH_ERROR = "activation commit does not contain exactly its candidate paths"
+_TEMPORARY_INDEX_CANDIDATES_MISSING_ERROR = "temporary index is missing an activation candidate"
+_TRUE_VALUE = "true"
+_GIT_STDIN_PATHS_OPTION = "--stdin-paths"
+_GIT_STAGE_OPTION = "-s"
+_GIT_VERBOSE_OPTION = "-v"
+_GIT_LITERAL_PATHSPEC_PREFIX = ":(literal)"
+_GIT_SEPARATOR = "--"
+_INSTALLATION_IDENTITY_NAME = "TeleClaude installation"
+_INSTALLATION_IDENTITY_EMAIL = "teleclaude@teleclaude.invalid"
+_WORKING_FILE_MODE = "100755"
+_WORKING_FILE_MODE_NON_EXECUTABLE = "100644"
+_MODE_EXECUTABLE_BIT = stat.S_IXUSR
+_NEWLINE_BYTES = b"\n"
+_TAB = "\t"
 _GATE_REFUSAL_FALLBACK = "The commit gate refused activation without diagnostic output."
 _UTF8 = "utf-8"
 _ASCII = "ascii"
@@ -152,40 +209,63 @@ _HOOK_FIELD_SUFFIX = "'"
 def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResult:
     """Establish or converge the local-only history rooted at ``home``.
 
-    Every home and enabled help desk is first converged to its templates; the
-    commit hooks are installed before staging retained candidates and files the
-    convergence rewrote. A pre-commit refusal returns its findings and restores
-    the index entries activation touched, leaving installation non-fatal.
+    Every home and enabled help desk is first planned from its templates. Under
+    the shared commit lock, activation holds unrecorded targets, applies the
+    remaining writes, and records only those writes. A gate refusal restores
+    activation's working-tree writes, leaving installation non-fatal.
     """
     home.mkdir(parents=True, exist_ok=True)
-    outcomes = materialize_template_targets(home_installation_targets(home), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     repository, created_repository = _repository_at_home(home)
     _remove_remotes(repository)
-    candidates = _activation_candidates(repository, home=home)
-    refused_paths = _unretained_paths(candidates, home=home)
-    if refused_paths:
-        _log_refusal(refused_paths, home=home)
-        return HomeActivationResult(
-            status=HomeActivationStatus.REFUSED,
-            refused_paths=refused_paths,
-            breach_paths=(),
-            created_repository=created_repository,
-            recorded_paths=0,
-        )
+    plan = plan_template_installation(home_installation_targets(home), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     install_code_hooks(home)
-    recorded = tuple(sorted({*candidates, *_refreshed_retained_paths(outcomes, home=home)}))
-    if recorded:
-        prior_entries = _index_entries_for_paths(repository, recorded)
-        repository.index.add([path.as_posix() for path in recorded])
-        if _index_requires_commit(repository):
+    held_paths: tuple[Path, ...] = ()
+    unrestored_paths: tuple[Path, ...] = ()
+    with main_branch_lock():
+        wait_for_index_lock_clear(home)
+        retained_files = tuple(
+            file
+            for target in plan.targets
+            for file in target.files
+            if home_membership(file.target, home=home) is HomeMembership.RETAINED
+        )
+        held_targets = _held_template_targets(repository, retained_files, home=home)
+        held_paths = tuple(sorted(target.relative_to(home) for target in held_targets))
+        prior_contents = _snapshot_template_contents(retained_files, held_targets, home=home)
+        outcomes = apply_template_installation(plan, held_targets=frozenset(held_targets))
+        recorded = _refreshed_retained_paths(outcomes, home=home)
+        refused_paths = _unretained_paths(recorded, home=home)
+        if refused_paths:
+            _log_refusal(refused_paths, home=home)
+            unrestored_paths = _restore_written_templates(
+                recorded,
+                plan,
+                prior_contents,
+                home=home,
+            )
+            return HomeActivationResult(
+                status=HomeActivationStatus.REFUSED,
+                refused_paths=refused_paths,
+                breach_paths=(),
+                created_repository=created_repository,
+                recorded_paths=0,
+                held_paths=held_paths,
+                unrestored_paths=unrestored_paths,
+            )
+        if recorded:
             try:
-                repository.index.commit(_ACTIVATION_COMMIT_MESSAGE)
+                _commit_candidates(repository, recorded)
             except HookExecutionError as error:
                 if Path(error.command[0]).name != _PRE_COMMIT_HOOK_NAME:
                     raise
-                _restore_index_entries(repository, recorded, prior_entries)
                 findings = _hook_findings(error)
                 _log_gate_refusal(findings)
+                unrestored_paths = _restore_written_templates(
+                    recorded,
+                    plan,
+                    prior_contents,
+                    home=home,
+                )
                 return HomeActivationResult(
                     status=HomeActivationStatus.GATE_REFUSED,
                     refused_paths=(),
@@ -193,6 +273,8 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
                     created_repository=created_repository,
                     recorded_paths=0,
                     gate_findings=findings,
+                    held_paths=held_paths,
+                    unrestored_paths=unrestored_paths,
                 )
     ensure_git_filters(home, enabled=True)
     breach_paths = _recorded_breaches(repository, home=home)
@@ -203,40 +285,281 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
         breach_paths=breach_paths,
         created_repository=created_repository,
         recorded_paths=len(recorded),
+        held_paths=held_paths,
     )
 
 
-def _index_entries_for_paths(repository: Repo, paths: tuple[Path, ...]) -> dict[tuple[str, int], IndexEntry]:
-    """Snapshot prior index entries for only the paths activation will stage."""
-    selected = {path.as_posix() for path in paths}
-    entries: dict[tuple[str, int], IndexEntry] = {}
-    for key, entry in repository.index.entries.items():
-        path = os.fsdecode(key[0])
-        if path in selected:
-            entries[(path, key[1])] = entry
+def _held_template_targets(
+    repository: Repo,
+    files: tuple[PlannedTemplateFile, ...],
+    *,
+    home: Path,
+) -> set[Path]:
+    """Return retained template targets whose current state is not clean or absent."""
+    targets = tuple(file.target for file in files)
+    relative_paths = tuple(target.relative_to(home) for target in targets)
+    if not relative_paths:
+        return set()
+    recorded = _recorded_template_entries(repository, relative_paths)
+    indexed = _indexed_template_entries(repository, relative_paths)
+    present_paths = tuple(
+        relative for relative, target in zip(relative_paths, targets) if target.is_file() and not target.is_symlink()
+    )
+    working = _working_template_hashes(repository, present_paths)
+    file_mode_enabled = _core_file_mode_enabled(repository)
+    held: set[Path] = set()
+    for relative, target in zip(relative_paths, targets):
+        recorded_entry = recorded.get(relative)
+        index_entries = indexed.get(relative, ())
+        exists = target.exists() or target.is_symlink()
+        if not exists and recorded_entry is None and not index_entries:
+            continue
+        if (
+            not target.is_file()
+            or target.is_symlink()
+            or recorded_entry is None
+            or len(index_entries) != 1
+            or relative not in working
+        ):
+            held.add(target)
+            continue
+        index_entry = index_entries[0]
+        if (
+            index_entry.stage != 0
+            or index_entry.assume_unchanged
+            or index_entry.skip_worktree
+            or index_entry.mode != recorded_entry.mode
+            or index_entry.object_id != recorded_entry.object_id
+            or working[relative] != recorded_entry.object_id
+        ):
+            held.add(target)
+            continue
+        if file_mode_enabled and _working_file_mode(target) != recorded_entry.mode:
+            held.add(target)
+    return held
+
+
+def _recorded_template_entries(repository: Repo, paths: tuple[Path, ...]) -> dict[Path, _RecordedGitEntry]:
+    if not repository.head.is_valid():
+        return {}
+    pathspecs = tuple(_GIT_LITERAL_PATHSPEC_PREFIX + path.as_posix() for path in paths)
+    output = _run_git_command(
+        repository,
+        (
+            _GIT_LS_TREE_COMMAND,
+            _LS_FILES_NUL_OPTION,
+            _GIT_HEAD_REVISION,
+            _GIT_SEPARATOR,
+            *pathspecs,
+        ),
+    )
+    entries: dict[Path, _RecordedGitEntry] = {}
+    for record in output.split(_NUL):
+        if not record:
+            continue
+        metadata, raw_path = record.split(_TAB, maxsplit=1)
+        mode, _kind, object_id = metadata.split()
+        entries[Path(raw_path)] = _RecordedGitEntry(mode, object_id)
     return entries
 
 
-def _restore_index_entries(
-    repository: Repo,
-    paths: tuple[Path, ...],
-    prior_entries: dict[tuple[str, int], IndexEntry],
-) -> None:
-    """Restore activation paths with Git while retaining all other index entries."""
-    path_stream = b"".join(os.fsencode(path.as_posix()) + _NUL_BYTES for path in paths)
-    _run_index_update(
+def _indexed_template_entries(repository: Repo, paths: tuple[Path, ...]) -> dict[Path, tuple[_IndexGitEntry, ...]]:
+    pathspecs = tuple(_GIT_LITERAL_PATHSPEC_PREFIX + path.as_posix() for path in paths)
+    output = _run_git_command(
         repository,
-        (_GIT_NUL_FLAG, _GIT_FORCE_REMOVE_FLAG, _GIT_STDIN_FLAG),
-        path_stream,
+        (
+            _GIT_LS_FILES_COMMAND,
+            _GIT_STAGE_OPTION,
+            _GIT_VERBOSE_OPTION,
+            _LS_FILES_NUL_OPTION,
+            _GIT_SEPARATOR,
+            *pathspecs,
+        ),
     )
-    if not prior_entries:
-        return
-    records: list[bytes] = []
-    for (path, stage), entry in sorted(prior_entries.items()):
-        record = f"{entry.mode:o} {entry.hexsha} {stage}\t".encode(_ASCII) + os.fsencode(path)
-        records.append(record + _NUL_BYTES)
-    if records:
-        _run_index_update(repository, (_GIT_NUL_FLAG, _GIT_INDEX_INFO_FLAG), b"".join(records))
+    entries: dict[Path, list[_IndexGitEntry]] = {}
+    for record in output.split(_NUL):
+        if not record:
+            continue
+        metadata, raw_path = record.split(_TAB, maxsplit=1)
+        tag, mode, object_id, stage = metadata.split()
+        index_entry = _IndexGitEntry(
+            mode=mode,
+            object_id=object_id,
+            stage=int(stage),
+            assume_unchanged=tag.islower(),
+            skip_worktree=tag.upper() == _SKIP_WORKTREE_TAG,
+        )
+        entries.setdefault(Path(raw_path), []).append(index_entry)
+    return {path: tuple(path_entries) for path, path_entries in entries.items()}
+
+
+def _working_template_hashes(repository: Repo, paths: tuple[Path, ...]) -> dict[Path, str]:
+    if not paths:
+        return {}
+    payload = _NEWLINE_BYTES.join(os.fsencode(path.as_posix()) for path in paths) + _NEWLINE_BYTES
+    output = _run_git_command_with_input(repository, (_GIT_HASH_OBJECT_COMMAND, _GIT_STDIN_PATHS_OPTION), payload)
+    object_ids = output.splitlines()
+    if len(object_ids) != len(paths):
+        raise RuntimeError(_WORKING_HASH_COUNT_ERROR)
+    return {path: object_id for path, object_id in zip(paths, object_ids)}
+
+
+def _core_file_mode_enabled(repository: Repo) -> bool:
+    try:
+        return (
+            _run_git_command(
+                repository, (_GIT_CONFIG_COMMAND, _GIT_BOOL_OPTION, _GIT_GET_OPTION, _GIT_FILE_MODE_KEY)
+            ).strip()
+            == _TRUE_VALUE
+        )
+    except GitCommandError as error:
+        if error.status == _GIT_CONFIG_NO_MATCH_STATUS:
+            return True
+        raise
+
+
+def _working_file_mode(path: Path) -> str:
+    permissions = path.stat().st_mode
+    return _WORKING_FILE_MODE if permissions & _MODE_EXECUTABLE_BIT else _WORKING_FILE_MODE_NON_EXECUTABLE
+
+
+def _run_git_command(repository: Repo, arguments: Sequence[str]) -> str:
+    execute = cast(Callable[..., object], repository.git.execute)
+    return cast(str, execute([GIT_EXECUTABLE, *arguments]))
+
+
+def _run_git_command_with_input(repository: Repo, arguments: Sequence[str], payload: bytes) -> str:
+    with TemporaryFile() as stream:
+        stream.write(payload)
+        stream.seek(0)
+        execute = cast(Callable[..., object], repository.git.execute)
+        return cast(str, execute([GIT_EXECUTABLE, *arguments], istream=stream))
+
+
+def _snapshot_template_contents(
+    files: tuple[PlannedTemplateFile, ...],
+    held_targets: set[Path],
+    *,
+    home: Path,
+) -> dict[Path, bytes | None]:
+    contents: dict[Path, bytes | None] = {}
+    for file in files:
+        target = file.target
+        if target in held_targets:
+            continue
+        relative = target.relative_to(home)
+        contents[relative] = target.read_bytes() if target.exists() else None
+    return contents
+
+
+def _commit_candidates(repository: Repo, paths: tuple[Path, ...]) -> None:
+    previous_head = _head_revision(repository)
+    with TemporaryDirectory(dir=repository.git_dir, prefix=_TEMPORARY_INDEX_DIRECTORY_PREFIX) as directory:
+        index_path = Path(directory) / _TEMPORARY_INDEX_FILENAME
+        environment = no_autostash_env()
+        environment[_TEMPORARY_INDEX_ENVIRONMENT_VARIABLE] = os.fspath(index_path)
+        read_tree_arguments = (
+            (_GIT_READ_TREE_COMMAND, _GIT_HEAD_REVISION)
+            if previous_head is not None
+            else (_GIT_READ_TREE_COMMAND, _GIT_EMPTY_TREE_OPTION)
+        )
+        _run_git_command_with_environment(repository, read_tree_arguments, environment)
+        pathspecs = tuple(_GIT_LITERAL_PATHSPEC_PREFIX + path.as_posix() for path in paths)
+        _run_git_command_with_environment(
+            repository,
+            (_GIT_ADD_COMMAND, _GIT_FORCE_OPTION, _GIT_SEPARATOR, *pathspecs),
+            environment,
+        )
+        temporary_index = IndexFile(repository, index_path)
+        # Snapshot hooks may mutate the temporary on-disk index; write_tree uses these cached candidate entries.
+        indexed_paths = {os.fsdecode(entry.path) for entry in temporary_index.entries.values()}
+        if not {path.as_posix() for path in paths}.issubset(indexed_paths):
+            raise RuntimeError(_TEMPORARY_INDEX_CANDIDATES_MISSING_ERROR)
+        try:
+            commit = temporary_index.commit(
+                _ACTIVATION_COMMIT_MESSAGE,
+                author=Actor(_INSTALLATION_IDENTITY_NAME, _INSTALLATION_IDENTITY_EMAIL),
+                committer=Actor(_INSTALLATION_IDENTITY_NAME, _INSTALLATION_IDENTITY_EMAIL),
+            )
+        except HookExecutionError as error:
+            if Path(error.command[0]).name == _POST_COMMIT_HOOK_NAME and _head_revision(repository) != previous_head:
+                _synchronize_candidate_index(repository, _head_revision(repository), paths)
+            raise
+        _synchronize_candidate_index(repository, commit.hexsha, paths)
+
+
+def _head_revision(repository: Repo) -> str | None:
+    return repository.head.commit.hexsha if repository.head.is_valid() else None
+
+
+def _synchronize_candidate_index(repository: Repo, revision: str | None, paths: tuple[Path, ...]) -> None:
+    if revision is None:
+        raise RuntimeError(_COMMITTED_REVISION_MISSING_ERROR)
+    pathspecs = tuple(_GIT_LITERAL_PATHSPEC_PREFIX + path.as_posix() for path in paths)
+    output = _run_git_command(
+        repository,
+        (
+            _GIT_LS_TREE_COMMAND,
+            _LS_TREE_RECURSIVE_OPTION,
+            _LS_FILES_NUL_OPTION,
+            revision,
+            _GIT_SEPARATOR,
+            *pathspecs,
+        ),
+    )
+    entries: dict[Path, tuple[str, str]] = {}
+    for record in output.split(_NUL):
+        if not record:
+            continue
+        metadata, raw_path = record.split(_TAB, maxsplit=1)
+        mode, kind, object_id = metadata.split()
+        if kind != _GIT_BLOB_KIND:
+            raise RuntimeError(_CANDIDATE_TREE_ENTRY_INVALID_ERROR)
+        entries[Path(raw_path)] = (mode, object_id)
+    if entries.keys() != set(paths):
+        raise RuntimeError(_CANDIDATE_TREE_PATHS_MISMATCH_ERROR)
+    records = tuple(
+        f"{mode} {object_id} {_INDEX_STAGE_ZERO}{_TAB}".encode(_ASCII) + os.fsencode(path.as_posix()) + _NUL_BYTES
+        for path, (mode, object_id) in sorted(entries.items())
+    )
+    _run_index_update(repository, (_GIT_NUL_FLAG, _GIT_INDEX_INFO_FLAG), b"".join(records))
+
+
+def _run_git_command_with_environment(
+    repository: Repo, arguments: Sequence[str], environment: Mapping[str, str]
+) -> str:
+    execute = cast(Callable[..., object], repository.git.execute)
+    return cast(str, execute([GIT_EXECUTABLE, *arguments], env=dict(environment)))
+
+
+def _restore_written_templates(
+    paths: tuple[Path, ...],
+    plan: TemplateInstallationPlan,
+    prior_contents: Mapping[Path, bytes | None],
+    *,
+    home: Path,
+) -> tuple[Path, ...]:
+    expected_contents = {
+        file.target.relative_to(home): file.content for target in plan.targets for file in target.files
+    }
+    unrestored: list[Path] = []
+    for relative in paths:
+        target = home / relative
+        try:
+            if target.is_symlink() or not target.is_file():
+                unrestored.append(relative)
+                continue
+            if target.read_bytes() != expected_contents[relative]:
+                unrestored.append(relative)
+                continue
+            previous = prior_contents[relative]
+            if previous is None:
+                target.unlink()
+            else:
+                target.write_bytes(previous)
+        except OSError:
+            unrestored.append(relative)
+    return tuple(unrestored)
 
 
 def _run_index_update(repository: Repo, arguments: Sequence[str], payload: bytes) -> None:
@@ -320,25 +643,6 @@ def _publication_destination_settings(repository: Repo) -> tuple[str, ...]:
     return tuple(dict.fromkeys(output.splitlines()))
 
 
-def _activation_candidates(repository: Repo, *, home: Path) -> tuple[Path, ...]:
-    output = repository.git.ls_files(
-        _LS_FILES_OTHERS_OPTION,
-        _LS_FILES_EXCLUDE_STANDARD_OPTION,
-        _LS_FILES_NUL_OPTION,
-    )
-    candidates = {Path(candidate) for candidate in output.split(_NUL) if candidate}
-    candidates.add(home_retained_set_path(home).relative_to(home))
-    return tuple(sorted(candidates))
-
-
-def _index_requires_commit(repository: Repo) -> bool:
-    return not repository.head.is_valid() or repository.is_dirty(
-        index=True,
-        working_tree=False,
-        untracked_files=False,
-    )
-
-
 def _unretained_paths(candidates: tuple[Path, ...], *, home: Path) -> tuple[Path, ...]:
     return tuple(
         candidate
@@ -404,6 +708,7 @@ def _log_completion(
             _BREACH_COUNT_FIELD: len(breach_paths),
             _TEMPLATES_WRITTEN_FIELD: _count_disposition(outcomes, HomeTemplateDisposition.WRITTEN),
             _TEMPLATES_PRESERVED_FIELD: _count_disposition(outcomes, HomeTemplateDisposition.PRESERVED),
+            _TEMPLATES_HELD_FIELD: _count_disposition(outcomes, HomeTemplateDisposition.HELD),
             _DECLARATION_DIGEST_FIELD: home_retained_set_digest(),
             _OUTCOME_FIELD: HomeActivationStatus.ACTIVATED,
             _REASON_FIELD: HomeActivationReason.CONVERGED,
