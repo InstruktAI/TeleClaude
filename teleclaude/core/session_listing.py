@@ -63,7 +63,6 @@ def build_session_listing_selection(
     *,
     include_closed: bool,
     session_ids: frozenset[str] | None,
-    now: datetime | None = None,
 ) -> SessionListingSelection:
     """Build the local store predicates for one listing request."""
     reach: SessionSubjectReach = resolver.session_subject_reach(caller)
@@ -72,7 +71,7 @@ def build_session_listing_selection(
     )
     closed_since = None
     if include_closed and session_ids is None:
-        closed_since = (now or datetime.now(UTC)) - CLOSED_SESSION_LISTING_WINDOW
+        closed_since = datetime.now(UTC) - CLOSED_SESSION_LISTING_WINDOW
     return SessionListingSelection(
         subject_tokens=subject_tokens,
         closed_since=closed_since,
