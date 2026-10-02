@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from teleclaude.core.reconciliation.launcher_identity import LauncherIdentityIntent
+from teleclaude.install.launcher_identity import run_and_present_launcher_identity
 from teleclaude.project_setup.macos_setup import (
-    install_launchers,
     install_tmux_server_service,
     is_macos,
     run_permissions_probe,
@@ -45,7 +46,9 @@ def main() -> int:
     project_root: Path = args.project_root.resolve()
 
     if args.action in ("install-launchers", "run-all"):
-        install_launchers(project_root)
+        result = run_and_present_launcher_identity(LauncherIdentityIntent.CONVERGE, project_root)
+        if result.failure_cause is not None:
+            return 1
 
     if args.action in ("install-tmux-server", "run-all"):
         install_tmux_server_service()

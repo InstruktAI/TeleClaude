@@ -13,12 +13,14 @@ import time
 from pathlib import Path
 from typing import TypedDict
 
-from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
+from teleclaude.core.reconciliation.launcher_identity import LauncherBundleSignature
 from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.runtime.binaries import resolve_tmux_binary
 
 _TMUX_SERVER_LABEL = "ai.instrukt.tmux-server"
 _TMUX_SERVER_SWITCH = "--teleclaude-server"
+_INSTALLED_LAUNCHER_MESSAGE = "make install: installed {bundle_name} to {target_app}"
+_APPLICATIONS_DIRECTORY_NAME = "Applications"
 
 
 class _TmuxServerPlist(TypedDict):
@@ -37,36 +39,23 @@ def is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def install_launchers(project_root: Path) -> None:
-    """Install launcher bundles into ``~/Applications`` on macOS.
-
-    Idempotent: existing target bundles are replaced.
-    """
+def install_verified_launchers(
+    bundles: tuple[LauncherBundleSignature, ...],
+    *,
+    applications_directory: Path | None = None,
+) -> None:
+    """Replace installed launcher apps from a complete set already verified by reconciliation."""
     if not is_macos():
         return
 
-    applications_dir = Path.home() / "Applications"
+    applications_dir = applications_directory or Path.home() / _APPLICATIONS_DIRECTORY_NAME
     applications_dir.mkdir(parents=True, exist_ok=True)
-
-    launcher_apps = ("TmuxLauncher.app",) + tuple(
-        AGENT_REGISTRY[name].executable.macos_launcher_app for name in AgentName
-    )
-    missing_apps = [
-        project_root / "bin" / app_name for app_name in launcher_apps if not (project_root / "bin" / app_name).is_dir()
-    ]
-    if missing_apps:
-        missing_names = ", ".join(app.name for app in missing_apps)
-        raise FileNotFoundError(
-            f"make install: launcher bundle(s) missing: {missing_names}; run 'make launchers' first"
-        )
-
-    for app_name in launcher_apps:
-        source_app = project_root / "bin" / app_name
-        target_app = applications_dir / app_name
+    for bundle in bundles:
+        target_app = applications_dir / bundle.bundle_name
         if target_app.exists():
             shutil.rmtree(target_app)
-        shutil.copytree(source_app, target_app, symlinks=True)
-        print(f"make install: installed {app_name} to {target_app}")
+        shutil.copytree(bundle.path, target_app, symlinks=True)
+        print(_INSTALLED_LAUNCHER_MESSAGE.format(bundle_name=bundle.bundle_name, target_app=target_app))
 
 
 def _tmux_server_plist(tmux_wrapper: Path, teleclaude_home: Path) -> _TmuxServerPlist:

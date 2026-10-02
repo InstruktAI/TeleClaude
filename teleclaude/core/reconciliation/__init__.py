@@ -15,6 +15,17 @@ from teleclaude.core.reconciliation.feature_ids import (
     FeatureMark,
     decode_capability_set,
 )
+from teleclaude.core.reconciliation.launcher_identity import (
+    LauncherAuthorityReadiness,
+    LauncherBuildDisposition,
+    LauncherBuildRecord,
+    LauncherBundleSignature,
+    LauncherIdentityEffects,
+    LauncherIdentityFailureCause,
+    LauncherIdentityIntent,
+    LauncherIdentityResult,
+    converge_launcher_identity,
+)
 
 __all__ = [
     "CONVERSATION_ENTRY_FEATURE_ID",
@@ -30,5 +41,14 @@ __all__ = [
     "FeatureMark",
     "FleetCapabilityEntry",
     "FleetCapabilityMap",
+    "LauncherAuthorityReadiness",
+    "LauncherBuildDisposition",
+    "LauncherBuildRecord",
+    "LauncherBundleSignature",
+    "LauncherIdentityEffects",
+    "LauncherIdentityFailureCause",
+    "LauncherIdentityIntent",
+    "LauncherIdentityResult",
+    "converge_launcher_identity",
     "decode_capability_set",
 ]

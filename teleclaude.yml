@@ -146,6 +146,7 @@ checkpoint:
         include:
           - teleclaude/install/**
           - teleclaude/project_setup/**
+          - src/Launcher/**
           - teleclaude/hooks/adapters/**
           - templates/**
       actions:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
+import sys
 import time
 import tomllib
 from collections.abc import Awaitable, Callable
@@ -22,6 +24,25 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_DARWIN_PLATFORM = "darwin"
+_LAUNCHER_IDENTITY_MODULE = "teleclaude.install.launcher_identity"
+_PYTHON_MODULE_FLAG = "-m"
+_LAUNCHER_IDENTITY_INTENT_FLAG = "--intent"
+_LAUNCHER_IDENTITY_CONVERGE_INTENT = "converge"
+_LAUNCHER_IDENTITY_PROJECT_FLAG = "--project-root"
+_LAUNCHER_IDENTITY_TIMEOUT_SECONDS = 60.0
+_LAUNCHER_IDENTITY_STATUS = "installing_launchers"
+_LAUNCHER_IDENTITY_TIMEOUT_MESSAGE = "launcher identity install timed out"
+_LAUNCHER_IDENTITY_FAILURE_MESSAGE = "launcher identity install failed"
+_UPDATE_FAILED_STATUS = "update_failed"
+_LAUNCHER_IDENTITY_PROGRESS_LOG = "Deploy: converging launcher identity"
+_LAUNCHER_IDENTITY_RESULT_LOG = "Deploy: launcher identity result: %s"
+_LAUNCHER_IDENTITY_FAILURE_LOG = "Deploy: %s: %s"
+_LAUNCHER_IDENTITY_TIMEOUT_LOG = "Deploy: %s"
+_LAUNCHER_IDENTITY_FAILURE_DETAIL = "{message}: {detail}"
+_STATUS_FIELD = "status"
+_TIMESTAMP_FIELD = "timestamp"
+_ERROR_FIELD = "error"
 
 
 def _read_version_from_pyproject() -> str:
@@ -174,6 +195,55 @@ async def execute_update(
             await update_status({"status": "update_failed", "error": f"make install failed: {err}"})
             return
         logger.info("Deploy: make install successful")
+
+        if sys.platform == _DARWIN_PLATFORM:
+            await update_status({_STATUS_FIELD: _LAUNCHER_IDENTITY_STATUS, _TIMESTAMP_FIELD: time.time()})
+            logger.info(_LAUNCHER_IDENTITY_PROGRESS_LOG)
+            # A separate bounded process gives this update stage an independent deadline and failure result.
+            launcher_identity = await asyncio.create_subprocess_exec(
+                sys.executable,
+                _PYTHON_MODULE_FLAG,
+                _LAUNCHER_IDENTITY_MODULE,
+                _LAUNCHER_IDENTITY_INTENT_FLAG,
+                _LAUNCHER_IDENTITY_CONVERGE_INTENT,
+                _LAUNCHER_IDENTITY_PROJECT_FLAG,
+                str(_REPO_ROOT),
+                cwd=_REPO_ROOT,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
+            try:
+                launcher_output, launcher_error = await asyncio.wait_for(
+                    launcher_identity.communicate(),
+                    timeout=_LAUNCHER_IDENTITY_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                try:
+                    os.killpg(launcher_identity.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                await launcher_identity.wait()
+                logger.error(_LAUNCHER_IDENTITY_TIMEOUT_LOG, _LAUNCHER_IDENTITY_TIMEOUT_MESSAGE)
+                await update_status(
+                    {_STATUS_FIELD: _UPDATE_FAILED_STATUS, _ERROR_FIELD: _LAUNCHER_IDENTITY_TIMEOUT_MESSAGE}
+                )
+                return
+
+            if launcher_identity.returncode != 0:
+                detail = launcher_error.decode().strip() or launcher_output.decode().strip()
+                logger.error(_LAUNCHER_IDENTITY_FAILURE_LOG, _LAUNCHER_IDENTITY_FAILURE_MESSAGE, detail)
+                await update_status(
+                    {
+                        _STATUS_FIELD: _UPDATE_FAILED_STATUS,
+                        _ERROR_FIELD: _LAUNCHER_IDENTITY_FAILURE_DETAIL.format(
+                            message=_LAUNCHER_IDENTITY_FAILURE_MESSAGE,
+                            detail=detail,
+                        ),
+                    }
+                )
+                return
+            logger.info(_LAUNCHER_IDENTITY_RESULT_LOG, launcher_output.decode().strip())
 
         # Restart
         await update_status({"status": "restarting", "timestamp": time.time()})

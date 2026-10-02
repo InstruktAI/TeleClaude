@@ -1357,11 +1357,7 @@ install_global_cli() {
     print_success "Installed telec at $TELEC_BIN_DIR/telec"
 }
 
-# Everything on macOS that this installer cannot do for the human, surfaced in
-# one block before any work starts. Read-only: it inspects, never creates, so a
-# blocked preflight leaves the machine exactly as it found it. Called only when
-# the launcher steps it gates will actually run, so it never blocks a CI install
-# on a compiler and a certificate CI has no use for.
+# Check that the macOS launcher compiler is present before installation work.
 preflight_macos() {
     if [ "$OS" != "macos" ]; then
         return 0
@@ -1369,11 +1365,6 @@ preflight_macos() {
     print_header "macOS Preflight"
 
     local blockers=0
-    local authority_status=""
-    local authority_name=""
-    local authority_expiry=""
-    local inspection=""
-
     if command -v swiftc > /dev/null 2>&1; then
         print_info "Xcode Command Line Tools present (swiftc)"
     else
@@ -1382,43 +1373,6 @@ preflight_macos() {
         echo "        It opens a macOS installer dialog; rerun 'make install' when it finishes."
         blockers=$((blockers + 1))
     fi
-
-    if inspection="$("$INSTALL_DIR/src/Launcher/signing-authority.sh" inspect 2>&1)"; then
-        authority_status="$(printf '%s\n' "$inspection" | sed -n 's/^status=//p')"
-        authority_name="$(printf '%s\n' "$inspection" | sed -n 's/^authority=//p')"
-        authority_expiry="$(printf '%s\n' "$inspection" | sed -n 's/^not_after=//p')"
-    else
-        authority_status="unreadable"
-    fi
-
-    case "$authority_status" in
-        ok)
-            print_info "Code-signing authority '$authority_name' valid until $authority_expiry"
-            ;;
-        missing)
-            print_info "Code-signing authority '$authority_name' will be created automatically."
-            echo "        macOS asks for your login keychain password once while it is stored."
-            ;;
-        expiring)
-            print_warning "Code-signing authority '$authority_name' expires $authority_expiry."
-            echo "        Signing still works. Renewing issues a new certificate and voids"
-            echo "        every launcher's Full Disk Access grant, so do it deliberately:"
-            echo "        make launchers-renew-authority"
-            ;;
-        expired | nokey | ambiguous)
-            print_error "Code-signing authority '$authority_name' is unusable ($authority_status)."
-            printf '%s\n' "$inspection" | sed 's/^/        /'
-            echo "        Resolve it, then rerun 'make install':"
-            echo "          ambiguous        — security delete-identity -Z <sha1> for the wrong ones"
-            echo "          expired / nokey  — make launchers-renew-authority (voids existing grants)"
-            blockers=$((blockers + 1))
-            ;;
-        *)
-            print_error "Could not read the code-signing authority's state."
-            printf '%s\n' "$inspection" | sed 's/^/        /'
-            blockers=$((blockers + 1))
-            ;;
-    esac
 
     if [ "$blockers" -gt 0 ]; then
         print_error "Preflight found $blockers item(s) only you can resolve. Nothing was changed."
@@ -1439,42 +1393,14 @@ run_macos_setup_action() {
     "${cmd[@]}"
 }
 
-# The launcher bundles are gitignored build outputs, so a fresh checkout has
-# none. Building them here keeps the compile/sign step in its single owner while
-# removing the manual `make launchers` round trip from a first install.
-build_macos_launchers() {
+run_macos_launcher_identity() {
     if [ "$OS" != "macos" ]; then
         return 0
     fi
-    print_header "Building macOS Launcher Apps"
-    if "$INSTALL_DIR/src/Launcher/build.sh"; then
-        print_success "Launcher apps built and signed"
-    else
-        print_error "Failed to build launcher apps"
+    if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.install.launcher_identity \
+        --intent converge --project-root "$INSTALL_DIR"; then
+        print_error "Launcher signing and installation failed"
         exit 1
-    fi
-}
-
-install_macos_launchers() {
-    if [ "$OS" != "macos" ]; then
-        return 0
-    fi
-    print_header "Deploying macOS Launcher Apps"
-    if run_macos_setup_action "install-launchers"; then
-        print_success "Launcher apps installed"
-    else
-        print_error "Failed to install launcher apps"
-        exit 1
-    fi
-
-    local bundles=()
-    local app_name
-    for app_name in "$INSTALL_DIR"/bin/*.app; do
-        [ -d "$app_name" ] || continue
-        bundles+=("$HOME/Applications/$(basename "$app_name")")
-    done
-    if [ ${#bundles[@]} -gt 0 ]; then
-        "$INSTALL_DIR/src/Launcher/signing-authority.sh" audit-bundles "${bundles[@]}" || true
     fi
 }
 
@@ -1631,8 +1557,7 @@ main() {
     _ensure_local_bin_on_path
 
     if [ "$CI_MODE" = false ]; then
-        build_macos_launchers
-        install_macos_launchers
+        run_macos_launcher_identity
         install_macos_tmux_server
         install_service
         withdraw_docs_watch_service

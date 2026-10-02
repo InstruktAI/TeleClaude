@@ -10,10 +10,10 @@ install:
 	@./bin/install.sh
 
 launchers:
-	@src/Launcher/build.sh
+	@.venv/bin/python -m teleclaude.install.launcher_identity --intent build --project-root "$(CURDIR)"
 
 launchers-renew-authority:
-	@src/Launcher/signing-authority.sh replace
+	@.venv/bin/python -m teleclaude.install.launcher_identity --intent renew --project-root "$(CURDIR)"
 
 link:
 	@./bin/init/link_shared_scripts.sh
