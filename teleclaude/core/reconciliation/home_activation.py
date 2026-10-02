@@ -133,6 +133,7 @@ class _CommitGateUnavailable(RuntimeError):
 _LOGGER = get_logger("teleclaude.reconciliation.home_repository")
 _NUL = "\0"
 _NUL_BYTES = b"\0"
+_EMPTY_BYTES = b""
 _LS_FILES_NUL_OPTION = "-z"
 _LS_TREE_RECURSIVE_OPTION = "-r"
 _REMOTE_CONFIG_SECTION_PREFIX = "remote."
@@ -179,6 +180,7 @@ _GIT_HASH_OBJECT_COMMAND = "hash-object"
 _GIT_CONFIG_COMMAND = "config"
 _GIT_READ_TREE_COMMAND = "read-tree"
 _GIT_ADD_COMMAND = "add"
+_GIT_ENV_OPTION = "env"
 _GIT_REV_PARSE_COMMAND = "rev-parse"
 _GIT_PATH_OPTION = "--git-path"
 _PRE_COMMIT_HOOK_RELATIVE_PATH = "hooks/pre-commit"
@@ -194,6 +196,8 @@ _TEMPORARY_INDEX_DIRECTORY_PREFIX = "teleclaude-home-activation-"
 _TEMPORARY_INDEX_FILENAME = "index"
 _GIT_BLOB_KIND = "blob"
 _INDEX_STAGE_ZERO = "0"
+_INDEX_INFO_RECORD = "{mode} {object_id} {stage}{tab}"
+_GIT_TREE_METADATA_SEPARATOR = " "
 _SKIP_WORKTREE_TAG = "S"
 _WORKING_HASH_COUNT_ERROR = "git returned an unexpected number of working file object identifiers"
 _COMMITTED_REVISION_MISSING_ERROR = "activation commit completed without a readable HEAD revision"
@@ -219,6 +223,7 @@ _GATE_HOOK_PATH_MISMATCH = "Git's configured pre-commit hook path differs from G
 _GATE_HOOK_MISSING = "GitPython's pre-commit hook file is missing."
 _GATE_HOOK_NOT_EXECUTABLE = "GitPython's pre-commit hook is not executable."
 _GATE_VERIFICATION_FAILED = "Could not verify the installed pre-commit hook: {error}"
+_MISSING_HOOK_OUTCOME = "missing"
 _UTF8 = "utf-8"
 _ASCII = "ascii"
 _REPLACEMENT = "replace"
@@ -454,7 +459,7 @@ def _run_git_command(
     """Execute Git with one optional input stream and child-only environment."""
     execute = cast(Callable[..., object], repository.git.execute)
     command = [GIT_EXECUTABLE, *arguments]
-    options = {"env": dict(environment)} if environment is not None else {}
+    options = {_GIT_ENV_OPTION: dict(environment)} if environment is not None else {}
     if payload is None:
         return cast(str, execute(command, **options))
     with TemporaryFile() as stream:
@@ -486,7 +491,7 @@ def _require_commit_gate(repository: Repo, hook_outcomes: Mapping[str, HookConve
         HookConvergenceOutcome.WRITTEN,
         HookConvergenceOutcome.UNCHANGED,
     ):
-        label = outcome.value if outcome is not None else "missing"
+        label = outcome.value if outcome is not None else _MISSING_HOOK_OUTCOME
         raise _CommitGateUnavailable(_GATE_INSTALLATION_FAILED.format(outcome=label))
     try:
         hook_path = Path(
@@ -570,10 +575,12 @@ def _synchronize_candidate_index(repository: Repo, revision: str | None, paths: 
     if entries.keys() != set(paths):
         raise RuntimeError(_CANDIDATE_TREE_PATHS_MISMATCH_ERROR)
     records = tuple(
-        f"{mode} {object_id} {_INDEX_STAGE_ZERO}{_TAB}".encode(_ASCII) + os.fsencode(path.as_posix()) + _NUL_BYTES
+        _INDEX_INFO_RECORD.format(mode=mode, object_id=object_id, stage=_INDEX_STAGE_ZERO, tab=_TAB).encode(_ASCII)
+        + os.fsencode(path.as_posix())
+        + _NUL_BYTES
         for path, (mode, object_id) in sorted(entries.items())
     )
-    _run_index_update(repository, (_GIT_NUL_FLAG, _GIT_INDEX_INFO_FLAG), b"".join(records))
+    _run_index_update(repository, (_GIT_NUL_FLAG, _GIT_INDEX_INFO_FLAG), _EMPTY_BYTES.join(records))
 
 
 def _restore_written_templates(
@@ -720,7 +727,7 @@ def _parse_tree_entries(tree: str) -> tuple[_TreeGitEntry, ...]:
         if not entry:
             continue
         metadata, raw_path = entry.split(_TAB, maxsplit=1)
-        mode, kind, object_id = metadata.split(" ", maxsplit=2)
+        mode, kind, object_id = metadata.split(_GIT_TREE_METADATA_SEPARATOR, maxsplit=2)
         entries.append(_TreeGitEntry(Path(raw_path), mode, kind, object_id))
     return tuple(entries)
 
