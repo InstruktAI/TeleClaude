@@ -85,15 +85,14 @@ And it names the step, the missing input and how to provide it
 #### UC-FMB3: Optional desktop applications are installed only by choice
 
 ```gherkin
-Given a machine without the optional desktop applications, or with one of them present but not its companion service
+Given an optional desktop application, or its companion service, is absent from the machine
 When installation runs with no terminal
-Then the run adds no optional application and no companion service
-And an optional application already present stays as it was
-When an operator at a terminal runs installation and declines them
-Then the run adds none of them
-And an optional application already present stays as it was
-When an operator at a terminal runs installation and chooses one
-Then the run adds that application
+Then the run adds neither of them
+When an operator at a terminal runs installation and declines that application
+Then the run adds neither of them
+When an operator at a terminal runs installation and chooses that application
+Then the run adds whichever of the application and its companion service is absent
+And in every case, no optional application or companion service already present is removed
 ```
 
 #### UC-FMB4: A machine without environment settings becomes startable
