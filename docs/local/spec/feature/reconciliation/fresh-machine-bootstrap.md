@@ -87,7 +87,8 @@ And it names the step, the missing input and how to provide it
 ```gherkin
 Given a machine without the optional desktop applications, or with one of them present but not its companion service
 When installation runs with no terminal
-Then nothing optional is installed, companion services included
+Then the run adds no optional application and no companion service
+And an optional application already present stays as it was
 When an operator at a terminal runs installation and declines them
 Then none of them is installed
 When an operator at a terminal runs installation and chooses one
