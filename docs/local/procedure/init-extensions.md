@@ -170,8 +170,8 @@ documentation, with or without a person present. The guarantees are
 boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
 
 - **Unattended runs.** A run without a terminal never waits for a person. Provide
-  the owner seed up front. A step that needs input it was not given fails at once
-  and names the input.
+  the owner seed up front in `TELECLAUDE_OWNER_NAME` and `TELECLAUDE_OWNER_EMAIL`.
+  A step that needs input it was not given fails at once and names the input.
 - **Owner.** While no person is registered, installation registers the seeded
   person as platform administrator, or asks the operator at a terminal for one. A
   seed that conflicts with the registered people fails the install and changes
