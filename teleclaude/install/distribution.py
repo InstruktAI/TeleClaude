@@ -156,6 +156,7 @@ GENERATED_ENTRYPOINT_FILENAME = "AGENTS.md"
 _HOME_MASTER_INFLATION_FAILED = "Home master {master} cannot be compiled: {cause}"
 HELP_DESK_DIRNAME = "help-desk"
 _PUBLICATION_BUILD_RESULT_REQUIRED = "Committed distribution did not return a publication build."
+_PUBLICATION_BUILD_STATE_REQUIRED = "Committed distribution requires owned build state."
 _PUBLICATION_DOCUMENTATION_TARGET_REQUIRED = "Publication build lost its documentation target."
 _OUT_OF_REACH_COMMAND_WARNING = "out_of_reach_global_command_excluded"
 _GLOBAL_DISTRIBUTION_TEMP_PREFIX = "teleclaude-dist-global-"
@@ -204,7 +205,7 @@ class DistributionObservation:
     process_correlation_id: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class DistributionRequest:
     """Inputs for the internal committed-source distribution operation."""
 
@@ -216,6 +217,12 @@ class DistributionRequest:
     agents_enabled: bool | None = None
     docs_enabled: bool | None = None
     preserve_previous_documentation: bool = False
+
+
+@dataclass
+class DistributionBuildState:
+    """Temporary publication resources owned by one committed build."""
+
     documentation_published: bool = False
     previous_documentation_root: Path | None = None
     documentation_target: Path | None = None
@@ -254,8 +261,7 @@ class DistributionBuild:
     result: DistributionResult
     phases: tuple[StagedPublicationPhase, ...]
     agents_config: dict[str, AgentConfig]
-    request: DistributionRequest
-    staging_roots: tuple[Path, ...]
+    state: DistributionBuildState
     completed: bool = False
 
     @property
@@ -302,11 +308,11 @@ class DistributionBuild:
                     ).is_file(),
                 )
         except Exception:
-            _discard_previous_documentation(self.request)
+            _discard_previous_documentation(self.state)
             self._cleanup_staging()
             self.completed = True
             raise
-        _discard_previous_documentation(self.request)
+        _discard_previous_documentation(self.state)
         self._cleanup_staging()
         self.completed = True
 
@@ -314,12 +320,12 @@ class DistributionBuild:
         """Restore the displaced documentation generation and discard staged output."""
         if self.completed:
             return
-        _restore_previous_documentation(self.request)
+        _restore_previous_documentation(self.state)
         self._cleanup_staging()
         self.completed = True
 
     def _cleanup_staging(self) -> None:
-        for root in self.staging_roots:
+        for root in self.state.staging_roots:
             _remove_publication_path(root)
 
 
@@ -340,11 +346,12 @@ def distribute_committed(
         docs_enabled=docs_enabled,
         preserve_previous_documentation=True,
     )
+    state = DistributionBuildState()
     try:
-        result = main(request)
+        result = main(request, build_state=state)
     except BaseException:
-        _restore_previous_documentation(request)
-        for staging_root in request.staging_roots:
+        _restore_previous_documentation(state)
+        for staging_root in state.staging_roots:
             _remove_publication_path(staging_root)
         raise
     finally:
@@ -354,31 +361,31 @@ def distribute_committed(
     return result
 
 
-def _restore_previous_documentation(request: DistributionRequest) -> None:
+def _restore_previous_documentation(state: DistributionBuildState) -> None:
     """Restore the generation displaced by an incomplete committed build."""
-    if not request.documentation_published:
+    if not state.documentation_published:
         return
-    target = request.documentation_target
+    target = state.documentation_target
     if target is None:
         raise RuntimeError(_PUBLICATION_DOCUMENTATION_TARGET_REQUIRED)
-    previous = request.previous_documentation_root
+    previous = state.previous_documentation_root
     if previous is None:
         _remove_publication_path(target)
     else:
         displaced = publish_generation(previous, target)
         if displaced is not None:
             _remove_publication_path(displaced)
-    request.documentation_published = False
-    request.previous_documentation_root = None
+    state.documentation_published = False
+    state.previous_documentation_root = None
 
 
-def _discard_previous_documentation(request: DistributionRequest) -> None:
+def _discard_previous_documentation(state: DistributionBuildState) -> None:
     """Discard the old generation after publication effects have completed."""
-    previous = request.previous_documentation_root
+    previous = state.previous_documentation_root
     if previous is not None:
         _remove_publication_path(previous)
-    request.documentation_published = False
-    request.previous_documentation_root = None
+    state.documentation_published = False
+    state.previous_documentation_root = None
 
 
 def _remove_publication_path(path: Path) -> None:
@@ -2113,7 +2120,9 @@ def _global_command_reach_findings(project_root_path: Path) -> list[str]:
     return findings
 
 
-def main(request: DistributionRequest | None = None) -> DistributionResult | DistributionBuild:  # noqa: C901
+def main(  # noqa: C901 - coordinates the distribution phases at one entry point.
+    request: DistributionRequest | None = None, *, build_state: DistributionBuildState | None = None
+) -> DistributionResult | DistributionBuild:
     """Build agent artifacts for supported CLIs; deployment requires an internal request."""
     if request is None:
         parser = argparse.ArgumentParser(description="Validate and build agent outputs into dist/.")
@@ -2151,6 +2160,8 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
     deploy = request is not None and request.deploy
     committed_publication = request is not None and deploy
     publication_build = committed_publication and request.preserve_previous_documentation
+    if publication_build and build_state is None:
+        raise ValueError(_PUBLICATION_BUILD_STATE_REQUIRED)
 
     # Get the project root and main TeleClaude repo root.
     teleclaude_root = str(_REPO_ROOT)
@@ -2161,7 +2172,7 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
     checkout_local_outputs: list[Path] = []
     retired_pointers: list[Path] = []
     staged_publication_phases: list[StagedPublicationPhase] = []
-    publication_staging_roots = request.staging_roots if publication_build and request is not None else []
+    publication_staging_roots = build_state.staging_roots if build_state is not None else []
     agents_enabled, docs_enabled = _resolve_pipeline_capabilities(
         deploy=deploy,
         agents_enabled=args.agents_enabled,
@@ -2190,10 +2201,10 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
             committed_owner=request is not None,
             preserve_previous=publication_build,
         )
-        if request is not None:
-            request.documentation_target = GLOBAL_DOCS_DIR
-            request.documentation_published = Path(docs_source_dir).is_dir()
-            request.previous_documentation_root = previous_root
+        if build_state is not None:
+            build_state.documentation_target = GLOBAL_DOCS_DIR
+            build_state.documentation_published = Path(docs_source_dir).is_dir()
+            build_state.previous_documentation_root = previous_root
 
     # Agent rendering consumes publisher declarations to build domain awareness,
     # so resolve and validate them only when the agents pipeline is enabled.
@@ -2782,13 +2793,12 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
             )
 
     result = DistributionResult(tuple(checkout_local_outputs), tuple(retired_pointers))
-    if publication_build and request is not None:
+    if publication_build and build_state is not None:
         return DistributionBuild(
             result=result,
             phases=tuple(staged_publication_phases),
             agents_config=agents_config,
-            request=request,
-            staging_roots=tuple(publication_staging_roots),
+            state=build_state,
         )
     return result
 
