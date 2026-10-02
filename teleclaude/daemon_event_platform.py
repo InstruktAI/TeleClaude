@@ -55,7 +55,7 @@ from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebounc
 from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
-from teleclaude.events.envelope import EventHomeRef, EventSubjectMarker
+from teleclaude.events.envelope import EventHomeRef, EventSubject, EventSubjectMarker
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.hooks import procedure_activation
@@ -190,11 +190,13 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     def _configure_event_producer(self, redis_client: object) -> EventProducer:
         """Build and register the event producer."""
 
-        async def _session_home(session_id: str) -> EventHomeRef | None:
+        async def _session_home(session_id: str) -> EventSubject:
             db = await get_db()
             session = await db.get_session(session_id)
-            if session is None or session.config_subject is None:
-                return None
+            if session is None:
+                return EventSubjectMarker.UNKNOWN
+            if session.config_subject is None:
+                return EventSubjectMarker.NONE
             return EventHomeRef.from_token(session.config_subject)
 
         resolver = EnvelopeFactResolver(

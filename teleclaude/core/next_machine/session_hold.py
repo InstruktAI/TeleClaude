@@ -9,13 +9,12 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config_roster import load_project_ownership_index
-from teleclaude.config_subjects import SubjectRef
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import TodosDb, get_todos_db
-from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventLevel, EventSubjectMarker
+from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope_facts import subject_for_project_path, subject_for_session_config
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import is_project_checkout, resolve_project_root
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -89,12 +88,7 @@ def _workflow_project_path(session_project_path: str | None) -> tuple[str | None
 
 
 async def emit_todo_updated(*, slug: str, project_root: str, source: str) -> None:
-    ownership = load_project_ownership_index().for_path(Path(project_root))
-    subject = (
-        EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
-        if ownership is not None
-        else EventSubjectMarker.NONE
-    )
+    subject = subject_for_project_path(project_root)
     try:
         await emit_event(
             event="workflow.todo.updated",
@@ -113,11 +107,7 @@ async def emit_todo_updated(*, slug: str, project_root: str, source: str) -> Non
 
 
 async def _emit_session_ended(*, session_id: str, project_path: str, config_subject: str | None) -> None:
-    subject = (
-        EventHomeRef.from_subject_ref(SubjectRef.from_token(config_subject))
-        if config_subject
-        else EventSubjectMarker.NONE
-    )
+    subject = subject_for_session_config(config_subject)
     try:
         await emit_event(
             event="agent_runtime.session.ended",

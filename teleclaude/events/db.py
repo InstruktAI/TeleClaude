@@ -14,7 +14,7 @@ import aiosqlite
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
 from teleclaude.events.catalog import build_default_catalog
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.envelope import EventEnvelope, EventSubjectMarker
 from teleclaude.paths import EVENTS_DB_PATH
 
 if TYPE_CHECKING:
@@ -131,7 +131,7 @@ _CREATE_CORRELATION_TABLE = """
 CREATE TABLE IF NOT EXISTS correlation_windows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
-    subject TEXT,
+    subject TEXT NOT NULL,
     entity TEXT,
     window_start TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 1
@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS correlation_windows (
 _CORRELATION_TABLE_INFO_SQL = "PRAGMA table_info(correlation_windows)"
 _CORRELATION_SUBJECT_COLUMN = "subject"
 _ADD_CORRELATION_SUBJECT_SQL = "ALTER TABLE correlation_windows ADD COLUMN subject TEXT"
+_MIGRATE_CORRELATION_SUBJECT_SQL = "UPDATE correlation_windows SET subject = ? WHERE subject IS NULL"
 _INSERT_CORRELATION_WINDOW_SQL = (
     "INSERT INTO correlation_windows (event_type, subject, entity, window_start, count) VALUES (?, ?, ?, ?, 1)"
 )
@@ -148,9 +149,8 @@ _SELECT_CORRELATION_COUNT_BY_EVENT_SQL = (
 )
 _SELECT_CORRELATION_COUNT_BY_SUBJECT_SQL = (
     "SELECT COALESCE(SUM(count), 0) FROM correlation_windows "
-    "WHERE event_type = ? AND COALESCE(subject, ?) = ? AND entity = ? AND window_start >= ?"
+    "WHERE event_type = ? AND subject = ? AND entity = ? AND window_start >= ?"
 )
-_UNKNOWN_CORRELATION_SUBJECT = "unknown"
 
 _RETIRED_DOCS_WATCHER_EVENT_TYPE = "system.docs_watcher.sync_failed"
 _RESOLVED_AGENT_STATUS = "resolved"
@@ -220,6 +220,7 @@ class EventDB:
         existing_correlation_columns = {row[1] for row in await correlation_info_cursor.fetchall()}
         if _CORRELATION_SUBJECT_COLUMN not in existing_correlation_columns:
             await self._conn.execute(_ADD_CORRELATION_SUBJECT_SQL)
+        await self._conn.execute(_MIGRATE_CORRELATION_SUBJECT_SQL, (EventSubjectMarker.UNKNOWN.value,))
         # Forward migration: a pre-recipient `notifications` table predates this column.
         table_info_cursor = await self._conn.execute("PRAGMA table_info(notifications)")
         existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
@@ -570,7 +571,7 @@ class EventDB:
         else:
             cursor = await self._db().execute(
                 _SELECT_CORRELATION_COUNT_BY_SUBJECT_SQL,
-                (event_type, _UNKNOWN_CORRELATION_SUBJECT, subject, entity, since.isoformat()),
+                (event_type, subject, entity, since.isoformat()),
             )
         row = await cursor.fetchone()
         return int(row[0]) if row else 0

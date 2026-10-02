@@ -71,7 +71,6 @@ from teleclaude.config import (  # config.py loads .env at import time
     reload_config,
     restart_required_sections,
 )
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.inbound.conversation_env import default_conversation_environment
 from teleclaude.core.inbound.cutover import run_conversation_upkeep
@@ -198,23 +197,13 @@ _record_import_timing("teleclaude.daemon_session", _t)
 _t = time.perf_counter()
 from teleclaude.events import EventDB
 from teleclaude.events.envelope import (
-    EventHomeKind,
-    EventHomeRef,
     EventLevel,
-    EventSubject,
     EventSubjectMarker,
     EventVisibility,
 )
+from teleclaude.events.envelope_facts import subject_for_project_path as _workflow_event_subject
 from teleclaude.events.producer import emit_event
 from teleclaude.hooks.webhook_models import HookEvent
-
-
-def _workflow_event_subject(project_path: str) -> EventSubject:
-    ownership = load_project_ownership_index().for_path(Path(project_path))
-    if ownership is None:
-        return EventSubjectMarker.NONE
-    return EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
-
 
 _record_import_timing("teleclaude.events", _t)
 

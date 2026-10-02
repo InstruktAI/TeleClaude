@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
@@ -54,7 +53,7 @@ from teleclaude.core.next_machine.review_evidence import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventSubjectMarker
+from teleclaude.events.envelope_facts import subject_for_project_path
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
@@ -102,12 +101,7 @@ def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: b
     writer.commit_sync(db, slug)
 
     if produced:
-        ownership = load_project_ownership_index().for_path(Path(cwd))
-        subject = (
-            EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
-            if ownership is not None
-            else EventSubjectMarker.NONE
-        )
+        subject = subject_for_project_path(cwd)
         _emit_prepare_event(
             "domain.sdlc.prepare.artifact_produced",
             {"slug": slug, "artifact": artifact_name, "digest": digest},

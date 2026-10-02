@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -43,7 +42,6 @@ from teleclaude.api.todo_update_support import (
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_DIAGNOSIS,
@@ -78,7 +76,8 @@ from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused, get_todos_db
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
-from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventLevel, EventSubjectMarker
+from teleclaude.events.envelope import EventLevel
+from teleclaude.events.envelope_facts import subject_for_project_path
 from teleclaude.events.producer import emit_event
 from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
@@ -699,12 +698,7 @@ async def todo_content_create(
 
         lifecycle_phase = state.get("lifecycle_phase")
         event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
-        project_ownership = load_project_ownership_index().for_path(Path(effective_cwd))
-        event_subject = (
-            EventHomeRef(EventHomeKind.PROJECT, project_ownership.project_slug)
-            if project_ownership is not None
-            else EventSubjectMarker.NONE
-        )
+        event_subject = subject_for_project_path(effective_cwd)
         await emit_event(
             event="workflow.todo.created",
             source="api.todo.create",

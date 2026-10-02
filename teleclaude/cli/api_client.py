@@ -35,6 +35,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_session_actions_models import AgentRestartResponseDTO
 from teleclaude.caller_identity import CarriedIdentity
+from teleclaude.cli.api_client_identity import TelecIdentityAPI
 from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
@@ -377,8 +378,6 @@ class _TelecConnectionClient:
                 logger.warning("Invalid JSON from WebSocket: %s", message[:100])
             except ValidationError as e:
                 logger.warning("Invalid WebSocket event payload: %s", e)
-
-    # --- API Methods ---
 
     def _normalize_http_method(self, method: HTTPMethod | str) -> HTTPMethod:
         """Convert a request method into an HTTPMethod enum."""
@@ -996,5 +995,5 @@ class _TelecRuntimeAPI:
         return resp.json()
 
 
-class TelecAPIClient(_TelecConnectionClient, _TelecSessionAPI, _TelecRuntimeAPI):
+class TelecAPIClient(_TelecConnectionClient, _TelecSessionAPI, _TelecRuntimeAPI, TelecIdentityAPI):
     """Public telec API client."""

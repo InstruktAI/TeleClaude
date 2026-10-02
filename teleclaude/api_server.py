@@ -461,9 +461,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         async def auth_whoami(  # pyright: ignore
             identity: CallerIdentity = Depends(carried_caller),
         ) -> WhoAmIDTO:
-            """Return the resolved identity, role, email, and session of the caller."""
+            """Return caller identity and its session's recorded configuration subject."""
             caller = caller_for_role_resolution(identity)
             target = Platform()
+            session = None
             if identity.session_id:
                 session = await db.get_session(identity.session_id)
                 if session is not None and session.project_path:
@@ -475,6 +476,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 role=role,
                 email=email,
                 session_id=identity.session_id or None,
+                config_subject=session.config_subject if session is not None else None,
             )
 
         @self.app.websocket("/ws")

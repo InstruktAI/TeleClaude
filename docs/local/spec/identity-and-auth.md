@@ -98,6 +98,10 @@ carries it or a terminal login names them) and the role that authorizes the call
 the person's email and terminal at a terminal. A process whose session identity document
 identifies no open session on this computer is told so and is given no terminal identity.
 The daemon's `GET /auth/whoami` endpoint answers the same question for clients of its API.
+For a session caller, that self-query also returns the session's recorded
+configuration subject. A CLI event producer reads it to state the event's origin
+home without listing other sessions; it is absent when the caller has no
+session or the session has no recorded home.
 
 **Principal types:**
 

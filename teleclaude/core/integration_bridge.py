@@ -154,7 +154,7 @@ async def emit_integration_started(
 ) -> str:
     """Emit integration.started when the state machine begins processing a candidate."""
     return await emit_event(
-        event="domain.sdlc.integration.started",
+        event=IntegrationEventType.STARTED,
         source=f"integrator/{session_id or (get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="sdlc",
@@ -180,7 +180,7 @@ async def emit_integration_candidate_delivered(
     """Emit integration.candidate.delivered after a candidate is fully integrated."""
     ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.sdlc.integration.candidate.delivered",
+        event=IntegrationEventType.CANDIDATE_DELIVERED,
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="sdlc",
@@ -208,7 +208,7 @@ async def emit_integration_candidate_blocked(
     """Emit integration.candidate.blocked when a candidate cannot be integrated."""
     ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.sdlc.integration.candidate.blocked",
+        event=IntegrationEventType.CANDIDATE_BLOCKED,
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
         domain="sdlc",

@@ -34,14 +34,14 @@ _EVENT_OWNER_KIND_TYPE_ERROR = "event owner kind must be an EventOwnerKind"
 _EVENT_OWNER_SUBJECT_REF_ERROR = "event owners must name registered company or person subjects"
 
 
-class EventSubjectMarker(str, Enum):
+class EventSubjectMarker(StrEnum):
     """Explicit subject states that are not registered homes."""
 
     NONE = "none"
     UNKNOWN = "unknown"
 
 
-class EventSubjectOwnerMarker(str, Enum):
+class EventSubjectOwnerMarker(StrEnum):
     """Explicit project-owner states that are not registry references."""
 
     NONE = "none"
@@ -128,7 +128,7 @@ EventSubject = EventHomeRef | EventSubjectMarker
 EventSubjectOwner = EventOwnerRef | EventSubjectOwnerMarker
 
 
-def _subject_token(subject: EventSubject) -> str:
+def subject_token(subject: EventSubject) -> str:
     if isinstance(subject, EventHomeRef):
         return subject.to_token()
     return subject.value
@@ -234,7 +234,7 @@ class EventEnvelope(BaseModel):
             "originating_computer": self.originating_computer or "",
             _ORIGIN_SESSION_STREAM_KEY: self.originating_session_id or "",
             _ORIGIN_HOME_STREAM_KEY: self.origin_home.to_token() if self.origin_home else "",
-            _SUBJECT_STREAM_KEY: _subject_token(self.subject),
+            _SUBJECT_STREAM_KEY: subject_token(self.subject),
             _SUBJECT_OWNER_STREAM_KEY: _subject_owner_token(self.subject_owner),
             "timestamp": cast(str, dumped["timestamp"]),
             "idempotency_key": self.idempotency_key or "",

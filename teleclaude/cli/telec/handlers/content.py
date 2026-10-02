@@ -128,7 +128,7 @@ def _emit_content_dump_event(
     async def emit() -> None:
         resolver = cli_envelope_fact_resolver()
         session_id = resolver.session_id()
-        origin_home = await resolver.session_home(session_id) if session_id else None
+        session_subject = await resolver.session_home(session_id) if session_id else EventSubjectMarker.NONE
         async with loop_local_producer() as producer:
             await emit_event(
                 _CONTENT_DUMPED_EVENT,
@@ -136,7 +136,7 @@ def _emit_content_dump_event(
                 level=EventLevel.WORKFLOW,
                 producer=producer,
                 domain=_CONTENT_DOMAIN,
-                subject=origin_home if origin_home is not None else EventSubjectMarker.NONE,
+                subject=session_subject,
                 description=_CONTENT_DUMPED_DESCRIPTION.format(path=relative_path),
                 payload=payload,
             )

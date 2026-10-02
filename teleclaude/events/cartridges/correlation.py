@@ -13,11 +13,11 @@ from teleclaude.config import config as _global_config
 from teleclaude.core.models import HumanActionIntent, JsonDict
 from teleclaude.events.envelope import (
     EventEnvelope,
-    EventHomeRef,
     EventLevel,
     EventSubject,
     EventSubjectMarker,
     EventVisibility,
+    subject_token,
 )
 from teleclaude.events.pipeline import PipelineContext
 
@@ -25,7 +25,6 @@ logger = get_logger(__name__)
 
 _FAILURE_TYPE_KEYWORDS = ("crash", "fail", "error")
 _ENTITY_DEGRADATION_EVENT_TYPE = "system.entity.degraded"
-_UNKNOWN_CORRELATION_SUBJECT = "unknown"
 
 
 def _is_failure_type(event_type: str) -> bool:
@@ -67,7 +66,7 @@ class CorrelationCartridge:
 
         config = context.correlation_config
         now = config.clock()
-        subject_key = _subject_key(event.subject)
+        subject_key = subject_token(event.subject)
         window_start = now - timedelta(seconds=config.window_seconds)
         prune_before = now - timedelta(seconds=2 * config.window_seconds)
 
@@ -185,11 +184,3 @@ class CorrelationCartridge:
     def identifier(self) -> str:
         """Return the stable cartridge identifier."""
         return self.name
-
-
-def _subject_key(subject: EventSubject) -> str:
-    if isinstance(subject, EventHomeRef):
-        return subject.to_token()
-    if subject is EventSubjectMarker.UNKNOWN:
-        return _UNKNOWN_CORRELATION_SUBJECT
-    return str(subject.value)

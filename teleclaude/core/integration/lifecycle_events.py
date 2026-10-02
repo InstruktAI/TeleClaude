@@ -12,10 +12,10 @@ from typing import Any, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.integration.checkpoint import ParkedCandidate
-from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventSubject, EventSubjectMarker
+from teleclaude.events.envelope import EventSubject
+from teleclaude.events.envelope_facts import subject_for_project_path
 
 logger = get_logger(__name__)
 
@@ -28,10 +28,7 @@ _EVENT_INTEGRATION_DRAIN_COMPLETED = "integration.drain.completed"
 
 def _workflow_subject_for_path(path: str | Path) -> EventSubject:
     """Resolve the registered workflow project for an integration root."""
-    ownership = load_project_ownership_index().for_path(Path(path))
-    if ownership is None:
-        return EventSubjectMarker.NONE
-    return EventHomeRef(EventHomeKind.PROJECT, ownership.project_slug)
+    return subject_for_project_path(path)
 
 
 # guard: loose-dict-func - lifecycle event payload shape varies per event type

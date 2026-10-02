@@ -12,3 +12,4 @@ class WhoAmIDTO(BaseModel):
     role: str | None = None
     email: str | None = None
     session_id: str | None = None
+    config_subject: str | None = None

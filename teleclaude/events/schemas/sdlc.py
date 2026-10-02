@@ -20,8 +20,11 @@ if TYPE_CHECKING:
 
 
 class IntegrationEventType(StrEnum):
-    """Closed taxonomy for projector-visible integration drain events."""
+    """Closed taxonomy for integration lifecycle events on the platform stream."""
 
+    STARTED = "domain.sdlc.integration.started"
+    CANDIDATE_DELIVERED = "domain.sdlc.integration.candidate.delivered"
+    CANDIDATE_BLOCKED = "domain.sdlc.integration.candidate.blocked"
     CANDIDATE_PARKED = "domain.sdlc.integration.candidate.parked"
     DRAIN_COMPLETED = "domain.sdlc.integration.drain.completed"
 
@@ -30,6 +33,10 @@ _SUBJECT_ASSIGNMENT_SCHEDULE = SubjectAssignment(kinds=[], about="the platform s
 _SUBJECT_ASSIGNMENT_WORKFLOW_PROJECT = SubjectAssignment(
     kinds=[EventHomeKind.PROJECT], about="the project whose workflow activity this event records"
 )
+_SDLC_DOMAIN = "sdlc"
+_INTEGRATION_STARTED_DESCRIPTION = "An integrator began processing a candidate"
+_INTEGRATION_CANDIDATE_DELIVERED_DESCRIPTION = "An integration candidate completed delivery"
+_INTEGRATION_CANDIDATE_BLOCKED_DESCRIPTION = "An integration candidate was blocked"
 _PAYLOAD_FIELDS_DOMAIN_SDLC_BRANCH_PUSHED: list[PayloadField] = [
     PayloadField(name="branch", kind=PayloadValueKind.ANY, nullable=False),
     PayloadField(name="pushed_at", kind=PayloadValueKind.ANY, nullable=True),
@@ -58,8 +65,8 @@ _PAYLOAD_FIELDS_DOMAIN_SDLC_DEPLOYMENT_COMPLETED: list[PayloadField] = [
 _PAYLOAD_FIELDS_DOMAIN_SDLC_DEPLOYMENT_FAILED: list[PayloadField] = [
     PayloadField(name="blocked_at", kind=PayloadValueKind.STRING, nullable=False),
     PayloadField(name="branch", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="conflict_evidence", kind=PayloadValueKind.OBJECT, nullable=False),
-    PayloadField(name="diagnostics", kind=PayloadValueKind.OBJECT, nullable=False),
+    PayloadField(name="conflict_evidence", kind=PayloadValueKind.ARRAY, nullable=False),
+    PayloadField(name="diagnostics", kind=PayloadValueKind.ARRAY, nullable=False),
     PayloadField(name="next_action", kind=PayloadValueKind.STRING, nullable=False),
     PayloadField(name="sha", kind=PayloadValueKind.STRING, nullable=False),
     PayloadField(name="slug", kind=PayloadValueKind.STRING, nullable=False),
@@ -67,6 +74,24 @@ _PAYLOAD_FIELDS_DOMAIN_SDLC_DEPLOYMENT_FAILED: list[PayloadField] = [
 _PAYLOAD_FIELDS_DOMAIN_SDLC_DEPLOYMENT_STARTED: list[PayloadField] = [
     PayloadField(name="ready_at", kind=PayloadValueKind.ANY, nullable=True),
     PayloadField(name="slug", kind=PayloadValueKind.ANY, nullable=False),
+]
+_PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_STARTED: list[PayloadField] = [
+    PayloadField(name="slug", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="session_id", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="queue_depth", kind=PayloadValueKind.INTEGER, nullable=False),
+]
+_PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_CANDIDATE_DELIVERED: list[PayloadField] = [
+    PayloadField(name="slug", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="branch", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="merge_commit_sha", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="integrated_at", kind=PayloadValueKind.STRING, nullable=False),
+]
+_PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_CANDIDATE_BLOCKED: list[PayloadField] = [
+    PayloadField(name="slug", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="branch", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="sha", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="reason", kind=PayloadValueKind.STRING, nullable=False),
+    PayloadField(name="blocked_at", kind=PayloadValueKind.STRING, nullable=False),
 ]
 _PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_CANDIDATE_PARKED: list[PayloadField] = [
     PayloadField(name="branch", kind=PayloadValueKind.STRING, nullable=False),
@@ -646,6 +671,37 @@ def register_sdlc(catalog: EventCatalog) -> None:
     )
     # --- Integration lifecycle events ---
 
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.STARTED,
+            description=_INTEGRATION_STARTED_DESCRIPTION,
+            subject_assignment=_SUBJECT_ASSIGNMENT_WORKFLOW_PROJECT,
+            payload_fields=_PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_STARTED,
+            default_level=EventLevel.WORKFLOW,
+            domain=_SDLC_DOMAIN,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.CANDIDATE_DELIVERED,
+            description=_INTEGRATION_CANDIDATE_DELIVERED_DESCRIPTION,
+            subject_assignment=_SUBJECT_ASSIGNMENT_WORKFLOW_PROJECT,
+            payload_fields=_PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_CANDIDATE_DELIVERED,
+            default_level=EventLevel.WORKFLOW,
+            domain=_SDLC_DOMAIN,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.CANDIDATE_BLOCKED,
+            description=_INTEGRATION_CANDIDATE_BLOCKED_DESCRIPTION,
+            subject_assignment=_SUBJECT_ASSIGNMENT_WORKFLOW_PROJECT,
+            payload_fields=_PAYLOAD_FIELDS_DOMAIN_SDLC_INTEGRATION_CANDIDATE_BLOCKED,
+            default_level=EventLevel.BUSINESS,
+            default_visibility=EventVisibility.LOCAL,
+            domain=_SDLC_DOMAIN,
+        )
+    )
     catalog.register(
         EventSchema(
             event_type=IntegrationEventType.CANDIDATE_PARKED,
