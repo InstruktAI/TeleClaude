@@ -184,6 +184,13 @@ def _same_project_root(session_project_path: str | None, project_root: Path) -> 
         return False
 
 
+def is_commit_reviewer_in_project(
+    *, command: str | None, session_project_path: str | None, project_root: Path, command_value: str
+) -> bool:
+    """Return whether a session record is a commit reviewer working in ``project_root``."""
+    return _same_project_root(session_project_path, project_root) and _matches_command(command, command_value)
+
+
 async def list_live_commit_reviewers_for_initiator(
     db: Db,
     project_path: str | Path,
@@ -204,7 +211,12 @@ async def list_live_commit_reviewers_for_initiator(
     return tuple(
         (session.session_id, session.thinking_mode or "")
         for session in sessions
-        if _same_project_root(session.project_path, project_root) and _matches_command(session.command, command_value)
+        if is_commit_reviewer_in_project(
+            command=session.command,
+            session_project_path=session.project_path,
+            project_root=project_root,
+            command_value=command_value,
+        )
     )
 
 

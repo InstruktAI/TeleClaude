@@ -81,7 +81,7 @@ def run_heuristics(
         result.on_main
         and result.authored_main_commit
         and not result.commit_action_required
-        and not _has_review_dispatch_evidence(timeline)
+        and not _has_review_dispatch_evidence(timeline, context.live_commit_reviewer_ids)
     ):
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True

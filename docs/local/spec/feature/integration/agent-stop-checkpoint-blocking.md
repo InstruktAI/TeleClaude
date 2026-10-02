@@ -198,13 +198,13 @@ And the authored-main-commit marker is consumed
 
 Given the current branch is main
 And the session-scoped authored-main-commit marker is present
-And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run` run whose `--command` value names the commit-review command, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
+And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run` run whose `--command` value names the commit-review command, or a `telec sessions send` addressed to a live commit-review session this session started, whatever its message
 When the heuristic engine evaluates the turn window
 Then the post-commit review-gate surfacing action is NOT emitted
 And the authored-main-commit marker is consumed
 And when no changed files, required actions, observations, or commit action remain, no checkpoint is produced rather than an empty "No code changes detected this turn." block
 So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
-And a command that merely mentions the commit-review command in either form, without dispatching it (a different `--command`, or a question in a `telec sessions send` message), does not discharge the gate
+And a command that merely mentions the commit-review command without dispatching it (a different `--command`), or a `telec sessions send` addressed to any other session, does not discharge the gate
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads

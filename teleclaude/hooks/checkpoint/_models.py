@@ -58,6 +58,7 @@ class CheckpointContext:
     system_role: str | None = None
     session_id: str = ""
     receiver_ingress_id: str = ""
+    live_commit_reviewer_ids: frozenset[str] = frozenset()
 
 
 @dataclass

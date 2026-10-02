@@ -21,6 +21,9 @@ from teleclaude.shell_path_parser import executable_command_tokens, matches_comm
 from teleclaude.snippet_validation import companion_parent, is_companion, is_retirement_companion
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
+_SHELL_TOOL_NAMES = frozenset({"bash", "shell", "terminal", "run_shell_command", "exec_command"})
+_SESSIONS_SEND_PREFIX = ("telec", "sessions", "send")
+
 __all__ = [
     "_check_blast_radius",
     "_check_companion_drift",
@@ -57,14 +60,31 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
     return False
 
 
-def _has_review_dispatch_evidence(timeline: TurnTimeline) -> bool:
+def _has_review_dispatch_evidence(timeline: TurnTimeline, live_reviewer_ids: frozenset[str]) -> bool:
     """Return True when the commit(s) were dispatched to a reviewer this cycle.
 
-    Recognizes both a fresh ``/review-commits`` run and a remediation sent to
-    an already-open reviewer (``telec sessions send <id> "review commits ..."``),
-    which discharges the post-commit review obligation.
+    Recognizes a fresh ``/review-commits`` run, and a ``telec sessions send``
+    addressed to one of this session's live commit reviewers. The send is
+    identified by its target session, never by its message text.
     """
-    return _has_evidence(timeline, CHECKPOINT_REVIEW_DISPATCH_EVIDENCE)
+    if _has_evidence(timeline, CHECKPOINT_REVIEW_DISPATCH_EVIDENCE):
+        return True
+    if not timeline.has_data or not live_reviewer_ids:
+        return False
+    for record in timeline.tool_calls:
+        if _canonical_tool_name(record.tool_name) not in _SHELL_TOOL_NAMES:
+            continue
+        for segment in _split_shell_segments(_extract_shell_command(record.input_data)):
+            if _segment_sends_to(segment, live_reviewer_ids):
+                return True
+    return False
+
+
+def _segment_sends_to(segment: str, session_ids: frozenset[str]) -> bool:
+    """Return whether a command segment is a ``telec sessions send`` to one of ``session_ids``."""
+    if not matches_command_prefix(segment, _SESSIONS_SEND_PREFIX):
+        return False
+    return any(token in session_ids for token in executable_command_tokens(segment)[len(_SESSIONS_SEND_PREFIX) :])
 
 
 def _has_commit_evidence(timeline: TurnTimeline) -> bool:
@@ -275,12 +295,6 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
             return False
         bare_evidence = evidence.rsplit("/", 1)[-1]
         return tokens[command_idx + 1] in {evidence, f"/{evidence}", bare_evidence, f"/{bare_evidence}"}
-    if evidence == "review commits":
-        # Only a remediation dispatch: `telec sessions send <reviewer> "review commits ..."`,
-        # with the review request as the message payload (a token starting with it).
-        if head != "telec" or "sessions" not in rest or "send" not in rest:
-            return False
-        return any(token.startswith("review commits") for token in rest)
     if evidence == "/agent-restart":
         return any("/agent-restart" in token for token in tokens)
     if evidence == "agent_restart":

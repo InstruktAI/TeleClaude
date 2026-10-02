@@ -66,10 +66,10 @@ from teleclaude.hooks.edit_declarations import (
     hold_certain_edit,
     settle_certain_edit,
 )
+from teleclaude.hooks.main_db import main_sync_engine
 from teleclaude.hooks.receiver._session import (
     _SESSION_EXPORTS,
     _classify_hook_source,
-    _create_sync_engine,
     _find_session_id_by_native,
     _get_cached_session_id,
     _get_memory_context,
@@ -1410,7 +1410,7 @@ def _emit_pending_control_payloads(
         )
         return False
 
-    with SqlSession(_create_sync_engine()) as db_session:
+    with SqlSession(main_sync_engine()) as db_session:
         table = cast(Any, db_models.ControlDelivery).__table__
         db_session.connection().exec_driver_sql("BEGIN IMMEDIATE")  # guard: raw-sql
         rows = db_session.exec(

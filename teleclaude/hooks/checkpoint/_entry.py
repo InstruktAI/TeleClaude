@@ -28,6 +28,7 @@ from teleclaude.hooks.checkpoint._integrator import _integrator_judgment_checkpo
 from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult
 from teleclaude.hooks.checkpoint_flags import consume_authored_main_commit_flag, has_authored_main_commit_flag
 from teleclaude.hooks.edit_declarations import declare_certain_timeline_edits
+from teleclaude.hooks.main_db import live_commit_reviewer_ids
 from teleclaude.project_root import declaration_root, is_slug_worktree
 from teleclaude.session_scoping import (
     WorkspaceKind,
@@ -245,6 +246,7 @@ def get_checkpoint_content(
             system_role=system_role,
             session_id=session_id,
             receiver_ingress_id=receiver_ingress_id,
+            live_commit_reviewer_ids=live_commit_reviewer_ids(session_id, project_path),
         )
         log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 
@@ -290,7 +292,9 @@ def get_checkpoint_content(
         # Consume the authored-commit flag once the review obligation is surfaced
         # or discharged by a review dispatch in this cycle. If composition is
         # silent, consume before returning so a dispatched review settles the marker.
-        if result.post_commit_review_action_required or _has_review_dispatch_evidence(timeline):
+        if result.post_commit_review_action_required or _has_review_dispatch_evidence(
+            timeline, context.live_commit_reviewer_ids
+        ):
             consume_authored_main_commit_flag(session_id)
         if message is None:
             logger.info(

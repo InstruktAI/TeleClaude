@@ -22,6 +22,7 @@ from teleclaude.constants import HookSourceKind, MarkerState
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.hooks.main_db import main_sync_engine
 from teleclaude.memory.context import generate_context_sync
 
 try:
@@ -39,7 +40,6 @@ _TMUX_DEFAULT_SOCKET_NAME = "default"
 _TMUX_ENV_FIELD_SEPARATOR = ","
 
 _SESSION_EXPORTS = [
-    "_create_sync_engine",
     "_find_session_id_by_native",
     "_get_cached_session_id",
     "_get_memory_context",
@@ -60,7 +60,6 @@ _SESSION_EXPORTS = [
 
 __all__ = [
     "_classify_hook_source",
-    "_create_sync_engine",
     "_find_session_id_by_native",
     "_get_cached_session_id",
     "_get_memory_context",
@@ -79,19 +78,8 @@ __all__ = [
 ]
 
 
-_sync_engine: Engine | None = None
 _outbox_engines: dict[str, Engine] = {}
 _LIVE_SESSION_LOOKUP_FAILED = "Live session lookup failed; reporting no session"
-
-
-def _create_sync_engine() -> Engine:
-    """Return a shared main-database engine for receiver read paths."""
-    global _sync_engine
-    if _sync_engine is not None:
-        return _sync_engine
-
-    _sync_engine = create_sync_db_engine(tc_paths.MAIN_DB_PATH)
-    return _sync_engine
 
 
 def _load_projected_session_row(session_id: str, *columns: QueryableAttribute[Any]) -> db_models.Session | None:
@@ -100,7 +88,7 @@ def _load_projected_session_row(session_id: str, *columns: QueryableAttribute[An
     Hook code can run before the daemon applies a new session-schema migration,
     so each read must stay compatible with the columns its caller actually uses.
     """
-    with SqlSession(_create_sync_engine()) as session:
+    with SqlSession(main_sync_engine()) as session:
         return session.get(
             db_models.Session,
             session_id,
@@ -366,7 +354,7 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
 
     try:
         sqlmodel_module = _get_sqlmodel_module()
-        with sqlmodel_module.Session(_create_sync_engine()) as session:
+        with sqlmodel_module.Session(main_sync_engine()) as session:
             statement = sqlmodel_module.select(db_models.Session)
             statement = (
                 statement.where(db_models.Session.native_session_id == native_session_id)
@@ -410,7 +398,7 @@ def _find_live_session_id_by_native(native_session_id: str | None) -> str | None
 
     try:
         sqlmodel_module = _get_sqlmodel_module()
-        with sqlmodel_module.Session(_create_sync_engine()) as session:
+        with sqlmodel_module.Session(main_sync_engine()) as session:
             statement = sqlmodel_module.select(db_models.Session)
             statement = (
                 statement.where(db_models.Session.native_session_id == native_session_id)
