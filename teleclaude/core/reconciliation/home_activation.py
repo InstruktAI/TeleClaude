@@ -56,7 +56,7 @@ from teleclaude.paths import (
     TMP_SESSIONS_DIR,
 )
 from teleclaude.project_setup.git_filters import ensure_git_filters
-from teleclaude.project_setup.hooks import install_code_hooks
+from teleclaude.project_setup.hooks import HookConvergenceOutcome, install_code_hooks
 
 
 class HomeActivationStatus(StrEnum):
@@ -118,6 +118,18 @@ class _IndexGitEntry:
     skip_worktree: bool
 
 
+@dataclass(frozen=True)
+class _TreeGitEntry:
+    path: Path
+    mode: str
+    kind: str
+    object_id: str
+
+
+class _CommitGateUnavailable(RuntimeError):
+    """The installed pre-commit gate cannot be executed by this commit path."""
+
+
 _LOGGER = get_logger("teleclaude.reconciliation.home_repository")
 _NUL = "\0"
 _NUL_BYTES = b"\0"
@@ -167,6 +179,10 @@ _GIT_HASH_OBJECT_COMMAND = "hash-object"
 _GIT_CONFIG_COMMAND = "config"
 _GIT_READ_TREE_COMMAND = "read-tree"
 _GIT_ADD_COMMAND = "add"
+_GIT_REV_PARSE_COMMAND = "rev-parse"
+_GIT_PATH_OPTION = "--git-path"
+_PRE_COMMIT_HOOK_RELATIVE_PATH = "hooks/pre-commit"
+_GITPYTHON_HOOKS_DIRECTORY = "hooks"
 _GIT_BOOL_OPTION = "--bool"
 _GIT_GET_OPTION = "--get"
 _GIT_FORCE_OPTION = "--force"
@@ -198,6 +214,7 @@ _MODE_EXECUTABLE_BIT = stat.S_IXUSR
 _NEWLINE_BYTES = b"\n"
 _TAB = "\t"
 _GATE_REFUSAL_FALLBACK = "The commit gate refused activation without diagnostic output."
+_GATE_UNAVAILABLE = "The installed pre-commit gate is unavailable to the activation commit."
 _UTF8 = "utf-8"
 _ASCII = "ascii"
 _REPLACEMENT = "replace"
@@ -218,7 +235,7 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
     repository, created_repository = _repository_at_home(home)
     _remove_remotes(repository)
     plan = plan_template_installation(home_installation_targets(home), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
-    install_code_hooks(home)
+    hook_outcomes = install_code_hooks(home)
     held_paths: tuple[Path, ...] = ()
     unrestored_paths: tuple[Path, ...] = ()
     with main_branch_lock():
@@ -254,11 +271,15 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
             )
         if recorded:
             try:
+                _require_commit_gate(repository, hook_outcomes)
                 _commit_candidates(repository, recorded)
-            except HookExecutionError as error:
-                if Path(error.command[0]).name != _PRE_COMMIT_HOOK_NAME:
-                    raise
-                findings = _hook_findings(error)
+            except (_CommitGateUnavailable, HookExecutionError) as error:
+                if isinstance(error, HookExecutionError):
+                    if Path(error.command[0]).name != _PRE_COMMIT_HOOK_NAME:
+                        raise
+                    findings = _hook_findings(error)
+                else:
+                    findings = (str(error),)
                 _log_gate_refusal(findings)
                 unrestored_paths = _restore_written_templates(
                     recorded,
@@ -354,12 +375,8 @@ def _recorded_template_entries(repository: Repo, paths: tuple[Path, ...]) -> dic
         ),
     )
     entries: dict[Path, _RecordedGitEntry] = {}
-    for record in output.split(_NUL):
-        if not record:
-            continue
-        metadata, raw_path = record.split(_TAB, maxsplit=1)
-        mode, _kind, object_id = metadata.split()
-        entries[Path(raw_path)] = _RecordedGitEntry(mode, object_id)
+    for entry in _parse_tree_entries(output):
+        entries[entry.path] = _RecordedGitEntry(entry.mode, entry.object_id)
     return entries
 
 
@@ -397,7 +414,7 @@ def _working_template_hashes(repository: Repo, paths: tuple[Path, ...]) -> dict[
     if not paths:
         return {}
     payload = _NEWLINE_BYTES.join(os.fsencode(path.as_posix()) for path in paths) + _NEWLINE_BYTES
-    output = _run_git_command_with_input(repository, (_GIT_HASH_OBJECT_COMMAND, _GIT_STDIN_PATHS_OPTION), payload)
+    output = _run_git_command(repository, (_GIT_HASH_OBJECT_COMMAND, _GIT_STDIN_PATHS_OPTION), payload=payload)
     object_ids = output.splitlines()
     if len(object_ids) != len(paths):
         raise RuntimeError(_WORKING_HASH_COUNT_ERROR)
@@ -423,17 +440,23 @@ def _working_file_mode(path: Path) -> str:
     return _WORKING_FILE_MODE if permissions & _MODE_EXECUTABLE_BIT else _WORKING_FILE_MODE_NON_EXECUTABLE
 
 
-def _run_git_command(repository: Repo, arguments: Sequence[str]) -> str:
+def _run_git_command(
+    repository: Repo,
+    arguments: Sequence[str],
+    *,
+    payload: bytes | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    """Execute Git with one optional input stream and child-only environment."""
     execute = cast(Callable[..., object], repository.git.execute)
-    return cast(str, execute([GIT_EXECUTABLE, *arguments]))
-
-
-def _run_git_command_with_input(repository: Repo, arguments: Sequence[str], payload: bytes) -> str:
+    command = [GIT_EXECUTABLE, *arguments]
+    options = {"env": dict(environment)} if environment is not None else {}
+    if payload is None:
+        return cast(str, execute(command, **options))
     with TemporaryFile() as stream:
         stream.write(payload)
         stream.seek(0)
-        execute = cast(Callable[..., object], repository.git.execute)
-        return cast(str, execute([GIT_EXECUTABLE, *arguments], istream=stream))
+        return cast(str, execute(command, istream=stream, **options))
 
 
 def _snapshot_template_contents(
@@ -452,6 +475,30 @@ def _snapshot_template_contents(
     return contents
 
 
+def _require_commit_gate(repository: Repo, hook_outcomes: Mapping[str, HookConvergenceOutcome]) -> None:
+    """Refuse when GitPython cannot execute the installed pre-commit hook."""
+    if hook_outcomes.get(_PRE_COMMIT_HOOK_NAME) not in (
+        HookConvergenceOutcome.WRITTEN,
+        HookConvergenceOutcome.UNCHANGED,
+    ):
+        raise _CommitGateUnavailable(_GATE_UNAVAILABLE)
+    try:
+        hook_path = Path(
+            _run_git_command(
+                repository, (_GIT_REV_PARSE_COMMAND, _GIT_PATH_OPTION, _PRE_COMMIT_HOOK_RELATIVE_PATH)
+            ).strip()
+        )
+        if not hook_path.is_absolute():
+            hook_path = Path(repository.working_tree_dir or repository.git_dir) / hook_path
+        gitpython_hook = Path(repository.git_dir) / _GITPYTHON_HOOKS_DIRECTORY / _PRE_COMMIT_HOOK_NAME
+        if hook_path.resolve() != gitpython_hook.resolve() or not gitpython_hook.is_file():
+            raise _CommitGateUnavailable(_GATE_UNAVAILABLE)
+        if not os.access(gitpython_hook, os.X_OK):
+            raise _CommitGateUnavailable(_GATE_UNAVAILABLE)
+    except (GitCommandError, OSError) as error:
+        raise _CommitGateUnavailable(_GATE_UNAVAILABLE) from error
+
+
 def _commit_candidates(repository: Repo, paths: tuple[Path, ...]) -> None:
     previous_head = _head_revision(repository)
     with TemporaryDirectory(dir=repository.git_dir, prefix=_TEMPORARY_INDEX_DIRECTORY_PREFIX) as directory:
@@ -463,12 +510,12 @@ def _commit_candidates(repository: Repo, paths: tuple[Path, ...]) -> None:
             if previous_head is not None
             else (_GIT_READ_TREE_COMMAND, _GIT_EMPTY_TREE_OPTION)
         )
-        _run_git_command_with_environment(repository, read_tree_arguments, environment)
+        _run_git_command(repository, read_tree_arguments, environment=environment)
         pathspecs = tuple(_GIT_LITERAL_PATHSPEC_PREFIX + path.as_posix() for path in paths)
-        _run_git_command_with_environment(
+        _run_git_command(
             repository,
             (_GIT_ADD_COMMAND, _GIT_FORCE_OPTION, _GIT_SEPARATOR, *pathspecs),
-            environment,
+            environment=environment,
         )
         temporary_index = IndexFile(repository, index_path)
         # Snapshot hooks may mutate the temporary on-disk index; write_tree uses these cached candidate entries.
@@ -508,14 +555,10 @@ def _synchronize_candidate_index(repository: Repo, revision: str | None, paths: 
         ),
     )
     entries: dict[Path, tuple[str, str]] = {}
-    for record in output.split(_NUL):
-        if not record:
-            continue
-        metadata, raw_path = record.split(_TAB, maxsplit=1)
-        mode, kind, object_id = metadata.split()
-        if kind != _GIT_BLOB_KIND:
+    for entry in _parse_tree_entries(output):
+        if entry.kind != _GIT_BLOB_KIND:
             raise RuntimeError(_CANDIDATE_TREE_ENTRY_INVALID_ERROR)
-        entries[Path(raw_path)] = (mode, object_id)
+        entries[entry.path] = (entry.mode, entry.object_id)
     if entries.keys() != set(paths):
         raise RuntimeError(_CANDIDATE_TREE_PATHS_MISMATCH_ERROR)
     records = tuple(
@@ -523,13 +566,6 @@ def _synchronize_candidate_index(repository: Repo, revision: str | None, paths: 
         for path, (mode, object_id) in sorted(entries.items())
     )
     _run_index_update(repository, (_GIT_NUL_FLAG, _GIT_INDEX_INFO_FLAG), b"".join(records))
-
-
-def _run_git_command_with_environment(
-    repository: Repo, arguments: Sequence[str], environment: Mapping[str, str]
-) -> str:
-    execute = cast(Callable[..., object], repository.git.execute)
-    return cast(str, execute([GIT_EXECUTABLE, *arguments], env=dict(environment)))
 
 
 def _restore_written_templates(
@@ -564,14 +600,11 @@ def _restore_written_templates(
 
 def _run_index_update(repository: Repo, arguments: Sequence[str], payload: bytes) -> None:
     """Feed a NUL-delimited index operation through a file-backed GitPython stream."""
-    with TemporaryFile() as stream:
-        stream.write(payload)
-        stream.seek(0)
-        execute = cast(Callable[..., object], repository.git.execute)
-        execute(
-            [GIT_EXECUTABLE, _GIT_LITERAL_PATHSPECS_ARGUMENT, _GIT_UPDATE_INDEX_COMMAND, *arguments],
-            istream=stream,
-        )
+    _run_git_command(
+        repository,
+        (_GIT_LITERAL_PATHSPECS_ARGUMENT, _GIT_UPDATE_INDEX_COMMAND, *arguments),
+        payload=payload,
+    )
 
 
 def _hook_findings(error: HookExecutionError) -> tuple[str, ...]:
@@ -669,14 +702,19 @@ def _recorded_tree_paths(repository: Repo) -> tuple[tuple[Path, str], ...]:
 
 
 def _tree_paths(tree: str) -> tuple[tuple[Path, str], ...]:
-    paths: list[tuple[Path, str]] = []
+    return tuple((entry.path, entry.mode) for entry in _parse_tree_entries(tree))
+
+
+def _parse_tree_entries(tree: str) -> tuple[_TreeGitEntry, ...]:
+    """Parse Git's NUL-delimited ls-tree records once for all tree readers."""
+    entries: list[_TreeGitEntry] = []
     for entry in tree.split(_NUL):
         if not entry:
             continue
-        metadata, raw_path = entry.split("\t", maxsplit=1)
-        mode, _kind, _object_id = metadata.split(" ", maxsplit=2)
-        paths.append((Path(raw_path), mode))
-    return tuple(paths)
+        metadata, raw_path = entry.split(_TAB, maxsplit=1)
+        mode, kind, object_id = metadata.split(" ", maxsplit=2)
+        entries.append(_TreeGitEntry(Path(raw_path), mode, kind, object_id))
+    return tuple(entries)
 
 
 def _log_refusal(refused_paths: tuple[Path, ...], *, home: Path) -> None:
