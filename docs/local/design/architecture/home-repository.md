@@ -116,9 +116,12 @@ Its candidate set is exactly the retained targets it then wrote. It enumerates
 no untracked material, whether or not a record already exists: material present
 before the history is created is someone's unrecorded work like any other.
 
-The record is a pathspec commit of that candidate set, so content another
-session has staged stays staged and unrecorded. It carries the installation's
-own author identity and no `--no-verify`. An empty candidate set records
+The record applies exactly that candidate set over the last recorded tree,
+through a separate GitPython index, so content another session has staged stays
+staged and unrecorded. The installed hooks judge that candidate tree before it
+is recorded. The author and committer are the installation's own identity;
+hooks are not skipped. A successful record updates only the candidates in the
+shared index. An empty candidate set records
 nothing. When the gate refuses the record, activation also returns each file it
 wrote to its earlier content, or removes it when it was absent, provided the
 file still holds exactly what activation wrote. A file someone changed in the
@@ -219,7 +222,7 @@ flowchart TD
     G -- no --> H[Refuse; write nothing; name the offending paths]
     G -- yes --> S{Candidate set empty?}
     S -- yes --> J
-    S -- no --> I[Record the candidate set by pathspec, under the installation's identity]
+    S -- no --> I[Record only the candidate changes over the last tree, under the installation's identity]
     I --> T{Commit gate passes?}
     T -- no --> U[Return own writes to their earlier state; report the gate's findings]
     T -- yes --> J[Evaluate the record against the retained set]
