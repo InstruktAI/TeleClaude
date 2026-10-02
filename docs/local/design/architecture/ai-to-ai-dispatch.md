@@ -17,7 +17,6 @@ Enable one AI session (the **Initiator**) to spawn and supervise another (the **
 
 This design covers the dispatch journey. Storage internals for the listener registry live in `session-listeners`. The state contract that this flow obeys lives in `session-subscriptions`.
 
-<!-- planned:personal-assistant-launch -->
 
 ### The personal-assistant launch
 
@@ -33,38 +32,28 @@ conversation.
 The launch's ownership is stated in this cross-cutting design. The agent-runtime
 domain anchor carries no forward architecture.
 
-<!-- /planned:personal-assistant-launch -->
 
 ## Inputs/Outputs
 
 **Inputs:**
 
 - `telec sessions run` or `telec sessions start` invocation from the Initiator (CLI or API). Carries target computer, project path, command or message, and (when relevant) `--direct`.
-<!-- planned:personal-assistant-launch -->
 - `telec sessions run-pa` invocation from any session. Carries a brief and
   nothing else: no path, no subfolder, no computer, and no person. Each of those
   is derived from the authenticated caller.
-<!-- /planned:personal-assistant-launch -->
 - Initiator's session identity (`X-Caller-Session-Id` header / equivalent) — pins the dispatcher identity on the new session.
 - Worker `agent_stop` events from the agent CLI hook receiver.
 
 **Outputs:**
 
-<!-- planned-change:personal-assistant-launch -->
-- New Worker session record in the database, with `initiator_session_id` set.
-- Persistent listener row registered for the (Initiator → Worker) pair (`one_shot=false`).
-- Stop notification injected into the Initiator's tmux when the Worker's turn ends — subject to the suppression rule in `session-subscriptions`.
-<!-- change:personal-assistant-launch -->
 - New Worker session record in the database. A dispatch made by an initiator
   records that initiator; a launch that pins no parent records none.
 - Persistent listener row registered for the (Initiator → Worker) pair
   (`one_shot=false`), for a dispatch that has an initiator to notify.
 - Stop notification injected into the Initiator's tmux when the Worker's turn ends — subject to the suppression rule in `session-subscriptions`. A session with no initiator produces none.
-<!-- /planned-change:personal-assistant-launch -->
 
 ## Invariants
 
-<!-- planned:personal-assistant-launch -->
 - **A person is derived, never addressed.** `run-pa` resolves its target from the
   authenticated caller's identity. The surface exposes no parameter naming a
   person, in any form, and a request carrying an unexpected field is rejected
@@ -99,7 +88,6 @@ domain anchor carries no forward architecture.
   person a caller is resolves through the identity contract; where that person's
   workspace lives is read from the person registry. Dispatch owns only the launch
   that binds them.
-<!-- /planned:personal-assistant-launch -->
 - **Initiator pinning records dispatch, not command.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. It is the canonical link from child to parent, it survives daemon restart, and it is what caller-scoped cleanup and the todo claiming group read. A standing role — the integrator, the project coordinator, a scheduled job runner — takes its work from a queue, a schedule, or the fleet, so no session is pinned for it through any door, including adoption of a session already running. The human identity the work runs under is copied onto the session at creation and does not depend on the link surviving.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
 - **No destructive coupling.** Opening a direct link to the Worker does not remove the dispatch-time listener. The link toggles delivery (suppression rule) but never mutates the listener row. Refuted code paths: `unregister_listener(...)` calls inside `_link_direct_sessions` and `_create_direct_link`.
@@ -169,7 +157,6 @@ sequenceDiagram
     ConvDelivery->>Initiator: bundled turn output via direct link
 ```
 
-<!-- planned:personal-assistant-launch -->
 
 ### 4a. The personal-assistant launch
 
@@ -197,7 +184,6 @@ sequenceDiagram
     end
 ```
 
-<!-- /planned:personal-assistant-launch -->
 
 ### 4. Caller cleanup
 
@@ -215,7 +201,6 @@ sequenceDiagram
 
 ## Failure modes
 
-<!-- planned:personal-assistant-launch -->
 - **Accepting a person argument and validating it.** This reads as the same
   guarantee reached more flexibly and is a different one: anything a caller can
   pass is something a caller can be talked into passing by content it was asked
@@ -234,7 +219,6 @@ sequenceDiagram
   sessions there through the ordinary creation path, and a destination refusal
   removes them along with the route it was aimed at. Containment of what an agent
   in a person's folder may reach belongs to a sandbox, not to dispatch.
-<!-- /planned:personal-assistant-launch -->
 
 - **Worker session crashes before any turn completes.** No `agent_stop` ever fires for it; the listener row remains until caller cleanup or explicit unsubscribe. Diagnose via `telec sessions tail <worker_id>` and lifecycle status in the sessions table.
 - **Initiator tmux gone before notify.** `deliver_listener_message` logs the failure; the listener row is still removed when it is `one_shot=true`, retained when persistent. Persistent listeners with no live tmux become silent — caller cleanup is the resolution.

@@ -40,13 +40,11 @@ their state — an agent that cannot establish both stops and says what is missi
 wherever it is running. Half-wired is not a lesser version of the work; it is a
 different agent acting on a real mailbox.
 
-<!-- planned:personal-assistant-launch -->
 The shortest way to start an agent in a person's workspace is
 `telec sessions run-pa`, carrying a brief and nothing else and deriving the
 person from whoever is calling. An agent that
 recognises personal work makes that call rather than working out where to point
 a new session. No argument names a person, and none is accepted in any form.
-<!-- /planned:personal-assistant-launch -->
 
 Reading person-disclosed documentation is a separate operation, governed by its
 audience and the knowledge contract (`personal/spec/person-knowledge`). It does
@@ -134,10 +132,8 @@ whoever is pinned as its parent holds that authority, and a session with none
 holds it itself. That it is a worker by role changes nothing — role says what a
 session is for, never who ends it.
 
-<!-- planned:personal-assistant-launch -->
 The launch that reaches a person's workspace pins no parent, so the assistant is
 always the session holding its own ending.
-<!-- /planned:personal-assistant-launch -->
 
 A run that fails ends the same way, reporting through its record. It does not
 stay alive to be asked what happened.
@@ -195,7 +191,6 @@ alternative is an assistant whose reach is decided by how well it argued for
 crossing. Prose alone cannot hold that line, since an agent convinced of an
 exception reads these same words and proceeds.
 
-<!-- planned:personal-assistant-launch -->
 The launch call removes the step where such an argument usually starts: an agent
 that recognises personal work has something to invoke rather than a destination
 to work out. It takes no person because anything a caller can pass is something
@@ -203,7 +198,6 @@ a caller can be talked into passing by content it was asked to read; a validated
 person argument would bring back the aiming the call exists to remove. The call
 is a route, not a wall — holding the line against an agent set on crossing it is
 the work of containing the personal agent, not of how it was launched.
-<!-- /planned:personal-assistant-launch -->
 
 Admin is the case that has to be named rather than assumed: platform
 authority is real and it is authority over the platform, so an admin session

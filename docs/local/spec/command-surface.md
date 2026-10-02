@@ -48,7 +48,5 @@ visibility: 'public'
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).
 - Availability depends on adapter registration and permissions.
 - `telec sessions run` runs for a caller the CLI resolved to a session or to a person at a terminal (`local/projects/teleclaude/spec/identity-and-auth` §6).
-<!-- planned:personal-assistant-launch -->
 - `telec sessions run-pa` runs only for a caller that resolves to a person, and lands in that person's workspace; a caller resolving to no person is refused (`local/projects/teleclaude/spec/feature/agent_runtime/person-workspace-dispatch`).
-<!-- /planned:personal-assistant-launch -->
 - When the caller is not a session, the request still runs for the person the terminal's login names (or the sole registered person); only child-session lineage is omitted.

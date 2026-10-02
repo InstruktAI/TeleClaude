@@ -1,7 +1,7 @@
 ---
-description: Any agent that recognises personal work starts that person's assistant with a brief alone; the destination is derived from the authenticated caller, and the launched assistant has no parent and ends itself.
-delivered_by:
-  - personal-assistant-launch
+description: Any agent that recognises personal work starts that person's assistant
+  with a brief alone; the destination is derived from the authenticated caller, and
+  the launched assistant has no parent and ends itself.
 ---
 
 # Person Workspace Dispatch — Spec
