@@ -774,11 +774,16 @@ def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> It
         yield from _iter_reachable_refs(resolved, project_root, seen)
 
 
-def _validate_baseline_dedup(project_root: Path) -> None:
+def _validate_baseline_dedup(project_root: Path, *, paths: list[Path] | None = None) -> None:
     """Fail when either baseline delivery mechanism also includes baseline content."""
     domains = load_domains(project_root)
     for snippets_root in _iter_snippet_roots(project_root):
-        for path in sorted(snippets_root.rglob("*.md")):
+        candidates = (
+            (path for path in paths if path.is_relative_to(snippets_root))
+            if paths is not None
+            else snippets_root.rglob("*.md")
+        )
+        for path in sorted(candidates):
             if path.name == "index.yaml" or is_excluded_snippet_path(path, snippets_root):
                 continue
             try:
@@ -837,7 +842,13 @@ def _containing_tier_root(path: Path, tier_roots: list[Path]) -> Path | None:
 
 
 def _validate_scoped_paths(
-    project_root: Path, paths: list[Path], *, snippet_roots: list[Path], tier_roots: list[Path], domains: set[str]
+    project_root: Path,
+    paths: list[Path],
+    *,
+    snippet_roots: list[Path],
+    tier_roots: list[Path],
+    domains: set[str],
+    todo_status_facts: Mapping[str, TodoStatusFact] | None = None,
 ) -> None:
     """Validate an explicit path list, matching each against project then tier roots."""
     for path in paths:
@@ -867,7 +878,7 @@ def _validate_scoped_paths(
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
-            validate_snippet(path, text, project_root, domains=domains)
+            validate_snippet(path, text, project_root, domains=domains, todo_status_facts=todo_status_facts)
             continue
         tier_root = _containing_tier_root(path, tier_roots)
         if tier_root is None:
@@ -879,7 +890,7 @@ def _validate_scoped_paths(
         except OSError as exc:
             _error("snippet_read_failed", path=str(path), error=str(exc))
             continue
-        validate_snippet(path, text, tier_root, domains=domains)
+        validate_snippet(path, text, tier_root, domains=domains, todo_status_facts=todo_status_facts)
 
 
 def _validate_tier_roots(
@@ -910,7 +921,11 @@ def _validate_tier_roots(
 
 
 def validate_all_snippets(
-    project_root: Path, *, paths: list[Path] | None = None, tier_home: Path | None = None
+    project_root: Path,
+    *,
+    paths: list[Path] | None = None,
+    tier_home: Path | None = None,
+    full_run: bool = False,
 ) -> None:
     """Validate all doc snippets under the project. Collects validation findings.
 
@@ -934,7 +949,16 @@ def validate_all_snippets(
 
     if paths is not None:
         snippet_roots = _iter_snippet_roots(project_root)
-        _validate_scoped_paths(project_root, paths, snippet_roots=snippet_roots, tier_roots=tier_roots, domains=domains)
+        _validate_scoped_paths(
+            project_root,
+            paths,
+            snippet_roots=snippet_roots,
+            tier_roots=tier_roots,
+            domains=domains,
+            todo_status_facts=_resolve_todo_status_facts(project_root) if full_run else None,
+        )
+        if full_run:
+            _validate_baseline_dedup(project_root, paths=paths)
         return
 
     todo_status_facts = _resolve_todo_status_facts(project_root)

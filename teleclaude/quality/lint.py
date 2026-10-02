@@ -48,6 +48,7 @@ _CONTENT_ROOT_FLAG = "--content-root"
 _PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
 _SKIP_SNIPPETS_FLAG = "--skip-snippets"
 _NO_FILES_FLAG = "--no-files"
+_FULL_RUN_FLAG = "--full-run"
 _CONTENT_ROOT_FULL_RUN_ERROR = "A content-root validation must be path-scoped."
 _EMPTY_STRING = ""
 
@@ -154,6 +155,7 @@ class _MarkdownStep:
         md: list[str] = []
         if self._run_all:
             cmd = [_bundled_python(), script]
+            cmd.append(_FULL_RUN_FLAG)
             md = markdown_files(targets)
             if md:
                 cmd.extend(md)

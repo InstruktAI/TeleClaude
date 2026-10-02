@@ -47,6 +47,7 @@ _CONTENT_ROOT_FLAG = "--content-root"
 _PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
 _SKIP_SNIPPETS_FLAG = "--skip-snippets"
 _NO_FILES_FLAG = "--no-files"
+_FULL_RUN_FLAG = "--full-run"
 _CONTENT_ROOT_REQUIRES_PATHS = "Content-root snippet validation requires explicit file paths."
 _PATH_SEPARATOR = os.sep
 _EMPTY_STRING = ""
@@ -70,6 +71,7 @@ class _Arguments:
     platform_home_subject: bool
     skip_snippets: bool
     no_files: bool
+    full_run: bool
 
 
 def _validate_mermaid_diagrams(file_path: Path, content: str) -> list[str]:
@@ -244,6 +246,7 @@ def _validate_snippets(
     paths: list[Path] | None = None,
     content_root: Path | None = None,
     platform_home_subject: bool = False,
+    full_run: bool = False,
 ) -> list[str]:
     """Run the snippet reader over publisher sources; it needs no documentation lease.
 
@@ -267,7 +270,7 @@ def _validate_snippets(
     )
     try:
         with publisher_resolution(validation_root):
-            validate_all_snippets(validation_root, paths=validation_paths, tier_home=tier_home)
+            validate_all_snippets(validation_root, paths=validation_paths, tier_home=tier_home, full_run=full_run)
     except DocsPublisherResolutionError as exc:
         _error("snippet_global_source_resolution_failed", path=str(validation_root), reason=str(exc))
     return [_format_validation_finding(finding, content_root=content_root) for finding in get_errors()]
@@ -280,6 +283,7 @@ def _parse_arguments(argv: list[str]) -> _Arguments:
     parser.add_argument(_PLATFORM_HOME_SUBJECT_FLAG, action=_ARGPARSE_STORE_TRUE)
     parser.add_argument(_SKIP_SNIPPETS_FLAG, action=_ARGPARSE_STORE_TRUE)
     parser.add_argument(_NO_FILES_FLAG, action=_ARGPARSE_STORE_TRUE)
+    parser.add_argument(_FULL_RUN_FLAG, action=_ARGPARSE_STORE_TRUE)
     parser.add_argument(_PATHS_ARGUMENT, nargs=_ARGPARSE_ZERO_OR_MORE)
     parsed = parser.parse_args(argv)
     return _Arguments(
@@ -288,6 +292,7 @@ def _parse_arguments(argv: list[str]) -> _Arguments:
         platform_home_subject=parsed.platform_home_subject,
         skip_snippets=parsed.skip_snippets,
         no_files=parsed.no_files,
+        full_run=parsed.full_run,
     )
 
 
@@ -328,6 +333,7 @@ def main() -> int:
                     paths=resolved,
                     content_root=arguments.content_root,
                     platform_home_subject=arguments.platform_home_subject,
+                    full_run=arguments.full_run,
                 )
             )
     else:
