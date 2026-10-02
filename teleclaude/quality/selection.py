@@ -1,4 +1,4 @@
-"""Closed quality-check family vocabulary shared across gate composition."""
+"""Quality-check families and candidate grading-root selection."""
 
 from collections.abc import Iterable
 from enum import StrEnum
