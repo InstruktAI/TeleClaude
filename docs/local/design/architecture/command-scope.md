@@ -83,13 +83,11 @@ flowchart LR
    describes or configures the TeleClaude installation itself acts on the
    installation whose code runs, which `checkout-code-selection` decides. That is not
    a root of the invocation and is reported as one checkout.
-<!-- planned:home-publication-sync -->
 8. **Home publication acts on the invocation directory's own home.** `telec sync`
    acts on the home whose `teleclaude.yml` sits in the invocation directory itself,
    and on the homes nested beneath it in the committed tree. It takes no home from a
    parent directory: where the invocation directory holds no declaration it refuses,
    naming the directory.
-<!-- /planned:home-publication-sync -->
 
 ## Primary flows
 

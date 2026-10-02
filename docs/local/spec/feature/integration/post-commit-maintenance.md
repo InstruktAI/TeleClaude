@@ -58,16 +58,6 @@ contract governs only what happens when maintenance runs.
 - **Failure posture.** The commit is already recorded before maintenance
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
-<!-- planned-change:home-publication-sync -->
-- **Committed source.** A publication action receives the recorded range that
-  selected it and advances only that repository contribution to the range tip.
-  Every other repository remains at its previously activated revision until its
-  own commit or merge maintenance runs. Working-tree files are never inputs.
-- **Recovery.** A failed action is replayed through this executor for its
-  original recorded range and action id. Recovery emits the same attempt and
-  outcome records as the first run and never substitutes the current working
-  tree or a newer head.
-<!-- change:home-publication-sync -->
 - **Committed source.** A publication action is selected by its recorded range
   and publishes the homes that range touched at the repository's committed
   `main` tip, read under publication serialization
@@ -79,7 +69,6 @@ contract governs only what happens when maintenance runs.
   records as the first run; a replayed publication converges to the committed
   `main` tip and never substitutes the working tree. Where no action was
   recorded, `telec sync` in the affected home publishes its committed state.
-<!-- /planned-change:home-publication-sync -->
 - **Absence.** A commit made where the hook is not installed performs no
   maintenance and raises no signal. Nothing detects that absence here:
   installed plumbing is machine state whose comparison against the project's
@@ -192,18 +181,6 @@ And each action eventually has a structured terminal outcome
 But the integration worktree performs no maintenance action
 ```
 
-<!-- planned-change:home-publication-sync -->
-#### UC-PCM7: Publication uses the recorded commit, not later working-tree state
-
-```gherkin
-Given a canonical-main commit whose changed paths owe publication
-And another registered repository carries source that has not run its own publication action
-When commit-boundary maintenance performs the publication action for that recorded range
-Then the triggering repository contribution advances to the recorded range tip
-And every other repository contribution remains at its previously activated revision
-And no unactivated source appears in the generation
-```
-<!-- change:home-publication-sync -->
 #### UC-PCM7: Publication uses committed state, not working-tree state
 
 ```gherkin
@@ -214,20 +191,7 @@ Then the homes that range touched advance to the committed main tip
 And every other repository contribution remains at its previously activated revision
 And no unactivated source appears in the generation
 ```
-<!-- /planned-change:home-publication-sync -->
 
-<!-- planned-change:home-publication-sync -->
-#### UC-PCM8: Recovery replays the failed action for its original range
-
-```gherkin
-Given a recorded commit range whose publication action failed
-And repository heads or working trees have changed since that failure
-When an agent retries that recorded maintenance action
-Then the executor performs publication for the original range and action id
-And its structured records identify the replayed range and terminal outcome
-And no current working-tree state replaces the original input
-```
-<!-- change:home-publication-sync -->
 #### UC-PCM8: Recovery replays the failed action and converges to the main tip
 
 ```gherkin
@@ -238,7 +202,6 @@ Then the executor publishes the homes that range touched at the committed main t
 And its structured records identify the replayed range and terminal outcome
 And no working-tree state reaches the deployed output
 ```
-<!-- /planned-change:home-publication-sync -->
 
 #### UC-PCM9: A root commit has an immutable activation range
 

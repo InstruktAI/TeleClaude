@@ -11,61 +11,66 @@ visibility: 'public'
 
 ## What it is
 
-Publication is Context's internal maintenance primitive for promoting validated
-recorded source into deployed agent runtime outputs. Commit or merge
-maintenance supplies the recorded range; publication resolves committed source,
-rebuilds derived indexes, and distributes runtime artifacts. It never reads the
-caller's current working tree and has no operator-facing command.
+Publication is Context's routine for promoting committed source into deployed
+agent runtime outputs. Committed state has passed the commit gate
+(`local/projects/teleclaude/design/code-commit`) and is the source of truth, so
+publication derives and never validates: it resolves committed source, rebuilds
+derived indexes, and distributes runtime artifacts. It never reads a working
+tree.
+
+Two entry points run the same routine:
+
+- **Commit-boundary maintenance** — a canonical-main activation whose changed
+  paths owe publication publishes the homes it touched
+  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+- **`telec sync`** — an operator command that publishes the home at the
+  invocation directory and every nested home beneath it in the committed tree:
+  in the global home, its company and person homes. It runs only when the invocation directory itself holds a
+  `teleclaude.yml`; it never resolves a home from a parent directory, and
+  anywhere else it refuses and names that requirement. It is an agent command,
+  reached by every agent role except the worker, and admits members and admins
+  (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+
+Home vocabulary follows `local/projects/teleclaude/spec/domain/glossary`. Homes are
+discovered in the committed tree, never on disk, so a gitignored folder or a
+foreign repository is never a home in scope.
 
 Publication does not mutate doc snippets in response to todo delivery state;
 delivery-driven `delivered_by` reconciliation belongs to the integration
 lifecycle before the delivery commit is made.
 
-The publication pipeline is:
+The unit of publication is one home. For each home in scope:
 
-1. **Resolve activated source** — materialize the recorded tip for the
-   triggering project and retain every other publisher at its previously
-   activated revision.
-2. **Build indexes** — once the recorded snapshot validates, record its tip
-   as the canonical checkout's unfinished publication, then derive indexes from
-   that snapshot and write portable derived indexes to its canonical checkout.
-3. **Distribute** — compose and atomically deploy the capability-gated runtime
-   outputs from those snapshots, then record the tip as the checkout's
-   published generation and clear the unfinished publication.
+1. **Resolve committed source** — read the canonical checkout's committed
+   `main` tip while holding publication serialization and materialize it; every
+   other publisher keeps its previously activated revision.
+2. **Build indexes** — derive the home's indexes from that snapshot and write
+   portable derived indexes to the canonical checkout.
+3. **Distribute** — compose and atomically deploy the home's capability-gated
+   runtime outputs, replacing only that home's contribution, then record the
+   tip as that home's published generation.
 
-A canonical checkout's published generation is the recorded tip of its latest
-completed publication; its unfinished publication is a validated tip claimed
-for output, recorded before any output write and cleared when that publication
-completes. Publication compares against both once
-it holds publication serialization:
+A home whose build fails — an unreadable declaration, an index that cannot be
+built, an entrypoint that cannot be composed — is skipped. Its previous
+deployment stays in place, every other home in scope still publishes, and the
+home is reported with its build error and with the commit gate's lint findings
+over that home's committed files. The findings explain a skip; they never
+select what publishes. `telec sync` exits non-zero when any home was skipped.
 
-- A recorded tip that is a strict ancestor of the published generation is
-  superseded: its publication runs no index or distribution phase, leaves the
-  canonical checkout's indexes and every deployed runtime output unchanged, and
-  reports a superseded outcome.
-- A recorded tip that is a strict ancestor of an unfinished publication newer
-  than the published generation fails without changing output and names that
-  unfinished tip; its action remains recoverable until that tip, or a
-  descendant, completes.
-- With no published generation recorded, only a recorded tip equal to the
-  canonical checkout's latest commit, or to its unfinished publication,
-  publishes; any other replay fails without changing output, and its action
-  remains recoverable.
-- Any other recorded tip publishes, so a replay of a range whose later
-  successors have not yet published advances deployment rather than waiting on
-  them.
+The tip is read under serialization, so a later publication never deploys an
+older tip than an earlier one. A commit range decides only whether publication
+is owed, never what is published. Maintenance publication of a home that
+already records the tip changes nothing; `telec sync` always rebuilds the homes
+in scope.
 
-Normal and recovery publication consume a recorded commit that already passed
-its commit gate. Initial activation, when used, validates a clean recorded
-`HEAD` and blocks on every finding before publication. There is no bypass,
-warn-and-publish mode, or working-tree entrypoint.
+A Mother publication also refreshes the home entrypoints that inline the
+Mother's documentation.
 
-Initial-activation validation findings are stdout text grouped by error code
-and reason; there is no machine-readable output channel today.
+There is no working-tree entrypoint and no bypass.
 
 ## Canonical fields
 
-Each per-project publication phase runs only when the recorded declaration
+Each per-project publication phase runs only when the committed declaration
 subscribes the capability that owns it
 (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`). Snippet index
 building and documentation publication run only under a subscribed `docs`;
@@ -89,7 +94,7 @@ behavior; this spec references them rather than restating them.
 Given a recorded canonical commit whose changed paths owe publication
 And another registered repository has a newer committed or uncommitted source state that has not run its own publication action
 When the internal publication action runs for that recorded range
-Then the triggering repository contribution advances to the recorded tip
+Then the triggering repository's homes advance to the committed main tip
 And every other repository contribution remains at its previously activated revision
 And no unactivated source appears in a deployed output
 ```
@@ -105,46 +110,44 @@ And the deployed documentation root is a real directory containing the complete 
 And no displaced legacy symlink remains beside the deployed root
 ```
 
-#### UC-SPO24: Unrecorded source cannot publish
+#### UC-SPO24: Uncommitted source cannot publish
 
 ```gherkin
-Given a caller has a working tree but supplies no valid recorded commit range
-When it requests publication
-Then publication is rejected before index build or distribution
-And no runtime output changes
+Given a home whose working tree holds uncommitted edits
+When maintenance or telec sync publishes that home
+Then the deployed output reflects only its committed files
+And telec sync states that uncommitted changes were not published
 ```
 
-#### UC-SPO25: Recovery publishes the original recorded range
+#### UC-SPO25: Recovery converges to the committed main tip
 
 ```gherkin
 Given publication failed for a recorded commit range
-And the checkout records a published generation, and neither it nor an unfinished publication descends from that range's tip
-And a later commit or working-tree edit exists
+And later canonical-main commits exist
 When an agent replays the publication action for the failed range
-Then an agent retrieving the deployed documentation reads the original committed input
-And the later source does not replace it
-And the replaying agent receives the terminal outcome for that original range
+Then the homes the range touched are published at the committed main tip
+And an agent retrieving the deployed documentation reads the main tip's committed input
+And no uncommitted edit reaches the deployed output
 ```
 
-#### UC-SPO28: A superseded replay leaves newer published output in place
+#### UC-SPO28: An older replay never rolls a home back
 
 ```gherkin
-Given publication failed for a recorded commit range
-And a later canonical-main commit's source has since been published
-When an agent replays the publication action for the failed range
-Then an agent retrieving documentation, commands, or skills reads the later published source
-And an agent's local documentation retrieval still lists the later published catalog
-And the replaying agent receives a superseded terminal outcome for the original range
-And the failed action no longer awaits the agent's recovery
+Given a home already published at the committed main tip
+When an agent replays the publication action for an older recorded range
+Then that home's deployed documentation, commands, and skills still reflect the main tip
+And an agent's local documentation retrieval still lists the main tip's catalog
+And the replayed action completes without awaiting further recovery
 ```
 
-#### UC-SPO26: The working-tree publication command is absent
+#### UC-SPO26: telec sync publishes the invocation home and its nested homes
 
 ```gherkin
-Given an operator invokes telec sync
-When the root command parser resolves the requested command
-Then the invocation is rejected as an unknown command
-And no validation, index build, distribution, or runtime-output write starts
+Given a member, an admin, or a non-worker agent in a directory that holds a teleclaude.yml
+And the committed tree holds further homes beneath that directory
+When it invokes telec sync
+Then that home and every nested home in the committed tree are published from the committed main tip
+And a gitignored folder or a foreign repository holding a teleclaude.yml is not published
 ```
 
 #### UC-SPO27: Delivery reconciliation is published as part of its commit
@@ -241,36 +244,86 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
+#### UC-SPO29: telec sync refuses outside a home
+
+```gherkin
+Given a directory that holds no teleclaude.yml, including a subfolder of a home
+When telec sync is invoked there
+Then it refuses and states that it runs only from a directory holding a teleclaude.yml
+And no index build, distribution, or runtime-output write starts
+```
+
+#### UC-SPO30: A home whose build fails is skipped with its evidence
+
+```gherkin
+Given the global home and its nested homes are in scope
+And one nested home's build fails
+When telec sync runs in the global home
+Then every other home publishes
+And the failed home keeps its previous deployment
+And the failed home is reported with its build error and the lint findings over its committed files
+And telec sync exits non-zero
+```
+
+#### UC-SPO31: Syncing one home leaves the others untouched
+
+```gherkin
+Given a person home inside the global home
+When telec sync runs in that person home
+Then only that home's deployed documentation and entrypoints change
+And every other home's deployed output is unchanged
+```
+
+#### UC-SPO32: Committed findings never block publication
+
+```gherkin
+Given a nested home whose committed files carry lint findings and still build
+When maintenance or telec sync publishes its repository
+Then that home publishes as committed
+And no other home's publication waits on it
+```
+
+#### UC-SPO33: A home removed from the committed tree leaves deployment
+
+```gherkin
+Given a person home whose documentation is deployed
+And a commit removes that home from the global home's committed tree
+When maintenance or telec sync publishes the global home
+Then that home's documentation and catalog entries are absent from the deployed output
+And every other home's deployed output is unchanged
+```
+
 ### Cross-context references
 
 - **workflow / integration** — own todo delivery state and delivery-time
   `delivered_by` reconciliation.
 - **config** — supplies project root and Mother-project resolution consumed by
-  the distribution step.
+  the distribution step, and the homes a committed tree holds with each path's
+  owning home.
 - **agent_runtime** — phase 3's distribution step deploys to the agent runtime
   boundary.
 
 ## Known caveats
 
 - Publication is idempotent at the authored-source layer: it builds indexes
-  from the recorded snapshot and places published domain bundles inside the
+  from the committed snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
-  checkout paths whenever its recorded tip publishes, including after later
-  commits that owe no publication. The host
+  checkout paths whenever a home publishes. The host
   documentation lease covers the checkout write and every publication action,
-  including maintenance from a person's direct Git commit or merge, so a later
-  commit's publication runs after an earlier one releases it and writes its
-  own catalog when that action succeeds. Replaying a superseded range changes
-  neither the local index nor runtime output. Publication never mutates
-  authored source snippets or uses uncommitted files.
+  including maintenance from a person's direct Git commit or merge and
+  `telec sync`, so a later publication runs after an earlier one releases it.
+  Publication never mutates authored source snippets or uses uncommitted files.
 
 - Deployed artifacts reflect committed state. Between a save and its commit, the
   deployed tree is the previous commit's.
 
 - Project bootstrap converges declarations, filters, and hooks but publishes no
-  working-tree source. The first validated canonical commit activates the
-  project's subscribed outputs. An explicit initial activation, when used,
-  requires a clean recorded `HEAD` and blocking validation.
+  working-tree source. The first canonical commit activates the project's
+  subscribed outputs; `telec sync` in the project's home publishes its committed
+  state at any time.
+- Commit-boundary maintenance owes publication only for the paths its
+  repository's maintenance bindings name, and those bindings are anchored at the
+  repository root.
 - Publication fails explicitly when its distribution implementation is
-  unavailable; a recorded activation never reports success after omitting a
+  unavailable; publication never reports success after omitting a
   runtime-output phase.

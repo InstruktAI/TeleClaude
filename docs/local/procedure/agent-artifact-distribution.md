@@ -30,13 +30,9 @@ Build and distribute agent artifacts in this repository.
 
 ## Recovery
 
-<!-- planned-change:home-publication-sync -->
-- If outputs are wrong, fix the source artifacts and rerun distribution.
-<!-- change:home-publication-sync -->
 - If outputs are wrong, fix the source artifacts and commit the fix.
 - If committed sources did not reach the deployed outputs, run `telec sync` from
   the project's home directory.
-<!-- /planned-change:home-publication-sync -->
 - Do not edit generated files directly.
 
 ## See Also
