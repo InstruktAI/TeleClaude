@@ -271,7 +271,7 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
             stderr_text = stderr.decode().strip()
             if result.returncode == 127:
                 # Logged (throttled/aggregated) by the poll loop that owns retry cadence, not per tick here.
-                raise TmuxUnavailableError(f"tmux binary unavailable for {session_name}: {stderr_text}")
+                raise TmuxUnavailableError(_TMUX_UNAVAILABLE_ERROR.format(session_name=session_name, error=stderr_text))
             if any(diagnostic in stderr_text.lower() for diagnostic in _MissingPaneDiagnostic):
                 return PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
             logger.warning(
