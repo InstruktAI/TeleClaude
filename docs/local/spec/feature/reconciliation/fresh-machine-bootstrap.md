@@ -189,7 +189,6 @@ Given installation reaches publication of the installed checkout's documentation
 When that documentation cannot be published
 Then installation does not report success
 And it names the cause publication reported
-And the documentation previously deployed in the home stays in place
 ```
 
 #### UC-FMB14: A release installed from a tag publishes that release
