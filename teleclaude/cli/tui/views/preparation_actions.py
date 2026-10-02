@@ -55,7 +55,6 @@ if TYPE_CHECKING:
 _LIFECYCLE_POLL_BUDGET_S = 60.0
 _LIFECYCLE_POLL_DEFAULT_DELAY_S = 0.25
 _MISSING_TODO_ID_WARNING = "row missing durable id; refresh the todo pane"
-_UNRESOLVED_TARGET_WARNING = "{action}: the selected row's project could not be resolved; refresh the todo pane"
 _UNRESOLVED_TARGET_EVENT = "preparation_action_target_unresolved"
 _NEW_BUG_MODAL_TITLE = "New Bug"
 _NEW_BUG_SLUG_PLACEHOLDER = "my-new-bug"
@@ -239,16 +238,13 @@ class PreparationViewActionsMixin:
     """Keyboard actions, check_action, watch_cursor_index, on_focus for PreparationView."""
 
     def _report_unresolved_target(self, action: PreparationAction, slug: str | None) -> None:
-        """Log and surface a row action whose project target cannot be resolved."""
+        """Log a row action whose project target cannot be resolved."""
         item = self._current_item()  # type: ignore[attr-defined]
         logger.warning(
             _UNRESOLVED_TARGET_EVENT,
             action=action.value,
             slug=slug,
             item_type=type(item).__name__ if item is not None else None,
-        )
-        self.app.notify(  # type: ignore[attr-defined]
-            _UNRESOLVED_TARGET_WARNING.format(action=action.value), severity=_NOTIFY_SEVERITY_WARNING
         )
 
     def _require_row_todo_id(self, row: TodoRow) -> str | None:
