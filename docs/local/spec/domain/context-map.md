@@ -41,12 +41,10 @@ contracts and never creates shared ownership.
   domain cartridges on the event platform. Each owns its event vocabulary's
   meaning, emission invariants, and handler reactions; hosting confers none of
   that on the event platform.
-<!-- planned:event-origin-and-subject -->
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — origin and subject — and each event type's
   declared subject assignment and payload fields. It owns no event's meaning
   and no consumer's reaction.
-<!-- /planned:event-origin-and-subject -->
 
 ### Boundary contracts
 
@@ -144,7 +142,6 @@ contracts and never creates shared ownership.
   activation or reads procedure metadata, and `identity` never chooses a session's company.
 <!-- /planned-change:event-subscriptions -->
 
-<!-- planned:event-origin-and-subject -->
 - Every context that emits onto the platform event stream states each event's
   subject — the registered home its act concerned, none when the event concerns
   no registered home, or unknown when the event does not carry that home — and owns
@@ -159,7 +156,6 @@ contracts and never creates shared ownership.
   audience. Consumers read origin and subject from the event, and receipt
   decisions stay with the consuming contexts.
 
-<!-- /planned:event-origin-and-subject -->
 <!-- planned:event-subscriptions -->
 - `agent_runtime` matches platform stream events against the event
   subscriptions its own sessions hold, on the computer that hosts each session,

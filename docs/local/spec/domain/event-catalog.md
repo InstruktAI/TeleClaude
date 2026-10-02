@@ -20,7 +20,6 @@ and from the feature specs that bind observable behavior.
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement event model is
   authored here.
 
-<!-- planned:event-origin-and-subject -->
 ### Envelope facts
 
 Every event on the platform event stream states two facts about itself, and
@@ -83,7 +82,6 @@ The company business domains the platform hosts state their own subjects
 (`local/projects/teleclaude/spec/domain/marketing`, `local/projects/teleclaude/spec/domain/creative_production`).
 Hosting their handlers confers no ownership of their subjects.
 
-<!-- /planned:event-origin-and-subject -->
 <!-- planned:event-subscriptions -->
 ### Discovery and visibility
 
@@ -109,9 +107,7 @@ reaction. Catalog registration does not transfer either responsibility.
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md
-<!-- planned:event-origin-and-subject -->
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md
 - docs/local/spec/feature/event-catalog/event-envelope.md
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's handlers confers no ownership of its event subjects.
-<!-- /planned:event-origin-and-subject -->

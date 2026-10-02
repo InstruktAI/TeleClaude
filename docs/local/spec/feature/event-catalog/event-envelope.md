@@ -1,8 +1,9 @@
 ---
-description: Every platform event states where it came from and what it is about — its origin and its subject — and every catalog event type declares its subject assignment and payload fields, so consumers can route, scope, and narrow on facts the event carries about itself.
+description: Every platform event states where it came from and what it is about —
+  its origin and its subject — and every catalog event type declares its subject assignment
+  and payload fields, so consumers can route, scope, and narrow on facts the event
+  carries about itself.
 visibility: internal
-delivered_by:
-  - event-origin-and-subject
 ---
 
 # Event Envelope — Spec

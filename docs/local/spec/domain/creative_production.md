@@ -28,15 +28,11 @@ through its domain handlers.
   or the company facts behind a company subject, which belong to config and
   identity.
 
-<!-- planned:event-origin-and-subject -->
 ### Event subjects
 
 Asset and format events are about the company whose creative work they record.
-<!-- /planned:event-origin-and-subject -->
 
 ## See Also
 
 - docs/local/spec/domain/event-catalog.md
-<!-- planned:event-origin-and-subject -->
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
-<!-- /planned:event-origin-and-subject -->

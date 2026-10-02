@@ -167,7 +167,6 @@ reach per request and needs no notice.
 
 <!-- /planned:subject-scope-reach -->
 
-<!-- planned:event-origin-and-subject -->
 ### Event subjects
 
 Every platform event config emits states as its subject what its act concerned:
@@ -179,13 +178,10 @@ Every platform event config emits states as its subject what its act concerned:
 - an effective configuration change: the project whose configuration changed.
   A machine or global configuration change has no subject.
 
-<!-- /planned:event-origin-and-subject -->
 
 ## See Also
 
-<!-- planned:event-origin-and-subject -->
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
-<!-- /planned:event-origin-and-subject -->
 - docs/local/spec/teleclaude-config.md
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md
