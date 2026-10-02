@@ -26,9 +26,7 @@ def resolve_repository_grading_root(repository_root: Path, source: TreeSource) -
     """Resolve the candidate root declaration or the readable repository context."""
     tree_paths = set(list_tree_paths(source))
     if ConfigFileName.OVERLAY.value in tree_paths:
-        root_owners = group_paths_by_owning_home([ConfigFileName.OVERLAY.value], source, tree_paths=tree_paths)
-        if not root_owners:
-            return None
+        group_paths_by_owning_home([ConfigFileName.OVERLAY.value], source, tree_paths=tree_paths)
         return GradingRoot(root=_ROOT_RELATIVE_PATH)
 
     context = resolve_context_root(repository_root)
