@@ -1,8 +1,8 @@
 ---
-description: Every macOS launcher TeleClaude installs is signed by one stable machine signing authority, without waiting for a person, and a signing run that cannot finish leaves the installed launchers untouched.
+description: Every macOS launcher TeleClaude installs is signed by one stable machine
+  signing authority, without waiting for a person, and a signing run that cannot finish
+  leaves the installed launchers untouched.
 visibility: internal
-delivered_by:
-  - unattended-launcher-signing
 ---
 
 # Launcher Code Identity — Spec

@@ -45,13 +45,6 @@ publishes its committed state at any time; neither deploys the working tree.
 
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
-<!-- planned-change:unattended-launcher-signing -->
-A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
-wrapper source and signs them into `bin/`. The bundles are gitignored build outputs, so
-a fresh checkout has none; `make install` invokes the same builder before copying the
-`bin/*.app` bundles into `~/Applications/`, replacing existing bundles. Both routes
-compile and sign through that one builder:
-<!-- change:unattended-launcher-signing -->
 A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
 wrapper source and signs them into `bin/`. The bundles are gitignored build outputs, so
 a fresh checkout has none. `make install`, including the install post-commit
@@ -59,7 +52,6 @@ maintenance runs, and the channel updater's install stage reach the same builder
 rebuilds only when the launcher code identity contract calls for it and otherwise
 leaves `~/Applications/` untouched. Every route compiles and signs through that one
 builder:
-<!-- /planned-change:unattended-launcher-signing -->
 
 - `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
 - `ClaudeLauncher.app`, `CodexLauncher.app`, `GeminiLauncher.app` — per-agent launchers
@@ -73,23 +65,6 @@ the Xcode Command Line Tools; absent the Swift compiler `make launchers` fails w
 start when that compiler is missing, so the remedy is stated before any work begins
 rather than at the launcher step.
 
-<!-- planned-change:unattended-launcher-signing -->
-Each bundle is signed for a stable code identity that survives rebuilds, per
-`sdlc/procedure/macos-stable-code-signing`: one shared machine-local
-signing authority with a per-executable identifier, so Full Disk Access grants keep
-matching after a recompile. The build resolves that authority itself: it creates the
-self-signed certificate when none exists, exports a backup for reissuing it elsewhere,
-and asks macOS to let `codesign` use the key unattended.
-
-An authority that already exists is used as it stands and never silently reissued. An
-expired authority, one whose private key is absent, and an ambiguous name each stop the
-build with the fingerprints and the remedy, and `make launchers-renew-authority` is the
-only route that discards one — it states that every launcher grant dies with it.
-
-After installing the bundles, `make install` compares each one's designated requirement
-against the live authority and names any bundle whose grants no longer match, together
-with the remove-then-re-add remediation that a changed code identity requires.
-<!-- change:unattended-launcher-signing -->
 Each bundle is signed for a stable code identity that survives rebuilds
 (`sdlc/procedure/macos-stable-code-signing`). What signing guarantees — a machine-local
 authority in a dedicated keychain, unattended and bounded runs, verification before any
@@ -105,18 +80,11 @@ and it states that every launcher grant dies with it.
 When install names launchers whose Full Disk Access must be granted again, remove each
 stale entry under System Settings › Privacy & Security › Full Disk Access and add the
 bundle again at that machine's screen; a recovery session cannot make that grant.
-<!-- /planned-change:unattended-launcher-signing -->
 
-<!-- planned-change:unattended-launcher-signing -->
-Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),
-`src/Launcher/build.sh` via the `make launchers` target (build/sign),
-`src/Launcher/signing-authority.sh` (authority lifecycle and bundle identity audit)
-<!-- change:unattended-launcher-signing -->
 Source: `teleclaude/core/reconciliation/launcher_identity.py` (decisions and result),
 `teleclaude/project_setup/launcher_signing.py` (keychain, signing and compile effects),
 `teleclaude/project_setup/macos_setup.py:install_launchers()` (verified replacement),
 `teleclaude/install/launcher_identity.py` (entry point for install, `make launchers` and renewal)
-<!-- /planned-change:unattended-launcher-signing -->
 
 ### 2a. macOS tmux server service (`make install`)
 

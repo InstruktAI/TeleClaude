@@ -22,11 +22,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 ### Ownership boundary
 
-<!-- planned-change:unattended-launcher-signing -->
-- **Owns:** comparison of declared installation capabilities with observed
-  machine state and selection of sanctioned convergence actions, including the
-  rule deciding which material the home's history retains.
-<!-- change:unattended-launcher-signing -->
 - **Owns:** comparison of declared installation capabilities with observed
   machine state and selection of sanctioned convergence actions, including the
   rule deciding which material the home's history retains; and each macOS
@@ -35,7 +30,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   the installed launchers were built from. That state is created on the machine
   it serves, is never shared with another machine, and lies outside the home's
   retained set.
-<!-- /planned-change:unattended-launcher-signing -->
 - **Does not own:** service lifecycle mechanics, configuration schema, the
   application behavior of the capabilities it reconciles, or what a commit
   boundary does with a membership answer it is given.
@@ -52,7 +46,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   requires before coordinating, and what it does when a peer lacks it, is that
   consumer's own contract.
 
-<!-- planned:unattended-launcher-signing -->
 #### Launcher code identity
 
 - **State.** Per macOS machine: the signing authority, selected by its
@@ -90,7 +83,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   that step's own failure handling. Post-commit maintenance reaches it through
   the full installer. No consumer reads the store, the secret or the record.
 
-<!-- /planned:unattended-launcher-signing -->
 <!-- planned:startable-unattended-install -->
 #### Fresh-machine bootstrap
 
@@ -138,9 +130,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **home-template-materialization** — `docs/local/spec/feature/reconciliation/home-template-materialization.md` — materializing repository-owned regular-file templates into the TeleClaude home before activation
 - **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
 - **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
-<!-- planned:unattended-launcher-signing -->
 - **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
-<!-- /planned:unattended-launcher-signing -->
 <!-- planned:startable-unattended-install -->
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 <!-- /planned:startable-unattended-install -->

@@ -40,13 +40,6 @@ the identifier stays unique per executable, and each executable keeps its own gr
    current signature. A toolchain that signs automatically derives the
    identifier from the build and can embed a build-specific suffix, which changes across
    rebuilds exactly like the content hash does.
-<!-- planned-change:unattended-launcher-signing -->
-3. **Sign as part of the build:** `codesign --force --options runtime --timestamp=none
---identifier <reverse-dns-name> --sign "<authority>" <artifact>`, run from the project's
-   build target immediately after the artifact is produced. `--force` replaces any existing
-   signature, so repeating the step on an already-signed artifact is a no-op; omitting the
-   trusted timestamp keeps the signature reproducible and the build free of a network call.
-<!-- change:unattended-launcher-signing -->
 3. **Sign as part of the build:** `codesign --force --options runtime --timestamp=none
 --identifier <reverse-dns-name> --sign <authority-fingerprint> <artifact>`, run from the
    project's build target immediately after the artifact is produced. Selecting the authority
@@ -60,7 +53,6 @@ the identifier stays unique per executable, and each executable keeps its own gr
    automatically only at a graphical login, and unlocking it otherwise takes that keychain's
    password, normally the user's login password, so a build that relies on it waits on a dialog or fails with
    `errSecInternalComponent`. A build that cannot sign fails; it never waits for a person.
-<!-- /planned-change:unattended-launcher-signing -->
 4. **Confirm the authority and identifier on every run.** `codesign --verify --strict` passes
    and `codesign -dvvv <artifact>` names the certificate as the authority and reports the
    chosen identifier. A linker-produced signature reports
@@ -89,45 +81,22 @@ the identifier stays unique per executable, and each executable keeps its own gr
 - **The identifier must change:** re-sign before any grant is attached. Every grant is bound
   to the identity that existed when it was made, so changing an identifier afterwards voids
   them exactly as replacing the certificate does.
-<!-- planned-change:unattended-launcher-signing -->
-- **The authority is missing from the keychain:** a replacement certificate created under the
-  same name is a different certificate, so every grant bound to the old one is void and must
-  be reissued. Keep an export of the certificate and its private key where the machine's
-  other credentials live, protected by a random passphrase held in the keychain rather than a
-  chosen one, and prove the export is readable with that passphrase before relying on it.
-<!-- change:unattended-launcher-signing -->
 - **The authority is missing from the keychain:** a replacement certificate created under the
   same name is a different certificate, so every grant bound to the old one is void and must
   be reissued. An export of the certificate and its private key avoids that reissue, at the
   cost of a second copy of the key. When one is kept, it stays on that machine where its other
   credentials live, protected by a random passphrase rather than a chosen one and never inside
   a repository, and it is proven readable with that passphrase before it is relied on.
-<!-- /planned-change:unattended-launcher-signing -->
 - **The export cannot be produced from the keychain:** an import that granted key access to
   the signing tool alone leaves no other tool able to read it. Grant access to both the
   signing and the keychain tool at import, and keep the export made at creation time — that
   copy is the backup, and re-deriving one later depends on an access list that may forbid it.
-<!-- planned-change:unattended-launcher-signing -->
-- **A second machine needs the same authority:** import the exported certificate rather than
-  creating a new one under the same name, so both machines present one authority.
-<!-- change:unattended-launcher-signing -->
 - **A second machine needs signing:** it creates its own authority. Grants are held per
   machine, so an authority shared between machines carries none of them across; importing one
   only spreads the private key.
-<!-- /planned-change:unattended-launcher-signing -->
 
 ## Discipline
 
-<!-- planned-change:unattended-launcher-signing -->
-This procedure is idempotent in its steps and not in its certificate. Re-running it against a
-correctly signed artifact changes nothing; deleting and recreating the certificate breaks every
-grant that referenced it, because the operating system remembers the certificate rather than
-its name. Treat the authority as durable machine state: create it once, export it, never
-recreate it casually. Identifiers stay distinct per executable, so authorizing one program
-never authorizes another. A self-signed authority serves locally built artifacts; artifacts
-distributed to machines you do not control need an issued developer identity instead, which is
-a separate decision.
-<!-- change:unattended-launcher-signing -->
 This procedure is idempotent in its steps and not in its certificate. Re-running it against a
 correctly signed artifact changes nothing; deleting and recreating the certificate breaks every
 grant that referenced it, because the operating system remembers the certificate rather than
@@ -136,7 +105,6 @@ serves, never recreate it casually. Identifiers stay distinct per executable, so
 never authorizes another. A self-signed authority serves locally built artifacts; artifacts
 distributed to machines you do not control need an issued developer identity instead, which is
 a separate decision.
-<!-- /planned-change:unattended-launcher-signing -->
 
 An unsigned artifact is identified by a hash of its executable and an ad-hoc one by a hash of
 its code directory, so every rebuild presents a new program to anything that authorizes it. A
