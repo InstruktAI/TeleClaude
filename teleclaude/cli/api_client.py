@@ -56,12 +56,13 @@ logger = get_logger(__name__)
 BASE_URL = "http://localhost"
 WS_URI = "ws://localhost/ws"
 _ALL_SESSIONS_PARAM = "all"
+_CLOSED_SESSIONS_PARAM, _SESSION_ID_PARAM = "closed", "id"
 _QUERY_TRUE = "true"
 _HISTORY_SHOW_PATH_TEMPLATE = "/history/show/{session_id}"
 _HISTORY_AGENT_PARAM = "agent"
 _HISTORY_THINKING_PARAM = "thinking"
 _HISTORY_RAW_PARAM = "raw"
-_HISTORY_COMPUTER_PARAM = "computer"
+_COMPUTER_PARAM = "computer"
 _PROJECTS_ROUTE = "/projects"
 _PROJECT_PATH_FIELD = "path"
 _MESSAGE_FIELD = "message"
@@ -554,13 +555,13 @@ class _TelecSessionAPI:
         session_ids: Collection[str] | None = None,
     ) -> list[SessionDTO]:
         """List sessions from all computers or a specific computer."""
-        params: list[tuple[str, str]] = [("computer", computer)] if computer else []
+        params: list[tuple[str, str]] = [(_COMPUTER_PARAM, computer)] if computer else []
         if include_closed:
-            params.append(("closed", "true"))
+            params.append((_CLOSED_SESSIONS_PARAM, _QUERY_TRUE))
         if all_sessions:
             params.append((_ALL_SESSIONS_PARAM, _QUERY_TRUE))
         if session_ids is not None:
-            params.extend(("id", session_id) for session_id in session_ids)
+            params.extend((_SESSION_ID_PARAM, session_id) for session_id in session_ids)
         resp = await self._request(
             "GET",
             "/sessions",
@@ -626,7 +627,7 @@ class _TelecSessionAPI:
                     _HISTORY_AGENT_PARAM: agent,
                     _HISTORY_THINKING_PARAM: str(thinking).lower(),
                     _HISTORY_RAW_PARAM: str(raw).lower(),
-                    _HISTORY_COMPUTER_PARAM: computer,
+                    _COMPUTER_PARAM: computer,
                 },
                 clearance_scope=ClearanceScope.verb("history show", target_computer=computer),
             ),

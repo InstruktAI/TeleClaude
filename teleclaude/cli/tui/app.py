@@ -118,6 +118,7 @@ _AVAILABILITY_PILLARS: tuple[TuiBootstrapPillar, ...] = (_AVAILABILITY_PILLAR,)
 _SAFE_INPUT_AGENT = "agent"
 _SAFE_INPUT_AVAILABLE = "available"
 _SAFE_INPUT_STATUS = "status"
+_EMPTY_LINEAGE = ""
 _APP_STATE_FIELDS = {
     "_persisted": ("_init_state", "persisted"),
     "_start_view": ("_init_state", "start_view"),
@@ -768,7 +769,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             for project in projects_with_todos:
                 session_ids: set[str] = set()
                 for todo in project.todos:
-                    acting_session = Lineage.parse(todo.lineage or "").acting_session
+                    acting_session = Lineage.parse(todo.lineage or _EMPTY_LINEAGE).acting_session
                     if acting_session:
                         session_ids.add(acting_session)
                     if todo.prepared_session_id:
