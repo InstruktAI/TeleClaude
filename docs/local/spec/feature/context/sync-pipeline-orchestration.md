@@ -29,10 +29,15 @@ Three entry points run the same routine:
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
 <!-- planned:startable-unattended-install -->
 - **Installation** — the full installer publishes the installed checkout's home
-  when it is owed, so a fresh machine serves that checkout's committed
-  documentation and agent artifacts before anything is committed on it
+  at the commit it installed, when that home does not already record it. A
+  fresh machine therefore serves the installed checkout's committed
+  documentation and agent artifacts before anything is committed on it, and a
+  release installed from a tag serves that release's
   (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
-  It consumes the routine's result and owns none of its rules.
+  Its source is the installed commit, not the committed `main` tip, and it
+  deploys that commit even when the home records a different one, so the
+  deployed documentation matches the installed code. It holds the same
+  publication serialization, and the installer acts only on its result.
 <!-- /planned:startable-unattended-install -->
 - **`telec sync`** — an operator command that publishes the home at the
   invocation directory and every nested home beneath it in the committed tree:
@@ -255,6 +260,19 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
+<!-- planned:startable-unattended-install -->
+#### UC-SPO34: Installation publishes the commit it installed
+
+```gherkin
+Given a checkout whose installed commit is a release tag, or the tip of its main branch
+When the full installer publishes the installed checkout's home
+Then the deployed documentation and agent artifacts are those committed at the installed commit
+And a home that already records that commit is left unchanged
+And a deployed generation from a different commit is replaced by the installed commit's
+And the installer is told whether that home was published, already current, or skipped with its build error
+```
+
+<!-- /planned:startable-unattended-install -->
 #### UC-SPO29: telec sync refuses outside a home
 
 ```gherkin

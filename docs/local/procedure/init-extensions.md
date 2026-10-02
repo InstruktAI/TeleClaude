@@ -179,11 +179,10 @@ boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
 - **Environment.** Installation writes the checkout's environment file with local
   defaults only when none exists. Integrations are added afterwards through
   `telec config wizard`.
-- **Publication.** Installation publishes the checkout's committed `main` tip. When
-  it publishes nothing, it says why. A home that was skipped or failed to build
-  recovers with `telec sync` from the checkout once the cause is fixed. A checkout
-  with no local `main` has nothing publication can read, so `telec sync` cannot
-  help it.
+- **Publication.** Installation publishes the documentation and agent artifacts
+  committed at the commit it installed, release tags included. A publication that
+  fails fails the install with publication's cause; fix the cause and rerun
+  `make install`.
 - **Optional apps.** LM Studio, its llmster service and Handy are installed only
   when chosen at a terminal.
 

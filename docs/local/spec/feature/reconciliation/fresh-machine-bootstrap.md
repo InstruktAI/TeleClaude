@@ -175,12 +175,29 @@ Then owner establishment changes nothing and does not fail the installation
 
 ```gherkin
 Given a fresh machine whose home has never received published documentation
-And the installed checkout's main branch holds the installed commit
 When installation completes
-Then the home serves the documentation and agent artifacts committed on the installed checkout's main branch
+Then the home serves the documentation and agent artifacts committed at the installed commit
 And a published snippet can be read through the documentation surface
 And the platform starts without failing to find its published documentation
 And uncommitted changes in the checkout are not published
+```
+
+#### UC-FMB13: Installation that cannot publish does not succeed
+
+```gherkin
+Given installation reaches publication of the installed checkout's documentation
+When that documentation cannot be published
+Then installation does not report success
+And it names the cause publication reported
+And the documentation previously deployed in the home stays in place
+```
+
+#### UC-FMB14: A release installed from a tag publishes that release
+
+```gherkin
+Given a machine whose home serves documentation from another commit
+When installation runs from a checkout of a release tag
+Then the home serves the documentation and agent artifacts committed at that release
 ```
 
 ### Cross-context references
@@ -209,12 +226,6 @@ And uncommitted changes in the checkout are not published
   machine's operating-system user can already edit the person registry
   directly. The seed adds no capability that user lacks, and it acts only
   while no person is registered.
-- Installation publishes what publication itself publishes: the checkout's
-  committed `main` tip
-  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`). A
-  checkout without a local `main`, such as one checked out at a release tag,
-  publishes nothing at install. Installation reports that, names the cause and
-  still completes.
 - A program with no terminal still cannot act as a registered person
   (`local/projects/teleclaude/spec/feature/identity/terminal-email-login`).
   Establishing the owner registers a person; it does not let unattended

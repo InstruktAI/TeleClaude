@@ -94,28 +94,29 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   refused. With people registered, a matching seed is a no-op, no seed needs
   nothing, and a conflicting seed is refused. A refusal writes nothing and fails
   the installation, naming the mismatch or the missing seed. The decision is
-  taken before any long-running installation step, and its write happens after
-  configuration is migrated and validated and before home activation.
+  taken as soon as the project's environment can evaluate it, before any step
+  that writes configuration or the home. Its write happens after configuration
+  is migrated and validated and before home activation.
 - **Writes it delegates.** The owner's registration (the registry entry and the
-  person's declaration) is made through config's person registration, never
-  through the configuration surface. No caller holds clearance on an empty
-  registry. The person home's template layer is left to home activation, which
+  person's declaration) is made through config's first-person registration
+  (`local/projects/teleclaude/spec/domain/config`), never through the
+  configuration surface. The person home's template layer is left to home
+  activation, which
   writes it over absent targets and records it as its own write. The
   registration itself stays outside installation's record, as every registration
   made through the configuration surface does.
 - **Startable checkout.** When the checkout has no environment settings file,
-  installation writes one through config's environment writer, holding only the
+  installation writes one through config's environment-defaults operation, holding only the
   local defaults for services installation itself provisions. An existing file
   is never rewritten.
 - **Install-time publication.** After home activation, installation invokes
-  context's publication routine for the installed checkout's home in owed mode,
-  and acts only on its result. Publication's rules stay context's: it publishes
-  the checkout's committed `main` tip, so a checkout without a local `main`
-  publishes nothing. A run that publishes nothing or skips a home is reported
-  with its cause, and does not fail the installation. Where the cause is one
-  that republication can clear, the report also names the recovery command.
-  The routine is not given the global home: that home's own publication
-  follows its commits.
+  context's installation entry point for the installed checkout's home, which
+  publishes the commit installation put in place
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
+  Installation acts only on its result. A home that was published or was
+  already current lets the installation continue. A home that was skipped, or a
+  run that failed, fails the installation with publication's cause. The global
+  home is not part of this step: its own publication follows its commits.
 - **Unattended execution.** The installation's own tool directory is on its
   search path from the start of the run. In a run without a terminal, external
   installers receive no terminal input and privilege escalation never prompts;

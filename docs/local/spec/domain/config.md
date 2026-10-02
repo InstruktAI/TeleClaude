@@ -134,6 +134,29 @@ TeleClaudeNext.
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
 
 
+<!-- planned:startable-unattended-install -->
+### Installation registration and environment defaults
+
+Installation submits two named operations to the config context:
+
+- **First-person registration.** It writes the person's registry entry and the
+  person's declaration under the same lock, validation and atomic replacement as
+  every configuration mutation, and creates nothing else in the person's home.
+  It accepts only an empty registry and refuses otherwise, leaving the registry
+  unchanged. The home's template layer belongs to installation's home
+  materialization. Initializing a person through `telec config` still scaffolds
+  that person's home
+  (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
+  UC-KAC12).
+- **Environment defaults.** When the checkout has no environment settings file,
+  it creates one through the atomic environment writer
+  (`local/projects/teleclaude/spec/feature/config/atomic-env-file-write`), holding
+  only the supplied local-service defaults. An existing file is never touched.
+
+Neither operation passes configuration clearance: their caller is installation,
+not a configuration-surface caller.
+
+<!-- /planned:startable-unattended-install -->
 ### Personal MCP secret store
 
 The config context owns the opaque personal MCP secret store beside each typed

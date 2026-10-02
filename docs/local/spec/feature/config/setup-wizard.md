@@ -51,9 +51,8 @@ The user experience holds five guarantees:
 <!-- change:startable-unattended-install -->
 1. **Single setup surface.** No other TeleClaude-owned code path asks the
    human for a TeleClaude-persisted value during normal setup, with one
-   exception: the machine's first platform administrator, which installation
-   asks a terminal operator for while no person is registered. The wizard
-   itself requires an administrator, so it cannot supply its own first one.
+   exception: installation asks a terminal operator for the machine's first
+   platform administrator while no person is registered.
    External prompts owned by other systems — OS permission dialogs, OAuth
    browser consent, WhatsApp QR pairing, agent CLI permission probes — are
    also acceptable exceptions; the wizard guides them but does not replace
@@ -99,11 +98,19 @@ persisted surface the wizard writes is documented in
 
 #### UC-WIZ-1: Fresh-machine single-pass setup
 
+<!-- planned-change:startable-unattended-install -->
 ```
 Given a fresh machine with no TeleClaude configuration
 And `make install` has completed non-interactively
 When the human runs `telec config wizard`
 Then the wizard opens with the at-a-glance status showing every section as `unconfigured`
+<!-- change:startable-unattended-install -->
+```
+Given a fresh machine with no TeleClaude configuration
+And `make install` has completed and established the machine's first administrator
+When that administrator runs `telec config wizard`
+Then the wizard opens with the at-a-glance status showing the people and environment that installation settled, and every other section as `unconfigured`
+<!-- /planned-change:startable-unattended-install -->
 And the wizard guides the human through every section in turn
   (system identity, adapters, people, notifications, environment,
    agent environment access, release channel, permissions/preflight)
@@ -226,8 +233,13 @@ Note: `simplify-install-flow-cleanup` delivers the shell-side half of this contr
 
 ```
 Given a delivery where this feature spec is `actual`
+<!-- planned-change:startable-unattended-install -->
 When a human runs `make install`
 Then no interactive prompt collects a TeleClaude-persisted value
+<!-- change:startable-unattended-install -->
+When a human runs `make install`
+Then no interactive prompt collects a TeleClaude-persisted value other than the machine's first platform administrator, asked for only while no person is registered
+<!-- /planned-change:startable-unattended-install -->
 When a human runs `make start` on a configured machine
 Then the runtime starts without any interactive prompt
 When a human runs `make start` on a machine missing required configuration
