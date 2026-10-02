@@ -186,11 +186,13 @@ And the same operation for a person holding that company's admin role is accepte
   configuration surface; it is not a boundary against that account's own file
   access.
 <!-- planned:startable-unattended-install -->
-- A machine's first platform administrator is established by installation from
-  its own input while no person is registered
+- Installation establishes a machine's first platform administrator from its
+  own input while no person is registered, and creates the checkout's
+  environment settings file from local defaults when none exists
   (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
-  That act is not a configuration operation and is not cleared here. Once a
-  person is registered, every addition passes this clearance.
+  Neither act is a configuration operation, and neither is cleared here. Once a
+  person is registered, every addition passes this clearance, and changing
+  environment settings stays a cleared operation.
 <!-- /planned:startable-unattended-install -->
 
 ## See Also

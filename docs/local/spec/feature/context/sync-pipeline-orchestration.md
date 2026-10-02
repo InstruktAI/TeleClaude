@@ -57,9 +57,16 @@ lifecycle before the delivery commit is made.
 
 The unit of publication is one home. For each home in scope:
 
+<!-- planned-change:startable-unattended-install -->
 1. **Resolve committed source** — read the canonical checkout's committed
    `main` tip while holding publication serialization and materialize it; every
    other publisher keeps its previously activated revision.
+<!-- change:startable-unattended-install -->
+1. **Resolve committed source** — while holding publication serialization,
+   read the canonical checkout's committed `main` tip, or for the installation
+   entry point the installed commit, and materialize it; every other publisher
+   keeps its previously activated revision.
+<!-- /planned-change:startable-unattended-install -->
 2. **Build indexes** — derive the home's indexes from that snapshot and write
    portable derived indexes to the canonical checkout.
 3. **Distribute** — compose and atomically deploy the home's capability-gated
@@ -73,11 +80,21 @@ home is reported with its build error and with the commit gate's lint findings
 over that home's committed files. The findings explain a skip; they never
 select what publishes. `telec sync` exits non-zero when any home was skipped.
 
+<!-- planned-change:startable-unattended-install -->
 The tip is read under serialization, so a later publication never deploys an
 older tip than an earlier one. A commit range decides only whether publication
 is owed, never what is published. Maintenance publication of a home that
 already records the tip changes nothing; `telec sync` always rebuilds the homes
 in scope.
+<!-- change:startable-unattended-install -->
+For maintenance and `telec sync`, the tip is read under serialization, so a
+later publication never deploys an older tip than an earlier one. A commit range
+decides only whether publication is owed, never what is published. Maintenance
+publication of a home that already records the tip changes nothing; `telec sync`
+always rebuilds the homes in scope. The installation entry point deploys the
+installed commit, whichever generation the home records, and changes nothing
+when the home already records that commit.
+<!-- /planned-change:startable-unattended-install -->
 
 A Mother publication also refreshes the home entrypoints that inline the
 Mother's documentation.
