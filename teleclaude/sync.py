@@ -122,22 +122,6 @@ class _HomeCategory(StrEnum):
     TIER = "tier"
 
 
-class PublicationOutcome(StrEnum):
-    """Compatibility result used by the maintenance and convergence adapters."""
-
-    PUBLISHED = "published"
-    SUPERSEDED = "superseded"
-    FAILED = "failed"
-
-
-class PublicationReason(StrEnum):
-    """Compatibility reason used by the maintenance and convergence adapters."""
-
-    PUBLISHED = "published"
-    HOME_FAILED = "home_failed"
-    RUN_FAILED = "run_failed"
-
-
 @dataclass(frozen=True)
 class HomePublicationResult:
     """One home result, including optional build diagnosis."""
@@ -169,16 +153,6 @@ class PublicationRun:
         return int(
             any(home.outcome in (HomePublicationOutcome.SKIPPED, HomePublicationOutcome.FAILED) for home in self.homes)
         )
-
-
-@dataclass(frozen=True)
-class PublicationResult:
-    """Compatibility result returned to the existing maintenance adapters."""
-
-    outcome: PublicationOutcome
-    reason: PublicationReason
-    published_generation: str | None
-    unfinished_publication: str | None
 
 
 @dataclass(frozen=True)
@@ -620,20 +594,6 @@ def _refresh_one_home(
     except (GitCommandError, OSError, subprocess.CalledProcessError, ValueError, yaml.YAMLError) as exc:
         logger.error(_HOME_REFRESH_FAILED_EVENT, home=root_key, published_generation=commit, cause=str(exc))
         failures.append(Path(root_key))
-
-
-def publish_recorded_commit(project_root: Path, _after_sha: str) -> PublicationResult:
-    """Compatibility adapter; lifecycle callers migrate to changed-path publication."""
-    run = publish_homes(project_root, PublicationMode.OWED, directory=_ROOT_RELATIVE_PATH)
-    outcome = PublicationOutcome.FAILED if run.exit_code else PublicationOutcome.PUBLISHED
-    reason = (
-        PublicationReason.RUN_FAILED
-        if run.error is not None
-        else PublicationReason.HOME_FAILED
-        if run.exit_code
-        else PublicationReason.PUBLISHED
-    )
-    return PublicationResult(outcome, reason, run.tip, None)
 
 
 def _finish_run(
