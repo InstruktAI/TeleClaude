@@ -23,6 +23,9 @@ from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
 _SHELL_TOOL_NAMES = frozenset({"bash", "shell", "terminal", "run_shell_command", "exec_command"})
 _SESSIONS_SEND_PREFIX = ("telec", "sessions", "send")
+_SEND_SESSION_FLAGS = frozenset({"--session", "-s"})
+_SEND_VALUE_FLAGS = _SEND_SESSION_FLAGS | {"--computer", "-c"}
+_FLAG_PREFIX = "-"
 
 __all__ = [
     "_check_blast_radius",
@@ -84,7 +87,26 @@ def _segment_sends_to(segment: str, session_ids: frozenset[str]) -> bool:
     """Return whether a command segment is a ``telec sessions send`` to one of ``session_ids``."""
     if not matches_command_prefix(segment, _SESSIONS_SEND_PREFIX):
         return False
-    return any(token in session_ids for token in executable_command_tokens(segment)[len(_SESSIONS_SEND_PREFIX) :])
+    return _send_target(executable_command_tokens(segment)[len(_SESSIONS_SEND_PREFIX) :]) in session_ids
+
+
+def _send_target(arguments: list[str]) -> str | None:
+    """Return the target session of ``telec sessions send`` arguments: ``--session`` or the first positional."""
+    pending_value_flag: str | None = None
+    target: str | None = None
+    for token in arguments:
+        if pending_value_flag is not None:
+            if pending_value_flag in _SEND_SESSION_FLAGS:
+                return token
+            pending_value_flag = None
+            continue
+        if token in _SEND_VALUE_FLAGS:
+            pending_value_flag = token
+        elif token.startswith(_FLAG_PREFIX):
+            continue
+        elif target is None:
+            target = token
+    return target
 
 
 def _has_commit_evidence(timeline: TurnTimeline) -> bool:
