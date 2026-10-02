@@ -90,9 +90,10 @@ When installation runs with no terminal
 Then the run adds no optional application and no companion service
 And an optional application already present stays as it was
 When an operator at a terminal runs installation and declines them
-Then none of them is installed
+Then the run adds none of them
+And an optional application already present stays as it was
 When an operator at a terminal runs installation and chooses one
-Then that application is installed
+Then the run adds that application
 ```
 
 #### UC-FMB4: A machine without environment settings becomes startable
