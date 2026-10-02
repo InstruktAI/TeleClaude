@@ -14,6 +14,7 @@ from teleclaude.caller_identity import (
     SessionOf,
     caller_from_principal,
     human_principal_for_email,
+    identity_for_session,
     is_desk_role,
 )
 from teleclaude.config import config
@@ -170,7 +171,7 @@ async def resolve_session_creation_identity(
     principal: str | None = None
     if parent_session:
         human_email = human_email or parent_session.human_email
-        principal = parent_session.principal
+        principal = identity_for_session(parent_session).principal
 
     parent_company = parent_session.company if parent_session else None
     company, company_source = resolve_session_creation_company(cmd.request_id, cmd.company, human_email, parent_company)

@@ -42,7 +42,7 @@ And the `agent_runtime.session.started` event is published when the session is l
 Given the request supplies terminal origin metadata (email payload)
 When the agent_runtime service resolves identity via the identity resolver
 Then human_email is populated from the identity context when not explicitly provided
-And when an initiator session id references a parent session, missing human_email and principal are inherited from the parent
+And when an initiator session id references a parent session, missing human_email and the resolved principal are inherited from the parent through the identity context
 And the session's human_role is the effective role of the person it runs for, for the project it runs in (`local/projects/teleclaude/design/architecture/scoped-roles`), never the parent's role and never a role above that effective role
 And an inherited platform principal is accepted without a human role or a command-derived system role
 And a session creation without any resolved human_role, no system role, and no inherited platform principal is rejected — the request is refused
