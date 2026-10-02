@@ -1365,7 +1365,7 @@ preflight_macos() {
     print_header "macOS Preflight"
 
     local blockers=0
-    if command -v swiftc > /dev/null 2>&1; then
+    if /usr/bin/xcrun --find swiftc > /dev/null 2>&1; then
         print_info "Xcode Command Line Tools present (swiftc)"
     else
         print_error "Xcode Command Line Tools are missing — the launcher apps cannot be compiled."

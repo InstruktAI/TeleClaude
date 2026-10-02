@@ -25,6 +25,9 @@ _SECURITY_INTERACTIVE_FLAG = "-i"
 _CODESIGN = "/usr/bin/codesign"
 _OPENSSL = "/usr/bin/openssl"
 _SWIFTC = "/usr/bin/swiftc"
+_XCRUN = "/usr/bin/xcrun"
+_XCRUN_FIND_FLAG = "--find"
+_SWIFTC_NAME = "swiftc"
 _KEYCHAIN_SUFFIX = ".keychain-db"
 _KEYCHAIN_FILE_NAME = "launcher-signing" + _KEYCHAIN_SUFFIX
 _SECRET_FILE_NAME = "unlock-secret"
@@ -135,7 +138,8 @@ _UNAUTHORIZED_FAILURE = "the launcher signing key is not authorized for unattend
 _STORE_DISCOVERY_FAILURE = "the user keychain search list could not be read reliably"
 _STORE_REGISTRATION_FAILURE = "the dedicated launcher signing store could not be registered"
 _ROSTER_GAP_FAILURE = "launcher definitions do not cover canonical agent(s): {agents}"
-_SWIFTC_UNAVAILABLE_FAILURE = "swiftc is unavailable"
+_SWIFTC_UNAVAILABLE_FAILURE = "Swift compiler is unavailable; xcrun could not resolve swiftc: {detail}"
+_SWIFTC_NO_PATH = "no compiler path returned"
 _STRICT_SIGNATURE_FAILURE = "{bundle}: strict signature verification failed: {reason}"
 _SIGNATURE_DETAILS_FAILURE = "{bundle}: signature details could not be read"
 _SIGNATURE_REQUIREMENT_FAILURE = "{bundle}: signing requirement could not be read"
@@ -332,6 +336,26 @@ def _require_success(
 ) -> None:
     if result.returncode != 0:
         raise SigningCommandError(kind, message)
+
+
+def _ensure_swift_compiler() -> None:
+    """Resolve the active compiler rather than accepting macOS's always-present shim."""
+    # xcrun owns the selected Xcode or Command Line Tools path; Python has no native resolver for it.
+    try:
+        result = _run_command((_XCRUN, _XCRUN_FIND_FLAG, _SWIFTC_NAME))
+    except SigningCommandError as error:
+        if error.kind is SigningCommandKind.UNAVAILABLE:
+            raise SigningCommandError(
+                SigningCommandKind.COMPILER_UNAVAILABLE,
+                _SWIFTC_UNAVAILABLE_FAILURE.format(detail=error),
+            ) from error
+        raise
+    if result.returncode != 0 or not result.stdout.strip():
+        detail = result.stderr.strip() or _SWIFTC_NO_PATH
+        raise SigningCommandError(
+            SigningCommandKind.COMPILER_UNAVAILABLE,
+            _SWIFTC_UNAVAILABLE_FAILURE.format(detail=detail),
+        )
 
 
 def ensure_signing_store(*, directory: Path | None = None) -> str:
@@ -612,6 +636,7 @@ def launcher_bundle_names() -> tuple[str, ...]:
 
 def launcher_input_digest(project_root: Path) -> str:
     """Digest launcher source, generated configuration, roster, plist fields and compiler version."""
+    _ensure_swift_compiler()
     digest = hashlib.sha256()
     definitions = _launcher_definitions()
     source = project_root / _SOURCE_DIRECTORY / _SOURCE_FILE_NAME
@@ -660,6 +685,7 @@ def compile_launcher_set(project_root: Path, staging_root: Path) -> tuple[Path, 
     """Compile every canonical launcher into a fresh staging directory."""
     if sys.platform != _DARWIN_PLATFORM:
         return ()
+    _ensure_swift_compiler()
     definitions = _launcher_definitions()
     source_file = project_root / _SOURCE_DIRECTORY / _SOURCE_FILE_NAME
     staging_root.mkdir(parents=True, exist_ok=True)
