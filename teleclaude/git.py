@@ -14,12 +14,14 @@ All production code that needs git operations should import from here::
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from teleclaude.paths import BIN_DIR, DEFAULT_BIN_DIR
 
 _GIT_LOCAL_ENV_VARS_ARGUMENT = "--local-env-vars"
 _GIT_LINKED_WORKTREE_ARGUMENTS = ("--path-format=absolute", "--git-dir", "--git-common-dir")
+_GIT_INDEX_FILE_ENVIRONMENT_VARIABLE = "GIT_INDEX_FILE"
 
 
 def _wrapper_dirs() -> set[Path]:
@@ -63,6 +65,7 @@ from typing import Any, cast  # noqa: E402
 from git import Repo as Repo  # noqa: E402
 from git.cmd import Git as _Git  # noqa: E402
 from git.exc import GitCommandError as GitCommandError  # noqa: E402
+from git.exc import HookExecutionError as HookExecutionError  # noqa: E402
 from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError  # noqa: E402
 from git.exc import NoSuchPathError as NoSuchPathError  # noqa: E402
 from gitdb.exc import BadName as BadName  # noqa: E402
@@ -140,6 +143,7 @@ __all__ = [
     "GIT_EXECUTABLE",
     "BadName",
     "GitCommandError",
+    "HookExecutionError",
     "InvalidGitRepositoryError",
     "NoSuchPathError",
     "Repo",
@@ -171,10 +175,28 @@ def no_autostash_env() -> dict[str, str]:
     return env
 
 
-def hook_free_environment(repo_root: str | Path) -> dict[str, str]:
+def _active_git_index_file() -> str | None:
+    """Return the caller's explicit index path for a tree-read subprocess."""
+    return os.environ.get(_GIT_INDEX_FILE_ENVIRONMENT_VARIABLE)  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+
+
+def hook_free_environment(
+    repo_root: str | Path,
+    *,
+    base_environment: Mapping[str, str] | None = None,
+    preserve: frozenset[str] = frozenset(),
+) -> dict[str, str]:
     """Return an environment without Git's repository-local hook variables."""
-    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    if base_environment is None:
+        env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    else:
+        env = dict(base_environment)
     names = Repo(str(Path(repo_root).resolve())).git.rev_parse(_GIT_LOCAL_ENV_VARS_ARGUMENT).splitlines()
     for name in names:
-        env.pop(name, None)
+        if name not in preserve:
+            env.pop(name, None)
+    if _GIT_INDEX_FILE_ENVIRONMENT_VARIABLE in preserve and _GIT_INDEX_FILE_ENVIRONMENT_VARIABLE not in env:
+        active_index = _active_git_index_file()
+        if active_index is not None:
+            env[_GIT_INDEX_FILE_ENVIRONMENT_VARIABLE] = active_index
     return env

@@ -112,7 +112,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     _check_source_patterns(repo_root, selected_paths)
     _check_runtime_path_bypasses(repo_root, selected_paths)
     _check_direct_environment_reads(repo_root, selected_paths)
-    _check_identity_role_imports(repo_root)
+    _check_identity_role_imports(repo_root, selected_paths)
     _check_pre_dispatch_import_closure(repo_root)
 
     # Loose-dict typing guardrail
@@ -360,10 +360,9 @@ def _check_pre_dispatch_import_closure(repo_root: Path) -> None:
         _fail(NEWLINE.join(failures))
 
 
-def _check_identity_role_imports(repo_root: Path) -> None:
+def _check_identity_role_imports(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Keep effective-role and scope mechanics inside caller identity."""
     matches: list[str] = []
-    source_root = repo_root / DIRECT_ENV_READ_SCAN_PREFIX
     identity_path = f"{DIRECT_ENV_READ_SCAN_PREFIX}caller_identity.py"
 
     def dotted_name(node: ast.expr) -> str | None:
@@ -375,7 +374,17 @@ def _check_identity_role_imports(repo_root: Path) -> None:
             return f"{parent}.{node.attr}" if parent is not None else None
         return None
 
-    for path in source_root.rglob(PYTHON_GLOB):
+    candidates = (
+        (repo_root / DIRECT_ENV_READ_SCAN_PREFIX).rglob(PYTHON_GLOB)
+        if selected_paths is None
+        else _iter_selected_files(
+            repo_root,
+            selected_paths,
+            prefixes=(DIRECT_ENV_READ_SCAN_PREFIX,),
+            suffixes=(PYTHON_SUFFIX,),
+        )
+    )
+    for path in candidates:
         if not path.is_file() or path.relative_to(repo_root).as_posix() == identity_path:
             continue
         try:

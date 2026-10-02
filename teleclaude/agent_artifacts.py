@@ -21,11 +21,13 @@ from enum import StrEnum
 from pathlib import Path
 from tempfile import TemporaryFile
 
+from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS, ArtifactKind
 from teleclaude.docs_publishers import git_common_root
 from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import REPO_ROOT, ConfigFileName
+from teleclaude.project_manifest import ConfigKind
 from teleclaude.snippet_validation import companion_shape, is_retirement_companion
 
 __all__ = [
@@ -68,6 +70,12 @@ _GIT_IGNORE_QUERY_FAILURE_TEMPLATE = "Could not determine ignored agent-artifact
 # `agents/AGENTS.master.md` — never an authored source, but an expected,
 # sanctioned presence, not a boundary violation. It is gitignored.
 _GENERATED_ROOT_ENTRYPOINT_FILENAME = "AGENTS.md"
+_HOME_COMMANDS_DIRNAME = "commands"
+_HOME_SKILLS_DIRNAME = "skills"
+_FLAT_HOME_KINDS = frozenset({ConfigKind.COMPANY, ConfigKind.PERSON})
+_FLAT_HOME_BOUNDARY_VIOLATION_TEMPLATE = (
+    "{path} is outside the commands/ and skills/ artifact roots of its company or person home"
+)
 
 
 class ArtifactTier(StrEnum):
@@ -76,6 +84,7 @@ class ArtifactTier(StrEnum):
     ROOT = "root"
     GLOBAL = "global"
     PROJECT = "project"
+    HOME = "home"
 
 
 class ArtifactAuthorship(StrEnum):
@@ -341,6 +350,43 @@ def _iter_project_sources(project_root: Path) -> Iterator[ArtifactSource]:
     )
 
 
+def _is_flat_home(project_root: Path) -> bool:
+    """Return whether this root declares the company or person home layout."""
+    declaration = project_root / ConfigFileName.OVERLAY
+    return declaration.is_file() and load_declared_config_kind(declaration) in _FLAT_HOME_KINDS
+
+
+def _iter_flat_home_sources(project_root: Path) -> Iterator[ArtifactSource]:
+    """Enumerate the flat command and skill sources owned by a company or person home."""
+    agents_root = _agents_root(project_root)
+    yield from _iter_uniform_command_tree(
+        agents_root / _HOME_COMMANDS_DIRNAME,
+        tier=ArtifactTier.HOME,
+        reach=ArtifactReach.SELF,
+        domain=None,
+    )
+    yield from _iter_skill_packages(
+        agents_root / _HOME_SKILLS_DIRNAME,
+        tier=ArtifactTier.HOME,
+        reach=ArtifactReach.SELF,
+        authorship=ArtifactAuthorship.AUTHORED,
+    )
+
+
+def _flat_home_boundary_violation(project_root: Path, resolved: Path) -> str | None:
+    """Reject an entry under a flat home agent-artifact root outside commands or skills."""
+    agents_root = _agents_root(project_root).resolve()
+    try:
+        relative_parts = resolved.relative_to(agents_root).parts
+    except ValueError:
+        return None
+    if not relative_parts:
+        return None
+    if relative_parts[0] in (_HOME_COMMANDS_DIRNAME, _HOME_SKILLS_DIRNAME):
+        return None
+    return _FLAT_HOME_BOUNDARY_VIOLATION_TEMPLATE.format(path=resolved)
+
+
 def all_sources(project_root: Path) -> list[ArtifactSource]:
     """Enumerate every classified agent-artifact source this project carries.
 
@@ -403,6 +449,8 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
     root = project_root.resolve()
     resolved = candidate if candidate.is_absolute() else root / candidate
     resolved = resolved.resolve(strict=False)
+    flat_home = _is_flat_home(root)
+    sources = [*_iter_root_files(root), *_iter_flat_home_sources(root)] if flat_home else all_sources(root)
     shape = companion_shape(resolved)
     if shape is not None and resolved.parent in (
         project_commands_root(root),
@@ -412,7 +460,7 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
         source = next(
             (
                 item
-                for item in all_sources(root)
+                for item in sources
                 if item.kind is ArtifactKind.COMMAND and item.entrypoint.resolve(strict=False) == source_path
             ),
             None,
@@ -420,7 +468,7 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
         if source is not None and is_retirement_companion(resolved):
             return source
         raise UnclassifiedSourceError(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=resolved))
-    for source in all_sources(root):
+    for source in sources:
         entrypoint = source.entrypoint.resolve(strict=False)
         if source.kind is ArtifactKind.SKILL:
             if resolved == entrypoint or entrypoint.parent in resolved.parents or resolved == entrypoint.parent:
@@ -428,7 +476,7 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
             continue
         if resolved == entrypoint:
             return source
-    violation = _boundary_violation(root, resolved)
+    violation = _flat_home_boundary_violation(root, resolved) if flat_home else _boundary_violation(root, resolved)
     if violation is not None:
         raise UnclassifiedSourceError(violation)
     return None

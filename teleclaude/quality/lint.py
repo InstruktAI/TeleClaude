@@ -13,19 +13,25 @@ import logging
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from teleclaude.config.context_root import group_paths_by_owning_home
+from teleclaude.git import hook_free_environment
+from teleclaude.git_tree import TreeSource
 from teleclaude.paths import REPO_ROOT, ConfigFileName
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     get_project_languages,
+    git_inventory_paths,
     markdown_files,
     resolve_workspace_scope_resolution,
     validate_scoped_paths,
 )
+from teleclaude.quality.selection import QualityCheckFamily
 from teleclaude.resource_validation import validate_all_artifacts, validate_jobs_config
 
 __all__ = [
@@ -38,6 +44,12 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+_CONTENT_ROOT_FLAG = "--content-root"
+_PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
+_SKIP_SNIPPETS_FLAG = "--skip-snippets"
+_NO_FILES_FLAG = "--no-files"
+_CONTENT_ROOT_FULL_RUN_ERROR = "A content-root validation must be path-scoped."
+_EMPTY_STRING = ""
 
 
 # ---------------------------------------------------------------------------
@@ -76,14 +88,19 @@ def _bundled_python() -> str:
     return str(venv_python)
 
 
-def _run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
+def _run_tool(
+    cmd: list[str],
+    project_root: Path,
+    step_name: str,
+    child_env: Mapping[str, str] | None = None,
+) -> None:
     """Run an external tool and raise SystemExit on failure.
 
     Justified subprocess: guardrail scripts and shell checks are standalone
     entry points so they can also run from hooks and direct maintainer calls.
     """
     logger.info("Running %s", step_name)
-    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    env = dict(child_env) if child_env is not None else hook_free_environment(project_root)
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(REPO_ROOT)
     result = subprocess.run(cmd, cwd=str(project_root), env=env, check=False)
@@ -98,6 +115,7 @@ class GuardrailsStep:
 
     name: str = "guardrails"
     _project_root: Path = field(default_factory=Path)
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Execute guardrail enforcement against targets.
@@ -110,7 +128,7 @@ class GuardrailsStep:
         """
         script = str(REPO_ROOT / "tools" / "lint" / "guardrails.py")
         cmd = [_bundled_python(), script, *targets]
-        _run_tool(cmd, self._project_root, self.name)
+        _run_tool(cmd, self._project_root, self.name, self._child_env)
 
 
 @dataclass
@@ -120,22 +138,41 @@ class _MarkdownStep:
     name: str = "markdown"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _content_root: Path | None = None
+    _platform_home_subject: bool = False
+    _validate_snippets: bool = True
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Execute markdown validation.
 
         File-scoped: passes only .md targets to the script so foreign
-        in-flight docs are ignored. Full-run: repo-wide scan (no args).
+        in-flight docs are ignored. Full-run: passes the Git-derived Markdown
+        inventory so filesystem-only files stay outside the grading scope.
         """
         script = str(REPO_ROOT / "tools" / "lint" / "markdown.py")
+        md: list[str] = []
         if self._run_all:
             cmd = [_bundled_python(), script]
+            md = markdown_files(targets)
+            if md:
+                cmd.extend(md)
+            else:
+                cmd.append(_NO_FILES_FLAG)
         else:
             md = markdown_files(targets)
             if not md:
                 return
-            cmd = [_bundled_python(), script, *md]
-        _run_tool(cmd, self._project_root, self.name)
+            cmd = [_bundled_python(), script]
+        if self._content_root is not None:
+            cmd.extend([_CONTENT_ROOT_FLAG, str(self._content_root)])
+            if self._platform_home_subject:
+                cmd.append(_PLATFORM_HOME_SUBJECT_FLAG)
+        if not self._validate_snippets:
+            cmd.append(_SKIP_SNIPPETS_FLAG)
+        if not self._run_all:
+            cmd.extend(md)
+        _run_tool(cmd, self._project_root, self.name, self._child_env)
 
 
 @dataclass
@@ -145,6 +182,7 @@ class _HomePathsStep:
     name: str = "home_paths"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Execute home-paths scan against selected markdown files."""
@@ -152,12 +190,13 @@ class _HomePathsStep:
         cmd = [_bundled_python(), script, "--project-root", str(self._project_root)]
         if self._run_all:
             cmd.append("--repo-wide")
+            cmd.extend(["--working-tree-files", *markdown_files(targets)])
         else:
             md = markdown_files(targets)
             if not md:
                 return
             cmd.extend(["--working-tree-files", *md])
-        _run_tool(cmd, self._project_root, self.name)
+        _run_tool(cmd, self._project_root, self.name, self._child_env)
 
 
 _RAW_SQL_INPUTS = frozenset(
@@ -199,17 +238,17 @@ class _RawSqlStep:
     name: str = "raw_sql"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Run repo-wide on full runs, or only for selected raw-SQL inputs."""
         script = str(REPO_ROOT / "tools" / "checks" / "check-raw-sql.sh")
         cmd = [script, "--project-root", str(self._project_root)]
-        if not self._run_all:
-            selected = _selected_raw_sql_inputs(targets, self._project_root)
-            if not selected:
-                return
-            cmd.extend(selected)
-        _run_tool(cmd, self._project_root, self.name)
+        selected = _selected_raw_sql_inputs(targets, self._project_root)
+        if not selected:
+            return
+        cmd.extend(selected)
+        _run_tool(cmd, self._project_root, self.name, self._child_env)
 
 
 @dataclass
@@ -219,19 +258,60 @@ class _SourceValidationStep:
     name: str = "source_validation"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _content_root: Path | None = None
+    _validate_artifacts: bool = True
 
     def run(self, targets: list[str]) -> None:
         """Reject malformed artifacts and selected jobs declarations."""
-        paths = None if self._run_all else targets
-        findings = validate_all_artifacts(self._project_root, paths=paths)
-        if self._run_all or str(ConfigFileName.OVERLAY) in _normalize_targets(targets, self._project_root):
-            findings.extend(validate_jobs_config(self._project_root))
+        if self._run_all and self._content_root is None:
+            findings = self._validate_path_scoped(
+                targets, content_root=None, validate_artifacts=self._validate_artifacts
+            )
+        elif self._content_root is not None:
+            if self._run_all:
+                logger.error(_CONTENT_ROOT_FULL_RUN_ERROR)
+                sys.stderr.write(f"{_CONTENT_ROOT_FULL_RUN_ERROR}{os.linesep}")
+                raise SystemExit(1)
+            findings = self._validate_path_scoped(
+                targets, content_root=self._content_root, validate_artifacts=self._validate_artifacts
+            )
+        else:
+            findings = self._validate_path_scoped(
+                targets, content_root=None, validate_artifacts=self._validate_artifacts
+            )
         if not findings:
             return
         for finding in findings:
             logger.error(finding)
             sys.stderr.write(f"{finding}{os.linesep}")
         raise SystemExit(1)
+
+    def _validate_path_scoped(
+        self,
+        targets: list[str],
+        *,
+        content_root: Path | None,
+        validate_artifacts: bool,
+    ) -> list[str]:
+        """Validate each path-scoped source against its owning home root."""
+        source = TreeSource.active_index(self._project_root)
+        grouped = group_paths_by_owning_home(
+            sorted(_normalize_targets(targets, self._project_root)),
+            source,
+        )
+        findings: list[str] = []
+        validation_root = content_root.resolve() if content_root is not None else self._project_root.resolve()
+        for home, repository_paths in grouped.items():
+            home_root = validation_root / home.root
+            home_paths = [Path(path).relative_to(home.root).as_posix() for path in repository_paths]
+            if validate_artifacts:
+                findings.extend(validate_all_artifacts(home_root, paths=home_paths))
+            if str(ConfigFileName.OVERLAY) in home_paths:
+                findings.extend(validate_jobs_config(home_root))
+        if content_root is None:
+            return findings
+        prefix = f"{validation_root}{os.sep}"
+        return [finding.replace(prefix, _EMPTY_STRING) for finding in findings]
 
 
 @dataclass
@@ -241,12 +321,13 @@ class _SnapshotTestingStep:
     name: str = "snapshot_testing"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Run Python snapshot assertion checks against selected or all tests."""
         script = str(REPO_ROOT / "tools" / "lint" / "snapshot_testing.py")
-        args = ["--all"] if self._run_all else targets
-        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
+        args = targets if targets else (["--all"] if self._run_all else [])
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name, self._child_env)
 
 
 @dataclass
@@ -256,12 +337,13 @@ class _ForbidUnitTestsStep:
     name: str = "forbid_unit_tests"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Run selected-file or repo-wide Python unit-test guard."""
         script = str(REPO_ROOT / "tools" / "lint" / "forbid_unit_tests.py")
-        args = ["--all"] if self._run_all else targets
-        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
+        args = targets if targets else (["--all"] if self._run_all else [])
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name, self._child_env)
 
 
 @dataclass
@@ -271,12 +353,13 @@ class _ForbidTsUnitTestsStep:
     name: str = "forbid_ts_unit_tests"
     _project_root: Path = field(default_factory=Path)
     _run_all: bool = False
+    _child_env: Mapping[str, str] | None = None
 
     def run(self, targets: list[str]) -> None:
         """Run selected-file or repo-wide TypeScript unit-test guard."""
         script = str(REPO_ROOT / "tools" / "lint" / "forbid_ts_unit_tests.py")
         args = ["--all"] if self._run_all else targets
-        _run_tool([_bundled_python(), script, *args], self._project_root, self.name)
+        _run_tool([_bundled_python(), script, *args], self._project_root, self.name, self._child_env)
 
 
 # ---------------------------------------------------------------------------
@@ -285,24 +368,49 @@ class _ForbidTsUnitTestsStep:
 
 
 class GuardrailsLane:
-    """Always-run policy guardrails lane with deterministic step ordering.
+    """Capability-selected policy checks with deterministic step ordering.
 
     Steps are accessible via the ``steps`` attribute and each exposes a
     ``name`` for diagnostics and a ``run(targets)`` method.
     """
 
-    def __init__(self, project_root: Path, *, run_all: bool = False) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        *,
+        run_all: bool = False,
+        content_root: Path | None = None,
+        platform_home_subject: bool = False,
+        child_env: Mapping[str, str] | None = None,
+        check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
+    ) -> None:
         root = project_root
-        self.steps: list[PipelineStep] = [
-            GuardrailsStep(_project_root=root),
-            _MarkdownStep(_project_root=root, _run_all=run_all),
-            _HomePathsStep(_project_root=root, _run_all=run_all),
-            _RawSqlStep(_project_root=root, _run_all=run_all),
-            _SourceValidationStep(_project_root=root, _run_all=run_all),
-            _SnapshotTestingStep(_project_root=root, _run_all=run_all),
-            _ForbidUnitTestsStep(_project_root=root, _run_all=run_all),
-            _ForbidTsUnitTestsStep(_project_root=root, _run_all=run_all),
-        ]
+        self.steps: list[PipelineStep] = []
+        if QualityCheckFamily.CODE in check_families:
+            self.steps.append(GuardrailsStep(_project_root=root, _child_env=child_env))
+            self.steps.append(_RawSqlStep(_project_root=root, _run_all=run_all, _child_env=child_env))
+            self.steps.append(_SnapshotTestingStep(_project_root=root, _run_all=run_all, _child_env=child_env))
+            self.steps.append(_ForbidUnitTestsStep(_project_root=root, _run_all=run_all, _child_env=child_env))
+            self.steps.append(_ForbidTsUnitTestsStep(_project_root=root, _run_all=run_all, _child_env=child_env))
+        self.steps.extend(
+            [
+                _MarkdownStep(
+                    _project_root=root,
+                    _run_all=run_all,
+                    _content_root=content_root,
+                    _platform_home_subject=platform_home_subject,
+                    _validate_snippets=QualityCheckFamily.DOCUMENTATION in check_families,
+                    _child_env=child_env,
+                ),
+                _HomePathsStep(_project_root=root, _run_all=run_all, _child_env=child_env),
+                _SourceValidationStep(
+                    _project_root=root,
+                    _run_all=run_all,
+                    _content_root=content_root,
+                    _validate_artifacts=QualityCheckFamily.AGENTS in check_families,
+                ),
+            ]
+        )
 
     def describe(self) -> list[str]:
         """Return ordered step names for diagnostics."""
@@ -314,9 +422,25 @@ class GuardrailsLane:
 # ---------------------------------------------------------------------------
 
 
-def run_pipeline(targets: list[str], *, project_root: Path, run_all: bool = False) -> None:
+def run_pipeline(
+    targets: list[str],
+    *,
+    project_root: Path,
+    run_all: bool = False,
+    content_root: Path | None = None,
+    platform_home_subject: bool = False,
+    child_env: Mapping[str, str] | None = None,
+    check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
+) -> None:
     """Run the guardrails lane against the given targets, rooted at ``project_root``."""
-    pipeline = GuardrailsLane(project_root=project_root, run_all=run_all)
+    pipeline = GuardrailsLane(
+        project_root=project_root,
+        run_all=run_all,
+        content_root=content_root,
+        platform_home_subject=platform_home_subject,
+        child_env=child_env,
+        check_families=check_families,
+    )
     for step in pipeline.steps:
         step.run(targets)
 
@@ -327,15 +451,27 @@ def run_pipeline(targets: list[str], *, project_root: Path, run_all: bool = Fals
 
 
 class LintRunner:
-    """Orchestrates context-aware lint execution.
+    """Orchestrates context-aware, capability-selected lint execution.
 
     File target resolution follows the workspace-scoping design:
     explicit files bypass scoping, worktrees use dirty existing files,
     and shared branches session-scope to avoid touching other agents' files.
     """
 
-    def __init__(self, project_root: Path) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        *,
+        content_root: Path | None = None,
+        platform_home_subject: bool = False,
+        child_env: Mapping[str, str] | None = None,
+        check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
+    ) -> None:
         self._project_root = project_root
+        self._content_root = content_root
+        self._platform_home_subject = platform_home_subject
+        self._child_env = child_env
+        self._check_families = check_families
 
     def run(self, files: list[str] | None = None, *, run_all: bool = False) -> None:
         """Run all configured lint pipelines with context-aware file scoping.
@@ -343,32 +479,45 @@ class LintRunner:
         Args:
             files: Explicit file targets. When provided, all scoping is
                    bypassed — these files are validated and passed directly
-                   to the pipeline.
-            run_all: When True, skip scoping and run against all source
-                     directories (equivalent to Makefile invocation).
+                   to the pipeline. With run_all, they are the complete
+                   Git-derived inventory for a full run.
+            run_all: When True, skip scoping and use the Git-derived full
+                     inventory when no candidate list is supplied.
         """
         file_scoped = False
 
         if files is not None:
             targets = validate_scoped_paths(files, self._project_root)
-            if not targets and files:
+            if not targets and files and not run_all:
                 logger.error("All provided files rejected by path validation")
                 sys.exit(1)
-            if not targets:
+            if not targets and not run_all:
                 logger.info("No files provided — nothing to lint")
                 return
             logger.info("Explicit files provided — bypassing scoping (%d files)", len(targets))
-            file_scoped = True
+            file_scoped = not run_all
         elif run_all:
             logger.info("--all flag — running guardrails repo-wide")
-            targets = []
+            targets = git_inventory_paths(self._project_root)
         else:
             scope_resolution = self._resolve_workspace_scope_resolution()
             targets = self._targets_from_workspace_scope(scope_resolution)
             if self._is_file_scoped_resolution(scope_resolution):
                 file_scoped = True
 
-        run_pipeline(targets, project_root=self._project_root, run_all=not file_scoped)
+        if run_all and not targets:
+            logger.info("Git inventory is empty — no guardrails candidates")
+            return
+
+        run_pipeline(
+            targets,
+            project_root=self._project_root,
+            run_all=not file_scoped,
+            content_root=self._content_root,
+            platform_home_subject=self._platform_home_subject,
+            child_env=self._child_env,
+            check_families=self._check_families,
+        )
 
     def _resolve_workspace_scope_resolution(self) -> WorkspaceScopeResolution:
         try:

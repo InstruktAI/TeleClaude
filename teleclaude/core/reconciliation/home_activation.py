@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from tempfile import TemporaryFile
+from typing import cast
 
+from git.index.typ import IndexEntry
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.reconciliation.home_convergence import home_installation_targets
@@ -22,7 +26,14 @@ from teleclaude.core.reconciliation.template_installation import (
     HomeTemplateOutcome,
     materialize_template_targets,
 )
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.git import (
+    GIT_EXECUTABLE,
+    GitCommandError,
+    HookExecutionError,
+    InvalidGitRepositoryError,
+    NoSuchPathError,
+    Repo,
+)
 from teleclaude.paths import (
     BIN_DIR,
     COMPANIES_ROOT,
@@ -47,6 +58,7 @@ class HomeActivationStatus(StrEnum):
 
     ACTIVATED = "activated"
     REFUSED = "refused"
+    GATE_REFUSED = "gate_refused"
 
 
 class HomePathClass(StrEnum):
@@ -68,21 +80,24 @@ class HomeActivationReason(StrEnum):
     CONVERGED = "converged"
     UNRETAINED_CANDIDATE = "unretained_candidate"
     RECORDED_BREACH = "recorded_breach"
+    COMMIT_GATE_REFUSED = "commit_gate_refused"
 
 
 @dataclass(frozen=True)
 class HomeActivationResult:
-    """Operator-relevant result of converging one home root."""
+    """Operator-relevant activation result, including any commit-gate findings."""
 
     status: HomeActivationStatus
     refused_paths: tuple[Path, ...]
     breach_paths: tuple[Path, ...]
     created_repository: bool
     recorded_paths: int
+    gate_findings: tuple[str, ...] = ()
 
 
 _LOGGER = get_logger("teleclaude.reconciliation.home_repository")
 _NUL = "\0"
+_NUL_BYTES = b"\0"
 _LS_FILES_OTHERS_OPTION = "--others"
 _LS_FILES_EXCLUDE_STANDARD_OPTION = "--exclude-standard"
 _LS_FILES_NUL_OPTION = "-z"
@@ -105,9 +120,11 @@ _PEOPLE_DIRECTORY = PEOPLE_DIR.name
 _COMPANIES_DIRECTORY = COMPANIES_ROOT.name
 _GIT_DIRECTORY = ".git"
 _ACTIVATION_COMMIT_MESSAGE = "Activate local TeleClaude home history"
+_PRE_COMMIT_HOOK_NAME = "pre-commit"
 _ACTIVATION_EVENT = "home_repository_activation"
 _BREACH_EVENT = "home_repository_breach"
 _REFUSAL_EVENT = "home_repository_refused"
+_GATE_REFUSAL_EVENT = "home_repository_gate_refused"
 _COUNT_FIELD = "candidate_count"
 _BREACH_COUNT_FIELD = "breach_count"
 _DECLARATION_DIGEST_FIELD = "declaration_digest"
@@ -116,14 +133,29 @@ _REASON_FIELD = "reason"
 _PATH_CLASSES_FIELD = "path_classes"
 _TEMPLATES_WRITTEN_FIELD = "templates_written"
 _TEMPLATES_PRESERVED_FIELD = "templates_preserved"
+_GATE_FINDINGS_FIELD = "gate_findings"
+_GIT_INDEX_INFO_FLAG = "--index-info"
+_GIT_FORCE_REMOVE_FLAG = "--force-remove"
+_GIT_STDIN_FLAG = "--stdin"
+_GIT_NUL_FLAG = "-z"
+_GIT_LITERAL_PATHSPECS_ARGUMENT = "--literal-pathspecs"
+_GIT_UPDATE_INDEX_COMMAND = "update-index"
+_GATE_REFUSAL_FALLBACK = "The commit gate refused activation without diagnostic output."
+_UTF8 = "utf-8"
+_ASCII = "ascii"
+_REPLACEMENT = "replace"
+_HOOK_STDERR_FIELD_PREFIX = "\n  stderr: '"
+_HOOK_STDOUT_FIELD_PREFIX = "\n  stdout: '"
+_HOOK_FIELD_SUFFIX = "'"
 
 
 def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResult:
     """Establish or converge the local-only history rooted at ``home``.
 
     Every home and enabled help desk is first converged to its templates; the
-    activation commit then records untracked retained candidates together with
-    every retained file that convergence rewrote.
+    commit hooks are installed before staging retained candidates and files the
+    convergence rewrote. A pre-commit refusal returns its findings and restores
+    the index entries activation touched, leaving installation non-fatal.
     """
     home.mkdir(parents=True, exist_ok=True)
     outcomes = materialize_template_targets(home_installation_targets(home), values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
@@ -140,12 +172,28 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
             created_repository=created_repository,
             recorded_paths=0,
         )
+    install_code_hooks(home)
     recorded = tuple(sorted({*candidates, *_refreshed_retained_paths(outcomes, home=home)}))
     if recorded:
+        prior_entries = _index_entries_for_paths(repository, recorded)
         repository.index.add([path.as_posix() for path in recorded])
         if _index_requires_commit(repository):
-            repository.index.commit(_ACTIVATION_COMMIT_MESSAGE)
-    install_code_hooks(home)
+            try:
+                repository.index.commit(_ACTIVATION_COMMIT_MESSAGE)
+            except HookExecutionError as error:
+                if Path(error.command[0]).name != _PRE_COMMIT_HOOK_NAME:
+                    raise
+                _restore_index_entries(repository, recorded, prior_entries)
+                findings = _hook_findings(error)
+                _log_gate_refusal(findings)
+                return HomeActivationResult(
+                    status=HomeActivationStatus.GATE_REFUSED,
+                    refused_paths=(),
+                    breach_paths=(),
+                    created_repository=created_repository,
+                    recorded_paths=0,
+                    gate_findings=findings,
+                )
     ensure_git_filters(home, enabled=True)
     breach_paths = _recorded_breaches(repository, home=home)
     _log_completion(recorded, breach_paths, outcomes, home=home)
@@ -155,6 +203,80 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
         breach_paths=breach_paths,
         created_repository=created_repository,
         recorded_paths=len(recorded),
+    )
+
+
+def _index_entries_for_paths(repository: Repo, paths: tuple[Path, ...]) -> dict[tuple[str, int], IndexEntry]:
+    """Snapshot prior index entries for only the paths activation will stage."""
+    selected = {path.as_posix() for path in paths}
+    entries: dict[tuple[str, int], IndexEntry] = {}
+    for key, entry in repository.index.entries.items():
+        path = os.fsdecode(key[0])
+        if path in selected:
+            entries[(path, key[1])] = entry
+    return entries
+
+
+def _restore_index_entries(
+    repository: Repo,
+    paths: tuple[Path, ...],
+    prior_entries: dict[tuple[str, int], IndexEntry],
+) -> None:
+    """Restore activation paths with Git while retaining all other index entries."""
+    path_stream = b"".join(os.fsencode(path.as_posix()) + _NUL_BYTES for path in paths)
+    _run_index_update(
+        repository,
+        (_GIT_NUL_FLAG, _GIT_FORCE_REMOVE_FLAG, _GIT_STDIN_FLAG),
+        path_stream,
+    )
+    if not prior_entries:
+        return
+    records: list[bytes] = []
+    for (path, stage), entry in sorted(prior_entries.items()):
+        record = f"{entry.mode:o} {entry.hexsha} {stage}\t".encode(_ASCII) + os.fsencode(path)
+        records.append(record + _NUL_BYTES)
+    if records:
+        _run_index_update(repository, (_GIT_NUL_FLAG, _GIT_INDEX_INFO_FLAG), b"".join(records))
+
+
+def _run_index_update(repository: Repo, arguments: Sequence[str], payload: bytes) -> None:
+    """Feed a NUL-delimited index operation through a file-backed GitPython stream."""
+    with TemporaryFile() as stream:
+        stream.write(payload)
+        stream.seek(0)
+        execute = cast(Callable[..., object], repository.git.execute)
+        execute(
+            [GIT_EXECUTABLE, _GIT_LITERAL_PATHSPECS_ARGUMENT, _GIT_UPDATE_INDEX_COMMAND, *arguments],
+            istream=stream,
+        )
+
+
+def _hook_findings(error: HookExecutionError) -> tuple[str, ...]:
+    """Return gate diagnostics from GitPython's hook exception."""
+    diagnostic = error.stderr or error.stdout
+    field_prefix = _HOOK_STDERR_FIELD_PREFIX if error.stderr else _HOOK_STDOUT_FIELD_PREFIX
+    if isinstance(diagnostic, bytes):
+        text = diagnostic.decode(_UTF8, errors=_REPLACEMENT)
+    elif diagnostic:
+        text = str(diagnostic)
+    else:
+        text = str(error)
+    if text.startswith(field_prefix) and text.endswith(_HOOK_FIELD_SUFFIX):
+        text = text[len(field_prefix) : -len(_HOOK_FIELD_SUFFIX)]
+    findings = tuple(line for line in text.splitlines() if line)
+    return findings or (_GATE_REFUSAL_FALLBACK,)
+
+
+def _log_gate_refusal(findings: tuple[str, ...]) -> None:
+    """Record a refused activation with the gate's findings."""
+    _LOGGER.info(
+        _GATE_REFUSAL_EVENT,
+        extra={
+            _ACTIVATION_EVENT: _GATE_REFUSAL_EVENT,
+            _OUTCOME_FIELD: HomeActivationStatus.GATE_REFUSED,
+            _REASON_FIELD: HomeActivationReason.COMMIT_GATE_REFUSED,
+            _GATE_FINDINGS_FIELD: findings,
+        },
     )
 
 

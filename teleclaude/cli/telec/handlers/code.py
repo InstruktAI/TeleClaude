@@ -52,7 +52,7 @@ from teleclaude.project_root import (
     resolve_invocation_roots,
     resolve_project_root,
 )
-from teleclaude.quality.gate import QualityGateLeg, run_lint_gate
+from teleclaude.quality.gate import QualityGateLeg
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -75,6 +75,8 @@ _CODE_OWNERS_NO_POSITIONALS = "telec code owners takes no positional arguments"
 _CODE_OWNERS_QUERY_FAILURE = "telec code owners failed: {error}"
 _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
+_MERGE_WORKTREE_DIFF_ARGUMENTS = ("--name-only", "-z", "--")
+_NUL_CHARACTER = "\x00"
 _DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
 _DOC_LAYER_WORKTREE_GUIDANCE = (
     "\nThe doc layer is authored at prepare on main and folded at integration; "
@@ -108,7 +110,6 @@ class CodeSubcommand(StrEnum):
 
 _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
     {
-        CodeSubcommand.LINT,
         CodeSubcommand.TEST,
         CodeSubcommand.FORMAT,
         CodeSubcommand.BLUEPRINT,
@@ -174,6 +175,8 @@ def handle_code(args: list[str]) -> None:
 def _require_code_capability(command: CodeSubcommand) -> None:
     """Refuse commands whose owning project capability is unsubscribed."""
     state = resolve_invocation_state()
+    if command is CodeSubcommand.LINT:
+        return
     if command in _CODE_CAPABILITY_SUBCOMMANDS and not state.capabilities.code:
         print(_CODE_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
@@ -342,10 +345,12 @@ def handle_code_commit(args: list[str]) -> None:
     Safety primitives:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
-    3. ``telec code commit`` runs format + lint in-process before git commit.
-    4. ``--approved`` is the commit gate; bare invocation prints the
+    3. ``telec code commit`` formats native-code paths before invoking Git.
+    4. Git's pre-commit hook runs the selected staged-content quality gate for
+       every route into a commit.
+    5. ``--approved`` is the commit gate; bare invocation prints the
        review-routing guidance (exit 0) and never commits.
-    5. The pathspec itself bounds the commit — no separate scope-enforcement
+    6. The pathspec itself bounds the commit — no separate scope-enforcement
        gate is needed.
 
     Parsing rule: option recognition is declaration-driven (see
@@ -613,13 +618,13 @@ def _commit_under_lock(
 
     quality_paths = [path for path in pathspec if (project_root / path).exists()]
     if quality_gate_legs and quality_paths:
-        _run_commit_quality_gate(project_root, quality_paths, quality_gate_legs)
+        _format_commit_paths(quality_paths, quality_gate_legs)
 
     # Use a message file for the mandated footer without shell argument splitting.
     stdout, stderr = _commit_repo_with_message(
         repo,
         message,
-        commit_args=("-F", "{message_file}", "--no-verify", "--", *pathspec),
+        commit_args=("-F", "{message_file}", "--", *pathspec),
         caller_identity=caller_identity,
         human_involved=human_involved,
     )
@@ -717,13 +722,18 @@ def _commit_active_merge(
             raise SystemExit(1)
 
     quality_paths = _merge_quality_paths(repo, project_root)
+    formatted_paths = False
     if quality_gate_legs and quality_paths:
-        _run_commit_quality_gate(project_root, quality_paths, quality_gate_legs)
+        formatted_paths = _format_commit_paths(quality_paths, quality_gate_legs)
+    if formatted_paths:
+        changed_paths = _merge_paths_changed_in_working_tree(repo, quality_paths)
+        if changed_paths:
+            _stage_files(changed_paths, project_root)
 
     stdout, stderr = _commit_repo_with_message(
         repo,
         message,
-        commit_args=("-F", "{message_file}", "--no-verify"),
+        commit_args=("-F", "{message_file}"),
         caller_identity=caller_identity,
         human_involved=human_involved,
     )
@@ -734,31 +744,25 @@ def _commit_active_merge(
     record_commit_success(repo, project_root, quality_paths)
 
 
-def _run_commit_quality_gate(
-    project_root: Path,
+def _format_commit_paths(
     quality_paths: list[str],
     quality_gate_legs: frozenset[QualityGateLeg],
-) -> None:
-    """Run the acting tier's selected checks against the commit pathspec."""
+) -> bool:
+    """Format native-code paths before Git runs the staged-content hook gate."""
     from teleclaude.cli.telec.handlers.quality import (  # noqa: PLC0415 - commit quality checks need formatting only here.
         handle_format,
     )
 
-    if QualityGateLeg.NATIVE in quality_gate_legs:
-        handle_format(quality_paths)
-    result = run_lint_gate(
-        project_root,
-        None,
-        quality_paths,
-        False,
-        None,
-        selection=quality_gate_legs,
-        request_subject_checkout_grading=True,
-    )
-    if result.exit_code != 0:
-        if result.failure_reason:
-            print(f"ERROR: {result.failure_reason}", file=sys.stderr)
-        raise SystemExit(result.exit_code)
+    if QualityGateLeg.NATIVE not in quality_gate_legs:
+        return False
+    handle_format(quality_paths)
+    return True
+
+
+def _merge_paths_changed_in_working_tree(repo: Repo, quality_paths: list[str]) -> list[str]:
+    """Return formatted merge paths whose working-tree content differs from the index."""
+    output = repo.git.diff(*_MERGE_WORKTREE_DIFF_ARGUMENTS, *quality_paths)
+    return [path for path in output.split(_NUL_CHARACTER) if path]
 
 
 def _commit_repo_with_message(
