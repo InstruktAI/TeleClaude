@@ -44,6 +44,7 @@ _INDEX_PATH_KEY: Final = "path"
 _DEPLOYED_DOCS_DIRECTORY: Final = Path("docs")
 _UNSUPPORTED_TIER_KIND: Final = "Tier deployment does not support home kind {kind}"
 _DOCS_STAGING_PREFIX: Final = ".docs.next-"
+_INVALID_DEPLOYED_INDEX: Final = "Deployed documentation index is malformed: {path}"
 
 
 class TierHome(NamedTuple):
@@ -84,14 +85,8 @@ def distribute_tier_homes(
 
         replaced = {(home.kind, home.slug) for home in tier_homes}
         affected = replaced | retracted
-        existing_payload = (
-            yaml.safe_load((staged_root / _INDEX_FILE_NAME).read_text(encoding=_UTF8))
-            if (staged_root / _INDEX_FILE_NAME).is_file()
-            else {}
-        )
-        existing_entries = existing_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
-        if not isinstance(existing_entries, list):
-            existing_entries = []
+        existing_index = staged_root / _INDEX_FILE_NAME
+        existing_entries = _deployed_index_entries(existing_index) if existing_index.is_file() else []
         tier_identity_values = {_source_project_value(kind, slug) for kind, slug in affected}
         retained = [
             entry
@@ -215,15 +210,26 @@ def _source_project_value(kind: ConfigKind, slug: str) -> str:
     return f"{prefix}{slug}"
 
 
+def _deployed_index_entries(path: Path) -> list[object]:
+    """Read the deployed index entries, refusing malformed existing state."""
+    try:
+        payload: object = yaml.safe_load(path.read_text(encoding=_UTF8))
+    except yaml.YAMLError as exc:
+        raise ValueError(_INVALID_DEPLOYED_INDEX.format(path=path)) from exc
+    if not isinstance(payload, dict):
+        raise ValueError(_INVALID_DEPLOYED_INDEX.format(path=path))
+    entries = payload.get(_INDEX_SNIPPETS_KEY)
+    if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+        raise ValueError(_INVALID_DEPLOYED_INDEX.format(path=path))
+    return entries
+
+
 def deployed_tier_identities(deploy_docs_root: Path = GLOBAL_DOCS_DIR) -> set[tuple[ConfigKind, str]]:
     """Read the tier identities currently recorded in the deployed merged index."""
     index_path = deploy_docs_root / _INDEX_FILE_NAME
     if not index_path.is_file():
         return set()
-    payload = yaml.safe_load(index_path.read_text(encoding=_UTF8))
-    entries = payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(payload, dict) else []
-    if not isinstance(entries, list):
-        return set()
+    entries = _deployed_index_entries(index_path)
     identities: set[tuple[ConfigKind, str]] = set()
     for entry in entries:
         if not isinstance(entry, dict):
