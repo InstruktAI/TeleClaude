@@ -446,6 +446,7 @@ And a session for an identified person who is not registered — a platform user
 And a request that identifies no person, supplies no role, inherits none from a parent and carries no system role is still refused
 ```
 
+<!-- planned-change:subject-scope-reach -->
 #### UC-SL40: A person lists only sessions whose configuration subject their role reaches
 
 ```
@@ -457,6 +458,18 @@ And sessions other computers share with this one are available only to a person 
 And a listing that names another computer is answered by that computer with the sessions the person's role reaches there
 And a platform administrator's listing is unchanged
 ```
+<!-- change:subject-scope-reach -->
+#### UC-SL40: A person lists only sessions their reach admits
+```gherkin
+Given a person who is not a platform administrator
+When the person lists this computer's sessions, including with --all
+Then every listed session recorded a subject their reach admits — a project they are assigned to or own, every project of a company they administer, their company homes, or their own home — or was recorded under their own principal
+And no session outside that reach, and no session that recorded no subject or an unknown one, is listed unless it is recorded under their own principal
+And sessions other computers share with this one are listed when the person's reach admits their subject through the owner they carry, or they are recorded under the person's principal
+And a listing that names another computer is answered by that computer with the sessions the person's reach admits there
+And a platform administrator's listing is unchanged
+```
+<!-- /planned-change:subject-scope-reach -->
 
 ### Cross-context references
 
@@ -477,7 +490,11 @@ And a platform administrator's listing is unchanged
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
+<!-- planned-change:subject-scope-reach -->
 - **Listing reveals what the caller's role reaches.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees only sessions whose recorded configuration subject — a project, a company home, or a person home — is one where that person's effective role is above customer (`local/projects/teleclaude/design/architecture/scoped-roles`), so a session that recorded no configuration subject is listed only for a platform role. Sessions other computers share with this one are listed only for a platform role held here, except that a session sees its own direct children wherever they run; a listing that names another computer is answered by that computer (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of the role scope.
+<!-- change:subject-scope-reach -->
+- **Listing reveals what the caller's reach admits.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees the sessions whose recorded subject their reach admits and the sessions recorded under their own principal (`local/projects/teleclaude/spec/feature/identity/data-visibility`). A platform role below administrator admits no session of its own. Sessions other computers share with this one are admitted by the same reach over the subject and owner they carry; a listing that names another computer is answered by that computer (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of reach.
+<!-- /planned-change:subject-scope-reach -->
 - **Sessions below member without a system role run only inside an enabled help desk.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path must be an enabled help desk (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`): a customer's is the desk its entry resolved to, or for a returning customer the desk of their latest session, and a registered person below member who entered through no desk gets the platform help desk. `subfolder` / `working_slug` are cleared. A request naming no enabled help desk is refused and creates no session; nothing is silently redirected.
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 
