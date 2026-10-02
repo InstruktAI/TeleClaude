@@ -126,7 +126,6 @@ nothing. When the gate refuses the record, activation also returns each file it
 wrote to its earlier content, or removes it when it was absent, provided the
 file still holds exactly what activation wrote. A file someone changed in the
 meantime is left as it is and reported.
-
 <!-- /planned:install-records-own-writes -->
 
 ### Path identity is canonical before any answer is given
