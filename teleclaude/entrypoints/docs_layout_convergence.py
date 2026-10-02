@@ -59,6 +59,9 @@ _FETCH_TIMEOUT_SECONDS: Final = 30
 _FETCH_QUIET: Final = "--quiet"
 _GIT_TERMINAL_PROMPT: Final = "GIT_TERMINAL_PROMPT"
 _ROOT_RELATIVE_PATH: Final = Path(".")
+_HOME_FIELD: Final = "home"
+_OUTCOME_FIELD: Final = "outcome"
+_ERROR_FIELD: Final = "error"
 _GIT_TERMINAL_PROMPT_OFF: Final = "0"
 _RERUN_COMMAND: Final = "uv run --directory {repo_root} python -m teleclaude.entrypoints.docs_layout_convergence"
 
@@ -149,9 +152,9 @@ def _publish_catalog_refresh(publisher_root: Path, still_stale: Callable[[], boo
         return False
     non_published_homes = [
         {
-            "home": item.home.root.as_posix(),
-            "outcome": item.outcome.value,
-            "error": item.error,
+            _HOME_FIELD: item.home.root.as_posix(),
+            _OUTCOME_FIELD: item.outcome.value,
+            _ERROR_FIELD: item.error,
         }
         for item in publication.homes
         if item.outcome in (HomePublicationOutcome.SKIPPED, HomePublicationOutcome.FAILED)
