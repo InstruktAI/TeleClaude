@@ -33,6 +33,7 @@ _TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
 _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
 _SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"
 _SNAPSHOT_MARKER_MISSING = "tmux snapshot output missing required boundary marker (stdout_bytes={size})"
+_TMUX_UNAVAILABLE_ERROR = "tmux binary unavailable for {session_name}: {error}"
 DEFAULT_CAPTURE_LINES = 200
 FALLBACK_CAPTURE_LINES = 40
 
@@ -257,9 +258,12 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
         # The slot encloses spawn and communicate so the timeout budget starts at
         # spawn, never while a requester waits for a free slot.
         async with get_snapshot_semaphore():
-            result = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
+            try:
+                result = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+            except FileNotFoundError as e:
+                raise TmuxUnavailableError(_TMUX_UNAVAILABLE_ERROR.format(session_name=session_name, error=e)) from e
             # A timeout here (SubprocessTimeoutError) is logged (throttled/aggregated) by the poll
             # loop that owns retry cadence, not per tick here.
             stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")

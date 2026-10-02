@@ -59,7 +59,10 @@ class SubprocessTimeoutError(Exception):
 
 
 class TmuxUnavailableError(Exception):
-    """Raised when the tmux binary itself could not be executed (returncode 127).
+    """Raised when the tmux binary itself could not be executed.
+
+    This covers a launched wrapper returning 127 and a process-start failure
+    where a file required to start the configured binary was not found.
 
     Distinct from a per-session tmux command failure: this is a process-wide,
     typically transient binary-resolution failure that occurs before any tmux
