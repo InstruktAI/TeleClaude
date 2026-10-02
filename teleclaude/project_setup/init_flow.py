@@ -20,7 +20,7 @@ from teleclaude.config.help_desk import with_help_desk_enabled
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
 from teleclaude.config.schema import ConfigKind, ProjectConfig
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.home_convergence import project_targets
 from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.docs_index import ensure_project_config, get_project_slug

@@ -40,7 +40,7 @@ from teleclaude.config.schema import (
     PersonEntry,
     ProjectConfig,
 )
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug

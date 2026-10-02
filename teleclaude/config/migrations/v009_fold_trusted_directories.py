@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.legacy_discord_handoff import LegacyProjectForumBinding, append_project_forum_bindings
 from teleclaude.config.migrations._chain import Destination
 from teleclaude.config.schema import ConfigKind
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import ConfigFileName
 
 VERSION: Final = 9

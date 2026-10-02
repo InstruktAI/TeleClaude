@@ -19,7 +19,7 @@ from teleclaude.config.invitation_store import load_invitations, save_invitation
 from teleclaude.config.loader import load_person_config
 from teleclaude.config.migrations import Destination, MigrationOutcome, MigrationTrigger, in_transit, migrate_document
 from teleclaude.config.schema import PersonConfig
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import PEOPLE_DIR, ConfigFileName
 
 logger = get_logger(__name__)

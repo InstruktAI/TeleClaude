@@ -22,7 +22,7 @@ from teleclaude.config.migrations._chain import Destination
 from teleclaude.config.migrations._runner import carry_pending
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterRefused
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction
 
 _CONFIG_RESOURCE_CHANGE_EVENT = "config_resource_change"

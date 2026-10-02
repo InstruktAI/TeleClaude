@@ -7,7 +7,7 @@ from typing import Final, cast
 
 from teleclaude.config.legacy_discord_handoff import LegacyDiscordProviderId, append
 from teleclaude.config.migrations._chain import Destination
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 
 VERSION: Final = 4
 KINDS: Final = frozenset({ConfigSubjectKind.COMPUTER})

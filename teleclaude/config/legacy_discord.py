@@ -17,7 +17,7 @@ from teleclaude.config.legacy_discord_handoff import (
     read_project_forum_bindings,
 )
 from teleclaude.config.migrations import Destination, MigrationTrigger, in_transit, migrate_document
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 

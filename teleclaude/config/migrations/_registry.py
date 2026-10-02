@@ -7,7 +7,7 @@ from pathlib import Path
 
 from teleclaude.config.migrations import v001_declare_tier_kind
 from teleclaude.config.migrations._chain import CURRENT_VERSION, MigrationTrigger, document_version
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef, SubjectSource
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, MACHINE_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.project_manifest import load_roots

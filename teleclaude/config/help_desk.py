@@ -11,7 +11,7 @@ from teleclaude.config.migrations import upcast
 from teleclaude.config.resource_catalog import load_mapping
 from teleclaude.config.resource_contract import InvalidCandidate, OwnEvidence, carry_resource_migrations
 from teleclaude.config.schema import CompanyConfig, ConfigKind
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.home_convergence import company_home_targets, platform_help_desk_targets
 from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.file_transaction import file_transaction

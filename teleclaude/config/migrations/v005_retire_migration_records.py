@@ -6,7 +6,7 @@ from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Final
 
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import STATE_DIR
 
 VERSION: Final = 5

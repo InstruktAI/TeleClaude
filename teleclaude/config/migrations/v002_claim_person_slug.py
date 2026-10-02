@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Final
 
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 
 VERSION: Final = 2
 KINDS: Final = frozenset({ConfigSubjectKind.PERSON})

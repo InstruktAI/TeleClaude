@@ -103,7 +103,7 @@ from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLoc
 from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.observation import credential_field_sources as credential_field_sources
 from teleclaude.config.observation import credential_section_availability as credential_section_availability
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL as DIRECTORY_CHECK_INTERVAL,
 )

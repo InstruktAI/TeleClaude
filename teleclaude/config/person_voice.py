@@ -18,7 +18,7 @@ from teleclaude.config.person_secrets import (
     secure_person_secret_store,
 )
 from teleclaude.config.schema import ConfigKind, PersonConfig
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.models import JsonDict
 from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import PEOPLE_DIR, ConfigFileName

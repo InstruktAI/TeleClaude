@@ -68,7 +68,7 @@ from teleclaude.config.roster import (
     validate_roster_candidate,
 )
 from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.docs_index import get_project_slug
 from teleclaude.file_transaction import file_transaction
 from teleclaude.invite import scaffold_personal_workspace

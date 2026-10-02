@@ -7,7 +7,7 @@ from typing import Final
 
 from teleclaude.config.invitation_store import InvitationTokenOwned, assign_token
 from teleclaude.config.migrations._chain import Destination
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 
 VERSION: Final = 3
 KINDS: Final = frozenset({ConfigSubjectKind.PERSON})

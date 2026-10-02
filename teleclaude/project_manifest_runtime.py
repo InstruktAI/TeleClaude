@@ -10,7 +10,7 @@ import yaml
 
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.migrations import Destination, in_transit
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 from teleclaude.project_manifest import (

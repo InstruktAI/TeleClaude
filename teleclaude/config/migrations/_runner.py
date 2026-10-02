@@ -33,7 +33,7 @@ from teleclaude.config.migrations.v003_relocate_person_invite_token import Desti
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
 from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
 from teleclaude.config.schema import ConfigKind
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT

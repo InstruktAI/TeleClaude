@@ -7,7 +7,7 @@ from copy import deepcopy
 from enum import StrEnum
 from typing import Final, Protocol, cast
 
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef, SubjectSource
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 
 _SCHEMA_VERSION = "schema_version"
 _VERSION_ERROR = "Configuration schema_version must be a non-negative integer"

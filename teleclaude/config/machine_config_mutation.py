@@ -16,7 +16,7 @@ from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.migrations import CURRENT_VERSION, Destination, carry_pending, upcast
 from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.revision import StaleRevision, view_revision
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
 
 _DOCUMENT_MAPPING_ERROR = "Machine configuration must be a YAML mapping."

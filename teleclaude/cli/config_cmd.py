@@ -71,8 +71,8 @@ from teleclaude.config.resources import (
 )
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterOutcome, RosterRefused
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.config.surface import machine_config_surface
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.configuration_clearance import (
     HELP_DESK_SECTION,
     ConfigurationOperation,

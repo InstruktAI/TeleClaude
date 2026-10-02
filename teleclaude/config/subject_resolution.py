@@ -13,7 +13,7 @@ from teleclaude.config.context_root import (
     nearest_config_declaration,
 )
 from teleclaude.config.migrations import registered_subject
-from teleclaude.config.subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import ConfigKind
 from teleclaude.project_root import declaration_root

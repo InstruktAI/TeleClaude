@@ -23,7 +23,7 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.config.help_desk import HELP_DESK_KEY
-from teleclaude.config.subjects import ConfigSubjectKind
+from teleclaude.config_subjects import ConfigSubjectKind
 
 logger = get_logger(__name__)
 
