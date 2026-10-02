@@ -54,8 +54,10 @@ and the machine's health report never depends on it.
 - **Local defaults.** Environment settings that let the machine start using
   only the local services installation itself provisions.
 - **Optional desktop applications.** Graphical applications installation can
-  add for features the operator may want but the platform does not need to run.
-  They are installed only when the operator chooses them.
+  add for features the operator may want but the platform does not need to run,
+  together with any background service that comes with them. Each is installed
+  only when the operator chooses it in that run. An application already present
+  is not a choice made for its companion service.
 
 ### Use cases
 
@@ -83,9 +85,9 @@ And it names the step, the missing input and how to provide it
 #### UC-FMB3: Optional desktop applications are installed only by choice
 
 ```gherkin
-Given a machine without the optional desktop applications
+Given a machine without the optional desktop applications, or with one of them present but not its companion service
 When installation runs with no terminal
-Then none of the optional desktop applications is installed
+Then nothing optional is installed, companion services included
 When an operator at a terminal runs installation and declines them
 Then none of them is installed
 When an operator at a terminal runs installation and chooses one
