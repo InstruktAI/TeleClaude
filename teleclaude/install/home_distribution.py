@@ -37,7 +37,6 @@ from teleclaude.install.distribution import (
     inflate_master,
 )
 from teleclaude.paths import GLOBAL_DOCS_DIR
-from teleclaude.snippet_roots import iter_declared_tier_roots
 
 _COMPANY_SOURCE_PROJECT_PREFIX: Final = "company:"
 _PERSON_SOURCE_PROJECT_PREFIX: Final = "person:"
@@ -214,14 +213,6 @@ def _source_project_value(kind: ConfigKind, slug: str) -> str:
     """Return the existing merged-index identity for one tier home."""
     prefix = _COMPANY_SOURCE_PROJECT_PREFIX if kind is ConfigKind.COMPANY else _PERSON_SOURCE_PROJECT_PREFIX
     return f"{prefix}{slug}"
-
-
-def declared_tier_homes(platform_home_snapshot: Path) -> list[TierHome]:
-    """Build deployment identities for the declared company and person homes."""
-    return [
-        TierHome(root=root, kind=kind, slug=root.name)
-        for root, kind in iter_declared_tier_roots(platform_home_snapshot)
-    ]
 
 
 def deployed_tier_identities(deploy_docs_root: Path = GLOBAL_DOCS_DIR) -> set[tuple[ConfigKind, str]]:

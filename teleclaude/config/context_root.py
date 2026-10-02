@@ -165,7 +165,6 @@ def homes_at_or_beneath(relative_directory: str | Path, source: TreeSource) -> l
     """List homes declared at or below a repository-relative directory in a Git tree."""
     directory = _repository_relative_directory(relative_directory)
     tree_paths = set(list_tree_paths(source))
-    kind_cache: dict[Path, TreeHome] = {}
     marker_paths = sorted(
         path
         for path in tree_paths
@@ -174,11 +173,7 @@ def homes_at_or_beneath(relative_directory: str | Path, source: TreeSource) -> l
     homes: list[TreeHome] = []
     for marker_path in marker_paths:
         root = Path(PurePosixPath(marker_path).parent.as_posix())
-        home = kind_cache.get(root)
-        if home is None:
-            home = _read_tree_home(root, marker_path, source)
-            kind_cache[root] = home
-        homes.append(home)
+        homes.append(_read_tree_home(root, marker_path, source))
     return homes
 
 
