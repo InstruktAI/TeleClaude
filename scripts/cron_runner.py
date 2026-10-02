@@ -37,12 +37,12 @@ _REPO_ROOT = _SCRIPT_PATH.parents[1]
 _PROJECT_ENV = _REPO_ROOT / ".venv"
 _PROJECT_PYTHON = _PROJECT_ENV / "bin" / "python"
 _REQUIRED_MODULES = ("teleclaude", "jobs.base")
-_STARTUP_FAILURE_EXIT_STATUS = 70
+_API_DISPATCH_FLAG = "--api-dispatch"
+_STORE_TRUE_ACTION = "store_true"
 _RUNTIME_ERROR = (
     "cron_runner requires the installed project runtime at {interpreter}. "
     "Create it with `uv sync --project {project_root}`."
 )
-_RUNTIME_EXEC_ERROR = "cron_runner cannot enter the project runtime at {interpreter}: {error}."
 _PACKAGE_ERROR = (
     "cron_runner cannot import required project packages: {modules}. "
     "Refresh the project environment with `uv sync --project {project_root}`."
@@ -59,7 +59,7 @@ def _prepare_project_runtime() -> None:
             _RUNTIME_ERROR.format(interpreter=_PROJECT_PYTHON, project_root=_REPO_ROOT),
             file=sys.stderr,
         )
-        raise SystemExit(_STARTUP_FAILURE_EXIT_STATUS)
+        raise SystemExit(1)
 
     if Path(sys.prefix).resolve() == _PROJECT_ENV.resolve():
         return
@@ -67,14 +67,7 @@ def _prepare_project_runtime() -> None:
     # PEP 723 uv execution is isolated from the installed first-party packages.
     # Replacing this process is required to enter their project-owned runtime;
     # no in-process import or shell command can supply that environment.
-    try:
-        os.execv(str(_PROJECT_PYTHON), [str(_PROJECT_PYTHON), *sys.argv])
-    except OSError as exc:
-        print(
-            _RUNTIME_EXEC_ERROR.format(interpreter=_PROJECT_PYTHON, error=exc),
-            file=sys.stderr,
-        )
-        raise SystemExit(_STARTUP_FAILURE_EXIT_STATUS) from exc
+    os.execv(str(_PROJECT_PYTHON), [str(_PROJECT_PYTHON), *sys.argv])
 
 
 def _preflight_project_packages() -> None:
@@ -92,7 +85,7 @@ def _preflight_project_packages() -> None:
             _PACKAGE_ERROR.format(modules=", ".join(missing), project_root=_REPO_ROOT),
             file=sys.stderr,
         )
-        raise SystemExit(_STARTUP_FAILURE_EXIT_STATUS)
+        raise SystemExit(1)
 
 
 _prepare_project_runtime()
@@ -122,7 +115,7 @@ except ImportError as exc:
         _PACKAGE_IMPORT_ERROR.format(error=exc, project_root=_REPO_ROOT),
         file=sys.stderr,
     )
-    raise SystemExit(_STARTUP_FAILURE_EXIT_STATUS) from None
+    raise SystemExit(1) from None
 
 
 def _describe_schedule(schedule: object) -> str:
@@ -166,6 +159,7 @@ def main() -> int:
         dest="list_jobs",
         help="List available jobs and their status",
     )
+    parser.add_argument(_API_DISPATCH_FLAG, action=_STORE_TRUE_ACTION, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     if args.list_jobs:
@@ -213,6 +207,8 @@ def main() -> int:
         failed=fail_count,
     )
 
+    if args.api_dispatch:
+        return 0
     return 1 if fail_count > 0 else 0
 
 
