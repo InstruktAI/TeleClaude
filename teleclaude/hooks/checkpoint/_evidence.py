@@ -3,9 +3,8 @@
 from pathlib import Path
 
 from teleclaude.checkpoint_model import scope_matches
-from teleclaude.cli.telec import flags as F
-from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
-from teleclaude.cli.telec.surface import SESSIONS_SEND
+from teleclaude.cli.session_send_request import SessionSendUsageError, resolve_session_send
+from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_COMMIT_EVIDENCE,
@@ -91,16 +90,12 @@ def _segment_sends_to(segment: str, session_ids: frozenset[str]) -> bool:
 
 
 def _send_target(arguments: list[str]) -> str | None:
-    """Return the session ``telec sessions send`` would address, parsed as the CLI parses it."""
+    """Return the session a ``telec sessions send`` delivers a message to, or None when it delivers none."""
     try:
-        parsed = parse_command_args(SESSIONS_SEND, arguments)
-    except CliUsageError:
+        request = resolve_session_send(arguments)
+    except (CliUsageError, SessionSendUsageError):
         return None
-    positional_target = parsed.positionals[0] if parsed.positionals else None
-    if not parsed.has(F.FLAG_SESSION):
-        return positional_target
-    # The CLI refuses a positional target combined with --session; nothing is sent.
-    return None if positional_target is not None else parsed.value(F.FLAG_SESSION)
+    return request.session_id if request.message else None
 
 
 def _has_commit_evidence(timeline: TurnTimeline) -> bool:

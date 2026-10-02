@@ -13,6 +13,7 @@ import sys
 import time
 from typing import TYPE_CHECKING, Final, TypedDict
 
+from teleclaude.cli.session_send_request import SessionSendUsageError, resolve_session_send
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import (
@@ -24,7 +25,6 @@ from teleclaude.cli.telec.surface import (
     SESSIONS_RESULT,
     SESSIONS_RUN,
     SESSIONS_RUN_PA,
-    SESSIONS_SEND,
     SESSIONS_START,
     SESSIONS_TAIL,
     SESSIONS_UNSUBSCRIBE,
@@ -245,47 +245,23 @@ def handle_sessions_send(args: list[str]) -> None:
       telec sessions send abc123 --close-link
       telec sessions send abc123 "Please implement feature X" --computer <computer>
     """
-    parsed = parse_command_args(SESSIONS_SEND, args)
-    positionals = parsed.positionals
-    positional_session_id = positionals[0] if positionals else None
-    positional_message = " ".join(positionals[1:]) if len(positionals) > 1 else None
-
-    session_id = positional_session_id
-    if parsed.has(F.FLAG_SESSION):
-        if positional_session_id is not None:
-            print("Error: do not combine positional session_id with --session", file=sys.stderr)
-            raise SystemExit(1)
-        session_id = parsed.value(F.FLAG_SESSION)
-
-    message = positional_message
-    has_message_alias = parsed.has(F.FLAG_MESSAGE_ALIAS)
-    if has_message_alias:
-        if positional_message is not None:
-            print("Error: do not combine positional message with --message", file=sys.stderr)
-            raise SystemExit(1)
-        message = parsed.value(F.FLAG_MESSAGE_ALIAS)
-
-    if not session_id:
-        print("Error: session_id required", file=sys.stderr)
-        raise SystemExit(1)
-
-    close_link = parsed.has(F.FLAG_CLOSE_LINK) or parsed.has(F.FLAG_CLOSE_LINK_ALIAS)
-    if not close_link and not message:
-        print("Error: message required", file=sys.stderr)
-        raise SystemExit(1)
-
-    computer = parsed.value(F.FLAG_COMPUTER) or "local"
-    direct = parsed.has(F.FLAG_DIRECT_SEND)
+    try:
+        request = resolve_session_send(args)
+    except SessionSendUsageError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
     body: dict[str, str | bool] = {}
-    if message:
-        body["message"] = message
-    if direct:
+    if request.message:
+        body["message"] = request.message
+    if request.direct:
         body["direct"] = True
-    if close_link:
+    if request.close_link:
         body["close_link"] = True
 
-    data = tool_api_call("POST", f"/sessions/{session_id}/message", params={"computer": computer}, json_body=body)
+    data = tool_api_call(
+        "POST", f"/sessions/{request.session_id}/message", params={"computer": request.computer}, json_body=body
+    )
     print_json(data)
 
 
