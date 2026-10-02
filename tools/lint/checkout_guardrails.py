@@ -11,6 +11,7 @@ check, no workspace scoping.
 from __future__ import annotations
 
 import sys
+from inspect import signature
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -18,6 +19,7 @@ from instrukt_ai_logging import get_logger
 import teleclaude
 from teleclaude.logging_config import setup_logging
 from teleclaude.quality.lint import LintRunner
+from teleclaude.quality.selection import QualityCheckFamily
 from teleclaude.session_identity import get_session_id
 
 # Not `__name__`: run as a script, that is "__main__", a logger `configure_logging`
@@ -27,8 +29,15 @@ _LOGGER_NAME = "teleclaude.quality.checkout_guardrails"
 logger = get_logger(_LOGGER_NAME)
 
 _ROOT_FLAG = "--root"
+_CONTENT_ROOT_FLAG = "--content-root"
+_PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
+_FAMILY_FLAG = "--family"
+_FULL_RUN_FLAG = "--full-run"
 _ALL_FLAG = "--all"
-_USAGE = "usage: checkout_guardrails.py --root <path> (--all | <file> [<file> ...])"
+_USAGE = (
+    "usage: checkout_guardrails.py --root <path> [--content-root <path>] "
+    "[--platform-home-subject] (--all | <file> [<file> ...])"
+)
 _TELECLAUDE_PACKAGE_NAME = "teleclaude"
 _TELECLAUDE_PACKAGE_INIT = "__init__.py"
 _USAGE_EXIT_CODE = 2
@@ -36,6 +45,13 @@ _FOREIGN_CHECKOUT_EXIT_CODE = 1
 _FOREIGN_CHECKOUT_MESSAGE = "ERROR: loaded {package_name} from {loaded}, expected it under {root}"
 _SUCCESS_EXIT_CODE = 0
 _DEFAULT_FAILURE_EXIT_CODE = 1
+_CONTENT_ROOT_PARAMETER = "content_root"
+_PLATFORM_HOME_SUBJECT_PARAMETER = "platform_home_subject"
+_OPTION_PREFIX = "-"
+_CONTENT_ROOT_UNSUPPORTED = (
+    "ERROR: checkout {root} cannot grade staged content with its own guardrails; "
+    "reconcile the worktree with origin/main and retry."
+)
 
 # This checkout's own grading, run standalone: it never imports the graded checkout's
 # `teleclaude.quality.gate`/`checkout_grading` (a pre-delivery checkout carries neither),
@@ -50,22 +66,51 @@ _REASON_INSTALLATION = "installation"
 _GUARDRAILS_LEG = "guardrails"
 
 
-def _parse_args(argv: list[str]) -> tuple[Path, list[str] | None]:
+def _parse_args(
+    argv: list[str],
+) -> tuple[Path, list[str] | None, Path | None, bool, frozenset[QualityCheckFamily], bool]:
     """Parse ``--root <path>`` followed by explicit targets or ``--all``."""
     if len(argv) < 2 or argv[0] != _ROOT_FLAG:
         print(_USAGE, file=sys.stderr)
         raise SystemExit(_USAGE_EXIT_CODE)
     root = Path(argv[1])
     rest = argv[2:]
-    if not rest:
+    content_root: Path | None = None
+    platform_home_subject = False
+    check_families: set[QualityCheckFamily] = set()
+    full_run = False
+    targets: list[str] = []
+    index = 0
+    while index < len(rest):
+        argument = rest[index]
+        if argument == _CONTENT_ROOT_FLAG and index + 1 < len(rest):
+            content_root = Path(rest[index + 1])
+            index += 2
+        elif argument == _PLATFORM_HOME_SUBJECT_FLAG:
+            platform_home_subject = True
+            index += 1
+        elif argument == _FAMILY_FLAG and index + 1 < len(rest):
+            try:
+                check_families.add(QualityCheckFamily(rest[index + 1]))
+            except ValueError:
+                print(_USAGE, file=sys.stderr)
+                raise SystemExit(_USAGE_EXIT_CODE) from None
+            index += 2
+        elif argument == _FULL_RUN_FLAG:
+            full_run = True
+            index += 1
+        else:
+            targets.append(argument)
+            index += 1
+    if not targets:
         print(_USAGE, file=sys.stderr)
         raise SystemExit(_USAGE_EXIT_CODE)
-    if rest == [_ALL_FLAG]:
-        return root, None
-    if any(target == _ALL_FLAG or target.startswith("-") for target in rest):
+    if targets == [_ALL_FLAG]:
+        return root, None, content_root, platform_home_subject, frozenset(check_families), True
+    if any(target == _ALL_FLAG or target.startswith(_OPTION_PREFIX) for target in targets):
         print(_USAGE, file=sys.stderr)
         raise SystemExit(_USAGE_EXIT_CODE)
-    return root, rest
+    return root, targets, content_root, platform_home_subject, frozenset(check_families), full_run
 
 
 def _confirm_checkout_loaded(root: Path) -> None:
@@ -94,18 +139,36 @@ def _log_checkout_grading(root: Path, exit_code: int) -> None:
     )
 
 
+def _confirm_content_root_supported(root: Path) -> None:
+    """Refuse staged grading when this checkout's LintRunner lacks its interface."""
+    parameters = signature(LintRunner.__init__).parameters
+    required = {_CONTENT_ROOT_PARAMETER, _PLATFORM_HOME_SUBJECT_PARAMETER}
+    if not required.issubset(parameters):
+        print(_CONTENT_ROOT_UNSUPPORTED.format(root=root), file=sys.stderr)
+        raise SystemExit(_FOREIGN_CHECKOUT_EXIT_CODE)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the loaded checkout's guardrail lane over the parsed targets."""
-    root, targets = _parse_args(list(sys.argv[1:] if argv is None else argv))
+    root, targets, content_root, platform_home_subject, check_families, full_run = _parse_args(
+        list(sys.argv[1:] if argv is None else argv)
+    )
     resolved_root = root.resolve()
     _confirm_checkout_loaded(resolved_root)
+    if content_root is not None:
+        _confirm_content_root_supported(resolved_root)
     # A standalone entry, not started through `teleclaude.cli.telec`'s own startup:
     # nothing has attached a handler to this process's loggers yet, so the grading
     # record below would otherwise emit into a void (sdlc/policy/python/logging).
     setup_logging()
     exit_code = _SUCCESS_EXIT_CODE
     try:
-        LintRunner(project_root=resolved_root).run(files=targets, run_all=targets is None)
+        LintRunner(
+            project_root=resolved_root,
+            content_root=content_root,
+            platform_home_subject=platform_home_subject,
+            check_families=check_families or frozenset(QualityCheckFamily),
+        ).run(files=targets, run_all=full_run or targets is None)
     except SystemExit as exc:
         exit_code = exc.code if isinstance(exc.code, int) else _DEFAULT_FAILURE_EXIT_CODE
     _log_checkout_grading(resolved_root, exit_code)

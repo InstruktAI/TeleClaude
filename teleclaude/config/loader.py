@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from teleclaude.config._environment import (
     company_environment_creation_mode,
@@ -61,6 +61,10 @@ _ADOPTED_METADATA_NAME_FIELDS: dict[ConfigKind, str] = {
     ConfigKind.COMPANY: "name",
 }
 _DESCRIPTION_FIELD = "description"
+_STAGED_DECLARATION_YAML_ERROR = "{path}: invalid YAML: {error}"
+_STAGED_DECLARATION_MAPPING_ERROR = "{path}: declaration must be a mapping"
+_STAGED_DECLARATION_KIND_ERROR = "{path}: declaration kind must be one of: global, project, person, company"
+_STAGED_DECLARATION_SCHEMA_ERROR = "{path}: invalid {kind} declaration: {error}"
 
 
 @dataclass(frozen=True)
@@ -187,6 +191,40 @@ def load_config[T: BaseModel](
     except Exception as exc:
         raise ValueError(f"Failed to validate config file {path}: {exc}") from exc
     return model
+
+
+def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
+    """Validate one staged declaration against its declared tier schema.
+
+    This intentionally validates only the supplied Git-index bytes. It does
+    not load sibling environment files, migrate the document, or consult live
+    configuration and registry state.
+    """
+    try:
+        raw = yaml.safe_load(content.decode(_UTF8))
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        return [_STAGED_DECLARATION_YAML_ERROR.format(path=path, error=exc)]
+    if not isinstance(raw, Mapping):
+        return [_STAGED_DECLARATION_MAPPING_ERROR.format(path=path)]
+    try:
+        kind = ConfigKind(raw.get(_KIND_FIELD))
+    except (TypeError, ValueError):
+        return [_STAGED_DECLARATION_KIND_ERROR.format(path=path)]
+
+    model_class: type[BaseModel]
+    if kind is ConfigKind.GLOBAL:
+        model_class = GlobalConfig
+    elif kind is ConfigKind.PROJECT:
+        model_class = ProjectConfig
+    elif kind is ConfigKind.PERSON:
+        model_class = PersonConfig
+    else:
+        model_class = CompanyConfig
+    try:
+        model_class.model_validate(raw)
+    except ValidationError as exc:
+        return [_STAGED_DECLARATION_SCHEMA_ERROR.format(path=path, kind=kind.value, error=exc)]
+    return []
 
 
 def _read_config_mapping(path: Path) -> object:

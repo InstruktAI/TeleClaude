@@ -7,6 +7,7 @@ from teleclaude.core.reconciliation.template_installation import HomeTemplateMat
 
 _ACTIVATED_MESSAGE = "TeleClaude home history activated"
 _REFUSED_MESSAGE = "TeleClaude home history was not activated; these paths are outside the retained set:"
+_GATE_REFUSED_MESSAGE = "TeleClaude home history was not activated because the commit gate refused it:"
 _BREACH_MESSAGE = "Existing history contains paths outside the retained set:"
 _SUCCESS_EXIT_CODE = 0
 _REFUSAL_EXIT_CODE = 0
@@ -20,6 +21,11 @@ def main() -> int:
     except HomeTemplateMaterializationConflict as error:
         print(error)
         return _MATERIALIZATION_CONFLICT_EXIT_CODE
+    if result.status is HomeActivationStatus.GATE_REFUSED:
+        print(_GATE_REFUSED_MESSAGE)
+        for finding in result.gate_findings:
+            print(finding)
+        return _REFUSAL_EXIT_CODE
     if result.status is HomeActivationStatus.REFUSED:
         print(_REFUSED_MESSAGE)
         for path in result.refused_paths:

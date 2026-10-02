@@ -1554,7 +1554,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "code": CommandDef(
         desc="Code quality and commit tools",
         notes=[
-            "lint, test, format, install, and blueprint require the code capability.",
+            "test, format, install, and blueprint require the code capability.",
+            "lint is available where code or docs is enabled; each check family follows its owning home's configuration.",
             "add, commit, and owners remain available when either code or docs is subscribed.",
         ],
         subcommands={
@@ -1581,7 +1582,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 },
             ),
             "lint": CommandDef(
-                desc="Run native make lint plus TeleClaude guardrails",
+                desc="Run checks selected by each owning home's configuration",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_CODE_ALL_LINT,

@@ -10,8 +10,10 @@ from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 
+from teleclaude.git_tree import tree_read_environment
 from teleclaude.paths import MACHINE_CONFIG_PATH, REPO_ROOT, ConfigFileName
 from teleclaude.project_root import worktree_home_root
+from teleclaude.quality.selection import QualityCheckFamily
 from teleclaude.runtime.command_runner import run_process_group_command
 
 _TELECLAUDE_PACKAGE_MARKER = Path("teleclaude") / "__init__.py"
@@ -25,6 +27,10 @@ _PYTHON_SAFE_PATH_FLAG = "-P"
 _ALL_FLAG = "--all"
 _GUARDRAILS_ENTRY_SCRIPT = Path("tools") / "lint" / "checkout_guardrails.py"
 _GUARDRAILS_ENTRY_ROOT_FLAG = "--root"
+_GUARDRAILS_CONTENT_ROOT_FLAG = "--content-root"
+_GUARDRAILS_PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
+_GUARDRAILS_FAMILY_FLAG = "--family"
+_GUARDRAILS_FULL_RUN_FLAG = "--full-run"
 
 _ENV_TELECLAUDE_HOME = "TELECLAUDE_HOME"
 _ENV_TELEC_INVOCATION_CWD = "TELEC_INVOCATION_CWD"
@@ -91,9 +97,13 @@ def resolve_checkout_grading_decision(execution_root: Path) -> CheckoutGradingDe
 
 
 @contextmanager
-def subject_checkout_grading_environment(execution_root: Path) -> Iterator[dict[str, str]]:
+def subject_checkout_grading_environment(
+    execution_root: Path,
+    *,
+    base_env: Mapping[str, str] | None = None,
+) -> Iterator[dict[str, str]]:
     """Yield the isolated child environment used for grading a subject checkout."""
-    child_env = dict(os.environ)  # guard: direct-env-read - allowed: child-process environment construction
+    child_env = dict(base_env) if base_env is not None else dict(os.environ)  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     child_env[_ENV_TELEC_INVOCATION_CWD] = str(execution_root)
     child_env[_ENV_UV_NO_SYNC] = _ENV_UV_NO_SYNC_VALUE
     if worktree_home_root(execution_root) is not None:
@@ -111,10 +121,15 @@ def run_subject_checkout_guardrails(
     execution_root: Path,
     files: list[str] | None,
     child_env: Mapping[str, str],
+    *,
+    content_root: Path | None = None,
+    platform_home_subject: bool = False,
+    check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
+    full_run: bool = False,
 ) -> int:
     """Run the installed entry that verifies and grades the subject checkout."""
     targets = [_ALL_FLAG] if files is None else files
-    entry_env = dict(child_env)
+    entry_env = tree_read_environment(execution_root, base_environment=child_env)
     entry_env[_ENV_PYTHONPATH] = str(execution_root)
     command = [
         _UV_EXECUTABLE,
@@ -127,8 +142,16 @@ def run_subject_checkout_guardrails(
         str(REPO_ROOT / _GUARDRAILS_ENTRY_SCRIPT),
         _GUARDRAILS_ENTRY_ROOT_FLAG,
         str(execution_root),
-        *targets,
     ]
+    if content_root is not None:
+        command.extend([_GUARDRAILS_CONTENT_ROOT_FLAG, str(content_root)])
+    if platform_home_subject:
+        command.append(_GUARDRAILS_PLATFORM_HOME_SUBJECT_FLAG)
+    for family in sorted(check_families):
+        command.extend([_GUARDRAILS_FAMILY_FLAG, family.value])
+    if full_run:
+        command.append(_GUARDRAILS_FULL_RUN_FLAG)
+    command.extend(targets)
     return run_process_group_command(command, execution_root, entry_env).exit_code
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import Capabilities, PermissionSurface, TierPermissions
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.checkout_grading import (
@@ -20,6 +21,7 @@ from teleclaude.quality.checkout_grading import (
     subject_checkout_grading_environment,
 )
 from teleclaude.quality.lint import LintRunner
+from teleclaude.quality.selection import QualityCheckFamily
 from teleclaude.runtime.command_runner import run_process_group_command
 from teleclaude.session_identity import get_session_id
 
@@ -60,6 +62,39 @@ class QualityGateLeg(StrEnum):
     GUARDRAILS = "guardrails"
 
 
+def select_quality_check_families(
+    capabilities: Capabilities,
+    tier_permissions: TierPermissions | None,
+) -> frozenset[QualityCheckFamily]:
+    """Resolve the check families carried by one configured home."""
+    if not capabilities.is_target:
+        if tier_permissions is None or not tier_permissions.participates_in(PermissionSurface.DOCUMENTATION):
+            return frozenset()
+        return frozenset({QualityCheckFamily.DOCUMENTATION, QualityCheckFamily.AGENTS})
+    selected: set[QualityCheckFamily] = set()
+    if capabilities.code:
+        selected.add(QualityCheckFamily.CODE)
+    if capabilities.docs:
+        selected.add(QualityCheckFamily.DOCUMENTATION)
+    if capabilities.agents:
+        selected.add(QualityCheckFamily.AGENTS)
+    return frozenset(selected)
+
+
+def select_quality_gate_legs(
+    capabilities: Capabilities,
+    tier_permissions: TierPermissions | None,
+) -> frozenset[QualityGateLeg]:
+    """Return the gate legs selected by a tier's published capabilities."""
+    families = select_quality_check_families(capabilities, tier_permissions)
+    if not families or (capabilities.is_target and not capabilities.commit_enabled):
+        return frozenset()
+    legs = {QualityGateLeg.GUARDRAILS}
+    if QualityCheckFamily.CODE in families:
+        legs.add(QualityGateLeg.NATIVE)
+    return frozenset(legs)
+
+
 @dataclass(frozen=True)
 class LintGateResult:
     """The optional subject and independent exit statuses observed by one lint gate."""
@@ -98,7 +133,11 @@ def run_lint_gate(
     child_env: Mapping[str, str] | None,
     selection: frozenset[QualityGateLeg] = frozenset(QualityGateLeg),
     *,
+    check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
+    full_run: bool = False,
     request_subject_checkout_grading: bool = False,
+    content_root: Path | None = None,
+    platform_home_subject: bool = False,
 ) -> LintGateResult:
     """Run selected lint checks, optionally bound to a committed subject.
 
@@ -132,7 +171,15 @@ def run_lint_gate(
 
     if not request_subject_checkout_grading:
         native_exit_code, guardrails_exit_code = _run_in_process_legs(
-            execution_root, files, format_scoped, child_env, selection
+            execution_root,
+            files,
+            format_scoped,
+            child_env,
+            selection,
+            content_root,
+            platform_home_subject,
+            check_families,
+            full_run,
         )
         return _build_in_process_result(subject_sha, execution_head, native_exit_code, guardrails_exit_code)
 
@@ -141,15 +188,25 @@ def run_lint_gate(
     # runs the subject checkout's own project-native lint through its existing make target.
     # A native-only selection runs in-process, exactly as before.
     if decision is CheckoutGradingDecision.SUBJECT_CHECKOUT and QualityGateLeg.GUARDRAILS in selection:
-        with subject_checkout_grading_environment(execution_root) as grading_env:
+        with subject_checkout_grading_environment(execution_root, base_env=child_env) as grading_env:
             native_exit_code, _ = _run_in_process_legs(
                 execution_root,
                 files,
                 format_scoped,
                 grading_env,
                 selection & frozenset({QualityGateLeg.NATIVE}),
+                check_families=check_families,
+                full_run=full_run,
             )
-            guardrails_exit_code = run_subject_checkout_guardrails(execution_root, files, grading_env)
+            guardrails_exit_code = run_subject_checkout_guardrails(
+                execution_root,
+                files,
+                grading_env,
+                content_root=content_root,
+                platform_home_subject=platform_home_subject,
+                check_families=check_families,
+                full_run=full_run,
+            )
         result = LintGateResult(
             outcome=(
                 LintGateOutcome.PASSED
@@ -164,7 +221,15 @@ def run_lint_gate(
         )
     else:
         native_exit_code, guardrails_exit_code = _run_in_process_legs(
-            execution_root, files, format_scoped, child_env, selection
+            execution_root,
+            files,
+            format_scoped,
+            child_env,
+            selection,
+            content_root,
+            platform_home_subject,
+            check_families,
+            full_run,
         )
         result = _build_in_process_result(subject_sha, execution_head, native_exit_code, guardrails_exit_code)
     _log_checkout_grading(execution_root, decision, selection, result)
@@ -177,6 +242,10 @@ def _run_in_process_legs(
     format_scoped: bool,
     child_env: Mapping[str, str] | None,
     selection: frozenset[QualityGateLeg],
+    content_root: Path | None = None,
+    platform_home_subject: bool = False,
+    check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
+    full_run: bool = False,
 ) -> tuple[int | None, int | None]:
     """Run the native and guardrails legs in this process, exactly as before."""
     run_native = QualityGateLeg.NATIVE in selection
@@ -191,7 +260,13 @@ def _run_in_process_legs(
     if run_guardrails:
         guardrails_exit_code = 0
         try:
-            LintRunner(project_root=execution_root).run(files=files, run_all=files is None)
+            LintRunner(
+                project_root=execution_root,
+                content_root=content_root,
+                platform_home_subject=platform_home_subject,
+                child_env=child_env,
+                check_families=check_families,
+            ).run(files=files, run_all=full_run or files is None)
         except SystemExit as exc:
             guardrails_exit_code = _system_exit_code(exc)
     return native_exit_code, guardrails_exit_code
@@ -301,8 +376,11 @@ def _lint_failure_reason(native_exit_code: int | None, guardrails_exit_code: int
 __all__ = [
     "LintGateOutcome",
     "LintGateResult",
+    "QualityCheckFamily",
     "QualityGateLeg",
     "read_head_sha",
     "run_lint_gate",
     "run_make_target",
+    "select_quality_check_families",
+    "select_quality_gate_legs",
 ]

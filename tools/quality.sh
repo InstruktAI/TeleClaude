@@ -78,12 +78,63 @@ run_legs() {
     return "$status"
 }
 
+print_format_recovery() {
+    local path
+    printf 'telec code format'
+    for path in "$@"; do
+        printf ' %q' "$path"
+    done
+    printf '\n'
+}
+
+run_python_format_check() {
+    local status
+    local -a recovery_paths=("$@")
+    if uv run ruff format --check "$@"; then
+        return 0
+    else
+        status=$?
+    fi
+    if [ "${#recovery_paths[@]}" -eq 1 ] && [ "${recovery_paths[0]}" = "." ]; then
+        recovery_paths=(--all)
+    fi
+    print_format_recovery "${recovery_paths[@]}"
+    return "$status"
+}
+
 run_frontend_format() {
     if command -v pnpm >/dev/null 2>&1; then
         pnpm exec prettier --write "$@"
     else
         npx --yes prettier --write "$@"
     fi
+}
+
+run_frontend_prettier_check() {
+    local status
+    local -a recovery_paths=()
+    local path
+    if [ "$#" -eq 1 ] && [ "$1" = "." ]; then
+        recovery_paths=(--all)
+    else
+        for path in "$@"; do
+            recovery_paths+=("frontend/$path")
+        done
+    fi
+    if (
+        cd frontend
+        if command -v pnpm >/dev/null 2>&1; then
+            pnpm exec prettier --check "$@"
+        else
+            npx --yes prettier --check "$@"
+        fi
+    ); then
+        return 0
+    else
+        status=$?
+    fi
+    print_format_recovery "${recovery_paths[@]}"
+    return "$status"
 }
 
 run_frontend_lint() {
@@ -170,6 +221,42 @@ run_rust_fmt_scoped() {
     fi
 }
 
+run_rust_fmt_check_scoped() {
+    rust_manifests_from_paths "$@"
+    if [ "$RUST_WORKSPACE" -eq 1 ]; then
+        if cargo fmt --all --check; then
+            return 0
+        else
+            local status=$?
+            print_format_recovery --all
+            return "$status"
+        fi
+    else
+        local manifest
+        local status=0
+        for manifest in "${RUST_MANIFESTS[@]}"; do
+            if ! cargo fmt --manifest-path "$manifest" --check; then
+                status=1
+            fi
+        done
+        if [ "$status" -ne 0 ]; then
+            print_format_recovery "$@"
+        fi
+        return "$status"
+    fi
+}
+
+run_rust_fmt_check_full() {
+    local status
+    if cargo fmt --all --check; then
+        return 0
+    else
+        status=$?
+    fi
+    print_format_recovery --all
+    return "$status"
+}
+
 run_rust_clippy_scoped() {
     rust_manifests_from_paths "$@"
     if [ "$RUST_WORKSPACE" -eq 1 ]; then
@@ -189,6 +276,17 @@ format_python() {
 
 format_root_prettier() {
     npx --yes prettier --write "$@"
+}
+
+check_root_prettier() {
+    local status
+    if npx --yes prettier --check "$@"; then
+        return 0
+    else
+        status=$?
+    fi
+    print_format_recovery "$@"
+    return "$status"
 }
 
 format_frontend() {
@@ -344,22 +442,44 @@ format_scoped() {
 }
 
 lint_full() {
+    local -a prettier_targets=()
+    local -a docs_md=()
+    local -a jscpd_targets=()
+    local p
+
     start_leg "ruff check" uv run ruff check .
-    start_leg "ruff format check" uv run ruff format --check .
+    start_leg "ruff format check" run_python_format_check .
     start_leg "pyright" uv run pyright
     start_leg "mypy" uv run mypy
 
-    local -a jscpd_targets=()
-    local p
     for p in teleclaude tools; do
         [ -e "$p" ] && jscpd_targets+=("$p")
     done
     [ "${#jscpd_targets[@]}" -gt 0 ] && start_leg "jscpd" run_jscpd "${jscpd_targets[@]}"
+    for p in README.md AGENTS.md; do
+        [ -f "$p" ] && prettier_targets+=("$p")
+    done
+    if [ -d docs ]; then
+        while IFS= read -r -d '' p; do
+            docs_md+=("$p")
+        done < <(find docs -type f -name '*.md' -print0)
+    fi
+    if [ "${#prettier_targets[@]}" -gt 0 ]; then
+        filter_pending_marker_markdown "${prettier_targets[@]}"
+        prettier_targets=("${FILTERED_TARGETS[@]}")
+    fi
+    if [ "${#docs_md[@]}" -gt 0 ]; then
+        filter_pending_marker_markdown "${docs_md[@]}"
+        prettier_targets+=("${FILTERED_TARGETS[@]}")
+    fi
+    [ "${#prettier_targets[@]}" -gt 0 ] && start_leg "root prettier check" check_root_prettier "${prettier_targets[@]}"
     if [ -d frontend ] && [ -f frontend/package.json ]; then
         start_leg "frontend lint" lint_frontend_full
+        start_leg "frontend prettier check" run_frontend_prettier_check .
     fi
     if [ -f Cargo.toml ]; then
         start_leg "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
+        start_leg "rust fmt check" run_rust_fmt_check_full
     fi
     run_legs
 }
@@ -376,6 +496,8 @@ lint_scoped() {
     local -a py=()
     local -a ts=()
     local -a rust_inputs=()
+    local -a prettier_root=()
+    local -a prettier_frontend=()
     local path
     local py_full=0
     local ts_full=0
@@ -386,9 +508,23 @@ lint_scoped() {
             pyproject.toml|mypy.ini|pyrightconfig.json) py_full=1 ;;
         esac
         case "$path" in
-            frontend/*.ts|frontend/*.tsx|frontend/*.js|frontend/*.jsx|frontend/*.mjs|frontend/*.cjs)
-                ts+=("${path#frontend/}")
+            frontend/*)
+                case "$path" in
+                    frontend/*.ts|frontend/*.tsx|frontend/*.js|frontend/*.jsx|frontend/*.mjs|frontend/*.cjs)
+                        ts+=("${path#frontend/}")
+                        ;;
+                esac
+                case "$path" in
+                    frontend/*.ts|frontend/*.tsx|frontend/*.js|frontend/*.jsx|frontend/*.mjs|frontend/*.cjs|frontend/*.json|frontend/*.css|frontend/*.md|frontend/*.yml|frontend/*.yaml)
+                        prettier_frontend+=("${path#frontend/}")
+                        ;;
+                esac
                 ;;
+            *.md|*.json|*.yml|*.yaml)
+                prettier_root+=("$path")
+                ;;
+        esac
+        case "$path" in
             frontend/package.json|frontend/tsconfig*.json|frontend/eslint.config.*|frontend/vitest.config.*)
                 ts_full=1
                 ;;
@@ -396,17 +532,24 @@ lint_scoped() {
         case "$path" in *.rs|Cargo.toml|Cargo.lock|*/Cargo.toml) rust_inputs+=("$path") ;; esac
     done
 
+    if [ "${#prettier_root[@]}" -gt 0 ]; then
+        filter_pending_marker_markdown "${prettier_root[@]}"
+        prettier_root=("${FILTERED_TARGETS[@]}")
+    fi
+
     if [ "$py_full" -eq 1 ]; then
         start_leg "ruff check" uv run ruff check .
-        start_leg "ruff format check" uv run ruff format --check .
+        start_leg "ruff format check" run_python_format_check .
         start_leg "pyright" uv run pyright
         start_leg "mypy" uv run mypy
     elif [ "${#py[@]}" -gt 0 ]; then
         start_leg "ruff check" uv run ruff check "${py[@]}"
-        start_leg "ruff format check" uv run ruff format --check "${py[@]}"
+        start_leg "ruff format check" run_python_format_check "${py[@]}"
         start_leg "pyright" uv run pyright "${py[@]}"
         start_leg "mypy" uv run mypy "${py[@]}"
     fi
+
+    [ "${#prettier_root[@]}" -gt 0 ] && start_leg "root prettier check" check_root_prettier "${prettier_root[@]}"
 
     if [ -d frontend ] && [ -f frontend/package.json ]; then
         if [ "$ts_full" -eq 1 ]; then
@@ -414,9 +557,13 @@ lint_scoped() {
         elif [ "${#ts[@]}" -gt 0 ]; then
             start_leg "frontend lint" lint_frontend_scoped "${ts[@]}"
         fi
+        if [ "${#prettier_frontend[@]}" -gt 0 ]; then
+            start_leg "frontend prettier check" run_frontend_prettier_check "${prettier_frontend[@]}"
+        fi
     fi
     if [ "${#rust_inputs[@]}" -gt 0 ] && [ -f Cargo.toml ]; then
         start_leg "cargo clippy" run_rust_clippy_scoped "${rust_inputs[@]}"
+        start_leg "rust fmt check" run_rust_fmt_check_scoped "${rust_inputs[@]}"
     fi
     run_legs
 }

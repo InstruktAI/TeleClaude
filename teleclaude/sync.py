@@ -6,9 +6,7 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -21,6 +19,7 @@ from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.docs_index import build_all_indexes, build_tier_indexes, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
+from teleclaude.git_tree import TreeSource, materialize_tree
 from teleclaude.install.distribution import (
     HomeEntrypoint,
     HomeMasterInflationError,
@@ -46,13 +45,9 @@ _GIT_VERIFY_ARGS = ("rev-parse", "--verify", "--quiet")
 _GIT_HEAD_ARGS = ("rev-parse", "HEAD")
 _GIT_MERGE_BASE_ANCESTOR_ARGS = ("merge-base", "--is-ancestor")
 _GIT_COMMIT_VERIFY_SUFFIX = "^{commit}"
-_GIT_WORKTREE_ADD_ARGS = ("worktree", "add", "--detach")
-_GIT_WORKTREE_REMOVE_ARGS = ("worktree", "remove", "--force")
 _GIT_IGNORED_UNTRACKED_ARGS = ("ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--")
 _GIT_PATH_SEPARATOR = "\0"
 _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
-_SNAPSHOT_DIRECTORY_PREFIX = "teleclaude-publication-"
-_SNAPSHOT_SOURCE_DIRECTORY = "source"
 _INVALID_COMMIT_ID = "Publication rejected an invalid recorded commit id."
 _CANONICAL_OUTPUTS_WRITTEN = "Canonical checkout outputs updated from the recorded commit."
 _PUBLICATION_NEXT_SUFFIX = ".publication-next"
@@ -250,7 +245,7 @@ def _execute_publication(
             PublicationOutcome.PUBLISHED, PublicationReason.PUBLISHED, published_generation, unfinished_publication
         )
 
-    with _recorded_snapshot(canonical_root, after_sha) as snapshot_root:
+    with materialize_tree(TreeSource.recorded_commit(canonical_root, after_sha)) as snapshot_root:
         capabilities = resolve_capabilities(snapshot_root)
         if not capabilities.is_target:
             if _is_platform_home(canonical_root):
@@ -351,7 +346,7 @@ def refresh_home_entrypoints(home: Path) -> list[Path]:
         )
         return []
     failed: list[Path] = []
-    with _recorded_snapshot(home, published_generation) as snapshot_root:
+    with materialize_tree(TreeSource.recorded_commit(home, published_generation)) as snapshot_root:
         masters = home_masters(snapshot_root)
         entrypoints: list[HomeEntrypoint] = []
         for master, root in masters:
@@ -410,33 +405,6 @@ def _reroot_written_outputs(
         )
         for source in written
     ]
-
-
-@contextmanager
-def _recorded_snapshot(canonical_root: Path, after_sha: str) -> Iterator[Path]:
-    """Materialize a recorded source tree with access to the checkout's Python environment."""
-    with tempfile.TemporaryDirectory(prefix=_SNAPSHOT_DIRECTORY_PREFIX) as temp_dir:
-        snapshot_root = Path(temp_dir) / _SNAPSHOT_SOURCE_DIRECTORY
-        subprocess.run(
-            [_GIT_EXECUTABLE, *_GIT_WORKTREE_ADD_ARGS, str(snapshot_root), after_sha],
-            cwd=canonical_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        try:
-            canonical_venv = canonical_root / ".venv"
-            if canonical_venv.exists():
-                (snapshot_root / ".venv").symlink_to(canonical_venv, target_is_directory=True)
-            yield snapshot_root
-        finally:
-            subprocess.run(
-                [_GIT_EXECUTABLE, *_GIT_WORKTREE_REMOVE_ARGS, str(snapshot_root)],
-                cwd=canonical_root,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
 
 
 def _retractable_outputs(snapshot_root: Path, canonical_root: Path, candidates: list[Path]) -> list[Path]:

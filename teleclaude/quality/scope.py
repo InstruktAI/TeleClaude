@@ -49,6 +49,13 @@ _PARENT_SEGMENT = ".."
 _REJECTED_LEADING_DASH_PATH = "Rejected leading-dash path from invocation context: %s"
 _REJECTED_TRAVERSAL_PATH = "Rejected traversal path from invocation context: %s"
 _REJECTED_OUTSIDE_REPOSITORY_PATH = "Rejected path outside repository root: %s"
+_GIT_CACHED_OPTION = "--cached"
+_GIT_OTHERS_OPTION = "--others"
+_GIT_EXCLUDE_STANDARD_OPTION = "--exclude-standard"
+_GIT_NUL_OPTION = "-z"
+_GIT_STAGE_OPTION = "--stage"
+_GITLINK_MODE_PREFIX = "160000 "
+_GIT_DIRECTORY = ".git"
 
 
 class WorkspaceScopeKind(Enum):
@@ -245,6 +252,50 @@ def _resolve_context_path(path: Path, resolution_mode: ContextPathResolutionMode
 def resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
     """Return the parsed porcelain dirty paths for a project root."""
     return _resolve_dirty_paths(project_root)
+
+
+def git_inventory_paths(project_root: Path) -> list[str]:
+    """Return existing Git-visible files, excluding ignored and nested repositories."""
+    repo = Repo(str(project_root))
+    output = repo.git.ls_files(
+        _GIT_CACHED_OPTION,
+        _GIT_OTHERS_OPTION,
+        _GIT_EXCLUDE_STANDARD_OPTION,
+        _GIT_NUL_OPTION,
+    )
+    staged_output = repo.git.ls_files(_GIT_STAGE_OPTION, _GIT_NUL_OPTION)
+    gitlinks: set[str] = set()
+    for record in staged_output.split("\0"):
+        if not record:
+            continue
+        metadata, separator, path = record.partition("\t")
+        if separator and metadata.startswith(_GITLINK_MODE_PREFIX):
+            gitlinks.add(path)
+
+    root = project_root.resolve()
+    candidates: set[str] = set()
+    for relative in output.split("\0"):
+        if not relative or relative in gitlinks:
+            continue
+        candidate = root / relative
+        if not (candidate.is_file() or candidate.is_symlink()):
+            continue
+        if _inside_foreign_repository(candidate, root):
+            continue
+        candidates.add(Path(relative).as_posix())
+    return sorted(candidates)
+
+
+def _inside_foreign_repository(candidate: Path, repository_root: Path) -> bool:
+    """Exclude a nested repository's contents, while retaining the current root."""
+    current = candidate.parent
+    while current != repository_root:
+        if (current / _GIT_DIRECTORY).exists():
+            return True
+        if repository_root not in current.parents:
+            return True
+        current = current.parent
+    return False
 
 
 def _parse_dirty_status_line(line: str) -> DirtyPath:

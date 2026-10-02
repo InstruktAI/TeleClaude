@@ -6,13 +6,27 @@ import os
 import sys
 from pathlib import Path
 
+from teleclaude.capabilities import resolve_tier_permissions
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
 from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_LINT, CODE_TEST
+from teleclaude.config.context_root import OwningHome, group_paths_by_owning_home
+from teleclaude.git import Repo
+from teleclaude.git_tree import TreeSource, list_tree_paths
+from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_root import resolve_invocation_roots
-from teleclaude.quality.gate import run_lint_gate, run_make_target
+from teleclaude.quality.gate import (
+    LintGateResult,
+    QualityGateLeg,
+    run_lint_gate,
+    run_make_target,
+    select_quality_check_families,
+    select_quality_gate_legs,
+)
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
+    git_inventory_paths,
     resolve_workspace_scope_resolution,
     validate_scoped_paths,
 )
@@ -21,38 +35,163 @@ _EMPTY_SCOPE_ERROR = (
     "ERROR: none of your declared paths are dirty, so there is nothing in your scope. "
     "Declare what you are working on with `telec code add <path>...`, or pass files explicitly."
 )
+_LINT_GATE_UNAVAILABLE = "ERROR: telec code lint requires a code or documentation gate in this context."
+_LINT_FAILURE_TEMPLATE = "ERROR: {reason}"
+_ROOT_HOME = Path(".")
+_GIT_DIRECTORY = ".git"
 
 
 def handle_lint(args: list[str]) -> None:
     """Handle the ``telec code lint`` command.
 
-    A scoped interactive run formats first (best-effort), then runs the
-    project-native make lint check leg and the TeleClaude guardrails lane.
-    The full/CI run (``--all``, ``CI``, or a no-session shared branch) never
-    formats: a rewrite CI discards is indistinguishable from a pass and would
-    mask drift, so it stays check-only. ``--step`` is retired.
+    Scoped and full runs select checks from each owning home's capabilities.
+    Native checks run only for code homes; TeleClaude checks are split by
+    code, docs, and agents subscriptions. Full/CI runs are check-only and use
+    a Git-derived inventory.
     """
     parsed = parse_command_args(CODE_LINT, args)
     run_all = parsed.has(F.FLAG_CODE_ALL_LINT)
     files = list(parsed.positionals)
-    project_root = resolve_invocation_roots().repository_root
+    state = resolve_invocation_state()
+    project_root = state.repository_root
 
     scoped_files = _resolve_quality_scope(project_root, files=files, run_all=run_all)
     if scoped_files == []:
         return
+    if scoped_files is None:
+        results = _run_full_lint_gates(project_root)
+    else:
+        results = _run_scoped_lint_gates(project_root, scoped_files)
+    if not results:
+        print(_LINT_GATE_UNAVAILABLE, file=sys.stderr)
+        raise SystemExit(2)
+    _raise_for_lint_failures(results)
 
-    result = run_lint_gate(
-        project_root,
-        None,
-        scoped_files,
-        scoped_files is not None,
-        None,
-        request_subject_checkout_grading=True,
-    )
-    if result.exit_code != 0:
+
+def _run_scoped_lint_gates(project_root: Path, paths: list[str]) -> list[LintGateResult]:
+    """Run the quality legs carried by each owning home in a scoped path set."""
+    source = TreeSource.active_index(project_root)
+    grouped = group_paths_by_owning_home(paths, source)
+    results: list[LintGateResult] = []
+    for owner, repository_paths in sorted(grouped.items(), key=lambda item: item[0].root.as_posix()):
+        home_root = (project_root / owner.root).resolve()
+        permissions = resolve_tier_permissions(home_root)
+        legs = select_quality_gate_legs(permissions.project_subscriptions, permissions)
+        families = select_quality_check_families(permissions.project_subscriptions, permissions)
+        if not legs:
+            continue
+        home_paths = [_home_relative_path(path, owner) for path in repository_paths]
+        if QualityGateLeg.NATIVE in legs:
+            results.append(
+                run_lint_gate(
+                    home_root,
+                    None,
+                    home_paths,
+                    True,
+                    None,
+                    selection=frozenset({QualityGateLeg.NATIVE}),
+                    request_subject_checkout_grading=True,
+                )
+            )
+        if QualityGateLeg.GUARDRAILS in legs:
+            results.append(
+                run_lint_gate(
+                    project_root,
+                    None,
+                    repository_paths,
+                    False,
+                    None,
+                    selection=frozenset({QualityGateLeg.GUARDRAILS}),
+                    check_families=families,
+                    request_subject_checkout_grading=True,
+                    platform_home_subject=_is_platform_home(project_root),
+                )
+            )
+    return results
+
+
+def _home_relative_path(path: str, home: OwningHome) -> str:
+    """Return one scoped path in its owning home's coordinates."""
+    return Path(path).relative_to(home.root).as_posix()
+
+
+def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
+    """Run a full lint over committed homes and each home's Git-visible files."""
+    repo = Repo(str(project_root))
+    source = TreeSource.recorded_commit(project_root, repo.head.commit.hexsha)
+    tree_paths = list_tree_paths(source)
+    tree_path_set = set(tree_paths)
+    declaration_paths = [path for path in tree_paths if Path(path).name == ConfigFileName.OVERLAY.value]
+    homes: set[OwningHome] = set()
+    for path in declaration_paths:
+        homes.update(group_paths_by_owning_home([path], source, tree_paths=tree_path_set))
+
+    inventory = git_inventory_paths(project_root)
+    grouped_inventory = group_paths_by_owning_home(inventory, source, tree_paths=tree_path_set)
+    results: list[LintGateResult] = []
+    for owner in sorted(homes, key=lambda item: item.root.as_posix()):
+        home_root = (project_root / owner.root).resolve()
+        permissions = resolve_tier_permissions(home_root)
+        legs = select_quality_gate_legs(permissions.project_subscriptions, permissions)
+        if not legs:
+            continue
+        families = select_quality_check_families(permissions.project_subscriptions, permissions)
+
+        # A separately checked-out home owns its own Git inventory and native suite.
+        if owner.root != _ROOT_HOME and (home_root / _GIT_DIRECTORY).exists():
+            home_paths = git_inventory_paths(home_root)
+            execution_root = home_root
+        else:
+            home_paths = sorted(set(grouped_inventory.get(owner, [])))
+            execution_root = project_root
+
+        if QualityGateLeg.NATIVE in legs:
+            results.append(
+                run_lint_gate(
+                    home_root,
+                    None,
+                    None,
+                    False,
+                    None,
+                    selection=frozenset({QualityGateLeg.NATIVE}),
+                    request_subject_checkout_grading=True,
+                )
+            )
+        if QualityGateLeg.GUARDRAILS in legs:
+            results.append(
+                run_lint_gate(
+                    execution_root,
+                    None,
+                    home_paths,
+                    False,
+                    None,
+                    selection=frozenset({QualityGateLeg.GUARDRAILS}),
+                    check_families=families,
+                    full_run=True,
+                    request_subject_checkout_grading=True,
+                    platform_home_subject=_is_platform_home(execution_root),
+                )
+            )
+    return results
+
+
+def _is_platform_home(project_root: Path) -> bool:
+    """Return whether the lint subject is the machine's platform home."""
+    return project_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+
+
+def _raise_for_lint_failures(results: list[LintGateResult]) -> None:
+    """Report each failed lint leg and stop with its first nonzero status."""
+    failure_code = 0
+    for result in results:
+        if result.exit_code == 0:
+            continue
         if result.failure_reason:
-            print(f"ERROR: {result.failure_reason}", file=sys.stderr)
-        raise SystemExit(result.exit_code)
+            print(_LINT_FAILURE_TEMPLATE.format(reason=result.failure_reason), file=sys.stderr)
+        if failure_code == 0:
+            failure_code = result.exit_code
+    if failure_code != 0:
+        raise SystemExit(failure_code)
 
 
 def handle_test(args: list[str]) -> None:

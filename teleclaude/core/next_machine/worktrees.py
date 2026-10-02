@@ -45,7 +45,6 @@ _GIT_QUIET = "--quiet"
 _GIT_IS_ANCESTOR = "--is-ancestor"
 _GIT_FORCE_DELETE = "-D"
 _GIT_ALLOW_EMPTY = "--allow-empty"
-_GIT_NO_VERIFY = "--no-verify"
 _GIT_AUTHOR = "--author"
 _GIT_MESSAGE = "-m"
 _LOCAL_BRANCH_REF_TEMPLATE = "refs/heads/{branch}"
@@ -254,7 +253,7 @@ def _opening_commit_args(slug: str) -> list[str]:
         session_id=session_id,
         human_involved=False,
     )
-    args = [_GIT_ALLOW_EMPTY, _GIT_NO_VERIFY, _GIT_AUTHOR, git_identity]
+    args = [_GIT_ALLOW_EMPTY, _GIT_AUTHOR, git_identity]
     args.extend([_GIT_MESSAGE, message])
     return args
 

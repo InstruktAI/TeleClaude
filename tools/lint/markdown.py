@@ -8,9 +8,12 @@ Validates:
 
 from __future__ import annotations
 
+import argparse
+import os
 import re
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import frontmatter
@@ -40,6 +43,33 @@ AGENT_ARTIFACT_DIRS = (
 
 # Root-level markdown files to validate
 ROOT_MARKDOWN_FILES = ["README.md", "AGENTS.md"]
+_CONTENT_ROOT_FLAG = "--content-root"
+_PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
+_SKIP_SNIPPETS_FLAG = "--skip-snippets"
+_NO_FILES_FLAG = "--no-files"
+_CONTENT_ROOT_REQUIRES_PATHS = "Content-root snippet validation requires explicit file paths."
+_PATH_SEPARATOR = os.sep
+_EMPTY_STRING = ""
+_FINDING_PATH_FIELD = "path"
+_FINDING_CODE_FIELD = "code"
+_FINDING_NON_DISPLAY_FIELDS = frozenset({_FINDING_CODE_FIELD, _FINDING_PATH_FIELD})
+_FINDING_WITH_EXTRAS = "{code}: {path} ({extras})"
+_FINDING_WITHOUT_EXTRAS = "{code}: {path}"
+_FINDING_EXTRA_SEPARATOR = ", "
+_PATHS_ARGUMENT = "paths"
+_ARGPARSE_STORE_TRUE = "store_true"
+_ARGPARSE_ZERO_OR_MORE = "*"
+
+
+@dataclass(frozen=True)
+class _Arguments:
+    """Parsed markdown-linter arguments."""
+
+    paths: list[str]
+    content_root: Path | None
+    platform_home_subject: bool
+    skip_snippets: bool
+    no_files: bool
 
 
 def _validate_mermaid_diagrams(file_path: Path, content: str) -> list[str]:
@@ -131,11 +161,32 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object]) -> li
     return errors
 
 
-def _format_validation_finding(finding: Mapping[str, str]) -> str:
-    extras = ", ".join(f"{key}={value}" for key, value in finding.items() if key not in {"code", "path"})
+def _format_validation_finding(finding: Mapping[str, str], *, content_root: Path | None = None) -> str:
+    formatted = dict(finding)
+    if content_root is not None:
+        root = content_root.resolve()
+        path = Path(finding[_FINDING_PATH_FIELD])
+        try:
+            relative_path = path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            relative_path = finding[_FINDING_PATH_FIELD]
+        prefix = f"{root}{_PATH_SEPARATOR}"
+        formatted = {key: value.replace(prefix, _EMPTY_STRING) for key, value in finding.items()}
+        formatted[_FINDING_PATH_FIELD] = relative_path
+    finding = formatted
+    extras = _FINDING_EXTRA_SEPARATOR.join(
+        f"{key}={value}" for key, value in finding.items() if key not in _FINDING_NON_DISPLAY_FIELDS
+    )
     if extras:
-        return f"{finding['code']}: {finding['path']} ({extras})"
-    return f"{finding['code']}: {finding['path']}"
+        return _FINDING_WITH_EXTRAS.format(
+            code=finding[_FINDING_CODE_FIELD],
+            path=finding[_FINDING_PATH_FIELD],
+            extras=extras,
+        )
+    return _FINDING_WITHOUT_EXTRAS.format(
+        code=finding[_FINDING_CODE_FIELD],
+        path=finding[_FINDING_PATH_FIELD],
+    )
 
 
 def _find_markdown_files(repo_root: Path) -> list[Path]:
@@ -187,7 +238,13 @@ def _is_platform_home(repo_root: Path) -> bool:
     return repo_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
 
 
-def _validate_snippets(repo_root: Path, *, paths: list[Path] | None = None) -> list[str]:
+def _validate_snippets(
+    repo_root: Path,
+    *,
+    paths: list[Path] | None = None,
+    content_root: Path | None = None,
+    platform_home_subject: bool = False,
+) -> list[str]:
     """Run the snippet reader over publisher sources; it needs no documentation lease.
 
     The platform home's own tier roots (companies/people) join the walk only
@@ -197,13 +254,41 @@ def _validate_snippets(repo_root: Path, *, paths: list[Path] | None = None) -> l
     reaches an unrelated repository's run.
     """
     clear_errors()
-    tier_home = repo_root if _is_platform_home(repo_root) else None
+    validation_root = content_root.resolve() if content_root is not None else repo_root
+    if content_root is not None and paths is None:
+        raise ValueError(_CONTENT_ROOT_REQUIRES_PATHS)
+    tier_home = (
+        validation_root if platform_home_subject or (content_root is None and _is_platform_home(repo_root)) else None
+    )
+    validation_paths = (
+        [validation_root / path.resolve().relative_to(repo_root.resolve()) for path in paths]
+        if content_root is not None and paths is not None
+        else paths
+    )
     try:
-        with publisher_resolution(repo_root):
-            validate_all_snippets(repo_root, paths=paths, tier_home=tier_home)
+        with publisher_resolution(validation_root):
+            validate_all_snippets(validation_root, paths=validation_paths, tier_home=tier_home)
     except DocsPublisherResolutionError as exc:
-        _error("snippet_global_source_resolution_failed", path=str(repo_root), reason=str(exc))
-    return [_format_validation_finding(finding) for finding in get_errors()]
+        _error("snippet_global_source_resolution_failed", path=str(validation_root), reason=str(exc))
+    return [_format_validation_finding(finding, content_root=content_root) for finding in get_errors()]
+
+
+def _parse_arguments(argv: list[str]) -> _Arguments:
+    """Parse file targets and optional staged-content validation settings."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(_CONTENT_ROOT_FLAG, type=Path)
+    parser.add_argument(_PLATFORM_HOME_SUBJECT_FLAG, action=_ARGPARSE_STORE_TRUE)
+    parser.add_argument(_SKIP_SNIPPETS_FLAG, action=_ARGPARSE_STORE_TRUE)
+    parser.add_argument(_NO_FILES_FLAG, action=_ARGPARSE_STORE_TRUE)
+    parser.add_argument(_PATHS_ARGUMENT, nargs=_ARGPARSE_ZERO_OR_MORE)
+    parsed = parser.parse_args(argv)
+    return _Arguments(
+        paths=parsed.paths,
+        content_root=parsed.content_root,
+        platform_home_subject=parsed.platform_home_subject,
+        skip_snippets=parsed.skip_snippets,
+        no_files=parsed.no_files,
+    )
 
 
 def main() -> int:
@@ -217,7 +302,13 @@ def main() -> int:
     """
     repo_root = Path.cwd().resolve()
 
-    file_args = sys.argv[1:]
+    arguments = _parse_arguments(sys.argv[1:])
+    file_args = arguments.paths
+    if arguments.no_files and not file_args:
+        return 0
+    if arguments.content_root is not None and not file_args:
+        print(_CONTENT_ROOT_REQUIRES_PATHS, file=sys.stderr)
+        return 1
     if file_args:
         resolved: list[Path] = []
         for arg in file_args:
@@ -230,14 +321,23 @@ def main() -> int:
             return 0
 
         all_errors = _validate_files(resolved, repo_root)
-        all_errors.extend(_validate_snippets(repo_root, paths=resolved))
+        if not arguments.skip_snippets:
+            all_errors.extend(
+                _validate_snippets(
+                    repo_root,
+                    paths=resolved,
+                    content_root=arguments.content_root,
+                    platform_home_subject=arguments.platform_home_subject,
+                )
+            )
     else:
         markdown_files_list = _find_markdown_files(repo_root)
         if not markdown_files_list:
             return 0
 
         all_errors = _validate_files(markdown_files_list, repo_root)
-        all_errors.extend(_validate_snippets(repo_root))
+        if not arguments.skip_snippets:
+            all_errors.extend(_validate_snippets(repo_root))
 
     if all_errors:
         print("\n❌ Markdown validation failed:\n", file=sys.stderr)

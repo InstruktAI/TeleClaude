@@ -7,13 +7,12 @@ from pathlib import Path
 
 from teleclaude.capabilities import (
     Capabilities,
-    PermissionSurface,
     TierPermissions,
     resolve_capabilities,
     resolve_tier_permissions,
 )
 from teleclaude.project_root import resolve_invocation_roots
-from teleclaude.quality.gate import QualityGateLeg
+from teleclaude.quality.gate import QualityGateLeg, select_quality_gate_legs
 
 
 @dataclass(frozen=True)
@@ -44,15 +43,7 @@ class InvocationState:
     @property
     def quality_gate_legs(self) -> frozenset[QualityGateLeg]:
         """Return the quality checks carried by the acting tier."""
-        documentation_participant = self.tier_permissions is not None and self.tier_permissions.participates_in(
-            PermissionSurface.DOCUMENTATION
-        )
-        if not self.capabilities.commit_enabled and not documentation_participant:
-            return frozenset()
-        legs = {QualityGateLeg.GUARDRAILS}
-        if self.capabilities.code:
-            legs.add(QualityGateLeg.NATIVE)
-        return frozenset(legs)
+        return select_quality_gate_legs(self.capabilities, self.tier_permissions)
 
 
 def resolve_invocation_state() -> InvocationState:
