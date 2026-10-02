@@ -260,7 +260,7 @@ async def todo_remove_by_id(
 @router.post("/by-id/{todo_id}/freeze")
 async def todo_freeze_by_id(
     todo_id: str,
-    cwd: Annotated[str | None, Body()] = None,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._SlugStatusResponse:
     """Freeze exactly the identified todo row."""
@@ -275,7 +275,7 @@ async def todo_freeze_by_id(
 @router.post("/by-id/{todo_id}/unfreeze")
 async def todo_unfreeze_by_id(
     todo_id: str,
-    cwd: Annotated[str | None, Body()] = None,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._SlugStatusResponse:
     """Unfreeze exactly the identified todo row."""
@@ -312,7 +312,7 @@ async def todo_hold_by_id(
 @router.post("/by-id/{todo_id}/release")
 async def todo_release_by_id(
     todo_id: str,
-    cwd: Annotated[str | None, Body()] = None,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> todo_routes._TodoUpdateResponse | SerializedOperation:
     """Release a hold on exactly the identified todo row."""
