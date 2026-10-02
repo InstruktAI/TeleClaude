@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 import sys
 import time as _t
+from enum import StrEnum
 from typing import TYPE_CHECKING, NamedTuple
 
 from instrukt_ai_logging import get_logger
@@ -73,6 +74,7 @@ from teleclaude.todo_artifacts import artifact_display_filename
 from teleclaude.types.creation_record import Lineage
 
 _UNKNOWN_TODO_STATUS_EVENT = "tui.todo_status_unknown"
+_CURSOR_CONTEXT_UNRESOLVED_EVENT = "tui.cursor_context_unresolved"
 DEPENDENCY_FLASH_DURATION_S = 1.5
 DEPENDENCY_FLASH_KEY = "D"
 DEPENDENCY_FLASH_LABEL = "Deps"
@@ -86,6 +88,13 @@ _PREPARED_SESSION_LABEL = "prepped in"
 _ARTIFACT_TIMESTAMP_SEPARATOR = ":"
 _EMPTY_SESSION_ROW_FINGERPRINT = ("", "")
 _RETAINED_TODO_STATUS_VALUES = frozenset(status.value for status in RETAINED_TODO_STATUSES)
+
+
+class _CursorContextGap(StrEnum):
+    """Why the cursor's row resolved to no project address."""
+
+    NOT_IN_NAV_ITEMS = "row_not_in_nav_items"
+    NO_PROJECT = "no_project_header_or_path"
 
 
 class _PreparationCursorContext(NamedTuple):
@@ -958,6 +967,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 return item
         return None
 
+    def _log_cursor_context_gap(self, gap: _CursorContextGap, slug: str, todo_id: str | None) -> None:
+        """Record why a todo row resolved to no project address."""
+        self._logger.warning(_CURSOR_CONTEXT_UNRESOLVED_EVENT, gap=gap.value, slug=slug, todo_id=todo_id)
+
     def _resolve_cursor_context(self) -> _PreparationCursorContext | None:
         """Resolve the selected project's and todo's address from the cursor."""
         item = self._current_item()
@@ -972,6 +985,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             try:
                 idx = self._nav_items.index(item)
             except ValueError:
+                self._log_cursor_context_gap(_CursorContextGap.NOT_IN_NAV_ITEMS, slug, item.todo.todo_id)
                 return None
             header = self._resolve_project_header_for_index(idx)
             if header:
@@ -981,6 +995,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             project_path = item.todo.project_path
             if project_path:
                 return _PreparationCursorContext("local", project_path, slug, item.todo.todo_id)
+            self._log_cursor_context_gap(_CursorContextGap.NO_PROJECT, slug, item.todo.todo_id)
             return None
 
         if isinstance(item, TodoFileRow) and item.slug:

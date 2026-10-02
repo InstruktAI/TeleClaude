@@ -55,6 +55,8 @@ if TYPE_CHECKING:
 _LIFECYCLE_POLL_BUDGET_S = 60.0
 _LIFECYCLE_POLL_DEFAULT_DELAY_S = 0.25
 _MISSING_TODO_ID_WARNING = "row missing durable id; refresh the todo pane"
+_UNRESOLVED_TARGET_WARNING = "{action}: the selected row's project could not be resolved; refresh the todo pane"
+_UNRESOLVED_TARGET_EVENT = "preparation_action_target_unresolved"
 _NEW_BUG_MODAL_TITLE = "New Bug"
 _NEW_BUG_SLUG_PLACEHOLDER = "my-new-bug"
 RETAINED_TODO_STATUSES: frozenset[TodoStatus] = frozenset({TodoStatus.REMOVED, TodoStatus.DELIVERED})
@@ -235,6 +237,19 @@ def _hold_control_available(row: TodoRow) -> bool:
 
 class PreparationViewActionsMixin:
     """Keyboard actions, check_action, watch_cursor_index, on_focus for PreparationView."""
+
+    def _report_unresolved_target(self, action: PreparationAction, slug: str | None) -> None:
+        """Log and surface a row action whose project target cannot be resolved."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        logger.warning(
+            _UNRESOLVED_TARGET_EVENT,
+            action=action.value,
+            slug=slug,
+            item_type=type(item).__name__ if item is not None else None,
+        )
+        self.app.notify(  # type: ignore[attr-defined]
+            _UNRESOLVED_TARGET_WARNING.format(action=action.value), severity=_NOTIFY_SEVERITY_WARNING
+        )
 
     def _require_row_todo_id(self, row: TodoRow) -> str | None:
         """Return a row's durable id or explain why its action cannot proceed."""
@@ -710,6 +725,7 @@ class PreparationViewActionsMixin:
             context = self._resolve_cursor_context()  # type: ignore[attr-defined]
             project_path = (context.project_path if context else "") or (file_row.project_path or "")
             if not project_path:
+                self._report_unresolved_target(PreparationAction.REMOVE_ARTIFACT, slug)
                 return
 
             def _on_confirm_artifact(confirmed: bool | None) -> None:
@@ -748,6 +764,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
         if not project_path:
+            self._report_unresolved_target(PreparationAction.REMOVE_ARTIFACT, slug)
             return
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.REMOVE.value)
 
@@ -892,6 +909,7 @@ class PreparationViewActionsMixin:
         """p: submit a prepare operation for the selected scope."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
+            self._report_unresolved_target(PreparationAction.PREPARE, None)
             return
         project_path = context.project_path
         slug = context.slug
@@ -905,6 +923,7 @@ class PreparationViewActionsMixin:
             return
         row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
         if row is None:
+            self._report_unresolved_target(PreparationAction.PREPARE, slug)
             return
         todo_id = self._require_row_todo_id(row)
         if todo_id is None:
@@ -921,6 +940,7 @@ class PreparationViewActionsMixin:
         """Submit a work operation and report the workflow's terminal outcome."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
+            self._report_unresolved_target(PreparationAction.START_WORK, None)
             return
         project_path = context.project_path
         slug = context.slug
@@ -929,6 +949,7 @@ class PreparationViewActionsMixin:
         if slug is not None:
             todo_row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
             if not todo_row:
+                self._report_unresolved_target(PreparationAction.START_WORK, slug)
                 return
             todo_id = self._require_row_todo_id(todo_row)
             if todo_id is None:
@@ -965,6 +986,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
         if not project_path:
+            self._report_unresolved_target(PreparationAction.FREEZE, slug)
             return
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.FREEZE.value)
 
@@ -1064,6 +1086,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
         if not project_path:
+            self._report_unresolved_target(PreparationAction.UNFREEZE, slug)
             return
 
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.UNFREEZE.value)
@@ -1095,6 +1118,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
         if not project_path:
+            self._report_unresolved_target(PreparationAction.HOLD, slug)
             return
         hold_path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(
             todo_id=quote(todo_id), action=_IdentityTodoRoute.HOLD.value
@@ -1156,6 +1180,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
         if not project_path:
+            self._report_unresolved_target(PreparationAction.APPROVE_GATE, slug)
             return
 
         path = _TODO_BY_ID_ACTION_PATH_TEMPLATE.format(todo_id=quote(todo_id), action=_IdentityTodoRoute.STAMP.value)
@@ -1217,6 +1242,7 @@ class PreparationViewActionsMixin:
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
         if not project_path:
+            self._report_unresolved_target(PreparationAction.REACTIVATE_SELECTED, slug)
             return
 
         try:
