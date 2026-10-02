@@ -69,14 +69,12 @@ async def build_local_session_listing(
     if cache is None or query.computer:
         merged = list(local_sessions)
     else:
-        remote_cached_sessions = cache.get_sessions()
+        cached_sessions = cache.get_sessions()
         if query.session_ids is not None:
-            remote_cached_sessions = [
-                session for session in remote_cached_sessions if session.session_id in query.session_ids
-            ]
+            cached_sessions = [session for session in cached_sessions if session.session_id in query.session_ids]
         reached_remote_sessions = sessions_reached_by(
             caller,
-            remote_cached_sessions,
+            cached_sessions,
             resolver=resolver,
             caller_session=caller_session_id,
         )
