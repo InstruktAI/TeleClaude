@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 _CRON_RUNNER_JOB_FLAG = "--job"
 _CRON_RUNNER_FORCE_FLAG = "--force"
 _CRON_RUNNER_STARTUP_PROBE_SECONDS = 1
+_CRON_RUNNER_STARTUP_FAILURE_EXIT_STATUS = 70
 _CRON_RUNNER_START_FAILURE_DETAIL = "Failed to start job runner."
 _CRON_RUNNER_START_FAILURE_LOG = "Failed to start cron runner process"
 
@@ -76,8 +77,8 @@ class _CronRunnerStartupError(Exception):
 def _spawn_cron_runner(name: str, project: str | None) -> None:
     """Start a detached runner and check its outcome during a bounded startup probe.
 
-    A clean quick exit or a runner still active when the probe expires is accepted;
-    a nonzero exit during the probe is a start failure.
+    A quick job outcome or a runner still active when the probe expires is accepted;
+    the runner's dedicated startup failure status is a start failure.
     """
     script = REPO_ROOT / "scripts" / "cron_runner.py"
     job_filter = f"{project}:{name}" if project else name
@@ -93,7 +94,7 @@ def _spawn_cron_runner(name: str, project: str | None) -> None:
         exit_status = process.wait(timeout=_CRON_RUNNER_STARTUP_PROBE_SECONDS)
     except subprocess.TimeoutExpired:
         return
-    if exit_status != 0:
+    if exit_status == _CRON_RUNNER_STARTUP_FAILURE_EXIT_STATUS:
         raise _CronRunnerStartupError(exit_status)
 
 
@@ -102,22 +103,11 @@ async def run_job(name: str, project: str | None = None) -> dict[str, object]:  
     """Start a scheduled job and report failures observed during startup."""
     try:
         await run_in_threadpool(_spawn_cron_runner, name, project)
-    except (_CronRunnerStartupError, OSError) as exc:
-        if isinstance(exc, _CronRunnerStartupError):
-            if project is None:
-                logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, exit_status=exc.exit_status)
-            else:
-                logger.error(
-                    _CRON_RUNNER_START_FAILURE_LOG,
-                    job=name,
-                    project=project,
-                    exit_status=exc.exit_status,
-                )
-        else:
-            if project is None:
-                logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, errno=exc.errno)
-            else:
-                logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, project=project, errno=exc.errno)
+    except _CronRunnerStartupError as exc:
+        logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, project=project, exit_status=exc.exit_status)
+        raise HTTPException(status_code=502, detail=_CRON_RUNNER_START_FAILURE_DETAIL) from exc
+    except OSError as exc:
+        logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, project=project, errno=exc.errno)
         raise HTTPException(status_code=502, detail=_CRON_RUNNER_START_FAILURE_DETAIL) from exc
     return {"status": "accepted", "job": name, "project": project}
 
