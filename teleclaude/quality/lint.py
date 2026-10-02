@@ -265,22 +265,13 @@ class _SourceValidationStep:
 
     def run(self, targets: list[str]) -> None:
         """Reject malformed artifacts and selected jobs declarations."""
-        if self._run_all and self._content_root is None:
-            findings = self._validate_path_scoped(
-                targets, content_root=None, validate_artifacts=self._validate_artifacts
-            )
-        elif self._content_root is not None:
-            if self._run_all:
-                logger.error(_CONTENT_ROOT_FULL_RUN_ERROR)
-                sys.stderr.write(f"{_CONTENT_ROOT_FULL_RUN_ERROR}{os.linesep}")
-                raise SystemExit(1)
-            findings = self._validate_path_scoped(
-                targets, content_root=self._content_root, validate_artifacts=self._validate_artifacts
-            )
-        else:
-            findings = self._validate_path_scoped(
-                targets, content_root=None, validate_artifacts=self._validate_artifacts
-            )
+        if self._run_all and self._content_root is not None:
+            logger.error(_CONTENT_ROOT_FULL_RUN_ERROR)
+            sys.stderr.write(f"{_CONTENT_ROOT_FULL_RUN_ERROR}{os.linesep}")
+            raise SystemExit(1)
+        findings = self._validate_path_scoped(
+            targets, content_root=self._content_root, validate_artifacts=self._validate_artifacts
+        )
         if not findings:
             return
         for finding in findings:
