@@ -48,7 +48,6 @@ project a person owns — is foreign to the home's history and is not part of it
 retained set. What a commit boundary does with that answer belongs to the commit
 surface that asks it, not to the home's own membership rule.
 
-<!-- planned:install-records-own-writes -->
 Activation records only what activation itself writes. Each record holds the
 files activation wrote that were unchanged since the last record, or absent,
 before it wrote them; when the history is first created there is no last
@@ -57,7 +56,6 @@ not recorded, whether untracked, modified, or staged, stays exactly as they
 left it, and enters history only through its author's own commit. The record is authored under the installation's own identity, never a
 person's, and passes the same commit gate as every other commit. An activation
 that writes nothing records nothing.
-<!-- /planned:install-records-own-writes -->
 
 ## Canonical fields
 
@@ -65,16 +63,6 @@ that writes nothing records nothing.
 
 #### UC-HOME-1: Activation over a populated home retains only qualifying material
 
-<!-- planned-change:install-records-own-writes -->
-```
-Given a home directory holding authored configuration, per-person material, secrets, runtime databases, generated projections, and links into other repositories
-And the home is not yet under version control
-When an operator activates the home's history
-Then the authored, home-owned, safely retainable material is retained
-And the secrets, runtime databases, generated projections, and links into other repositories are not retained
-And no material is retained merely because it sits inside an otherwise retained directory
-```
-<!-- change:install-records-own-writes -->
 ```
 Given a home directory holding authored configuration, per-person material, secrets, runtime databases, generated projections, and links into other repositories
 And the home is not yet under version control
@@ -84,7 +72,6 @@ And its first record holds only the retained files activation itself wrote where
 And the authored material already present stays unrecorded and untouched until its author commits it
 And the secrets, runtime databases, generated projections, and links into other repositories are not recorded
 ```
-<!-- /planned-change:install-records-own-writes -->
 
 #### UC-HOME-2: Repeating activation changes nothing
 
@@ -138,7 +125,6 @@ When the home's history is activated
 Then that material is absent from the record the activation creates
 And it is absent because it was never recorded, not because it was recorded and then dropped
 ```
-<!-- planned:install-records-own-writes -->
 
 #### UC-HOME-8: Activation over an active history records only its own writes
 
@@ -182,7 +168,6 @@ Then nothing is recorded
 And each file activation wrote holds its earlier content again, or is absent again if it was absent
 And the refusal is reported with the gate's findings
 ```
-<!-- /planned:install-records-own-writes -->
 
 ## Known caveats
 

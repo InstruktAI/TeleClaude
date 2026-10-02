@@ -25,18 +25,12 @@ Materialization runs on every machine installation, upgrades included, so every
 home converges to the current templates. What a target keeps across
 installations is decided by the template's name (the create-once marker in
 `local/projects/teleclaude/spec/feature/reconciliation/template-installation`): an
-<!-- planned-change:install-records-own-writes -->
-`AGENTS.master.md` is the rendering of its template and is refreshed whenever it
-differs, while a local baseline manifest is created once and then belongs to the
-home that curates it (`general/policy/agent-artifact-governance`).
-<!-- change:install-records-own-writes -->
 `AGENTS.master.md` is the rendering of its template and is refreshed whenever it
 differs, while a local baseline manifest is created once and then belongs to the
 home that curates it (`general/policy/agent-artifact-governance`). A target
 carrying a change no one has recorded is someone's work in progress:
 installation leaves it untouched and reports it, and converges it on the first
 installation after that change is recorded or discarded.
-<!-- /planned-change:install-records-own-writes -->
 
 Materialization precedes home-repository activation. The retained-set
 declaration in the home layer is therefore both the declaration consumed by
@@ -82,14 +76,6 @@ project's initialization enables its help desk
   target is written.
 - **File kind.** Sources and targets are regular files. Symbolic links are never
   created by this materialization path.
-<!-- planned-change:install-records-own-writes -->
-- **Content gate.** Each template is rendered per the template-installation
-  contract before comparison. An absent target is written. A target whose
-  template is not create-once and whose bytes differ from the rendered content
-  is rewritten; an identical target is left untouched. A create-once target
-  that exists is kept whatever its content. An unresolved placeholder fails
-  installation before any target is written.
-<!-- change:install-records-own-writes -->
 - **Content gate.** Each template is rendered per the template-installation
   contract before comparison. An absent target is written. A target whose
   template is not create-once and whose bytes differ from the rendered content
@@ -103,7 +89,6 @@ project's initialization enables its help desk
   first write, under the lock the sealed commit holds, and that lock is kept
   until activation has recorded. A target the retained set excludes is never
   held.
-<!-- /planned-change:install-records-own-writes -->
 - **Conflict posture.** Every target of every home is validated before the first
   write. A source or target whose filesystem type is not a regular file fails
   installation, naming the path, before any target is replaced or removed.
@@ -151,18 +136,6 @@ And the projection-only settings remain outside the retained set
 
 #### UC-HTM4: Installation converges every declared person and company home
 
-<!-- planned-change:install-records-own-writes -->
-```gherkin
-Given a declared person home and a declared company home
-And one holds an AGENTS.master.md that differs from its template and local baselines its owner has edited
-And the other holds neither a master nor local baselines
-When an agent runs machine installation
-Then each home's AGENTS.master.md equals the rendering of its kind's template
-And the edited local baselines keep their content byte for byte
-And the missing local baselines are created from the documentation layer
-And no documentation taxonomy directory is created in either home
-```
-<!-- change:install-records-own-writes -->
 ```gherkin
 Given a declared person home and a declared company home
 And one holds a recorded AGENTS.master.md that differs from its template, with no unrecorded change, and local baselines its owner has edited
@@ -173,7 +146,6 @@ And the edited local baselines keep their content byte for byte
 And the missing local baselines are created from the documentation layer
 And no documentation taxonomy directory is created in either home
 ```
-<!-- /planned-change:install-records-own-writes -->
 
 #### UC-HTM5: The TeleClaude home receives no documentation layer
 
@@ -196,21 +168,12 @@ And nothing is written for the company whose help desk is not enabled
 
 #### UC-HTM7: A refreshed retained file enters the activation record
 
-<!-- planned-change:install-records-own-writes -->
-```gherkin
-Given a person home's retained AGENTS.master.md differs from its template
-When an agent runs machine installation
-Then the refreshed master is recorded by the activation commit
-And the home's working tree holds no change to a retained path afterward
-```
-<!-- change:install-records-own-writes -->
 ```gherkin
 Given a person home's retained AGENTS.master.md differs from its template and carries no unrecorded change
 When an agent runs machine installation
 Then the refreshed master is recorded by the activation commit
 And the home's working tree holds no change to a retained path afterward
 ```
-<!-- /planned-change:install-records-own-writes -->
 
 #### UC-HTM8: Two layers producing one path fail before any write
 
@@ -221,7 +184,6 @@ Then installation fails naming that path and both layers
 And no target of any home is written
 And home-repository activation does not begin
 ```
-<!-- planned:install-records-own-writes -->
 
 #### UC-HTM9: A target carrying an unrecorded change is held
 
@@ -244,7 +206,6 @@ When an agent runs machine installation
 Then the master equals the rendering of its template
 And the refresh is recorded by the activation commit
 ```
-<!-- /planned:install-records-own-writes -->
 
 ## Known caveats
 

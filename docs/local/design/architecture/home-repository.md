@@ -102,7 +102,6 @@ an upgrade alike. A gate refusal refuses that activation as the predicate does:
 nothing is recorded, the index entries activation added are restored, entries
 it did not add are untouched, and the refusal is reported with the gate's
 findings as its own outcome, distinct from a retained-set refusal.
-<!-- planned:install-records-own-writes -->
 
 ### Activation records only its own writes
 
@@ -126,7 +125,6 @@ nothing. When the gate refuses the record, activation also returns each file it
 wrote to its earlier content, or removes it when it was absent, provided the
 file still holds exactly what activation wrote. A file someone changed in the
 meantime is left as it is and reported.
-<!-- /planned:install-records-own-writes -->
 
 ### Path identity is canonical before any answer is given
 
@@ -184,29 +182,6 @@ with a record. Detection tests the home root itself and never walks upward.
 
 **Activation**
 
-<!-- planned-change:install-records-own-writes -->
-```mermaid
-flowchart TD
-    A[Convergence reaches the home] --> B{Repository at the home root?}
-    B -- no --> C[Create it: local-only, no remote]
-    B -- yes --> D[Adopt in place; add no remote]
-    C --> E[Establish the retained-set declaration]
-    D --> E
-    E --> F[Enumerate the exact candidate set]
-    F --> G{Every candidate admitted by the predicate?}
-    G -- no --> H[Refuse; write nothing; name the offending paths]
-    G -- yes --> I[Record the candidate set]
-    I --> J[Evaluate the record against the retained set]
-    J --> K{Excluded material in the record?}
-    K -- yes --> L[Report the breach; do not narrow the set]
-    K -- no --> M[Converged: history active, no remote]
-    L --> M
-    H --> N[Unconverged: reported, record untouched]
-```
-
-Two orderings are contractual: the declaration precedes enumeration, and the
-validation gate `G` precedes the write this flow performs.
-<!-- change:install-records-own-writes -->
 ```mermaid
 flowchart TD
     A[Convergence reaches the home] --> B{Repository at the home root?}
@@ -236,7 +211,6 @@ flowchart TD
 Three orderings are contractual: the commit lock precedes reading the home's
 state and is released only after the record, the declaration precedes
 enumeration, and the validation gate `G` precedes the write this flow performs.
-<!-- /planned-change:install-records-own-writes -->
 
 **Membership query**
 
