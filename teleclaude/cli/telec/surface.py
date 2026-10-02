@@ -250,6 +250,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     scope_flag=F.FLAG_PATH.long,
                 ),
             ),
+            "run-pa": CommandDef(
+                desc="Start the caller's personal assistant in their own workspace",
+                args="<brief>",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "The person, workspace, and computer derive from the caller.",
+                    "No argument names a person.",
+                    "The launched assistant has no parent and ends itself.",
+                    "run and start remain open to any folder.",
+                ],
+                examples=['telec sessions run-pa "Check the latest message"'],
+                auth=CommandAuth(
+                    system=_AGENT_REACH | _WORKER_REACH,
+                    human=_HR_MEMBER,
+                    scope=CommandScope.PLATFORM,
+                ),
+            ),
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",
                 args="<session_id>",
@@ -1707,6 +1724,7 @@ SESSIONS_START = CLI_SURFACE["sessions"].subcommands["start"]
 SESSIONS_SEND = CLI_SURFACE["sessions"].subcommands["send"]
 SESSIONS_TAIL = CLI_SURFACE["sessions"].subcommands["tail"]
 SESSIONS_RUN = CLI_SURFACE["sessions"].subcommands["run"]
+SESSIONS_RUN_PA = CLI_SURFACE["sessions"].subcommands["run-pa"]
 SESSIONS_REVIVE = CLI_SURFACE["sessions"].subcommands["revive"]
 SESSIONS_END = CLI_SURFACE["sessions"].subcommands["end"]
 SESSIONS_UNSUBSCRIBE = CLI_SURFACE["sessions"].subcommands["unsubscribe"]

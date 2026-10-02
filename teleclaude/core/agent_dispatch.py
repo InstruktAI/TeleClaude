@@ -61,6 +61,7 @@ class AgentDispatchReason(StrEnum):
     WORKTREE_MISMATCH = "worktree_mismatch"
     DISPATCH_PRIVILEGE_FORBIDDEN = "dispatch_privilege_forbidden"
     REVIEWER_CONFLICT = "reviewer_conflict"
+    PERSON_UNRESOLVED = "person_unresolved"
     COMMAND_INVALID = "command_invalid"
     PROJECT_REQUIRED = "project_required"
     DISPATCH_PRIVILEGE_ALLOWED = "dispatch_privilege_allowed"

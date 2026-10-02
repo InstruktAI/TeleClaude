@@ -193,6 +193,7 @@ class SessionEntryPoint(StrEnum):
 
     API_CREATE = "api_create"
     RUN_SESSION_API = "run_session_api"
+    PERSONAL_ASSISTANT_LAUNCH = "personal_assistant_launch"
     LIFECYCLE_RUNNER = "lifecycle_runner"
     GENERATED_TOOL_CALL = "generated_tool_call"
     INTEGRATION = "integration"
