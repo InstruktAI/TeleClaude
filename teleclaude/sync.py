@@ -79,7 +79,6 @@ _NO_PUBLISHED_HOME_GENERATIONS = "no_published_home_generations"
 _ROOT_RELATIVE_PATH = Path(".")
 _ERROR_SEPARATOR = ", "
 _UTF8 = "utf-8"
-_EMPTY_STRING = ""
 _HOME_FAILURES = (
     DocsPublisherResolutionError,
     GitCommandError,
