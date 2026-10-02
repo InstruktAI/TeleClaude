@@ -19,8 +19,8 @@ This design covers the dispatch journey. Storage internals for the listener regi
 
 ### The personal-assistant launch
 
-`run-pa` is a third invocation beside `run` and `start`. It carries a brief and no
-target: the authenticated edge resolves which person the caller is through the
+`run-pa` is a third invocation beside `run` and `start`. It carries an optional
+brief and no target: the authenticated edge resolves which person the caller is through the
 identity contract, reads that person's workspace from the person registry, and
 creates the session there with no parent. The general verbs are unchanged and
 remain ordinary routes to any folder, a person's included; the launch is the
@@ -36,7 +36,7 @@ domain anchor carries no forward architecture.
 **Inputs:**
 
 - `telec sessions run` or `telec sessions start` invocation from the Initiator (CLI or API). Carries target computer, project path, command or message, and (when relevant) `--direct`.
-- `telec sessions run-pa` invocation from any session. Carries a brief and
+- `telec sessions run-pa` invocation from a caller resolving to a person. Carries an optional brief and
   nothing else: no path, no subfolder, no computer, and no person. Each of those
   is derived from the authenticated caller.
 - Initiator's session identity (`X-Caller-Session-Id` header / equivalent) — pins the dispatcher identity on the new session.
@@ -69,13 +69,11 @@ domain anchor carries no forward architecture.
   Parentage is distinct from the listener suppression that `detach` expresses
   elsewhere in this design: suppression decides who is notified, parentage
   decides who may end the session, and neither implies the other.
-- **The brief is carried as a request made in the moment, and the launch says so.**
-  What `run-pa` starts serves that request, and the launch states that framing
-  alongside the brief rather than leaving the assistant to infer which kind of
-  request it received. The rule the framing invokes — that work a schedule
-  declares is done by that schedule and nothing else — belongs to the assistant's
-  conduct contract, which already carries it. Dispatch owes the framing, not the
-  refusal.
+- **The launch carries only the supplied brief.** `run-pa` passes an optional
+  brief through unchanged, without framing or added instructions. Without a
+  brief, it starts the assistant with no opening message
+  (`local/projects/teleclaude/spec/feature/agent_runtime/person-workspace-dispatch`).
+  The assistant's conduct is governed by `personal/policy/assistant-conduct`.
 - **A declared job runs only through the scheduler.** A job declared in
   configuration is launched through the scheduled path, which derives its routing
   from that declaration and runs under a job runner's role. A brief names no job
@@ -159,14 +157,14 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Caller as Any session
+    participant Caller as Authenticated caller
     participant API as Sessions API
     participant Identity as Identity contract
     participant Registry as Person registry
     participant Create as Session creation
     participant PA as Assistant tmux
 
-    Caller->>API: run-pa { brief }<br/>authenticated caller only
+    Caller->>API: run-pa { optional brief }<br/>authenticated caller only
     API->>Identity: resolve person for this caller
     alt no person resolves
         Identity-->>API: none
@@ -176,7 +174,11 @@ sequenceDiagram
         API->>Registry: workspace for this person
         Registry-->>API: destination
         API->>Create: command with that destination,<br/>no parent, no listener
-        Create->>PA: spawn with the brief and its in-the-moment framing
+        alt brief supplied
+            Create->>PA: spawn with only the supplied brief
+        else no brief supplied
+            Create->>PA: spawn without an opening message
+        end
         Create-->>API: session id
     end
 ```
