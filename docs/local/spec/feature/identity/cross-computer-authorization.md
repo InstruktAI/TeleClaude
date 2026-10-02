@@ -129,7 +129,6 @@ And a person holding no role on that computer is refused the listing and the his
 ```
 <!-- /planned-change:session-listing-selection -->
 
-
 #### UC-XCA8: An operation is read on the computer that owns it
 
 ```
