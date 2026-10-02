@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -25,7 +26,7 @@ from teleclaude.config.schema import ConfigKind
 from teleclaude.docs_index import build_all_indexes, build_tier_index, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root
-from teleclaude.git import GitCommandError
+from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
 from teleclaude.install.distribution import (
     DistributionBuild,
@@ -47,9 +48,8 @@ from teleclaude.quality.gate import LintGateResult, run_home_guardrail_gate
 
 logger = get_logger(__name__)
 
-_GIT_EXECUTABLE = "git"
-_GIT_MAIN_TIP_ARGS = ("rev-parse", "--verify", "refs/heads/main^{commit}")
-_GIT_IGNORED_UNTRACKED_ARGS = ("ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--")
+_GIT_MAIN_TIP_ARGS = ("--verify", "refs/heads/main^{commit}")
+_GIT_IGNORED_UNTRACKED_ARGS = ("-z", "--others", "--ignored", "--exclude-standard", "--")
 _GIT_PATH_SEPARATOR = "\0"
 _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _STATE_DIRECTORY = ".teleclaude"
@@ -81,6 +81,7 @@ _UTF8 = "utf-8"
 _EMPTY_STRING = ""
 _BUILD_FAILURES = (
     DocsPublisherResolutionError,
+    GitCommandError,
     HomeMasterInflationError,
     OSError,
     RuntimeError,
@@ -712,16 +713,10 @@ def _read_publication_id(path: Path) -> str | None:
 
 def _main_tip(canonical_root: Path) -> str | None:
     """Resolve the canonical main ref to a full commit id."""
-    result = subprocess.run(
-        [_GIT_EXECUTABLE, *_GIT_MAIN_TIP_ARGS],
-        cwd=canonical_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
+    try:
+        tip = cast(str, Repo(str(canonical_root)).git.rev_parse(*_GIT_MAIN_TIP_ARGS)).strip()
+    except GitCommandError:
         return None
-    tip = result.stdout.strip()
     return tip if _COMMIT_ID_PATTERN.fullmatch(tip) else None
 
 
@@ -756,14 +751,8 @@ def _retractable_outputs(snapshot_root: Path, canonical_root: Path, candidates: 
     if not candidates:
         return []
     relative = [candidate.relative_to(snapshot_root).as_posix() for candidate in candidates]
-    result = subprocess.run(
-        [_GIT_EXECUTABLE, *_GIT_IGNORED_UNTRACKED_ARGS, *relative],
-        cwd=canonical_root,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    eligible = set(result.stdout.split(_GIT_PATH_SEPARATOR))
+    output = Repo(str(canonical_root)).git.ls_files(*_GIT_IGNORED_UNTRACKED_ARGS, *relative)
+    eligible = set(output.split(_GIT_PATH_SEPARATOR))
     return [candidate for candidate, path in zip(candidates, relative, strict=True) if path in eligible]
 
 
