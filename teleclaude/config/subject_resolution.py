@@ -49,16 +49,11 @@ class ConfigSubjectResolver:
 
     def resolve(self, working_folder: Path) -> SubjectRef | None:
         """Resolve a folder and memoize the result by its nearest declaration path."""
-        try:
-            declaration = nearest_config_declaration(
-                working_folder,
-                error_factory=_declaration_error,
-                directory_cache=self._declarations_by_directory,
-            )
-        except SubjectResolutionError as error:
-            declaration_path = error.declaration_path
-            self._by_declaration[declaration_path] = error
-            raise
+        declaration = nearest_config_declaration(
+            working_folder,
+            error_factory=_declaration_error,
+            directory_cache=self._declarations_by_directory,
+        )
         declaration_path = declaration.path if declaration is not None else None
         if declaration_path in self._by_declaration:
             result = self._by_declaration[declaration_path]
@@ -80,10 +75,7 @@ def _resolve_declaration(declaration: ConfigDeclaration | None) -> SubjectRef | 
         return None
     if declaration.kind is ConfigKind.PROJECT:
         return _resolve_project_subject(declaration.path)
-    subject = registered_subject(declaration.path)
-    if subject is None:
-        return None
-    return subject
+    return registered_subject(declaration.path)
 
 
 def _resolve_project_subject(declaration_path: Path) -> SubjectRef:
