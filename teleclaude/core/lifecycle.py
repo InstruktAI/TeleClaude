@@ -102,8 +102,8 @@ class DaemonLifecycle:
         migrate_outbox_on_startup(str(MAIN_DB_PATH), str(get_outbox_db_path(TELECLAUDE_HOME)))
         logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
-        await backfill_session_config_subjects()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
+        await backfill_session_config_subjects()
 
         db.set_client(self.client)
         operations_service = OperationsService(db=db, task_registry=self.task_registry)

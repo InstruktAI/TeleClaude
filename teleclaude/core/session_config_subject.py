@@ -1,5 +1,6 @@
 """Record configuration subjects for existing session rows once at startup."""
 
+import time
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -21,6 +22,7 @@ async def backfill_session_config_subjects() -> None:
     if await db.get_system_setting(_BACKFILL_SETTING) is not None:
         return
 
+    started_at = time.perf_counter()
     locations = await db.list_unattributed_session_locations()
     resolver = ConfigSubjectResolver()
     warned_declarations: set[int] = set()
@@ -58,4 +60,5 @@ async def backfill_session_config_subjects() -> None:
         rows_updated=rows_updated,
         unresolved_declarations=len(warned_declarations),
         backfill_complete=not warned_declarations,
+        duration_ms=(time.perf_counter() - started_at) * 1000,
     )
