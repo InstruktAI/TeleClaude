@@ -65,6 +65,12 @@ _STAGED_DECLARATION_YAML_ERROR = "{path}: invalid YAML: {error}"
 _STAGED_DECLARATION_MAPPING_ERROR = "{path}: declaration must be a mapping"
 _STAGED_DECLARATION_KIND_ERROR = "{path}: declaration kind must be one of: global, project, person, company"
 _STAGED_DECLARATION_SCHEMA_ERROR = "{path}: invalid {kind} declaration: {error}"
+_SCHEMA_BY_KIND: Mapping[ConfigKind, type[BaseModel]] = {
+    ConfigKind.GLOBAL: GlobalConfig,
+    ConfigKind.PROJECT: ProjectConfig,
+    ConfigKind.PERSON: PersonConfig,
+    ConfigKind.COMPANY: CompanyConfig,
+}
 
 
 @dataclass(frozen=True)
@@ -111,20 +117,11 @@ def _validate_overlay_candidate(
     subject: SubjectRef,
 ) -> None:  # guard: loose-dict - pydantic input from arbitrary YAML
     """Validate the complete current document before a writer delivers migrations."""
-    model: type[BaseModel]
-    if kind is ConfigKind.GLOBAL:
-        model = GlobalConfig
-    elif kind is ConfigKind.PERSON:
-        model = PersonConfig
-    elif kind is ConfigKind.COMPANY:
-        model = CompanyConfig
-    else:
-        model = ProjectConfig
     candidate = dict(document)
     candidate[_KIND_FIELD] = kind.value
     if kind is ConfigKind.PERSON and subject.instance is not None:
         candidate.setdefault(_PERSON_SLUG_FIELD, subject.instance)
-    model.model_validate(candidate)
+    _SCHEMA_BY_KIND[kind].model_validate(candidate)
 
 
 class DeclaredMailAccountRefusal(StrEnum):
@@ -211,17 +208,8 @@ def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
     except (TypeError, ValueError):
         return [_STAGED_DECLARATION_KIND_ERROR.format(path=path)]
 
-    model_class: type[BaseModel]
-    if kind is ConfigKind.GLOBAL:
-        model_class = GlobalConfig
-    elif kind is ConfigKind.PROJECT:
-        model_class = ProjectConfig
-    elif kind is ConfigKind.PERSON:
-        model_class = PersonConfig
-    else:
-        model_class = CompanyConfig
     try:
-        model_class.model_validate(raw)
+        _SCHEMA_BY_KIND[kind].model_validate(raw)
     except ValidationError as exc:
         return [_STAGED_DECLARATION_SCHEMA_ERROR.format(path=path, kind=kind.value, error=exc)]
     return []
