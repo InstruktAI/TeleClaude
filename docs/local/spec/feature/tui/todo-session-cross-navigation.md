@@ -381,7 +381,6 @@ And no other column of the row shifts: every line reads the same with and withou
 And the rendered line reads: • [N] ▶ claude/med <chip> /work config-public-surface-contract
 ```
 
-<!-- planned:session-listing-selection -->
 #### UC-XNAV-31: Provenance session state is resolved by id, independent of any listing window
 
 ```
@@ -391,7 +390,6 @@ When the detail row is rendered
 Then the row offers revive as for any retained closed session
 And the TUI resolves the provenance sessions of its rendered todos by their session ids, never by reading the closed-session listing
 ```
-<!-- /planned:session-listing-selection -->
 
 ## Known caveats
 
