@@ -39,6 +39,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     terminal_size: str | None = "80x24"
     project_path: str | None = None
     subdir: str | None = None
+    config_subject: str | None = None
     description: str | None = None
     initiated_by_ai: bool | None = False
     initiator_session_id: str | None = None

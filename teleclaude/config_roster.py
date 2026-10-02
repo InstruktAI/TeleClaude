@@ -114,6 +114,10 @@ class ProjectOwnershipIndex:
                 return ownership
         return None
 
+    def ownerships(self) -> tuple[ProjectOwnership, ...]:
+        """Enumerate registered project ownership facts in registration order."""
+        return tuple(ownership for _, ownership in self._ownership_by_root if ownership is not None)
+
 
 def load_project_ownership_index(
     projects_manifest_path: Path | None = None,

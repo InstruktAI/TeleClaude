@@ -97,6 +97,8 @@ from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.agents import get_enabled_agents
+from teleclaude.core.session_listing import SESSION_LISTING_MAX_IDS
+from teleclaude.types.creation_record import Lineage
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -731,7 +733,12 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         """Build the aggregate `DataRefreshed` message from TUI bootstrap data."""
         bootstrap = await self.api.get_tui_bootstrap(requested, include_removed=True)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
-        session_lookup = await self._fetch_session_lookup() if set(requested) == set(BOOTSTRAP_PILLARS) else None
+        session_lookup = None
+        if set(requested) == set(BOOTSTRAP_PILLARS):
+            projects_with_todos = bootstrap.data.projects_with_todos
+            if projects_with_todos is None:
+                projects_with_todos = self._current_refresh_state().projects_with_todos
+            session_lookup = await self._fetch_session_lookup(projects_with_todos)
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
         return self._merge_bootstrap_message(
             bootstrap,
@@ -742,19 +749,39 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             parent_operation_id=parent_operation_id,
         )
 
-    async def _fetch_session_lookup(self) -> SessionLookup | None:
-        """Fetch every session, including retained-closed ones, for provenance row lookup.
+    async def _fetch_session_lookup(
+        self,
+        projects_with_todos: list[ProjectWithTodosDTO],
+    ) -> SessionLookup | None:
+        """Fetch only provenance sessions, including retained-closed rows, by owner computer.
 
         A separate round trip from the bootstrap `sessions` pillar (which never
         includes closed sessions) — provenance rows need to classify their
-        session ids as live, retained-closed, or absent.
+        creator and preparer ids as live, retained-closed, or absent.
 
         Returns None on fetch failure so `_merge_bootstrap_message` retains the
         last successfully fetched lookup instead of blanking every provenance row
         to inert — a transient daemon hiccup must not read as "session purged."
         """
         try:
-            sessions = await self.api.list_sessions(include_closed=True)
+            ids_by_computer: dict[str, set[str]] = {}
+            for project in projects_with_todos:
+                session_ids: set[str] = set()
+                for todo in project.todos:
+                    acting_session = Lineage.parse(todo.lineage or "").acting_session
+                    if acting_session:
+                        session_ids.add(acting_session)
+                    if todo.prepared_session_id:
+                        session_ids.add(todo.prepared_session_id)
+                if session_ids:
+                    ids_by_computer.setdefault(project.computer, set()).update(session_ids)
+
+            sessions = []
+            for computer, session_ids in ids_by_computer.items():
+                ordered_ids = sorted(session_ids)
+                for offset in range(0, len(ordered_ids), SESSION_LISTING_MAX_IDS):
+                    batch = ordered_ids[offset : offset + SESSION_LISTING_MAX_IDS]
+                    sessions.extend(await self.api.list_sessions(computer=computer, session_ids=batch))
         except APP_DATA_ERRORS:
             logger.exception("Session lookup fetch failed")
             return None

@@ -32,10 +32,11 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
-from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, RoleResolver, SessionOf, SystemCliCaller
+from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, RoleResolver, SystemCliCaller
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
+from teleclaude.core.session_listing import snapshot_reached_by_subject
 from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.delivery.message import format_notification_message
 from teleclaude.transport.redis_transport import RedisTransport
@@ -344,7 +345,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         computer = session.computer or ""
         if computer not in ("", "local", config.computer.name):
             return resolver.role_for(viewer, Platform()) != HUMAN_ROLE_CUSTOMER
-        return resolver.role_for(viewer, SessionOf(session.project_path)) != HUMAN_ROLE_CUSTOMER
+        return snapshot_reached_by_subject(viewer, session, resolver=resolver)
 
     def _session_event_targets(self, session: SessionSnapshot) -> list[WebSocket]:
         """Select subscribed viewers who can read this session at send time."""

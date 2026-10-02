@@ -427,6 +427,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     closed_at: datetime | None = None
     project_path: str | None = None
     subdir: str | None = None
+    config_subject: str | None = None
     description: str | None = None
     initiated_by_ai: bool = False
     initiator_session_id: str | None = None
@@ -642,6 +643,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             closed_at=ensure_utc(closed_at) if isinstance(closed_at, datetime) else None,
             project_path=_get_optional_str("project_path"),
             subdir=_get_optional_str("subdir"),
+            config_subject=_get_optional_str("config_subject"),
             description=_get_optional_str("description"),
             initiated_by_ai=initiated_by_ai,
             initiator_session_id=_get_optional_str("initiator_session_id"),

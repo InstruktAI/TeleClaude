@@ -34,7 +34,12 @@ from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict, JsonValue, RedisInboundMessage, SessionEntryPoint
 from teleclaude.core.models._types import json_int
 from teleclaude.core.operations import get_operations_service
-from teleclaude.core.session_listing import sessions_reached_by
+from teleclaude.core.session_listing import (
+    SESSION_IDS_FIELD,
+    SessionListingSelection,
+    build_session_listing_selection,
+    normalize_session_ids,
+)
 from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
     build_session_messages_dto,
@@ -264,18 +269,20 @@ async def execute_relayed_read(
     if command == RelayRead.SESSIONS.value:
         include_closed_raw = request.get(_INCLUDE_CLOSED_FIELD)
         include_closed = include_closed_raw if isinstance(include_closed_raw, bool) else False
-        sessions = await command_handlers.list_sessions(include_closed=include_closed)
+        try:
+            session_ids = normalize_session_ids(request.get(SESSION_IDS_FIELD))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        selection: SessionListingSelection = build_session_listing_selection(
+            caller,
+            resolver,
+            include_closed=include_closed,
+            session_ids=session_ids,
+        )
+        sessions = await command_handlers.list_sessions(selection=selection)
         return cast(
             JsonValue,
-            [
-                session.to_peer_dict()
-                for session in sessions_reached_by(
-                    caller,
-                    sessions,
-                    resolver=resolver,
-                    caller_session=None,
-                )
-            ],
+            [session.to_peer_dict() for session in sessions],
         )
 
     if command == HistoryRelayCommand.SEARCH.value:

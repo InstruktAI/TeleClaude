@@ -81,6 +81,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         company: str | None = None,
         project_path: str | None = None,
         subdir: str | None = None,
+        config_subject: str | None = None,
         description: str | None = None,
         session_id: str | None = None,
         command: str | None = None,
@@ -114,6 +115,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             company: Optional company slug this session operates the business of
             project_path: Base project path (no subdir)
             subdir: Optional subdirectory/worktree relative to project_path
+            config_subject: Optional configuration declaration subject token
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
             working_slug: Optional slug of work item this session is working on
@@ -148,6 +150,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             last_activity=now,
             project_path=project_path,
             subdir=subdir,
+            config_subject=config_subject,
             description=description,
             command=command,
             working_slug=working_slug,
@@ -182,6 +185,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             last_activity=session.last_activity,
             project_path=session.project_path,
             subdir=session.subdir,
+            config_subject=session.config_subject,
             description=session.description,
             command=session.command,
             working_slug=session.working_slug,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, cast
 
@@ -43,21 +43,66 @@ class ContextRoot(NamedTuple):
     kind: ConfigKind
 
 
-def resolve_context_root(start: Path) -> ContextRoot | None:
-    """Return the nearest anchoring declaration, or no context root."""
+class ConfigDeclaration(NamedTuple):
+    """A nearest configuration declaration and its declared tier."""
+
+    path: Path
+    kind: ConfigKind
+
+
+def nearest_config_declaration(
+    start: Path,
+    *,
+    error_factory: Callable[[Path, Exception], Exception] | None = None,
+    directory_cache: dict[Path, ConfigDeclaration | None | Exception] | None = None,
+) -> ConfigDeclaration | None:
+    """Return the nearest declaration, including non-anchoring company declarations."""
     current = start.expanduser().resolve()
     if current.is_file():
         current = current.parent
+    visited: list[Path] = []
     while True:
+        if directory_cache is not None and current in directory_cache:
+            cached = directory_cache[current]
+            for directory in visited:
+                directory_cache[directory] = cached
+            if isinstance(cached, Exception):
+                raise cached
+            declaration = cached
+            break
         marker = current / ConfigFileName.OVERLAY
         if marker.is_file():
-            kind = load_declared_config_kind(marker)
-            if kind is ConfigKind.COMPANY:
-                return None
-            return ContextRoot(path=current, kind=kind)
+            try:
+                kind = load_declared_config_kind(marker)
+            except (OSError, UnicodeError, yaml.YAMLError, ValueError) as exc:
+                if error_factory is not None:
+                    error = error_factory(marker, exc)
+                    if directory_cache is not None:
+                        directory_cache[current] = error
+                        for directory in visited:
+                            directory_cache[directory] = error
+                    raise error from exc
+                raise
+            declaration = ConfigDeclaration(path=marker, kind=kind)
+            break
         if current.parent == current:
-            return None
+            declaration = None
+            break
+        visited.append(current)
         current = current.parent
+    if directory_cache is not None:
+        directory_cache[current] = declaration
+        for directory in visited:
+            directory_cache[directory] = declaration
+    return declaration
+
+
+def resolve_context_root(start: Path) -> ContextRoot | None:
+    """Return the nearest anchoring declaration, or no context root."""
+    declaration = nearest_config_declaration(start)
+    if declaration is None or declaration.kind is ConfigKind.COMPANY:
+        return None
+    return ContextRoot(path=declaration.path.parent, kind=declaration.kind)
 
 
 def load_declared_config_kind(path: Path) -> ConfigKind:

@@ -184,6 +184,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     title: str
     project_path: str | None = None
     subdir: str | None = None
+    config_subject: str | None = None
     command: str | None = None
     working_slug: str | None = None
     thinking_mode: str | None = None

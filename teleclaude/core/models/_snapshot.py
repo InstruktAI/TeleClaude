@@ -35,6 +35,7 @@ _AGENT_STATUS_FIELD = "agent_status"
 _AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
 _AGENT_STATUS_REASON_FIELD = "agent_status_reason"
 _AGENT_STATUS_SINCE_FIELD = "agent_status_since"
+_CONFIG_SUBJECT_FIELD = "config_subject"
 logger = get_logger(__name__)
 
 
@@ -114,6 +115,7 @@ class SessionSnapshot(
     origin_metadata: JsonDict = field(default_factory=dict)
     project_path: str | None = None
     subdir: str | None = None
+    config_subject: str | None = None
     command: str | None = None
     working_slug: str | None = None
     visibility: str | None = "private"
@@ -142,6 +144,7 @@ class SessionSnapshot(
             "title": self.title,
             "project_path": self.project_path,
             "subdir": self.subdir,
+            _CONFIG_SUBJECT_FIELD: self.config_subject,
             "command": self.command,
             "working_slug": self.working_slug,
             "thinking_mode": self.thinking_mode,
@@ -213,6 +216,7 @@ class SessionSnapshot(
             title=session.title,
             project_path=session.project_path,
             subdir=session.subdir,
+            config_subject=session.config_subject,
             thinking_mode=session.thinking_mode,
             active_agent=session.active_agent,
             status=session.lifecycle_status,
@@ -272,6 +276,9 @@ class SessionSnapshot(
             title=str(data["title"]),
             project_path=str(data.get("project_path")) if data.get("project_path") else None,
             subdir=str(data.get("subdir")) if data.get("subdir") else None,
+            config_subject=(
+                str(data.get(_CONFIG_SUBJECT_FIELD)) if data.get(_CONFIG_SUBJECT_FIELD) is not None else None
+            ),
             command=str(data.get("command")) if data.get("command") else None,
             working_slug=str(data.get("working_slug")) if data.get("working_slug") else None,
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,

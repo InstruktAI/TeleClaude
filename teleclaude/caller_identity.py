@@ -18,6 +18,7 @@ from teleclaude.config_roster import (
     load_person_memberships,
     load_project_ownership_index,
 )
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CUSTOMER,
@@ -218,8 +219,39 @@ class ThisComputer:
     """Objects held by the computer making the current role decision."""
 
 
+@dataclass(frozen=True)
+class RecordedSubject:
+    """A session listing target scoped by its recorded configuration subject."""
+
+    subject: SubjectRef
+
+
+@dataclass(frozen=True)
+class AllSessionSubjects:
+    """Reach over every recorded or unrecorded session subject."""
+
+
+@dataclass(frozen=True)
+class SessionSubjectSet:
+    """The exact recorded session subjects a caller reaches."""
+
+    subjects: frozenset[SubjectRef]
+
+
+type SessionSubjectReach = AllSessionSubjects | SessionSubjectSet
+
+
 type RoleTarget = (
-    ProjectPath | Project | Company | Person | SessionOf | DocsTier | OperationOf | Platform | ThisComputer
+    ProjectPath
+    | Project
+    | Company
+    | Person
+    | SessionOf
+    | DocsTier
+    | OperationOf
+    | Platform
+    | ThisComputer
+    | RecordedSubject
 )
 
 
@@ -355,6 +387,17 @@ def _scope_for_target(target: RoleTarget, ownership_index: ProjectOwnershipIndex
             return CompanyScope(company)
         case Person(person_slug=person_slug):
             return PersonScope(person_slug)
+        case RecordedSubject(subject=subject):
+            if subject.source is not SubjectSource.REGISTRY or subject.instance is None:
+                return PlatformScope()
+            if subject.kind is ConfigSubjectKind.PROJECT:
+                assert ownership_index is not None
+                return scope_for_project(subject.instance, ownership_index)
+            if subject.kind is ConfigSubjectKind.COMPANY:
+                return CompanyScope(subject.instance)
+            if subject.kind is ConfigSubjectKind.PERSON:
+                return PersonScope(subject.instance)
+            return PlatformScope()
         case SessionOf(project_path=project_path):
             if project_path is None:
                 return PlatformScope()
@@ -387,17 +430,52 @@ class RoleResolver:
         """Resolve the caller's effective person role for the target object."""
         if not isinstance(caller, PersonCliCaller) or not caller.person_slug:
             return HUMAN_ROLE_CUSTOMER
+        facts = self._facts_for(caller)
+        scope = self._scopes_by_target.get(target)
+        if scope is None:
+            if _target_uses_project_ownership(target):
+                self._ownership_index()
+            scope = _scope_for_target(target, self._project_ownership_index)
+            self._scopes_by_target[target] = scope
+        return effective_role(facts, scope)
+
+    def session_subject_reach(self, caller: CliCaller | None) -> SessionSubjectReach:
+        """Return the session subjects reached by one caller's effective roles."""
+        if isinstance(caller, SystemCliCaller):
+            return AllSessionSubjects()
+        if not isinstance(caller, PersonCliCaller) or not caller.person_slug:
+            return SessionSubjectSet(frozenset())
+        if self.role_for(caller, Platform()) != HUMAN_ROLE_CUSTOMER:
+            return AllSessionSubjects()
+
+        facts = self._facts_for(caller)
+        candidates = {SubjectRef(ConfigSubjectKind.PERSON, caller.person_slug)}
+        candidates.update(SubjectRef(ConfigSubjectKind.COMPANY, company) for company in facts.memberships)
+        ownership_index = self._ownership_index()
+        candidates.update(
+            SubjectRef(ConfigSubjectKind.PROJECT, ownership.project_slug)
+            for ownership in ownership_index.ownerships()
+            if ownership.company in facts.memberships
+        )
+        reached = frozenset(
+            subject for subject in candidates if self.role_for(caller, RecordedSubject(subject)) != HUMAN_ROLE_CUSTOMER
+        )
+        return SessionSubjectSet(reached)
+
+    def _facts_for(self, caller: PersonCliCaller) -> PersonRoleFacts:
+        """Return cached authorization facts for one person caller."""
+        assert caller.person_slug is not None
         facts = self._facts_by_person.get(caller.person_slug)
         if facts is None:
             facts = load_person_role_facts(caller.person_slug, caller.human_role)
             self._facts_by_person[caller.person_slug] = facts
-        scope = self._scopes_by_target.get(target)
-        if scope is None:
-            if self._project_ownership_index is None and _target_uses_project_ownership(target):
-                self._project_ownership_index = load_project_ownership_index()
-            scope = _scope_for_target(target, self._project_ownership_index)
-            self._scopes_by_target[target] = scope
-        return effective_role(facts, scope)
+        return facts
+
+    def _ownership_index(self) -> ProjectOwnershipIndex:
+        """Return this request's cached project ownership snapshot."""
+        if self._project_ownership_index is None:
+            self._project_ownership_index = load_project_ownership_index()
+        return self._project_ownership_index
 
 
 def _target_uses_project_ownership(target: RoleTarget) -> bool:
@@ -409,6 +487,8 @@ def _target_uses_project_ownership(target: RoleTarget) -> bool:
             return project_path is not None
         case DocsTier(tier=SnippetScope.PROJECT, owner=owner):
             return owner is not None
+        case RecordedSubject(subject=subject):
+            return subject.kind is ConfigSubjectKind.PROJECT and subject.instance is not None
         case OperationOf(cwd=cwd):
             return cwd is not None
         case _:

@@ -25,6 +25,7 @@ from teleclaude.core.next_machine.delivery import remove_legacy_worktree_trash
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
+from teleclaude.core.session_config_subject import backfill_session_config_subjects
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
@@ -101,6 +102,7 @@ class DaemonLifecycle:
         migrate_outbox_on_startup(str(MAIN_DB_PATH), str(get_outbox_db_path(TELECLAUDE_HOME)))
         logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
+        await backfill_session_config_subjects()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
 
         db.set_client(self.client)

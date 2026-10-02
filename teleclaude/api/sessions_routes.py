@@ -24,7 +24,6 @@ from teleclaude.api.agent_dispatch_errors import (
 )
 from teleclaude.api.auth import (
     CallerIdentity,
-    caller_for_role_resolution,
     carried_caller,
     principal_for_carried_caller,
     resolve_caller_provenance,
@@ -43,6 +42,11 @@ from teleclaude.api.session_direct_messages import (
     _format_direct_conversation_intro,
     _reject_existing_direct_link,
 )
+from teleclaude.api.session_listing_route import (
+    ListSessionsQuery,
+    build_local_session_listing,
+    parse_list_sessions_query,
+)
 from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_reminder_summary import attach_next_reminders, observe_session_reminder_summaries
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
@@ -59,10 +63,8 @@ from teleclaude.api_models import (
     SendMessageResponseDTO,
     SessionDTO,
 )
-from teleclaude.caller_identity import RoleResolver
 from teleclaude.config import config
 from teleclaude.constants import SlashCommand
-from teleclaude.core import command_handlers
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.command_input import (
@@ -91,6 +93,7 @@ from teleclaude.core.injected_text import MachineRoleLabel
 from teleclaude.core.models import (
     AgentDispatchMode,
     JsonDict,
+    JsonValue,
     MessageAuthor,
     MessageMetadata,
     SessionEntryPoint,
@@ -110,7 +113,9 @@ from teleclaude.core.session_links import (
 from teleclaude.core.session_listeners import (
     register_listener,
 )
-from teleclaude.core.session_listing import sessions_reached_by
+from teleclaude.core.session_listing import (
+    SESSION_IDS_FIELD,
+)
 from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal
 from teleclaude.core.session_utils import resolve_working_dir
@@ -254,30 +259,6 @@ async def _link_direct_sessions(
     return link.link_id
 
 
-@dataclass(frozen=True)
-class ListSessionsQuery:
-    """Normalized query parameters for session listing."""
-
-    computer: str | None = None
-    include_closed: bool = False
-    all_sessions: bool = False
-    job: str | None = None
-
-
-def _parse_list_sessions_query(
-    computer: str | None = None,
-    include_closed: bool = Query(False, alias="closed"),
-    all_sessions: bool = Query(False, alias="all"),
-    job: str | None = Query(None, alias="job"),
-) -> ListSessionsQuery:
-    return ListSessionsQuery(
-        computer=computer,
-        include_closed=include_closed,
-        all_sessions=all_sessions,
-        job=job,
-    )
-
-
 async def _prepare_create_session(
     request: CreateSessionRequest,
     identity: CallerIdentity,
@@ -352,7 +333,7 @@ def _prepare_interactive_create_request(request: CreateSessionRequest) -> Create
 @router.get("/sessions")
 async def list_sessions(
     request: Request,
-    query: ListSessionsQuery = Depends(_parse_list_sessions_query),
+    query: ListSessionsQuery = Depends(parse_list_sessions_query),
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> list[SessionDTO]:
     """List sessions from local storage and remote cache.
@@ -372,6 +353,8 @@ async def list_sessions(
             principal = principal_for_carried_caller(_identity, required=True)
             target_computer = query.computer or _NO_REMOTE_COMPUTER
             request_data: JsonDict = {_INCLUDE_CLOSED_FIELD: query.include_closed}
+            if query.session_ids is not None:
+                request_data[SESSION_IDS_FIELD] = cast(JsonValue, sorted(query.session_ids))
             try:
                 remote_data = await relay_caller_read(
                     _STATE.client,
@@ -393,8 +376,11 @@ async def list_sessions(
                 raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
             for session in remote_sessions:
                 session.computer = target_computer
+            if query.session_ids is not None:
+                # Older peers may ignore the ids field and answer their whole listing.
+                remote_sessions = [session for session in remote_sessions if session.session_id in query.session_ids]
             caller_session_id = request.headers.get("x-caller-session-id")
-            if caller_session_id and not query.all_sessions:
+            if caller_session_id and not query.all_sessions and query.session_ids is None:
                 remote_sessions = [
                     session for session in remote_sessions if session.initiator_session_id == caller_session_id
                 ]
@@ -404,49 +390,18 @@ async def list_sessions(
             observe_session_reminder_summaries(dtos)
             return enrich_human_names(dtos)
 
-        local_sessions = await command_handlers.list_sessions(include_closed=query.include_closed)
-
-        # No cache: serve local sessions only (respect computer filter)
-        if not _STATE.cache:
-            if query.computer and query.computer not in ("local", config.computer.name):
-                return []
-            merged = local_sessions
-        elif query.computer:
-            # With cache, merge local + cached sessions
-            cached_filtered = _STATE.cache.get_sessions(query.computer)
-            if query.computer in ("local", config.computer.name):
-                by_id = {s.session_id: s for s in local_sessions}
-                for s in cached_filtered:
-                    by_id.setdefault(s.session_id, s)
-                merged = list(by_id.values())
-            else:
-                merged = cached_filtered
-        else:
-            cached_sessions = _STATE.cache.get_sessions()
-            by_id = {s.session_id: s for s in local_sessions}
-            for s in cached_sessions:
-                by_id.setdefault(s.session_id, s)
-            merged = list(by_id.values())
-
-        # Telec tool default: show sessions spawned by current caller only.
         caller_session_id = request.headers.get("x-caller-session-id")
-        merged = sessions_reached_by(
-            caller_for_role_resolution(_identity),
-            merged,
-            resolver=RoleResolver(),
-            caller_session=caller_session_id,
+        merged, local_session_ids = await build_local_session_listing(
+            query,
+            _identity,
+            caller_session_id=caller_session_id,
+            cache=_STATE.cache,
         )
-        if caller_session_id and not query.all_sessions:
-            merged = [s for s in merged if s.initiator_session_id == caller_session_id]
-
-        # Job filter: narrows existing visibility results
-        if query.job:
-            merged = [s for s in merged if s.job == query.job]
 
         dtos = [SessionDTO.from_core(s, computer=s.computer) for s in merged]
         dtos = await attach_next_reminders(
             dtos,
-            {session.session_id for session in local_sessions},
+            local_session_ids,
             _STATE.reminder_service,
         )
         observe_session_reminder_summaries(dtos)

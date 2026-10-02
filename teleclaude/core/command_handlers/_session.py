@@ -12,6 +12,7 @@ from teleclaude import __version__
 from teleclaude.agent_registry import LaunchProfile
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
+from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
@@ -54,6 +55,7 @@ from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_company import record_session_company_resolved
 from teleclaude.core.session_listeners import register_listener
+from teleclaude.core.session_listing import SessionListingSelection
 from teleclaude.core.session_startup_message import prepare_startup_message
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import resolve_working_dir
@@ -82,6 +84,7 @@ _UNBOUND_TMUX_NAME = ""
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
+_SESSION_SUBJECT_RESOLUTION_FAILED_EVENT = "session_config_subject_resolution_failed"
 
 
 async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
@@ -340,6 +343,18 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             working_dir_path.mkdir(parents=True, exist_ok=True)
         working_dir = str(working_dir_path)
 
+    config_subject: str | None = None
+    try:
+        subject = resolve_config_subject(working_dir_path)
+        config_subject = subject.to_token() if subject is not None else None
+    except SubjectResolutionError as error:
+        # A malformed user declaration must not refuse session creation; no subject keeps visibility at platform scope.
+        logger.warning(
+            _SESSION_SUBJECT_RESOLUTION_FAILED_EVENT,
+            working_folder=working_dir,
+            error=str(error),
+        )
+
     # Runner-dispatched lifecycle sessions have no human caller and may inherit
     # the daemon's system principal. Establish the chain-root human from the
     # todo's persisted owner so the resolved principal is the owning human, not
@@ -376,6 +391,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         title=title,
         project_path=project_path,
         subdir=subfolder,
+        config_subject=config_subject,
         session_id=session_id,
         command=cmd.command,
         working_slug=working_slug,
@@ -475,16 +491,17 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     return result
 
 
-async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot]:
+async def list_sessions(*, selection: SessionListingSelection) -> list[SessionSnapshot]:
     """List sessions from local database.
 
     Ephemeral request/response for tool/API callers only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
     """
-    if include_closed:
-        sessions = await db.list_sessions(include_closed=True, include_headless=True)
-    else:
-        sessions = await db.list_sessions(all_open=True)
+    sessions = await db.select_sessions_for_listing(
+        selection.subject_tokens,
+        selection.closed_since,
+        selection.session_ids,
+    )
 
     local_name = config.computer.name
     snapshots = [SessionSnapshot.from_db_session(session, computer=local_name) for session in sessions]

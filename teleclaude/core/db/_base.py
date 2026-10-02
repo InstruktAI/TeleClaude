@@ -168,6 +168,7 @@ class DbBase:
             closed_at=DbBase._coerce_datetime(row.closed_at),
             project_path=row.project_path,
             subdir=row.subdir,
+            config_subject=row.config_subject,
             description=row.description,
             initiated_by_ai=bool(row.initiated_by_ai) if row.initiated_by_ai is not None else False,
             initiator_session_id=row.initiator_session_id,

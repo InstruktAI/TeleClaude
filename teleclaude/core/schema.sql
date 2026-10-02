@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     terminal_size TEXT DEFAULT '80x24',
     project_path TEXT,
     subdir TEXT,
+    config_subject TEXT,
     description TEXT,
     initiated_by_ai BOOLEAN DEFAULT 0,
     initiator_session_id TEXT,

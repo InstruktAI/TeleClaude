@@ -8,7 +8,7 @@ import os
 import stat
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from http import HTTPMethod
 from typing import TYPE_CHECKING, Any, Unpack
@@ -91,7 +91,7 @@ REQUEST_WRAP_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
 class RequestOptions:
     """Optional HTTP request inputs."""
 
-    params: dict[str, str] | None = None
+    params: dict[str, str] | list[tuple[str, str]] | None = None
     json_body: JsonBody | None = None
     clearance_scope: ClearanceScope = field(default_factory=ClearanceScope.ungoverned)
 
@@ -551,15 +551,16 @@ class _TelecSessionAPI:
         *,
         include_closed: bool = False,
         all_sessions: bool = False,
+        session_ids: Collection[str] | None = None,
     ) -> list[SessionDTO]:
         """List sessions from all computers or a specific computer."""
-        params: dict[str, str] = {}
-        if computer:
-            params["computer"] = computer
+        params: list[tuple[str, str]] = [("computer", computer)] if computer else []
         if include_closed:
-            params["closed"] = "true"
+            params.append(("closed", "true"))
         if all_sessions:
-            params[_ALL_SESSIONS_PARAM] = _QUERY_TRUE
+            params.append((_ALL_SESSIONS_PARAM, _QUERY_TRUE))
+        if session_ids is not None:
+            params.extend(("id", session_id) for session_id in session_ids)
         resp = await self._request(
             "GET",
             "/sessions",
