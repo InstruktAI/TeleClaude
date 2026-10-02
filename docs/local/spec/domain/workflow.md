@@ -87,7 +87,6 @@ concerned:
   events: the project whose todo or delivery they concern;
 - deployment events: the deployed project;
 - the schedule clock's minute tick: no subject.
-
 <!-- /planned:event-origin-and-subject -->
 
 ## See Also
