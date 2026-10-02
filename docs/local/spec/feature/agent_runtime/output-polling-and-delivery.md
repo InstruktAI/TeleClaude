@@ -423,6 +423,20 @@ Then the observing agent still reads the same substantive output as the session'
 And the silent completion does not replace it with an empty output or deliver it again as new output
 ```
 
+<!-- planned:fix-tmux-pane-snapshot-polling-emits-enoent -->
+#### UC-OPD19: Transient failure to start the tmux client during snapshot collection
+
+```
+Given the polling task is collecting a host-pane snapshot for a live session
+And the configured tmux binary momentarily cannot be started, so no tmux client process exists and no tmux subcommand runs
+When snapshot collection fails for this reason
+Then the polling task does not crash and does not send user-facing error feedback
+And it does not treat the failure as host-pane or session death — no termination and no "session gone" handling runs
+And it skips the current tick and retries snapshot collection on the next poll cadence
+And when the tmux binary can be started again the same polling task resumes delivering output without needing re-registration
+```
+<!-- /planned:fix-tmux-pane-snapshot-polling-emits-enoent -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
