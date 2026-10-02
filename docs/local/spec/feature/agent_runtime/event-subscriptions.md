@@ -27,10 +27,9 @@ principal receive every event. A session working a company's business receives
 only that company's events.
 
 A subscription belongs to the session that made it, and the session can list
-and withdraw its own subscriptions. The event catalog listing is the discovery
-surface: it names the subscribable event types and tells its reader how to
-subscribe to them, and each event type's schema shows its subject assignment
-and payload fields.
+and withdraw its own subscriptions. The event catalog's list and schema views
+tell an agent which types it can subscribe to, how, and on which payload fields
+(`local/projects/teleclaude/spec/feature/event-catalog/event-discovery`).
 
 Subscriptions consume the event catalog as it stands and change neither which
 events the platform emits nor what they carry. The wake rides the platform's
@@ -98,13 +97,7 @@ When it lists its subscriptions
 Then it sees each of its live subscriptions with its event type, delivery mode, and any narrowing
 ```
 
-#### UC-ES7: The catalog listing tells an agent how to subscribe
-
-```gherkin
-Given an agent reads the event catalog listing
-When it looks for how to act on a listed event type
-Then the listing tells it how to subscribe to that event type
-```
+#### UC-ES7
 
 #### UC-ES8: A subscription to an unknown event type is refused
 
@@ -183,13 +176,7 @@ Then no subscription is created
 And the refusal names the field and points the agent to that event type's schema
 ```
 
-#### UC-ES19: An event type's schema shows what an agent can subscribe on
-
-```gherkin
-Given an agent wants to subscribe to a catalog event type
-When it views that event type's schema
-Then it sees the event's metadata, its subject assignment, and every payload field the event type declares
-```
+#### UC-ES19
 
 ## Known caveats
 

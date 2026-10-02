@@ -84,6 +84,21 @@ The company business domains the platform hosts state their own subjects
 Hosting their handlers confers no ownership of their subjects.
 
 <!-- /planned:event-origin-and-subject -->
+<!-- planned:event-subscriptions -->
+### Discovery and visibility
+
+- **Discovery views:** the event list names every registered type and tells
+  its reader how an agent subscribes to a type; the schema view shows one
+  type's metadata, subject assignment, and payload fields
+  (`local/projects/teleclaude/spec/feature/event-catalog/event-discovery`).
+  Both read the registry an agent's CLI validates a subscription request
+  against, so what an agent discovers is what it may subscribe on.
+- **Visibility:** an event's declared visibility names the computers whose
+  consumers it concerns. A local event concerns only the computer that emitted
+  it; a cluster or public event concerns every computer. Every computer reads
+  the shared stream, so a consumer that acts per computer applies visibility
+  where it receives the event.
+<!-- /planned:event-subscriptions -->
 ### Ownership boundary
 
 The catalog owns registry shape, discovery metadata, and delivery-envelope

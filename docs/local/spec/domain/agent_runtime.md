@@ -143,6 +143,39 @@ TeleClaudeNext repository.
   validate a selection and to list memberships; this context never re-derives
   membership.
 
+<!-- planned:event-subscriptions -->
+- **Owns (event subscriptions):** an agent session's standing requests to be
+  woken by platform stream events
+  (`local/projects/teleclaude/spec/feature/agent_runtime/event-subscriptions`).
+  The term is distinct from a procedure's declared event subscriptions, which
+  `context` publishes and `integration` routes. A subscription is a durable
+  record on the computer that hosts its session, owned by that session and
+  removed when the session closes; the session lists and withdraws only its
+  own. Each computer reads every platform stream event and wakes the local
+  sessions whose live subscriptions it matches. An event matches when:
+  - its type is the subscribed type, and every narrowing value equals the
+    named payload field;
+  - its declared visibility concerns this computer;
+  - `identity`'s reach for the principal at the session's lineage root admits
+    the event's subject and carried owner;
+  - for a session operating under a company, the event concerns that company:
+    its subject is that company, or a project whose carried owner is that
+    company. The session company is business scope, so a principal's wider
+    reach never widens it
+    (`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
+  A matched event is handed to the session through control delivery at most
+  once per subscription and event, and a single-delivery subscription is spent
+  in the same act. Delivery past that handoff is control delivery's contract.
+- **Consumes (event subscriptions):** `event-catalog`'s registry and type
+  declarations, read only where an agent's CLI accepts a subscription request,
+  which is the one place a request is validated
+  (`local/projects/teleclaude/adr/0105-event-access-follows-the-subject-its-producer-states`);
+  the envelope facts each event carries; and `identity`'s published reach
+  record test, resolved per principal and held until a declaration it reads
+  changes. This context restates neither the reach rule nor a type's
+  declaration.
+<!-- /planned:event-subscriptions -->
+
 <!-- planned:event-origin-and-subject -->
 ### Event subjects
 
