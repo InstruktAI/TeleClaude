@@ -11,7 +11,9 @@ from teleclaude.core.reconciliation.template_installation import HomeTemplateMat
 
 _ACTIVATED_MESSAGE = "TeleClaude home history activated"
 _REFUSED_MESSAGE = "TeleClaude home history was not activated; these paths are outside the retained set:"
-_GATE_REFUSED_MESSAGE = "TeleClaude home history was not activated because the commit gate refused it:"
+_GATE_REFUSED_MESSAGE = (
+    "TeleClaude home history was not activated because the commit gate was unavailable or refused the record:"
+)
 _BREACH_MESSAGE = "Existing history contains paths outside the retained set:"
 _HELD_MESSAGE = "Template targets were held because of unrecorded changes:"
 _HELD_REMEDY_MESSAGE = "Record or discard each change, then rerun install."

@@ -214,7 +214,11 @@ _MODE_EXECUTABLE_BIT = stat.S_IXUSR
 _NEWLINE_BYTES = b"\n"
 _TAB = "\t"
 _GATE_REFUSAL_FALLBACK = "The commit gate refused activation without diagnostic output."
-_GATE_UNAVAILABLE = "The installed pre-commit gate is unavailable to the activation commit."
+_GATE_INSTALLATION_FAILED = "TeleClaude's pre-commit hook was not installed (outcome: {outcome})."
+_GATE_HOOK_PATH_MISMATCH = "Git's configured pre-commit hook path differs from GitPython's hook path."
+_GATE_HOOK_MISSING = "GitPython's pre-commit hook file is missing."
+_GATE_HOOK_NOT_EXECUTABLE = "GitPython's pre-commit hook is not executable."
+_GATE_VERIFICATION_FAILED = "Could not verify the installed pre-commit hook: {error}"
 _UTF8 = "utf-8"
 _ASCII = "ascii"
 _REPLACEMENT = "replace"
@@ -477,11 +481,13 @@ def _snapshot_template_contents(
 
 def _require_commit_gate(repository: Repo, hook_outcomes: Mapping[str, HookConvergenceOutcome]) -> None:
     """Refuse when GitPython cannot execute the installed pre-commit hook."""
-    if hook_outcomes.get(_PRE_COMMIT_HOOK_NAME) not in (
+    outcome = hook_outcomes.get(_PRE_COMMIT_HOOK_NAME)
+    if outcome not in (
         HookConvergenceOutcome.WRITTEN,
         HookConvergenceOutcome.UNCHANGED,
     ):
-        raise _CommitGateUnavailable(_GATE_UNAVAILABLE)
+        label = outcome.value if outcome is not None else "missing"
+        raise _CommitGateUnavailable(_GATE_INSTALLATION_FAILED.format(outcome=label))
     try:
         hook_path = Path(
             _run_git_command(
@@ -491,12 +497,14 @@ def _require_commit_gate(repository: Repo, hook_outcomes: Mapping[str, HookConve
         if not hook_path.is_absolute():
             hook_path = Path(repository.working_tree_dir or repository.git_dir) / hook_path
         gitpython_hook = Path(repository.git_dir) / _GITPYTHON_HOOKS_DIRECTORY / _PRE_COMMIT_HOOK_NAME
-        if hook_path.resolve() != gitpython_hook.resolve() or not gitpython_hook.is_file():
-            raise _CommitGateUnavailable(_GATE_UNAVAILABLE)
+        if hook_path.resolve() != gitpython_hook.resolve():
+            raise _CommitGateUnavailable(_GATE_HOOK_PATH_MISMATCH)
+        if not gitpython_hook.is_file():
+            raise _CommitGateUnavailable(_GATE_HOOK_MISSING)
         if not os.access(gitpython_hook, os.X_OK):
-            raise _CommitGateUnavailable(_GATE_UNAVAILABLE)
+            raise _CommitGateUnavailable(_GATE_HOOK_NOT_EXECUTABLE)
     except (GitCommandError, OSError) as error:
-        raise _CommitGateUnavailable(_GATE_UNAVAILABLE) from error
+        raise _CommitGateUnavailable(_GATE_VERIFICATION_FAILED.format(error=error)) from error
 
 
 def _commit_candidates(repository: Repo, paths: tuple[Path, ...]) -> None:
