@@ -103,44 +103,26 @@ def resolve_post_merge_activation_range(project_root: Path) -> ActivationRange:
     )
 
 
-def activation_range_owes_action(
+def activation_range_action_paths(
     project_root: Path,
     activation_range: ActivationRange,
     action_id: str,
-    *,
-    changed_paths: tuple[str, ...] | None = None,
-) -> bool:
-    """Check that one literal range is on canonical main and owes the named action."""
+) -> tuple[str, ...] | None:
+    """Return one eligible action's changed paths after validating its literal range."""
     root = project_root.resolve()
     if root != resolve_project_root(root):
-        return False
+        return None
     try:
         repository = Repo(str(root))
         if repository.head.is_detached or repository.active_branch.name != _MAIN_BRANCH_NAME:
-            return False
+            return None
         if not _is_literal_range(repository, activation_range):
-            return False
-        changed_files = changed_paths if changed_paths is not None else _changed_files(repository, activation_range)
+            return None
+        changed_files = _changed_files(repository, activation_range)
         action_ids = main_only_maintenance_action_ids_for_files(list(changed_files), root)
     except _GIT_FAILURES:
-        return False
-    return action_id in action_ids
-
-
-def activation_range_changed_paths(project_root: Path, activation_range: ActivationRange) -> tuple[str, ...] | None:
-    """Return changed paths for one literal canonical-main activation range."""
-    root = project_root.resolve()
-    if root != resolve_project_root(root):
         return None
-    try:
-        repository = Repo(str(root))
-        if repository.head.is_detached or repository.active_branch.name != _MAIN_BRANCH_NAME:
-            return None
-        if not _is_literal_range(repository, activation_range):
-            return None
-        return _changed_files(repository, activation_range)
-    except _GIT_FAILURES:
-        return None
+    return changed_files if action_id in action_ids else None
 
 
 def record_activation(project_root: Path, activation_range: ActivationRange) -> bool:

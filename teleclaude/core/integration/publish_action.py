@@ -11,8 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.checkpoint_model import ActivationRange
 from teleclaude.core.integration.post_commit_maintenance import (
     _SYNC_ACTION_ID,
-    activation_range_changed_paths,
-    activation_range_owes_action,
+    activation_range_action_paths,
 )
 from teleclaude.sync import HomePublicationOutcome, PublicationMode, publish_homes
 
@@ -26,13 +25,8 @@ _PUBLISH_FAILED = 1
 
 def run_sync_action(activation_range: ActivationRange, project_root: Path) -> int:
     """Publish only a literal range whose main-only maintenance owes ``sync``."""
-    changed_paths = activation_range_changed_paths(project_root, activation_range)
-    if changed_paths is None or not activation_range_owes_action(
-        project_root,
-        activation_range,
-        _SYNC_ACTION_ID,
-        changed_paths=changed_paths,
-    ):
+    changed_paths = activation_range_action_paths(project_root, activation_range, _SYNC_ACTION_ID)
+    if changed_paths is None:
         print(_PUBLISH_RANGE_NOT_OWED, file=sys.stderr)
         return _PUBLISH_FAILED
     run = publish_homes(project_root, PublicationMode.OWED, changed_paths=list(changed_paths))
