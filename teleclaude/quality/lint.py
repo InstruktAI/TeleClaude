@@ -31,7 +31,11 @@ from teleclaude.quality.scope import (
     resolve_workspace_scope_resolution,
     validate_scoped_paths,
 )
-from teleclaude.quality.selection import QualityCheckFamily
+from teleclaude.quality.selection import (
+    QualityCheckFamily,
+    group_paths_by_grading_root,
+    resolve_repository_grading_root,
+)
 from teleclaude.resource_validation import validate_all_artifacts, validate_jobs_config
 
 __all__ = [
@@ -50,6 +54,7 @@ _SKIP_SNIPPETS_FLAG = "--skip-snippets"
 _NO_FILES_FLAG = "--no-files"
 _FULL_RUN_FLAG = "--full-run"
 _CONTENT_ROOT_FULL_RUN_ERROR = "A content-root validation must be path-scoped."
+_CONTENT_ROOT_GRADING_ROOT_MISSING_ERROR = "Candidate validation has no readable repository grading root."
 _EMPTY_STRING = ""
 
 
@@ -286,17 +291,27 @@ class _SourceValidationStep:
         content_root: Path | None,
         validate_artifacts: bool,
     ) -> list[str]:
-        """Validate each path-scoped source against its owning home root."""
+        """Validate each path-scoped source against its selected root."""
         source = TreeSource.active_index(self._project_root)
-        grouped = group_paths_by_owning_home(
-            sorted(_normalize_targets(targets, self._project_root)),
-            source,
-        )
+        normalized_targets = sorted(_normalize_targets(targets, self._project_root))
+        grouped_paths: dict[Path, list[str]] = {}
+        if content_root is None:
+            owner_groups = group_paths_by_owning_home(normalized_targets, source)
+            for owner, repository_paths in owner_groups.items():
+                grouped_paths[owner.root] = [owner.relative_path(path) for path in repository_paths]
+        else:
+            grading_root = resolve_repository_grading_root(self._project_root, source)
+            if grading_root is None:
+                raise ValueError(_CONTENT_ROOT_GRADING_ROOT_MISSING_ERROR)
+            grading_groups = group_paths_by_grading_root(normalized_targets, source, grading_root)
+            for grading_root_entry, repository_paths in grading_groups.items():
+                grouped_paths[grading_root_entry.root] = [
+                    grading_root_entry.relative_path(path) for path in repository_paths
+                ]
         findings: list[str] = []
         validation_root = content_root.resolve() if content_root is not None else self._project_root.resolve()
-        for home, repository_paths in grouped.items():
-            home_root = validation_root / home.root
-            home_paths = [home.relative_path(path) for path in repository_paths]
+        for relative_root, home_paths in grouped_paths.items():
+            home_root = validation_root / relative_root
             if validate_artifacts:
                 findings.extend(validate_all_artifacts(home_root, paths=home_paths))
             if str(ConfigFileName.OVERLAY) in home_paths:

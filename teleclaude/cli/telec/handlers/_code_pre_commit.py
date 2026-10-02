@@ -15,7 +15,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
 from teleclaude.capabilities import resolve_tier_permissions
 from teleclaude.cli.telec.handlers._code_git_state import working_tree_snapshot
-from teleclaude.config.context_root import OwningHome, group_paths_by_owning_home
 from teleclaude.config.loader import validate_staged_declaration
 from teleclaude.git import (
     BadName,
@@ -36,6 +35,11 @@ from teleclaude.quality.gate import (
     select_quality_check_families,
     select_quality_gate_legs,
 )
+from teleclaude.quality.selection import (
+    GradingRoot,
+    group_paths_by_grading_root,
+    resolve_repository_grading_root,
+)
 
 _CACHED = "--cached"
 _NAME_STATUS = "--name-status"
@@ -55,8 +59,7 @@ _PRE_COMMIT_GATE_ERROR = "ERROR: commit quality gate failed: {reason}"
 _PRE_COMMIT_GATE_EVENT = "commit_quality_gate"
 _PRE_COMMIT_HOOK_NAME = "pre-commit"
 _ROOT_CONFIG_PATH = ConfigFileName.OVERLAY.value
-_ROOT_RELATIVE_PATH = Path(".")
-_ROOT_DECLARATION_MISSING = "The repository-root declaration is missing from the commit index."
+_ROOT_DECLARATION_MISSING = "The repository root has no readable declaration in the candidate tree or on disk."
 _STAGED_PATH_RECORD_MALFORMED = "Git returned a malformed staged path status record."
 _STAGED_PATH_STATUS_INVALID = "Git returned an unsupported staged path status: {status}"
 _STAGED_MARKDOWN_SUFFIX = ".md"
@@ -107,9 +110,9 @@ class StagedPath:
 
 @dataclass(frozen=True)
 class HomeGate:
-    """One owning home, its staged paths, and the quality legs it carries."""
+    """One grading root, its staged paths, and the quality legs it carries."""
 
-    owner: OwningHome
+    grading_root: GradingRoot
     root: Path
     changes: tuple[StagedPath, ...]
     legs: frozenset[QualityGateLeg]
@@ -153,7 +156,8 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
     repo = Repo(str(project_root))
     tree_source = TreeSource.active_index(project_root)
     tree_paths = list_tree_paths(tree_source)
-    if _ROOT_CONFIG_PATH not in tree_paths:
+    grading_root = resolve_repository_grading_root(project_root, tree_source)
+    if grading_root is None:
         raise ValueError(_ROOT_DECLARATION_MISSING)
 
     changes = _read_staged_paths(repo)
@@ -162,18 +166,8 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
         for finding in declaration_findings:
             print(finding, file=sys.stderr)
         return 1
-    root_paths = group_paths_by_owning_home(
-        [_ROOT_CONFIG_PATH, *(change.path for change in changes)],
-        tree_source,
-        tree_paths=set(tree_paths),
-    )
-    root_owners = [
-        owner for owner, paths in root_paths.items() if owner.root == _ROOT_RELATIVE_PATH and _ROOT_CONFIG_PATH in paths
-    ]
-    if not root_owners:
-        raise ValueError(_ROOT_DECLARATION_MISSING)
-
-    homes = _select_home_gates(project_root, changes, root_paths, decision)
+    grouped_paths = group_paths_by_grading_root([change.path for change in changes], tree_source, grading_root)
+    homes = _select_home_gates(project_root, changes, grouped_paths, decision)
     candidates = frozenset(change.path for change in changes if change.status in _STAGED_ACMR_STATUSES)
     participating_paths = frozenset(
         change.path for home in homes if home.legs for change in home.changes if change.status in _STAGED_ACMR_STATUSES
@@ -253,24 +247,32 @@ def _read_staged_paths(repo: Repo) -> list[StagedPath]:
 def _select_home_gates(
     project_root: Path,
     changes: list[StagedPath],
-    grouped_paths: dict[OwningHome, list[str]],
+    grouped_paths: dict[GradingRoot, list[str]],
     decision: GateDecision,
 ) -> list[HomeGate]:
-    """Resolve one gate selection per owning home from its published permissions."""
+    """Resolve one gate selection per grading root from its published permissions."""
     change_by_path = {change.path: change for change in changes}
     homes: list[HomeGate] = []
-    for owner, paths in sorted(grouped_paths.items(), key=lambda item: item[0].root.as_posix()):
+    for grading_root, paths in sorted(grouped_paths.items(), key=lambda item: item[0].root.as_posix()):
         home_changes = tuple(change_by_path[path] for path in sorted(set(paths)) if path in change_by_path)
         if not home_changes:
             continue
-        home_root = (project_root / owner.root).resolve()
+        home_root = (project_root / grading_root.root).resolve()
         permissions = resolve_tier_permissions(home_root)
         families = select_quality_check_families(permissions.project_subscriptions, permissions)
         legs = select_quality_gate_legs(permissions.project_subscriptions, permissions)
-        owner_name = owner.root.as_posix()
+        owner_name = grading_root.root.as_posix()
         decision.homes.append(owner_name)
         decision.legs[owner_name] = sorted(leg.value for leg in legs)
-        homes.append(HomeGate(owner=owner, root=home_root, changes=home_changes, legs=legs, families=families))
+        homes.append(
+            HomeGate(
+                grading_root=grading_root,
+                root=home_root,
+                changes=home_changes,
+                legs=legs,
+                families=families,
+            )
+        )
     return homes
 
 
@@ -307,7 +309,9 @@ def _run_home_gate(
     """Run native and guardrail checks for one selected home."""
     first_failure = 0
     native_paths = sorted(
-        home.owner.relative_path(change.path) for change in home.changes if change.status in _STAGED_ACMR_STATUSES
+        home.grading_root.relative_path(change.path)
+        for change in home.changes
+        if change.status in _STAGED_ACMR_STATUSES
     )
     if QualityGateLeg.NATIVE in home.legs and native_paths:
         native_result = run_lint_gate(
@@ -329,7 +333,7 @@ def _run_home_gate(
     )
     guardrail_result = run_home_guardrail_gate(
         project_root,
-        home.owner.root,
+        home.grading_root.root,
         changed_paths,
         deletion_tree_paths,
         child_environment,
