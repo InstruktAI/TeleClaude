@@ -123,7 +123,6 @@ event certain to follow the answer, so a reminder anchored on it returns the
 work without firing inside the answer or after a guessed delay, as a timed
 reminder would.
 
-
 ## Scope
 
 Every agent session using the platform reminder service. Infrastructure

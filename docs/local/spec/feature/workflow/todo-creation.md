@@ -292,7 +292,6 @@ And `human_involved` is `true`, derived mechanically from the human door
 And the emitted `workflow.todo.created` payload carries the same creation record
 ```
 
-
 #### UC-WTC9: Agent filing records the complete lineage chain in one value
 
 ```gherkin

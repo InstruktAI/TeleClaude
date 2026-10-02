@@ -23,21 +23,13 @@ Create and maintain concise, schema-compliant tool specifications that scale thr
 5. Keep `Allowed values` short; if constraints are minimal, state them directly.
 6. Document only operational edge cases in `Known caveats`.
 
-
-
-
 ## Outputs
 
 - A discoverable tool spec in `spec/tools/`.
 - Updated `spec/tools/baseline.md` ordering if needed.
 
-
-
-
 ## Recovery
 
-
 - If docs validation reports unknown-section findings, remove non-schema headings — validation always blocks, so `telec code commit` fails until they are fixed.
-
 
 - If tool details become noisy, split by primitive instead of expanding a single spec.

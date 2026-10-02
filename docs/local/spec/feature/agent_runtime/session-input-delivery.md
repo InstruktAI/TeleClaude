@@ -310,7 +310,6 @@ And platform commands, additional context, peer input, reminders, wakes, checkpo
 And no session-wide human-involvement state is created or persisted
 ```
 
-
 #### UC-SID16: Additional context carries no involvement semantics
 
 ```gherkin

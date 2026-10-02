@@ -61,8 +61,8 @@ Organizational material maps to taxonomy types. The analysis session decides
 which snippets to produce based on what it finds — this mapping is guidance,
 not a fixed checklist.
 
-| Source Material                                      | Taxonomy Type | Snippet ID Pattern                      |
-| ---------------------------------------------------- | ------------- | --------------------------------------- |
+| Source Material                                      | Taxonomy Type | Snippet ID Pattern                            |
+| ---------------------------------------------------- | ------------- | --------------------------------------------- |
 | Company values, engineering principles, culture docs | `principle`   | `local/companies/{company}/principle/{topic}` |
 | Org structure, team topology, domain model, products | `concept`     | `local/companies/{company}/concept/{topic}`   |
 | HR policies, security standards, compliance rules    | `policy`      | `local/companies/{company}/policy/{topic}`    |

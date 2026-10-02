@@ -17,7 +17,6 @@ Enable one AI session (the **Initiator**) to spawn and supervise another (the **
 
 This design covers the dispatch journey. Storage internals for the listener registry live in `session-listeners`. The state contract that this flow obeys lives in `session-subscriptions`.
 
-
 ### The personal-assistant launch
 
 `run-pa` is a third invocation beside `run` and `start`. It carries a brief and no
@@ -31,7 +30,6 @@ conversation.
 
 The launch's ownership is stated in this cross-cutting design. The agent-runtime
 domain anchor carries no forward architecture.
-
 
 ## Inputs/Outputs
 
@@ -157,7 +155,6 @@ sequenceDiagram
     ConvDelivery->>Initiator: bundled turn output via direct link
 ```
 
-
 ### 4a. The personal-assistant launch
 
 ```mermaid
@@ -183,7 +180,6 @@ sequenceDiagram
         Create-->>API: session id
     end
 ```
-
 
 ### 4. Caller cleanup
 
