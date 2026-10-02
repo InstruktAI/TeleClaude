@@ -424,11 +424,11 @@ And the silent completion does not replace it with an empty output or deliver it
 ```
 
 <!-- planned:fix-tmux-pane-snapshot-polling-emits-enoent -->
-#### UC-OPD19: Transient failure to start the tmux client during snapshot collection
+#### UC-OPD19: Tmux binary momentarily not found when starting snapshot collection
 
 ```
 Given the polling task is collecting a host-pane snapshot for a live session
-And the configured tmux binary momentarily cannot be started, so no tmux client process exists and no tmux subcommand runs
+And starting the configured tmux binary momentarily fails because a file required to start it is not found, so no tmux client process exists and no tmux subcommand runs
 When snapshot collection fails for this reason
 Then the polling task does not crash and does not send user-facing error feedback
 And it does not treat the failure as host-pane or session death — no termination and no "session gone" handling runs
