@@ -31,6 +31,7 @@ _PUBLISHED_HOME_LINE = "{home}: published"
 _UNCHANGED_HOME_LINE = "{home}: unchanged"
 _SKIPPED_HOME_LINE = "{home}: skipped ({error})"
 _FAILED_HOME_LINE = "{home}: failed ({error})"
+_DIAGNOSTIC_ERROR_LINE = "  {cause}"
 _FAILED_EXIT_CODE = 1
 _USAGE_EXIT_CODE = 2
 _OUTCOME_LINES = {
@@ -93,5 +94,7 @@ def handle_sync(args: list[str]) -> None:
         else:
             message = message.format(home=result.home.root.as_posix())
         print(message)
+        if result.diagnostic_error is not None:
+            print(_DIAGNOSTIC_ERROR_LINE.format(cause=result.diagnostic_error))
     if run.exit_code:
         raise SystemExit(_FAILED_EXIT_CODE)
