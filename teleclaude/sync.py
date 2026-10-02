@@ -69,7 +69,6 @@ _HOME_DECLARATION_FAILED = "Home declaration could not be read: {error}"
 _HOME_BUILD_FAILED = "Home build failed: {error}"
 _HOME_INSTALL_FAILED = "Home install failed: {error}"
 _HOME_DIAGNOSTIC_FAILED = "Findings unavailable: {error}"
-_HOME_DIAGNOSTIC_EVENT = "home_publication_skip_diagnosis"
 _HOME_PUBLICATION_EVENT = "home_publication_outcome"
 _HOME_PUBLICATION_RUN_EVENT = "home_publication_run"
 _HOME_REFRESH_FAILED_EVENT = "home_entrypoint_refresh_failed"
@@ -502,7 +501,6 @@ def _skipped_home(
     diagnostic: LintGateResult | None = None
     diagnostic_error: str | None = None
     if canonical_root is not None and snapshot_root is not None and source is not None and tree_paths is not None:
-        logger.info(_HOME_DIAGNOSTIC_EVENT, home=home.root.as_posix())
         try:
             grouped = group_paths_by_owning_home_tolerant(tree_paths, source, tree_paths=set(tree_paths))
             candidates = next(
@@ -624,7 +622,12 @@ def _finish_run(
         _write_home_generations(canonical_root, current_state)
     ordered = tuple(results[root] for root in sorted(results))
     for result in ordered:
-        logger.info(
+        log = (
+            logger.error
+            if result.outcome in (HomePublicationOutcome.SKIPPED, HomePublicationOutcome.FAILED)
+            else logger.info
+        )
+        log(
             _HOME_PUBLICATION_EVENT,
             home=result.home.root.as_posix(),
             kind=result.home.kind.value if result.home.kind is not None else None,
