@@ -89,11 +89,11 @@ _AGENTS_ENABLED_FLAG = "--agents-enabled"
 _DOCS_ENABLED_FLAG = "--docs-enabled"
 _AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing."
 _DOCS_ENABLED_HELP = "Enable or disable documentation processing."
-_PROJECT_MASTER_FILENAME = "AGENTS.master.md"
+PROJECT_MASTER_FILENAME = "AGENTS.master.md"
 _CODEX_AGENT_NAME = "codex"
 _GEMINI_AGENT_NAME = "gemini"
 _COMMANDS_STAGING_DIRECTORY = "commands"
-_UTF8 = "utf-8"
+UTF8 = "utf-8"
 _NEWLINE = "\n"
 _SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
 _SKILL_KIND = "skill"
@@ -111,24 +111,24 @@ _GENERATED_REQUIRED_READ_EXPANDED = "generated_required_read_expanded"
 _INLINE_REF_PREFIX = "@"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "local"
 _LOCAL_AGENTS_SOURCE_LABEL = "agents/local"
-_TIER_PUBLISHED_DOCS_RELATIVE_PATH = Path("docs") / "global"
+TIER_PUBLISHED_DOCS_RELATIVE_PATH = Path("docs") / "global"
 _MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
 _MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
 _MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE = "- `{slug}`"
-_SOURCE_PROJECT_KEY = "source_project"
+SOURCE_PROJECT_KEY = "source_project"
 _SNIPPETS_TREE_NAME = "snippets"
 _SNIPPETS_TREE_PATH = Path(_SNIPPETS_TREE_NAME)
-_INDEX_FILE_NAME = "index.yaml"
-_INDEX_SNIPPETS_KEY = "snippets"
+INDEX_FILE_NAME = "index.yaml"
+INDEX_SNIPPETS_KEY = "snippets"
 _INDEX_ID_KEY = "id"
 _INDEX_DOMAIN_KEY = "domain"
-_INDEX_PROJECT_ROOT_KEY = "project_root"
-_INDEX_SNIPPETS_ROOT_KEY = "snippets_root"
-_INDEX_SCOPE_ROOT = "~/.teleclaude"
-_INDEX_DEPLOY_ROOT = "~/.teleclaude/docs"
+INDEX_PROJECT_ROOT_KEY = "project_root"
+INDEX_SNIPPETS_ROOT_KEY = "snippets_root"
+INDEX_SCOPE_ROOT = "~/.teleclaude"
+INDEX_DEPLOY_ROOT = "~/.teleclaude/docs"
 _INDEX_SCOPE_KEY = "scope"
-_TIER_COMPANY_DEPLOY_DIRNAME = "companies"
-_TIER_PERSON_DEPLOY_DIRNAME = "people"
+TIER_COMPANY_DEPLOY_DIRNAME = "companies"
+TIER_PERSON_DEPLOY_DIRNAME = "people"
 _COMMITTED_OWNER_COLLISION = "committed publication conflicts with an already deployed snippet id: {snippet_id}"
 #: The generated per-domain record of who published a deployed domain and the
 #: trigger that publisher declared in the published revision.
@@ -147,14 +147,14 @@ _UNKNOWN_PUBLISHER = "unknown publisher"
 #: Deployed top-level trees that are not domains: the support fragments and the
 #: tier contributions.
 _NON_DOMAIN_DEPLOY_DIRNAMES: frozenset[str] = frozenset(
-    {_SNIPPETS_TREE_NAME, _TIER_COMPANY_DEPLOY_DIRNAME, _TIER_PERSON_DEPLOY_DIRNAME}
+    {_SNIPPETS_TREE_NAME, TIER_COMPANY_DEPLOY_DIRNAME, TIER_PERSON_DEPLOY_DIRNAME}
 )
 _EMPTY_STRING = ""
 _REQUIRED_READ_NOT_FOUND = "Required read not found: {ref}"
 _UNRESOLVED_IMPORT = "Generated entrypoint {entrypoint} is not self-contained; it carries imports: {tokens}"
-_GENERATED_ENTRYPOINT_FILENAME = "AGENTS.md"
+GENERATED_ENTRYPOINT_FILENAME = "AGENTS.md"
 _HOME_MASTER_INFLATION_FAILED = "Home master {master} cannot be compiled: {cause}"
-_HELP_DESK_DIRNAME = "help-desk"
+HELP_DESK_DIRNAME = "help-desk"
 _PUBLICATION_BUILD_RESULT_REQUIRED = "Committed distribution did not return a publication build."
 _PUBLICATION_DOCUMENTATION_TARGET_REQUIRED = "Publication build lost its documentation target."
 _OUT_OF_REACH_COMMAND_WARNING = "out_of_reach_global_command_excluded"
@@ -1317,7 +1317,7 @@ def _write_domain_publisher_record(staged_domain: Path, *, domain: str, publishe
             width=1000,
             allow_unicode=True,
         ),
-        encoding=_UTF8,
+        encoding=UTF8,
     )
 
 
@@ -1335,7 +1335,7 @@ def _read_domain_publisher_records(docs_root: Path) -> dict[str, DomainPublisher
     if not docs_root.is_dir():
         return records
     for record_path in sorted(docs_root.glob(f"*/{_PUBLISHER_RECORD_FILENAME}")):
-        payload = yaml.safe_load(record_path.read_text(encoding=_UTF8))
+        payload = yaml.safe_load(record_path.read_text(encoding=UTF8))
         if not isinstance(payload, dict):
             raise ValueError(_MALFORMED_PUBLISHER_RECORD.format(path=record_path))
         domain = payload.get(_PUBLISHER_RECORD_DOMAIN_KEY)
@@ -1358,7 +1358,7 @@ def _live_global_entries(docs_root: Path) -> list[SnippetIndexEntry]:
     """Return a generation's non-pending global-scope merged-index entries."""
     return [
         entry
-        for entry in _load_index_entries(docs_root / _INDEX_FILE_NAME).values()
+        for entry in _load_index_entries(docs_root / INDEX_FILE_NAME).values()
         if entry.get(_INDEX_SCOPE_KEY) == SnippetScope.GLOBAL.value and not _is_pending(entry)
     ]
 
@@ -1371,7 +1371,7 @@ def _require_domain_publisher_records(staged_root: Path) -> None:
         domain = entry.get(_INDEX_DOMAIN_KEY)
         if not isinstance(domain, str) or domain in records:
             continue
-        publisher = entry.get(_SOURCE_PROJECT_KEY)
+        publisher = entry.get(SOURCE_PROJECT_KEY)
         unrecorded.setdefault(domain, set()).add(publisher if isinstance(publisher, str) else _UNKNOWN_PUBLISHER)
     if unrecorded:
         named = ", ".join(
@@ -1425,7 +1425,7 @@ def committed_retired_outputs(project_root: Path) -> list[Path]:
     checkout holds as ignored, untracked files. A tracked file of that name is
     the project's own and is never reported.
     """
-    docs_global = project_root / _TIER_PUBLISHED_DOCS_RELATIVE_PATH
+    docs_global = project_root / TIER_PUBLISHED_DOCS_RELATIVE_PATH
     if not docs_global.is_dir():
         return []
     return [
@@ -1541,7 +1541,7 @@ def materialize_global_snippets(mother: Publisher | None, staged_root: Path) -> 
         shutil.copytree(source, staged_root / "snippets", symlinks=False)
 
 
-def _index_entry_sort_key(entry: object) -> str:
+def index_entry_sort_key(entry: object) -> str:
     """Return a stable identifier key for either a decoded row or opaque entry."""
     if not isinstance(entry, Mapping):
         return _EMPTY_STRING
@@ -1710,19 +1710,19 @@ def _materialize_committed_owner(
     """
     if deployed_root.is_dir():
         shutil.copytree(deployed_root, staged_root, dirs_exist_ok=True, symlinks=False)
-    deployed_index = deployed_root / _INDEX_FILE_NAME
-    existing_payload = yaml.safe_load(deployed_index.read_text(encoding=_UTF8)) if deployed_index.is_file() else {}
-    existing_entries = existing_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
+    deployed_index = deployed_root / INDEX_FILE_NAME
+    existing_payload = yaml.safe_load(deployed_index.read_text(encoding=UTF8)) if deployed_index.is_file() else {}
+    existing_entries = existing_payload.get(INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
     if not isinstance(existing_entries, list):
         existing_entries = []
     retained: list[object] = [
         entry
         for entry in existing_entries
-        if not isinstance(entry, dict) or entry.get(_SOURCE_PROJECT_KEY) != current.slug
+        if not isinstance(entry, dict) or entry.get(SOURCE_PROJECT_KEY) != current.slug
     ]
     owned_domains: set[str] = set()
     for entry in existing_entries:
-        if not isinstance(entry, dict) or entry.get(_SOURCE_PROJECT_KEY) != current.slug:
+        if not isinstance(entry, dict) or entry.get(SOURCE_PROJECT_KEY) != current.slug:
             continue
         domain = entry.get(_INDEX_DOMAIN_KEY)
         if isinstance(domain, str):
@@ -1755,9 +1755,9 @@ def _materialize_committed_owner(
         source_snippets = current.docs_global / _SNIPPETS_TREE_PATH
         if source_snippets.is_dir():
             shutil.copytree(source_snippets, staged_snippets, symlinks=False)
-    source_index = current.docs_global / _INDEX_FILE_NAME
-    source_payload = yaml.safe_load(source_index.read_text(encoding=_UTF8)) if source_index.is_file() else {}
-    source_entries = source_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(source_payload, dict) else []
+    source_index = current.docs_global / INDEX_FILE_NAME
+    source_payload = yaml.safe_load(source_index.read_text(encoding=UTF8)) if source_index.is_file() else {}
+    source_entries = source_payload.get(INDEX_SNIPPETS_KEY, []) if isinstance(source_payload, dict) else []
     if not isinstance(source_entries, list):
         source_entries = []
     retained_ids = {
@@ -1773,19 +1773,19 @@ def _materialize_committed_owner(
         if isinstance(snippet_id, str) and snippet_id in retained_ids:
             raise DocsPublisherResolutionError(_COMMITTED_OWNER_COLLISION.format(snippet_id=snippet_id))
     merged_entries: list[object] = [*retained, *incoming]
-    merged_entries.sort(key=_index_entry_sort_key)
-    (staged_root / _INDEX_FILE_NAME).write_text(
+    merged_entries.sort(key=index_entry_sort_key)
+    (staged_root / INDEX_FILE_NAME).write_text(
         yaml.safe_dump(
             {
-                _INDEX_PROJECT_ROOT_KEY: _INDEX_SCOPE_ROOT,
-                _INDEX_SNIPPETS_ROOT_KEY: _INDEX_DEPLOY_ROOT,
-                _INDEX_SNIPPETS_KEY: merged_entries,
+                INDEX_PROJECT_ROOT_KEY: INDEX_SCOPE_ROOT,
+                INDEX_SNIPPETS_ROOT_KEY: INDEX_DEPLOY_ROOT,
+                INDEX_SNIPPETS_KEY: merged_entries,
             },
             sort_keys=False,
             width=1000,
             allow_unicode=True,
         ),
-        encoding=_UTF8,
+        encoding=UTF8,
     )
     current_domains = {
         domain: publisher for domain, publisher in owner_by_domain.items() if publisher.slug == current.slug
@@ -1845,8 +1845,8 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
             dirs.clear()
             continue
         dirs[:] = [d for d in dirs if d not in skip_dirs]
-        if _PROJECT_MASTER_FILENAME in files:
-            matches.append(root_path / _PROJECT_MASTER_FILENAME)
+        if PROJECT_MASTER_FILENAME in files:
+            matches.append(root_path / PROJECT_MASTER_FILENAME)
     return sorted(matches)
 
 
@@ -1999,7 +1999,7 @@ def inflate_master(
         publisher_resolution(project_root) if resolution is DocsResolutionMode.SOURCE else deployed_resolution()
     )
     with resolution_scope:
-        raw = master_path.read_text(encoding=_UTF8)
+        raw = master_path.read_text(encoding=UTF8)
         inflated = expand_inline_refs(
             raw,
             project_root=project_root,
@@ -2037,12 +2037,12 @@ def _write_project_agents(
     inflated = inflate_master(
         master_path,
         project_root=project_root,
-        root_extras=master_path == project_root / _PROJECT_MASTER_FILENAME,
+        root_extras=master_path == project_root / PROJECT_MASTER_FILENAME,
         warn_only=warn_only,
         observation=observation,
     )
-    agents_path = master_path.parent / _GENERATED_ENTRYPOINT_FILENAME
-    agents_path.write_text(inflated, encoding=_UTF8)
+    agents_path = master_path.parent / GENERATED_ENTRYPOINT_FILENAME
+    agents_path.write_text(inflated, encoding=UTF8)
     return agents_path
 
 
@@ -2309,7 +2309,7 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
         errors: list[str] = []
         for item_path in sorted(command_files.values()):
             try:
-                with item_path.open(encoding=_UTF8) as file_obj:
+                with item_path.open(encoding=UTF8) as file_obj:
                     post = frontmatter.load(file_obj)
                 validate_artifact(post, str(item_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root))
             except (OSError, ValueError, yaml.YAMLError) as exc:
@@ -2328,7 +2328,7 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
             if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.PROJECT:
                 continue
             try:
-                with source.entrypoint.open(encoding=_UTF8) as file_obj:
+                with source.entrypoint.open(encoding=UTF8) as file_obj:
                     post = frontmatter.load(file_obj)
                 validate_artifact(
                     post, str(source.entrypoint), kind=ArtifactKind.COMMAND, project_root=project_root_path
@@ -2446,7 +2446,7 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
         commands_dist_dir.mkdir(parents=True, exist_ok=True)
         commands_config = agents_config[_CODEX_AGENT_NAME]
         for relative_path, command_source_path in sorted(command_files.items()):
-            with command_source_path.open(encoding=_UTF8) as file_obj:
+            with command_source_path.open(encoding=UTF8) as file_obj:
                 post = frontmatter.load(file_obj)
             if not committed_publication:
                 validate_artifact(
@@ -2463,7 +2463,7 @@ def main(request: DistributionRequest | None = None) -> DistributionResult | Dis
             prepared = _post_with_metadata(content, _filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
             command_output_path = commands_dist_dir / Path(relative_path).with_suffix(commands_config["ext"])
             command_output_path.parent.mkdir(parents=True, exist_ok=True)
-            command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=_UTF8)
+            command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=UTF8)
             markdown_outputs.append(str(command_output_path))
 
         built_agents: list[str] = []
