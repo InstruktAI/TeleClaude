@@ -36,12 +36,23 @@ class OwningHome(NamedTuple):
         return Path(repository_path).relative_to(self.root).as_posix()
 
 
-class TreeHome(NamedTuple):
-    """A home declared in a Git tree, or the error reading its declaration."""
+class ResolvedTreeHome(NamedTuple):
+    """A home whose committed declaration resolved to one kind."""
 
     root: Path
-    kind: ConfigKind | None
-    error: Exception | None
+    kind: ConfigKind
+    error: None
+
+
+class UnreadableTreeHome(NamedTuple):
+    """A home whose committed declaration could not be read."""
+
+    root: Path
+    kind: None
+    error: Exception
+
+
+type TreeHome = ResolvedTreeHome | UnreadableTreeHome
 
 
 class ContextRoot(NamedTuple):
@@ -206,10 +217,8 @@ def _owning_home(
     entry = _tree_home_for_path(relative_path, source, tree_paths, home_cache)
     if entry is None:
         return None
-    if entry.error is not None:
+    if isinstance(entry, UnreadableTreeHome):
         raise entry.error
-    if entry.kind is None:
-        raise ValueError(_INVALID_DECLARATION.format(path=source.repository_root / entry.root / _CONFIG_FILE_NAME))
     return OwningHome(root=entry.root, kind=entry.kind)
 
 
@@ -245,9 +254,9 @@ def _read_tree_home(root: Path, marker_relative_path: str, source: TreeSource) -
     marker_path = (source.repository_root / root / _CONFIG_FILE_NAME).resolve()
     try:
         payload: object = yaml.safe_load(read_tree_path(source, marker_relative_path).decode(_UTF8)) or {}
-        return TreeHome(root=root, kind=_load_declared_config_kind(marker_path, payload), error=None)
+        return ResolvedTreeHome(root=root, kind=_load_declared_config_kind(marker_path, payload), error=None)
     except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError) as exc:
-        return TreeHome(root=root, kind=None, error=exc)
+        return UnreadableTreeHome(root=root, kind=None, error=exc)
 
 
 def _repository_relative_directory(relative_directory: str | Path) -> PurePosixPath:

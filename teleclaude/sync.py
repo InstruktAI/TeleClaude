@@ -227,7 +227,7 @@ def _publish_under_lease(
             continue
         category = _home_category(home, global_home_exists)
         if category is None:
-            kind = home.kind.value if home.kind is not None else _EMPTY_STRING
+            kind = home.kind.value
             error = _UNSUPPORTED_HOME_POSITION.format(kind=kind, root=root_key)
             results[root_key] = _skipped_home(home, tip, mode, error)
             continue
@@ -573,7 +573,7 @@ def _refresh_one_home(
     """Refresh every compilable master in one recorded home, preserving failures."""
     try:
         declared = [entry for entry in homes_at_or_beneath(Path(root_key), source) if entry.root.as_posix() == root_key]
-        if not declared or declared[0].error is not None or declared[0].kind is None:
+        if not declared or declared[0].error is not None:
             failures.append(Path(root_key))
             return
         home_root = snapshot_root / Path(root_key)
