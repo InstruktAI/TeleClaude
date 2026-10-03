@@ -76,10 +76,6 @@ Then the request is refused
 And no conversation is returned and no on-disk transcript is consulted
 ```
 
-#### UC-RSHA-3: A member sees only their own
-
-#### UC-RSHA-4: Any other person sees only their own
-
 #### UC-RSHA-5: The service capabilities scope their caller
 
 ```
