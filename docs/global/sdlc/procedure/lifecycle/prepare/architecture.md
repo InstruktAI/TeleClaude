@@ -112,8 +112,9 @@ Read:
   work, this includes the existing services / modules / scaffolds the change
   touches. For **greenfield**, this includes adjacent or analogous platform
   code as reference patterns.
-- The platform's architectural docs: `local/projects/<slug>/design/architecture/…` for the
-  platform-specific patterns (event-bus, layer-ownership, etc.).
+- The project's own architecture design docs
+  (`local/projects/<slug>/design/architecture/…`), for the patterns this project
+  has established.
 - The relevant platform-quality-flavors (when the flavor set exists for the
   work's needs — API scaffolding, frontend scaffold, CLI scaffold, event-bus
   service patterns, language tooling).
