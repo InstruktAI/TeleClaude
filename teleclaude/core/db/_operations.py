@@ -10,7 +10,7 @@ from sqlalchemy import and_, delete, or_, update
 from sqlmodel import select
 
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
-from teleclaude.config_roster import load_project_ownership_index
+from teleclaude.config_roster import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker
 
@@ -24,9 +24,13 @@ _OPERATION_SUBJECT_BACKFILL_SETTING = "operation_subject_backfill_complete"
 _OPERATION_SUBJECT_BACKFILL_COMPLETE = "true"
 _OPERATION_SUBJECT_BACKFILL_FAILED = "operation_subject_backfill_failed"
 _OPERATION_SUBJECT_BACKFILL_FINISHED = "operation_subject_backfill_finished"
+_OPERATION_SUBJECT_BACKFILL_BATCH_SIZE = 500
 
 
-def _operation_subject_facts(working_folder: str | None) -> tuple[str, str]:
+def _operation_subject_facts(
+    working_folder: str | None,
+    ownership_index: ProjectOwnershipIndex | None = None,
+) -> tuple[str, str]:
     """Resolve the subject and project owner recorded by one operation path."""
     if working_folder is None:
         return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
@@ -40,7 +44,7 @@ def _operation_subject_facts(working_folder: str | None) -> tuple[str, str]:
     if subject.kind is not ConfigSubjectKind.PROJECT:
         return subject.to_token(), EventSubjectOwnerMarker.NONE.value
 
-    ownership = load_project_ownership_index().for_path(path)
+    ownership = (ownership_index or load_project_ownership_index()).for_path(path)
     if ownership is None:
         return subject.to_token(), EventSubjectOwnerMarker.UNRESOLVED.value
     owner_identity = ownership.owner_identity()
@@ -114,16 +118,16 @@ class DbOperationsMixin:
             result = await db_session.exec(stmt)
             return list(result.all())
 
-    async def set_operation_subject_facts_if_unset(
+    async def set_operation_subject_facts_for_operations_if_unset(
         self,
-        operation_id: str,
+        operation_ids: list[str],
         subject: str,
         subject_owner: str,
     ) -> int:
-        """Record one operation's visibility facts without overwriting newer data."""
+        """Record visibility facts for operations without overwriting newer data."""
         stmt = (
             update(db_models.Operation)
-            .where(db_models.Operation.operation_id == operation_id)
+            .where(db_models.Operation.operation_id.in_(operation_ids))
             .where(db_models.Operation.subject.is_(None))
             .values(subject=subject, subject_owner=subject_owner)
         )
@@ -138,14 +142,23 @@ class DbOperationsMixin:
             if await self.get_system_setting(_OPERATION_SUBJECT_BACKFILL_SETTING) is not None:
                 return
             rows = await self.list_operations_without_subject()
-            rows_updated = 0
+            rows_by_path: dict[str | None, list[str]] = {}
             for operation_id, cwd, session_project_path in rows:
-                subject, subject_owner = _operation_subject_facts(cwd or session_project_path)
-                rows_updated += await self.set_operation_subject_facts_if_unset(
-                    operation_id,
-                    subject,
-                    subject_owner,
-                )
+                working_folder = cwd or session_project_path
+                if working_folder not in rows_by_path:
+                    rows_by_path[working_folder] = []
+                rows_by_path[working_folder].append(operation_id)
+
+            ownership_index = load_project_ownership_index()
+            rows_updated = 0
+            for working_folder, operation_ids in rows_by_path.items():
+                subject, subject_owner = _operation_subject_facts(working_folder, ownership_index)
+                for offset in range(0, len(operation_ids), _OPERATION_SUBJECT_BACKFILL_BATCH_SIZE):
+                    rows_updated += await self.set_operation_subject_facts_for_operations_if_unset(
+                        operation_ids[offset : offset + _OPERATION_SUBJECT_BACKFILL_BATCH_SIZE],
+                        subject,
+                        subject_owner,
+                    )
             await self.set_system_setting(
                 _OPERATION_SUBJECT_BACKFILL_SETTING,
                 _OPERATION_SUBJECT_BACKFILL_COMPLETE,
