@@ -120,7 +120,7 @@ async def _resolve_launch_intent(
     session_kind: DispatchSessionKind | None,
 ) -> AgentDispatchDecision | None:
     intent = cmd.launch_intent
-    if intent is None or intent.kind == SessionLaunchKind.EMPTY:
+    if cmd.headless or intent is None or intent.kind == SessionLaunchKind.EMPTY:
         return None
     mode = intent.dispatch_mode or (AgentDispatchMode.FIXED if intent.agent else AgentDispatchMode.AUTOMATIC)
     command_kind = cmd.initial_input.lstrip("/").split(maxsplit=1)[0] if cmd.initial_input else None
@@ -312,7 +312,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     decision = await _resolve_launch_intent(cmd, project_path, working_slug, session_kind)
     launch = cmd.launch_intent
-    if launch and launch.kind in {SessionLaunchKind.AGENT, SessionLaunchKind.AGENT_THEN_MESSAGE}:
+    if not cmd.headless and launch and launch.kind in {SessionLaunchKind.AGENT, SessionLaunchKind.AGENT_THEN_MESSAGE}:
         if not launch.agent or not launch.thinking_mode:
             raise ValueError("Agent launch intent requires agent and thinking_mode")
         launch.resolved_model_flags = (
