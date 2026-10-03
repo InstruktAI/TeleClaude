@@ -31,3 +31,4 @@ class ProjectCatalogEntry:
     display_name: str
     description: str | None
     kind: ConfigKind
+    owner: str | None = None

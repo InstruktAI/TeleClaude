@@ -20,19 +20,24 @@ from .session_context import SessionMirrorContext, session_context_from_facts
 
 logger = get_logger(__name__)
 
+_SUBJECT_FIELD = "subject"
+_SUBJECT_OWNER_FIELD = "subject_owner"
+
 _BACKFILL_MIRRORS_SQL = (
     "SELECT id, metadata, human_email, visibility, computer, project_path, command, todo, is_worker, title FROM mirrors"
 )
 _UPSERT_SESSION_ATTRIBUTION_SQL = """\
 INSERT INTO mirror_sessions (
-    session_id, principal, project, subdir, initiator_session_id, initiator_computer,
+    session_id, principal, subject, subject_owner, project, subdir, initiator_session_id, initiator_computer,
     initiated_by_ai, job, started_at, closed_at, created_at, updated_at
 ) VALUES (
-    :session_id, :principal, :project, :subdir, :initiator_session_id, :initiator_computer,
+    :session_id, :principal, :subject, :subject_owner, :project, :subdir, :initiator_session_id, :initiator_computer,
     :initiated_by_ai, :job, :started_at, :closed_at, :created_at, :updated_at
 )
 ON CONFLICT(session_id) DO UPDATE SET
     principal = COALESCE(excluded.principal, mirror_sessions.principal),
+    subject = COALESCE(excluded.subject, mirror_sessions.subject),
+    subject_owner = COALESCE(excluded.subject_owner, mirror_sessions.subject_owner),
     project = COALESCE(excluded.project, mirror_sessions.project),
     subdir = COALESCE(excluded.subdir, mirror_sessions.subdir),
     initiator_session_id = COALESCE(excluded.initiator_session_id, mirror_sessions.initiator_session_id),
@@ -85,6 +90,8 @@ class MirrorSessionAttribution:
 
     session_id: str
     principal: str | None
+    subject: str | None
+    subject_owner: str | None
     project: str | None
     subdir: str | None
     initiator_session_id: str | None
@@ -102,6 +109,8 @@ def upsert_session_attribution(conn: sqlite3.Connection, attribution: MirrorSess
         {
             "session_id": attribution.session_id,
             "principal": attribution.principal,
+            _SUBJECT_FIELD: attribution.subject,
+            _SUBJECT_OWNER_FIELD: attribution.subject_owner,
             "project": attribution.project,
             "subdir": attribution.subdir,
             "initiator_session_id": attribution.initiator_session_id,
@@ -144,6 +153,8 @@ def backfill_session_attributions(conn: sqlite3.Connection, _store_path: str, sn
         attribution = MirrorSessionAttribution(
             session_id=context.session_id,
             principal=context.principal,
+            subject=context.subject,
+            subject_owner=context.subject_owner,
             project=context.project,
             subdir=context.subdir,
             initiator_session_id=context.initiator_session_id,

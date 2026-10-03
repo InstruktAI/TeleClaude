@@ -5,20 +5,84 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
+from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
+from teleclaude.config_roster import ProjectOwnership, ProjectOwnershipIndex, load_project_ownership_index
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core import db_models
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
+from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.types import ObservationInput, ObservationResult
 
 logger = get_logger(__name__)
 
 DEFAULT_PROJECT = "teleclaude"
+_MEMORY_SUBJECT_RESOLUTION_FAILED = "memory_subject_resolution_failed"
+_MEMORY_SUBJECT_BACKFILL_SETTING = "memory_observation_subject_backfill_complete"
+_MEMORY_SUBJECT_BACKFILL_COMPLETE = "true"
+_MEMORY_SUBJECT_BACKFILL_FAILED = "memory_observation_subject_backfill_failed"
+_MEMORY_SUBJECT_BACKFILL_FINISHED = "memory_observation_subject_backfill_finished"
+_MEMORY_SUBJECT_BACKFILL_ROWS_SQL = "SELECT id, project, identity_key FROM memory_observations WHERE subject IS NULL"
+_MEMORY_SUBJECT_BACKFILL_UPDATE_SQL = (
+    "UPDATE memory_observations SET subject = :subject, subject_owner = :subject_owner, "
+    "principal = :principal WHERE id = :id AND subject IS NULL"
+)
+
+
+def resolve_observation_project_scope(
+    project: str,
+    ownership_index: ProjectOwnershipIndex | None = None,
+) -> tuple[str, str]:
+    """Resolve the recorded subject and owner for a named memory project."""
+    index = ownership_index or load_project_ownership_index()
+    ownership = index.for_slug(project)
+    if ownership is not None:
+        return _project_scope_tokens(ownership)
+
+    project_path = Path(project)
+    if not (project_path.is_absolute() or project_path.exists()):
+        return EventSubjectMarker.UNKNOWN.value, EventSubjectOwnerMarker.UNRESOLVED.value
+    try:
+        subject = resolve_config_subject(project_path)
+    except SubjectResolutionError as exc:
+        logger.warning(_MEMORY_SUBJECT_RESOLUTION_FAILED, path=str(exc.declaration_path), error=str(exc))
+        return EventSubjectMarker.UNKNOWN.value, EventSubjectOwnerMarker.UNRESOLVED.value
+    if subject is None:
+        return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
+    if subject.kind is ConfigSubjectKind.PROJECT:
+        project_ownership = index.for_path(project_path)
+        if project_ownership is None:
+            return subject.to_token(), EventSubjectOwnerMarker.UNRESOLVED.value
+        return _project_scope_tokens(project_ownership)
+    return subject.to_token(), EventSubjectOwnerMarker.NONE.value
+
+
+def _project_scope_tokens(ownership: ProjectOwnership) -> tuple[str, str]:
+    """Encode one known project and its declared owner for memory storage."""
+    subject = SubjectRef(ConfigSubjectKind.PROJECT, ownership.project_slug).to_token()
+    owner_identity = ownership.owner_identity()
+    if owner_identity is None:
+        owner = EventSubjectOwnerMarker.OWNERLESS.value
+    else:
+        owner_kind, owner_slug = owner_identity
+        owner = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()
+    return subject, owner
+
+
+def _observation_visibility(inp: ObservationInput) -> tuple[str, str, str]:
+    """Use supplied provenance facts and leave every omitted fact unknown."""
+    return (
+        inp.subject if inp.subject is not None else EventSubjectMarker.UNKNOWN.value,
+        inp.subject_owner if inp.subject_owner is not None else EventSubjectOwnerMarker.UNRESOLVED.value,
+        inp.principal if inp.principal is not None else EventSubjectMarker.UNKNOWN.value,
+    )
 
 
 class MemoryStore:
@@ -29,6 +93,7 @@ class MemoryStore:
         project = inp.project or DEFAULT_PROJECT
         now = datetime.now(UTC)
         title = inp.title or _auto_title(inp.text)
+        subject, subject_owner, principal = _observation_visibility(inp)
 
         # Get or create manual session for this project
         session_id = await self._get_or_create_manual_session(project)
@@ -47,6 +112,9 @@ class MemoryStore:
             created_at=now.isoformat(),
             created_at_epoch=int(now.timestamp()),
             identity_key=inp.identity_key,
+            subject=subject,
+            subject_owner=subject_owner,
+            principal=principal,
         )
 
         async with db._session() as session:
@@ -61,6 +129,7 @@ class MemoryStore:
         project = inp.project or DEFAULT_PROJECT
         now = datetime.now(UTC)
         title = inp.title or _auto_title(inp.text)
+        subject, subject_owner, principal = _observation_visibility(inp)
         session_id = self._get_or_create_manual_session_sync(project, db_path)
 
         engine = create_engine(db_path)
@@ -80,6 +149,9 @@ class MemoryStore:
                     created_at=now.isoformat(),
                     created_at_epoch=int(now.timestamp()),
                     identity_key=inp.identity_key,
+                    subject=subject,
+                    subject_owner=subject_owner,
+                    principal=principal,
                 )
                 session.add(obs)
                 session.commit()
@@ -88,6 +160,42 @@ class MemoryStore:
             engine.dispose()
 
         return ObservationResult(id=obs.id, title=title, project=project)
+
+    async def backfill_observation_subjects(self) -> None:
+        """Backfill historical project scope once without guessing principals."""
+        try:
+            if await db.get_system_setting(_MEMORY_SUBJECT_BACKFILL_SETTING) is not None:
+                return
+            async with db._session() as session:
+                result = await session.exec(  # type: ignore[call-overload]
+                    text(_MEMORY_SUBJECT_BACKFILL_ROWS_SQL)  # guard: raw-sql
+                )
+                rows = result.fetchall()
+            ownership_index = load_project_ownership_index()
+            rows_updated = 0
+            for observation_id, project, identity_key in rows:
+                if identity_key is not None:
+                    # Legacy identity-scoped rows lack a principal; the opaque key cannot supply it.
+                    subject = EventSubjectMarker.UNKNOWN.value
+                    subject_owner = EventSubjectOwnerMarker.UNRESOLVED.value
+                else:
+                    subject, subject_owner = resolve_observation_project_scope(str(project), ownership_index)
+                async with db._session() as session:
+                    update_result = await session.exec(  # type: ignore[call-overload]
+                        text(_MEMORY_SUBJECT_BACKFILL_UPDATE_SQL).bindparams(  # guard: raw-sql
+                            id=int(observation_id),
+                            subject=subject,
+                            subject_owner=subject_owner,
+                            principal=EventSubjectMarker.UNKNOWN.value,
+                        )
+                    )
+                    await session.commit()
+                    rows_updated += update_result.rowcount or 0
+            await db.set_system_setting(_MEMORY_SUBJECT_BACKFILL_SETTING, _MEMORY_SUBJECT_BACKFILL_COMPLETE)
+        except Exception:
+            logger.exception(_MEMORY_SUBJECT_BACKFILL_FAILED)
+            raise
+        logger.info(_MEMORY_SUBJECT_BACKFILL_FINISHED, rows_updated=rows_updated, observations=len(rows))
 
     async def delete_observation(self, observation_id: int) -> bool:
         """Delete an observation by ID. Returns True if deleted, False if not found."""

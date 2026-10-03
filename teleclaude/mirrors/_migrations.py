@@ -54,12 +54,17 @@ _MISSING_COLUMN_ERROR = "no such column"
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
 _DATA_REVISION = 6
-LATEST_DATA_REVISION = 7
+LATEST_DATA_REVISION = 8
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = "PRAGMA user_version = {}"
 
 _DATABASE_LOCKED_ERROR = "database is locked"
+_MIRROR_SESSION_COLUMNS_SQL = "PRAGMA table_info(mirror_sessions)"
+_MIRROR_SESSION_SUBJECT_COLUMN = "subject"
+_MIRROR_SESSION_SUBJECT_OWNER_COLUMN = "subject_owner"
+_ADD_MIRROR_SESSION_SUBJECT_SQL = "ALTER TABLE mirror_sessions ADD COLUMN subject TEXT"
+_ADD_MIRROR_SESSION_SUBJECT_OWNER_SQL = "ALTER TABLE mirror_sessions ADD COLUMN subject_owner TEXT"
 _SESSION_ID_REKEY_FAILED_EVENT = "mirror.session_id_rekey_failed"
 _SESSION_ID_REKEY_COMPLETE_EVENT = "mirror.session_id_rekey_complete"
 _PROJECT_RECONCILE_COMPLETE_EVENT = "mirror.project_reconcile_complete"
@@ -250,6 +255,7 @@ def _converge_derived_data(
     ] = (
         (6, _migrate_revision_6),
         (7, _migrate_revision_7),
+        (8, _migrate_revision_8),
     )
     current_revision = int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0])
     for revision, migration in migrations:
@@ -292,6 +298,8 @@ CREATE TABLE IF NOT EXISTS mirror_sessions (
     id INTEGER PRIMARY KEY,
     session_id TEXT UNIQUE NOT NULL,
     principal TEXT,
+    subject TEXT,
+    subject_owner TEXT,
     project TEXT,
     subdir TEXT,
     initiator_session_id TEXT,
@@ -332,6 +340,21 @@ def _migrate_revision_7(
     for statement in (_ADD_SESSION_COLUMN_SQL, _ADD_POSITION_COLUMN_SQL):
         _add_column(conn, statement)
     create_current_attribution_schema(conn)
+    backfill_session_attributions(conn, store_path, snapshot_path)
+
+
+def _migrate_revision_8(
+    conn: sqlite3.Connection,
+    store_path: str,
+    backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
+    """Add the subject facts used to filter retained session mirrors by reach."""
+    columns = {str(row[1]) for row in conn.execute(_MIRROR_SESSION_COLUMNS_SQL).fetchall()}
+    snapshot_path = _snapshot_mirrors_store(conn, store_path)
+    if _MIRROR_SESSION_SUBJECT_COLUMN not in columns:
+        _add_column(conn, _ADD_MIRROR_SESSION_SUBJECT_SQL)
+    if _MIRROR_SESSION_SUBJECT_OWNER_COLUMN not in columns:
+        _add_column(conn, _ADD_MIRROR_SESSION_SUBJECT_OWNER_SQL)
     backfill_session_attributions(conn, store_path, snapshot_path)
 
 

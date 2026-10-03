@@ -20,6 +20,7 @@ from teleclaude import paths as tc_paths
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.identity_reach import Reach
 from teleclaude.mirrors._attribution import (
     MirrorSessionAttribution,
     backfill_session_attributions,
@@ -31,26 +32,6 @@ from teleclaude.mirrors._migrations import (
     migrate_add_mirror_columns,
 )
 from teleclaude.mirrors._types import JsonValue
-
-
-@dataclass(frozen=True)
-class AllMirrorAccess:
-    """Access scope for a read that may consider every mirror."""
-
-
-@dataclass(frozen=True)
-class PersonMirrorAccess:
-    """Access scope limited to a person's principal and reached projects."""
-
-    email: str
-    principal: str
-    projects: frozenset[str]
-
-
-type MirrorAccess = AllMirrorAccess | PersonMirrorAccess
-
-ALL_MIRROR_ACCESS = AllMirrorAccess()
-
 
 # Search shows only the sessions worth auditing; dispatched workers are the noise.
 _WORKER_EXCLUSION_CLAUSE = "mirrors.is_worker = 0"
@@ -78,20 +59,16 @@ _SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
 _IDENTITY_PARAM = "identity"
 _PROJECT_PARAM = "project"
 _CALLER_EMAIL_PARAM = "caller_email"
-_CALLER_PRINCIPAL_PARAM = "caller_principal"
 _SOURCE_IDENTITY_PARAM = "source_identity"
 _METADATA_PARAM = "metadata"
-_SCOPE_PROJECT_PARAM_TEMPLATE = "scope_project_{index}"
 _SCOPE_SESSION_ALIAS = "scope_session"
-_EMPTY_SQL_FRAGMENT = ""
-_SQL_PARAMETER_PREFIX = ":"
 _SQL_PARAMETER_SEPARATOR = ", "
 _SQL_OR_SEPARATOR = " OR "
-_SESSION_PROJECT_SCOPE_CLAUSE_TEMPLATE = "{alias}.project IN ({parameters})"
+_SCOPE_SESSION_SUBJECT_COLUMN = "scope_session.subject"
+_SCOPE_SESSION_OWNER_COLUMN = "scope_session.subject_owner"
+_SCOPE_SESSION_PRINCIPAL_COLUMN = "scope_session.principal"
 _PERSON_MIRROR_SESSION_SCOPE_CLAUSE_TEMPLATE = (
-    "EXISTS (SELECT 1 FROM mirror_sessions AS {alias} "
-    "WHERE {alias}.id = mirrors.session "
-    "AND ({alias}.principal = :caller_principal{project_clause}))"
+    "EXISTS (SELECT 1 FROM mirror_sessions AS {alias} WHERE {alias}.id = mirrors.session AND ({reach_clause}))"
 )
 # Email identifies ownership only when the mirror has no session attribution.
 _UNATTRIBUTED_PERSON_EMAIL_SCOPE_CLAUSE = "mirrors.session IS NULL AND mirrors.human_email = :caller_email"
@@ -527,7 +504,7 @@ def search_mirrors(
     query: str,
     agents: Sequence[AgentName | str],
     *,
-    access: MirrorAccess,
+    reach: Reach,
     limit: int = 20,
     db: str | Path | None = None,
     computers: Sequence[str] | None = None,
@@ -576,7 +553,7 @@ def search_mirrors(
     if project:
         candidate_clauses.append(_PROJECT_FILTER_CLAUSE)
         params[_PROJECT_PARAM] = project
-    _apply_access_filter(candidate_clauses, params, access)
+    _apply_access_filter(candidate_clauses, params, reach)
     eligible_clauses = [*candidate_clauses]
     if match_query:
         eligible_clauses.append(_UNREPROJECTABLE_MATCH_CLAUSE)
@@ -653,7 +630,7 @@ def search_mirrors(
 def get_mirror(
     native_session_id: str | None = None,
     *,
-    access: MirrorAccess,
+    reach: Reach,
     db: str | Path | None = None,
     computer: str | None = None,
     source_identity: str | None = None,
@@ -673,7 +650,7 @@ def get_mirror(
     else:
         return None
 
-    _apply_access_filter(clauses, params, access)
+    _apply_access_filter(clauses, params, reach)
 
     sql = _GET_MIRROR_SQL_TEMPLATE.format(where_clause=_SQL_AND_SEPARATOR.join(clauses))
 
@@ -694,13 +671,13 @@ def get_mirror(
 def get_session_mirror(
     session_id: str,
     *,
-    access: MirrorAccess,
+    reach: Reach,
     db: str | Path | None = None,
 ) -> MirrorRecord | None:
     """Fetch the latest transcript mirror attributed to one TeleClaude session."""
     clauses = ["mirror_sessions.session_id = :session_id"]
     params: dict[str, object] = {"session_id": session_id}  # guard: loose-dict - access scope extends these SQL values.
-    _apply_access_filter(clauses, params, access)
+    _apply_access_filter(clauses, params, reach)
     sql = _GET_MIRROR_SQL_TEMPLATE.format(where_clause=_SQL_AND_SEPARATOR.join(clauses))
     sql = sql.replace("ORDER BY mirrors.updated_at DESC", "ORDER BY mirrors.position DESC, mirrors.updated_at DESC")
     try:
@@ -849,34 +826,31 @@ def delete_mirror(
 def _apply_access_filter(
     clauses: list[str],
     params: dict[str, object],  # guard: loose-dict - SQL bind params are mutated by caller filters.
-    access: MirrorAccess,
+    reach: Reach,
 ) -> None:
     """Apply the already-resolved mirror access scope to a query."""
-    if isinstance(access, AllMirrorAccess):
+    if reach.everything:
         return
-    project_clause = _EMPTY_SQL_FRAGMENT
-    if access.projects:
-        project_parameters: list[str] = []
-        for index, project in enumerate(sorted(access.projects)):
-            parameter = _SCOPE_PROJECT_PARAM_TEMPLATE.format(index=index)
-            project_parameters.append(f"{_SQL_PARAMETER_PREFIX}{parameter}")
-            params[parameter] = project
-        project_clause = _SQL_OR_SEPARATOR + _SESSION_PROJECT_SCOPE_CLAUSE_TEMPLATE.format(
-            alias=_SCOPE_SESSION_ALIAS,
-            parameters=_SQL_PARAMETER_SEPARATOR.join(project_parameters),
-        )
+    reach_clause, reach_parameters = reach.sql_predicate(
+        subject_col=_SCOPE_SESSION_SUBJECT_COLUMN,
+        owner_col=_SCOPE_SESSION_OWNER_COLUMN,
+        principal_col=_SCOPE_SESSION_PRINCIPAL_COLUMN,
+    )
+    params.update(reach_parameters)
     session_scope_clause = _PERSON_MIRROR_SESSION_SCOPE_CLAUSE_TEMPLATE.format(
         alias=_SCOPE_SESSION_ALIAS,
-        project_clause=project_clause,
+        reach_clause=reach_clause,
     )
-    clauses.append(
-        _PERSON_MIRROR_ACCESS_CLAUSE_TEMPLATE.format(
-            session_scope_clause=session_scope_clause,
-            unattributed_email_clause=_UNATTRIBUTED_PERSON_EMAIL_SCOPE_CLAUSE,
+    if reach.email is not None:
+        clauses.append(
+            _PERSON_MIRROR_ACCESS_CLAUSE_TEMPLATE.format(
+                session_scope_clause=session_scope_clause,
+                unattributed_email_clause=_UNATTRIBUTED_PERSON_EMAIL_SCOPE_CLAUSE,
+            )
         )
-    )
-    params[_CALLER_EMAIL_PARAM] = access.email
-    params[_CALLER_PRINCIPAL_PARAM] = access.principal
+        params[_CALLER_EMAIL_PARAM] = reach.email
+    else:
+        clauses.append(session_scope_clause)
 
 
 @dataclass(frozen=True)

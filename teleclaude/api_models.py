@@ -14,6 +14,7 @@ from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentit
 from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
 
 _TODO_KIND_FIELD = "kind"
+_SESSION_SUBJECT_OWNER_FIELD = "subject_owner"
 _TODO_KIND_REQUIRED_ERROR = f"kind is required; valid kinds: {TODO_KIND_USAGE}"
 
 if TYPE_CHECKING:
@@ -185,6 +186,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
+    subject_owner: str | None = None
     command: str | None = None
     working_slug: str | None = None
     thinking_mode: str | None = None
@@ -211,6 +213,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
                 "title": session.title,
                 "project_path": session.project_path,
                 "subdir": session.subdir,
+                _SESSION_SUBJECT_OWNER_FIELD: session.subject_owner,
                 "command": session.command,
                 "working_slug": session.working_slug,
                 "thinking_mode": session.thinking_mode,
@@ -281,6 +284,8 @@ class ProjectDTO(BaseModel):
     name: str
     path: str
     description: str | None = None
+    subject: str | None = None
+    owner: str | None = None
 
 
 class AddProjectRequest(BaseModel):

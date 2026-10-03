@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException, Query
 
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution
-from teleclaude.caller_identity import RoleResolver
 from teleclaude.core import command_handlers
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.session_listing import build_session_listing_selection, normalize_session_ids, sessions_reached_by
@@ -58,10 +57,8 @@ async def build_local_session_listing(
 ) -> tuple[list[SessionSnapshot], frozenset[str]]:
     """Select local rows and merge only eligible other-computer cache rows."""
     caller = caller_for_role_resolution(identity)
-    resolver = RoleResolver()
     selection = build_session_listing_selection(
         caller,
-        resolver,
         include_closed=query.include_closed,
         session_ids=query.session_ids,
     )
@@ -73,10 +70,8 @@ async def build_local_session_listing(
         if query.session_ids is not None:
             cached_sessions = [session for session in cached_sessions if session.session_id in query.session_ids]
         reached_remote_sessions = sessions_reached_by(
-            caller,
+            selection.reach,
             cached_sessions,
-            resolver=resolver,
-            caller_session=caller_session_id,
         )
         by_id = {session.session_id: session for session in local_sessions}
         for session in reached_remote_sessions:

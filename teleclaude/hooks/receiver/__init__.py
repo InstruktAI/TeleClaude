@@ -24,6 +24,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude import paths as tc_paths
+from teleclaude.caller_identity import CliCaller, SessionIdentityError, caller_from_principal, resolve_session_principal
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config.loader import load_company_config_for_slug, load_global_config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HeadlessBootstrapField, HookSourceKind
@@ -38,7 +39,7 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentHookEventType,
 )
-from teleclaude.core.identity import derive_identity_key
+from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key
 from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
 from teleclaude.core.models import JsonDict
 from teleclaude.core.organization import CompanyMembership, resolve_organization
@@ -115,6 +116,7 @@ EVENT_HOOK_OUTBOX_ENQUEUED = "hook_outbox_enqueued"
 EVENT_CONTROL_DELIVERY_TERMINAL = "control_delivery_batch_terminal"
 EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL = "control_delivery_hook_arrival"
 EVENT_CHECKPOINT_EVIDENCE_ADDRESS_RESOLVED = "checkpoint_evidence_address_resolved"
+_MEMORY_CALLER_RESOLUTION_FAILED = "memory_context_caller_resolution_failed"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
@@ -453,6 +455,25 @@ def _load_checkpoint_row(session_id: str) -> db_models.Session | None:
         return None
 
 
+def _resolve_memory_caller(session_id: str) -> CliCaller:
+    """Resolve the starting session principal through the identity contract."""
+    row = _load_session_row(
+        session_id,
+        cast(QueryableAttribute[Any], db_models.Session.session_id),
+        cast(QueryableAttribute[Any], db_models.Session.principal),
+        cast(QueryableAttribute[Any], db_models.Session.human_email),
+        cast(QueryableAttribute[Any], db_models.Session.human_role),
+        cast(QueryableAttribute[Any], db_models.Session.system_role),
+    )
+    if row is None:
+        return NoIdentityCliCaller()
+    try:
+        principal, _role = resolve_session_principal(row)
+    except SessionIdentityError:
+        return NoIdentityCliCaller()
+    return caller_from_principal(principal)
+
+
 def _resolve_identity_context(
     session_id: str,
     *,
@@ -708,7 +729,12 @@ def _print_additional_context(
     except (OSError, ValueError):
         logger.debug(_COMPANY_RESOLUTION_FAILED, project_name=project_name)
 
-    memory_context = _get_memory_context(project_name, identity_key=identity_key)
+    try:
+        memory_caller = _resolve_memory_caller(session_id)
+    except (SQLAlchemyError, TypeError, ValueError):
+        logger.error(_MEMORY_CALLER_RESOLUTION_FAILED, session_id=session_id, exc_info=True)
+        memory_caller = NoIdentityCliCaller()
+    memory_context = _get_memory_context(project_name, memory_caller, identity_key=identity_key)
     if not memory_context and not person_header and not company_header:
         logger.info(
             EVENT_SESSION_START_CONTEXT_COMPOSED,

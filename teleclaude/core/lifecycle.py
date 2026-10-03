@@ -25,9 +25,13 @@ from teleclaude.core.next_machine.delivery import remove_legacy_worktree_trash
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
-from teleclaude.core.session_config_subject import backfill_session_config_subjects
+from teleclaude.core.session_config_subject import (
+    backfill_session_config_subjects,
+    backfill_session_subject_owners,
+)
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.memory.store import MemoryStore
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust
 from teleclaude.services.project_catalog import get_project_catalog_service
@@ -104,6 +108,8 @@ class DaemonLifecycle:
         await db.initialize()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
         await backfill_session_config_subjects()
+        await backfill_session_subject_owners()
+        await MemoryStore().backfill_observation_subjects()
 
         db.set_client(self.client)
         operations_service = OperationsService(db=db, task_registry=self.task_registry)

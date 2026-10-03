@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.caller_identity import resolve_session_principal
 from teleclaude.config.loader import (
     find_company_config_path,
-    list_company_configs,
+    list_company_config_paths,
     load_company_config,
     load_global_config,
     load_person_config_for_entry,
@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 _ORGANIZATION_RESOLVED_EVENT = "organization_resolved"
 _ORGANIZATION_STALE_ASSIGNMENT_EVENT = "organization_stale_assignment"
 _PLATFORM_ADMIN_UNREADABLE_EVENT = "platform_admin_config_unreadable"
+_COMPANY_DECLARATION_UNREADABLE_EVENT = "organization_company_declaration_unreadable"
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,15 @@ def resolve_organization(person_slug: str) -> OrganizationalMembership:
     assignments: list[ProjectRef] = []
     covered: list[ProjectRef] = []
     stale: list[StaleAssignment] = []
-    for company_slug, company in list_company_configs():
+    for config_path in list_company_config_paths():
+        company_slug = config_path.parent.name
+        try:
+            company = load_company_config(config_path)
+        except ValueError as exc:
+            logger.warning(
+                _COMPANY_DECLARATION_UNREADABLE_EVENT, company=company_slug, path=str(config_path), error=str(exc)
+            )
+            continue
         member = company.members.get(person_slug)
         if member is None:
             continue

@@ -12,9 +12,10 @@ import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.caller_identity import CliCaller, DocsTier, PersonCliCaller, RoleResolver, SystemCliCaller
+from teleclaude.caller_identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.config.schema import AppConfig, ConfigKind
-from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.core.endpoints import tenant_desk_for_folder
 from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import OrganizationalMembership, company_project_slugs, resolve_organization
@@ -31,6 +32,7 @@ from teleclaude.docs_publishers import (
     resolve_global_doc_source,
 )
 from teleclaude.domains import publishes_for_root, valid_domains
+from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT, TELECLAUDE_HOME
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
@@ -592,45 +594,20 @@ def resolve_caller_read_depth(
     caller: CliCaller | None,
     tier: TierKey,
     *,
-    organization: OrganizationalMembership | None = None,
-    role_resolver: RoleResolver | None = None,
+    identity_reach: Reach | None = None,
 ) -> TierDepth:
-    """Answer the depth ``caller`` reads ``tier`` at — full or public-only.
-
-    An administrator at the global documentation scope and a system principal read every tier at full,
-    preserving the live UC-DSP31 contract for the system caller. Otherwise
-    depth follows the caller's own declared relationship to the named tier:
-    their own person tier, a company they belong to, or a project they reach
-    (an explicit assignment or their company's administrative coverage). A
-    caller with no resolvable identity, or a relationship-holding caller with
-    no relationship to the named tier, reads it at public-only.
-
-    ``organization`` lets a caller resolving several tiers reuse one
-    ``resolve_organization`` call; when omitted it is resolved from the
-    caller's person slug on demand. This function recomputes nothing from a
-    role — it consumes ``resolve_organization``'s answer as-is, including its
-    exclusion of stale assignments from ``assignments``.
-    """
-    if isinstance(caller, SystemCliCaller):
-        return TierDepth.FULL
-    if not isinstance(caller, PersonCliCaller) or not caller.person_slug:
-        return TierDepth.PUBLIC_ONLY
-    resolver = role_resolver or RoleResolver()
-    if resolver.role_for(caller, DocsTier(tier.scope, tier.owner)) == HUMAN_ROLE_ADMIN:
-        return TierDepth.FULL
+    """Answer the full or public-only depth a caller has for one documentation tier."""
     if tier.scope is SnippetScope.GLOBAL:
+        reach = identity_reach or resolve_reach(caller)
+        return TierDepth.FULL if reach.everything or reach.shared_documentation else TierDepth.PUBLIC_ONLY
+    if tier.owner is None:
         return TierDepth.PUBLIC_ONLY
-    if tier.scope is SnippetScope.PERSON:
-        return TierDepth.FULL if tier.owner == caller.person_slug else TierDepth.PUBLIC_ONLY
-    membership = organization if organization is not None else resolve_organization(caller.person_slug)
-    if tier.scope is SnippetScope.COMPANY:
-        if any(entry.company_slug == tier.owner for entry in membership.memberships):
-            return TierDepth.FULL
+    reach = identity_reach or resolve_reach(caller)
+    try:
+        subject = SubjectRef(ConfigSubjectKind(tier.scope.value), tier.owner).to_token()
+    except ValueError:
         return TierDepth.PUBLIC_ONLY
-    if tier.scope is SnippetScope.PROJECT:
-        reached = {ref.project_slug for ref in (*membership.assignments, *membership.covered)}
-        return TierDepth.FULL if tier.owner in reached else TierDepth.PUBLIC_ONLY
-    return TierDepth.PUBLIC_ONLY
+    return TierDepth.FULL if reach.admits(subject, None, None) else TierDepth.PUBLIC_ONLY
 
 
 def _person_local_docs_admitted(caller: CliCaller | None, owner: str) -> bool:
@@ -644,7 +621,7 @@ def resolve_default_read_set(
     landed_home: TierKey | None,
     current_project_company: str | None,
     desk_company: str | None = None,
-    role_resolver: RoleResolver | None = None,
+    identity_reach: Reach | None = None,
 ) -> dict[TierKey, TierDepth]:
     """Answer the tiers assembled when no tier is named, each paired with its depth.
 
@@ -671,10 +648,8 @@ def resolve_default_read_set(
     if desk_company is not None:
         keys.append(TierKey(SnippetScope.COMPANY, desk_company))
         keys.extend(TierKey(SnippetScope.PROJECT, slug) for slug in company_project_slugs(desk_company))
-    resolver = role_resolver or RoleResolver()
-    return {
-        key: resolve_caller_read_depth(caller, key, organization=organization, role_resolver=resolver) for key in keys
-    }
+    reach = identity_reach or resolve_reach(caller)
+    return {key: resolve_caller_read_depth(caller, key, identity_reach=reach) for key in keys}
 
 
 #: Scopes whose snippets belong to one home and are gated by that home's depth.
@@ -694,7 +669,7 @@ def _include_snippet_factory(
     *,
     caller: CliCaller | None,
     read_set: Mapping[TierKey, TierDepth],
-    role_resolver: RoleResolver,
+    identity_reach: Reach,
 ) -> Callable[[SnippetMeta], bool]:
     """Gate each assembled snippet by depth: one tier gate for every home, the global gate otherwise.
 
@@ -704,7 +679,7 @@ def _include_snippet_factory(
     global_depth = resolve_caller_read_depth(
         caller,
         TierKey(SnippetScope.GLOBAL),
-        role_resolver=role_resolver,
+        identity_reach=identity_reach,
     )
     global_full = isinstance(caller, SystemCliCaller) or global_depth is TierDepth.FULL
 
@@ -713,7 +688,7 @@ def _include_snippet_factory(
             tier = _tier_key_for_snippet(snippet)
             depth = read_set.get(tier)
             if depth is None:
-                depth = resolve_caller_read_depth(caller, tier, role_resolver=role_resolver)
+                depth = resolve_caller_read_depth(caller, tier, identity_reach=identity_reach)
             return depth is TierDepth.FULL or snippet.visibility == "public"
         return global_full or snippet.visibility == "public"
 
@@ -1204,7 +1179,7 @@ def _resolve_reach(
     landing: Landing,
     named_homes: list[TierKey] | None,
     caller: CliCaller | None,
-    role_resolver: RoleResolver,
+    identity_reach: Reach,
     resolver: HomeResolver,
     snippet_ids: list[str] | None,
     local: bool,
@@ -1236,11 +1211,11 @@ def _resolve_reach(
             landed_home=landing.home,
             current_project_company=landing.project_company,
             desk_company=landing.desk_company,
-            role_resolver=role_resolver,
+            identity_reach=identity_reach,
         )
     else:
         reach = {
-            key: resolve_caller_read_depth(caller, key, role_resolver=role_resolver)
+            key: resolve_caller_read_depth(caller, key, identity_reach=identity_reach)
             for key in named_homes
             if resolver.resolve(key) is not None
         }
@@ -1258,7 +1233,11 @@ def _resolve_reach(
         if requested_home not in reach:
             if resolver.resolve(requested_home) is None:
                 continue
-            reach[requested_home] = resolve_caller_read_depth(caller, requested_home, role_resolver=role_resolver)
+            reach[requested_home] = resolve_caller_read_depth(
+                caller,
+                requested_home,
+                identity_reach=identity_reach,
+            )
         halves.setdefault(requested_home, set()).add(identity.half)
     return reach, {key: frozenset(selected) for key, selected in halves.items()}
 
@@ -1342,7 +1321,7 @@ def _assemble_candidate_snippets(
     landing: Landing,
     named_homes: list[TierKey] | None,
     caller: CliCaller | None,
-    role_resolver: RoleResolver,
+    identity_reach: Reach,
     snippet_ids: list[str] | None,
     include_third_party: bool,
     local: bool,
@@ -1354,7 +1333,7 @@ def _assemble_candidate_snippets(
         landing=landing,
         named_homes=named_homes,
         caller=caller,
-        role_resolver=role_resolver,
+        identity_reach=identity_reach,
         resolver=resolver,
         snippet_ids=snippet_ids,
         local=local,
@@ -1474,14 +1453,14 @@ def build_context_output(  # TODO: refactor to reduce complexity
 
     global_snippets_root = GLOBAL_DOCS_DIR
 
-    role_resolver = RoleResolver()
+    identity_reach = resolve_reach(caller)
     landing = resolve_landing(project_root, landing_kind=landing_kind, config=config)
     assembled = _assemble_candidate_snippets(
         project_root=project_root,
         landing=landing,
         named_homes=_named_homes(projects=projects, person=person, company=company, landing=landing, local=local),
         caller=caller,
-        role_resolver=role_resolver,
+        identity_reach=identity_reach,
         snippet_ids=snippet_ids,
         include_third_party=include_third_party,
         local=local,
@@ -1498,7 +1477,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
         key.owner for key in read_set if key.scope is SnippetScope.PROJECT and key.owner != current_project_slug
     }
 
-    include_snippet = _include_snippet_factory(caller=caller, read_set=read_set, role_resolver=role_resolver)
+    include_snippet = _include_snippet_factory(caller=caller, read_set=read_set, identity_reach=identity_reach)
     snippets = [snippet for snippet in snippets if include_snippet(snippet)]
     snippets = _apply_baseline_filter(
         snippets,

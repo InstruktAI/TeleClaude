@@ -57,16 +57,20 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 from jobs.base import Job, JobResult, JobRunContext, run_job_cli
+from teleclaude.caller_identity import PersonCliCaller, SystemCliCaller, caller_from_principal
 from teleclaude.channels import publisher as channels_publisher
 from teleclaude.config import config
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import Session
 from teleclaude.core.summarizer import _call_summarizer
+from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker
+from teleclaude.identity_reach import resolve_reach
 from teleclaude.memory.store import MemoryStore
 from teleclaude.memory.types import ObservationInput, ObservationType
-from teleclaude.mirrors.store import ALL_MIRROR_ACCESS, get_mirror
+from teleclaude.mirrors.store import get_mirror
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
 
 logger = get_logger(__name__)
@@ -245,7 +249,10 @@ class SessionMemoryExtractionJob(Job):
 
         Returns the transcript text, or None if no new content exists.
         """
-        mirror = get_mirror(native_session_id=session_id, access=ALL_MIRROR_ACCESS)
+        mirror = get_mirror(
+            native_session_id=session_id,
+            reach=resolve_reach(SystemCliCaller()),
+        )
         if mirror is None:
             return None
 
@@ -308,6 +315,13 @@ class SessionMemoryExtractionJob(Job):
             return
 
         store = MemoryStore()
+        caller = caller_from_principal(session.principal)
+        subject = (
+            SubjectRef(ConfigSubjectKind.PERSON, caller.person_slug).to_token()
+            if isinstance(caller, PersonCliCaller) and caller.person_slug is not None
+            else EventSubjectMarker.UNKNOWN.value
+        )
+        principal = session.principal or EventSubjectMarker.UNKNOWN.value
         for candidate in memories:
             observation_type = _parse_observation_type(candidate["type"])
             if observation_type is None:
@@ -320,6 +334,9 @@ class SessionMemoryExtractionJob(Job):
                     type=observation_type,
                     facts=candidate["facts"],
                     identity_key=identity_key,
+                    subject=subject,
+                    subject_owner=EventSubjectOwnerMarker.NONE.value,
+                    principal=principal,
                 )
             )
 
@@ -358,6 +375,9 @@ class SessionMemoryExtractionJob(Job):
                     project=project,
                     type=observation_type,
                     facts=candidate["facts"],
+                    subject=session.config_subject or EventSubjectMarker.UNKNOWN.value,
+                    subject_owner=session.subject_owner or EventSubjectOwnerMarker.UNRESOLVED.value,
+                    principal=session.principal or EventSubjectMarker.UNKNOWN.value,
                 )
             )
 

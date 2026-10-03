@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -25,6 +26,10 @@ _PERSON_KEY = "person"
 _COMPUTER_KEY = "computer"
 _NAME_KEY = "name"
 _ENV_REFERENCE_PREFIX = "${"
+_DECLARATION_READ_FAILED = "Identity declaration could not be read: %s: %s"
+_DECLARATION_INVALID = "Identity declaration is invalid: %s"
+
+logger = logging.getLogger(__name__)
 
 
 class CompanyRole(StrEnum):
@@ -34,6 +39,13 @@ class CompanyRole(StrEnum):
     MEMBER = "member"
     CONTRIBUTOR = "contributor"
     NEWCOMER = "newcomer"
+
+
+class ProjectOwnerKind(StrEnum):
+    """Owner categories declared by a registered project."""
+
+    COMPANY = "company"
+    PERSON = "person"
 
 
 class CompanyMember(ClosedModel):
@@ -63,6 +75,22 @@ class ProjectOwnership:
     project_slug: str
     company: str | None
     person: str | None
+
+    def owner_identity(self) -> tuple[ProjectOwnerKind, str] | None:
+        """Return the declared company-first owner identity for this project."""
+        return project_owner_identity(self.company, self.person)
+
+
+def project_owner_identity(
+    company: str | None,
+    person: str | None,
+) -> tuple[ProjectOwnerKind, str] | None:
+    """Resolve one project's declared owner identity, preferring company."""
+    if company is not None:
+        return ProjectOwnerKind.COMPANY, company
+    if person is not None:
+        return ProjectOwnerKind.PERSON, person
+    return None
 
 
 @dataclass(frozen=True)
@@ -143,9 +171,11 @@ def load_person_memberships(
     for config_path in sorted(root.glob(f"*/{ConfigFileName.OVERLAY}")):
         try:
             raw: object = yaml.safe_load(config_path.read_text(encoding=_UTF8))
-        except (OSError, UnicodeError, yaml.YAMLError):
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            logger.warning(_DECLARATION_READ_FAILED, config_path, exc)
             continue
         if not isinstance(raw, dict):
+            logger.warning(_DECLARATION_INVALID, config_path)
             continue
         members = raw.get(_MEMBERS_KEY)
         if not isinstance(members, dict) or person_slug not in members:
@@ -153,6 +183,7 @@ def load_person_memberships(
         try:
             memberships[config_path.parent.name] = CompanyMember.model_validate(members[person_slug])
         except ValidationError:
+            logger.warning(_DECLARATION_INVALID, config_path)
             continue
     return memberships
 
@@ -163,9 +194,11 @@ def _project_ownership_for_root(root: Path) -> ProjectOwnership | None:
         return None
     try:
         raw: object = yaml.safe_load(config_path.read_text(encoding=_UTF8))
-    except (OSError, UnicodeError, yaml.YAMLError):
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        logger.warning(_DECLARATION_READ_FAILED, config_path, exc)
         return None
     if not isinstance(raw, dict):
+        logger.warning(_DECLARATION_INVALID, config_path)
         return None
     project_slug = derive_project_slug(raw.get(_PROJECT_SLUG_KEY), raw.get(_PROJECT_NAME_KEY), root)
     if project_slug is None:
@@ -217,17 +250,21 @@ def load_people_roster(path: Path | None = None) -> list[PersonEntry]:
     source = GLOBAL_CONFIG_PATH if path is None else path
     try:
         loaded = yaml.safe_load(source.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError):
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        logger.warning(_DECLARATION_READ_FAILED, source, exc)
         return []
     if not isinstance(loaded, dict):
+        logger.warning(_DECLARATION_INVALID, source)
         return []
     people = loaded.get("people")
     if not isinstance(people, list):
+        logger.warning(_DECLARATION_INVALID, source)
         return []
     result: list[PersonEntry] = []
     for item in people:
         try:
             result.append(PersonEntry.model_validate(item))
         except ValidationError:
+            logger.warning(_DECLARATION_INVALID, source)
             continue
     return result

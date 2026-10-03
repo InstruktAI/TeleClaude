@@ -14,7 +14,14 @@ import aiosqlite
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
 from teleclaude.events.catalog import build_default_catalog
-from teleclaude.events.envelope import EventEnvelope, EventSubjectMarker
+from teleclaude.events.envelope import (
+    EventEnvelope,
+    EventSubjectMarker,
+    EventSubjectOwnerMarker,
+    subject_owner_token,
+    subject_token,
+)
+from teleclaude.identity_reach import Reach
 from teleclaude.paths import EVENTS_DB_PATH
 
 if TYPE_CHECKING:
@@ -49,6 +56,8 @@ class NotificationRow(TypedDict):
     last_delivered_action_revision: str | None
     occurred_at: str | None
     event_id: str | None
+    subject: str
+    subject_owner: str
 
 
 class QuarantinedEventRow(TypedDict):
@@ -75,12 +84,12 @@ class NotificationListFilters(TypedDict, total=False):
 
 
 _NOTIFICATION_LIST_FILTERS: dict[str, str] = {
-    "level": "level >= ?",
-    "domain": "domain = ?",
-    "human_status": "human_status = ?",
-    "agent_status": "agent_status = ?",
-    "visibility": "visibility = ?",
-    "since": "created_at >= ?",
+    "level": "level >= :level",
+    "domain": "domain = :domain",
+    "human_status": "human_status = :human_status",
+    "agent_status": "agent_status = :agent_status",
+    "visibility": "visibility = :visibility",
+    "since": "created_at >= :since",
 }
 
 
@@ -111,6 +120,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     last_delivered_action_revision TEXT,
     occurred_at TEXT,
     event_id TEXT,
+    subject TEXT,
+    subject_owner TEXT,
     UNIQUE(idempotency_key)
 );
 """
@@ -158,6 +169,37 @@ _RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS = (
     "UPDATE notifications SET agent_status = ?, resolved_at = ?, updated_at = ? "
     "WHERE event_type = ? AND (agent_status <> ? OR resolved_at IS NULL)"
 )
+_NOTIFICATION_COLUMNS_SQL = "PRAGMA table_info(notifications)"
+_NOTIFICATION_SUBJECT_COLUMN = "subject"
+_NOTIFICATION_SUBJECT_OWNER_COLUMN = "subject_owner"
+_ADD_NOTIFICATION_SUBJECT_SQL = "ALTER TABLE notifications ADD COLUMN subject TEXT"
+_ADD_NOTIFICATION_SUBJECT_OWNER_SQL = "ALTER TABLE notifications ADD COLUMN subject_owner TEXT"
+_BACKFILL_NOTIFICATION_SUBJECT_SQL = "UPDATE notifications SET subject = ? WHERE subject IS NULL"
+_BACKFILL_NOTIFICATION_SUBJECT_OWNER_SQL = "UPDATE notifications SET subject_owner = ? WHERE subject_owner IS NULL"
+_NOTIFICATION_SELECT_TEMPLATE = (
+    "SELECT * FROM notifications {where_clause} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+)
+_NOTIFICATION_SUBJECT_COLUMN_SQL = "notifications.subject"
+_NOTIFICATION_SUBJECT_OWNER_COLUMN_SQL = "notifications.subject_owner"
+_NOTIFICATION_LIMIT_PARAM = "limit"
+_NOTIFICATION_OFFSET_PARAM = "offset"
+_INSERT_NOTIFICATION_SQL = """
+INSERT INTO notifications
+  (event_type, version, source, level, domain, visibility, entity, description,
+   payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient, family,
+   occurred_at, event_id, subject, subject_owner)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+_UPSERT_NOTIFICATION_FIELDS_SQL = (
+    "UPDATE notifications SET description = ?, payload = ?, subject = ?, subject_owner = ?, updated_at = ? WHERE id = ?"
+)
+_UPDATE_NOTIFICATION_RESET_HUMAN_STATUS_SQL = (
+    "UPDATE notifications SET description = ?, payload = ?, subject = ?, subject_owner = ?, "
+    "human_status = 'unseen', updated_at = ? WHERE id = ?"
+)
+_UPDATE_NOTIFICATION_FIELDS_SQL = (
+    "UPDATE notifications SET description = ?, payload = ?, subject = ?, subject_owner = ?, updated_at = ? WHERE id = ?"
+)
 
 # Forward migration of stored notifications to the renamed `sdlc` domain; the
 # old domain name exists only as this migration's input.
@@ -188,6 +230,16 @@ def _now_iso() -> str:
 def _row_to_dict(row: aiosqlite.Row) -> NotificationRow:
     """Convert an aiosqlite row into the typed notification row mapping."""
     return dict(row)  # type: ignore[return-value]
+
+
+def _subject_token(envelope: EventEnvelope) -> str:
+    """Persist the typed envelope subject without re-deriving it from payload."""
+    return subject_token(envelope.subject)
+
+
+def _subject_owner_token(envelope: EventEnvelope) -> str:
+    """Persist the typed envelope owner without re-deriving it from payload."""
+    return subject_owner_token(envelope.subject_owner)
 
 
 def _signal_db_class() -> type[SignalDB]:
@@ -222,10 +274,22 @@ class EventDB:
             await self._conn.execute(_ADD_CORRELATION_SUBJECT_SQL)
         await self._conn.execute(_MIGRATE_CORRELATION_SUBJECT_SQL, (EventSubjectMarker.UNKNOWN.value,))
         # Forward migration: a pre-recipient `notifications` table predates this column.
-        table_info_cursor = await self._conn.execute("PRAGMA table_info(notifications)")
+        table_info_cursor = await self._conn.execute(_NOTIFICATION_COLUMNS_SQL)
         existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
         if "recipient" not in existing_columns:
             await self._conn.execute("ALTER TABLE notifications ADD COLUMN recipient TEXT")
+        if _NOTIFICATION_SUBJECT_COLUMN not in existing_columns:
+            await self._conn.execute(_ADD_NOTIFICATION_SUBJECT_SQL)
+        if _NOTIFICATION_SUBJECT_OWNER_COLUMN not in existing_columns:
+            await self._conn.execute(_ADD_NOTIFICATION_SUBJECT_OWNER_SQL)
+        await self._conn.execute(
+            _BACKFILL_NOTIFICATION_SUBJECT_SQL,
+            (EventSubjectMarker.UNKNOWN.value,),
+        )
+        await self._conn.execute(
+            _BACKFILL_NOTIFICATION_SUBJECT_OWNER_SQL,
+            (EventSubjectOwnerMarker.UNRESOLVED.value,),
+        )
         for column_name in ("family", "last_delivered_action_revision", "occurred_at", "event_id"):
             if column_name not in existing_columns:
                 await self._conn.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} TEXT")
@@ -294,12 +358,7 @@ class EventDB:
         """Insert a new notification projection row and return its database id."""
         now = _now_iso()
         cursor = await self._db().execute(
-            """
-            INSERT INTO notifications
-              (event_type, version, source, level, domain, visibility, entity, description,
-               payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient, family, occurred_at, event_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?, ?, ?, ?)
-            """,
+            _INSERT_NOTIFICATION_SQL,
             (
                 envelope.event,
                 envelope.version,
@@ -317,6 +376,8 @@ class EventDB:
                 family,
                 envelope.timestamp.isoformat(),
                 envelope.event_id,
+                _subject_token(envelope),
+                _subject_owner_token(envelope),
             ),
         )
         await self._db().commit()
@@ -335,6 +396,7 @@ class EventDB:
 
     async def list_notifications(
         self,
+        reach: Reach,
         *,
         limit: int = 50,
         offset: int = 0,
@@ -348,7 +410,13 @@ class EventDB:
         instead.
         """
         conditions: list[str] = ["recipient IS NULL"]
-        params: list[Any] = []
+        reach_clause, reach_params = reach.sql_predicate(
+            subject_col=_NOTIFICATION_SUBJECT_COLUMN_SQL,
+            owner_col=_NOTIFICATION_SUBJECT_OWNER_COLUMN_SQL,
+            principal_col=None,
+        )
+        conditions.append(reach_clause)
+        params: dict[str, object] = dict(reach_params)  # guard: loose-dict - SQL bind params combine dynamic filters.
         unexpected_filters = sorted(set(filters) - set(_NOTIFICATION_LIST_FILTERS))
         if unexpected_filters:
             unexpected = ", ".join(unexpected_filters)
@@ -357,14 +425,12 @@ class EventDB:
             value = filters.get(key)
             if value is not None:
                 conditions.append(sql)
-                params.append(value)
+                params[key] = value
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
-        params.extend([limit, offset])
-        cursor = await self._db().execute(
-            f"SELECT * FROM notifications {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            params,
-        )
+        params[_NOTIFICATION_LIMIT_PARAM] = limit
+        params[_NOTIFICATION_OFFSET_PARAM] = offset
+        cursor = await self._db().execute(_NOTIFICATION_SELECT_TEMPLATE.format(where_clause=where), params)
         rows = await cursor.fetchall()
         return [_row_to_dict(r) for r in rows]
 
@@ -395,8 +461,15 @@ class EventDB:
             if existing:
                 notification_id: int = existing[0]
                 await self._db().execute(
-                    "UPDATE notifications SET description = ?, payload = ?, updated_at = ? WHERE id = ?",
-                    (envelope.description, json.dumps(envelope.payload), now, notification_id),
+                    _UPSERT_NOTIFICATION_FIELDS_SQL,
+                    (
+                        envelope.description,
+                        json.dumps(envelope.payload),
+                        _subject_token(envelope),
+                        _subject_owner_token(envelope),
+                        now,
+                        notification_id,
+                    ),
                 )
                 await self._db().commit()
                 return notification_id, False
@@ -432,22 +505,21 @@ class EventDB:
         notification_id: int,
         description: str,
         payload: JsonDict,
+        subject: str,
+        subject_owner: str,
         reset_human_status: bool = False,
     ) -> bool:
         """Update the projected description and payload for an existing notification."""
         now = _now_iso()
         if reset_human_status:
             cursor = await self._db().execute(
-                (
-                    "UPDATE notifications SET description = ?, payload = ?, "
-                    "human_status = 'unseen', updated_at = ? WHERE id = ?"
-                ),
-                (description, json.dumps(payload), now, notification_id),
+                _UPDATE_NOTIFICATION_RESET_HUMAN_STATUS_SQL,
+                (description, json.dumps(payload), subject, subject_owner, now, notification_id),
             )
         else:
             cursor = await self._db().execute(
-                "UPDATE notifications SET description = ?, payload = ?, updated_at = ? WHERE id = ?",
-                (description, json.dumps(payload), now, notification_id),
+                _UPDATE_NOTIFICATION_FIELDS_SQL,
+                (description, json.dumps(payload), subject, subject_owner, now, notification_id),
             )
         await self._db().commit()
         return cursor.rowcount > 0

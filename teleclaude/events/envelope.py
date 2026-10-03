@@ -141,7 +141,7 @@ def _subject_from_token(token: str) -> EventSubject:
         return EventHomeRef.from_token(token)
 
 
-def _subject_owner_token(owner: EventSubjectOwner) -> str:
+def subject_owner_token(owner: EventSubjectOwner) -> str:
     if isinstance(owner, EventOwnerRef):
         return owner.to_token()
     return owner.value
@@ -235,7 +235,7 @@ class EventEnvelope(BaseModel):
             _ORIGIN_SESSION_STREAM_KEY: self.originating_session_id or "",
             _ORIGIN_HOME_STREAM_KEY: self.origin_home.to_token() if self.origin_home else "",
             _SUBJECT_STREAM_KEY: subject_token(self.subject),
-            _SUBJECT_OWNER_STREAM_KEY: _subject_owner_token(self.subject_owner),
+            _SUBJECT_OWNER_STREAM_KEY: subject_owner_token(self.subject_owner),
             "timestamp": cast(str, dumped["timestamp"]),
             "idempotency_key": self.idempotency_key or "",
             "level": str(int(self.level)),

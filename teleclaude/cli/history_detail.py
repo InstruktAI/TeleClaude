@@ -14,8 +14,7 @@ from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
-from teleclaude.history.service import HistoryDetailPayload, build_history_detail_payload
-from teleclaude.mirrors.access import history_access_for_caller
+from teleclaude.history.service import HistoryDetailPayload, build_history_detail_payload, resolve_history_reach
 from teleclaude.mirrors.store import MirrorCoverageState
 
 __all__ = ["show_transcript"]
@@ -110,13 +109,13 @@ def show_transcript(
         return
 
     identity = resolve_cli_identity()
-    access = history_access_for_caller(identity.caller)
-    if access is None:
+    reach = resolve_history_reach(identity.caller)
+    if reach is None:
         print(f"Error: {no_identity_refusal(identity)}", file=sys.stderr)
         raise SystemExit(1)
     detail = build_history_detail_payload(
         session_id,
-        access=access,
+        reach=reach,
         agents=agents,
         include_thinking=include_thinking,
         raw=raw,

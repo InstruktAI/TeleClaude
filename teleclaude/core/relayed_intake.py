@@ -54,9 +54,9 @@ from teleclaude.history.service import (
     build_history_detail_payload,
     build_history_search_payload,
     parse_history_agents,
+    resolve_history_reach,
 )
-from teleclaude.mirrors.access import history_access_for_caller
-from teleclaude.mirrors.store import MirrorAccess
+from teleclaude.identity_reach import Reach
 from teleclaude.types.commands import (
     CommandType,
     CreateSessionCommand,
@@ -275,7 +275,6 @@ async def execute_relayed_read(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         selection: SessionListingSelection = build_session_listing_selection(
             caller,
-            resolver,
             include_closed=include_closed,
             session_ids=session_ids,
         )
@@ -286,7 +285,7 @@ async def execute_relayed_read(
         )
 
     if command == HistoryRelayCommand.SEARCH.value:
-        access = await _history_access(caller)
+        reach = await _history_reach(caller)
         agent_filter = _string_or_default(request.get(_AGENT_FIELD), _DEFAULT_HISTORY_AGENT)
         agents = parse_history_agents(agent_filter)
         limit_raw = request.get(_LIMIT_FIELD)
@@ -299,7 +298,7 @@ async def execute_relayed_read(
             query=_string_or_default(request.get(_Q_FIELD), ""),
             agents=agents,
             limit=limit,
-            access=access,
+            reach=reach,
             include_workers=include_workers,
             identity=_optional_string(request.get(_IDENTITY_FIELD)),
             project=_optional_string(request.get(_PROJECT_FIELD)),
@@ -312,7 +311,7 @@ async def execute_relayed_read(
         detail_payload: HistoryDetailPayload | None = await asyncio.to_thread(
             build_history_detail_payload,
             requested_session,
-            access=await _history_access(caller),
+            reach=await _history_reach(caller),
             agents=parse_history_agents(cast(str, show_data[_AGENT_FIELD])),
             include_thinking=cast(bool, show_data[_HISTORY_THINKING_FIELD]),
             raw=cast(bool, show_data[_HISTORY_RAW_FIELD]),
@@ -403,11 +402,11 @@ def _session_message_projection_options(data: JsonDict) -> SessionMessageProject
     )
 
 
-async def _history_access(caller: CliCaller) -> MirrorAccess:
-    access = await asyncio.to_thread(history_access_for_caller, caller)
-    if access is None:
+async def _history_reach(caller: CliCaller) -> Reach:
+    reach = await asyncio.to_thread(resolve_history_reach, caller)
+    if reach is None:
         raise PermissionError(_INVALID_HISTORY_ACCESS_DETAIL)
-    return access
+    return reach
 
 
 def _read_not_found(kind: str, object_id: str, computer: str) -> RelayedReadNotFound:

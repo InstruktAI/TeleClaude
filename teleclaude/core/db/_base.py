@@ -25,6 +25,7 @@ from teleclaude.project_root import is_slug_worktree, resolve_invocation_roots
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
 from ..models import Session, decode_relay_exchange, decode_relay_targets
+from ..models._session import SessionField
 from ..models._types import JsonDict, to_json_dict
 from ..session_status import AgentStatusReason, AgentStatusValue
 from ._agent_status import decode_open_tool_calls, decode_turn_notifications
@@ -169,6 +170,7 @@ class DbBase:
             project_path=row.project_path,
             subdir=row.subdir,
             config_subject=row.config_subject,
+            subject_owner=getattr(row, SessionField.SUBJECT_OWNER.value, None),
             description=row.description,
             initiated_by_ai=bool(row.initiated_by_ai) if row.initiated_by_ai is not None else False,
             initiator_session_id=row.initiator_session_id,

@@ -11,6 +11,7 @@ from sqlmodel import Session as SqlSession
 
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
+from teleclaude.identity_reach import Reach
 from teleclaude.memory.types import ObservationType, SearchResult
 
 logger = get_logger(__name__)
@@ -53,6 +54,26 @@ def _row_to_search_result(row: Any) -> SearchResult:
 
 
 _SEARCH_COLUMNS = "id, title, subtitle, type, project, narrative, facts, created_at, created_at_epoch"
+_SUBJECT_COLUMN = "memory_observations.subject"
+_SUBJECT_OWNER_COLUMN = "memory_observations.subject_owner"
+_PRINCIPAL_COLUMN = "memory_observations.principal"
+_REACH_FILTER_TEMPLATE = " AND ({predicate})"
+_ANCHOR_EPOCH_SQL = "SELECT created_at_epoch FROM memory_observations WHERE id = :id"
+_ANCHOR_ID_SQL = f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id"
+_ID_PARAMETER = "id"
+_EPOCH_PARAMETER = "epoch"
+_LIMIT_PARAMETER = "limit"
+
+
+def _append_reach_filter(sql: str, params: dict[str, str | int], reach: Reach) -> str:
+    """Bind the identity-owned observation predicate before ordering and paging."""
+    predicate, reach_params = reach.sql_predicate(
+        subject_col=_SUBJECT_COLUMN,
+        owner_col=_SUBJECT_OWNER_COLUMN,
+        principal_col=_PRINCIPAL_COLUMN,
+    )
+    params.update(reach_params)
+    return sql + _REACH_FILTER_TEMPLATE.format(predicate=predicate)
 
 
 class MemorySearch:
@@ -61,6 +82,7 @@ class MemorySearch:
     async def search(
         self,
         query: str,
+        reach: Reach,
         project: str | None = None,
         limit: int = 20,
         obs_type: ObservationType | None = None,
@@ -94,6 +116,7 @@ class MemorySearch:
                 if identity_key:
                     sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                     params["identity_key"] = identity_key
+                sql = _append_reach_filter(sql, params, reach)
                 sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
                 result = await session.exec(  # type: ignore[call-overload]
                     text(sql).bindparams(**params)  # guard: raw-sql
@@ -119,6 +142,7 @@ class MemorySearch:
             if identity_key:
                 sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                 params["identity_key"] = identity_key
+            sql = _append_reach_filter(sql, params, reach)
             sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
             result = await session.exec(  # type: ignore[call-overload]
                 text(sql).bindparams(**params)  # guard: raw-sql
@@ -129,6 +153,7 @@ class MemorySearch:
     async def timeline(
         self,
         anchor_id: int,
+        reach: Reach,
         depth_before: int = 3,
         depth_after: int = 3,
         project: str | None = None,
@@ -136,10 +161,11 @@ class MemorySearch:
         """Get observations around an anchor by created_at_epoch."""
         async with db._session() as session:
             # Get anchor epoch
+            anchor_sql = _ANCHOR_EPOCH_SQL
+            anchor_params: dict[str, str | int] = {_ID_PARAMETER: anchor_id}
+            anchor_sql = _append_reach_filter(anchor_sql, anchor_params, reach)
             result = await session.exec(  # type: ignore[call-overload]
-                text(  # guard: raw-sql
-                    "SELECT created_at_epoch FROM memory_observations WHERE id = :id"
-                ).bindparams(id=anchor_id)
+                text(anchor_sql).bindparams(**anchor_params)  # guard: raw-sql
             )
             anchor_row = result.first()
             if not anchor_row:
@@ -152,13 +178,14 @@ class MemorySearch:
                 "WHERE created_at_epoch <= :epoch AND id != :id"
             )
             params_before: dict[str, str | int] = {
-                "epoch": anchor_epoch,
-                "id": anchor_id,
-                "limit": depth_before,
+                _EPOCH_PARAMETER: anchor_epoch,
+                _ID_PARAMETER: anchor_id,
+                _LIMIT_PARAMETER: depth_before,
             }
             if project:
                 before_sql += " AND project = :project"
                 params_before["project"] = project
+            before_sql = _append_reach_filter(before_sql, params_before, reach)
             before_sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
             result = await session.exec(  # type: ignore[call-overload]
                 text(before_sql).bindparams(**params_before)  # guard: raw-sql
@@ -166,11 +193,11 @@ class MemorySearch:
             before_rows = list(reversed(result.fetchall()))
 
             # Anchor itself
-            anchor_sql = (  # guard: raw-sql
-                f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id"
-            )
+            anchor_sql = _ANCHOR_ID_SQL  # guard: raw-sql
+            anchor_params = {_ID_PARAMETER: anchor_id}
+            anchor_sql = _append_reach_filter(anchor_sql, anchor_params, reach)
             result = await session.exec(  # type: ignore[call-overload]
-                text(anchor_sql).bindparams(id=anchor_id)  # guard: raw-sql
+                text(anchor_sql).bindparams(**anchor_params)  # guard: raw-sql
             )
             anchor_rows = result.fetchall()
 
@@ -180,13 +207,14 @@ class MemorySearch:
                 "WHERE created_at_epoch >= :epoch AND id != :id"
             )
             params_after: dict[str, str | int] = {
-                "epoch": anchor_epoch,
-                "id": anchor_id,
-                "limit": depth_after,
+                _EPOCH_PARAMETER: anchor_epoch,
+                _ID_PARAMETER: anchor_id,
+                _LIMIT_PARAMETER: depth_after,
             }
             if project:
                 after_sql += " AND project = :project"
                 params_after["project"] = project
+            after_sql = _append_reach_filter(after_sql, params_after, reach)
             after_sql += " ORDER BY created_at_epoch ASC LIMIT :limit"
             result = await session.exec(  # type: ignore[call-overload]
                 text(after_sql).bindparams(**params_after)  # guard: raw-sql

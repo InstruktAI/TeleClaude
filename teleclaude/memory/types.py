@@ -44,6 +44,9 @@ class ObservationInput:
     concepts: list[str] = field(default_factory=list)
     facts: list[str] = field(default_factory=list)
     identity_key: str | None = None
+    subject: str | None = None
+    subject_owner: str | None = None
+    principal: str | None = None
 
 
 @dataclass

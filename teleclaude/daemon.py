@@ -29,6 +29,11 @@ _CONVERSATION_UPKEEP_TASK_NAME = "conversation-upkeep"
 _CONVERSATION_UPKEEP_LABEL = "conversation_upkeep"
 _CONVERSATION_UPKEEP_ATTR = "conversation_upkeep_task"
 _CONVERSATION_UPKEEP_STOPPED = "Conversation upkeep stopped"
+_IDENTITY_DECLARATION_WATCH_TASK_NAME = "identity-declarations-watch"
+_IDENTITY_DECLARATION_WATCH_LABEL = "identity_declarations_watch"
+_IDENTITY_DECLARATION_WATCH_ATTR = "identity_declarations_watch_task"
+_IDENTITY_DECLARATION_WATCH_STOPPED = "Identity declaration watcher stopped"
+_IDENTITY_DECLARATION_WATCHER_STARTED = "Identity declaration watcher started"
 
 if TYPE_CHECKING:
     from teleclaude.hooks.dispatcher import HookDispatcher
@@ -49,6 +54,23 @@ def _emit_import_timing_logs() -> None:
         )
         if dt >= 1.0:
             logger.warning("Slow daemon import: module=%s dt=%.3fs", label, dt)
+
+
+def _identity_declaration_watch_paths() -> list[Path]:
+    """Return config declarations whose changes can alter identity reach."""
+    paths = {GLOBAL_CONFIG_PATH, PEOPLE_DIR, COMPANIES_ROOT, PROJECTS_MANIFEST_PATH}
+    if PEOPLE_DIR.is_dir():
+        for person_dir in PEOPLE_DIR.iterdir():
+            paths.add(person_dir)
+            paths.add(person_dir / ConfigFileName.OVERLAY)
+    if COMPANIES_ROOT.is_dir():
+        for company_dir in COMPANIES_ROOT.iterdir():
+            paths.add(company_dir)
+            paths.add(company_dir / ConfigFileName.OVERLAY)
+    for project_root in load_roots():
+        paths.add(project_root)
+        paths.add(project_root / ConfigFileName.OVERLAY)
+    return sorted(paths)
 
 
 _t = time.perf_counter()
@@ -223,7 +245,18 @@ from teleclaude.mirrors.processors import register_default_processors
 _record_import_timing("teleclaude.mirrors.processors", _t)
 
 _t = time.perf_counter()
-from teleclaude.paths import MAIN_DB_PATH, PROJECT_ENV_PATH, PROJECTS_MANIFEST_PATH, RUNTIME_SETTINGS_PATH
+from teleclaude.config.declaration_changes import publish_declaration_changes
+from teleclaude.paths import (
+    COMPANIES_ROOT,
+    GLOBAL_CONFIG_PATH,
+    MAIN_DB_PATH,
+    PEOPLE_DIR,
+    PROJECT_ENV_PATH,
+    PROJECTS_MANIFEST_PATH,
+    RUNTIME_SETTINGS_PATH,
+    ConfigFileName,
+)
+from teleclaude.project_manifest import load_roots
 
 _record_import_timing("teleclaude.paths", _t)
 
@@ -445,6 +478,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self.config_watch_task: asyncio.Task[object] | None = None
         self.projects_watch_task: asyncio.Task[object] | None = None
+        self.identity_declarations_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
@@ -887,6 +921,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.projects_watch_task.add_done_callback(self._log_background_task_exception("projects_watch"))
             logger.info("Project registry watcher started (%s)", PROJECTS_MANIFEST_PATH)
 
+            self.identity_declarations_watch_task = asyncio.create_task(
+                ConfigWatcher(_identity_declaration_watch_paths, self._on_identity_declarations_changed).run(),
+                name=_IDENTITY_DECLARATION_WATCH_TASK_NAME,
+            )
+            self.identity_declarations_watch_task.add_done_callback(
+                self._log_background_task_exception(_IDENTITY_DECLARATION_WATCH_LABEL)
+            )
+            logger.info(_IDENTITY_DECLARATION_WATCHER_STARTED)
+
             self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker(), name="hook-outbox-worker")
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
@@ -1024,6 +1067,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         for attr_name, log_message in (
             ("config_watch_task", "Config watcher stopped"),
             ("projects_watch_task", "Project registry watcher stopped"),
+            (_IDENTITY_DECLARATION_WATCH_ATTR, _IDENTITY_DECLARATION_WATCH_STOPPED),
             ("resource_monitor_task", "Resource monitor stopped"),
             ("process_janitor_task", "Process janitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
@@ -1144,6 +1188,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
     async def _on_projects_registry_changed(self) -> None:
         """Refresh the local project cache after an external registry edit."""
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
+
+    async def _on_identity_declarations_changed(self) -> None:
+        """Refresh config-owned project facts before invalidating identity reach."""
+        await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
+        publish_declaration_changes()
 
     async def _on_config_files_changed(self) -> None:
         """Apply a config.yml/.env change: hot-reload live sections, restart for the rest.

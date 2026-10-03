@@ -10,9 +10,11 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import SystemCliCaller
 from teleclaude.config import config
 from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
+from teleclaude.identity_reach import resolve_reach
 
 from teleclaude.utils.transcript import StructuredMessage  # isort: skip  # transcript initialization imports the projector
 
@@ -25,7 +27,6 @@ from ._types import JsonValue
 from .derivation import DERIVATION_VERSION, derive_human_title
 from .session_context import MirrorAttributionReason, SessionMirrorContext
 from .store import (
-    ALL_MIRROR_ACCESS,
     MirrorRecord,
     delete_mirror,
     get_mirror,
@@ -120,7 +121,7 @@ def generate_mirror_sync(
     structured = [to_structured_message(block) for block in projected_blocks]
     is_worker = context.system_role == ROLE_WORKER if context is not None else None
     conversation_messages = _normalize_conversation_messages(structured)
-    existing = get_mirror(source_identity=source_identity, access=ALL_MIRROR_ACCESS, db=db)
+    existing = get_mirror(source_identity=source_identity, reach=resolve_reach(SystemCliCaller()), db=db)
 
     if not conversation_messages:
         # A source that yields nothing is a degraded source, not an emptied conversation.
@@ -202,6 +203,8 @@ def generate_mirror_sync(
         MirrorSessionAttribution(
             session_id=context.session_id,
             principal=context.principal,
+            subject=context.subject,
+            subject_owner=context.subject_owner,
             project=context.project,
             subdir=context.subdir,
             initiator_session_id=context.initiator_session_id,

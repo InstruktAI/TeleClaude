@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     project_path TEXT,
     subdir TEXT,
     config_subject TEXT,
+    subject_owner TEXT,
     description TEXT,
     initiated_by_ai BOOLEAN DEFAULT 0,
     initiator_session_id TEXT,
@@ -238,6 +239,9 @@ CREATE TABLE IF NOT EXISTS operations (
     caller_provenance_json TEXT,
     client_request_id TEXT,
     cwd TEXT,
+    session_project_path TEXT,
+    subject TEXT,
+    subject_owner TEXT,
     slug TEXT,
     payload_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'completed', 'failed', 'stale', 'cancelled')),
@@ -569,7 +573,10 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     discovery_tokens INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
     created_at_epoch INTEGER NOT NULL,
-    identity_key TEXT
+    identity_key TEXT,
+    subject TEXT,
+    subject_owner TEXT,
+    principal TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_obs_session ON memory_observations(memory_session_id);

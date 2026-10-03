@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
-from teleclaude.caller_identity import CliCaller, OperationOf, PersonCliCaller, RoleResolver
+from teleclaude.caller_identity import CliCaller
 from teleclaude.config import config
 from teleclaude.constants import RUNNER_NOT_DISPATCHED
 from teleclaude.core.command_dispatch import invoke_command_handler
@@ -77,6 +77,7 @@ from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.identity_reach import resolve_reach
 from teleclaude.types.commands import CallerProvenance, InternalCommand, command_from_dict
 
 logger = get_logger(__name__)
@@ -156,6 +157,7 @@ class OperationsService:
 
     async def start(self) -> None:
         """Normalize abandoned nonterminal operations; retain them for `deliver_startup_recovery`."""
+        await self._db.backfill_operation_subject_facts()
         staled = await self._db.mark_nonterminal_operations_stale(
             error_text="daemon restarted before operation completed",
         )
@@ -546,9 +548,7 @@ class OperationsService:
                 return self._serialize_operation(operation)
         elif caller_session_id is not None and operation.caller_session_id == caller_session_id:
             return self._serialize_operation(operation)
-        operation_project_path = operation.cwd or operation.session_project_path
-        target = OperationOf(Path(operation_project_path) if operation_project_path else None)
-        if not isinstance(caller, PersonCliCaller) or RoleResolver().role_for(caller, target) != "admin":
+        if not resolve_reach(caller).admits(operation.subject, operation.subject_owner, None):
             raise HTTPException(status_code=404, detail="operation not found")
         return self._serialize_operation(operation)
 

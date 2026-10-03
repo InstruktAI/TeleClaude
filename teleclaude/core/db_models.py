@@ -40,6 +40,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
+    subject_owner: str | None = None
     description: str | None = None
     initiated_by_ai: bool | None = False
     initiator_session_id: str | None = None
@@ -614,6 +615,9 @@ class MemoryObservation(SQLModel, table=True):
     created_at: str
     created_at_epoch: int
     identity_key: str | None = None
+    subject: str | None = None
+    subject_owner: str | None = None
+    principal: str | None = None
 
 
 class MemorySummary(SQLModel, table=True):
@@ -714,6 +718,8 @@ class Operation(SQLModel, table=True):
     client_request_id: str | None = None
     cwd: str | None = None
     session_project_path: str | None = None
+    subject: str | None = None
+    subject_owner: str | None = None
     slug: str | None = None
     payload_json: str
     state: str

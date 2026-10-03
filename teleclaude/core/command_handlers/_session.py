@@ -13,6 +13,8 @@ from teleclaude.agent_registry import LaunchProfile
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
+from teleclaude.config_roster import load_project_ownership_index
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
@@ -62,7 +64,7 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker, EventVisibility
 from teleclaude.project_root import is_project_checkout
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
@@ -344,9 +346,19 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         working_dir = str(working_dir_path)
 
     config_subject: str | None = None
+    subject_owner: str | None = None
     try:
         subject = resolve_config_subject(working_dir_path)
         config_subject = subject.to_token() if subject is not None else None
+        if subject is not None and subject.kind is ConfigSubjectKind.PROJECT:
+            ownership = load_project_ownership_index().for_path(working_dir_path)
+            if ownership is not None:
+                owner_identity = ownership.owner_identity()
+                if owner_identity is not None:
+                    owner_kind, owner_slug = owner_identity
+                    subject_owner = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()
+                else:
+                    subject_owner = EventSubjectOwnerMarker.OWNERLESS.value
     except SubjectResolutionError as error:
         # A malformed user declaration must not refuse session creation; no subject keeps visibility at platform scope.
         logger.warning(
@@ -392,6 +404,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         project_path=project_path,
         subdir=subfolder,
         config_subject=config_subject,
+        subject_owner=subject_owner,
         session_id=session_id,
         command=cmd.command,
         working_slug=working_slug,
@@ -498,7 +511,7 @@ async def list_sessions(*, selection: SessionListingSelection) -> list[SessionSn
     UI adapters (Telegram) should not have access to this command.
     """
     sessions = await db.select_sessions_for_listing(
-        selection.subject_tokens,
+        selection.reach,
         selection.closed_since,
         selection.session_ids,
     )
@@ -530,6 +543,12 @@ async def list_projects() -> list[ProjectInfo]:
             name=entry.display_name,
             description=entry.description,
             path=str(entry.root),
+            subject=(
+                SubjectRef(ConfigSubjectKind(entry.kind.value), entry.identity).to_token()
+                if entry.identity is not None
+                else EventSubjectMarker.UNKNOWN.value
+            ),
+            owner=entry.owner,
         )
         for entry in catalog.list_entries()
     ]

@@ -35,6 +35,9 @@ from teleclaude.config import config
 
 logger = get_logger(__name__)
 
+_COMPUTERS_RESOURCE = "computers"
+_PROJECTS_RESOURCE = "projects"
+
 
 class TelecAppWsMixin:
     """WebSocket event handling and session lifecycle message handlers."""
@@ -214,7 +217,7 @@ class TelecAppWsMixin:
     def _handle_fallback_event(self, event: WsEvent) -> None:
         """Refresh app state for websocket events without explicit handlers."""
         if event.event == "computer_updated":
-            self._refresh_data(["computers"])  # type: ignore[attr-defined]
+            self._refresh_data([_COMPUTERS_RESOURCE, _PROJECTS_RESOURCE])  # type: ignore[attr-defined]
             return
         if event.event in {
             "project_updated",

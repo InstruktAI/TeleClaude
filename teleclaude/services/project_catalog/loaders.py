@@ -7,6 +7,9 @@ from pathlib import Path
 
 from teleclaude.config.loader import load_company_config, load_person_config, load_project_config
 from teleclaude.config.schema import CompanyConfig, ConfigKind, PersonEntry
+from teleclaude.config_roster import project_owner_identity
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.events.envelope import EventSubjectOwnerMarker
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import RegisteredProjectEntry
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry, ProjectNode
@@ -63,6 +66,7 @@ def load_catalog_entry(
             display_name=node.name,
             description=node.config.description,
             kind=ConfigKind.PROJECT,
+            owner=_project_owner_token(node.config.company, node.config.person),
         )
 
     config_path = root / ConfigFileName.OVERLAY
@@ -91,3 +95,12 @@ def load_catalog_entry(
     except (OSError, ValueError):
         return None
     return None
+
+
+def _project_owner_token(company: str | None, person: str | None) -> str:
+    """Encode the declared owner or the explicit ownerless state for a project."""
+    owner_identity = project_owner_identity(company, person)
+    if owner_identity is None:
+        return EventSubjectOwnerMarker.OWNERLESS.value
+    owner_kind, owner_slug = owner_identity
+    return SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()

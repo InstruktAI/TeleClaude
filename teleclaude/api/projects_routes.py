@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, carried_caller, require_clearance
+from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller, require_clearance
 from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
 from teleclaude.config import config
 from teleclaude.config.resources import init_project_subject
 from teleclaude.core import command_handlers
 from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.models import ProjectInfo
+from teleclaude.identity_reach import resolve_reach
 from teleclaude.project_setup.init_flow import ProjectIdentityConflict, ProjectInitializationTrigger
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -57,6 +58,8 @@ def _dto_from_project(project: ProjectInfo, computer_name: str) -> ProjectDTO:
         name=project.name,
         path=str(project.path or ""),
         description=project.description,
+        subject=project.subject,
+        owner=project.owner,
     )
 
 
@@ -82,6 +85,7 @@ async def list_projects(
     """
     try:
         computer_name = config.computer.name
+        reach = resolve_reach(caller_for_role_resolution(_identity))
         cache = _CACHE["value"]
         include_local = computer is None or computer in ("local", computer_name)
         include_remote = cache is not None and (computer is None or not include_local)
@@ -107,14 +111,19 @@ async def list_projects(
                         cache.apply_todos_snapshot(computer_name, todos_by_project)
                 cached_local = raw_projects
 
-            result.extend(_dto_from_project(project, computer_name) for project in cached_local)
+            result.extend(
+                _dto_from_project(project, computer_name)
+                for project in cached_local
+                if reach.admits(project.subject, project.owner, None)
+            )
 
         if include_remote and cache:
             for project in cache.get_projects(computer):
                 comp_name = str(project.computer or "")
                 if comp_name == computer_name:
                     continue
-                result.append(_dto_from_project(project, comp_name))
+                if reach.admits(project.subject, project.owner, None):
+                    result.append(_dto_from_project(project, comp_name))
 
         return result
     except (OSError, RuntimeError, ValueError) as exc:

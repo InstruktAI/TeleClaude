@@ -11,13 +11,13 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db._sync import get_session_field_sync
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
+from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.mirrors.store import (
-    AllMirrorAccess,
-    MirrorAccess,
     MirrorCoverageState,
     MirrorRecord,
     MirrorSearchResult,
@@ -36,7 +36,9 @@ __all__ = [
     "HistoryShowRequest",
     "_format_display_timestamp",
     "build_history_detail_payload",
+    "history_caller_is_identified",
     "parse_history_agents",
+    "resolve_history_reach",
 ]
 
 HISTORY_SEARCH_ACCEPTED = "history.search.accepted"
@@ -52,6 +54,20 @@ _COVERAGE_LINE_TEMPLATE = "Coverage: through {timestamp_end}; state: {coverage_s
 _RETAINED_COVERAGE_LINE_TEMPLATE = (
     "Coverage: through {timestamp_end}; state: {coverage_state}; shrink refusal observed: {shrink_refused_at}"
 )
+
+
+def history_caller_is_identified(caller: CliCaller) -> bool:
+    """Whether history can bind this caller to a person or system principal."""
+    return isinstance(caller, SystemCliCaller) or (
+        isinstance(caller, PersonCliCaller) and caller.person_slug is not None
+    )
+
+
+def resolve_history_reach(caller: CliCaller) -> Reach | None:
+    """Resolve identity reach only for a caller history can identify."""
+    if not history_caller_is_identified(caller):
+        return None
+    return resolve_reach(caller)
 
 
 class HistoryRelayCommand(StrEnum):
@@ -179,9 +195,9 @@ def _detail_json_payload(
 def _resolve_local_mirror(
     session_id: str,
     *,
-    access: MirrorAccess,
+    reach: Reach,
 ) -> MirrorResolution:
-    mirror = get_mirror(native_session_id=session_id, access=access)
+    mirror = get_mirror(native_session_id=session_id, reach=reach)
     if mirror is not None:
         return MirrorResolution(
             mirror=mirror,
@@ -192,7 +208,7 @@ def _resolve_local_mirror(
             source=DetailSource.MIRROR,
         )
 
-    attributed_mirror = get_session_mirror(session_id, access=access)
+    attributed_mirror = get_session_mirror(session_id, reach=reach)
     if attributed_mirror is not None:
         return MirrorResolution(
             mirror=attributed_mirror,
@@ -205,7 +221,7 @@ def _resolve_local_mirror(
 
     resolved_native_id = get_session_field_sync(str(MAIN_DB_PATH), session_id, _NATIVE_SESSION_ID_FIELD)
     if isinstance(resolved_native_id, str) and resolved_native_id:
-        translated_mirror = get_mirror(native_session_id=resolved_native_id, access=access)
+        translated_mirror = get_mirror(native_session_id=resolved_native_id, reach=reach)
         return MirrorResolution(
             mirror=translated_mirror,
             requested_id=session_id,
@@ -228,14 +244,14 @@ def _resolve_local_mirror(
 def build_history_detail_payload(
     session_id: str,
     *,
-    access: MirrorAccess,
+    reach: Reach,
     agents: Sequence[AgentName],
     include_thinking: bool,
     raw: bool,
 ) -> HistoryDetailPayload | None:
     """Resolve one history detail within the caller's mirror access scope."""
-    transcript_fallback_allowed = isinstance(access, AllMirrorAccess)
-    resolution = _resolve_local_mirror(session_id, access=access)
+    transcript_fallback_allowed = reach.everything
+    resolution = _resolve_local_mirror(session_id, reach=reach)
     mirror = resolution.mirror
     if mirror and not raw:
         return _detail_json_payload(resolution, body=mirror.conversation_text.rstrip(), raw=False)
@@ -293,7 +309,7 @@ def build_history_search_payload(
     query: str,
     agents: Sequence[AgentName],
     limit: int,
-    access: MirrorAccess,
+    reach: Reach,
     include_workers: bool,
     identity: str | None,
     project: str | None,
@@ -313,7 +329,7 @@ def build_history_search_payload(
         query,
         agents,
         limit=limit,
-        access=access,
+        reach=reach,
         include_workers=include_workers,
         identity=identity,
         project=project,

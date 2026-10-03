@@ -29,9 +29,10 @@ from teleclaude.history.service import (
     HistoryShowRequest,
     build_history_detail_payload,
     build_history_search_payload,
+    history_caller_is_identified,
     parse_history_agents,
+    resolve_history_reach,
 )
-from teleclaude.mirrors.access import history_access_for_caller
 from teleclaude.utils.transcript_discovery import SessionId
 
 if TYPE_CHECKING:
@@ -133,8 +134,7 @@ async def search_history(
 ) -> HistorySearchPayload:
     """Search local or peer mirrors through the authenticated daemon boundary."""
     resolved_caller = caller_from_carried_identity(caller)
-    access = await asyncio.to_thread(history_access_for_caller, resolved_caller)
-    if access is None:
+    if not history_caller_is_identified(resolved_caller):
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
 
     try:
@@ -165,13 +165,16 @@ async def search_history(
             failure_log_fields={},
         )
 
+    reach = await asyncio.to_thread(resolve_history_reach, resolved_caller)
+    if reach is None:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     return await asyncio.to_thread(
         build_history_search_payload,
         computer=config.computer.name,
         query=q,
         agents=agents,
         limit=limit,
-        access=access,
+        reach=reach,
         include_workers=include_workers,
         identity=identity,
         project=project,
@@ -189,8 +192,7 @@ async def show_history(
 ) -> HistoryDetailPayload:
     """Resolve and return one local or peer-scoped history detail."""
     resolved_caller = caller_from_carried_identity(caller)
-    access = await asyncio.to_thread(history_access_for_caller, resolved_caller)
-    if access is None:
+    if not history_caller_is_identified(resolved_caller):
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     try:
         parsed_session_id = str(SessionId(session_id))
@@ -229,10 +231,13 @@ async def show_history(
             )
         return payload
 
+    reach = await asyncio.to_thread(resolve_history_reach, resolved_caller)
+    if reach is None:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     payload: HistoryDetailPayload | None = await asyncio.to_thread(
         build_history_detail_payload,
         parsed_session_id,
-        access=access,
+        reach=reach,
         agents=agents,
         include_thinking=thinking,
         raw=raw,

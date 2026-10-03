@@ -36,6 +36,9 @@ _AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
 _AGENT_STATUS_REASON_FIELD = "agent_status_reason"
 _AGENT_STATUS_SINCE_FIELD = "agent_status_since"
 _CONFIG_SUBJECT_FIELD = "config_subject"
+_SUBJECT_OWNER_FIELD = "subject_owner"
+_PROJECT_SUBJECT_FIELD = "subject"
+_PROJECT_OWNER_FIELD = "owner"
 logger = get_logger(__name__)
 
 
@@ -116,6 +119,7 @@ class SessionSnapshot(
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
+    subject_owner: str | None = None
     command: str | None = None
     working_slug: str | None = None
     visibility: str | None = "private"
@@ -145,6 +149,7 @@ class SessionSnapshot(
             "project_path": self.project_path,
             "subdir": self.subdir,
             _CONFIG_SUBJECT_FIELD: self.config_subject,
+            _SUBJECT_OWNER_FIELD: self.subject_owner,
             "command": self.command,
             "working_slug": self.working_slug,
             "thinking_mode": self.thinking_mode,
@@ -217,6 +222,7 @@ class SessionSnapshot(
             project_path=session.project_path,
             subdir=session.subdir,
             config_subject=session.config_subject,
+            subject_owner=session.subject_owner,
             thinking_mode=session.thinking_mode,
             active_agent=session.active_agent,
             status=session.lifecycle_status,
@@ -279,6 +285,7 @@ class SessionSnapshot(
             config_subject=(
                 str(data.get(_CONFIG_SUBJECT_FIELD)) if data.get(_CONFIG_SUBJECT_FIELD) is not None else None
             ),
+            subject_owner=(str(data.get(_SUBJECT_OWNER_FIELD)) if data.get(_SUBJECT_OWNER_FIELD) is not None else None),
             command=str(data.get("command")) if data.get("command") else None,
             working_slug=str(data.get("working_slug")) if data.get("working_slug") else None,
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
@@ -433,17 +440,23 @@ class ProjectInfo:
     description: str | None = None
     computer: str | None = None
     todos: list[TodoDTO] = field(default_factory=list)
+    subject: str | None = None
+    owner: str | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> "ProjectInfo":  # guard: loose-dict
         """Create from dict with field mapping."""
         raw_todos = data.get("todos") or []
         todo_list = list(raw_todos) if isinstance(raw_todos, list) else []
+        raw_subject = data.get(_PROJECT_SUBJECT_FIELD)
+        raw_owner = data.get(_PROJECT_OWNER_FIELD)
         return cls(
             name=str(data.get("name", "")),
             path=str(data.get("path", "")),
             description=str(data.get("description") or data.get("desc") or ""),
             computer=cast(str | None, data.get("computer")),
+            subject=raw_subject if isinstance(raw_subject, str) else None,
+            owner=raw_owner if isinstance(raw_owner, str) else None,
             todos=[
                 TodoDTO.model_validate(t) for t in todo_list if isinstance(t, dict)
             ],  # guard: loose-dict - JSON deserialization

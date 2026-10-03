@@ -68,12 +68,13 @@ async def complete_envelope_facts(envelope: EventEnvelope, resolver: EnvelopeFac
         ownership = resolver.ownership_index().for_slug(subject.instance)
         if ownership is None:
             envelope.subject_owner = EventSubjectOwnerMarker.UNRESOLVED
-        elif ownership.company:
-            envelope.subject_owner = EventOwnerRef(EventOwnerKind.COMPANY, ownership.company)
-        elif ownership.person:
-            envelope.subject_owner = EventOwnerRef(EventOwnerKind.PERSON, ownership.person)
         else:
-            envelope.subject_owner = EventSubjectOwnerMarker.OWNERLESS
+            owner_identity = ownership.owner_identity()
+            if owner_identity is None:
+                envelope.subject_owner = EventSubjectOwnerMarker.OWNERLESS
+            else:
+                owner_kind, owner_slug = owner_identity
+                envelope.subject_owner = EventOwnerRef(EventOwnerKind(owner_kind.value), owner_slug)
     else:
         envelope.subject_owner = EventSubjectOwnerMarker.NONE
 

@@ -135,7 +135,6 @@ _PRE_DISPATCH_FIRST_PARTY_MODULES = frozenset(
         "teleclaude.cli.telec.surface_types",
         "teleclaude.closed_model",
         "teleclaude.config_roster",
-        "teleclaude.config_subjects",
         "teleclaude.constants",
         "teleclaude.core",
         "teleclaude.core.operation_caller_identity",

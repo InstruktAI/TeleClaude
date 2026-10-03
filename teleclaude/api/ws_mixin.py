@@ -32,13 +32,14 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
-from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, RoleResolver, SystemCliCaller
+from teleclaude.caller_identity import CliCaller
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, CacheEvent
+from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
-from teleclaude.core.session_listing import snapshot_reached_by_subject
+from teleclaude.core.session_listing import snapshot_reached_by_reach
 from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.delivery.message import format_notification_message
+from teleclaude.identity_reach import Reach, ReachCache, ReachResolutionError
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -48,6 +49,24 @@ if TYPE_CHECKING:
     from teleclaude.events.db import EventDB
 
 logger = get_logger(__name__)
+
+_SESSIONS_TOPIC = "sessions"
+_REACH_RESOLUTION_FAILURE_CLOSE_REASON = "identity reach resolution failed"
+_WEBSOCKET_INTERNAL_ERROR_CODE = 1011
+_REACH_RESOLUTION_CLOSE_FAILED = "Failed to close a websocket after reach resolution failed"
+_REFRESH_DATA_FIELD = "data"
+_REFRESH_EVENT_FIELD = "event"
+_REFRESH_COMPUTER_FIELD = "computer"
+_REFRESH_PROJECT_PATH_FIELD = "project_path"
+_REFRESH_SUBJECT_FIELD = "subject"
+_REFRESH_OWNER_FIELD = "owner"
+_REFRESH_PROJECTS_UPDATED_EVENT = "projects_updated"
+_REFRESH_COMPUTER_UPDATED_EVENT = "computer_updated"
+_REFRESH_PUSH_EVENT = "refresh"
+_EMPTY_COMPUTER_NAME = ""
+_LOCAL_COMPUTER_NAME = "local"
+_COMPUTER_REFRESH_TOPICS = frozenset({"computers", "projects", "preparation"})
+_PROJECT_REFRESH_TOPICS = frozenset({"projects", "preparation"})
 
 
 class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
@@ -60,11 +79,13 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         _ws_clients: set[WebSocket]
         _client_subscriptions: dict[WebSocket, dict[str, set[str]]]
         _ws_viewers: dict[WebSocket, CliCaller]
+        _ws_caller_session_ids: dict[WebSocket, str | None]
+        _ws_reach_caches: dict[WebSocket, ReachCache]
         _ws_sent_session_ids: dict[WebSocket, set[str]]
         _ws_client_states: dict[WebSocket, _WsClientState]
         _previous_interest: dict[str, set[str]]
         _refresh_debounce_task: asyncio.Task[object] | None
-        _refresh_pending_payload: JsonDict | None
+        _refresh_pending_payloads: dict[WebSocket, JsonDict]
 
         @property
         def cache(self) -> DaemonCache | None:
@@ -80,6 +101,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         self,
         websocket: WebSocket,
         viewer: CliCaller,
+        caller_session_id: str | None = None,
     ) -> None:
         """Handle WebSocket connection for push updates.
 
@@ -90,6 +112,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         self._ws_clients.add(websocket)
         self._client_subscriptions[websocket] = {}
         self._ws_viewers[websocket] = viewer
+        self._ws_caller_session_ids[websocket] = caller_session_id
+        self._ws_reach_caches[websocket] = ReachCache(
+            viewer,
+            on_invalidate=lambda: self._schedule_reach_resync(websocket),
+        )
         self._ws_sent_session_ids[websocket] = set()
         self._ensure_ws_client_state(websocket)
         logger.info("WebSocket client connected")
@@ -267,11 +294,13 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
                     viewer = self._ws_viewers.get(websocket)
-                    resolver = RoleResolver()
+                    reach_cache = self._ws_reach_caches.get(websocket)
                     visible = [
                         session
                         for session in cached_sessions
-                        if viewer is not None and self._viewer_can_read_session(viewer, session, resolver)
+                        if viewer is not None
+                        and reach_cache is not None
+                        and self._viewer_can_read_session(reach_cache.get(), session)
                     ]
                     self._ws_sent_session_ids[websocket].update(session.session_id for session in visible)
                     sessions = [SessionDTO.from_core(s, computer=s.computer) for s in visible]
@@ -280,9 +309,15 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             elif data_type in ("preparation", "projects"):
                 # Send current projects from cache for this computer
                 if self.cache:
+                    reach_cache = self._ws_reach_caches.get(websocket)
+                    if reach_cache is None:
+                        return
+                    reach = reach_cache.get()
                     cached_projects = self.cache.get_projects(computer if computer != "local" else None)
                     projects: list[ProjectDTO | ProjectWithTodosDTO] = []
                     for proj in cached_projects:
+                        if not reach.admits(proj.subject, proj.owner, None):
+                            continue
                         comp = proj.computer or ""
                         if data_type == "preparation":
                             todos = self.cache.get_todos(
@@ -295,6 +330,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                                     name=proj.name,
                                     path=proj.path,
                                     description=proj.description,
+                                    subject=proj.subject,
+                                    owner=proj.owner,
                                     has_todo=todo_exists,
                                     todos=[
                                         t.model_copy(
@@ -314,6 +351,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                                     name=proj.name,
                                     path=proj.path,
                                     description=proj.description,
+                                    subject=proj.subject,
+                                    owner=proj.owner,
                                 )
                             )
 
@@ -324,7 +363,10 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                     await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
             elif data_type == "notifications":
                 if self._event_db is not None:
-                    rows = await self._event_db.list_notifications(limit=50)
+                    reach_cache = self._ws_reach_caches.get(websocket)
+                    if reach_cache is None:
+                        return
+                    rows = await self._event_db.list_notifications(reach_cache.get(), limit=50)
                     await self._send_or_enqueue_payload(
                         websocket,
                         "notifications_initial",
@@ -333,19 +375,45 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
+        except ReachResolutionError as exc:
+            await self._close_ws_for_reach_failure(websocket, str(exc))
         except Exception as e:
             logger.error("Failed to send initial state for %s on %s: %s", data_type, computer, e, exc_info=True)
 
+    def _schedule_reach_resync(self, websocket: WebSocket) -> None:
+        """Queue a fresh session snapshot after a live viewer's reach changes."""
+        if websocket in self._ws_clients:
+            pending_refresh = self._refresh_pending_payloads.get(websocket)
+            refresh_data = pending_refresh.get(_REFRESH_DATA_FIELD) if pending_refresh is not None else None
+            if isinstance(refresh_data, dict) and refresh_data.get(_REFRESH_PROJECT_PATH_FIELD) is not None:
+                self._refresh_pending_payloads.pop(websocket, None)
+            asyncio.create_task(self._resync_ws_reach(websocket))
+
+    async def _resync_ws_reach(self, websocket: WebSocket) -> None:
+        """Rebuild the sessions already sent to one connection from current reach."""
+        subscriptions = self._client_subscriptions.get(websocket)
+        sent_session_ids = self._ws_sent_session_ids.get(websocket)
+        if subscriptions is None or sent_session_ids is None:
+            return
+        sent_session_ids.clear()
+        for computer, topics in tuple(subscriptions.items()):
+            for topic in sorted(topics):
+                await self._send_initial_state(websocket, topic, computer)
+                if websocket not in self._ws_clients:
+                    return
+
+    async def _close_ws_for_reach_failure(self, websocket: WebSocket, reason: str) -> None:
+        """Close a connection whose visibility decision could not be resolved."""
+        try:
+            await websocket.close(code=_WEBSOCKET_INTERNAL_ERROR_CODE, reason=reason)
+        except Exception:
+            logger.warning(_REACH_RESOLUTION_CLOSE_FAILED, exc_info=True)
+        finally:
+            await self._drop_ws_client(websocket, reason=_REACH_RESOLUTION_FAILURE_CLOSE_REASON)
+
     @staticmethod
-    def _viewer_can_read_session(viewer: CliCaller, session: SessionSnapshot, resolver: RoleResolver) -> bool:
-        if isinstance(viewer, SystemCliCaller):
-            return True
-        if not isinstance(viewer, PersonCliCaller):
-            return False
-        computer = session.computer or ""
-        if computer not in ("", "local", config.computer.name):
-            return resolver.role_for(viewer, Platform()) != HUMAN_ROLE_CUSTOMER
-        return snapshot_reached_by_subject(viewer, session, resolver=resolver)
+    def _viewer_can_read_session(reach: Reach, session: SessionSnapshot) -> bool:
+        return snapshot_reached_by_reach(reach, session)
 
     def _session_event_targets(self, session: SessionSnapshot) -> list[WebSocket]:
         """Select subscribed viewers who can read this session at send time."""
@@ -357,10 +425,41 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             if not any("sessions" in subscriptions.get(name, set()) for name in subscribed_computers):
                 continue
             viewer = self._ws_viewers.get(websocket)
-            if viewer is None or not self._viewer_can_read_session(viewer, session, RoleResolver()):
+            reach_cache = self._ws_reach_caches.get(websocket)
+            if viewer is None or reach_cache is None:
+                continue
+            try:
+                if not self._viewer_can_read_session(reach_cache.get(), session):
+                    continue
+            except ReachResolutionError as exc:
+                asyncio.create_task(self._close_ws_for_reach_failure(websocket, str(exc)))
                 continue
             self._ws_sent_session_ids.setdefault(websocket, set()).add(session.session_id)
             targets.append(websocket)
+        return targets
+
+    def _subject_event_targets(
+        self,
+        subject: str,
+        owner: str,
+        *,
+        caller_session_id: str | None = None,
+    ) -> list[WebSocket]:
+        """Select viewers whose reach admits a subject or own operation."""
+        targets: list[WebSocket] = []
+        for websocket in self._ws_clients:
+            viewer = self._ws_viewers.get(websocket)
+            reach_cache = self._ws_reach_caches.get(websocket)
+            if viewer is None or reach_cache is None:
+                continue
+            if caller_session_id is not None and self._ws_caller_session_ids.get(websocket) == caller_session_id:
+                targets.append(websocket)
+                continue
+            try:
+                if reach_cache.get().admits(subject, owner, None):
+                    targets.append(websocket)
+            except ReachResolutionError as exc:
+                asyncio.create_task(self._close_ws_for_reach_failure(websocket, str(exc)))
         return targets
 
     def _on_cache_change(self, event: str, data: object) -> None:
@@ -394,7 +493,9 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
         refresh_payload = self._build_refresh_payload(event, data)
         if refresh_payload is not None:
-            self._schedule_refresh_broadcast(refresh_payload)
+            targets = self._refresh_targets(event, data)
+            if targets:
+                self._schedule_refresh_broadcast(refresh_payload, targets=targets)
             return
 
         self._broadcast_payload(event, self._build_generic_payload(event, data))
@@ -451,6 +552,44 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             data=RefreshDataDTO(computer=computer, project_path=project_path),
         ).model_dump(exclude_none=True)
 
+    def _refresh_targets(self, event: str, data: object) -> list[WebSocket]:
+        """Select project-refresh viewers and apply reach before a path is delivered."""
+        computer, project_path = self._extract_refresh_targets(event, data)
+        if isinstance(data, dict):
+            subject_raw = data.get(_REFRESH_SUBJECT_FIELD)
+            owner_raw = data.get(_REFRESH_OWNER_FIELD)
+        else:
+            subject_raw = self._get_optional_str_attr(data, _REFRESH_SUBJECT_FIELD)
+            owner_raw = self._get_optional_str_attr(data, _REFRESH_OWNER_FIELD)
+        subject = subject_raw if isinstance(subject_raw, str) else None
+        owner = owner_raw if isinstance(owner_raw, str) else None
+        topics = _COMPUTER_REFRESH_TOPICS if event == _REFRESH_COMPUTER_UPDATED_EVENT else _PROJECT_REFRESH_TOPICS
+        entry_update = project_path is not None and event != _REFRESH_COMPUTER_UPDATED_EVENT
+        targets: list[WebSocket] = []
+        for websocket, subscriptions in self._client_subscriptions.items():
+            computer_names = tuple(subscriptions) if computer is None else (computer,)
+            if computer in (None, _EMPTY_COMPUTER_NAME, _LOCAL_COMPUTER_NAME, config.computer.name):
+                computer_names = (*computer_names, _LOCAL_COMPUTER_NAME, config.computer.name)
+            has_topic = any(
+                topic in subscriptions.get(computer_name, set())
+                for computer_name in set(computer_names)
+                for topic in topics
+            )
+            if not has_topic:
+                continue
+            if entry_update:
+                reach_cache = self._ws_reach_caches.get(websocket)
+                if reach_cache is None:
+                    continue
+                try:
+                    if not reach_cache.get().admits(subject, owner, None):
+                        continue
+                except ReachResolutionError as exc:
+                    asyncio.create_task(self._close_ws_for_reach_failure(websocket, str(exc)))
+                    continue
+            targets.append(websocket)
+        return targets
+
     def _extract_refresh_targets(self, event: str, data: object) -> tuple[str | None, str | None]:
         """Resolve the affected computer/project identifiers for refresh events."""
         if isinstance(data, dict):
@@ -463,7 +602,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
         computer = self._get_optional_str_attr(data, "computer")
         project_path = self._get_optional_str_attr(data, "path")
-        if event == "computer_updated" and computer is None:
+        if event == _REFRESH_COMPUTER_UPDATED_EVENT and computer is None:
             computer = self._get_optional_str_attr(data, "name")
         return computer, project_path
 
@@ -504,24 +643,62 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         value = getattr(obj, attr_name)
         return value if isinstance(value, str) else None
 
-    def _schedule_refresh_broadcast(self, payload: JsonDict) -> None:
-        """Coalesce refresh events into a single WS broadcast."""
-        self._refresh_pending_payload = payload
+    def _schedule_refresh_broadcast(self, payload: JsonDict, *, targets: list[WebSocket]) -> None:
+        """Coalesce refresh events independently for each subscribed connection."""
+        event = payload.get(_REFRESH_EVENT_FIELD)
+        data = payload.get(_REFRESH_DATA_FIELD)
+        if not isinstance(event, str) or not isinstance(data, dict):
+            return
+        for websocket in targets:
+            self._refresh_pending_payloads[websocket] = self._merge_refresh_payloads(
+                self._refresh_pending_payloads.get(websocket),
+                payload,
+            )
         if self._refresh_debounce_task and not self._refresh_debounce_task.done():
             return
 
         async def _debounced() -> None:
             await asyncio.sleep(0.25)
-            pending = self._refresh_pending_payload
-            self._refresh_pending_payload = None
-            if pending is None:
-                return
-            self._broadcast_payload("refresh", pending)
+            pending, self._refresh_pending_payloads = self._refresh_pending_payloads, {}
+            self._refresh_debounce_task = None
+            for websocket, pending_payload in pending.items():
+                self._broadcast_payload(_REFRESH_PUSH_EVENT, pending_payload, targets=[websocket])
+
+        if not self._refresh_pending_payloads:
+            return
 
         if self.task_registry:
             self._refresh_debounce_task = self.task_registry.spawn(_debounced(), name="ws-broadcast-refresh")
         else:
             self._refresh_debounce_task = asyncio.create_task(_debounced(), name="ws-broadcast-refresh")
+
+    @staticmethod
+    def _merge_refresh_payloads(
+        previous: JsonDict | None,
+        current: JsonDict,
+    ) -> JsonDict:
+        """Merge refreshes into a pathless refetch when their targets differ."""
+        if previous is None:
+            return current
+        previous_data = previous.get(_REFRESH_DATA_FIELD)
+        current_data = current.get(_REFRESH_DATA_FIELD)
+        if not isinstance(previous_data, dict) or not isinstance(current_data, dict):
+            return current
+        previous_event = previous.get(_REFRESH_EVENT_FIELD)
+        current_event = current.get(_REFRESH_EVENT_FIELD)
+        event = current_event if previous_event == current_event else _REFRESH_PROJECTS_UPDATED_EVENT
+        if previous_event == _REFRESH_COMPUTER_UPDATED_EVENT or current_event == _REFRESH_COMPUTER_UPDATED_EVENT:
+            event = _REFRESH_COMPUTER_UPDATED_EVENT
+        previous_computer = previous_data.get(_REFRESH_COMPUTER_FIELD)
+        current_computer = current_data.get(_REFRESH_COMPUTER_FIELD)
+        computer = previous_computer if previous_computer == current_computer else None
+        previous_path = previous_data.get(_REFRESH_PROJECT_PATH_FIELD)
+        current_path = current_data.get(_REFRESH_PROJECT_PATH_FIELD)
+        project_path = previous_path if previous_path == current_path else None
+        return RefreshEventDTO(
+            event=event,  # type: ignore[arg-type]
+            data=RefreshDataDTO(computer=computer, project_path=project_path),
+        ).model_dump(exclude_none=True)
 
     def _broadcast_payload(self, event: str, payload: JsonDict, *, targets: list[WebSocket] | None = None) -> None:
         """Send a WS payload to connected clients. If targets is given, only those clients receive it."""
@@ -648,6 +825,10 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         self._ws_clients.discard(websocket)
         self._client_subscriptions.pop(websocket, None)
         self._ws_viewers.pop(websocket, None)
+        self._ws_caller_session_ids.pop(websocket, None)
+        reach_cache = self._ws_reach_caches.pop(websocket, None)
+        if reach_cache is not None:
+            reach_cache.close()
         self._ws_sent_session_ids.pop(websocket, None)
 
         sender_task = state.sender_task if state is not None else None
@@ -711,8 +892,21 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 continue
             for data_types in computer_subs.values():
                 if "notifications" in data_types:
-                    subscribed.append(ws)
-                    seen.add(id(ws))
+                    reach_cache = self._ws_reach_caches.get(ws)
+                    if reach_cache is None:
+                        break
+                    try:
+                        visible = reach_cache.get().admits(
+                            row.get(_REFRESH_SUBJECT_FIELD),
+                            row.get(_REFRESH_OWNER_FIELD),
+                            None,
+                        )
+                    except ReachResolutionError as exc:
+                        asyncio.create_task(self._close_ws_for_reach_failure(ws, str(exc)))
+                        break
+                    if visible:
+                        subscribed.append(ws)
+                        seen.add(id(ws))
                     break
         if subscribed:
             self._broadcast_payload("notification", payload, targets=subscribed)

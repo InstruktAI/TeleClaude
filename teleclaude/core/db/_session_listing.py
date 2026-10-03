@@ -3,12 +3,19 @@
 from collections.abc import Collection
 from datetime import datetime
 
-from sqlalchemy import or_, update
+from sqlalchemy import or_, text, update
 from sqlmodel import select
+
+from teleclaude.identity_reach import Reach
 
 from .. import db_models
 from ..models import Session
 from ._base import DbBase
+
+_PROJECT_SUBJECT_PATTERN = "project:%"
+_SESSION_SUBJECT_COLUMN = "sessions.config_subject"
+_SESSION_SUBJECT_OWNER_COLUMN = "sessions.subject_owner"
+_SESSION_PRINCIPAL_COLUMN = "sessions.principal"
 
 
 class DbSessionListingMixin(DbBase):
@@ -16,19 +23,21 @@ class DbSessionListingMixin(DbBase):
 
     async def select_sessions_for_listing(
         self,
-        subject_tokens: Collection[str] | None,
+        reach: Reach,
         closed_since: datetime | None,
         session_ids: Collection[str] | None,
     ) -> list[Session]:
-        """Select listing rows by subject and the active closed-row scope."""
-        if subject_tokens is not None and not subject_tokens:
-            return []
+        """Select listing rows by identity reach and the active closed-row scope."""
         if session_ids is not None and not session_ids:
             return []
 
         stmt = select(db_models.Session)
-        if subject_tokens is not None:
-            stmt = stmt.where(db_models.Session.config_subject.in_(tuple(subject_tokens)))
+        reach_clause, reach_parameters = reach.sql_predicate(
+            subject_col=_SESSION_SUBJECT_COLUMN,
+            owner_col=_SESSION_SUBJECT_OWNER_COLUMN,
+            principal_col=_SESSION_PRINCIPAL_COLUMN,
+        )
+        stmt = stmt.where(text(reach_clause).bindparams(**reach_parameters))
         if session_ids is not None:
             stmt = stmt.where(db_models.Session.session_id.in_(tuple(session_ids)))
         elif closed_since is None:
@@ -65,6 +74,34 @@ class DbSessionListingMixin(DbBase):
             .where(db_models.Session.subdir.is_(subdir))
             .where(db_models.Session.config_subject.is_(None))
             .values(config_subject=config_subject)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return result.rowcount or 0
+
+    async def list_sessions_without_subject_owner(self) -> list[tuple[str, str]]:
+        """List project-subject session rows whose declared owner is unknown."""
+        stmt = (
+            select(db_models.Session.session_id, db_models.Session.config_subject)
+            .where(db_models.Session.config_subject.like(_PROJECT_SUBJECT_PATTERN))
+            .where(db_models.Session.subject_owner.is_(None))
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return [
+                (session_id, config_subject)
+                for session_id, config_subject in result.all()
+                if config_subject is not None
+            ]
+
+    async def set_session_subject_owner_if_unset(self, session_id: str, subject_owner: str) -> int:
+        """Record one resolved owner without overwriting a newer value."""
+        stmt = (
+            update(db_models.Session)
+            .where(db_models.Session.session_id == session_id)
+            .where(db_models.Session.subject_owner.is_(None))
+            .values(subject_owner=subject_owner)
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)

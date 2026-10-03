@@ -223,6 +223,8 @@ class SessionField(Enum):
     TITLE = "title"
     PROJECT_PATH = "project_path"
     SUBDIR = "subdir"
+    CONFIG_SUBJECT = "config_subject"
+    SUBJECT_OWNER = "subject_owner"
     LAST_MESSAGE_SENT = "last_message_sent"
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
     LAST_PROJECTED_AT = "last_projected_at"
@@ -428,6 +430,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
+    subject_owner: str | None = None
     description: str | None = None
     initiated_by_ai: bool = False
     initiator_session_id: str | None = None
@@ -644,6 +647,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             project_path=_get_optional_str("project_path"),
             subdir=_get_optional_str("subdir"),
             config_subject=_get_optional_str("config_subject"),
+            subject_owner=_get_optional_str(SessionField.SUBJECT_OWNER.value),
             description=_get_optional_str("description"),
             initiated_by_ai=initiated_by_ai,
             initiator_session_id=_get_optional_str("initiator_session_id"),

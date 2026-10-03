@@ -2,11 +2,17 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import and_, delete, or_, update
 from sqlmodel import select
+
+from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
+from teleclaude.config_roster import load_project_ownership_index
+from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker
 
 from .. import db_models
 
@@ -14,6 +20,36 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+_OPERATION_SUBJECT_BACKFILL_SETTING = "operation_subject_backfill_complete"
+_OPERATION_SUBJECT_BACKFILL_COMPLETE = "true"
+_OPERATION_SUBJECT_BACKFILL_FAILED = "operation_subject_backfill_failed"
+_OPERATION_SUBJECT_BACKFILL_FINISHED = "operation_subject_backfill_finished"
+
+
+def _operation_subject_facts(working_folder: str | None) -> tuple[str, str]:
+    """Resolve the subject and project owner recorded by one operation path."""
+    if working_folder is None:
+        return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
+    path = Path(working_folder)
+    try:
+        subject = resolve_config_subject(path)
+    except SubjectResolutionError:
+        return EventSubjectMarker.UNKNOWN.value, EventSubjectOwnerMarker.UNRESOLVED.value
+    if subject is None:
+        return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
+    if subject.kind is not ConfigSubjectKind.PROJECT:
+        return subject.to_token(), EventSubjectOwnerMarker.NONE.value
+
+    ownership = load_project_ownership_index().for_path(path)
+    if ownership is None:
+        return subject.to_token(), EventSubjectOwnerMarker.UNRESOLVED.value
+    owner_identity = ownership.owner_identity()
+    if owner_identity is None:
+        owner = EventSubjectOwnerMarker.OWNERLESS.value
+    else:
+        owner_kind, owner_slug = owner_identity
+        owner = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()
+    return subject.to_token(), owner
 
 
 class DbOperationsMixin:
@@ -41,6 +77,7 @@ class DbOperationsMixin:
         in, is a submittable row — nothing is inferred to fill the gap.
         """
         now = datetime.now(UTC).isoformat()
+        subject, subject_owner = _operation_subject_facts(cwd or session_project_path)
         row = db_models.Operation(
             operation_id=operation_id,
             kind=kind,
@@ -50,6 +87,8 @@ class DbOperationsMixin:
             client_request_id=client_request_id,
             cwd=cwd,
             session_project_path=session_project_path,
+            subject=subject,
+            subject_owner=subject_owner,
             slug=slug,
             payload_json=payload_json,
             state=state,
@@ -63,6 +102,58 @@ class DbOperationsMixin:
             await db_session.commit()
             await db_session.refresh(row)
             return row
+
+    async def list_operations_without_subject(self) -> list[tuple[str, str | None, str | None]]:
+        """List operation paths whose visibility facts have not been recorded."""
+        stmt = select(
+            db_models.Operation.operation_id,
+            db_models.Operation.cwd,
+            db_models.Operation.session_project_path,
+        ).where(db_models.Operation.subject.is_(None))
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return list(result.all())
+
+    async def set_operation_subject_facts_if_unset(
+        self,
+        operation_id: str,
+        subject: str,
+        subject_owner: str,
+    ) -> int:
+        """Record one operation's visibility facts without overwriting newer data."""
+        stmt = (
+            update(db_models.Operation)
+            .where(db_models.Operation.operation_id == operation_id)
+            .where(db_models.Operation.subject.is_(None))
+            .values(subject=subject, subject_owner=subject_owner)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return result.rowcount or 0
+
+    async def backfill_operation_subject_facts(self) -> None:
+        """Backfill operation visibility facts once, retrying after store failures."""
+        try:
+            if await self.get_system_setting(_OPERATION_SUBJECT_BACKFILL_SETTING) is not None:
+                return
+            rows = await self.list_operations_without_subject()
+            rows_updated = 0
+            for operation_id, cwd, session_project_path in rows:
+                subject, subject_owner = _operation_subject_facts(cwd or session_project_path)
+                rows_updated += await self.set_operation_subject_facts_if_unset(
+                    operation_id,
+                    subject,
+                    subject_owner,
+                )
+            await self.set_system_setting(
+                _OPERATION_SUBJECT_BACKFILL_SETTING,
+                _OPERATION_SUBJECT_BACKFILL_COMPLETE,
+            )
+        except Exception:
+            logger.exception(_OPERATION_SUBJECT_BACKFILL_FAILED)
+            raise
+        logger.info(_OPERATION_SUBJECT_BACKFILL_FINISHED, session_rows=len(rows), rows_updated=rows_updated)
 
     async def get_operation(self, operation_id: str) -> db_models.Operation | None:
         """Fetch an operation by id."""

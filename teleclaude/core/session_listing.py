@@ -6,19 +6,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from teleclaude.caller_identity import (
-    AllSessionSubjects,
-    CliCaller,
-    Platform,
-    RecordedSubject,
-    RoleResolver,
-    SessionSubjectReach,
-    SystemCliCaller,
-)
+from teleclaude.caller_identity import CliCaller
 from teleclaude.config import config
-from teleclaude.config_subjects import SubjectRef
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.models import SessionSnapshot
+from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.utils.transcript_discovery import SessionId
 
 CLOSED_SESSION_LISTING_WINDOW = timedelta(days=7)
@@ -52,67 +43,47 @@ def normalize_session_ids(raw_ids: object) -> frozenset[str] | None:
 class SessionListingSelection:
     """Store predicates resolved once from a caller's listing request."""
 
-    subject_tokens: frozenset[str] | None
+    reach: Reach
     closed_since: datetime | None
     session_ids: frozenset[str] | None
 
 
 def build_session_listing_selection(
     caller: CliCaller,
-    resolver: RoleResolver,
     *,
     include_closed: bool,
     session_ids: frozenset[str] | None,
 ) -> SessionListingSelection:
     """Build the local store predicates for one listing request."""
-    reach: SessionSubjectReach = resolver.session_subject_reach(caller)
-    subject_tokens = (
-        None if isinstance(reach, AllSessionSubjects) else frozenset(subject.to_token() for subject in reach.subjects)
-    )
+    reach = resolve_reach(caller)
     closed_since = None
     if include_closed and session_ids is None:
         closed_since = datetime.now(UTC) - CLOSED_SESSION_LISTING_WINDOW
     return SessionListingSelection(
-        subject_tokens=subject_tokens,
+        reach=reach,
         closed_since=closed_since,
         session_ids=session_ids,
     )
 
 
-def snapshot_reached_by_subject(
-    caller: CliCaller,
+def snapshot_reached_by_reach(
+    reach: Reach,
     session: SessionSnapshot,
-    *,
-    resolver: RoleResolver,
 ) -> bool:
-    """Apply the store selection's subject rule, refusing malformed stored tokens."""
-    if isinstance(caller, SystemCliCaller):
-        return True
-    if resolver.role_for(caller, Platform()) != HUMAN_ROLE_CUSTOMER:
-        return True
-    if session.config_subject is None:
-        return False
-    subject = SubjectRef.from_token(session.config_subject)
-    return resolver.role_for(caller, RecordedSubject(subject)) != HUMAN_ROLE_CUSTOMER
+    """Apply identity reach to a relayed or cached session snapshot."""
+    return reach.admits(session.config_subject, session.subject_owner, session.principal)
 
 
 def sessions_reached_by(
-    caller: CliCaller,
+    reach: Reach,
     sessions: Sequence[SessionSnapshot],
-    *,
-    resolver: RoleResolver,
-    caller_session: str | None,
 ) -> list[SessionSnapshot]:
-    """Keep other computers' sessions reached by platform role or direct initiation."""
-    system_caller = isinstance(caller, SystemCliCaller)
-    platform_reaches = system_caller or resolver.role_for(caller, Platform()) != HUMAN_ROLE_CUSTOMER
+    """Keep other-computer sessions whose recorded facts fall within reach."""
     reached: list[SessionSnapshot] = []
     for session in sessions:
         local_session = session.computer in (None, *_LOCAL_COMPUTER_NAMES, config.computer.name)
         if local_session:
             continue
-        if caller_session and session.initiator_session_id == caller_session:
-            reached.append(session)
-        elif platform_reaches:
+        if snapshot_reached_by_reach(reach, session):
             reached.append(session)
     return reached

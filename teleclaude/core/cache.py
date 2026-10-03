@@ -24,6 +24,12 @@ from teleclaude.transport.cluster_publisher import ClusterPublisher
 logger = get_logger(__name__)
 
 _JSON_DUMP_MODE = "json"
+_EMPTY_FINGERPRINT_VALUE = ""
+_COMPUTER_FIELD = "computer"
+_PROJECT_PATH_FIELD = "project_path"
+_TODOS_FIELD = "todos"
+_SUBJECT_FIELD = "subject"
+_OWNER_FIELD = "owner"
 
 
 class CachedItem[T]:
@@ -72,6 +78,8 @@ class TodoCacheNotificationPayload(TypedDict, total=False):
     computer: str
     project_path: str
     todos: list[TodoDTO]
+    subject: str | None
+    owner: str | None
     old_slug: str
     new_slug: str
     renamed_at: str
@@ -271,9 +279,15 @@ class DaemonCache:
             key = f"{computer}:{project_path}"
             self._todos.pop(key, None)
             self._todos_digest.pop(computer, None)
+            subject, owner = self._project_reach_facts(computer, project_path)
             self._notify(
-                "todos_updated",
-                {"computer": computer, "project_path": project_path},
+                CacheEvent.TODOS_UPDATED.value,
+                {
+                    _COMPUTER_FIELD: computer,
+                    _PROJECT_PATH_FIELD: project_path,
+                    _SUBJECT_FIELD: subject,
+                    _OWNER_FIELD: owner,
+                },
             )
             return
         if scope == "roadmap":
@@ -536,7 +550,7 @@ class DaemonCache:
             self._projects[key] = CachedItem(project)
 
         logger.debug("Updated projects cache for %s: %d projects", computer, len(projects))
-        self._notify("projects_updated", {"computer": computer, "projects": projects})
+        self._notify(CacheEvent.PROJECTS_UPDATED.value, {_COMPUTER_FIELD: computer})
 
     def set_todos(
         self,
@@ -558,9 +572,24 @@ class DaemonCache:
         key = f"{computer}:{project_path}"
         self._todos[key] = CachedItem(todos)
         logger.debug("Updated todos cache for %s: %d todos (event=%s)", key, len(todos), event_name)
-        payload: TodoCacheNotificationPayload = {"computer": computer, "project_path": project_path, "todos": todos}
+        subject, owner = self._project_reach_facts(computer, project_path)
+        payload = TodoCacheNotificationPayload(
+            computer=computer,
+            project_path=project_path,
+            todos=todos,
+            subject=subject,
+            owner=owner,
+        )
         _merge_todo_event_data(payload, event_data)
         self._notify(event_name, payload)
+
+    def _project_reach_facts(self, computer: str, project_path: str) -> tuple[str | None, str | None]:
+        """Read a project's recorded subject and owner while its cache entry exists."""
+        key = CACHE_KEY_SEPARATOR.join((computer, project_path))
+        cached = self._projects.get(key)
+        if cached is None:
+            return None, None
+        return cached.data.subject, cached.data.owner
 
     async def refresh_local_todos(
         self,
@@ -638,8 +667,8 @@ class DaemonCache:
         self._projects_digest[computer] = digest
         self._projects_version[computer] = self._projects_version.get(computer, 0) + 1
         self._notify(
-            "projects_snapshot",
-            {"computer": computer, "version": self._projects_version[computer]},
+            CacheEvent.PROJECTS_SNAPSHOT.value,
+            {_COMPUTER_FIELD: computer},
         )
         return True
 
@@ -664,8 +693,8 @@ class DaemonCache:
         self._todos_digest[computer] = digest
         self._todos_version[computer] = self._todos_version.get(computer, 0) + 1
         self._notify(
-            "todos_snapshot",
-            {"computer": computer, "version": self._todos_version[computer]},
+            CacheEvent.TODOS_SNAPSHOT.value,
+            {_COMPUTER_FIELD: computer},
         )
         return True
 
@@ -678,6 +707,8 @@ class DaemonCache:
                         project.path,
                         project.name,
                         project.description or "",
+                        project.subject or _EMPTY_FINGERPRINT_VALUE,
+                        project.owner or _EMPTY_FINGERPRINT_VALUE,
                     ]
                 )
             )

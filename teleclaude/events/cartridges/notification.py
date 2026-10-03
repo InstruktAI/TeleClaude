@@ -11,11 +11,16 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import db as core_db
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.envelope import EventEnvelope, subject_owner_token, subject_token
 from teleclaude.events.pipeline import PipelineContext
 
 logger = get_logger(__name__)
 _MISSING_GROUP_VALUE_LOG = "notification occurrence rejected: missing group value"
+
+
+def _notification_subject_facts(event: EventEnvelope) -> tuple[str, str]:
+    """Project the envelope's typed subject and owner markers without payload inference."""
+    return subject_token(event.subject), subject_owner_token(event.subject_owner)
 
 
 @dataclass(frozen=True)
@@ -65,6 +70,7 @@ class NotificationProjectorCartridge:
         recipient_raw = event.payload.get("recipient")
         recipient = str(recipient_raw) if recipient_raw else None
         family = lc.family.value if lc.family else None
+        subject, subject_owner = _notification_subject_facts(event)
 
         if lc.group_key and not _group_value(event, lc.group_key):
             logger.error(_MISSING_GROUP_VALUE_LOG, event_type=event.event, group_key=lc.group_key)
@@ -81,6 +87,8 @@ class NotificationProjectorCartridge:
                     notification_id,
                     event.description,
                     event.payload,
+                    subject,
+                    subject_owner,
                     reset_human_status=is_meaningful,
                 )
             else:
@@ -102,6 +110,8 @@ class NotificationProjectorCartridge:
                     notification_id,
                     event.description,
                     event.payload,
+                    subject,
+                    subject_owner,
                     reset_human_status=is_meaningful,
                 )
             else:

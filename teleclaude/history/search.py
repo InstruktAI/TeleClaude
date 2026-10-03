@@ -13,8 +13,7 @@ from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
-from teleclaude.history.service import build_history_search_payload
-from teleclaude.mirrors.access import history_access_for_caller
+from teleclaude.history.service import build_history_search_payload, resolve_history_reach
 
 
 def _print_results(
@@ -105,8 +104,8 @@ def display_combined_history(
 
     if local_targets:
         resolved_caller = resolve_cli_identity()
-        access = history_access_for_caller(resolved_caller.caller)
-        if access is None:
+        reach = resolve_history_reach(resolved_caller.caller)
+        if reach is None:
             print(f"Error: {no_identity_refusal(resolved_caller)}", file=sys.stderr)
             raise SystemExit(1)
         responses.extend(
@@ -116,7 +115,7 @@ def display_combined_history(
                     query=search_term,
                     agents=agents,
                     limit=limit,
-                    access=access,
+                    reach=reach,
                     include_workers=include_workers,
                     identity=identity,
                     project=project,

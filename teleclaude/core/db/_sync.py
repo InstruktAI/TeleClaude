@@ -26,6 +26,7 @@ from teleclaude.core.agent_availability import (
 )
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import Session as SessionRecord
+from teleclaude.core.models._session import SessionField
 from teleclaude.core.session_identity_facts import read_session_identity_facts
 
 from .. import db_models
@@ -33,7 +34,7 @@ from .. import db_models
 _NO_SUCH_TABLE_ERROR = "no such table"
 _EMPTY_SESSION_TEXT = ""
 _SESSION_MIRROR_FACTS_SQL = """\
-SELECT session_id, computer_name, active_agent, project_path, subdir, native_log_file,
+SELECT session_id, computer_name, active_agent, project_path, subdir, config_subject, subject_owner, native_log_file,
        transcript_files, visibility, last_input_origin, adapter_metadata, system_role,
        command, working_slug, title, initiator_session_id, initiator_computer,
        initiated_by_ai, job, created_at, closed_at, principal, human_email, human_role
@@ -47,7 +48,7 @@ ORDER BY CASE WHEN session_id = :session_id THEN 0 ELSE 1 END, created_at DESC
 LIMIT 1
 """
 _SESSION_MIRROR_FACTS_LIST_SQL = """\
-SELECT session_id, computer_name, active_agent, project_path, subdir, native_log_file,
+SELECT session_id, computer_name, active_agent, project_path, subdir, config_subject, subject_owner, native_log_file,
        transcript_files, visibility, last_input_origin, adapter_metadata, system_role,
        command, working_slug, title, initiator_session_id, initiator_computer,
        initiated_by_ai, job, created_at, closed_at, principal, human_email, human_role
@@ -70,6 +71,8 @@ class SessionMirrorFacts:
     active_agent: str | None
     project_path: str | None
     subdir: str | None
+    config_subject: str | None
+    subject_owner: str | None
     native_log_file: str | None
     transcript_files: tuple[str, ...]
     visibility: str | None
@@ -123,6 +126,8 @@ def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
         computer_name=str(mapping["computer_name"] or _EMPTY_SESSION_TEXT),
         tmux_session_name=_EMPTY_SESSION_TEXT,
         title=str(mapping["title"] or _EMPTY_SESSION_TEXT),
+        config_subject=_optional_session_fact(mapping[SessionField.CONFIG_SUBJECT.value]),
+        subject_owner=_optional_session_fact(mapping[SessionField.SUBJECT_OWNER.value]),
         principal=_optional_session_fact(mapping["principal"]),
         human_email=_optional_session_fact(mapping["human_email"]),
         human_role=_optional_session_fact(mapping["human_role"]),
@@ -136,6 +141,8 @@ def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
         active_agent=_optional_session_fact(mapping["active_agent"]),
         project_path=_optional_session_fact(mapping["project_path"]),
         subdir=_optional_session_fact(mapping["subdir"]),
+        config_subject=_optional_session_fact(mapping[SessionField.CONFIG_SUBJECT.value]),
+        subject_owner=_optional_session_fact(mapping[SessionField.SUBJECT_OWNER.value]),
         native_log_file=_optional_session_fact(mapping["native_log_file"]),
         transcript_files=transcript_files,
         visibility=_optional_session_fact(mapping["visibility"]),

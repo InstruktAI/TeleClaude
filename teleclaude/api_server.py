@@ -89,6 +89,7 @@ from teleclaude.core.operation_caller_identity import reset_caller_session_id, s
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.hooks.api_routes import router as hooks_router
+from teleclaude.identity_reach import ReachCache
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
 from teleclaude.project_root import resolve_project_root
@@ -198,6 +199,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
         self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
         self._ws_viewers: dict[WebSocket, CliCaller] = {}
+        self._ws_caller_session_ids: dict[WebSocket, str | None] = {}
+        self._ws_reach_caches: dict[WebSocket, ReachCache] = {}
         self._ws_sent_session_ids: dict[WebSocket, set[str]] = {}
         # Per-websocket sender state for serialized outbound writes.
         self._ws_client_states: dict[WebSocket, _WsClientState] = {}
@@ -205,7 +208,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
         # Debounce refresh-style WS events to avoid burst refresh storms
         self._refresh_debounce_task: asyncio.Task[object] | None = None
-        self._refresh_pending_payload: JsonDict | None = None
+        self._refresh_pending_payloads: dict[WebSocket, JsonDict] = {}
 
         # Subscribe to local session updates
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
@@ -320,6 +323,16 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         )
         self._broadcast_payload("session_status", dto.model_dump(exclude_none=True), targets=targets)
 
+    async def _session_event_targets_for_id(self, session_id: str | None) -> list[WebSocket]:
+        """Resolve a session's current reach before delivering its event."""
+        if session_id is None:
+            return []
+        session = await db.get_session(session_id)
+        if session is None:
+            return []
+        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        return self._session_event_targets(snapshot)
+
     async def _handle_agent_activity_event(
         self,
         _event: str,
@@ -350,7 +363,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             dto = AgentStopActivityEventDTO(summary=getattr(context, "summary", None), **common)
         else:
             return
-        self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
+        targets = await self._session_event_targets_for_id(context.session_id)
+        if not targets:
+            return
+        self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True), targets=targets)
 
     async def _handle_agent_availability_event(
         self,
@@ -376,6 +392,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             )
             return
 
+        targets = await self._session_event_targets_for_id(context.session_id)
+        if not targets:
+            return
+
         payload = {
             "event": "error",
             "data": {
@@ -388,7 +408,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 "code": context.code,
             },
         }
-        self._broadcast_payload("error", payload)
+        self._broadcast_payload("error", payload, targets=targets)
 
     async def _handle_operation_completed_event(
         self,
@@ -396,6 +416,16 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         context: OperationSucceededContext | OperationFailedContext,
     ) -> None:
         """Broadcast an operation outcome (success or failure) to WebSocket clients."""
+        operation = await db.get_operation(context.operation_id)
+        if operation is None:
+            return
+        targets = self._subject_event_targets(
+            operation.subject,
+            operation.subject_owner,
+            caller_session_id=operation.caller_session_id,
+        )
+        if not targets:
+            return
         dto: OperationSucceededEventDTO | OperationFailedEventDTO
         if isinstance(context, OperationFailedContext):
             dto = OperationFailedEventDTO(
@@ -408,7 +438,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 event=event,
                 operation_id=context.operation_id,
             )
-        self._broadcast_payload(event, dto.model_dump(exclude_none=True))
+        self._broadcast_payload(event, dto.model_dump(exclude_none=True), targets=targets)
 
     def _setup_routes(self) -> None:
         """Set up core HTTP endpoints (middleware, health, auth, todos, WebSocket)."""
@@ -485,7 +515,11 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         ) -> None:
             """WebSocket endpoint for push updates."""
             identity = carried_caller(websocket, websocket.headers.get("x-teleclaude-daemon-token"))
-            await self._handle_websocket(websocket, caller_for_role_resolution(identity))
+            await self._handle_websocket(
+                websocket,
+                caller_for_role_resolution(identity),
+                caller_session_id=identity.session_id or None,
+            )
 
     async def start(self) -> None:
         """Start the API server on Unix socket."""
@@ -516,7 +550,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._ws_clients.clear()
         self._client_subscriptions.clear()
         self._ws_viewers.clear()
+        self._ws_caller_session_ids.clear()
+        for reach_cache in self._ws_reach_caches.values():
+            reach_cache.close()
+        self._ws_reach_caches.clear()
         self._ws_sent_session_ids.clear()
+        self._refresh_pending_payloads.clear()
 
         # Interest is cleared when _client_subscriptions is cleared
         # No need to explicitly clear cache interest

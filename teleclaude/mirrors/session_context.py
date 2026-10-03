@@ -55,6 +55,8 @@ class SessionMirrorContext:
     reason: MirrorAttributionReason
     principal: str | None
     project: str | None
+    subject: str | None
+    subject_owner: str | None
     channel_identifiers: dict[str, str]
 
 
@@ -137,6 +139,8 @@ def session_context_from_facts(facts: SessionMirrorFacts, transcript_path: str |
         reason=reason,
         principal=principal,
         project=project,
+        subject=facts.config_subject,
+        subject_owner=facts.subject_owner,
         channel_identifiers=_extract_channel_identifiers(facts.last_input_origin, facts.adapter_metadata),
     )
 
