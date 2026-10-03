@@ -3,6 +3,8 @@ kind: project
 project_name: TeleClaude
 project_slug: teleclaude
 company: instrukt-ai
+help_desk:
+  enabled: true
 env_allow_list: []
 business:
   publishes:
