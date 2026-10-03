@@ -24,6 +24,7 @@ from .surface_types import (
     CommandDef,
     Flag,
     FlagConditionedAuth,
+    JobsSubcommand,
     TelecCommand,
     strip_hidden_flag_tokens,
 )
@@ -108,6 +109,9 @@ _HELP_DESK_PROJECT_INIT_AUTH = CommandAuth(
     scope=CommandScope.PLATFORM,
     when_flag=FlagConditionedAuth(F.FLAG_HELP_DESK.long, CommandScope.INVOCATION, _HR_ADMIN),
 )
+_JOBS_READ_AUTH = CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB)
+_JOBS_CONFIG_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.INVOCATION)
+_JOBS_RUN_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
@@ -1021,7 +1025,35 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "jobs": CommandDef(
         desc="Recurring job commands",
         subcommands={
-            "report": CommandDef(
+            JobsSubcommand.LIST.value: CommandDef(
+                desc="List jobs visible to the current project",
+                flags=[F.FLAG_HELP],
+                auth=_JOBS_READ_AUTH,
+            ),
+            JobsSubcommand.STATUS.value: CommandDef(
+                desc="Show runtime status for jobs visible to the current project",
+                flags=[F.FLAG_HELP],
+                auth=_JOBS_READ_AUTH,
+            ),
+            JobsSubcommand.ENABLE.value: CommandDef(
+                desc="Subscribe the current project to a published job",
+                args="<name>",
+                flags=[F.FLAG_HELP],
+                auth=_JOBS_CONFIG_AUTH,
+            ),
+            JobsSubcommand.DISABLE.value: CommandDef(
+                desc="Unsubscribe the current project from a published job",
+                args="<name>",
+                flags=[F.FLAG_HELP],
+                auth=_JOBS_CONFIG_AUTH,
+            ),
+            JobsSubcommand.RUN.value: CommandDef(
+                desc="Run a job in the current project",
+                args="<name>",
+                flags=[F.FLAG_HELP],
+                auth=_JOBS_RUN_AUTH,
+            ),
+            JobsSubcommand.REPORT.value: CommandDef(
                 desc="Write a structured recurring job result record",
                 args="<name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]",
                 flags=[
@@ -1781,7 +1813,12 @@ AGENTS_STATUS = CLI_SURFACE["agents"].subcommands["status"]
 CHANNELS_LIST = CLI_SURFACE["channels"].subcommands["list"]
 CHANNELS_PUBLISH = CLI_SURFACE["channels"].subcommands["publish"]
 
-JOBS_REPORT = CLI_SURFACE["jobs"].subcommands["report"]
+JOBS_REPORT = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.REPORT.value]
+JOBS_LIST = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.LIST.value]
+JOBS_STATUS = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.STATUS.value]
+JOBS_ENABLE = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.ENABLE.value]
+JOBS_DISABLE = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.DISABLE.value]
+JOBS_RUN = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.RUN.value]
 
 REMINDERS_SET = CLI_SURFACE["reminders"].subcommands["set"]
 REMINDERS_CANCEL = CLI_SURFACE["reminders"].subcommands["cancel"]

@@ -5,24 +5,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import TypedDict, cast
 
 from jobs.base import JobResult
+from teleclaude.cron_status import JobRunStatus as JobRunStatus
 from teleclaude.paths import CRON_STATE_PATH
 
 _JOB_KEY_SEPARATOR = ":"
-
-
-class JobRunStatus(StrEnum):
-    """Finite state for a recurring job run."""
-
-    NEVER = "never"
-    RUNNING = "running"
-    SUCCESS = "success"
-    FAILED = "failed"
-    STALLED = "stalled"
 
 
 class JobStateDict(TypedDict, total=False):

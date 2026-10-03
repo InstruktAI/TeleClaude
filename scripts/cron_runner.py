@@ -39,6 +39,7 @@ _PROJECT_PYTHON = _PROJECT_ENV / "bin" / "python"
 _REQUIRED_MODULES = ("teleclaude", "jobs.base")
 _API_DISPATCH_FLAG = "--api-dispatch"
 _STORE_TRUE_ACTION = "store_true"
+_RUN_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 _RUNTIME_ERROR = (
     "cron_runner requires the installed project runtime at {interpreter}. "
     "Create it with `uv sync --project {project_root}`."
@@ -99,9 +100,8 @@ configure_logging("teleclaude", source="cron")
 logger = get_logger(__name__)
 
 try:
-    from teleclaude.config.jobs import (
-        load_effective_jobs,
-    )
+    from teleclaude.config.job_scope import JobScope
+    from teleclaude.cron.listing import compose_job_listing
     from teleclaude.cron.runner import (
         load_job_state,
         run_due_jobs,
@@ -166,7 +166,7 @@ def main() -> int:
         catalog = get_project_catalog_service()
         catalog.refresh()
         state = load_job_state(catalog)
-        jobs = [(project.slug, job) for project in catalog.list_projects() for job in load_effective_jobs(project.root)]
+        jobs = [row for row in compose_job_listing(catalog, state) if row.scope is not JobScope.AVAILABLE]
 
         if not jobs:
             print("No jobs found")
@@ -175,13 +175,11 @@ def main() -> int:
         print(f"{'Job':<60} {'Type':<8} {'Schedule':<10} {'Last Run':<25} {'Status':<10}")
         print("-" * 118)
 
-        for project_slug, job in jobs:
-            job_key = f"{project_slug}:{job.identity}"
-            job_state = state.get_job(job_key)
-            schedule_str = _describe_schedule(job.declaration)
-            last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
-            job_type = "agent" if job.declaration.job else "script"
-            print(f"{job_key:<60} {job_type:<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
+        for row in jobs:
+            job_key = f"{row.project}:{row.name}"
+            schedule_str = _describe_schedule(row.declaration)
+            last_run = row.last_run.strftime(_RUN_TIMESTAMP_FORMAT) if row.last_run else "never"
+            print(f"{job_key:<60} {row.type:<8} {schedule_str:<10} {last_run:<25} {row.status:<10}")
 
         return 0
 

@@ -8,6 +8,7 @@ from textual.widget import Widget
 from teleclaude.api_models import JobDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.utils.formatters import format_relative_time
+from teleclaude.cron_status import JobRunStatus
 
 
 class JobRow(TelecMixin, Widget):
@@ -29,15 +30,15 @@ class JobRow(TelecMixin, Widget):
         line = Text()
         # Status indicator
         status = self.job.status
-        if status == "running":
+        if status is JobRunStatus.RUNNING:
             line.append("● ", style="green")
-        elif status == "failed":
+        elif status is JobRunStatus.FAILED:
             line.append("✘ ", style="red")
         else:
             line.append("· ", style="dim")
 
         # Name
-        line.append(self.job.name, style="bold" if status == "running" else "")
+        line.append(self.job.name, style="bold" if status is JobRunStatus.RUNNING else "")
         line.append(f"  @{self.job.project}", style="dim")
 
         # Type

@@ -6,11 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field, mo
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
-from teleclaude.config.schema import MessagingChannel
+from teleclaude.config.job_scope import JobScope
+from teleclaude.config.schema import JobType, MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.event_subscription_mode import EventSubscriptionMode
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
+from teleclaude.cron_status import JobRunStatus
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
 
@@ -848,10 +850,12 @@ class JobDTO(BaseModel):
 
     name: str
     project: str
-    type: Literal["agent", "script"]
+    type: JobType
     schedule: str | None = None
     last_run: str | None = None
-    status: str
+    status: JobRunStatus
+    scope: JobScope
+    next_due: str | None = None
 
 
 type TuiBootstrapPillar = Literal[

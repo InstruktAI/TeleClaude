@@ -50,6 +50,17 @@ class TelecCommand(str, Enum):
     SYNC = "sync"
 
 
+class JobsSubcommand(StrEnum):
+    """Closed set of subcommands on the jobs command group."""
+
+    LIST = "list"
+    STATUS = "status"
+    ENABLE = "enable"
+    DISABLE = "disable"
+    RUN = "run"
+    REPORT = "report"
+
+
 # =============================================================================
 # CLI Surface Schema — single source of truth for help, completion, and docs
 # =============================================================================

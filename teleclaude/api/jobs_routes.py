@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import UTC, datetime
+from typing import Final
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import JobDTO
-from teleclaude.config.jobs import load_effective_jobs
 from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron import state as cron_state_module
+from teleclaude.cron.listing import compose_job_listing
 from teleclaude.paths import REPO_ROOT
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -24,6 +26,8 @@ _CRON_RUNNER_API_DISPATCH_FLAG = "--api-dispatch"
 _CRON_RUNNER_STARTUP_PROBE_SECONDS = 1
 _CRON_RUNNER_START_FAILURE_DETAIL = "Failed to start job runner."
 _CRON_RUNNER_START_FAILURE_LOG = "Failed to start cron runner process"
+_UTC_OFFSET_SUFFIX: Final[str] = "+00:00"
+_UTC_MARKER: Final[str] = "Z"
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -38,22 +42,19 @@ async def list_jobs() -> list[JobDTO]:
             results: list[JobDTO] = []
             catalog = get_project_catalog_service()
             catalog.refresh()
-            for project in catalog.list_projects():
-                for job in load_effective_jobs(project.root):
-                    state_name = f"{project.slug}:{job.identity}"
-                    job_state = state.get_job(state_name)
-                    schedule_str = _describe_schedule(job.declaration)
-                    last_run_ts = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else None
-                    results.append(
-                        JobDTO(
-                            name=job.identity,
-                            project=project.slug,
-                            type="agent" if job.declaration.job else "script",
-                            schedule=schedule_str,
-                            last_run=last_run_ts,
-                            status=job_state.last_status or "never",
-                        )
+            for row in compose_job_listing(catalog, state):
+                results.append(
+                    JobDTO(
+                        name=row.name,
+                        project=row.project,
+                        type=row.type,
+                        schedule=_describe_schedule(row.declaration),
+                        last_run=_format_job_timestamp(row.last_run),
+                        status=row.status,
+                        scope=row.scope,
+                        next_due=_format_job_timestamp(row.next_due),
                     )
+                )
 
             results.sort(key=lambda x: x.name)
             return results
@@ -66,6 +67,14 @@ async def list_jobs() -> list[JobDTO]:
     except (OSError, RuntimeError, ValueError) as exc:
         logger.error("list_jobs failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {exc}") from exc
+
+
+def _format_job_timestamp(value: datetime | None) -> str | None:
+    """Render job instants in UTC so last and projected next times compare directly."""
+    if value is None:
+        return None
+    utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return utc_value.isoformat(timespec="seconds").replace(_UTC_OFFSET_SUFFIX, _UTC_MARKER)
 
 
 class _CronRunnerStartupError(Exception):

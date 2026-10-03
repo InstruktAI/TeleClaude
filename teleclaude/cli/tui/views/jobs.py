@@ -13,6 +13,7 @@ from teleclaude.api_models import JobDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import SettingsChanged
 from teleclaude.cli.tui.widgets.job_row import JobRow
+from teleclaude.config.job_scope import JobScope
 
 
 class SectionHeader(TelecMixin, Widget):
@@ -78,11 +79,12 @@ class JobsView(Widget, can_focus=True):
 
     def update_data(self, jobs: list[JobDTO]) -> None:
         """Update view with fresh job data."""
-        fingerprint = self._fingerprint_jobs(jobs)
+        runnable_jobs = [job for job in jobs if job.scope is not JobScope.AVAILABLE]
+        fingerprint = self._fingerprint_jobs(runnable_jobs)
         if fingerprint == self._jobs_fingerprint:
-            self._jobs = jobs
+            self._jobs = runnable_jobs
             return
-        self._jobs = jobs
+        self._jobs = runnable_jobs
         self._jobs_fingerprint = fingerprint
         self._rebuild()
 

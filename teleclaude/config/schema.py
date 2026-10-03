@@ -105,11 +105,25 @@ class JobWhenConfig(ClosedModel):
         return self
 
 
+class JobCategory(StrEnum):
+    """The scheduling relationship a job declaration has to a project."""
+
+    SUBSCRIPTION = "subscription"
+    SYSTEM = "system"
+
+
+class JobType(StrEnum):
+    """The execution form projected for a job declaration."""
+
+    AGENT = "agent"
+    SCRIPT = "script"
+
+
 class JobScheduleConfig(ClosedModel):
     """One declarative scheduled job or subscription override."""
 
     name: str
-    category: Literal["subscription", "system"] = "subscription"
+    category: JobCategory = JobCategory.SUBSCRIPTION
     enabled: bool = True
     when: JobWhenConfig | None = None
     script: str | None = None

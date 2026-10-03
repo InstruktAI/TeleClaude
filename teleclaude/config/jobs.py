@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Final, TypedDict, cast
 
+from teleclaude.config.job_scope import JobScope
 from teleclaude.config.loader import load_declared_project_config, load_global_config
 from teleclaude.config.schema import JobScheduleConfig, is_agent_job
 from teleclaude.context_selector import resolve_snippet_meta
@@ -15,6 +17,8 @@ from teleclaude.paths import GLOBAL_CONFIG_PATH
 _WHEN_FIELD: Final = "when"
 _AGENT_FIELD: Final = "agent"
 _ENABLED_FIELD: Final = "enabled"
+_NAME_FIELD: Final = "name"
+_UNPUBLISHED_SUBSCRIPTION_ERROR: Final = "job '{name}' is not published"
 _LOCAL_JOB_POINTER_ERROR: Final = "local job '{name}' requires exactly one execution pointer"
 _SUBSCRIPTION_POINTER_ERROR: Final = "job '{name}' subscription cannot change its published execution pointer"
 _JOB_WHEN_ERROR: Final = "job '{name}' requires when"
@@ -39,6 +43,47 @@ class EffectiveJob:
     identity: str
     declaration: JobScheduleConfig
     origin: JobOrigin
+
+
+@dataclass(frozen=True)
+class VisibleJob:
+    """One job a project can see, with its relationship to that project."""
+
+    name: str
+    scope: JobScope
+    declaration: JobScheduleConfig
+
+
+class SubscriptionChange(StrEnum):
+    """The result of changing one project's subscription to a published job."""
+
+    SUBSCRIBED = "subscribed"
+    ACTIVATED = "activated"
+    DEACTIVATED = "deactivated"
+    UNCHANGED = "unchanged"
+    NOT_SUBSCRIBED = "not_subscribed"
+
+
+class RawJobEntry(TypedDict, total=False):
+    """One raw jobs-array entry preserved for the config resource engine."""
+
+    name: str
+    category: object
+    enabled: bool
+    when: object
+    script: object
+    job: object
+    agent: object
+    thinking_mode: object
+    timeout: object
+
+
+@dataclass(frozen=True)
+class SubscriptionPlan:
+    """The subscription outcome and optional replacement jobs array."""
+
+    change: SubscriptionChange
+    jobs: tuple[RawJobEntry, ...] | None = None
 
 
 def load_effective_jobs(project_root: Path) -> tuple[EffectiveJob, ...]:
@@ -74,6 +119,59 @@ def load_effective_jobs(project_root: Path) -> tuple[EffectiveJob, ...]:
             )
         )
     return tuple(effective)
+
+
+def load_visible_jobs(project_root: Path) -> tuple[VisibleJob, ...]:
+    """Return effective project jobs followed by published jobs not subscribed to."""
+    effective = load_effective_jobs(project_root)
+    visible = [
+        VisibleJob(
+            name=job.identity,
+            scope=JobScope.SUBSCRIBED if job.origin.published else JobScope.LOCAL,
+            declaration=job.declaration,
+        )
+        for job in effective
+    ]
+    effective_names = {job.name for job in visible}
+    visible.extend(
+        VisibleJob(name=declaration.name, scope=JobScope.AVAILABLE, declaration=declaration)
+        for declaration in load_global_config().jobs
+        if declaration.name not in effective_names
+    )
+    return tuple(visible)
+
+
+def plan_job_subscription(
+    jobs: Sequence[Mapping[str, object]],
+    published: Sequence[JobScheduleConfig],
+    name: str,
+    enabled: bool,
+) -> SubscriptionPlan:
+    """Plan a published-job subscription change without mutating either input."""
+    if not any(declaration.name == name for declaration in published):
+        raise ValueError(_UNPUBLISHED_SUBSCRIPTION_ERROR.format(name=name))
+
+    copied_jobs = [cast(RawJobEntry, dict(entry)) for entry in jobs]
+    entry_index = next(
+        (index for index, entry in enumerate(copied_jobs) if entry.get(_NAME_FIELD) == name),
+        None,
+    )
+    if entry_index is None:
+        if not enabled:
+            return SubscriptionPlan(SubscriptionChange.NOT_SUBSCRIBED)
+        copied_jobs.append({_NAME_FIELD: name})
+        return SubscriptionPlan(SubscriptionChange.SUBSCRIBED, tuple(copied_jobs))
+
+    current_entry = copied_jobs[entry_index]
+    currently_enabled = current_entry.get(_ENABLED_FIELD, True) is not False
+    if currently_enabled is enabled:
+        return SubscriptionPlan(SubscriptionChange.UNCHANGED)
+
+    updated_entry = cast(RawJobEntry, dict(current_entry))
+    updated_entry[_ENABLED_FIELD] = enabled
+    copied_jobs[entry_index] = updated_entry
+    change = SubscriptionChange.ACTIVATED if enabled else SubscriptionChange.DEACTIVATED
+    return SubscriptionPlan(change, tuple(copied_jobs))
 
 
 def _index_by_name(declarations: Iterable[JobScheduleConfig]) -> dict[str, JobScheduleConfig]:

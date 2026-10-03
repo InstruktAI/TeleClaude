@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import threading
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -33,6 +34,7 @@ from hashlib import sha256
 from pathlib import Path
 from queue import Queue
 from types import ModuleType
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 
@@ -41,12 +43,13 @@ from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
 from teleclaude.config.loader import load_person_config
-from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job
+from teleclaude.config.schema import JobCategory, JobScheduleConfig, JobSubscription, JobWhenConfig, is_agent_job
 from teleclaude.constants import SlashCommand
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.cron.state import (
     CronState,
     JobRunStatus,
+    JobState,
     PendingEmission,
     compose_job_key,
     project_slug_for_job_key,
@@ -72,6 +75,8 @@ _RUN_JOB_COMMAND = f"/{SlashCommand.RUN_JOB.value}"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DYNAMIC_JOB_PACKAGE_PREFIX = "_teleclaude_job"
 _LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "sdlc/procedure/maintenance/log-bug-hunter"})
+_SCHEDULE_LOOKAHEAD_DAYS: Final = 8
+_SUBSCRIBER_CONFIG_SKIP_EVENT: Final = "subscriber_job_config_unreadable"
 
 
 class Schedule(Enum):
@@ -148,7 +153,7 @@ def _is_when_due(
     if not when.at:
         return None
     local_now = now.astimezone()
-    if not _is_allowed_weekday(local_now, when.weekdays):  # type: ignore[arg-type]
+    if not _is_allowed_weekday(local_now, when.weekdays):
         return False
     for at_time_str in [when.at] if isinstance(when.at, str) else when.at:
         scheduled_today = _scheduled_occurrence(local_now, at_time_str)
@@ -157,7 +162,7 @@ def _is_when_due(
     return False
 
 
-def _is_allowed_weekday(now: datetime, weekdays: list[str] | None) -> bool:
+def _is_allowed_weekday(now: datetime, weekdays: Sequence[str] | None) -> bool:
     if not weekdays:
         return True
     day_map = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
@@ -191,7 +196,7 @@ def _is_first_run_due(
         if when.at:
             local_now = now.astimezone()
             local_first_seen = first_seen_at.astimezone()
-            if not _is_allowed_weekday(local_now, when.weekdays):  # type: ignore[arg-type]
+            if not _is_allowed_weekday(local_now, when.weekdays):
                 return False
             for at_time_str in [when.at] if isinstance(when.at, str) else when.at:
                 scheduled_today = _scheduled_occurrence(local_now, at_time_str)
@@ -300,42 +305,101 @@ def _should_run_subscription_job(
     if root is None:
         root = TELECLAUDE_HOME
 
+    job_state = state.get_job(state_key)
+    for when in _iter_enabled_subscriber_schedules(job_name, root):
+        if when is None:
+            if job_state.last_run is None:
+                return True
+            continue
+        schedule_config = JobScheduleConfig(name=job_name, when=when)
+        if job_state.last_run is None:
+            if _is_first_run_due(schedule_config, job_state.first_seen_at, now):
+                return True
+        elif _is_due(schedule_config, job_state.last_run, now):
+            return True
+    return False
+
+
+def _iter_enabled_subscriber_schedules(job_name: str, root: Path) -> Iterator[JobWhenConfig | None]:
+    """Yield enabled subscriber schedules for one job in stable person order."""
     people_dir = root / "people"
     if not people_dir.is_dir():
-        return False
-
-    job_state = state.get_job(state_key)
-
+        return
     for person_dir in sorted(people_dir.iterdir()):
         if not person_dir.is_dir():
             continue
-        cfg_path = person_dir / ConfigFileName.OVERLAY
-        if not cfg_path.exists():
+        config_path = person_dir / ConfigFileName.OVERLAY
+        if not config_path.exists():
             continue
         try:
-            person_cfg = load_person_config(cfg_path)
-        except Exception:
+            person_config = load_person_config(config_path)
+        except (OSError, ValueError) as error:
+            cause = error.__cause__ or error
+            logger.warning(
+                _SUBSCRIBER_CONFIG_SKIP_EVENT,
+                job=job_name,
+                path=config_path.relative_to(root).as_posix(),
+                cause=type(cause).__name__,
+                errno=error.errno if isinstance(error, OSError) else None,
+            )
             continue
+        for subscription in person_config.subscriptions:
+            if isinstance(subscription, JobSubscription) and subscription.job == job_name and subscription.enabled:
+                yield subscription.when
 
-        for sub in person_cfg.subscriptions:
-            if not isinstance(sub, JobSubscription):
-                continue
-            if sub.job != job_name or not sub.enabled:
-                continue
-            # Found an enabled subscriber; check schedule
-            if sub.when:
-                schedule_cfg = JobScheduleConfig(name=job_name, when=sub.when)
-                if job_state.last_run is None:
-                    if _is_first_run_due(schedule_cfg, job_state.first_seen_at, now):
-                        return True
-                elif _is_due(schedule_cfg, job_state.last_run, now):
-                    return True
-            else:
-                # No when config: always due if never run
-                if job_state.last_run is None:
-                    return True
 
-    return False
+def project_next_due(
+    declaration: JobScheduleConfig,
+    job_state: JobState,
+    now: datetime,
+    root: Path,
+) -> datetime | None:
+    """Project the next occurrence from the schedule the runner will honor."""
+    if declaration.category == JobCategory.SUBSCRIPTION:
+        candidates = (
+            candidate
+            for when in _iter_enabled_subscriber_schedules(declaration.name, root)
+            if (candidate := _project_schedule_occurrence(when, job_state, now)) is not None
+        )
+        return min(candidates, default=None)
+    return _project_schedule_occurrence(declaration.when, job_state, now)
+
+
+def _project_schedule_occurrence(
+    when: JobWhenConfig | None,
+    job_state: JobState,
+    now: datetime,
+) -> datetime | None:
+    """Project one schedule using the runner's established parsing primitives."""
+    anchor = job_state.last_run or job_state.first_seen_at
+    if when is None:
+        return anchor if job_state.last_run is None else None
+    if anchor is None:
+        return None
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=UTC)
+    if when.every:
+        return anchor + _parse_duration(when.every)
+    if when.at is None:
+        return None
+
+    local_now = now.astimezone()
+    local_anchor = anchor.astimezone()
+    threshold_is_inclusive = job_state.last_run is None
+    times = [when.at] if isinstance(when.at, str) else when.at
+    occurrences: list[datetime] = []
+    for day_offset in range(_SCHEDULE_LOOKAHEAD_DAYS):
+        local_date = local_now.date() + timedelta(days=day_offset)
+        scheduled_day = datetime.combine(local_date, datetime.min.time()).astimezone()
+        if not _is_allowed_weekday(scheduled_day, when.weekdays):
+            continue
+        for at_time in times:
+            occurrence = _scheduled_occurrence(scheduled_day, at_time)
+            if occurrence is None:
+                continue
+            if occurrence > local_anchor or (threshold_is_inclusive and occurrence == local_anchor):
+                occurrences.append(occurrence)
+    return min(occurrences, default=None)
 
 
 def _resolve_script_path(script: str, root: Path | None = None) -> Path:
@@ -628,7 +692,7 @@ def _job_is_due(
         return True
     if schedule_config is None:
         return False
-    if schedule_config.category == "subscription":
+    if schedule_config.category == JobCategory.SUBSCRIPTION:
         return _should_run_subscription_job(job_name, state_key, state, now, root=root)
     if job_state_last_run is None:
         return _is_first_run_due(schedule_config, job_state_first_seen_at, now)
