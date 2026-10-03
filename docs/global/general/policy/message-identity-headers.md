@@ -37,9 +37,7 @@ visibility: 'internal'
 - **Read each complete envelope by kind before responding:**
   - **Control** — platform text addressed to your own loop, naming work to do
     or state to observe: `[TeleClaude Notification]`, `[TeleClaude Wake]`, and
-    others (`projects/teleclaude/spec/message-headers` has the complete, closed
-    vocabulary — resolve an unfamiliar bracketed form there before treating it
-    as prose). Nobody is waiting on a reply.
+    the platform's other control headers. Nobody is waiting on a reply.
   - **Identity** — a peer segment or caller-origin header. A real author in
     another session wrote it; it may warrant a reply, but it is that author
     speaking, not your session's human, even when the author is a human

@@ -30,22 +30,15 @@ visibility: 'public'
   `@<HOME>/.teleclaude/docs/people/<slug>/...`. Such a reference resolves to
   its source in that tier's `docs/global`. A tier snippet's Required reads name
   only its own tier and global documentation.
-- A reference points only at a snippet every reader of the referencing snippet
-  can open. That holds for Required reads and inline citations alike:
-  - A published snippet references published snippets only. Local material is
-    never published, so a citation into it is a dead end for every reader
-    outside that home.
-  - A `public` snippet references `public` snippets only, because a reader
-    without a relationship to the tier sees nothing else.
-  - A local snippet references its own home's local snippets or published ones,
-    never another home's local snippets.
+- A published snippet never references local material, neither as a Required
+  read nor as a citation. It states the general contract. How one home realizes
+  that contract lives in the home's own local snippets, which agents working
+  there load themselves.
+- A local snippet references its own home's local snippets or published ones,
+  never another home's local snippets.
 - A placeholder pattern that names the reader's own home — `local/projects/<slug>/…`
   where `<slug>` is the reader's project — is a pattern, not a reference, and may
   appear in any snippet.
-- A published snippet that needs a rule only a local snippet states has found
-  the rule in the wrong home. Promote the rule to a published domain when every
-  reader needs it. Otherwise state, in the published snippet, the behaviour its
-  readers need, and let the local snippet point back to the published one.
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.
 
@@ -72,11 +65,10 @@ visibility: 'public'
   repos. The validator expands `Path.home()` per-machine, so refs
   remain machine-local but consistent within one operator's environment.
 - Repo‑relative `@docs/...` keeps project docs portable and consistent.
-- A reader who cannot open a reference acts on whatever part of the rule the
-  referencing snippet carries, believing it whole. Pointing references only at
-  an audience that contains the reader keeps every snippet complete for
-  everyone who can read it, and keeps the dependency running from the specific
-  toward the general.
+- A published snippet is read in every home, and a local snippet only in its
+  own. A citation into local material is a dead end for every other reader, and
+  it ties the general contract to one home's implementation. The dependency runs
+  from the specific toward the general, never the reverse.
 - A tier's published address carries its owner slug, so one form stays
   unambiguous when several companies are read together. A Required read into
   another person's or company's tier would demand reach the reader may not hold,
@@ -105,8 +97,8 @@ visibility: 'public'
 - Soft references must appear in a `See also` section at the bottom and must not use `@`.
 - Reviewers treat a restated rule whose owner is another snippet as a finding and
   replace it with a citation.
-- Reviewers apply the audience rule to every changed reference, inline citations
-  included. Whether a backticked id in prose is a citation, an example, or a
+- Reviewers apply the reference rules to every changed reference, inline
+  citations included. Whether a backticked id in prose is a citation, an example, or a
   placeholder is a reading judgment, so no scanner checks inline citations
   (`general/principle/intelligence-boundaries`).
 
