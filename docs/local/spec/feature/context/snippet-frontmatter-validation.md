@@ -220,10 +220,10 @@ When snippet validation runs
 Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status
 <!-- change:procedure-activation-gated-on-company -->
-Given a procedure snippet in the published half of the global tier, a company's tier, or a person's tier declares the events that activate it
+Given a procedure snippet published in the global tier, in a company's tier, or in a person's tier declares the events that activate it
 When snippet validation runs
 Then no subscription-tier finding is reported
-Given a procedure snippet in any other tier, or in a company's or a person's local half, declares the events that activate it
+Given a procedure snippet published in any other tier declares the events that activate it
 When snippet validation runs
 Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status

@@ -96,8 +96,7 @@ any location.
   company, person, project, or platform. It owns the validation that a
   procedure declares at most one mode, that a subscribed procedure declares
   exactly one subject kind, that it declares subscriptions only where it is
-  published — in the global tier, a company's published tier, or a person's
-  published tier — and that a company-tier procedure answers company events and
+  published in the global tier, a company's tier, or a person's tier, and that a company-tier procedure answers company events and
   a person-tier procedure answers person events; and the catalogue consequence:
   a triggered procedure is offered as self-service work, while a subscribed
   procedure is presented as a configured responsibility and is never offered as
