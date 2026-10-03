@@ -215,6 +215,19 @@ Then the integrator receives a fault naming the slug, source path, line, and rea
 And the file, its companion, and the other slug's pending material remain unchanged
 ```
 
+<!-- planned:delivery-fold-generated-markdown-fails-prettier -->
+#### UC-LMR14: Delivered snippets satisfy the project's own formatter
+
+```gherkin
+Given an active todo owns pending material whose delivered text does not match the project's formatter once its markers are removed
+When a lifecycle caller delivers that todo
+Then the delivery commit passes the project's commit gate
+And every snippet the delivery makes current matches the project's formatter
+And the delivered wording is unchanged
+And pending material owned by other slugs remains byte-identical
+```
+<!-- /planned:delivery-fold-generated-markdown-fails-prettier -->
+
 ### Cross-context references
 
 - workflow — owns todo fate, identity, and reversal transitions and invokes
