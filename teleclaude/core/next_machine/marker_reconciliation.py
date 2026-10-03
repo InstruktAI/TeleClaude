@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,11 +20,13 @@ from teleclaude.docs_reconcile import (
     ReconciliationPlan,
     ReconciliationWrite,
     apply_reconciliation_plan,
+    has_pending_material,
     iter_reconciliation_roots,
     plan_snippet_reconciliation,
     restore_reconciliation_plan,
     reverse_reconciliation_plan,
 )
+from teleclaude.quality.gate import FormatGateOutcome, format_paths_for_commit_gate
 
 logger = get_logger(__name__)
 
@@ -72,6 +74,8 @@ MULTIPLE_TRANSITION_COMMITS_REASON = "multiple commits carry the transition id"
 COMMIT_PATH_NOT_BLOB_REASON = "commit path did not resolve to a blob"
 COMMIT_PATH_MULTIPLE_ENTRIES_REASON = "commit path resolved to multiple tree entries"
 COMMIT_TREE_MISMATCH_TEMPLATE = "recorded tree differs from rendered path {relative_path}"
+FORMAT_FAILURE_REASON_TEMPLATE = "native format target failed for grading home(s): {homes}"
+FORMAT_SNAPSHOT_FAILURE_TEMPLATE = "formatted content could not be identified for {relative_path}: {error}"
 RECONCILIATION_REASON = "lifecycle_marker_reconciliation"
 NOOP_REASON = "no_pending_material"
 DIRTY_REASON = "affected_path_is_dirty"
@@ -164,6 +168,28 @@ class _FoldResidue:
     fold_blob: str | None
     expected_mode: str
     file_mode_enabled: bool
+    formatted_blob: str | None = None
+
+
+@dataclass(frozen=True)
+class _ApplyCommitOutcome:
+    """The normalized commit plan, commit id, and formatter path count."""
+
+    plan: ReconciliationPlan
+    commit: str | None
+    normalized_path_count: int = 0
+
+
+@dataclass
+class _FormatAttempt:
+    """Mutable transaction snapshot updated even when formatting raises."""
+
+    plan: ReconciliationPlan
+    apply_plan: ReconciliationPlan
+    residue: tuple[_FoldResidue, ...]
+    normalized_path_count: int
+    outcome: FormatGateOutcome
+    snapshot_error: str
 
 
 def _mode_for_moment(moment: MarkerMoment) -> ReconciliationMode | None:
@@ -357,10 +383,14 @@ def _residue_is_intact(project_root: Path, residue: _FoldResidue) -> bool:
     head_index_entry = (
         [(residue.head_entry.mode, residue.head_entry.blob, INDEX_STAGE_ZERO)] if residue.head_entry is not None else []
     )
-    if residue.fold_blob is None:
-        return entries == head_index_entry or not entries
-    fold_index_entry = [(residue.expected_mode, residue.fold_blob, INDEX_STAGE_ZERO)]
-    return entries == head_index_entry or entries == fold_index_entry
+    allowed_entries = [head_index_entry]
+    if residue.fold_blob is not None:
+        allowed_entries.append([(residue.expected_mode, residue.fold_blob, INDEX_STAGE_ZERO)])
+    if residue.formatted_blob is not None and residue.formatted_blob != residue.fold_blob:
+        allowed_entries.append([(residue.expected_mode, residue.formatted_blob, INDEX_STAGE_ZERO)])
+    if residue.fold_blob is None and not head_index_entry:
+        allowed_entries.append([])
+    return entries in allowed_entries
 
 
 def _raise_dirty_path(slug: str, write: ReconciliationWrite) -> None:
@@ -621,7 +651,7 @@ def _restore_transaction_sources(
     apply_plan: ReconciliationPlan,
     residue: tuple[_FoldResidue, ...],
 ) -> None:
-    """Undo applied writes and restore only residue paths that still hold the fold."""
+    """Undo applied writes and restore only residue that still matches its transaction evidence."""
     restore_reconciliation_plan(apply_plan)
     safe_writes = tuple(evidence.write for evidence in residue if _residue_is_intact(project_root, evidence))
     if safe_writes:
@@ -709,6 +739,80 @@ def _commit_plan(
     return _CommitPlanResult(resolution.commit)
 
 
+def _normalized_plan(plan: ReconciliationPlan, formatted: dict[str, ReconciliationWrite]) -> ReconciliationPlan:
+    return ReconciliationPlan(
+        slug=plan.slug,
+        mode=plan.mode,
+        writes=tuple(formatted.get(write.relative_path, write) for write in plan.writes),
+    )
+
+
+def _format_current_delivery_writes(
+    project_root: Path,
+    attempt: _FormatAttempt,
+) -> None:
+    """Format current writes and capture snapshots in a finally block."""
+    selected_writes = {
+        write.relative_path: write
+        for write in attempt.plan.writes
+        if write.rendered_content is not None and not has_pending_material(write.rendered_content)
+    }
+    if not selected_writes:
+        return
+
+    try:
+        attempt.outcome = format_paths_for_commit_gate(project_root, sorted(selected_writes))
+    finally:
+        formatted_writes: dict[str, ReconciliationWrite] = {}
+        snapshot_error = EMPTY_ERROR
+        for relative_path, write in selected_writes.items():
+            try:
+                formatted_bytes = (project_root / relative_path).read_bytes()
+                formatted_content = formatted_bytes.decode(UTF8_ENCODING)
+            except (OSError, UnicodeError) as error:
+                snapshot_error = FORMAT_SNAPSHOT_FAILURE_TEMPLATE.format(relative_path=relative_path, error=error)
+                break
+            formatted_writes[relative_path] = replace(write, rendered_content=formatted_content)
+
+        attempt.plan = _normalized_plan(attempt.plan, formatted_writes)
+        attempt.apply_plan = _normalized_plan(attempt.apply_plan, formatted_writes)
+        attempt.residue = tuple(
+            replace(evidence, write=formatted_writes.get(evidence.write.relative_path, evidence.write))
+            for evidence in attempt.residue
+        )
+        attempt.normalized_path_count = len(attempt.outcome.formatted_paths)
+        attempt.snapshot_error = snapshot_error
+        if not snapshot_error:
+            try:
+                with TemporaryDirectory() as temporary_directory:
+                    temporary_root = Path(temporary_directory)
+                    for index, evidence in enumerate(attempt.residue):
+                        formatted_write = formatted_writes.get(evidence.write.relative_path)
+                        if formatted_write is None or formatted_write.rendered_content is None:
+                            continue
+                        formatted_blob, hash_error = _expected_blob_id(
+                            project_root,
+                            formatted_write.relative_path,
+                            formatted_write.rendered_content,
+                            temporary_root,
+                            index,
+                        )
+                        if hash_error or formatted_blob is None:
+                            attempt.snapshot_error = FORMAT_SNAPSHOT_FAILURE_TEMPLATE.format(
+                                relative_path=formatted_write.relative_path,
+                                error=hash_error or STAGE_REASON,
+                            )
+                            break
+                        attempt.residue = tuple(
+                            replace(item, formatted_blob=formatted_blob)
+                            if item.write.relative_path == formatted_write.relative_path
+                            else item
+                            for item in attempt.residue
+                        )
+            except OSError as error:
+                attempt.snapshot_error = FORMAT_SNAPSHOT_FAILURE_TEMPLATE.format(relative_path=EMPTY_PATH, error=error)
+
+
 def _apply_commit_with_compensation(
     project_root: Path,
     slug: str,
@@ -717,12 +821,43 @@ def _apply_commit_with_compensation(
     *,
     apply_plan: ReconciliationPlan | None = None,
     residue: tuple[_FoldResidue, ...] = (),
-) -> str | None:
+    format_current_delivery: bool = False,
+) -> _ApplyCommitOutcome:
     """Apply one plan and restore its sources if its commit step faults."""
     writes_to_apply = apply_plan or plan
     residue_paths = frozenset(evidence.write.relative_path for evidence in residue)
     staged_before = _preflight_plan(project_root, slug, plan, allowed_dirty_paths=residue_paths)
     apply_reconciliation_plan(writes_to_apply)
+    normalized_path_count = 0
+    if format_current_delivery:
+        format_attempt = _FormatAttempt(plan, writes_to_apply, residue, 0, FormatGateOutcome(), EMPTY_ERROR)
+        formatter_succeeded = False
+        try:
+            _format_current_delivery_writes(project_root, format_attempt)
+            plan = format_attempt.plan
+            writes_to_apply = format_attempt.apply_plan
+            residue = format_attempt.residue
+            normalized_path_count = format_attempt.normalized_path_count
+            outcome = format_attempt.outcome
+            snapshot_error = format_attempt.snapshot_error
+            if snapshot_error or outcome.failure_reason or outcome.failed_homes:
+                reason = (
+                    snapshot_error
+                    or outcome.failure_reason
+                    or FORMAT_FAILURE_REASON_TEMPLATE.format(
+                        homes=", ".join(str(home) for home in outcome.failed_homes)
+                    )
+                )
+                affected_write = plan.writes[0]
+                raise ReconciliationFault(slug, affected_write.relative_path, affected_write.line, reason)
+            formatter_succeeded = True
+        finally:
+            plan = format_attempt.plan
+            writes_to_apply = format_attempt.apply_plan
+            residue = format_attempt.residue
+            normalized_path_count = format_attempt.normalized_path_count
+            if not formatter_succeeded:
+                _restore_transaction_sources(project_root, slug, writes_to_apply, residue)
     try:
         result = _commit_plan(project_root, slug, plan, staged_before, transition_id, residue)
     except ReconciliationFault:
@@ -732,7 +867,7 @@ def _apply_commit_with_compensation(
         if result.restore_sources:
             _restore_transaction_sources(project_root, slug, writes_to_apply, residue)
         raise result.fault
-    return result.commit
+    return _ApplyCommitOutcome(plan, result.commit, normalized_path_count)
 
 
 def reconcile_lifecycle_markers(
@@ -794,14 +929,17 @@ def reconcile_lifecycle_markers(
                 reason=NOOP_REASON,
             )
             return MarkerReceipt(transition_id, slug, moment, MarkerOutcome.NOOP, plan, None, NOOP_REASON)
-        commit = _apply_commit_with_compensation(
+        commit_outcome = _apply_commit_with_compensation(
             project_root,
             slug,
             plan,
             transition_id,
             apply_plan=apply_plan,
             residue=residue,
+            format_current_delivery=moment is MarkerMoment.DELIVER,
         )
+        plan = commit_outcome.plan
+        commit = commit_outcome.commit
     except ReconciliationFault as fault:
         return _fault_receipt(transition_id, slug, moment, reason=fault.reason, fault=fault)
     logger.info(
@@ -814,6 +952,7 @@ def reconcile_lifecycle_markers(
         outcome=MarkerOutcome.APPLIED.value,
         reason=RECONCILIATION_REASON,
         changed_path_count=len(plan.writes),
+        normalized_path_count=commit_outcome.normalized_path_count,
         commit=commit,
     )
     return MarkerReceipt(transition_id, slug, moment, MarkerOutcome.APPLIED, plan, commit, RECONCILIATION_REASON)
@@ -832,7 +971,9 @@ def restore_lifecycle_markers(project_root: Path, slug: str, plan: Reconciliatio
         moment=MarkerMoment.REACTIVATE.value,
     )
     try:
-        commit = _apply_commit_with_compensation(project_root, slug, restored, transition_id)
+        commit_outcome = _apply_commit_with_compensation(project_root, slug, restored, transition_id)
+        restored = commit_outcome.plan
+        commit = commit_outcome.commit
     except ReconciliationFault as fault:
         return _fault_receipt(transition_id, slug, MarkerMoment.REACTIVATE, reason=fault.reason, fault=fault)
     logger.info(
@@ -845,6 +986,7 @@ def restore_lifecycle_markers(project_root: Path, slug: str, plan: Reconciliatio
         outcome=MarkerOutcome.APPLIED.value,
         reason=RECONCILIATION_REASON,
         changed_path_count=len(restored.writes),
+        normalized_path_count=commit_outcome.normalized_path_count,
         commit=commit,
     )
     return MarkerReceipt(

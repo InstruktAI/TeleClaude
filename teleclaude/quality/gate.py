@@ -9,11 +9,20 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
-from teleclaude.capabilities import Capabilities, PermissionSurface, TierPermissions, resolve_tier_permissions
-from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.capabilities import DeclarationUnreadable, resolve_tier_permissions
+from teleclaude.git import (
+    BadName,
+    GitCommandError,
+    InvalidGitRepositoryError,
+    NoSuchPathError,
+    Repo,
+    hook_free_environment,
+)
+from teleclaude.git_tree import TreeSource
 from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.checkout_grading import (
     CheckoutGradingDecision,
@@ -22,7 +31,15 @@ from teleclaude.quality.checkout_grading import (
     subject_checkout_grading_environment,
 )
 from teleclaude.quality.lint import LintRunner
-from teleclaude.quality.selection import QualityCheckFamily
+from teleclaude.quality.selection import (
+    GradingRoot,
+    QualityCheckFamily,
+    QualityGateLeg,
+    resolve_repository_grading_root,
+    select_grading_homes,
+    select_quality_check_families,
+    select_quality_gate_legs,
+)
 from teleclaude.runtime.command_runner import run_process_group_command
 from teleclaude.session_identity import get_session_id
 
@@ -48,6 +65,21 @@ _EMPTY_BYTES = b""
 _NUL_BYTE = b"\0"
 _DEFAULT_FAILURE_EXIT_CODE = 1
 _MARKDOWN_SUFFIX = ".md"
+_ROOT_DECLARATION_MISSING = "The repository root has no readable declaration in the candidate tree or on disk."
+_FORMAT_SELECTION_FAILURE_TEMPLATE = "native format selection failed: {error}"
+_FORMAT_EXECUTION_FAILURE_TEMPLATE = "native format target failed for {home}: {error}"
+_FORMAT_FAILURE_SEPARATOR = "; "
+# These are failures of repository and declaration reads at the selection boundary.
+_FORMAT_SELECTION_FAILURES = (
+    BadName,
+    DeclarationUnreadable,
+    GitCommandError,
+    InvalidGitRepositoryError,
+    NoSuchPathError,
+    OSError,
+    ValueError,
+    yaml.YAMLError,
+)
 
 
 class LintGateOutcome(StrEnum):
@@ -55,46 +87,6 @@ class LintGateOutcome(StrEnum):
 
     PASSED = "passed"
     FAILED = "failed"
-
-
-class QualityGateLeg(StrEnum):
-    """Independently selectable quality checks for a sealed commit."""
-
-    NATIVE = "native"
-    GUARDRAILS = "guardrails"
-
-
-def select_quality_check_families(
-    capabilities: Capabilities,
-    tier_permissions: TierPermissions | None,
-) -> frozenset[QualityCheckFamily]:
-    """Resolve the check families carried by one configured home."""
-    if not capabilities.is_target:
-        if tier_permissions is None or not tier_permissions.participates_in(PermissionSurface.DOCUMENTATION):
-            return frozenset()
-        return frozenset({QualityCheckFamily.DOCUMENTATION, QualityCheckFamily.AGENTS})
-    selected: set[QualityCheckFamily] = set()
-    if capabilities.code:
-        selected.add(QualityCheckFamily.CODE)
-    if capabilities.docs:
-        selected.add(QualityCheckFamily.DOCUMENTATION)
-    if capabilities.agents:
-        selected.add(QualityCheckFamily.AGENTS)
-    return frozenset(selected)
-
-
-def select_quality_gate_legs(
-    capabilities: Capabilities,
-    tier_permissions: TierPermissions | None,
-) -> frozenset[QualityGateLeg]:
-    """Return the gate legs selected by a tier's published capabilities."""
-    families = select_quality_check_families(capabilities, tier_permissions)
-    if not families or (capabilities.is_target and not capabilities.commit_enabled):
-        return frozenset()
-    legs = {QualityGateLeg.GUARDRAILS}
-    if QualityCheckFamily.CODE in families:
-        legs.add(QualityGateLeg.NATIVE)
-    return frozenset(legs)
 
 
 @dataclass(frozen=True)
@@ -116,6 +108,15 @@ class LintGateResult:
         if self.native_exit_code not in (None, 0):
             return self.native_exit_code
         return 0 if self.outcome is LintGateOutcome.PASSED else 1
+
+
+@dataclass(frozen=True)
+class FormatGateOutcome:
+    """The paths formatted and any grading homes whose native target failed."""
+
+    failed_homes: tuple[Path, ...] = ()
+    formatted_paths: tuple[str, ...] = ()
+    failure_reason: str | None = None
 
 
 def read_head_sha(execution_root: Path) -> str | None:
@@ -404,6 +405,50 @@ def run_make_target(
         return run_process_group_command(command, execution_root, child_env).exit_code
 
 
+def format_paths_for_commit_gate(repository_root: Path, relative_paths: list[str]) -> FormatGateOutcome:
+    """Format each path set with the native leg selected for its grading home."""
+    try:
+        source = TreeSource.active_index(repository_root)
+        grading_root: GradingRoot | None = resolve_repository_grading_root(repository_root, source)
+        if grading_root is None:
+            return FormatGateOutcome(
+                failed_homes=(repository_root,),
+                failure_reason=_ROOT_DECLARATION_MISSING,
+            )
+        selections = select_grading_homes(repository_root, relative_paths, source, grading_root)
+        child_environment = hook_free_environment(repository_root)
+    except _FORMAT_SELECTION_FAILURES as error:
+        return FormatGateOutcome(
+            failed_homes=(repository_root,),
+            failure_reason=_FORMAT_SELECTION_FAILURE_TEMPLATE.format(error=error),
+        )
+    failed_homes: list[Path] = []
+    formatted_paths: list[str] = []
+    failure_reasons: list[str] = []
+    for selection in selections:
+        if QualityGateLeg.NATIVE not in selection.legs:
+            continue
+        formatted_paths.extend(selection.paths)
+        try:
+            exit_code = run_make_target(
+                _MAKE_FORMAT_TARGET,
+                selection.root,
+                files=list(selection.paths),
+                child_env=child_environment,
+            )
+        except OSError as error:
+            failed_homes.append(selection.root)
+            failure_reasons.append(_FORMAT_EXECUTION_FAILURE_TEMPLATE.format(home=selection.root, error=error))
+            continue
+        if exit_code != 0:
+            failed_homes.append(selection.root)
+    return FormatGateOutcome(
+        tuple(failed_homes),
+        tuple(formatted_paths),
+        _FORMAT_FAILURE_SEPARATOR.join(failure_reasons) or None,
+    )
+
+
 @contextmanager
 def _nul_file(files: list[str]) -> Iterator[str]:
     handle = tempfile.NamedTemporaryFile(delete=False)
@@ -430,10 +475,12 @@ def _lint_failure_reason(native_exit_code: int | None, guardrails_exit_code: int
 
 
 __all__ = [
+    "FormatGateOutcome",
     "LintGateOutcome",
     "LintGateResult",
     "QualityCheckFamily",
     "QualityGateLeg",
+    "format_paths_for_commit_gate",
     "read_head_sha",
     "run_lint_gate",
     "run_make_target",

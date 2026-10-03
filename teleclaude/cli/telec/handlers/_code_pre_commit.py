@@ -13,7 +13,6 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
-from teleclaude.capabilities import resolve_tier_permissions
 from teleclaude.cli.telec.handlers._code_git_state import working_tree_snapshot
 from teleclaude.config.loader import validate_staged_declaration
 from teleclaude.git import (
@@ -32,13 +31,12 @@ from teleclaude.quality.gate import (
     QualityGateLeg,
     run_home_guardrail_gate,
     run_lint_gate,
-    select_quality_check_families,
-    select_quality_gate_legs,
 )
 from teleclaude.quality.selection import (
+    GradingHomeSelection,
     GradingRoot,
-    group_paths_by_grading_root,
     resolve_repository_grading_root,
+    select_grading_homes,
 )
 
 _CACHED = "--cached"
@@ -166,8 +164,13 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
         for finding in declaration_findings:
             print(finding, file=sys.stderr)
         return 1
-    grouped_paths = group_paths_by_grading_root([change.path for change in changes], tree_source, grading_root)
-    homes = _select_home_gates(project_root, changes, grouped_paths, decision)
+    home_selections = select_grading_homes(
+        project_root,
+        [change.path for change in changes],
+        tree_source,
+        grading_root,
+    )
+    homes = _select_home_gates(changes, home_selections, decision)
     candidates = frozenset(change.path for change in changes if change.status in _STAGED_ACMR_STATUSES)
     participating_paths = frozenset(
         change.path for home in homes if home.legs for change in home.changes if change.status in _STAGED_ACMR_STATUSES
@@ -245,32 +248,27 @@ def _read_staged_paths(repo: Repo) -> list[StagedPath]:
 
 
 def _select_home_gates(
-    project_root: Path,
     changes: list[StagedPath],
-    grouped_paths: dict[GradingRoot, list[str]],
+    selections: tuple[GradingHomeSelection, ...],
     decision: GateDecision,
 ) -> list[HomeGate]:
-    """Resolve one gate selection per grading root from its published permissions."""
+    """Record the selected gate decisions and map staged paths to their homes."""
     change_by_path = {change.path: change for change in changes}
     homes: list[HomeGate] = []
-    for grading_root, paths in sorted(grouped_paths.items(), key=lambda item: item[0].root.as_posix()):
-        home_changes = tuple(change_by_path[path] for path in sorted(set(paths)) if path in change_by_path)
+    for selection in selections:
+        home_changes = tuple(change_by_path[path] for path in selection.paths if path in change_by_path)
         if not home_changes:
             continue
-        home_root = (project_root / grading_root.root).resolve()
-        permissions = resolve_tier_permissions(home_root)
-        families = select_quality_check_families(permissions.project_subscriptions, permissions)
-        legs = select_quality_gate_legs(permissions.project_subscriptions, permissions)
-        owner_name = grading_root.root.as_posix()
+        owner_name = selection.grading_root.root.as_posix()
         decision.homes.append(owner_name)
-        decision.legs[owner_name] = sorted(leg.value for leg in legs)
+        decision.legs[owner_name] = sorted(leg.value for leg in selection.legs)
         homes.append(
             HomeGate(
-                grading_root=grading_root,
-                root=home_root,
+                grading_root=selection.grading_root,
+                root=selection.root,
                 changes=home_changes,
-                legs=legs,
-                families=families,
+                legs=selection.legs,
+                families=selection.families,
             )
         )
     return homes

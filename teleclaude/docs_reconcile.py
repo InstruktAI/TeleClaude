@@ -19,6 +19,7 @@ from teleclaude.doc_body import (
     resolve_planned_change_for_delivery,
     strip_planned_markers,
 )
+from teleclaude.resource_validation._markers import _mask_marker_examples
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import companion_parent, companion_slug, is_retirement_companion
 
@@ -515,6 +516,18 @@ def _delivered_by(metadata: SnippetFrontmatter) -> list[str]:
     if not all(isinstance(slug, str) for slug in raw_delivered_by):
         return []
     return list(raw_delivered_by)
+
+
+def has_pending_material(content: str) -> bool:
+    """Return whether a rendered document still carries pending material."""
+    parsed = _split_frontmatter(content)
+    if parsed is None:
+        body = content
+    else:
+        metadata, body = parsed
+        if _delivered_by(metadata):
+            return True
+    return bool(_PENDING_MARKER_PATTERN.search(_mask_marker_examples(body)))
 
 
 def _is_live_deliverer(slug: str, todo_status_map: Mapping[str, str]) -> bool:

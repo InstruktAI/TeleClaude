@@ -5,6 +5,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
 
+from teleclaude.capabilities import (
+    Capabilities,
+    PermissionSurface,
+    TierPermissions,
+    resolve_tier_permissions,
+)
 from teleclaude.config.context_root import group_paths_by_owning_home, resolve_context_root
 from teleclaude.git_tree import TreeSource, list_tree_paths
 from teleclaude.paths import ConfigFileName
@@ -62,4 +68,82 @@ class QualityCheckFamily(StrEnum):
     AGENTS = "agents"
 
 
-__all__ = ["QualityCheckFamily"]
+class QualityGateLeg(StrEnum):
+    """Independently selectable quality checks for a sealed commit."""
+
+    NATIVE = "native"
+    GUARDRAILS = "guardrails"
+
+
+class GradingHomeSelection(NamedTuple):
+    """One grading home's repository root, paths, and selected quality work."""
+
+    grading_root: GradingRoot
+    root: Path
+    paths: tuple[str, ...]
+    legs: frozenset[QualityGateLeg]
+    families: frozenset[QualityCheckFamily]
+
+
+def select_quality_check_families(
+    capabilities: Capabilities,
+    tier_permissions: TierPermissions | None,
+) -> frozenset[QualityCheckFamily]:
+    """Resolve the check families carried by one configured home."""
+    if not capabilities.is_target:
+        if tier_permissions is None or not tier_permissions.participates_in(PermissionSurface.DOCUMENTATION):
+            return frozenset()
+        return frozenset({QualityCheckFamily.DOCUMENTATION, QualityCheckFamily.AGENTS})
+    selected: set[QualityCheckFamily] = set()
+    if capabilities.code:
+        selected.add(QualityCheckFamily.CODE)
+    if capabilities.docs:
+        selected.add(QualityCheckFamily.DOCUMENTATION)
+    if capabilities.agents:
+        selected.add(QualityCheckFamily.AGENTS)
+    return frozenset(selected)
+
+
+def select_quality_gate_legs(
+    capabilities: Capabilities,
+    tier_permissions: TierPermissions | None,
+) -> frozenset[QualityGateLeg]:
+    """Return the gate legs selected by a tier's published capabilities."""
+    families = select_quality_check_families(capabilities, tier_permissions)
+    if not families or (capabilities.is_target and not capabilities.commit_enabled):
+        return frozenset()
+    legs = {QualityGateLeg.GUARDRAILS}
+    if QualityCheckFamily.CODE in families:
+        legs.add(QualityGateLeg.NATIVE)
+    return frozenset(legs)
+
+
+def select_grading_homes(
+    repository_root: Path,
+    relative_paths: Iterable[str | Path],
+    source: TreeSource,
+    grading_root: GradingRoot,
+) -> tuple[GradingHomeSelection, ...]:
+    """Select each candidate home's quality legs and check families."""
+    grouped_paths = group_paths_by_grading_root(relative_paths, source, grading_root)
+    selections: list[GradingHomeSelection] = []
+    for home_grading_root, paths in sorted(grouped_paths.items(), key=lambda item: item[0].root.as_posix()):
+        home_paths = tuple(sorted(set(paths)))
+        if not home_paths:
+            continue
+        home_root = (repository_root / home_grading_root.root).resolve()
+        permissions = resolve_tier_permissions(home_root)
+        families = select_quality_check_families(permissions.project_subscriptions, permissions)
+        legs = select_quality_gate_legs(permissions.project_subscriptions, permissions)
+        selections.append(GradingHomeSelection(home_grading_root, home_root, home_paths, legs, families))
+    return tuple(selections)
+
+
+__all__ = [
+    "GradingHomeSelection",
+    "QualityCheckFamily",
+    "QualityGateLeg",
+    "select_grading_homes",
+    "select_quality_check_families",
+    "select_quality_gate_legs",
+]
