@@ -66,8 +66,6 @@ Edge (UI / API adapters) → Core (business logic, domain services) → Infrastr
 - Core **decides** based on domain logic; it doesn't translate.
 - Infrastructure **executes** mechanically; it doesn't decide.
 
-See `projects/teleclaude/design/architecture/layer-ownership` for the platform's concrete layering.
-
 ### 6. CLI-first agency
 
 **Every project gets a CLI.** The CLI is the agent's primary interaction surface — new behavior gets a CLI command before (or alongside) any other surface. Agents extend the platform by extending the CLI; humans operate the platform through the CLI.

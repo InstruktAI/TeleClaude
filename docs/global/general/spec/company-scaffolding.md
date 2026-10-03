@@ -44,7 +44,7 @@ The `inbox/` directory is a git repository initialized by the onboard command.
 This enables `git diff` for smart re-processing on subsequent onboard runs.
 
 `telec config company init` creates this home and every installation keeps it
-current (`projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
+current:
 the company's master and its help desk's master are brought back to their
 templates, the local baseline manifests are created once and then curated by
 the company, and a taxonomy directory appears when its first snippet is written.

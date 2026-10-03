@@ -47,7 +47,7 @@ delivery land in docs across two locations — route per change:
   never becomes the owner merely because it connects the participants.
 - **A change with both faces** → updates both. A new event family used across
   contexts adds the event to the producing context's domain spec AND adds it
-  to `projects/<slug>/spec/domain/event-catalog` AND may add a new context-map edge if
+  to `local/projects/<slug>/spec/domain/event-catalog` AND may add a new context-map edge if
   the consumer set changes.
 
 Author new and changed design material through the pending carriers prescribed
@@ -112,7 +112,7 @@ Read:
   work, this includes the existing services / modules / scaffolds the change
   touches. For **greenfield**, this includes adjacent or analogous platform
   code as reference patterns.
-- The platform's architectural docs: `projects/teleclaude/design/architecture/...` for the
+- The platform's architectural docs: `local/projects/<slug>/design/architecture/…` for the
   platform-specific patterns (event-bus, layer-ownership, etc.).
 - The relevant platform-quality-flavors (when the flavor set exists for the
   work's needs — API scaffolding, frontend scaffold, CLI scaffold, event-bus

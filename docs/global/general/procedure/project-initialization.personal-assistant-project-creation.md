@@ -29,8 +29,7 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 Initializes a git repository on the `main` branch when the folder is not already
 inside one, or when the repository it is inside is the global home's. The global
 home's repository holds home material and never a project, so a folder adopted
-beneath it receives its own repository and is a foreign root of the home
-(`local/projects/teleclaude/design/architecture/home-repository`). A folder inside
+beneath it receives its own repository and is a foreign root of the home. A folder inside
 any other repository keeps its repository and branches as they are.
 
 Source: `teleclaude/project_setup/git_repo.py:ensure_git_repo()`
@@ -58,8 +57,7 @@ and `teleclaude/project_setup/capability_markers.py:project_capabilities()`
 
 For a project subscribing `docs`, creates the local baseline manifests under
 `docs/local/` from the platform's documentation template when they are absent.
-An existing manifest is never changed: it is the project's own curation
-(`projects/teleclaude/spec/feature/reconciliation/template-installation`).
+An existing manifest is never changed: it is the project's own curation.
 
 ### 2c. Enable and scaffold the help desk (`--help-desk` only)
 
@@ -67,8 +65,7 @@ With `--help-desk`, and only for a caller with administrator authority over the
 project, sets the project's help desk as enabled in `teleclaude.yml` and brings
 the project's `help-desk/` folder to the project help-desk template: its master
 is the template's rendering after every such run, and no other file in the
-folder is replaced. The files land in the working tree for the project to commit
-(`projects/teleclaude/spec/feature/config/kind-addressed-configuration`).
+folder is replaced. The files land in the working tree for the project to commit.
 
 ### 2d. Record the adopting person as owner (`--own` only)
 
@@ -80,8 +77,7 @@ nearest declaration above the folder is that person's own person declaration —
 and refused anywhere else. A declaration that already names that person is left
 as it is; one that names any other owner is refused. Every refusal happens before
 any step writes, so adoption never reassigns a project and never makes a project
-outside the person's home theirs
-(`local/projects/teleclaude/spec/feature/config/project-ownership`). Without
+outside the person's home theirs. Without
 `--own`, adoption declares no owner.
 
 ### 3. Update .gitattributes (`docs` only)
@@ -117,8 +113,7 @@ declaration resolves no executable action receives no TeleClaude-owned hook.
 
 Whatever the project subscribes, the repository's local exclude list names
 TeleClaude's machine-local state — the project's `.teleclaude/` directory and the
-configuration writer's lock files — and that state is never offered for commit
-(`projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+configuration writer's lock files — and that state is never offered for commit.
 
 A root carrying no project declaration is not adopted by this act: it is left
 byte-for-byte unchanged, with no hook and no filter written or read for it.
@@ -162,11 +157,10 @@ Adoption is the only writer of the project registry, and this procedure is how
 a project is adopted, whether `telec config project init` or the daemon's
 add-project request invokes it. A folder whose identity another registry entry
 already holds is refused before any step writes, and a folder declaring the person
-or company tier is recorded without these steps
-(`projects/teleclaude/spec/feature/config/project-registry`). Publication must not mutate
+or company tier is recorded without these steps. Publication must not mutate
 `~/.teleclaude/projects.yaml`. Once registered, the project is visible to
 `ProjectCatalogService` and every consumer that iterates projects (resolution of
-`projects/<slug>/…` documentation identities, job orchestration, etc.).
+`local/projects/<slug>/…` documentation identities, job orchestration, etc.).
 
 Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
 and `teleclaude/project_manifest.py:register_root()`

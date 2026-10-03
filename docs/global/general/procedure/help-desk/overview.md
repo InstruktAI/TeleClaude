@@ -22,7 +22,7 @@ them in touch with a person who can answer.
 - The session runs in a help desk; its concept says whom the desk serves and
   what it reads.
 - A customer's session reaches only `telec version`, `telec docs`, `telec auth`
-  and `telec sessions escalate` (`projects/teleclaude/design/cli-authorization-matrix`).
+  and `telec sessions escalate`.
 
 ## Steps
 

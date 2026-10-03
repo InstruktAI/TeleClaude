@@ -80,7 +80,7 @@ project.
 
 The `job:` value is the procedure's canonical snippet ID, which is the same from
 every location (`general/spec/snippet-authoring-schema`): `<domain>/procedure/...`
-for a published procedure, `projects/<slug>/procedure/...` for a project's local
+for a published procedure, `local/projects/<slug>/procedure/...` for a project's local
 one. A project-local declaration may point at its own project's local procedure;
 a global-registry declaration points at a procedure every subscribing project
 can read.

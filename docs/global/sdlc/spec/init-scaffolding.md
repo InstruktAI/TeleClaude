@@ -21,24 +21,24 @@ Analysis dimensions map to taxonomy types as guidance. The analysis session
 decides which snippets to produce based on what it finds — this mapping is not
 a fixed checklist.
 
-| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern                                         |
-| ---------------------------------------------- | ------------- | ---------------------------------------------------------- |
-| Bounded context contract                       | `spec`        | `projects/{project}/spec/domain/{context}`                 |
-| User-visible product capability                | `spec`        | `projects/{project}/spec/feature/{context}/{concept-name}` |
-| Architecture patterns, module organization     | `design`      | `projects/{project}/design/{slug}`                         |
-| Naming conventions, code style, error handling | `policy`      | `projects/{project}/policy/{slug}`                         |
-| Dependency inventory, entry points, config     | `spec`        | `projects/{project}/spec/{slug}`                           |
-| Test strategy, coverage model                  | `design`      | `projects/{project}/design/{slug}`                         |
-| Build/deploy pipeline                          | `spec`        | `projects/{project}/spec/{slug}`                           |
-| Operational procedures                         | `procedure`   | `projects/{project}/procedure/{slug}`                      |
+| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern                                               |
+| ---------------------------------------------- | ------------- | ---------------------------------------------------------------- |
+| Bounded context contract                       | `spec`        | `local/projects/{project}/spec/domain/{context}`                 |
+| User-visible product capability                | `spec`        | `local/projects/{project}/spec/feature/{context}/{concept-name}` |
+| Architecture patterns, module organization     | `design`      | `local/projects/{project}/design/{slug}`                         |
+| Naming conventions, code style, error handling | `policy`      | `local/projects/{project}/policy/{slug}`                         |
+| Dependency inventory, entry points, config     | `spec`        | `local/projects/{project}/spec/{slug}`                           |
+| Test strategy, coverage model                  | `design`      | `local/projects/{project}/design/{slug}`                         |
+| Build/deploy pipeline                          | `spec`        | `local/projects/{project}/spec/{slug}`                           |
+| Operational procedures                         | `procedure`   | `local/projects/{project}/procedure/{slug}`                      |
 
 ### Snippet ID Conventions
 
 Generated snippet IDs follow these supported shapes:
 
-- `projects/{project}/{taxonomy}/{slug}` for flat project snippets.
-- `projects/{project}/spec/domain/{context}` for bounded-context domain specs.
-- `projects/{project}/spec/feature/{context}/{concept-name}` for Category A feature specs.
+- `local/projects/{project}/{taxonomy}/{slug}` for flat project snippets.
+- `local/projects/{project}/spec/domain/{context}` for bounded-context domain specs.
+- `local/projects/{project}/spec/feature/{context}/{concept-name}` for Category A feature specs.
 
 Where:
 

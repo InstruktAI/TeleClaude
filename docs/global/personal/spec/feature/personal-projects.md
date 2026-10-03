@@ -13,9 +13,7 @@ they ask for something new to be built — a tool, an automation, a small app. T
 assistant recognises the request, shapes the build with the platform's new-build
 intake, places the project in the person's own projects area inside their
 workspace, and adopts it there. The result is an ordinary TeleClaude project in
-every respect (`local/projects/teleclaude/spec/feature/config/tier-permissions`)
-that belongs to the person by declaration, never by where it sits
-(`local/projects/teleclaude/spec/feature/config/project-ownership`).
+every respect, and it belongs to the person.
 
 Placement in the person's own projects area is the default the assistant applies
 without asking. A destination the person names themselves is their instruction.

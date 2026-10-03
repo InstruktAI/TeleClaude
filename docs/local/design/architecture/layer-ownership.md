@@ -159,3 +159,4 @@ domain rule remains in its owning context.
 - docs/local/design/architecture/system-overview.md
 - docs/local/design/architecture/daemon.md
 - docs/local/design/architecture/ui-adapter.md — outbound UX concerns (rendering, channels, message lifecycle)
+- ~/.teleclaude/docs/sdlc/principle/architectural-defaults.md — the platform-wide layering default this design realizes for TeleClaude.

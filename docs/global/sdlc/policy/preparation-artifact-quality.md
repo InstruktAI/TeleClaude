@@ -560,9 +560,7 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
   agent that treats them as directives propagates errors no later gate catches.
   Verifying and overriding at the point of consumption — rather than rejecting
   the input at its boundary — puts the decision where the knowledge is, and
-  keeps the useful lead instead of discarding it. See
-  `projects/teleclaude/adr/0020-upstream-how-is-a-hypothesis-not-a-gate` for why a
-  creation-time gate was rejected.
+  keeps the useful lead instead of discarding it.
 - A plan is written before the implementation exists, so its placement, names,
   and decomposition are forecasts the implementation can falsify (`general/principle/grounding`).
   Binding the builder to them turns every code discovery into a plan defect and

@@ -82,7 +82,7 @@ anything in between) and produce:
 ### Pillar identification + grouping (multi-pillar features)
 
 During grounding, identify which bounded contexts the feature touches. The
-list of pillars comes from `projects/<slug>/spec/domain/context-map` and the per-
+list of pillars comes from `local/projects/<slug>/spec/domain/context-map` and the per-
 context domain specs.
 
 Decision rule:
