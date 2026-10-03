@@ -1,7 +1,7 @@
 ---
-description: Agents discover which platform event types they can subscribe to, how to subscribe, and each type's declared subject assignment and payload fields from the event catalog's list and schema views.
-delivered_by:
-  - event-subscriptions
+description: Agents discover which platform event types they can subscribe to, how
+  to subscribe, and each type's declared subject assignment and payload fields from
+  the event catalog's list and schema views.
 ---
 
 # Event Discovery — Spec

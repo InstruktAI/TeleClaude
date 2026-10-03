@@ -108,22 +108,6 @@ contracts and never creates shared ownership.
   corpus or matches sessions itself, `context` never composes a dispatch, and
   `agent_runtime` never decides reach or command vocabulary.
 
-<!-- planned-change:event-subscriptions -->
-- `context` publishes each procedure's declared event subscriptions and
-  publication tier; `integration` turns them into routing contracts, stamps
-  each event with the company `config` declares for its source, and on each
-  computer matches only when `config` answers that the company is configured
-  there. `integration` hands each resulting activation to `agent_runtime` as a
-  command addressed to its own computer and never starts, addresses, or
-  inspects a session. `agent_runtime` owns the activation runner and each
-  session's company, consuming `identity`'s membership resolution; `identity`
-  resolves the company context a tool inside a session reads from the session
-  record that session's id names and its own membership resolution, and
-  copies none of it into the session identity document. None restates
-  another's rule: `integration` never
-  decides whether an agent stands, `agent_runtime` never matches events or reads
-  procedure metadata, and `identity` never chooses a session's company.
-<!-- change:event-subscriptions -->
 - `context` publishes each procedure's declared event subscriptions and
   publication tier; `integration` turns them into routing contracts, stamps
   each event with the company `config` declares for its source, and on each
@@ -138,7 +122,6 @@ contracts and never creates shared ownership.
   another's rule: `integration` never
   decides whether an agent stands, `agent_runtime` never matches events for
   activation or reads procedure metadata, and `identity` never chooses a session's company.
-<!-- /planned-change:event-subscriptions -->
 
 - Every context that emits onto the platform event stream states each event's
   subject — the registered home its act concerned, none when the event concerns
@@ -154,7 +137,6 @@ contracts and never creates shared ownership.
   audience. Consumers read origin and subject from the event, and receipt
   decisions stay with the consuming contexts.
 
-<!-- planned:event-subscriptions -->
 - `agent_runtime` matches platform stream events against the event
   subscriptions its own sessions hold, on the computer that hosts each session,
   through its own stream consumer, and wakes them through control delivery. The
@@ -164,7 +146,6 @@ contracts and never creates shared ownership.
   narrows a company session by the event's subject. `event-catalog` publishes the registry and declarations an
   agent's CLI validates a subscription against, and the discovery views; it
   decides no receipt. `identity` decides reach and holds no subscription.
-<!-- /planned:event-subscriptions -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI and the CLI are
 `presentation`'s hosting surfaces. Existing placement outside

@@ -89,7 +89,6 @@ their own subjects
 Hosting their vocabulary confers no ownership of their subjects.
 <!-- /planned-change:retire-event-domains -->
 
-<!-- planned:event-subscriptions -->
 ### Discovery and visibility
 
 - **Discovery views:** the event list names every registered type and tells
@@ -103,7 +102,6 @@ Hosting their vocabulary confers no ownership of their subjects.
   it; a cluster or public event concerns every computer. Every computer reads
   the shared stream, so a consumer that acts per computer applies visibility
   where it receives the event.
-<!-- /planned:event-subscriptions -->
 ### Ownership boundary
 
 The catalog owns registry shape, discovery metadata, and delivery-envelope
