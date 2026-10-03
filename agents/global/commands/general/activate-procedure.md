@@ -18,7 +18,7 @@ Take up one procedure's responsibility for one activation subject, with that pro
 
 ## Steps
 
-1. Treat `$procedure` as the procedure snippet ID you carry and `$subject` as the one subject whose work you carry: `company:<slug>` names a company whose business you operate, `person:<slug>` a person, `project:<slug>` a project, and `platform` the platform itself; any other bare slug names a company.
+1. Treat `$procedure` as the procedure snippet ID you carry and `$subject` as the one subject whose work you carry: `company:<slug>` names a company whose business you operate, `person:<slug>` a person, `project:<slug>` a project, and `platform:teleclaude` the platform itself; a bare slug names a company.
 2. Run `telec docs get $procedure --closure` and follow the returned procedure and every included required read as your complete instruction set.
 
 ## Discipline
