@@ -1,7 +1,10 @@
 ---
-description: Operator/agent front door to the declarative job model — `telec jobs` lists every job a project can see, distinguishing local, subscribed, and available-but-unsubscribed published jobs; shows each job's runtime status (last run, last outcome, next due); subscribes to or unsubscribes from a published job; and runs a job on demand. The surface is a read/control layer over the existing jobs HTTP API, runner run-state, and project config, never a parallel store.
-delivered_by:
-  - generic-job-operator-surface
+description: Operator/agent front door to the declarative job model — `telec jobs`
+  lists every job a project can see, distinguishing local, subscribed, and available-but-unsubscribed
+  published jobs; shows each job's runtime status (last run, last outcome, next due);
+  subscribes to or unsubscribes from a published job; and runs a job on demand. The
+  surface is a read/control layer over the existing jobs HTTP API, runner run-state,
+  and project config, never a parallel store.
 ---
 
 # Job Operator Surface — Spec
