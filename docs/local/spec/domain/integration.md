@@ -73,32 +73,30 @@ implementation remain the current appliance contract.
   its event membership and never the procedure-and-company identity of its
   agent.
 <!-- change:procedure-activation-gated-on-company -->
-- **Owns (procedure subscription routing):** stamping a verified event, at the
-  ingress and before it is relayed, with the one activation scope — company,
-  person, or project — `config` declares for its source, replacing every scope
-  value the payload supplies; turning each published procedure subscription into
-  a contract in the existing contract-routing model that carries the procedure's
-  canonical ID and the scope of the tier it is published in; selecting the
-  event's scope as its company, otherwise its person, otherwise its project;
-  and, on each computer, activating only when `config` answers that the event's
-  scope is configured on that computer and, for a tier-published procedure, the
-  selected scope is that tier's scope, producing one activation per match: the
-  procedure, the scope, the event's context, and the platform's system principal
-  as its origin. A computer that does not host the scope, and any computer
-  receiving an event with no scope, produces no activation and records no
-  failure; its routing decision names why. The event names no consumer; each
-  computer decides for itself and nothing coordinates them.
-  Procedure-subscription contracts are derived state: held only in the
-  registry's memory, never persisted or restored from storage, and rebuilt from
-  the publication index `context` publishes. They are derived when the
-  activation handler registers, keyed to the digest of the index they came
-  from; before matching an event, the router compares that digest with the
-  currently published index and re-derives when they differ. A procedure
-  contract therefore never exists without the handler that serves it, and an
-  added, edited, or removed subscription takes effect at the next event without
-  a restart or a separate trigger. Editing a procedure's subscriptions changes
-  its event membership and never the procedure-and-scope identity of its
-  agent.
+- **Owns (procedure subscription routing):** reading each published procedure
+  subscription, with the subject kind it answers and the tier it is published
+  in, from the publication index `context` publishes; and, for each platform
+  event that reaches this computer's event pipeline, acting only when this
+  computer is the event's origin and its subject is known, then matching the
+  event's type and subject against those subscriptions — a procedure answers
+  only events whose subject is of its declared kind, with a platform procedure
+  answering events whose subject is none, and a tier-published procedure only
+  its own company or person. Each match produces one activation: the procedure,
+  the event's subject, the event's context, and the platform's system principal
+  as its origin, identified by the event's own identity, the procedure, and the
+  subject so that routing the same event again finds the existing activation.
+  Routing reads the event's origin and subject as its producer stated them and
+  never constructs, replaces, or converts either; it adds no distribution and
+  coordinates no computers. A computer the event did not originate on, an event
+  naming no origin, and an event with an unknown subject produce no activation
+  and record no failure; the routing decision names why. Routing runs in the
+  event pipeline before notification deduplication, passes every event on
+  unchanged, and never stops the stages after it. The subscription set is held
+  in memory with the digest of the index it came from and re-read when the
+  published index changes, so an added, edited, or removed subscription takes
+  effect at the next event without a restart or a separate trigger. Editing a
+  procedure's subscriptions changes its event membership and never the
+  procedure-and-subject identity of its agent.
 <!-- /planned-change:procedure-activation-gated-on-company -->
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts

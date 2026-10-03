@@ -213,15 +213,21 @@ Then no activation-mode finding is reported
 ```
 <!-- planned-change:procedure-activation-gated-on-company -->
 Given a procedure snippet published in the global tier or in a company's tier declares the events that activate it
-<!-- change:procedure-activation-gated-on-company -->
-Given a procedure snippet published in the global tier, in a company's tier, or in a person's tier declares the events that activate it
-<!-- /planned-change:procedure-activation-gated-on-company -->
 When snippet validation runs
 Then no subscription-tier finding is reported
 Given a procedure snippet published in any other tier declares the events that activate it
 When snippet validation runs
 Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status
+<!-- change:procedure-activation-gated-on-company -->
+Given a procedure snippet in the published half of the global tier, a company's tier, or a person's tier declares the events that activate it
+When snippet validation runs
+Then no subscription-tier finding is reported
+Given a procedure snippet in any other tier, or in a company's or a person's local half, declares the events that activate it
+When snippet validation runs
+Then a subscription-tier finding is reported for that file, naming its tier
+And the sync exits with a non-zero status
+<!-- /planned-change:procedure-activation-gated-on-company -->
 ```
 
 #### UC-SFV5: An empty companion is accepted as a retirement
@@ -232,6 +238,32 @@ When snippet validation runs on that commit
 Then the agent receives no frontmatter, title-suffix, or section finding for the companion
 And the live snippet is still validated in full
 ```
+
+<!-- planned:procedure-activation-gated-on-company -->
+#### UC-SFV6: A subscribed procedure declares the one subject kind it answers
+
+```gherkin
+Scenario Outline: The answered subject kind is validated against the subscription and the tier
+  Given a procedure snippet published in <tier> <declaration>
+  When snippet validation runs
+  Then <outcome>
+
+  Examples:
+    | tier                | declaration                                                   | outcome                                                                  |
+    | the global tier     | declares its events and answers company events               | no subject-kind finding is reported                                      |
+    | the global tier     | declares its events and answers person events                | no subject-kind finding is reported                                      |
+    | the global tier     | declares its events and answers project events               | no subject-kind finding is reported                                      |
+    | the global tier     | declares its events and answers platform events              | no subject-kind finding is reported                                      |
+    | a company's tier    | declares its events and answers company events               | no subject-kind finding is reported                                      |
+    | a person's tier     | declares its events and answers person events                | no subject-kind finding is reported                                      |
+    | the global tier     | declares its events and no subject kind                      | a subject-kind finding is reported for that file and the sync exits non-zero |
+    | the global tier     | declares a subject kind and no events                        | a subject-kind finding is reported for that file and the sync exits non-zero |
+    | the global tier     | declares its events and a subject kind outside the four      | a subject-kind finding is reported for that file and the sync exits non-zero |
+    | a company's tier    | declares its events and answers project events               | a subject-kind finding naming the tier is reported and the sync exits non-zero |
+    | a person's tier     | declares its events and answers company events               | a subject-kind finding naming the tier is reported and the sync exits non-zero |
+```
+
+<!-- /planned:procedure-activation-gated-on-company -->
 
 ### Cross-context references
 

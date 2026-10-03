@@ -117,16 +117,16 @@ TeleClaudeNext.
   `local/projects/teleclaude/spec/domain/identity`, or what a session does with it, which belongs
   to `local/projects/teleclaude/spec/domain/agent_runtime`.
 <!-- change:procedure-activation-gated-on-company -->
-- **Also owns:** an inbound event source's activation-scope declaration — the
-  one registered company, person, or project its events belong to — validated
-  against the registry for that kind; a source naming an unregistered company,
-  person, or project, or declaring more than one, is rejected. It also answers,
-  on each computer, whether a company, person, or project is configured there
-  and where its home is — the company's home, the person's folder, or the
-  project's checkout — which every computer consults before activating anything
-  for that scope. Owning the declarations is not owning what a company context
-  means, which belongs to `local/projects/teleclaude/spec/domain/identity`, or what a session does
-  with a scope, which belongs to `local/projects/teleclaude/spec/domain/agent_runtime`.
+- **Also owns:** an inbound event source's company declaration — the registered
+  company its events belong to — validated against registered companies; a
+  source naming an unregistered company is rejected. It also answers, on each
+  computer, whether a registered company, person, or project is present there
+  and where its folder is — the company's home, the person's folder, or the
+  project's checkout — which procedure activation consults on an event's origin
+  computer before starting an agent in that home. Owning the declarations and
+  the registry answers is not owning what a company context means, which
+  belongs to `local/projects/teleclaude/spec/domain/identity`, or what a session does in a home,
+  which belongs to `local/projects/teleclaude/spec/domain/agent_runtime`.
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
 #### Use cases (index of feature specs)

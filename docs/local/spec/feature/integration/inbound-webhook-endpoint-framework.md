@@ -181,7 +181,6 @@ When the same invocation runs
 Then the normalizer is called with both arguments
 ```
 
-<!-- planned-change:procedure-activation-gated-on-company -->
 #### UC-IF15: A normalized event carries its source's configured company
 
 ```gherkin
@@ -198,30 +197,6 @@ Scenario Outline: The company on an inbound event is the one its source declares
     | declares a registered company      | names a different company       | the declared company            |
     | declares no company                | names a company                 | no company                      |
 ```
-
-<!-- change:procedure-activation-gated-on-company -->
-#### UC-IF15: A normalized event carries its source's configured scope
-
-```gherkin
-Scenario Outline: The scope on an inbound event is the one its source declares
-  Given a hooks.inbound source <declaration>
-  And a verified payload for that source <payload scope>
-  When the delivery handler normalizes and dispatches the payload
-  Then every dispatched event carries <carried scope>
-  And carries no other company, person, or project
-  And the scope is the same on every computer the event is relayed to
-
-  Examples:
-    | declaration                        | payload scope                   | carried scope                   |
-    | declares a registered company      | names no scope                  | the declared company            |
-    | declares a registered company      | names a different company       | the declared company            |
-    | declares a registered person       | names a company                 | the declared person             |
-    | declares a registered project      | names a person                  | the declared project            |
-    | declares no scope                  | names a company                 | no scope                        |
-    | declares no scope                  | names a project                 | no scope                        |
-```
-
-<!-- /planned-change:procedure-activation-gated-on-company -->
 
 ### Cross-context references
 

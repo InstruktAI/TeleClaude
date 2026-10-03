@@ -1,7 +1,5 @@
 ---
-description: One standing agent per procedure per activation scope — a company, a person,
-  or a project — identified by the procedure's own canonical ID and that scope, started in
-  the scope's home by the first activation and woken by every later one.
+description: One standing agent per procedure per subject — identified by the procedure's own canonical ID and the company, person, project, or platform it answers, started in that subject's home on the event's origin computer by the first activation and woken by every later one.
 visibility: internal
 ---
 
@@ -10,11 +8,12 @@ visibility: internal
 ## What it is
 
 A procedure that declares the events activating it owns one continuing agent per
-activation scope. A scope is a company, a person, or a project, named by its
-kind and its slug. The agent is identified by two facts: the procedure's
-existing canonical ID and the scope whose work it carries. The first activation
-starts it; every later activation is delivered to the agent already standing,
-whether it is idle or in the middle of a turn.
+activation subject. A subject is a company, a person, or a project, named by its
+kind and its slug, or the platform itself for events that concern no registered
+home. The agent is identified by two facts: the procedure's existing canonical
+ID and the subject whose work it carries. The first activation starts it; every
+later activation is delivered to the agent already standing, whether it is idle
+or in the middle of a turn.
 
 The procedure's ID is the identity. Its declared subscriptions are its event
 membership and nothing more — there is no separate group identifier and no
@@ -23,22 +22,29 @@ event lists overlap remain distinct responsibilities with distinct agents, and
 editing a procedure's event list changes what its agent listens to without
 changing which agent it is.
 
-A standing agent works in its scope's home: a company's home, a person's
-folder, or a project's checkout on that computer. An agent for a company scope
-has the session's company set to that company; an agent for a person or a
-project has no company, because location never supplies one
+A standing agent works in its subject's home on the computer the activating
+event originated on: a company's home, a person's folder, a project's checkout,
+or, for the platform, the platform's own checkout. A named home that does not
+exist on that computer fails the activation; the work is never moved to another
+home or computer. An agent for a company subject has the session's company set
+to that company; an agent for a person, a project, or the platform has no
+company, because location never supplies one
 (`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
 
 A standing agent is started by an event, so it runs under the platform's system
-principal with the scope mapped from the event's source. The principal is
+principal with the subject the event's producer stated. The principal is
 therefore the same for every standing agent and is not part of its identity.
 
-A standing agent is a session, so it lives on one computer, and each computer
-decides for itself. On a computer that hosts the scope, the activation runner
-wakes a session already running the procedure for that scope under the system
+A standing agent is a session, so it lives on one computer. Activations arrive
+only on the computer an event originated on, and there the activation runner
+wakes a session already running the procedure for that subject under the system
 principal when it finds one or more, and starts one only when it finds none.
 That is the runner's own behavior: nothing restricts starting such an agent by
 hand, and nothing coordinates computers.
+
+An activation carries the identity of the event that produced it. An activation
+that repeats one already delivered for the same event, procedure, and subject
+reaches the agent no second time, within the records the platform retains.
 
 A standing agent is an ordinary scoped session. Standing confers no platform
 role authority: it is not the integrator, the project coordinator, or a job
@@ -49,14 +55,14 @@ person's folder carries no human identity and acts as no person.
 
 ### Ubiquitous language
 
-**Activation scope**
-: The one company, person, or project an activation concerns, named by its kind and slug.
+**Activation subject**
+: The one company, person, or project an activation concerns, named by its kind and slug, or the platform for an event about no registered home.
 
-**Scope home**
-: Where a standing agent works — the company's home, the person's folder, or the project's checkout on the computer.
+**Subject home**
+: Where a standing agent works on the origin computer — the company's home, the person's folder, the project's checkout, or the platform's own checkout.
 
 **Standing agent**
-: The single live session that continues a procedure's work for one activation scope.
+: The single live session that continues a procedure's work for one activation subject.
 
 **Activation**
 : One delivery of a matched event to a procedure's standing agent — a start when none stands, a wake when one does.
@@ -66,9 +72,9 @@ person's folder carries no human identity and acts as no person.
 #### UC-PSA1: The first activation starts the procedure's standing agent
 
 ```gherkin
-Given no standing agent continues a procedure for a scope on a computer that hosts the scope
-When an activation for that procedure and scope arrives there
-Then a standing agent is started in that scope's home under the system principal
+Given no standing agent continues a procedure for a subject on the computer an event originated on
+When an activation for that procedure and subject arrives there
+Then a standing agent is started in that subject's home under the system principal
 And its complete instruction set is the procedure together with its required reads
 And it receives the triggering event as its first input, through the same delivery path later activations take
 And the event is not supplied as startup context
@@ -77,8 +83,8 @@ And the event is not supplied as startup context
 #### UC-PSA2: A later activation reaches the agent already standing
 
 ```gherkin
-Given a standing agent continues a procedure for a scope
-When a further activation for that procedure and scope arrives
+Given a standing agent continues a procedure for a subject
+When a further activation for that procedure and subject arrives
 Then the activation is delivered to that same agent
 And no second agent is started
 And delivery occurs whether that agent is idle or in the middle of a turn
@@ -88,7 +94,7 @@ And delivery occurs whether that agent is idle or in the middle of a turn
 
 ```gherkin
 Given a procedure declares several event types as activating it
-And a standing agent continues that procedure for a scope
+And a standing agent continues that procedure for a subject
 When an activation arrives for any one of those event types
 Then it reaches that one standing agent
 ```
@@ -96,7 +102,7 @@ Then it reaches that one standing agent
 #### UC-PSA4: Editing the event list does not change the continuing agent
 
 ```gherkin
-Given a standing agent continues a procedure for a scope
+Given a standing agent continues a procedure for a subject
 When an event type is added to or removed from that procedure's declared subscriptions
 Then the same agent continues the procedure
 And no additional standing agent is started for it
@@ -107,13 +113,13 @@ And the agent listens to the amended set of event types
 
 ```gherkin
 Given two distinct procedures each declare the same event type as activating them
-And both are published for one scope
+And both answer the same subject
 When an activation for that event type arrives
 Then each procedure's standing agent is activated
 And neither procedure's responsibility is absorbed into the other
 ```
 
-#### UC-PSA6: Procedure and scope each identify a distinct agent
+#### UC-PSA6: Procedure and subject each identify a distinct agent
 
 ```gherkin
 Scenario Outline: A difference on either identity dimension yields a separate agent
@@ -123,17 +129,17 @@ Scenario Outline: A difference on either identity dimension yields a separate ag
   And an activation for one never reaches the other
 
   Examples:
-    | dimension                                 |
-    | procedure                                 |
-    | company                                   |
-    | scope kind, for scopes sharing one slug   |
+    | dimension                                   |
+    | procedure                                   |
+    | subject                                     |
+    | subject kind, for subjects sharing one slug |
 ```
 
 #### UC-PSA7: Concurrent activations produce one standing agent
 
 ```gherkin
-Given no standing agent continues a procedure for a scope
-When two activations for that procedure and scope arrive concurrently
+Given no standing agent continues a procedure for a subject
+When two activations for that procedure and subject arrive concurrently
 Then exactly one standing agent continues it afterwards
 And both activations reach that agent
 ```
@@ -158,7 +164,7 @@ Scenario Outline: Continuing the work preserves the company and origin it was bo
 #### UC-PSA9: An activation that cannot be fulfilled is observable as a failure
 
 ```gherkin
-Given an activation for a procedure and scope arrives
+Given an activation for a procedure and subject arrives
 And it cannot be fulfilled
 When the platform records the outcome
 Then an agent inspecting the activation record observes a failure
@@ -187,51 +193,76 @@ And the activation runner raises no objection to it
 #### UC-PSA12: A human-lineage session running the procedure is not adopted
 
 ```gherkin
-Given a session carrying human lineage runs a procedure for a scope on a computer
-And no session under the system principal runs that procedure for that scope there
-When an activation for that procedure and scope arrives on that computer
+Given a session carrying human lineage runs a procedure for a subject on a computer
+And no session under the system principal runs that procedure for that subject there
+When an activation for that procedure and subject arrives on that computer
 Then a standing agent is started under the system principal
 And the activation is not delivered to the human-lineage session
 ```
 
-#### UC-PSA13: A person or project activation starts its agent in that home without a company
+#### UC-PSA13: A person, project, or platform activation starts its agent in that home without a company
 
 ```gherkin
-Scenario Outline: The scope's home is where the agent works
-  Given no standing agent continues a procedure for <scope> on a computer that hosts it
-  When an activation for that procedure and <scope> arrives there
+Scenario Outline: The subject's home is where the agent works
+  Given no standing agent continues a procedure for <subject> on the computer the event originated on
+  When an activation for that procedure and <subject> arrives there
   Then a standing agent is started in <home> under the system principal
   And an agent inspecting the session sees no company set on it
 
   Examples:
-    | scope     | home                              |
-    | a person  | that person's folder              |
-    | a project | that project's checkout           |
+    | subject      | home                                   |
+    | a person     | that person's folder                   |
+    | a project    | that project's checkout                |
+    | the platform | the platform's own checkout            |
+```
+
+#### UC-PSA14: A home absent on the origin computer fails the activation
+
+```gherkin
+Given an activation for a procedure arrives naming a company, person, or project that is not registered on this computer
+When the activation runner looks for that subject's home
+Then no standing agent is started or woken
+And an agent inspecting the activation record observes a failure naming the absent home
+And no other home or computer takes the activation
+```
+
+#### UC-PSA15: A repeated activation reaches the agent once
+
+```gherkin
+Given a standing agent has received an event through an activation for a procedure and subject
+When an activation for the same event, procedure, and subject arrives again
+Then the agent does not receive the event a second time
+And no second agent is started
 ```
 
 ### Cross-context references
 
-- **integration** — hands this context an activation naming the procedure and
-  the scope; it never starts or addresses a session itself.
-- **config** — answers whether a company, person, or project is configured on
-  the computer, and where its home is.
+- **integration** — hands this context an activation naming the procedure, the
+  subject, and the event it came from, only on the computer the event
+  originated on; it never starts or addresses a session itself.
+- **config** — answers whether a company, person, or project is registered on
+  the computer, and where its folder is.
 - **identity** — owns the system-principal contract a standing agent runs
   under. This context decides nothing about identity and derives no
   authorization the identity contract does not publish.
-- **context** — publishes the procedure and the event types it declares.
+- **context** — publishes the procedure, the event types it declares, and the
+  subject kind it answers.
 
 ## Known caveats
 
 - Standing is not remembering. A long-lived agent compacts; what it recovers
   afterward rests on durable state its procedure and domain own.
 - The standing population is bounded by the published procedures and the
-  scopes they serve. Workers a standing agent dispatches are a separate,
+  subjects they serve. Workers a standing agent dispatches are a separate,
   bounded source of concurrency.
-- Starting a standing agent by hand is available for a company scope only; a
-  person- or project-scoped agent is started by an activation.
+- Starting a standing agent by hand is available for a company subject only; a
+  person-, project-, or platform-subject agent is started by an activation.
+- A repeated activation is recognized only while the platform retains its
+  delivery record.
 
 ## See Also
 
+- docs/local/adr/0110-an-event-activated-procedure-runs-where-its-event-originated.md — why the agent runs on the origin computer in its subject's home.
 - docs/local/spec/feature/agent_runtime/company-scoped-session-context.md — how a session's company and origin are established, carried, and published.
 - docs/local/spec/feature/agent_runtime/coordinator-role-acquisition.md — the other singleton in this context: human-directed, one per project instance, enforced at an acquisition door rather than by activation.
 - docs/local/spec/feature/agent_runtime/scheduled-agent-command-dispatch.md — the schedule-driven sibling, which creates a session per run rather than keeping one standing.

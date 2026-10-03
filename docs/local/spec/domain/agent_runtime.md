@@ -106,25 +106,29 @@ TeleClaudeNext repository.
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
 <!-- change:procedure-activation-gated-on-company -->
-- **Owns (procedure activation runner):** on each computer, one standing agent
-  per procedure per activation scope — a company, a person, or a project — as
-  the runner's own behavior. The runner resolves the agent through the inbound
-  resolve-or-create seam, serialized per procedure and scope so concurrent
-  activations there cannot both start one. When one or more sessions under the
-  system principal already run the procedure for the scope, it wakes one and
-  starts none; a session carrying human lineage is never adopted; when none
-  does, it starts one by dispatching the generic procedure-activation command —
-  carrying the procedure's identity and the scope — in the scope's home (the
-  company's home, the person's folder, or the project's checkout, as `config`
-  answers), under the system principal, with the session's company set only for
-  a company scope. The triggering event reaches a new agent as its first input
-  through the same session-input delivery that wakes an existing one, never as
-  additional startup context. A company-scoped standing agent may also be
-  started by hand, and nothing restricts that; a person- or project-scoped one
-  is started only by an activation. Nothing coordinates computers. Each
-  activation is a durable
-  operation of its own kind, whose outcome events
-  `agent_runtime.procedure_activation.completed` and
+- **Owns (procedure activation runner):** on the computer an event originated
+  on, one standing agent per procedure per activation subject — a company, a
+  person, a project, or the platform — as the runner's own behavior. The runner
+  resolves the agent through the inbound resolve-or-create seam, serialized per
+  procedure and subject so concurrent activations there cannot both start one.
+  When one or more sessions under the system principal already run the
+  procedure for the subject, it wakes one and starts none; a session carrying
+  human lineage is never adopted; when none does, it starts one by dispatching
+  the generic procedure-activation command — carrying the procedure's identity
+  and the subject — in the subject's home: the company's home, the person's
+  folder, or the project's checkout as `config` answers, or the platform's own
+  checkout for the platform. A named home absent on the computer fails the
+  activation, which is never moved to another home or computer. The session is
+  started under the system principal, with its company set only for a company
+  subject. The triggering event reaches a new agent as its first input through
+  the same session-input delivery that wakes an existing one, never as
+  additional startup context, keyed by the activation's identity so that a
+  repeated activation for the same event, procedure, and subject reaches the
+  agent once. A company-subject standing agent may also be started by hand, and
+  nothing restricts that; a person-, project-, or platform-subject one is
+  started only by an activation. Nothing coordinates computers. Each activation
+  is a durable operation of its own kind, keyed by the activation's identity,
+  whose outcome events `agent_runtime.procedure_activation.completed` and
   `agent_runtime.procedure_activation.failed` this context owns and registers;
   completion or failure is recorded once, a failure is never presented as
   success, and it never moves the responsibility to another agent. The agent's
