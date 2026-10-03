@@ -78,9 +78,16 @@ concerned:
 - signal ingest, clustering, and synthesis: no subject while signal sources are
   machine configuration that no registered home declares.
 
+<!-- planned-change:retire-event-domains -->
 The company business domains the platform hosts state their own subjects
 (`local/projects/teleclaude/spec/domain/marketing`, `local/projects/teleclaude/spec/domain/creative_production`).
 Hosting their handlers confers no ownership of their subjects.
+<!-- change:retire-event-domains -->
+The company business domains whose event vocabulary the catalog hosts state
+their own subjects
+(`local/projects/teleclaude/spec/domain/marketing`, `local/projects/teleclaude/spec/domain/creative_production`).
+Hosting their vocabulary confers no ownership of their subjects.
+<!-- /planned-change:retire-event-domains -->
 
 <!-- planned:event-subscriptions -->
 ### Discovery and visibility
@@ -110,4 +117,8 @@ reaction. Catalog registration does not transfer either responsibility.
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md
 - docs/local/spec/feature/event-catalog/event-envelope.md
+<!-- planned-change:retire-event-domains -->
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's handlers confers no ownership of its event subjects.
+<!-- change:retire-event-domains -->
+- ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's event vocabulary confers no ownership of its event subjects.
+<!-- /planned-change:retire-event-domains -->

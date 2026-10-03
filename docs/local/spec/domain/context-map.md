@@ -37,10 +37,17 @@ contracts and never creates shared ownership.
   facts, no persistence, and no other context's semantics; it never redefines,
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
+<!-- planned-change:retire-event-domains -->
 - `marketing` and `creative_production`: company business domains hosted as
   domain cartridges on the event platform. Each owns its event vocabulary's
   meaning, emission invariants, and handler reactions; hosting confers none of
   that on the event platform.
+<!-- change:retire-event-domains -->
+- `marketing` and `creative_production`: company business domains whose event
+  vocabulary the event platform's catalog hosts. Each owns its event
+  vocabulary's meaning and emission invariants; hosting confers none of that on
+  the event platform.
+<!-- /planned-change:retire-event-domains -->
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — origin and subject — and each event type's
   declared subject assignment and payload fields. It owns no event's meaning

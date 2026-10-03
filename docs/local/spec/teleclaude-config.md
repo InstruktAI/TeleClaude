@@ -23,9 +23,15 @@ explicitly rejects global-only keys (`people`, `ops`, `creds`,
 `notifications`, `timezone`). See `teleclaude/config/schema.py` for the
 authoritative model definitions.
 
+<!-- planned-change:retire-event-domains -->
 | File              | Location                       | Model          | Owns                                                                       |
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
 | **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
+<!-- change:retire-event-domains -->
+| File              | Location                       | Model          | Owns                                                      |
+| ----------------- | ------------------------------ | -------------- | --------------------------------------------------------- |
+| **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests` |
+<!-- /planned-change:retire-event-domains -->
 
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 
@@ -208,6 +214,7 @@ present in the daemon environment.
 
 Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.
 
+<!-- planned-change:retire-event-domains -->
 ```yaml
 people: list[PersonEntry] # REJECTED at project level
 env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
@@ -217,6 +224,15 @@ event_domains:
   domains: mapping[string, DomainConfig]
 jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
 ```
+<!-- change:retire-event-domains -->
+```yaml
+people: list[PersonEntry] # REJECTED at project level
+env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
+subscriptions: list[SubscriptionEntry]
+interests: list[string]
+jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
+```
+<!-- /planned-change:retire-event-domains -->
 
 There is no `company_profile` key on the global overlay. Company configuration is
 its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
