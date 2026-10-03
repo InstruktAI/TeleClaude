@@ -7,20 +7,26 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
-from teleclaude.events.pipeline import Pipeline, failing_stage_from_exception
+from teleclaude.events.pipeline import failing_stage_from_exception
 from teleclaude.events.producer import emit_event
 
 logger = get_logger(__name__)
 
 STREAM_NAME = "teleclaude:events"
 CONSUMER_GROUP = "event-processor"
+
+
+class StreamEntryPipeline(Protocol):
+    """Execute a stream envelope with the id of its source entry."""
+
+    async def execute(self, envelope: EventEnvelope, /, *, entry_id: str) -> object: ...
 
 
 @dataclass
@@ -46,7 +52,7 @@ class EventProcessor:
     def __init__(
         self,
         redis_client: Any,
-        pipeline: Pipeline,
+        pipeline: StreamEntryPipeline,
         *,
         idle_threshold_ms: int | None = None,
         max_attempts: int | None = None,
@@ -216,7 +222,7 @@ class EventProcessor:
                 envelope: EventEnvelope | None = None
                 try:
                     envelope = EventEnvelope.from_stream_dict(data)
-                    await self._pipeline.execute(envelope)
+                    await self._pipeline.execute(envelope, entry_id=entry_id)
                     try:
                         await self._redis.xack(self._stream, self._group, entry_id)
                     except Exception:

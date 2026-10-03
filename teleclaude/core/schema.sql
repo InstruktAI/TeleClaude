@@ -687,6 +687,26 @@ CREATE INDEX IF NOT EXISTS idx_reminders_event_anchor
 ON reminders(session_id, event_anchor)
 WHERE event_anchor IS NOT NULL;
 
+-- Durable session-owned requests to receive matching catalog events.
+CREATE TABLE IF NOT EXISTS event_subscriptions (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN ('once', 'every')),
+    narrowing_json TEXT NOT NULL,
+    created_position TEXT NOT NULL,
+    principal TEXT NOT NULL,
+    company TEXT,
+    claimed_event_id TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_subscriptions_session_id
+ON event_subscriptions(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_event_subscriptions_event_type
+ON event_subscriptions(event_type);
+
 -- Append-only reminder source entries. A firing occurrence is unique so a
 -- crash after inbound acceptance cannot append a second firing entry.
 CREATE TABLE IF NOT EXISTS reminder_entries (

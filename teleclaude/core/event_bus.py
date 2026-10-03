@@ -66,7 +66,7 @@ from teleclaude.events.domain_config import AutonomyLevel, AutonomyMatrix, Domai
 from teleclaude.events.domain_handlers import DomainHandler, DomainHandlerSpec
 from teleclaude.events.domain_pipeline import DomainPipeline, DomainPipelineRunner
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
-from teleclaude.events.pipeline import Pipeline, PipelineContext
+from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.processor import EventProcessor
 
 if TYPE_CHECKING:
@@ -147,8 +147,9 @@ class _InternalEventPipeline:
     def __init__(self, bus: EventBus) -> None:
         self._bus = bus
 
-    async def execute(self, event: EventEnvelope) -> EventEnvelope | None:
+    async def execute(self, event: EventEnvelope, /, *, entry_id: str) -> EventEnvelope | None:
         """Deliver an internal event through the bus subscriber fan-out."""
+        del entry_id
         return await self._bus.deliver(event)
 
 
@@ -504,7 +505,7 @@ class EventBus:
 
         processor = EventProcessor(
             self._redis,
-            cast(Pipeline, _InternalEventPipeline(self)),
+            _InternalEventPipeline(self),
             stream=INTERNAL_EVENT_STREAM,
             group=self._consumer_group(),
             consumer_name=self._consumer_name(),

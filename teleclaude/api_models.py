@@ -2,13 +2,14 @@
 
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field, model_validator
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.schema import MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
+from teleclaude.core.event_subscription_mode import EventSubscriptionMode
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
@@ -153,6 +154,36 @@ class ReminderMutationResponseDTO(BaseModel):
     outcome: Literal["success", "already_absent"]
     entry: ReminderEntryDTO | None = None
     presentation: str | None = None
+
+
+class EventSubscriptionRequest(BaseModel):
+    """Create a caller-session event subscription."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event_type: str = Field(..., min_length=1)
+    once: bool = False
+    narrowing: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class EventSubscriptionDTO(BaseModel):
+    """One live event subscription owned by the caller session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    event_type: str
+    mode: EventSubscriptionMode
+    narrowing: dict[str, JsonValue]
+    created_at: str
+
+
+class EventSubscriptionMutationResponseDTO(BaseModel):
+    """Whether a caller-owned subscription was withdrawn."""
+
+    model_config = ConfigDict(frozen=True)
+
+    removed: bool
 
 
 class KeysRequest(BaseModel):

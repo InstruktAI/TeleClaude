@@ -185,6 +185,7 @@ from teleclaude.core.output_poller import OutputPoller
 _record_import_timing("teleclaude.core.output_poller", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.event_subscriptions import EventSubscriptionService
 from teleclaude.core.reminders import ReminderService
 from teleclaude.core.reminders.inbound import submit_reminder_entry
 
@@ -287,6 +288,8 @@ init_voice_handler = voice_message_handler.init_voice_handler
 
 
 SLOW_STARTUP_WARNING_S = 30.0
+_EVENT_SUBSCRIPTION_PROCESSOR_STOPPED = "Event subscription processor stopped"
+_EVENT_SUBSCRIPTION_PROCESSOR_TASK_ATTRIBUTE = "_event_subscription_processor_task"
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
@@ -380,6 +383,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             db,
             submitter=submit_reminder_entry,
         )
+        self.event_subscription_service = EventSubscriptionService(
+            db,
+            self._read_event_stream_position,
+            config.computer.name,
+        )
 
         # Initialize cache for remote data
         self.cache = DaemonCache(
@@ -438,6 +446,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             reminder_service=self.reminder_service,
         )
         session_cleanup.configure_reminder_service(self.reminder_service)
+        session_cleanup.configure_event_subscription_service(self.event_subscription_service)
         register_default_processors()
 
         # Wire direct agent event handler — replaces event bus for AGENT_EVENT.
@@ -486,6 +495,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._event_db: EventDB | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
+        self._event_subscription_processor_task: asyncio.Task[object] | None = None
+        self._event_subscription_service: EventSubscriptionService | None = self.event_subscription_service
         self._internal_event_bus_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
@@ -506,6 +517,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             shutdown_event=self.shutdown_event,
             task_registry=self.task_registry,
             reminder_service=self.reminder_service,
+            event_subscription_service=self.event_subscription_service,
             runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
             init_voice_handler=init_voice_handler,
@@ -1063,6 +1075,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
         await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
         await self._await_task_attr("_event_processor_task", "EventProcessor stopped", timeout=5.0)
+        await self._await_task_attr(
+            _EVENT_SUBSCRIPTION_PROCESSOR_TASK_ATTRIBUTE,
+            _EVENT_SUBSCRIPTION_PROCESSOR_STOPPED,
+            timeout=5.0,
+        )
+        self.event_subscription_service.close()
 
         for attr_name, log_message in (
             ("config_watch_task", "Config watcher stopped"),

@@ -41,6 +41,7 @@ from teleclaude.paths import session_tmp_dir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.event_subscriptions import EventSubscriptionService
     from teleclaude.core.models import Session
     from teleclaude.core.reminders import ReminderService
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
@@ -48,6 +49,7 @@ from teleclaude.core.inbound_queue import get_inbound_queue_manager
 logger = get_logger(__name__)
 _LEGACY_RESTRICTED_SESSION_ENDED_EVENT = "legacy_restricted_session_ended"
 _LEGACY_RESTRICTED_SESSION_REASON = "legacy_restricted_session"
+_SESSION_CLOSE_EVENT_SUBSCRIPTION_CLEAR_FAILED_EVENT = "session_close_event_subscription_clear_failed"
 
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
@@ -74,12 +76,19 @@ SESSION_PROCESS_REAP_TIMEOUT = 5.0
 # Prevents duplicate terminate_session calls from parallel SESSION_CLOSE_REQUESTED events.
 _cleanup_in_flight: set[str] = set()
 _reminder_service: ReminderService | None = None
+_event_subscription_service: EventSubscriptionService | None = None
 
 
 def configure_reminder_service(service: ReminderService) -> None:
     """Wire the daemon-owned reminder service into the shared cleanup path."""
     global _reminder_service
     _reminder_service = service
+
+
+def configure_event_subscription_service(service: EventSubscriptionService) -> None:
+    """Wire the daemon-owned subscription service into session cleanup."""
+    global _event_subscription_service
+    _event_subscription_service = service
 
 
 async def _clear_session_reminders(session_id: str) -> None:
@@ -90,6 +99,21 @@ async def _clear_session_reminders(session_id: str) -> None:
     except Exception as exc:
         logger.error(
             "session_close_reminder_clear_failed",
+            session_id=session_id,
+            error=str(exc),
+            exc_info=True,
+        )
+
+
+async def _clear_session_event_subscriptions(session_id: str) -> None:
+    if _event_subscription_service is None:
+        return
+    try:
+        await _event_subscription_service.remove_session(session_id)
+    except Exception as exc:
+        # Session close must finish through a subscription-store outage; startup rebuild prunes retained rows.
+        logger.error(
+            _SESSION_CLOSE_EVENT_SUBSCRIPTION_CLEAR_FAILED_EVENT,
             session_id=session_id,
             error=str(exc),
             exc_info=True,
@@ -475,6 +499,7 @@ async def _terminate_session_inner(
         )
 
         await _clear_session_reminders(session.session_id)
+        await _clear_session_event_subscriptions(session.session_id)
 
         try:
             await _end_escalation_if_active(session)

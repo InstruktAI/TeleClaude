@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from teleclaude.cli import CommandScope
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
@@ -27,6 +29,16 @@ from .surface_types import (
 )
 
 __all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand", "export_surface_markdown"]
+
+
+class EventCommand(StrEnum):
+    """Closed subcommand names for the event catalog and subscription interface."""
+
+    LIST = "list"
+    SCHEMA = "schema"
+    SUBSCRIBE = "subscribe"
+    SUBSCRIPTIONS = "subscriptions"
+    UNSUBSCRIBE = "unsubscribe"
 
 
 def export_surface_markdown() -> str:
@@ -1030,11 +1042,34 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "events": CommandDef(
         desc="Event catalog and platform commands",
         subcommands={
-            "list": CommandDef(
+            EventCommand.LIST.value: CommandDef(
                 desc="List event schemas: type, level, domain, visibility, description, actionable",
                 args="[--domain <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_EVENTS_DOMAIN],
                 auth=CommandAuth(system=frozenset(), human=_HR_MEMBER_CONTRIB_NEWCOMER, caller_independent=True),
+            ),
+            EventCommand.SCHEMA.value: CommandDef(
+                desc="Show one event type's metadata, subject assignment, and declared payload fields",
+                args="<event>",
+                flags=[F.FLAG_HELP],
+                auth=CommandAuth(system=frozenset(), human=_HR_MEMBER_CONTRIB_NEWCOMER, caller_independent=True),
+            ),
+            EventCommand.SUBSCRIBE.value: CommandDef(
+                desc="Subscribe the caller session to an event type",
+                args="<event> [--once] [--where <field>=<value>]...",
+                flags=[F.FLAG_HELP, F.FLAG_EVENTS_ONCE, F.FLAG_EVENTS_WHERE],
+                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            EventCommand.SUBSCRIPTIONS.value: CommandDef(
+                desc="List the caller session's live event subscriptions",
+                flags=[F.FLAG_HELP],
+                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            EventCommand.UNSUBSCRIBE.value: CommandDef(
+                desc="Withdraw one of the caller session's event subscriptions",
+                args="<subscription-id>",
+                flags=[F.FLAG_HELP],
+                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
     ),
@@ -1789,7 +1824,11 @@ SYNC = CLI_SURFACE["sync"]
 
 CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 
-EVENTS_LIST = CLI_SURFACE["events"].subcommands["list"]
+EVENTS_LIST = CLI_SURFACE["events"].subcommands[EventCommand.LIST.value]
+EVENTS_SCHEMA = CLI_SURFACE["events"].subcommands[EventCommand.SCHEMA.value]
+EVENTS_SUBSCRIBE = CLI_SURFACE["events"].subcommands[EventCommand.SUBSCRIBE.value]
+EVENTS_SUBSCRIPTIONS = CLI_SURFACE["events"].subcommands[EventCommand.SUBSCRIPTIONS.value]
+EVENTS_UNSUBSCRIBE = CLI_SURFACE["events"].subcommands[EventCommand.UNSUBSCRIBE.value]
 
 MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
 MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]

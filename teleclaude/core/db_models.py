@@ -562,6 +562,24 @@ class ReminderEntryRow(SQLModel, table=True):
     firing_number: int | None = None
 
 
+class EventSubscriptionRow(SQLModel, table=True):
+    """event_subscriptions table — one live request to receive catalog events."""
+
+    __tablename__ = "event_subscriptions"
+    __table_args__ = {"extend_existing": True}
+
+    id: str = Field(primary_key=True)
+    session_id: str = Field(index=True)
+    event_type: str = Field(index=True)
+    mode: str
+    narrowing_json: str
+    created_position: str
+    principal: str
+    company: str | None = None
+    claimed_event_id: str | None = None
+    created_at: str
+
+
 class OutputConsumerReceiptRow(SQLModel, table=True):
     """output_consumer_receipts table — one consumer's edit target for one generation."""
 

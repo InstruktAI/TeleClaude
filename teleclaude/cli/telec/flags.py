@@ -470,6 +470,10 @@ FLAG_JOB_ERROR = Flag("--error", desc="Error detail; repeat for multiple errors"
 # =============================================================================
 
 FLAG_EVENTS_DOMAIN = Flag("--domain", desc="Filter by domain", arity=VALUE)
+FLAG_EVENTS_ONCE = Flag("--once", desc="Deliver only the first matching event", arity=SWITCH)
+FLAG_EVENTS_WHERE = Flag(
+    "--where", desc="Narrow by a declared payload field as <field>=<value>; repeatable", arity=REPEATED
+)
 
 FLAG_MCP_EXCLUDE = Flag("--exclude", desc="Server slug to omit; repeat for specialized procedures", arity=REPEATED)
 FLAG_MCP_JSON = Flag("--json", desc="Print raw JSON response", arity=SWITCH)

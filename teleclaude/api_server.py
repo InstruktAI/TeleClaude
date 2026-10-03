@@ -28,6 +28,7 @@ from teleclaude.api import (
     agents_routes,
     chiptunes_routes,
     computers_routes,
+    event_subscription_routes,
     history_routes,
     jobs_routes,
     mcp_routes,
@@ -48,6 +49,7 @@ from teleclaude.api.auth import (
     principal_for_carried_caller,
 )
 from teleclaude.api.event_serialization import agent_availability_event_dto
+from teleclaude.api.event_subscription_routes import router as event_subscription_router
 from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
@@ -99,6 +101,7 @@ if TYPE_CHECKING:
     from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.event_subscriptions import EventSubscriptionService
     from teleclaude.core.reminders import ReminderService
     from teleclaude.core.task_registry import TaskRegistry
     from teleclaude.events.db import EventDB
@@ -127,12 +130,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         socket_path: str | None = None,
         runtime_settings: RuntimeSettings | None = None,
         reminder_service: ReminderService | None = None,
+        event_subscription_service: EventSubscriptionService | None = None,
         refresh_local_projects: Callable[[ProjectRefreshTrigger], Awaitable[None]] | None = None,
     ) -> None:
         self.client = client
         self._cache: DaemonCache | None = None  # Initialize private variable
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
+        self.event_subscription_service = event_subscription_service
         self._event_db: EventDB | None = None
         self.mcp_runtimes = McpRuntimePool(
             repo_root=resolve_project_root(Path.cwd()),
@@ -144,6 +149,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         # --- Route modules ---
         sessions_routes.configure(client=client, cache=cache, reminder_service=reminder_service)
         reminders_routes.configure(reminder_service)
+        event_subscription_routes.configure(event_subscription_service)
         sessions_actions_routes.configure(client=client)
         configure_operations_routes(client=client)
         history_routes.configure(client=client)
@@ -160,6 +166,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(projects_routes.router)
         self.app.include_router(readiness_routes.router)
         self.app.include_router(reminders_routes.router)
+        self.app.include_router(event_subscription_router)
         self.app.include_router(agents_routes.router)
         self.app.include_router(people_routes.router)
         self.app.include_router(settings_routes.router)

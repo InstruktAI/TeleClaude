@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import ResponseError
 
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config
@@ -18,6 +19,7 @@ from teleclaude.config.loader import load_project_config
 from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
+from teleclaude.core.event_subscriptions import EventSubscriptionService
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.organization import platform_admin_people
 from teleclaude.core.reconciliation import WEBHOOK_INGRESS_FEATURE_ID
@@ -58,6 +60,7 @@ from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
 from teleclaude.events.envelope import EventHomeRef, EventSubject, EventSubjectMarker
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
+from teleclaude.events.processor import STREAM_NAME as EVENT_STREAM_NAME
 from teleclaude.hooks import procedure_activation
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
@@ -82,6 +85,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
+_EVENT_SUBSCRIPTIONS_GROUP_PREFIX = "event-subscriptions-"
+_EVENT_SUBSCRIPTIONS_CONSUMER_SUFFIX = "-subs-"
+_EVENT_STREAM_LAST_ID_KEY = "last-generated-id"
+_EVENT_STREAM_EMPTY_POSITION = "0-0"
+_EVENT_REDIS_CLIENT_UNAVAILABLE_ERROR = "event Redis client is unavailable"
+_REDIS_MISSING_KEY_MARKER = "no such key"
+_EVENT_STREAM_MISSING_LAST_ID_ERROR = "Redis event stream metadata is missing its last generated id"
+_EVENT_SUBSCRIPTION_PROCESSOR_TASK_NAME = "event-subscription-processor"
+_EVENT_SUBSCRIPTION_PROCESSOR_LOG_TASK_NAME = "event_subscription_processor"
+_EVENT_SUBSCRIPTION_PROCESSOR_STARTED_EVENT = "Event subscription processor started"
 
 type ClusterWebhookPayload = dict[str, object]  # guard: loose-dict - HookEvent JSON payload for cluster envelope
 
@@ -112,6 +125,28 @@ class _DeliveryAdapter(Protocol):
         self,
         change: PushNotificationChange,
     ) -> None: ...
+
+
+class _SubscriptionStreamInfoClient(Protocol):
+    """Redis stream metadata surface used to capture a subscription's start point."""
+
+    async def xinfo_stream(self, stream: str) -> dict[str | bytes, str | bytes]: ...
+
+
+class _SubscriptionDeliveryPipeline:
+    """Apply trust before handing the original stream event to subscriptions."""
+
+    def __init__(self, service: EventSubscriptionService, context: PipelineContext) -> None:
+        self._service = service
+        self._context = context
+        self._trust = TrustCartridge()
+
+    async def execute(self, envelope: EventsEnvelope, /, *, entry_id: str) -> object:
+        """Deliver only trusted events and preserve their unannotated envelope."""
+        accepted = await self._trust.process(envelope, self._context)
+        if accepted is not None:
+            await self._service.deliver(envelope, entry_id)
+        return accepted
 
 
 def _wrap_with_debounce(
@@ -165,6 +200,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _deployment_fanout_task: asyncio.Task[object] | None
         _contract_sweep_task: asyncio.Task[object] | None
         _event_processor_task: asyncio.Task[object] | None
+        _event_subscription_processor_task: asyncio.Task[object] | None
+        _event_subscription_service: EventSubscriptionService | None
         _internal_event_bus_task: asyncio.Task[object] | None
         _ingest_scheduler_task: asyncio.Task[object] | None
         _task_schedule_clock_task: asyncio.Task[object] | None
@@ -401,6 +438,54 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("EventProcessor started")
         return computer_label
 
+    async def _read_event_stream_position(self) -> str:
+        """Read the latest Redis-generated event stream position."""
+        redis_client = self._event_redis_client
+        if redis_client is None:
+            raise RuntimeError(_EVENT_REDIS_CLIENT_UNAVAILABLE_ERROR)
+        client = cast(_SubscriptionStreamInfoClient, redis_client)
+        try:
+            stream_info = await client.xinfo_stream(EVENT_STREAM_NAME)
+        except ResponseError as exc:
+            if _REDIS_MISSING_KEY_MARKER not in str(exc).lower():
+                raise
+            return _EVENT_STREAM_EMPTY_POSITION
+        position = stream_info.get(_EVENT_STREAM_LAST_ID_KEY)
+        if position is None:
+            position = stream_info.get(_EVENT_STREAM_LAST_ID_KEY.encode())
+        if position is None or position in {"", b""}:
+            raise RuntimeError(_EVENT_STREAM_MISSING_LAST_ID_ERROR)
+        return position.decode() if isinstance(position, bytes) else position
+
+    def _start_event_subscription_consumer(
+        self,
+        redis_client: object,
+        context: PipelineContext,
+        service: EventSubscriptionService,
+    ) -> None:
+        """Start the independent per-computer subscription delivery group."""
+        computer_label = config.computer.name
+        reliability = config.event_reliability
+        pipeline = _SubscriptionDeliveryPipeline(service, context)
+        consumer = computer_label + _EVENT_SUBSCRIPTIONS_CONSUMER_SUFFIX + str(os.getpid())
+        processor = EventProcessor(
+            redis_client=redis_client,
+            pipeline=pipeline,
+            group=_EVENT_SUBSCRIPTIONS_GROUP_PREFIX + computer_label,
+            consumer_name=consumer,
+            idle_threshold_ms=reliability.idle_threshold_ms,
+            max_attempts=reliability.max_attempts,
+            sweep_interval_ms=reliability.sweep_interval_ms,
+            dlq_destination=reliability.dlq_destination,
+        )
+        self._event_subscription_processor_task = asyncio.create_task(
+            processor.start(self.shutdown_event), name=_EVENT_SUBSCRIPTION_PROCESSOR_TASK_NAME
+        )
+        self._event_subscription_processor_task.add_done_callback(
+            self._log_background_task_exception(_EVENT_SUBSCRIPTION_PROCESSOR_LOG_TASK_NAME)
+        )
+        logger.info(_EVENT_SUBSCRIPTION_PROCESSOR_STARTED_EVENT, computer=computer_label)
+
     def _start_internal_event_bus(self, redis_client: object) -> None:
         """Configure and start the daemon role's internal EventBus consumer."""
         bus = configure_event_bus(role="daemon", redis_client=cast(RedisStreamsClient, redis_client))
@@ -575,6 +660,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         await self._emit_daemon_restarted_event(event_producer, computer_label)
         self._start_task_schedule_clock(event_producer)
         self._start_signal_pipeline(pipeline, context, event_producer)
+        service = self._event_subscription_service
+        if redis_client is not None and service is not None:
+            await service.rebuild()
+            self._start_event_subscription_consumer(redis_client, context, service)
 
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
