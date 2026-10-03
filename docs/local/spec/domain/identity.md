@@ -59,7 +59,6 @@ TeleClaudeNext.
   survives a restart because the record does. Readers consume the published
   answer and never re-validate it.
 
-<!-- planned:subject-scope-reach -->
 - **Also owns:** reach — which platform records a principal may see. Identity
   resolves it once per request from the principal and its own facts (platform
   role, company rosters and their project assignments) together with config's
@@ -87,6 +86,7 @@ TeleClaudeNext.
   admit it. An unknown subject is never read as no subject or as a home. A
   platform role below administrator admits nothing of its own; it still counts
   where authorization reads the effective role.
+
 - **Published contract — reach:** one resolved value per principal with two
   appliers: a test of one record's facts, for streams and file-based data, and a
   query predicate over a store's subject, owner, and principal columns, applied
@@ -95,7 +95,6 @@ TeleClaudeNext.
   documentation, addressed notifications — and never add, relax, or re-derive
   reach. The behavioral contract is
   `local/projects/teleclaude/spec/feature/identity/data-visibility`.
-<!-- /planned:subject-scope-reach -->
 
 ## See Also
 

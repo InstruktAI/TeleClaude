@@ -1,8 +1,8 @@
 ---
-description: One reach rule, owned by identity, decides which platform data each principal may see — by the subject each record is about — and every surface that shows data to principals applies it on the receiving computer without a rule of its own.
+description: One reach rule, owned by identity, decides which platform data each principal
+  may see — by the subject each record is about — and every surface that shows data
+  to principals applies it on the receiving computer without a rule of its own.
 visibility: internal
-delivered_by:
-  - subject-scope-reach
 ---
 
 # Data Visibility — Spec

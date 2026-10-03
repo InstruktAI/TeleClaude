@@ -11,21 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:subject-scope-reach -->
-The Selection policy is the single pure-function composition point for every
-filter that narrows the Index down to the snippets a caller actually wants.
-Visibility, taxonomy areas, business domains, scope across the four tiers,
-baseline-manifest anchoring, target-slug filtering, and the tier selectors all
-flow through one place. Visibility is resolved against the caller's effective
-role for each tier (`local/projects/teleclaude/design/architecture/scoped-roles`): an `admin`
-effective role reads the tier in full; any other role reads its own company, its
-reached projects, and its own person tier in full and the platform's shared
-documentation at public-only depth; and where no role reaches a tier, the
-snippet's own public-or-internal declaration is the only gate. Given the same Index and the
-same inputs, the policy produces a byte-identical set of snippet IDs every
-time. This determinism is what lets the retrieval flow be cached, replayed, and
-reasoned about.
-<!-- change:subject-scope-reach -->
 The Selection policy is the single pure-function composition point for every
 filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
@@ -40,7 +25,6 @@ gate. Given the same Index and the
 same inputs, the policy produces a byte-identical set of snippet IDs every
 time. This determinism is what lets the retrieval flow be cached, replayed, and
 reasoned about.
-<!-- /planned-change:subject-scope-reach -->
 
 ## Canonical fields
 
@@ -452,13 +436,8 @@ Then the result is identical to the same request without --scope
 
 - **identity** — the resolved caller: a person with their platform role and
   the company relationships and project reach that resolution reports, a system
-<!-- planned-change:subject-scope-reach -->
-  principal, or no identity, received from the command edge, and the person's
-  effective role for each tier, which identity answers. Read depth is derived
-<!-- change:subject-scope-reach -->
   principal, or no identity, received from the command edge, and the caller's
   visibility reach, which identity answers. Read depth is derived
-<!-- /planned-change:subject-scope-reach -->
   from these resolved answers; this policy owns neither the resolution nor the
   declarations beneath it.
 - **config** — supplies the registered publishers' `business.publishes`

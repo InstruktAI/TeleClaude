@@ -27,7 +27,6 @@ describes the current appliance only.
   decisions inferred from an observation by consuming domains.
 - **Published contracts:** observation records, search queries, and rendered
   memory context.
-<!-- planned:subject-scope-reach -->
 - **Also owns:** the subject each observation records — the person an
   observation about the human concerns, the project an observation about a
   project concerns, with that project's owner, or unknown when save cannot
@@ -36,7 +35,6 @@ describes the current appliance only.
   those facts (`local/projects/teleclaude/spec/domain/identity`); memory decides no
   visibility of its own. Observations saved before subjects were recorded
   receive one once, from the project they name, or unknown.
-<!-- /planned:subject-scope-reach -->
 
 ## See Also
 

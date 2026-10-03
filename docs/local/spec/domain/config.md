@@ -170,7 +170,6 @@ and preserve every unrelated key and line. Runtime and TUI consumers use this
 published contract and never parse the store or consult the process environment
 directly.
 
-<!-- planned:subject-scope-reach -->
 
 ### Membership declaration changes
 
@@ -188,7 +187,6 @@ it, so the next listing and every later live push read the changed declaration
 (`local/projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
 reach per request and needs no notice.
 
-<!-- /planned:subject-scope-reach -->
 
 ### Event subjects
 

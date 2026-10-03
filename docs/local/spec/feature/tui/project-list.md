@@ -13,14 +13,6 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:subject-scope-reach -->
-The TUI's Sessions and Preparation views show, under each computer, the
-projects that computer's daemon lists: every entry on that machine's project
-registry, under its display name, in registry order
-(`local/projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
-list changes, whether or not any session changed with it: a project the daemon
-adds, renames, or drops is shown as it now is.
-<!-- change:subject-scope-reach -->
 The TUI's Sessions and Preparation views show, under each computer, the
 projects that computer's daemon lists to the viewer: every entry on that
 machine's project registry — a project, a person home, or a company home —
@@ -30,7 +22,6 @@ name, in registry order
 (`local/projects/teleclaude/spec/feature/config/project-registry`). Both views redraw when that
 list changes, whether or not any session changed with it: a project the daemon
 adds, renames, or drops is shown as it now is.
-<!-- /planned-change:subject-scope-reach -->
 
 An operator adds a project from the local computer's header in either view by
 naming a folder. The new-project action asks for nothing else: the project's
@@ -42,15 +33,10 @@ sees the daemon's reason.
 
 ## Canonical fields
 
-<!-- planned-change:subject-scope-reach -->
-- **Listing.** Per computer, the daemon's project listing: display name and
-  folder, in registry order.
-<!-- change:subject-scope-reach -->
 - **Listing.** Per computer, the daemon's project listing for the viewer: display
   name and folder, in registry order, of the registry entries whose subject the
   viewer's reach admits, with the todos each shows. Live updates about an entry
   reach only viewers whose reach admits it.
-<!-- /planned-change:subject-scope-reach -->
 - **Redraw.** Any change to a computer's listing redraws both views.
 - **New-project input.** A folder path. Missing folders are created by the
   daemon's adoption; a path naming a file, or a folder already on the list, is

@@ -48,14 +48,6 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
   `state: "completed"|"failed"|"stale"` and `result` or `error`.
 - **Output (delivery):** the caller recorded on the row is woken with an address —
   operation identity, outcome, and the command that reads the record.
-<!-- planned-change:subject-scope-reach -->
-- Operation rows are keyed to the caller session; a caller may inspect its own, and a caller whose
-  effective role for the operation's project is `admin` (`local/projects/teleclaude/design/architecture/scoped-roles`)
-  may inspect any in that project; an operation acting on a session belongs to that session's project.
-  A read from another computer carries no session
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`), so there a caller's own operation is
-  one whose command the caller's principal started.
-<!-- change:subject-scope-reach -->
 - Operation rows are keyed to the caller session and record the subject the operation runs in —
   the subject of its working folder, or of the session it acts on — with that subject's owner as
   resolved when the operation is created. A row written before operations recorded a subject
@@ -66,7 +58,6 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`). A read from another computer
   carries no session (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
   so there a caller's own operation is one whose command the caller's principal started.
-<!-- /planned-change:subject-scope-reach -->
 
 ## Invariants
 
@@ -146,15 +137,9 @@ sequenceDiagram
   `running` until the heartbeat window expires and then becomes `stale`, which delivers.
 - **Caller session gone at delivery:** The wake is dropped without retry and the row is
   unchanged. The outcome remains answerable by any later reader.
-<!-- planned-change:subject-scope-reach -->
-- **Caller mismatch:** A caller whose effective role for the operation's project is not
-  `admin`, attempting to access an operation that is not its own, receives a 404 (not a 403) to
-  avoid session ID enumeration.
-<!-- change:subject-scope-reach -->
 - **Caller mismatch:** A caller whose reach does not admit the operation's subject, attempting
   to access an operation that is not its own, receives a 404 (not a 403) to avoid session ID
   enumeration.
-<!-- /planned-change:subject-scope-reach -->
 - **Event fires, row not yet terminal:** Trust the row. The event is a convenience
   signal; the DB row is authoritative.
 

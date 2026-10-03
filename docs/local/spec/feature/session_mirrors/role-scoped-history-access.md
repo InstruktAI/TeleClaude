@@ -1,5 +1,5 @@
 ---
-description: "Scoping of mirror search and detail lookup by the identity the caller carries. A person whose effective role for a mirror's project is admin sees that mirror, a system principal sees every mirror, every other person sees only their own, and a caller that cannot be identified is refused. Every surface that serves mirrors to a caller identifies it first; in-process reads that serve no caller are unscoped."
+description: "Scoping of mirror search and detail lookup by the identity the caller carries. A caller sees the mirrors its reach admits by the subject each mirror's session landed in, and the mirrors recorded under its own principal; a system principal and a platform administrator see every mirror, and a caller that cannot be identified is refused. Every surface that serves mirrors to a caller identifies it first; in-process reads that serve no caller are unscoped."
 visibility: 'public'
 ---
 
@@ -12,34 +12,31 @@ visibility: 'public'
 
 ## What it is
 
-History queries are scoped to the caller, so no one reads another person's
-conversations without the authority to. The scope derives from the identity the
-caller carries — the principal of its session, or the person resolved for it at a
-terminal — never from a terminal signal inside a session and never from a stored
-role copy. A person's role is their effective role for the project each mirror
-was recorded in, resolved when the scope is decided
-(`local/projects/teleclaude/design/architecture/scoped-roles`). A caller's system role is not an
-input: it governs which operations the caller may run, not whose conversations it
-may read.
+History queries are scoped to the caller, so no one reads a conversation
+without the authority to. The scope derives from the identity the caller carries
+— the principal of its session, or the person resolved for it at a terminal —
+never from a terminal signal inside a session and never from a stored role copy.
+It is the caller's reach (`local/projects/teleclaude/spec/feature/identity/data-visibility`),
+resolved when the scope is decided, applied to two facts each mirror carries: the
+subject its session landed in — a project, person, or company home, or none —
+with that subject's owner, and the principal it is recorded under. A caller's
+system role is not an input: it governs which operations the caller may run, not
+whose conversations it may read.
 
 The scopes are:
 
-- **System principal**: every mirror on the host. A system principal is the
-  platform acting on work that was already accepted; it has no person to scope
-  by.
-- **A person whose effective role for a mirror's project is admin**: that mirror,
-  whoever it is recorded against. A platform administrator holds that role for
-  every project and so sees every mirror; a company administrator sees the
-  mirrors of every project their company owns. A mirror recorded under no person
-  principal — a system-rooted session's — is visible to such a person, and to a
-  system principal, only.
-- **Any other person**: only the mirrors recorded under their own principal —
-  the person the session ran under, spawned sessions of their own chains
-  included (`general/concept/lineage-vs-authorship`) — whatever their role,
-  including a role that does not resolve.
-- **A mirror with no registered project** has no company scope. It is visible to
-  a platform administrator, a system principal, and the person it is recorded
-  under.
+- **System principal and platform administrator**: every mirror on the host. A
+  system principal is the platform acting on work that was already accepted; it
+  has no person to scope by.
+- **Any other person**: the mirrors whose subject their reach admits — their
+  company homes, the projects their company administrator role covers or their
+  roster assigns them, projects they own, and their own home — whoever those
+  mirrors are recorded under; and every mirror recorded under their own
+  principal, spawned sessions of their own chains included
+  (`general/concept/lineage-vs-authorship`), wherever it was recorded.
+- **A mirror with no subject** — its session ran in a folder no registered home
+  governs — is visible to a platform administrator, a system principal, and the
+  person it is recorded under.
 - **A caller that cannot be identified**: refused. Nothing is read and nothing is
   returned; an unidentified caller never receives a wider view than an
   identified one.
@@ -81,20 +78,7 @@ And no conversation is returned and no on-disk transcript is consulted
 
 #### UC-RSHA-3: A member sees only their own
 
-```
-Given the caller is a person whose role is member
-When the caller searches history or requests a session's conversation
-Then only conversations recorded under the caller's principal are returned
-And no conversation recorded against another person is returned, whatever else its record carries
-```
-
 #### UC-RSHA-4: Any other person sees only their own
-
-```
-Given the caller is a person whose role is neither admin nor member, or does not resolve
-When the caller searches history or requests a session's conversation
-Then only conversations recorded under the caller's principal are returned
-```
 
 #### UC-RSHA-5: The service capabilities scope their caller
 
@@ -110,7 +94,7 @@ And a caller it cannot identify is refused before any mirror is read
 #### UC-RSHA-6: A filtered miss does not fall through to the transcript
 
 ```
-Given a caller whose role band excludes a mirror from the detail lookup
+Given a caller whose reach excludes a mirror from the detail lookup
 When the caller requests that session through the CLI
 Then the on-disk transcript discovery is not consulted for that session
 And the caller receives the same not-found outcome as for a session that does not exist
@@ -140,7 +124,7 @@ And its result reaches no caller
 ```
 Given the caller holds no platform role and the admin role in one company
 When the caller searches history or requests a session's conversation
-Then mirrors recorded in any project that company owns are returned, whoever they are recorded against
+Then mirrors recorded in any project that company owns, and in that company's home, are returned, whoever they are recorded against
 And mirrors recorded in a project owned by another company are returned only when recorded under the caller's own principal
 ```
 
@@ -150,14 +134,14 @@ And mirrors recorded in a project owned by another company are returned only whe
 Given the caller is a person whose role is member
 And an orchestrator or worker session was spawned in a chain that person started
 When the caller searches history with dispatched workers included
-Then that spawned session's conversation is returned
-And a session spawned in another person's chain is not returned
+Then that spawned session's conversation is returned, wherever it ran
+And a session spawned in another person's chain is returned only when the caller's reach admits the subject it ran in
 ```
 
-#### UC-RSHA-11: A mirror with no registered project stays at platform scope
+#### UC-RSHA-11: A mirror with no subject stays at platform scope
 
 ```
-Given a mirror recorded in a directory that is not a registered project
+Given a mirror recorded in a directory no registered home governs
 When a company administrator who is not the person it is recorded under searches history
 Then that mirror is not returned
 And a platform administrator's search returns it
@@ -172,6 +156,25 @@ Then that mirror is returned
 And a company administrator who is not that person does not receive it
 ```
 
+#### UC-RSHA-13: A member reads the conversations of the projects they are assigned to
+
+```
+Given a person who is a member of a company and is assigned to one of its projects
+And a colleague's session ran in that project
+When the person searches history or requests that session's conversation
+Then the colleague's conversation is returned
+And a conversation in a project of that company they are not assigned to is returned only when recorded under their own principal
+```
+
+#### UC-RSHA-14: A person's own conversations stay visible outside their reach
+
+```
+Given a person's session ran in a project their reach does not admit
+When the person searches history or requests that session's conversation
+Then the conversation is returned to them
+And another person sees it only when their own reach admits that project
+```
+
 ## Known caveats
 
 - The scope is decided from the identity the caller carries. A process inside a
@@ -179,13 +182,13 @@ And a company administrator who is not that person does not receive it
   cannot widen or narrow what that session's processes read (see
   `feature/identity/terminal-email-login`).
 - A mirror recorded under no person principal — a system-rooted session's — is
-  visible only to a person whose effective role for its project is admin, and to
-  system principals.
+  visible to every person whose reach admits its subject, and to system
+  principals.
 - A mirror linked to no session attribution records no principal and no
   registered project. It is recorded under the person its own email names — the
   person its session ran under (`feature/session_mirrors/mirror-identity-enrichment`)
-  — and has no company scope.
+  — and has no subject.
 - The mirror record's `visibility` value is stored but grants nothing: no scope
   reads it.
-- A peer applies this same scope to the identity relayed with a remote search (see
+- A peer applies this same reach to the identity relayed with a remote search (see
   `feature/session_mirrors/cross-computer-history-federation`).
