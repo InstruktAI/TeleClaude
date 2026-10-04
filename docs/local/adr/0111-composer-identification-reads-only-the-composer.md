@@ -26,9 +26,9 @@ whenever the classification was inconclusive.
 Footers are presentation the agent CLIs change freely: a user's status-line
 choice, a configuration deploy, a version upgrade or a model rename alters
 them. Each change outside the recognized vocabulary made an available composer
-unidentifiable and blocked readiness until timeout. Within thirty days the
-recognized vocabulary had been extended five times, and one more footer order
-then stopped every Codex startup delivery on a machine.
+unidentifiable and blocked readiness until timeout. Within a month the
+recognized footer vocabulary had been extended three times, and one more footer
+order then stopped every Codex startup delivery on a machine.
 
 ## Decision
 
