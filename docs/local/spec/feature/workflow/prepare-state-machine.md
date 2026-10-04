@@ -393,7 +393,7 @@ And the Todo carries no in-flight build to resume
 When P calls "telec todo prepare my-feature" and the machine derives PREPARED
 Then P no longer holds the lifecycle claim on my-feature
 And the lifecycle runner may take my-feature up for work while P remains open
-And the terminal script states that the claim has left P, so staying open for another obligation never holds my-feature
+And the terminal script states that P no longer holds the claim on my-feature
 And no claim held by a different live session is changed
 But when the Todo carries an in-flight build to resume, P keeps its claim and is directed to re-enter the work machine
 ```

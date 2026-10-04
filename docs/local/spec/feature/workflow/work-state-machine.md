@@ -320,7 +320,7 @@ Given a Todo whose lifecycle claim is held by the work orchestrator session W
 When W calls "telec todo work my-feature" and the machine performs the finalize-ready handoff
 Then W no longer holds the lifecycle claim on my-feature
 And the Todo's next owner takes it up whether or not W remains open
-And the terminal script states that the claim has left W, so staying open for another obligation never holds my-feature
+And the terminal script states that W no longer holds the claim on my-feature
 And no claim held by a different live session is changed
 ```
 <!-- /planned:prepared-releases-prepare-claim -->
