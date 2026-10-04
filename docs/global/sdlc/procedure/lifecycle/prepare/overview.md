@@ -117,10 +117,11 @@ ready to enter its normal lane.
 
 ### 0a. Audit the creation record and input
 
-Before deriving intent or calling the state machine, audit the todo against the
-current `input` and its mechanically recorded creation record. The creation
-record establishes how the todo entered the system and which session lineage
-carried it; it does not establish what a human decided.
+Before deriving preparation artifacts, audit the todo against the current
+`input` and its mechanically recorded creation record. Perform the initial
+audit read-only and identify required input repairs; apply them through Step 2.
+The creation record establishes how the todo entered the system and which
+session lineage carried it; it does not establish what a human decided.
 
 1. Read the creation record and the current `input`.
 2. Take the `input` as the authorized basis for derivation. Its content is the
@@ -142,7 +143,7 @@ list {slug}` names each artifact's writers. Read every writer that is not
 
    Where human turns exist, compare substance: an outcome-level requirement
    present in the conversation and absent from `input` is a compression loss,
-   and `input` is repaired in place to carry it
+   and an in-place `input` repair is carried into Step 2
    (`general/policy/human-contract`).
 
    Carry the substance, never its provenance. The repaired `input` states the
@@ -217,8 +218,8 @@ viability check:
     needs human elaboration or removal." Stop the prepare flow.
   - A human in the conversation → **soft-stop and elicit before dispatch.** Point the
     human at `@input` (do not paste it back), name the gap, ask one direct
-    question to surface the goal/actor/outcome. Update the input artifact with
-    the elaborated text, then proceed.
+    question to surface the goal/actor/outcome. Assess the elaborated input for
+    viability, then carry the required input update into Step 2.
 
 Substantive inputs (clear intent, concrete outcome, identifiable actor — even
 if short) pass the gate and proceed to Step 1a.
@@ -234,8 +235,9 @@ state, gate composition, review lanes, lifecycle procedures, or todo semantics.
 - **The current process contract already binds every implied behavior** →
   proceed to Step 2 and reference that contract as implementation scope.
 - **The work changes process behavior** → keep the work in its ordinary lane.
-  Author or update the pending process contract on `main` before planning,
-  record the material reason and before/after guarantee, and route it through
+  Identify the pending process-contract changes during preflight and carry
+  their authoring into Step 2. Complete them on `main` before planning, record
+  the material reason and before/after guarantee, and route them through
   independent documentation and plan review. If the delta relaxes a validation
   or delivery control, the reviewer must be separate and have no stake in the
   work the relaxation would unblock.
@@ -290,14 +292,24 @@ delivered.
 
 ### 2. Call the state machine
 
-For `feature`, `change`, and `bug`, call `telec todo prepare {slug}`. The
-machine returns a verbatim execution script for the current phase. The script
+For `feature`, `change`, and `bug`, make the initial `telec todo prepare {slug}`
+call after the read-only entry assessment establishes settled, viable intent
+and before preparation writes. This call establishes the registered prepare
+role in the existing session, retaining its slug claim. Fresh prepare entry
+and a work-to-prepare transition follow this order; a session already in
+preparation advances at the existing phase boundaries.
+
+After successful entry, apply the input repairs and pending process-contract
+changes identified during preflight, then perform the preparation work.
+
+The machine returns a verbatim execution script for the current phase. The script
 describes either a procedure load (load
 the next phase's procedure and do its work), a reviewer dispatch (dispatch a
 separate reviewer session and tail it), an approval pause (present to the real
 human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
 
-Execute the script verbatim. The script's flexibility belongs to
+Complete the entry obligations above before executing the script verbatim.
+The script's flexibility belongs to
 in-conversation moments with the user: fresh questions, refinements, scope
 clarifications.
 
@@ -445,6 +457,11 @@ state, not a declaration that the human owns its recovery.
   under `general/policy/human-contract`; do not improvise a state transition.
 - **Procedure loading fails.** Report the failure; do not proceed without the
   procedure loaded.
+- **A preparation write was refused before entry.** Complete Step 2 and retry
+  the in-scope write against the current state. If it remains refused, inspect
+  the registered role and operation outcome while retaining the session and
+  claim. Ground recovery in that fresh evidence
+  (`general/principle/grounding`).
 - **Reviewer dispatch fails repeatedly.** Preserve the failure evidence and
   apply `general/procedure/orchestration` recovery. The attempts do not
   substitute for reviewer verification or establish human ownership.

@@ -93,6 +93,14 @@ _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
 )
 _PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
+_WORK_ENTRY_SUBSTANTIVE_DRIFT_TEMPLATE = (
+    "WORK_ENTRY_SUBSTANTIVE_DRIFT: {slug} has substantive prepare-artifact drift. "
+    "Worktree setup was not started.\n\n{loader}"
+)
+_WORK_ENTRY_KICKBACK_TEMPLATE = (
+    "WORK_ENTRY_KICKBACK: {slug} was kicked back to plan drafting. Its worktree, "
+    "local and remote branch, workspace, build commits, and live sessions remain intact.\n\n{loader}"
+)
 
 
 class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
@@ -496,51 +504,17 @@ def format_work_entry_drift_bounce(
 
 
 def format_work_entry_substantive_handoff(slug: str) -> str:
-    """Hand the bounced work orchestrator into prepare to re-derive on substantive drift.
-
-    A substantive work-entry drift bounce hands the same session (same
-    ``active_runner`` claim) into the prepare state machine to re-derive the
-    affected artifact. Calling ``telec todo prepare {slug}`` next implicitly
-    adopts this session as the slug's prepare-orchestrator in place — the
-    generic claim-reflection mechanism confers prepare-write authority the
-    moment that call runs, before any artifact write happens. Once prepare
-    reaches PREPARED again, durable build residue directs it to resume work
-    rather than self-end.
-    """
-    loader = format_command_loader_message(SlashCommand.PREPARE.value, slug)
-    return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
-
-WORK_ENTRY_SUBSTANTIVE_DRIFT: {slug} has substantive prepare-artifact drift. Worktree setup was not started.
-
-Your slug claim is unchanged. Calling `telec todo prepare {slug}` next will adopt you as {slug}'s prepare-orchestrator in place, carrying prepare-write authority for the re-derivation write.
-
-NEXT ACTION:
-Become the prepare orchestrator for {slug}. Read the prepare orchestrator procedure:
-
-{loader}
-
-Then call `telec todo prepare {slug}` and follow its output verbatim. The prepare state machine re-derives the affected artifact and reaches PREPARED — durable build residue then directs this same session to resume work rather than self-end."""
+    """Reference the prepare entry command for substantive work-entry drift."""
+    return _WORK_ENTRY_SUBSTANTIVE_DRIFT_TEMPLATE.format(
+        slug=slug, loader=format_command_loader_message(SlashCommand.PREPARE.value, slug)
+    )
 
 
 def format_work_entry_kickback_handoff(slug: str) -> str:
-    """Hand a kicked-back work orchestrator into prepare without teardown."""
-    loader = format_command_loader_message(SlashCommand.PREPARE.value, slug)
-    return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
-
-WORK_ENTRY_KICKBACK: {slug} was kicked back to plan drafting. Its worktree, local and remote branch, workspace, build commits, and live sessions remain intact.
-
-Your slug claim is unchanged. Calling `telec todo prepare {slug}` next adopts you as {slug}'s prepare-orchestrator in place.
-
-NEXT ACTION:
-Read the durable kickback context:
-
-`telec todo artifacts read {slug} input`
-
-Read the prepare orchestrator procedure:
-
-{loader}
-
-Then call `telec todo prepare {slug}` and follow its output verbatim. When PREPARED directs BUILD RESUME REQUIRED, call `telec todo work {slug}` in this same session."""
+    """Reference the prepare entry command for a work-entry kickback."""
+    return _WORK_ENTRY_KICKBACK_TEMPLATE.format(
+        slug=slug, loader=format_command_loader_message(SlashCommand.PREPARE.value, slug)
+    )
 
 
 def format_finalize_handoff_complete(slug: str) -> str:
