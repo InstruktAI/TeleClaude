@@ -400,12 +400,24 @@ Clear the relevant approval stamps and re-run the affected phases.
 
 ### 8. Terminal state
 
+<!-- planned-change:prepared-releases-prepare-claim -->
 When all required phases have approval stamps and grounding is fresh, the
 state machine derives `PREPARED` and returns a terminal script whose only
 action is ending this session — Step 2's "execute the script verbatim" rule
 applies here too. Report `PREPARED` to the human, then end per
 `general/principle/session-lifecycle`. Hand-off means ending, never calling
 `telec todo work {slug}` yourself.
+<!-- change:prepared-releases-prepare-claim -->
+When all required phases have approval stamps and grounding is fresh, the
+state machine derives `PREPARED`. Unless it directs this session to resume
+preserved build work, deriving `PREPARED` releases this session's claim on the
+todo, and the work lane takes the todo up from there. The returned terminal
+script ends the prepare lifecycle's child sessions — Step 2's "execute the
+script verbatim" rule applies here too. Report `PREPARED` to the human, then
+assess departure per `general/principle/session-lifecycle`; staying for an
+unfinished human conversation never holds the todo. Hand-off means releasing,
+never calling `telec todo work {slug}` yourself.
+<!-- /planned-change:prepared-releases-prepare-claim -->
 
 If reviewer verdicts cannot be resolved through normal revision rounds, or if
 drift cannot be cleanly re-derived, the state machine derives `BLOCKED`.

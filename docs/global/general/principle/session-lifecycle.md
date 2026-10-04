@@ -53,6 +53,13 @@ So ending flows from context, not from a worker's own initiative.
   responsible for it and assesses departure against every current obligation.
   A terminal workflow script does not close that conversation
   (`general/principle/attunement`).
+<!-- planned:prepared-releases-prepare-claim -->
+- **An obligation keeps the session, never the claim.** When a workflow hands
+  the next move to another owner, the session's lifecycle claim on that work is
+  released with it, whether or not the session stays for another obligation,
+  because a claim held by a session that no longer drives the work stalls the
+  owner that does.
+<!-- /planned:prepared-releases-prepare-claim -->
 
 - **Artifacts are the evidence trail.** The durable record, not the transcript, carries the
   outcome. Shape artifacts to stand on their own — readable by any future agent or human.
