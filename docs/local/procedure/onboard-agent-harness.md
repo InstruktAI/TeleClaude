@@ -80,10 +80,11 @@ defect discovered live.
 9. The input region's geometry: where the live input ends. A bordered composer
    needs an extraction rule or status text below the border reads as user input.
 <!-- change:codex-review-startup-composer-readiness -->
-9. The composer's own markers, verified from a pane capture: the prompt glyph
-   and the frame, border, or padding the CLI draws as part of the composer, plus
-   how an empty composer renders. These markers alone bound the live input;
-   footers, status lines, hints, and labels outside them are never read.
+9. The composer's own markers, verified from a pane capture: the prompt glyph,
+   the frame, border, or padding the CLI draws as part of the composer, where
+   the CLI places the input cursor, and how an empty composer renders. These
+   markers alone bound the live input; footers, status lines, hints, and labels
+   outside them are never read.
 <!-- /planned-change:codex-review-startup-composer-readiness -->
 10. Terminal behavior: does the TUI self-clamp color under `$TMUX`, and what is
     its escape hatch? Does it need a locale?
@@ -331,8 +332,9 @@ onboarding done:
 - docs/local/spec/feature/agent_runtime/deepseek-harness-integration.md — the
   worked example this procedure was extracted from.
 <!-- planned:codex-review-startup-composer-readiness -->
-- docs/local/adr/0111-composer-identification-reads-only-the-composer.md — why
-  a composer is identified by its own markers and readiness by settled activity.
+- ~/.teleclaude/docs/sdlc/principle/architecture-boundary-purity.md — why
+  readiness rests on the composer's own markers, never on the presentation
+  around it.
 <!-- /planned:codex-review-startup-composer-readiness -->
 
 - docs/local/procedure/add-adapter.md — the adapter counterpart; adapters are

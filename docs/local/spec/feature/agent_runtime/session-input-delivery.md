@@ -54,9 +54,9 @@ Live-pane composer readiness rests on settled agent activity: the pane is
 assessed for input only after the agent's visible activity has stopped changing
 for the readiness quiet window, and the composer decision never restarts that
 window. The complete live composer is identified solely by the markers the
-agent CLI draws as part of the composer itself — its prompt glyph and the frame,
-border, or padding that bounds it — and the empty or occupied decision reads
-only what those markers enclose. Rows outside the composer, including footers,
+agent CLI draws as part of the composer itself — its prompt glyph, the frame,
+border, or padding that bounds it, and the input cursor the CLI places in it —
+and the empty or occupied decision reads only what those markers enclose. Rows outside the composer, including footers,
 status lines, hints, warnings, model and context labels, and animation, are
 never read for what they say and never become a candidate composer; changing
 them changes neither readiness nor occupancy. A transcript echo of an earlier
@@ -365,5 +365,6 @@ And their presence, absence, or wording changes no human-involvement declaration
 - ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md
 <!-- planned:codex-review-startup-composer-readiness -->
-- docs/local/adr/0111-composer-identification-reads-only-the-composer.md
+- ~/.teleclaude/docs/sdlc/principle/architecture-boundary-purity.md — readiness
+  rests on the composer, never on the presentation around it.
 <!-- /planned:codex-review-startup-composer-readiness -->
