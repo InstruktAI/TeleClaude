@@ -14,9 +14,7 @@ description: A project's owner is its home's owner when the project lives in a p
 
 A project belongs to the owner of the home it lives in. A project inside a
 person's home belongs to that person, and a project inside a company's home
-belongs to that company. Nobody declares it: the home is the owner of record,
-so the answer cannot drift from where the project is and cannot be claimed
-from inside the project.
+belongs to that company. Nobody declares it: the home is the owner of record.
 
 A home here is a person's or company's home at the location its registry
 designates for it. A folder that merely declares itself a person or a company
@@ -46,8 +44,7 @@ recorded and no fallback owner is inferred.
 Owning a project carries authority over it. A person who owns a project holds
 the administrator role on it, and a company that owns a project extends its
 company roles to it, as `local/projects/teleclaude/design/architecture/scoped-roles`
-resolves them. Ownership is read from this contract by every consumer, so who
-may act on a project and who may see it never disagree about whose it is.
+resolves them. Every consumer that asks whose a project is reads this contract.
 
 ## Canonical fields
 

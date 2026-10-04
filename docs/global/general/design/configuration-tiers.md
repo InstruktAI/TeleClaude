@@ -107,6 +107,8 @@ one index entry, listed on demand — rather than autoloaded into every session.
   home's projects area. Ownership is a fact about where the project lives, read
   from the registries that designate each home; it is never a fact about where a
   caller stands. A project outside every home states its owner, or has none.
+  Whose a project is and what kind a configuration file is are separate
+  questions: the file's declaration alone answers the second.
 <!-- /planned:personal-assistant-project-creation -->
 
 <!-- planned:cross-tier-native-emission -->

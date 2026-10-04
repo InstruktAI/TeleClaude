@@ -24,6 +24,17 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ## Steps
 
+### 0. Check placement and standing
+
+Before any later step writes, adoption checks where the folder sits. A new
+project is created inside its home's projects area, or outside every home;
+creating one anywhere else inside a home is refused. Who may create where is
+decided by configuration target clearance. Inside a person's or a company's
+home the project belongs to that home's owner, and its configuration declares
+no owner of its own; a declared owner that disagrees with the home is refused.
+Outside every home, a folder adopted with an owner declaration keeps that
+owner, and a new project starts with none.
+
 ### 1. Ensure git repository
 
 Initializes a git repository on the `main` branch when the folder is not already
@@ -66,16 +77,6 @@ project, sets the project's help desk as enabled in `teleclaude.yml` and brings
 the project's `help-desk/` folder to the project help-desk template: its master
 is the template's rendering after every such run, and no other file in the
 folder is replaced. The files land in the working tree for the project to commit.
-
-### 2d. Check placement; the home decides the owner
-
-A new project is created inside its home's projects area, or outside every
-home. Inside a person's or a company's home it belongs to that home's owner,
-and its configuration declares no owner of its own; a declared owner that
-disagrees with the home is refused. Outside every home it is created with no
-owner. Placement and standing are checked before any step writes: creating a
-project anywhere else inside a home is refused, and who may create where is
-decided by configuration target clearance.
 
 ### 3. Update .gitattributes (`docs` only)
 
