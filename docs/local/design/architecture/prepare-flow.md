@@ -59,7 +59,7 @@ The confirmed plan is the handoff input to the work phase.
 - The same shared `derive_lifecycle_drift` function runs at every lifecycle entry point where prepared artifacts must reflect current truth: during the prepare BLOCKED branch AND at the work state machine's entry boundary before the `prepared → build_started` handoff.
 - Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; the active procedure integrates findings on re-entry.
 - Substantive drift triggers re-derivation of affected layers and clears every downstream review verdict; cosmetic drift is recorded with an evidence anchor and expires lazily per class when current evidence moves past the anchor.
-- Work-entry drift triggers a bounce to `telec todo prepare {slug}` — the prepare BLOCKED branch handles the drift, and the PREPARED terminal script tail bounces the orchestrator back to `telec todo work {slug}` automatically. No human gate on either cosmetic or substantive verdicts; intent-level PRD refinement is the only human-gated path and is orthogonal to drift.
+- Work-entry drift triggers a bounce to `telec todo prepare {slug}` — the prepare BLOCKED branch handles the drift, and the PREPARED terminal script tail directs the orchestrator back to `telec todo work {slug}` only when the Todo carries durable build residue; a never-built Todo receives the ordinary PREPARED terminal output (see `@spec/feature/workflow/prepare-state-machine`). No human gate on either cosmetic or substantive verdicts; intent-level PRD refinement is the only human-gated path and is orthogonal to drift.
 
 **Independent verification:**
 
