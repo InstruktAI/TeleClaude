@@ -305,6 +305,12 @@ Terminal state. All creative artifacts are confirmed and approved.
 
 The orchestrator ends all creative worker sessions and reports completion.
 
+<!-- planned:prepared-releases-prepare-claim -->
+Reaching this state releases the completing orchestrator's lifecycle claim on
+the todo, so whoever prepares it next takes it up whether or not that session
+stays open; the completion script states that the claim has left the session.
+<!-- /planned:prepared-releases-prepare-claim -->
+
 ### State Tracking
 
 The creative machine reads gate approvals from the stamp-owned `creative` section:

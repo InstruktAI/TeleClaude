@@ -384,6 +384,21 @@ And other live prepare-lane sessions for the slug are still ended, and the live 
 And the direction derives from the Todo's durable build residue, not from the session's memory of how it arrived
 ```
 
+<!-- planned:prepared-releases-prepare-claim -->
+#### UC-WPS27: PREPARED releases the driving session's lifecycle claim
+
+```gherkin
+Given a Todo whose lifecycle claim is held by the prepare orchestrator session P
+And the Todo carries no in-flight build to resume
+When P calls "telec todo prepare my-feature" and the machine derives PREPARED
+Then P no longer holds the lifecycle claim on my-feature
+And the lifecycle runner may take my-feature up for work while P remains open
+And the terminal script states that the claim has left P, so staying open for another obligation never holds my-feature
+And no claim held by a different live session is changed
+But when the Todo carries an in-flight build to resume, P keeps its claim and is directed to re-enter the work machine
+```
+<!-- /planned:prepared-releases-prepare-claim -->
+
 ### Explicit slug required
 
 The prepare state machine requires an explicit slug. Invoked without one it returns a `TODO_SLUG_REQUIRED` error rather than resolving a candidate itself. Choosing which Todo enters prepare belongs to the lifecycle runner's dependency-gated dispatch (see `@spec/feature/workflow/dependency-graph`), which always dispatches a concrete slug; the state machine never auto-selects.
