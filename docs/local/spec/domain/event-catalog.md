@@ -35,9 +35,15 @@ nothing about its consumers:
   configuration-subject vocabulary; none when the event concerns no registered
   home; or unknown when the event does not carry it, because it predates these
   facts or reports an act whose record was kept before its home was. A project
+<!-- planned-change:personal-assistant-project-creation -->
   subject also carries its owner as the emitting computer
   resolves it: the declared company or person, declared ownerless, or
   unresolved when that computer cannot read the project's ownership declaration.
+<!-- change:personal-assistant-project-creation -->
+  subject also carries its owner as the emitting computer
+  resolves it under `local/projects/teleclaude/spec/feature/config/project-ownership`: a company or a person, ownerless, or
+  unresolved when that computer cannot resolve the project's ownership.
+<!-- /planned-change:personal-assistant-project-creation -->
   Unresolved is never reported as ownerless.
 
 The producer supplies the subject: the envelope cannot be built without one,

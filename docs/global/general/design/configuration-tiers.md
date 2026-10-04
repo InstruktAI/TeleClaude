@@ -150,8 +150,13 @@ one index entry, listed on demand — rather than autoloaded into every session.
   including every company they own.
 - **Reach is wider than the relationship-derived part, and depth is not.** Global
   documentation is in every caller's scope because global is nobody's
+<!-- planned-change:personal-assistant-project-creation -->
   relationship, and the invocation itself offers the project it resolves to and
   the company that project declares as its owner. Those sources enter reach
+<!-- change:personal-assistant-project-creation -->
+  relationship, and the invocation itself offers the project it resolves to and
+  the company that owns that project. Those sources enter reach
+<!-- /planned-change:personal-assistant-project-creation -->
   without a relationship; what they do not do is grant the depth a relationship
   grants. A caller holding no relationship to a source reads it at whatever its
   snippets declare about themselves, which is what lets a help desk answer public
@@ -173,8 +178,13 @@ one index entry, listed on demand — rather than autoloaded into every session.
 - **Landing and reading are two mechanisms.** Where a session may run is decided
   by routing and folder scoping; what a caller may read is decided by identity,
   visibility, and the selectors the caller supplies. They meet at one point: the
+<!-- planned-change:personal-assistant-project-creation -->
   location an invocation lands in sets its default read set — that home (with,
   for a project, the company it declares as its owner), the caller's own person
+<!-- change:personal-assistant-project-creation -->
+  location an invocation lands in sets its default read set — that home (with,
+  for a project, the company that owns it), the caller's own person
+<!-- /planned-change:personal-assistant-project-creation -->
   tier, the companies they belong to, and global documentation. Location never
   sets depth.
 - **Any home is readable from anywhere by naming it.** A home selector names the

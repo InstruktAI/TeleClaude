@@ -26,14 +26,18 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ### 0. Check placement and standing
 
-Before any later step writes, adoption checks where the folder sits. A new
-project is created inside its home's projects area, or outside every home;
-creating one anywhere else inside a home is refused. Who may create where is
-decided by configuration target clearance. Inside a person's or a company's
-home the project belongs to that home's owner, and its configuration declares
-no owner of its own; a declared owner that disagrees with the home is refused.
-Outside every home, a folder adopted with an owner declaration keeps that
-owner, and a new project starts with none.
+Before any later step writes, adoption checks where the folder sits and what it
+already is. A folder carrying no project declaration is a new project; one
+carrying a project declaration is an existing project being adopted.
+
+A home's projects area is the `projects/` folder directly inside a person's or a
+company's home, and a project inside a home lives directly in that folder. A
+folder anywhere else inside a home is refused, new or existing. Inside a home
+the project belongs to that home's owner, and its configuration declares no
+owner of its own; a declared owner that disagrees with the home is refused.
+Outside every home, an existing project keeps the owner it declares, and a new
+project starts with none. Who may adopt what, where, is decided by
+configuration target clearance.
 
 ### 1. Ensure git repository
 

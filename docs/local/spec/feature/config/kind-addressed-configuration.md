@@ -28,8 +28,8 @@ in the machine home and does not become an overlay tier or a context root.
 addressed by its stable slug, except that project initialization addresses the
 folder the caller stands in: the owning checkout of the repository that holds
 the caller's current directory, or that directory itself when no repository
-holds it or when the repository holding it is the TeleClaude home's. The
-TeleClaude home's repository is never a project's checkout. Project
+holds it or when the repository holding it is the global home's. The global
+home's repository is never a project's checkout. Project
 initialization concerns that folder alone and writes nothing to global or
 machine configuration. Where a new project may be created, and by whom, is
 configuration target clearance

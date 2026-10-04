@@ -179,7 +179,7 @@ And the company home is still not on the registry
 #### UC-CFG-REG10: A project adopted inside the global home is registered as itself
 
 ```gherkin
-Given a folder inside a person's or a company's home in the TeleClaude home, holding no repository of its own
+Given a folder inside a person's or a company's home in the global home, holding no repository of its own
 When an operator or agent adopts that folder as a project
 Then the folder holds its own repository on main
 And the registry lists that folder under its own identity
@@ -190,7 +190,7 @@ And the global home is not listed as a project
 
 ```gherkin
 Given a folder inside a person's or a company's home, outside that home's projects area
-When an operator or agent adopts that folder as a new project
+When an operator or agent adopts that folder as a project
 Then the adoption is refused before anything is written
 And the refusal names the home's projects area
 ```

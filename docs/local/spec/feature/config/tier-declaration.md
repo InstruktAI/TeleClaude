@@ -176,7 +176,11 @@ Then it is recognized as company configuration
 And no context root is anchored at the company folder
 And it is never treated as an anchoring tier
 And invocation from within the company folder behaves as invocation with no context root
+<!-- planned-change:personal-assistant-project-creation -->
 And company configuration composes alongside its member projects through their declared company membership
+<!-- change:personal-assistant-project-creation -->
+And company configuration composes alongside the projects that company owns
+<!-- /planned-change:personal-assistant-project-creation -->
 ```
 
 #### UC-CFG-WSD10: A declared file missing its schema reference gains it when stored

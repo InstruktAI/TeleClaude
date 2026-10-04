@@ -65,8 +65,9 @@ a refused read returns no configuration.
 | project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
 <!-- change:personal-assistant-project-creation -->
 | project              | list, get; init re-converging a registered project                                      | none beyond the verb band                       |
-| project              | init creating a project inside a person's or company's home                             | `admin` effective role for that home            |
-| project              | init creating a project outside every home                                              | platform administrator                          |
+| project              | init adopting an existing project outside every home                                    | none beyond the verb band                       |
+| project              | init adopting a new or existing project inside a person's or company's home             | `admin` effective role for that home            |
+| project              | init creating a new project outside every home                                          | platform administrator                          |
 <!-- /planned-change:personal-assistant-project-creation -->
 | project              | patch                                                                                   | `admin` effective role for that project         |
 | company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
@@ -188,8 +189,8 @@ The home a new project lands in is its owner's
 (`local/projects/teleclaude/spec/feature/config/project-ownership`), so
 standing for creation is standing over that owner: a person creates in their
 own home, a company administrator in their company's, and only a platform
-administrator outside every home. Where inside a home a project may be created
-is adoption's rule (`local/projects/teleclaude/spec/feature/config/project-registry`).
+administrator outside every home. What counts as new, and where inside a home a
+project may live, is adoption's rule (`general/procedure/project-initialization`).
 
 #### UC-CTC11: A person creates projects only in their own home
 

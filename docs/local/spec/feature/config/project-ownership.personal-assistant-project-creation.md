@@ -41,6 +41,16 @@ person that no registry knows is refused, so ownership never resolves to a
 referent that does not exist. Refusal is the whole outcome: no partial owner is
 recorded and no fallback owner is inferred.
 
+A project's owner is resolved once, when its configuration is loaded, and the
+loaded configuration carries the resolved owner. Every consumer reads that
+answer and none reads the declaration directly. A resolved owner is never
+written back into a project's configuration.
+
+A new project outside every home is created with no owner; a company may then be
+named as its owner. A person owner outside every home is kept where a project
+already declares it and is never introduced: a change that adds or replaces a
+person owner on a project outside every home is refused.
+
 Owning a project carries authority over it. A person who owns a project holds
 the administrator role on it, and a company that owns a project extends its
 company roles to it, as `local/projects/teleclaude/design/architecture/scoped-roles`
@@ -67,6 +77,8 @@ resolves them. Every consumer that asks whose a project is reads this contract.
   project configuration.
 - A declaration naming an unregistered company or an unregistered person is
   refused.
+- A person owner is kept where already declared and never introduced or
+  replaced by a later change.
 
 ### Use cases
 
@@ -149,6 +161,25 @@ Given a folder outside every registry-designated home that declares itself a per
 And a project beneath that folder that declares no owner
 When the project's owner is resolved
 Then the project has no owner
+```
+
+#### UC-POWN-11: A person owner is never introduced outside every home
+
+```gherkin
+Given a project outside every home that declares no owner, or declares a company
+When an administrator changes its configuration to declare a person as its owner
+Then the change is refused, naming the rule that person-owned projects live in their owner's home
+And the project's owner is unchanged
+```
+
+#### UC-POWN-12: Adopting an existing project outside every home keeps its declared owner
+
+```gherkin
+Given an existing project outside every home that declares a registered person as its owner
+And this machine has not adopted it yet
+When it is adopted
+Then its owner is that person
+And its configuration is unchanged
 ```
 
 #### UC-POWN-10: The owner of a project holds authority over it
