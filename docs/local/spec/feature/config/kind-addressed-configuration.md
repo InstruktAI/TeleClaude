@@ -26,11 +26,14 @@ for configuration. The singular kind is `computer`, `global`, `person`,
 in the machine home and does not become an overlay tier or a context root.
 `computer` and `global` are singletons. A person, company, or project is
 addressed by its stable slug, except that project initialization addresses the
-checkout the caller stands in: the owning checkout of the repository that holds
+folder the caller stands in: the owning checkout of the repository that holds
 the caller's current directory, or that directory itself when no repository
-holds it or when the repository holding it is the global home's. The global
-home's repository is never a project's checkout
-(`general/procedure/project-initialization`).
+holds it or when the repository holding it is the TeleClaude home's. The
+TeleClaude home's repository is never a project's checkout. Project
+initialization concerns that folder alone and writes nothing to global or
+machine configuration. Where a new project may be created, and by whom, is
+configuration target clearance
+(`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
 <!-- /planned-change:personal-assistant-project-creation -->
 
 The operation names describe the result, regardless of the subject's storage
@@ -59,14 +62,6 @@ administrator role in the company that owns the home. Running it again
 converges the help desk's master to its template. A help desk's master never
 requires its home's local documentation
 (`general/policy/agent-artifact-governance`).
-
-<!-- planned:personal-assistant-project-creation -->
-`init --own` on `project` records the caller's own person as the adopted
-project's owner, for a folder inside that person's own home only. It names no
-one, so it can declare nobody but the caller, and it never replaces an owner the
-project already declares
-(`local/projects/teleclaude/spec/feature/config/project-ownership`).
-<!-- /planned:personal-assistant-project-creation -->
 
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a

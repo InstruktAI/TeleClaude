@@ -101,6 +101,13 @@ one index entry, listed on demand — rather than autoloaded into every session.
   against.** Standing inside one confers nothing: a company declaration
   terminates context resolution with no context root, and an invocation from
   within one behaves as an invocation with no context root.
+<!-- planned:personal-assistant-project-creation -->
+- **A home decides whose its projects are.** A project inside a person's or a
+  company's home belongs to that home's owner, and is created only in that
+  home's projects area. Ownership is a fact about where the project lives, read
+  from the registries that designate each home; it is never a fact about where a
+  caller stands. A project outside every home states its owner, or has none.
+<!-- /planned:personal-assistant-project-creation -->
 
 <!-- planned:cross-tier-native-emission -->
 

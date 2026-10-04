@@ -1,5 +1,5 @@
 ---
-description: 'Complete telec config project init pipeline — project repository, git plumbing, artifact sync, optional owner declaration, project registration.'
+description: 'Complete telec config project init pipeline — project repository, placement and ownership, git plumbing, project registration.'
 visibility: 'public'
 ---
 
@@ -7,8 +7,8 @@ visibility: 'public'
 
 ## Goal
 
-Bootstrap a project for TeleClaude by configuring project git plumbing, syncing
-artifacts, and registering the project root. Machine-global agent infrastructure is
+Bootstrap a project for TeleClaude by configuring project git plumbing and
+registering the project root. Machine-global agent infrastructure is
 installed by the TeleClaude checkout's `make install`. Adoption writes no global
 configuration: what it changes is the adopted folder, its repository, and the
 project registry.
@@ -67,18 +67,15 @@ the project's `help-desk/` folder to the project help-desk template: its master
 is the template's rendering after every such run, and no other file in the
 folder is replaced. The files land in the working tree for the project to commit.
 
-### 2d. Record the adopting person as owner (`--own` only)
+### 2d. Check placement; the home decides the owner
 
-With `--own`, the project declaration names the person the caller's verified
-identity carries as the project's owner. The request names no one: the owner it
-records is always the caller, and a caller carrying no person identity is
-refused. It is admitted only for a folder inside that person's own home — the
-nearest declaration above the folder is that person's own person declaration —
-and refused anywhere else. A declaration that already names that person is left
-as it is; one that names any other owner is refused. Every refusal happens before
-any step writes, so adoption never reassigns a project and never makes a project
-outside the person's home theirs. Without
-`--own`, adoption declares no owner.
+A new project is created inside its home's projects area, or outside every
+home. Inside a person's or a company's home it belongs to that home's owner,
+and its configuration declares no owner of its own; a declared owner that
+disagrees with the home is refused. Outside every home it is created with no
+owner. Placement and standing are checked before any step writes: creating a
+project anywhere else inside a home is refused, and who may create where is
+decided by configuration target clearance.
 
 ### 3. Update .gitattributes (`docs` only)
 
@@ -120,18 +117,12 @@ byte-for-byte unchanged, with no hook and no filter written or read for it.
 
 Source: `teleclaude/project_setup/plumbing.py:converge_plumbing()`
 
-### 5. Sync project artifacts
+### 5. Publish nothing
 
-Runs the bootstrap sync — validation runs and reports findings without blocking — to build
-snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to
-agent runtimes.
-
-This step happens before slug persistence because `sync_project_artifacts()`
-materializes a bare `teleclaude.yml` for fresh projects. `telec config project init` then
-rewrites that file in place to guarantee `project_slug` exists before the
-project is registered.
-
-Source: `teleclaude/project_setup/sync.py:sync_project_artifacts()`
+Initialization runs no artifact sync and publishes nothing. Snippet indexes,
+generated `AGENTS.md` entrypoints, and distributed runtime artifacts reach readers
+from committed state at the commit boundary
+(`general/procedure/doc-snippet-authoring`).
 
 ### 6. Deploy the quality skeleton (`code` only)
 
@@ -183,15 +174,12 @@ Source: `teleclaude/project_manifest.py:register_root()`
   of them.
 
 - `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
-- Artifacts synced and indexes built.
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
-- With `--own`: the adopting person declared as the project's owner in `teleclaude.yml`.
 
 ## Recovery
 
 - `telec config project init` is idempotent. Re-running it is safe and will skip already-configured steps.
-- The bootstrap sync reports validation findings without blocking, so init always completes even when a project already carries findings; the commit gate validates once real work begins.
 
 ## See Also
 

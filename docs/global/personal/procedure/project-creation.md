@@ -38,23 +38,21 @@ from its first moment and belongs to them
 3. **Place it.** Unless the person named a destination themselves, the
    project's folder is `projects/<name>/` in their workspace — the person home
    this session runs in — where `<name>` is the project's short kebab-case name.
-   A destination the person names is their instruction; use it.
+   A destination the person names is their instruction; use it. Where the
+   project lands decides whose it is, so declare no owner yourself.
 4. **Scaffold it** in that folder as the intake's flavor directs.
-5. **Adopt it.** From the project folder, run `telec config project init --own`
-   when the project sits anywhere in the person's own workspace — the default
-   spot or one they named — so adoption gives it a repository of its own and
-   records the person as its owner. For a destination the person named outside
-   their own workspace, run `telec config project init` without `--own`. This is
-   the initialization the intake's scaffolding step ends with; run it once.
+5. **Adopt it.** From the project folder, run `telec config project init`.
+   Adoption gives the project a repository of its own and registers it; inside
+   the person's home the project is theirs. This is the initialization the
+   intake's scaffolding step ends with; run it once.
 6. **Hand it over.** Tell the person where the project is. Building it out is
    ordinary project work in that project from here.
 
 ## Outputs
 
 - The intake's approved brief.
-- An adopted project with its own history. Anywhere in the person's own
-  workspace it is owned by them; at a destination they named outside it, you
-  declare no owner.
+- An adopted project with its own history, owned by whoever owns the home it
+  landed in.
 
 ## Recovery
 
@@ -63,7 +61,8 @@ from its first moment and belongs to them
   folder name. Choose a more specific name and change whichever of those
   governs — the folder name only when the project declares neither — then adopt
   again.
-- **Adoption is refused by clearance.** Stop and tell the person what was
-  refused; do not route around it.
+- **Adoption is refused by clearance or placement.** Tell the person what was
+  refused and why — usually a destination they cannot create projects in — and
+  offer their own projects area instead. Never route around the refusal.
 - **The intake's classification changes mid-conversation.** Follow the intake's
   own recovery; placement and adoption are unaffected.

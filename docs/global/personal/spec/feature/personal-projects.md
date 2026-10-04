@@ -15,11 +15,12 @@ intake, places the project in the person's own projects area inside their
 workspace, and adopts it there. The result is an ordinary TeleClaude project in
 every respect, and it belongs to the person.
 
-Placement in the person's own projects area is the default the assistant applies
-without asking. A destination the person names themselves is their instruction.
-A project created anywhere in the person's own space is theirs, whether the
-assistant chose the spot or the person named it; one the person sends outside
-their own space takes no owner from this behavior.
+Placement in the person's own projects area is the default the assistant
+applies without asking. A spot the person names themselves is their
+instruction. Whose the project is follows from where it lands, never from a
+declaration the assistant makes: in the person's own home it is theirs. A
+destination outside their home is created only when the platform lets that
+person create projects there.
 
 The assistant's part ends when the project exists. Building it out is ordinary
 project work in that project, and a change to a project that already exists is
@@ -72,13 +73,14 @@ When an agent resolves that project's owner
 Then the owner is that person
 ```
 
-#### UC-PPROJ6: A destination the person names carries no ownership from the assistant
+#### UC-PPROJ6: A destination outside the person's home follows the platform's creation rules
 
 ```gherkin
-Given a person tells their assistant to put a new build somewhere outside their own space
-When the assistant creates the project there
-Then the project is created where the person said
-And the assistant declares no owner for it
+Given a person whose platform role is member
+And they tell their assistant to put a new build somewhere outside their own home
+When the assistant tries to create the project there
+Then no project is created
+And the person is told the destination is not one they can create projects in
 ```
 
 #### UC-PPROJ7: A change to an existing project is not project creation

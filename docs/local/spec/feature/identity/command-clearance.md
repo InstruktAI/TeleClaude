@@ -505,11 +505,23 @@ supplies.
   company at that company, a project at that project, a person at that person.
   Machine and global configuration, and the listing, creation and management of
   people and companies, are judged at platform scope.
+<!-- planned-change:personal-assistant-project-creation -->
 - Initializing a company or a project with `--help-desk` is judged at the home
   whose help desk it enables, under the administrator band: a company init at the
   company it names (its `--slug`, otherwise its normalized name), a project init at
   the project of the checkout it initializes. The same init without the flag stays
   a platform-scope act.
+<!-- change:personal-assistant-project-creation -->
+- Initializing a company or a project with `--help-desk` is judged at the home
+  whose help desk it enables, under the administrator band: a company init at the
+  company it names (its `--slug`, otherwise its normalized name), a project init at
+  the project of the checkout it initializes. A company init without the flag
+  stays a platform-scope act.
+- A project init without the flag is judged at the object it acts on: a
+  registered project at that project, and a new project at the home it lands in,
+  or at platform scope outside every home. Its standing is configuration target
+  clearance's (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
+<!-- /planned-change:personal-assistant-project-creation -->
 - A command that names a target session is judged at the project that session runs
   in.
 - A command that names a directory to act in is judged at the project containing
