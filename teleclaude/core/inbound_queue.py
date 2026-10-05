@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import InboundQueueRow, db
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_errors import InboundMessageHeldError, SessionMessageRejectedError
 from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import MessageAuthor
@@ -32,6 +32,7 @@ _ROW_CLAIM_FAILED_EVENT = "inbound_row_claim_failed"
 _ROW_DELIVERED_EVENT = "inbound_row_delivered"
 _ROW_EXPIRED_EVENT = "inbound_row_expired"
 _ROW_DELIVERY_FAILED_EVENT = "inbound_row_delivery_failed"
+_ROW_DELIVERY_HELD_EVENT = "inbound_row_delivery_held"
 _SESSION_EXPIRED_EVENT = "inbound_session_expired"
 _WORKERS_RESUMED_EVENT = "inbound_workers_resumed"
 _WORKERS_SHUTDOWN_EVENT = "inbound_workers_shutdown"
@@ -262,6 +263,21 @@ class InboundQueueManager:
                     text_kind=row["text_kind"],
                 )
                 logger.debug(_ROW_DELIVERED_EVENT, session_id=session_id, inbound_row_id=row_id)
+            except InboundMessageHeldError as exc:
+                backoff = _backoff_for_attempt(row["attempt_count"])
+                await db.mark_inbound_held(
+                    row_id,
+                    now_iso=datetime.now(UTC).isoformat(),
+                    backoff_seconds=backoff,
+                )
+                logger.info(
+                    _ROW_DELIVERY_HELD_EVENT,
+                    session_id=session_id,
+                    inbound_row_id=row_id,
+                    backoff_seconds=backoff,
+                    reason=str(exc),
+                )
+                await asyncio.sleep(backoff)
             except SessionMessageRejectedError as exc:
                 error_str = str(exc)
                 await db.mark_inbound_expired(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+_INBOUND_MESSAGE_HELD_ERROR = "Conversation input held for session {session_id}"
+
 
 class SessionMessageRejectionReason(StrEnum):
     """Closed reasons for rejecting inbound session messages."""
@@ -46,6 +48,14 @@ class SessionMessageRejectedError(RuntimeError):
         if self.reason == "not_found":
             return 404
         return 409
+
+
+class InboundMessageHeldError(RuntimeError):
+    """Temporary hold when conversation input must wait for an empty composer."""
+
+    def __init__(self, *, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(_INBOUND_MESSAGE_HELD_ERROR.format(session_id=session_id))
 
 
 class UnidentifiableCallerError(RuntimeError):

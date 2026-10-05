@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
+from typing import assert_never
+
+from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
 
 
 class TranscriptEntryKind(StrEnum):
@@ -35,6 +39,66 @@ class InjectedTextSourceFeature(StrEnum):
     AGENT_HANDOFF = "agent_handoff"
     REMINDER = "reminder"
     PROCEDURE_ACTIVATION = "procedure_activation"
+
+
+class InjectedInputAuthority(StrEnum):
+    """Whether accepted text is conversation or controls the interface."""
+
+    CONVERSATION = "conversation"
+    INTERFACE = "interface"
+
+
+_FORMAT_CATEGORY = "Cf"
+
+
+def authority_for_source_feature(source: InjectedTextSourceFeature) -> InjectedInputAuthority:
+    """Classify accepted text by its recorded producer, never by its content."""
+    match source:
+        case (
+            InjectedTextSourceFeature.TELEGRAM
+            | InjectedTextSourceFeature.DISCORD
+            | InjectedTextSourceFeature.WHATSAPP
+            | InjectedTextSourceFeature.VOICE
+            | InjectedTextSourceFeature.RELAY
+        ):
+            return InjectedInputAuthority.CONVERSATION
+        case (
+            InjectedTextSourceFeature.CALLER_SEND
+            | InjectedTextSourceFeature.PEER_BUNDLE
+            | InjectedTextSourceFeature.LISTENER
+            | InjectedTextSourceFeature.AGENT_RESTART
+            | InjectedTextSourceFeature.AGENT_HANDOFF
+            | InjectedTextSourceFeature.REMINDER
+            | InjectedTextSourceFeature.PROCEDURE_ACTIVATION
+        ):
+            return InjectedInputAuthority.INTERFACE
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def construct_delivered_text(text: str, authority: InjectedInputAuthority, agent: AgentName) -> str:
+    """Prefix conversation text when its effective first character controls the composer."""
+    if authority is not InjectedInputAuthority.CONVERSATION:
+        return text
+    control = AGENT_REGISTRY[agent].composer_control
+    for character in text:
+        if character.isspace() or unicodedata.category(character) == _FORMAT_CATEGORY:
+            continue
+        if character in control.control_characters:
+            return f"{control.neutralizing_mark}{text}"
+        break
+    return text
+
+
+def recognize_delivered_text(text: str, agent: AgentName) -> str:
+    """Remove one delivery-added mark only when construction reproduces the native text."""
+    mark = AGENT_REGISTRY[agent].composer_control.neutralizing_mark
+    if not text.startswith(mark):
+        return text
+    unmarked = text[len(mark) :]
+    if construct_delivered_text(unmarked, InjectedInputAuthority.CONVERSATION, agent) == text:
+        return unmarked
+    return text
 
 
 class PlatformTextLabel(StrEnum):

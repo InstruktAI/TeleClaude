@@ -13,7 +13,6 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core.agents import AgentName
 
 from ._session import ensure_tmux_session
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout, wait_with_timeout
@@ -43,7 +42,6 @@ async def send_keys(
     text: str,
     session_id: str | None = None,
     working_dir: str = "~",
-    active_agent: str | None = None,
 ) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
 
@@ -56,8 +54,6 @@ async def send_keys(
         text: Text to send
         session_id: TeleClaude session ID (used for env var + TMPDIR injection on tmux recreation)
         working_dir: Working directory if creating new session (default: ~)
-        active_agent: Active agent name (e.g., "agy") for agent-specific escaping
-
     Returns:
         bool: True if command sent successfully, False on failure
     """
@@ -74,7 +70,6 @@ async def send_keys(
         return await _send_keys_tmux(
             session_name=session_name,
             text=text,
-            active_agent=active_agent,
         )
 
     except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
@@ -86,7 +81,6 @@ async def send_keys_existing_tmux(
     session_name: str,
     text: str,
     *,
-    active_agent: str | None = None,
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to an existing tmux session (do not auto-create).
@@ -99,7 +93,6 @@ async def send_keys_existing_tmux(
         return await _send_keys_tmux(
             session_name=session_name,
             text=text,
-            active_agent=active_agent,
             timeout=timeout,
         )
     except SubprocessTimeoutError as e:
@@ -124,7 +117,6 @@ async def paste_text_existing_tmux(
     session_name: str,
     text: str,
     *,
-    active_agent: str | None = None,
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Paste text to an existing tmux session without submitting it."""
@@ -132,7 +124,6 @@ async def paste_text_existing_tmux(
         return await _paste_text_tmux(
             session_name=session_name,
             text=text,
-            active_agent=active_agent,
             timeout=timeout,
         )
     except SubprocessTimeoutError as e:
@@ -207,7 +198,6 @@ async def _send_keys_tmux(
     *,
     session_name: str,
     text: str,
-    active_agent: str | None,
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
@@ -283,7 +273,6 @@ async def _send_keys_tmux(
     pasted = await _paste_text_tmux(
         session_name=session_name,
         text=text,
-        active_agent=active_agent,
         timeout=timeout,
     )
     if not pasted:
@@ -330,21 +319,16 @@ async def _paste_text_tmux(
     *,
     session_name: str,
     text: str,
-    active_agent: str | None,
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Paste text to tmux (session must already exist)."""
-    # Antigravity CLI can't handle '!' character - escape it
-    # See: https://github.com/google-gemini/gemini-cli/issues/4454
-    send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
-
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
     # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
     # peer-bundle path routinely produces. load-buffer reads from stdin (no argv
     # limit), and paste-buffer streams the content into the pane. paste-buffer
     # needs -r to preserve LF — without it tmux rewrites \n to \r and collapses
     # multiline bundles to one carriage-returned line.
-    payload_bytes = send_text.encode()
+    payload_bytes = text.encode()
     payload_len = len(payload_bytes)
     buf_name = f"telec-{uuid4().hex}"
 

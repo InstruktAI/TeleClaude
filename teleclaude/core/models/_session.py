@@ -5,10 +5,10 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Optional, assert_never, cast
 
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
-from teleclaude.core.injected_text import TranscriptEntryKind
+from teleclaude.core.injected_text import InjectedInputAuthority, TranscriptEntryKind
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, TurnNotificationRecord
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
@@ -204,6 +204,29 @@ class SessionEntryPoint(StrEnum):
     SYSTEM = "system"
     AGENT_HANDOFF = "agent_handoff"
     PROCEDURE_ACTIVATION = "procedure_activation"
+
+
+def authority_for_entry_point(entry_point: SessionEntryPoint | None) -> InjectedInputAuthority:
+    """Classify startup text by its recorded session entry point."""
+    match entry_point:
+        case SessionEntryPoint.DISCORD | SessionEntryPoint.TELEGRAM | SessionEntryPoint.WHATSAPP:
+            return InjectedInputAuthority.CONVERSATION
+        case (
+            SessionEntryPoint.API_CREATE
+            | SessionEntryPoint.RUN_SESSION_API
+            | SessionEntryPoint.PERSONAL_ASSISTANT_LAUNCH
+            | SessionEntryPoint.LIFECYCLE_RUNNER
+            | SessionEntryPoint.GENERATED_TOOL_CALL
+            | SessionEntryPoint.INTEGRATION
+            | SessionEntryPoint.CRON
+            | SessionEntryPoint.SYSTEM
+            | SessionEntryPoint.AGENT_HANDOFF
+            | SessionEntryPoint.PROCEDURE_ACTIVATION
+            | None
+        ):
+            return InjectedInputAuthority.INTERFACE
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 FIELD_KIND = "kind"

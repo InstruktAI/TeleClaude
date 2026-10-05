@@ -19,6 +19,7 @@ from teleclaude.core.injected_text import (
     TranscriptEntryKind,
     caller_occurrence_key,
     classify_transcript_text,
+    recognize_delivered_text,
     scan_injected_envelopes,
     visible_input_update,
 )
@@ -76,6 +77,9 @@ _NOTICE_VISIBILITY_DECISION_EVENT = "notice_visibility_decision"
 _NOTICE_SUPPRESSED_OUTCOME = "suppressed"
 _NOTICE_DAEMON_CONTROL_REASON = "daemon_control"
 _GENERATION_ID_PREFIX = "gen:"
+_CONVERSATION_INPUT_ORIGINS = frozenset(
+    {InputOrigin.TELEGRAM.value, InputOrigin.DISCORD.value, InputOrigin.WHATSAPP.value}
+)
 
 
 @dataclass
@@ -277,6 +281,17 @@ def _stored_preview_matches(session: "Session", text: str, *, require_stored: bo
     return stored == _message_preview(text).strip()
 
 
+def _accepted_conversation_view(session: "Session", text: str) -> str:
+    """Return native text without a verified delivery mark for its fresh acceptance."""
+    origin = (session.last_input_origin or "").strip()
+    if origin not in _CONVERSATION_INPUT_ORIGINS or not session.active_agent:
+        return text
+    accepted_view = recognize_delivered_text(text, AgentName.from_str(session.active_agent))
+    if accepted_view != text and _stored_preview_matches(session, accepted_view, require_stored=True):
+        return accepted_view
+    return text
+
+
 def _preserved_visible_input(session: "Session", user_text: str) -> str | None:
     """Return the stored visible span when an acceptance writer owns this turn.
 
@@ -304,6 +319,7 @@ def has_fresh_origin_for_user(session: "Session", user_text: str) -> bool:
     origin = (session.last_input_origin or "").strip()
     if not origin:
         return False
+    user_text = _accepted_conversation_view(session, user_text)
     if not _stored_preview_matches(session, user_text, require_stored=origin != InputOrigin.TERMINAL.value):
         return False
 
@@ -460,6 +476,7 @@ async def _project_user_reflection(
     user_text = turn.authored_text
     if user_text is None or not user_text.strip():
         return session, True, False
+    user_text = _accepted_conversation_view(session, user_text)
     transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     requires_binding = any(
         segment.kind is TranscriptEntryKind.IDENTITY_CONTENT and caller_occurrence_key(segment.opening) is not None

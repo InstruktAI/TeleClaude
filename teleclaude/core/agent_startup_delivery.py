@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from asyncio import Future
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -10,6 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.injected_text import InjectedInputAuthority
 
 logger = get_logger(__name__)
 
@@ -62,6 +64,7 @@ async def deliver_startup_message(
     session: Session,
     agent_name: str,
     message: str,
+    authority: InjectedInputAuthority,
     ready_future: Future[None],
     quiet_s: float,
     timeout_s: float,
@@ -78,7 +81,18 @@ async def deliver_startup_message(
     )
     if not await tmux_io.is_process_running(session):
         raise RuntimeError(AGENT_STARTUP_DELIVERY_PROCESS_EXITED_ERROR)
-    result = await tmux_io.inject_user_turn(session, message, active_agent=agent_name)
+    while True:
+        result = await tmux_io.inject_user_turn(
+            session,
+            message,
+            active_agent=agent_name,
+            authority=authority,
+        )
+        if result.outcome is not tmux_io.UserTurnDeliveryOutcome.HELD:
+            break
+        await asyncio.sleep(quiet_s)
+        if not await tmux_io.is_process_running(session):
+            raise RuntimeError(AGENT_STARTUP_DELIVERY_PROCESS_EXITED_ERROR)
     emit_agent_startup_delivery_decision(
         session_id=session.session_id,
         agent_name=agent_name,

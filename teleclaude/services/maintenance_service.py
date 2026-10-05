@@ -756,7 +756,6 @@ class MaintenanceService:
                     if not await tmux_bridge.send_keys_existing_tmux(
                         session_name=session.tmux_session_name,
                         text=cmd,
-                        active_agent=session.active_agent,
                     ):
                         await _finish_failed_restore(_RestoreTmuxFailureReason.RESTORE_COMMAND_REJECTED)
                         return

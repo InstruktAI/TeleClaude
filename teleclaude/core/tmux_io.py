@@ -10,6 +10,7 @@ from signal import Signals
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
@@ -26,6 +27,10 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
+from teleclaude.core.injected_text import (
+    InjectedInputAuthority,
+    construct_delivered_text,
+)
 from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import host_pane_name
@@ -37,9 +42,8 @@ from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
 
-# Prompt-state user-turn delivery makes exactly one pre-delivery decision.
-# Empty composers use the normal paste-and-submit primitive; occupied composers
-# receive an unsubmitted append so platform delivery cannot submit human input.
+# Interface input keeps the historical append behavior when the composer is
+# occupied. Conversation input waits for an empty composer before submission.
 INJECT_OCCUPIED_COMPOSER_SEPARATOR = "\n\n"
 
 # Headless-adoption resume gate. The resumed agent must reach its input prompt
@@ -54,6 +58,7 @@ ADOPTION_TEARDOWN_PANE_SURVIVED_EVENT = "adoption_teardown_pane_survived"
 
 # Sentinel for an unbound tmux pane, named so callers never inline the literal.
 TMUX_SESSION_NAME_UNBOUND = ""
+CONVERSATION_REQUIRES_ACTIVE_AGENT_ERROR = "Conversation input requires an active agent"
 
 
 class UserTurnDeliveryOutcome(StrEnum):
@@ -61,6 +66,7 @@ class UserTurnDeliveryOutcome(StrEnum):
 
     SUBMITTED = "submitted"
     APPENDED_UNSUBMITTED = "appended_unsubmitted"
+    HELD = "held"
     FAILED = "failed"
 
 
@@ -98,7 +104,10 @@ class UserTurnDeliveryResult:
     @property
     def succeeded(self) -> bool:
         """Whether the inbound row can be marked delivered."""
-        return self.outcome is not UserTurnDeliveryOutcome.FAILED
+        return self.outcome in (
+            UserTurnDeliveryOutcome.SUBMITTED,
+            UserTurnDeliveryOutcome.APPENDED_UNSUBMITTED,
+        )
 
 
 async def _revive_headless_and_send(
@@ -106,8 +115,9 @@ async def _revive_headless_and_send(
     text: str,
     *,
     active_agent: str | None,
+    authority: InjectedInputAuthority,
     working_dir: str,
-) -> bool:
+) -> bool | UserTurnDeliveryResult:
     """Create a tmux session for a headless session on the fly and send text to it.
 
     Mutates session.tmux_session_name in-place so callers (e.g. deliver_inbound)
@@ -178,7 +188,6 @@ async def _revive_headless_and_send(
             await tmux_bridge.send_keys_existing_tmux(
                 session_name=tmux_name,
                 text=resume_cmd,
-                active_agent=session.active_agent,
             )
             logger.info(
                 "Revived headless session %s with agent %s (native=%s)",
@@ -214,9 +223,14 @@ async def _revive_headless_and_send(
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
     if active_agent:
-        delivery_result = await inject_user_turn(session, text, active_agent=active_agent)
-        return delivery_result.succeeded
-    return await tmux_bridge.send_keys_existing_tmux(session_name=tmux_name, text=text, active_agent=active_agent)
+        delivery_result = await inject_user_turn(
+            session,
+            text,
+            active_agent=active_agent,
+            authority=authority,
+        )
+        return delivery_result
+    return await tmux_bridge.send_keys_existing_tmux(session_name=tmux_name, text=text)
 
 
 async def _teardown_failed_adoption(
@@ -259,14 +273,21 @@ async def _send_to_tmux(
     text: str,
     *,
     active_agent: str | None = None,
+    authority: InjectedInputAuthority,
     working_dir: str,
-) -> bool:
+) -> bool | UserTurnDeliveryResult:
     tmux_name = session.tmux_session_name
     if tmux_name and await tmux_bridge.session_exists(tmux_name, log_missing=False):
+        if authority is InjectedInputAuthority.CONVERSATION and active_agent is not None:
+            return await inject_user_turn(
+                session,
+                text,
+                active_agent=active_agent,
+                authority=authority,
+            )
         return await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
             text=text,
-            active_agent=active_agent,
         )
 
     if session.lifecycle_status == "headless":
@@ -274,6 +295,7 @@ async def _send_to_tmux(
             session,
             text,
             active_agent=active_agent,
+            authority=authority,
             working_dir=working_dir,
         )
 
@@ -289,8 +311,9 @@ async def process_text(
     text: str,
     *,
     active_agent: str | None = None,
+    authority: InjectedInputAuthority,
     working_dir: str,
-) -> bool:
+) -> bool | UserTurnDeliveryResult:
     """Process and route text input to the appropriate tmux session."""
     text_sha = hashlib.sha256(text.encode()).hexdigest()[:12]
     logger.info(
@@ -300,11 +323,17 @@ async def process_text(
         text_len=len(text),
         text_sha=text_sha,
     )
-    success = await _send_to_tmux(
+    result = await _send_to_tmux(
         session,
         text,
         active_agent=active_agent,
+        authority=authority,
         working_dir=working_dir,
+    )
+    success = (
+        result.succeeded
+        if authority is InjectedInputAuthority.INTERFACE and isinstance(result, UserTurnDeliveryResult)
+        else result
     )
     if not success:
         logger.warning(
@@ -321,8 +350,14 @@ async def inject_user_turn(
     text: str,
     *,
     active_agent: str | None = None,
+    authority: InjectedInputAuthority,
 ) -> UserTurnDeliveryResult:
     """Deliver text without allowing platform Enter to submit occupied input."""
+    delivered_text = text
+    if authority is InjectedInputAuthority.CONVERSATION:
+        if active_agent is None:
+            raise ValueError(CONVERSATION_REQUIRES_ACTIVE_AGENT_ERROR)
+        delivered_text = construct_delivered_text(text, authority, AgentName.from_str(active_agent))
     tmux_name = session.tmux_session_name or ""
     before_delivery = await _observe_prompt_delivery(session, active_agent=active_agent)
     _log_prompt_observation(
@@ -337,10 +372,18 @@ async def inject_user_turn(
         )
 
     if before_delivery.state is PromptDeliveryState.OCCUPIED:
+        if authority is InjectedInputAuthority.CONVERSATION:
+            return UserTurnDeliveryResult(
+                UserTurnDeliveryOutcome.HELD,
+                UserTurnDeliveryStage.OBSERVATION,
+                UserTurnDeliveryReason.COMPOSER_OCCUPIED,
+                paste_performed=False,
+                platform_enter_sent=False,
+                existing_input_preserved=True,
+            )
         pasted = await tmux_bridge.paste_text_existing_tmux(
             session_name=tmux_name,
             text=f"{INJECT_OCCUPIED_COMPOSER_SEPARATOR}{text}",
-            active_agent=active_agent,
         )
         if not pasted:
             return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.PASTE)
@@ -355,8 +398,7 @@ async def inject_user_turn(
 
     submitted = await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,
-        text=text,
-        active_agent=active_agent,
+        text=delivered_text,
     )
     if not submitted:
         return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.SUBMIT)
