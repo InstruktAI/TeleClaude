@@ -180,10 +180,18 @@ the next onboarding will want to diff against.
    activity, and no row outside the composer takes part in identifying it. Do
    not leave a comment claiming a headless posture the runtime does not have.
 
+<!-- planned-change:relayed-trailing-backslash-blocks-submit -->
 3. The composer control contract established in Phase 0 question 9a, declared
    on the canonical entry. The host-pane paste primitives carry no per-agent
    escaping, because relayed text is delivered as sent apart from that mark
    (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
+<!-- change:relayed-trailing-backslash-blocks-submit -->
+3. The composer control contract established in Phase 0 question 9a, declared
+   on the canonical entry. The host-pane paste primitives carry no per-agent
+   escaping, because relayed text is delivered as sent apart from the marks
+   that contract declares
+   (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
+<!-- /planned-change:relayed-trailing-backslash-blocks-submit -->
 
 ### 5. Hooks
 

@@ -28,11 +28,21 @@ agent keys or silently substitute one known agent for another.
   runtime acts.
 - **Readiness contract:** the prompt marker and other agent-specific facts used
   to decide when input can be sent.
+<!-- planned-change:relayed-trailing-backslash-blocks-submit -->
 - **Composer control contract:** the leading characters with which a submitted
   prompt starts an interface mode or command in that runtime's composer, and
   the neutralizing mark that makes such a prompt ordinary and still submits it
   on one discrete Enter — both verified through the platform's own paste
   delivery, never inferred from typed keystrokes or another runtime.
+<!-- change:relayed-trailing-backslash-blocks-submit -->
+- **Composer control contract:** the leading characters with which a submitted
+  prompt starts an interface mode or command in that runtime's composer, the
+  neutralizing mark that makes such a prompt ordinary and still submits it on
+  one discrete Enter, and the trailing mark, if any, that makes a prompt ending
+  in a backslash still submit on that Enter — all verified through the
+  platform's own paste delivery, never inferred from typed keystrokes or
+  another runtime.
+<!-- /planned-change:relayed-trailing-backslash-blocks-submit -->
 - **Presentation contract:** the display identity and palette projected to
   operator surfaces.
 - **Dispatch contract:** the agent's relative position in role-specific
