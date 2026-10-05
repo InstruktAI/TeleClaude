@@ -106,6 +106,7 @@ _record_import_timing("teleclaude.config.runtime_settings", _t)
 
 _t = time.perf_counter()
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, voice_message_handler
+from teleclaude.core.injected_text import InjectedInputAuthority
 
 _record_import_timing("teleclaude.core bundle", _t)
 
@@ -848,6 +849,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             session,
             command,
             working_dir=working_dir,
+            authority=InjectedInputAuthority.INTERFACE,
         )
 
         if not success:

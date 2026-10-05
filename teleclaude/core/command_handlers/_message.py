@@ -30,13 +30,18 @@ from teleclaude.core.help_desk_relay import (
     divert_visitor_input,
     is_visitor_input,
 )
-from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
+from teleclaude.core.inbound_errors import (
+    InboundMessageHeldError,
+    SessionMessageRejectedError,
+    SessionMessageRejectionReason,
+)
 from teleclaude.core.inbound_media import fetch_media_ref
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedTextSourceFeature,
     TranscriptEntryKind,
+    authority_for_source_feature,
     caller_occurrence_key,
     identity_content_envelope,
     scan_injected_envelopes,
@@ -55,10 +60,10 @@ from teleclaude.core.session_cleanup import is_legacy_restricted_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
 from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
-from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
+from ._message_delivery import inject_inbound_text
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
 
 if TYPE_CHECKING:
@@ -621,8 +626,8 @@ async def deliver_inbound(
     session_id = row["session_id"]
     message_text = row["content"]
     logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
-    origin_metadata = _decode_inbound_origin_metadata(row)
-    command_input = _decode_inbound_command_input(row)
+    origin_metadata, command_input = _decode_inbound_origin_metadata(row), _decode_inbound_command_input(row)
+    authority = authority_for_source_feature(InjectedTextSourceFeature(row["source_feature"]))
 
     session = await db.get_session(session_id)
     if not session:
@@ -630,7 +635,6 @@ async def deliver_inbound(
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
 
-    # Gate: wait for the provider-selected first-input authority before tmux injection.
     if session.lifecycle_status == "initializing":
         session = await _wait_for_session_ready(session_id)
         if not session:
@@ -638,7 +642,6 @@ async def deliver_inbound(
 
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.UNAVAILABLE)
-
     await _ensure_inbound_acceptance_metadata(session, row, origin_metadata, command_input)
 
     active_agent = session.active_agent
@@ -664,21 +667,6 @@ async def deliver_inbound(
         except Exception as exc:
             logger.warning("start_input_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
-    async def _tmux_inject() -> tmux_io.UserTurnDeliveryResult | bool:
-        working_dir = resolve_working_dir(session.project_path, session.subdir)
-        if active_agent and session.lifecycle_status != "headless":
-            return await tmux_io.inject_user_turn(
-                session,
-                message_text,
-                active_agent=active_agent,
-            )
-        return await tmux_io.process_text(
-            session,
-            message_text,
-            working_dir=working_dir,
-            active_agent=active_agent,
-        )
-
     await _start_input_turn()
     is_active_agent_delivery = active_agent is not None and session.lifecycle_status != "headless"
     if is_active_agent_delivery:
@@ -689,8 +677,16 @@ async def deliver_inbound(
             source_occurrence_id=row["occurrence_key"],
         )
     async with session_runtime_owner(session_id, wait=True):
-        results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
+        results = await asyncio.gather(
+            inject_inbound_text(session, message_text, active_agent=active_agent, authority=authority),
+            return_exceptions=True,
+        )
     tmux_result = results[0]
+    if (
+        isinstance(tmux_result, tmux_io.UserTurnDeliveryResult)
+        and tmux_result.outcome is tmux_io.UserTurnDeliveryOutcome.HELD
+    ):
+        raise InboundMessageHeldError(session_id=session_id)
     if isinstance(tmux_result, Exception):
         if is_active_agent_delivery:
             logger.info(

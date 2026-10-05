@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator, session_cleanup
 from teleclaude.core.agent_readiness import await_agent_readiness
@@ -32,12 +33,18 @@ from teleclaude.core.events import (
     SystemCommandContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.injected_text import visible_input_update
+from teleclaude.core.injected_text import (
+    InjectedInputAuthority,
+    construct_delivered_text,
+    visible_input_update,
+)
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models._session import authority_for_entry_point
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
@@ -359,6 +366,36 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         message: str,
         launch_intent: SessionLaunchIntent,
     ) -> dict[str, str]:
+        authority = authority_for_entry_point(launch_intent.entry_point)
+        if authority is InjectedInputAuthority.CONVERSATION:
+            async with session_runtime_owner(session_id, wait=True):
+                return await self._handle_agent_then_message_under_owner(
+                    session_id,
+                    agent_name=agent_name,
+                    thinking_mode=thinking_mode,
+                    message=message,
+                    launch_intent=launch_intent,
+                    authority=authority,
+                )
+        return await self._handle_agent_then_message_under_owner(
+            session_id,
+            agent_name=agent_name,
+            thinking_mode=thinking_mode,
+            message=message,
+            launch_intent=launch_intent,
+            authority=authority,
+        )
+
+    async def _handle_agent_then_message_under_owner(
+        self,
+        session_id: str,
+        *,
+        agent_name: str,
+        thinking_mode: str,
+        message: str,
+        launch_intent: SessionLaunchIntent,
+        authority: InjectedInputAuthority,
+    ) -> dict[str, str]:
         """Start an agent and deliver its startup message through its configured input path."""
         start_time = time.time()
         logger.debug("agent_then_message: started for session=%s", session_id)
@@ -368,7 +405,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         starts_with_prompt = (
             bool(_get_agent_config(agent_name).interactive_flag) or _get_agent_config(agent_name).prompt_at_launch
         )
-        start_args = [message] if starts_with_prompt else []
+        startup_text = construct_delivered_text(message, authority, AgentName.from_str(agent_name))
+        start_args = [startup_text] if starts_with_prompt else []
 
         await db.update_session(
             session_id,
@@ -454,6 +492,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             session=session,
             agent_name=agent_name,
             message=message,
+            authority=authority,
             ready_future=ready_future,
             quiet_s=AGENT_START_STABILIZE_QUIET_S,
             timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,

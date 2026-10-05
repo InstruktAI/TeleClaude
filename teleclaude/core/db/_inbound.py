@@ -23,6 +23,8 @@ logger = get_logger(__name__)
 
 _MISSING_PLATFORM_SOURCE_ERROR = "Platform-originated text requires a source occurrence key"
 _DELIVERED_STATUS = "delivered"
+_FAILED_STATUS = "failed"
+_COMPOSER_OCCUPIED_REASON = "composer_occupied"
 
 
 def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
@@ -287,6 +289,26 @@ class DbInboundMixin:
                 attempt_count=db_models.InboundQueue.attempt_count + 1,
                 next_retry_at=next_retry,
                 last_error=error,
+                locked_at=None,
+            )
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
+    async def mark_inbound_held(self, row_id: int, now_iso: str, backoff_seconds: float) -> None:
+        """Release a held inbound row for retry without consuming an attempt."""
+        dt = parse_iso_datetime(now_iso)
+        if dt is None:
+            dt = datetime.now(UTC)
+        next_retry = (dt + timedelta(seconds=backoff_seconds)).isoformat()
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .values(
+                status=_FAILED_STATUS,
+                next_retry_at=next_retry,
+                last_error=_COMPOSER_OCCUPIED_REASON,
                 locked_at=None,
             )
         )

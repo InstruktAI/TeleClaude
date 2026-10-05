@@ -11,6 +11,7 @@ from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
+from teleclaude.core.injected_text import InjectedInputAuthority
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.session_cleanup import host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
@@ -151,6 +152,7 @@ async def _ensure_tmux_for_headless(
             resume_cmd,
             working_dir=working_dir,
             active_agent=session.active_agent,
+            authority=InjectedInputAuthority.INTERFACE,
         )
 
     if start_polling:
@@ -309,6 +311,7 @@ async def escape_command(
             text,
             working_dir=working_dir,
             active_agent=active_agent,
+            authority=InjectedInputAuthority.INTERFACE,
         )
 
         if not success:

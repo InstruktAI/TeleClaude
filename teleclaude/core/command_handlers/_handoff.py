@@ -19,7 +19,12 @@ from teleclaude.core.agents import _get_agent_config, assert_agent_enabled, get_
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.injected_text import EnvelopeName, render_bracket_envelope, semantic_envelope
+from teleclaude.core.injected_text import (
+    EnvelopeName,
+    InjectedInputAuthority,
+    render_bracket_envelope,
+    semantic_envelope,
+)
 from teleclaude.core.models import Session, ThinkingMode
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_runtime_gate import SessionRuntimeLease
@@ -135,6 +140,7 @@ async def execute_handoff(
                 session=current,
                 agent_name=successor,
                 message=handoff_envelope,
+                authority=InjectedInputAuthority.INTERFACE,
                 ready_future=ready_future,
                 quiet_s=_agent._RESTART_QUIET_S,
                 timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,

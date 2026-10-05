@@ -58,6 +58,11 @@ class AgentName(StrEnum):
         return AGENT_REGISTRY[self].startup_signal
 
     @property
+    def composer_control(self) -> ComposerControl:
+        """Return the runtime's composer control and neutralization contract."""
+        return AGENT_REGISTRY[self].composer_control
+
+    @property
     def discord_presentation(self) -> DiscordAuthorPresentation:
         """Return the closed Discord webhook identity for this agent."""
         return AGENT_REGISTRY[self].discord
@@ -234,6 +239,7 @@ class AgentDefinition:
     key: AgentName
     aliases: tuple[str, ...]
     prompt_marker: str
+    composer_control: ComposerControl
     startup_signal: AgentStartupSignal
     discord: DiscordAuthorPresentation
     git_identity: str
@@ -244,6 +250,14 @@ class AgentDefinition:
     credential_check: CredentialCheck
     one_shot: OneShotSupport
     desk_confinement: DeskConfinement
+
+
+@dataclass(frozen=True)
+class ComposerControl:
+    """Paste-sensitive characters and a neutralizing mark for one runtime."""
+
+    control_characters: tuple[str, ...]
+    neutralizing_mark: str
 
 
 def agent_permutation(*order: AgentName) -> tuple[str, ...]:
@@ -286,6 +300,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             key=AgentName.CLAUDE,
             aliases=(),
             prompt_marker="\u276f",
+            composer_control=ComposerControl(("!", "/"), "\u00a0"),
             startup_signal=AgentStartupSignal.NATIVE,
             discord=DiscordAuthorPresentation(
                 alias="Claude",
@@ -362,6 +377,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             key=AgentName.CODEX,
             aliases=(),
             prompt_marker="\n\u203a ",
+            composer_control=ComposerControl(("!", "/"), "\u200b"),
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Codex",
@@ -456,6 +472,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             key=AgentName.GEMINI,
             aliases=("agy",),
             prompt_marker=">",
+            composer_control=ComposerControl(("!", "/"), "\u200b"),
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Gemini",
@@ -521,6 +538,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             # as Claude) when idle; the daemon's tmux readiness detection
             # watches for it before typing the prompt.
             prompt_marker="\u276f",
+            composer_control=ComposerControl(("!", "/"), "\u200b"),
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="DeepSeek",

@@ -18,6 +18,7 @@ from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agents import is_agent_title
 from teleclaude.core.db import db
 from teleclaude.core.events import FileEventContext
+from teleclaude.core.injected_text import InjectedInputAuthority
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import resolve_working_dir
 
@@ -149,6 +150,7 @@ async def handle_file(
         input_text,
         active_agent=active_agent,
         working_dir=working_dir,
+        authority=InjectedInputAuthority.INTERFACE,
     )
 
     if not success:
