@@ -80,7 +80,6 @@ flowchart LR
   Recognition mirrors the runtime's own parser and leaves unclosed framing
   untouched, so text a person typed that merely resembles it stays that
   person's words.
-<!-- planned:relayed-input-never-controls-agent -->
 - **Correlation recognizes the delivered form.** Session input delivery places
   a runtime's declared neutralizing mark at the start of conversation text that
   would otherwise begin with one of that runtime's interface-control characters
@@ -89,7 +88,6 @@ flowchart LR
   runtime records the mark or drops it. Accepted-input correlation matches a
   native turn against the accepted text in either form, and the projection of
   a correlated turn shows the accepted text.
-<!-- /planned:relayed-input-never-controls-agent -->
 - **The envelope delimits authorship.** A native entry is an ordered composition
   of platform-authored envelopes and prompt input. Content inside an envelope is
   platform-authored and typed by its opening; content outside every envelope,
@@ -251,12 +249,10 @@ flowchart LR
 - Runtime transport framing survives into classification, so a platform
   envelope no longer matches its registered opening and the daemon's own
   injected text reaches human surfaces as prompt input, under the human's name.
-<!-- planned:relayed-input-never-controls-agent -->
 - Correlation compares a native turn only with the accepted text, so a
   marked conversation turn no longer matches: it is projected as terminal
   input, echoed back to its origin, or reflected with a character the sender
   never wrote.
-<!-- /planned:relayed-input-never-controls-agent -->
 - Looking up mutable session identity at render time rewrites historical author
   mode or fails when the source row is remote or gone.
 - Blind webhook resend after a lost response duplicates a message that Discord

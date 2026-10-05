@@ -22,11 +22,7 @@ The write-side surface that lets operators, orchestrators, and other agents inje
 
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
-<!-- planned-change:relayed-input-never-controls-agent -->
-Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages make one content-independent pre-delivery observation: an empty composer receives one paste-and-submit operation, while a composer containing any input receives exactly two newlines plus the platform text and no Enter.
-<!-- change:relayed-input-never-controls-agent -->
 Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages make one content-independent pre-delivery observation: an empty composer receives one paste-and-submit operation, while a composer containing any input receives exactly two newlines plus the platform text and no Enter — except conversation text, which waits for an empty composer (Conversation input authority).
-<!-- /planned-change:relayed-input-never-controls-agent -->
 The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
 
 ## Canonical fields
@@ -79,7 +75,6 @@ Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
 lifecycle transition. Recovery follows UC-SID6.
 
-<!-- planned:relayed-input-never-controls-agent -->
 ### Conversation input authority
 
 Text accepted from a conversation channel is conversation for the agent and
@@ -119,7 +114,6 @@ conversation turn in either form, and the projection of a correlated turn shows
 the accepted text
 (`local/projects/teleclaude/design/architecture/conversation-delivery`).
 
-<!-- /planned:relayed-input-never-controls-agent -->
 ### Use cases
 
 #### Structured message — happy path
@@ -132,12 +126,8 @@ And a session-originated message identifies its actual sending session
 And a human's direct input remains human-authored
 When the target agent's input-readiness contract is satisfied
 Then its empty composer receives one paste and submission
-<!-- planned-change:relayed-input-never-controls-agent -->
-And its occupied composer preserves the existing text and appends two newlines followed by the accepted message without submission
-<!-- change:relayed-input-never-controls-agent -->
 And its occupied composer preserves the existing text and appends two newlines followed by an accepted message that is not conversation text, without submission
 And accepted conversation text waits for an empty composer instead of joining the existing text
-<!-- /planned-change:relayed-input-never-controls-agent -->
 And its non-composer or ambiguous surface receives no input
 And these rules also govern the conversational message that triggered adoption of a headless agent
 And a session running no agent uses its ordinary terminal-input path
@@ -382,7 +372,6 @@ Then the complete caller-supplied details remain available to that session
 And their presence, absence, or wording changes no human-involvement declaration or recency result
 ```
 
-<!-- planned:relayed-input-never-controls-agent -->
 #### UC-SID17: A conversation message never controls the agent interface
 
 ```gherkin
@@ -405,7 +394,6 @@ Then the text is submitted exactly as written
 And the agent interface acts on it as it acts on typed input
 ```
 
-<!-- /planned:relayed-input-never-controls-agent -->
 <!-- planned:relayed-trailing-backslash-blocks-submit -->
 #### UC-SID19: A message ending in a backslash submits once
 
@@ -435,11 +423,7 @@ And the person's next message starts its own prompt instead of joining this one
 
 - **Single host-pane paste buffer per call.** The key-injection primitive allocates a unique buffer name per call and always attempts cleanup on the way out, even when the paste step failed; a cleanup failure leaves the user payload resident in the host pane's buffer list until the host-pane server exits and is logged at warning.
 - **A small post-paste gap is hardcoded for paste-and-submit.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every submitted paste. Prompt-state delivery selects that primitive only after its pre-delivery observation finds an empty composer.
-<!-- planned-change:relayed-input-never-controls-agent -->
-- **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.
-<!-- change:relayed-input-never-controls-agent -->
 - **The host-pane primitives pass text through unchanged.** They paste the payload they receive for every runtime; the only character a delivery adds is the neutralizing mark described under Conversation input authority, chosen before the primitive is reached.
-<!-- /planned-change:relayed-input-never-controls-agent -->
 
 - **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session resolves to a machine role is named by that role — orchestrator, integrator, system, worker, tasker, and job_runner each get their own genuine label. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A caller session id that does not resolve to a session at all is refused with an explicit error, because no truthful identity can be composed for it; no fabricated role, agent, or host attribution is ever substituted to force a header.
 

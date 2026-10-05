@@ -81,7 +81,6 @@ defect discovered live.
    the CLI places the input cursor, and how an empty composer renders. These
    markers alone bound the live input; footers, status lines, hints, and labels
    outside them are never read.
-<!-- planned:relayed-input-never-controls-agent -->
    9a. The composer control contract: which leading characters of a pasted,
    submitted prompt start an interface mode or command (shell, slash commands,
    any other prefix the vendor documents), and which single neutralizing
@@ -91,7 +90,6 @@ defect discovered live.
    character preceded by leading whitespace; a keystroke observation or
    another runtime's answer does not transfer, because composers trim and strip
    different characters before deciding.
-<!-- /planned:relayed-input-never-controls-agent -->
 10. Terminal behavior: does the TUI self-clamp color under `$TMUX`, and what is
     its escape hatch? Does it need a locale?
 
@@ -136,16 +134,10 @@ the next onboarding will want to diff against.
 
 ### 2. Registry and identity
 
-<!-- planned-change:relayed-input-never-controls-agent -->
-1. Add one complete entry to the canonical leaf agent registry. The entry owns
-   the agent key, execution contract, attribution, readiness, presentation,
-   dispatch position, and launcher metadata.
-<!-- change:relayed-input-never-controls-agent -->
 1. Add one complete entry to the canonical leaf agent registry. The entry owns
    the agent key, execution contract, attribution, readiness, composer control
    contract (Phase 0 question 9a), presentation, dispatch position, and
    launcher metadata.
-<!-- /planned-change:relayed-input-never-controls-agent -->
 2. Consume the registry's typed projections for backend validation, receiver
    arguments, history search, configuration inventory, and agent-specific
    runtime decisions. Do not introduce another enum, tuple, set, or map whose
@@ -188,15 +180,10 @@ the next onboarding will want to diff against.
    activity, and no row outside the composer takes part in identifying it. Do
    not leave a comment claiming a headless posture the runtime does not have.
 
-<!-- planned-change:relayed-input-never-controls-agent -->
-3. `teleclaude/core/tmux_bridge/_keys.py` — per-agent input escaping, if the
-   harness mishandles any character.
-<!-- change:relayed-input-never-controls-agent -->
 3. The composer control contract established in Phase 0 question 9a, declared
    on the canonical entry. The host-pane paste primitives carry no per-agent
    escaping, because relayed text is delivered as sent apart from that mark
    (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
-<!-- /planned-change:relayed-input-never-controls-agent -->
 
 ### 5. Hooks
 
