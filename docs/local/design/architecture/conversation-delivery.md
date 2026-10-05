@@ -81,20 +81,15 @@ flowchart LR
   untouched, so text a person typed that merely resembles it stays that
   person's words.
 <!-- planned:relayed-input-never-controls-agent -->
-- **The platform's neutralizing mark is transport framing.** Session input
-  delivery places a runtime's declared neutralizing mark at the start of
-  conversation text whose first character after leading whitespace is one of
-  that runtime's interface-control characters (`session-input-delivery`). The
-  mark carries no author and no content, so both ingress boundaries remove it
-  together with the runtime's framing, before segmentation. Recognition
-  mirrors construction: exactly one leading declared mark is removed, and only
-  when the text after it begins, past any whitespace and further declared
-  marks, with a declared control character. Construction adds a mark to every
-  conversation text of that shape, including text the sender began with a mark
-  of their own, so for conversation text the removal is the exact inverse of
-  delivery. Text that never passed through construction — typed at the
-  terminal, or authored by the platform — and itself begins with that shape
-  loses its first mark in the classified text.
+- **Correlation recognizes the delivered form.** Session input delivery places
+  a runtime's declared neutralizing mark at the start of conversation text that
+  would otherwise begin with one of that runtime's interface-control characters
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
+  Transcript and prompt-hook text are never altered to remove it; they record
+  what the runtime received. Accepted-input correlation matches a native turn
+  against the accepted text as accepted or as delivery marked it for the
+  session's runtime, and the projection of a correlated turn shows the
+  accepted text.
 <!-- /planned:relayed-input-never-controls-agent -->
 - **The envelope delimits authorship.** A native entry is an ordered composition
   of platform-authored envelopes and prompt input. Content inside an envelope is
@@ -258,9 +253,10 @@ flowchart LR
   envelope no longer matches its registered opening and the daemon's own
   injected text reaches human surfaces as prompt input, under the human's name.
 <!-- planned:relayed-input-never-controls-agent -->
-- The neutralizing mark survives ingress, so a conversation turn no longer
-  matches its accepted text: it is projected as terminal input, echoed back to
-  its origin, or reflected with a character the sender never wrote.
+- Correlation compares a native turn only with the accepted text, so a
+  marked conversation turn no longer matches: it is projected as terminal
+  input, echoed back to its origin, or reflected with a character the sender
+  never wrote.
 <!-- /planned:relayed-input-never-controls-agent -->
 - Looking up mutable session identity at render time rewrites historical author
   mode or fails when the source row is remote or gone.

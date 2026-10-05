@@ -85,27 +85,32 @@ producer or the session's recorded entry point, never the text. Platform
 commands that a channel's own handlers or command-input recognition resolve
 before delivery keep their contracts unchanged.
 
-When conversation text is submitted to an agent's composer and its first
-character after any leading whitespace and any leading declared marks is one
-that runtime's composer treats as interface control, the runtime's neutralizing
-mark is placed at the very start of the text; the text is otherwise submitted
-unchanged. Leading whitespace never hides a control character, and text the
-sender began with a declared mark of their own is marked again, so removing the
-one added mark at ingress returns exactly what the sender sent. Each
-runtime's control characters and its neutralizing mark — a character that
-makes the composer treat the text as an ordinary prompt and submit it on the
-single discrete Enter — are declared once on its canonical agent entry
-(`agent-vocabulary`), so a supported runtime without a declaration cannot
-exist. An occupied composer keeps the owning human's draft first, so appended
-text is never at the start of the submitted prompt and receives no mark.
+When conversation text is pasted into an agent's composer and its first
+character after any leading whitespace and leading invisible format characters
+is one that runtime's composer treats as interface control, the runtime's
+neutralizing mark is placed at the very start of the pasted text; the text is
+otherwise pasted unchanged. The rule holds for an empty composer, where the
+text is submitted once, and for an occupied one, where the text joins the
+owning human's unsubmitted draft at the composer's insertion point, so no
+submission of that composed input starts interface control from the relayed
+text. Each runtime's control characters and its neutralizing mark — a character
+that makes the composer treat the text as an ordinary prompt and submit it on
+the single discrete Enter — are declared once on its canonical agent entry
+(`local/projects/teleclaude/spec/feature/agent_runtime/agent-vocabulary`), so a
+supported runtime without a declaration cannot exist.
 
-Input a person enters at the terminal or the TUI, input sent through the
-platform's API, and platform-authored text — envelopes, command loaders,
-continuations — keep full interface control and are submitted as written.
+Input a person enters at the terminal or the TUI, including what the TUI and
+the `telec` CLI send through the platform's API, and platform-authored text —
+envelopes, command loaders, continuations — keep full interface control and are
+submitted as written. The platform's API is a local socket that records
+terminal origin; a conversation channel delivers through its own adapter
+ingress, which records the channel.
 
-The mark is platform transport framing: both ingress boundaries remove it before
-classification, so transcripts, reflections, and accepted-input correlation
-carry the sender's text (`conversation-delivery`).
+The native transcript and prompt-hook text record what the runtime received and
+are never altered to remove the mark. Accepted-input correlation recognizes a
+conversation turn in its accepted and its delivered form, and the projection of
+a correlated turn shows the accepted text
+(`local/projects/teleclaude/design/architecture/conversation-delivery`).
 
 <!-- /planned:relayed-input-never-controls-agent -->
 ### Use cases
@@ -372,10 +377,10 @@ And their presence, absence, or wording changes no human-involvement declaration
 Given a person writes to an agent session through a conversation channel
 And their message is not a platform command the channel or the platform resolves before delivery
 And the message's first character after any leading whitespace is one the session's agent treats as interface control
-When the message reaches the agent, whether it continues the conversation or starts the session
-Then the agent receives it as an ordinary prompt and submits it once
-And no shell command runs, no interface command executes, and no input mode starts
-And the transcript and every reflection show the message exactly as the person sent it
+When the message reaches the agent's composer, whether it continues the conversation, starts the session, or joins a draft the owning human has not submitted
+Then an empty composer submits it once as an ordinary prompt
+And no shell command runs, no interface command executes, and no input mode starts from the message whenever the composed input is submitted
+And every reflection shows the message exactly as the person sent it
 ```
 
 #### UC-SID18: Terminal and platform input keep interface control
