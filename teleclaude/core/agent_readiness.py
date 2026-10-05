@@ -6,16 +6,15 @@ import asyncio
 import hashlib
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
-from re import Pattern
 from typing import TYPE_CHECKING, Protocol
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName, AgentStartupSignal, resolve_parser_agent
+from teleclaude.core.tmux_bridge import PaneObservation
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
@@ -25,33 +24,16 @@ logger = get_logger(__name__)
 
 _AGENT_READINESS_DECIDED_EVENT = "agent_readiness_decided"
 _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
-_ANSI_ESCAPE_PREFIX = "\x1b["
-_CODEX_FOOTER_INDENTATION = "  "
-_CODEX_WORKSPACE_PATH_PREFIX = "~/"
+_ROW_SEPARATOR = "\n"
+_NO_VIEW = ""
+_RULE_CHARACTER = "─"
 _DEEPSEEK_COMPOSER_EXPAND_AFFORDANCE = "⛶"
-
-
-class _CodexFooterRowToken(StrEnum):
-    """Closed vocabulary of tokens recognized in Codex footer chrome rows."""
-
-    SHIFT_TAB_HINT = "shift + tab"
-    ESC_DISMISS_HINT = "esc dismiss"
-    MODEL_NAME_PREFIX = "gpt-"
-    FIELD_SEPARATOR = "·"
-    SHORTCUTS_HINT = "? for shortcuts"
-    WARNING_DETAIL_HINT = "f2 to view"
-
-
-class _GeminiFooterRowToken(StrEnum):
-    """Closed vocabulary for Gemini's shortcut and model-effort footer row."""
-
-    SHORTCUTS_HINT = "? for shortcuts"
-    COMPOSER_MARKER = ">"
-    MODEL_NAME_PREFIX = "gemini "
-    FIELD_SEPARATOR = "·"
-    LOW_EFFORT = "low"
-    MEDIUM_EFFORT = "medium"
-    HIGH_EFFORT = "high"
+_DEEPSEEK_TOP_BORDER_CORNERS = ("╭", "╮")
+_DEEPSEEK_BOTTOM_BORDER_CORNERS = ("╰", "╯")
+_DEEPSEEK_BORDER_CHARACTERS = frozenset({"╭", "╮", "╰", "╯", _RULE_CHARACTER})
+_CODEX_COMPOSER_MARKER = AgentName.CODEX.prompt_marker.strip()
+_CODEX_COMPOSER_GUTTER = "  "
+_DEEPSEEK_COMPOSER_MARKER = AgentName.DEEPSEEK.prompt_marker.strip()
 
 
 class ReadinessSignal(StrEnum):
@@ -115,190 +97,209 @@ class PromptMatch:
     line_index: int
 
 
+@dataclass(frozen=True)
+class _Composer:
+    """A live composer located on the visible surface.
+
+    ``rows`` are the raw surface rows the composer's own markers enclose,
+    starting at its prompt row, which sits at ``marker_index``.
+    """
+
+    marker_index: int
+    rows: tuple[str, ...]
+
+
 class AgentReadinessProfile(Protocol):
     """Agent-owned readiness semantics used by the shared settle engine."""
 
-    def locate_prompt(self, output: str) -> PromptMatch | None:
-        """Return the visible prompt location when the agent prompt is available."""
+    def locate_prompt(self, observation: PaneObservation) -> PromptMatch | None:
+        """Return the visible prompt location when the agent's composer is identified."""
         raise NotImplementedError
 
-    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
+    def build_stability_view(self, observation: PaneObservation, prompt: PromptMatch) -> str:
         """Return the normalized content that must settle before input is injected."""
         raise NotImplementedError
 
-    def observe_composer(self, output: str) -> PromptDeliveryObservation:
-        """Classify a complete editable composer for normal input delivery."""
+    def observe_composer(self, observation: PaneObservation) -> PromptDeliveryObservation:
+        """Classify the identified composer for normal input delivery."""
         raise NotImplementedError
 
 
-def _normalized_lines(output: str) -> list[str]:
-    """Return ANSI-stripped lines from the visible readiness window."""
-    sanitized = strip_ansi_codes(output or "")
-    if len(sanitized) > UI_MESSAGE_MAX_CHARS:
-        sanitized = sanitized[-UI_MESSAGE_MAX_CHARS:]
-    return sanitized.split("\n")
+def _surface_rows(observation: PaneObservation) -> list[str]:
+    """Return the raw visible rows; the cursor row indexes this list directly."""
+    return observation.text.split(_ROW_SEPARATOR)
 
 
-def _build_default_stability_view_with_ignored_patterns(
-    output: str,
-    prompt: PromptMatch,
-    *,
-    ignored_above_patterns: tuple[Pattern[str], ...] = (),
-) -> str:
-    lines = _normalized_lines(output)
+def _plain_row(raw_row: str) -> str:
+    return strip_ansi_codes(raw_row).strip()
+
+
+def _rows_above_view(observation: PaneObservation, prompt: PromptMatch) -> str:
+    """Return the ANSI-free rows above the composer's prompt row."""
     if prompt.line_index <= 0:
-        return ""
-    stable_lines: list[str] = []
-    for line in lines[: prompt.line_index]:
-        stripped = line.strip()
-        if stripped and any(pattern.search(stripped) for pattern in ignored_above_patterns):
-            continue
-        stable_lines.append(line.rstrip())
-    return "\n".join(stable_lines).rstrip()
+        return _NO_VIEW
+    rows = _surface_rows(observation)[: prompt.line_index]
+    return _ROW_SEPARATOR.join(strip_ansi_codes(row).rstrip() for row in rows).rstrip()
+
+
+def _observe(composer: _Composer | None, *, has_input: bool) -> PromptDeliveryObservation:
+    if composer is None:
+        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS)
+    if has_input:
+        return PromptDeliveryObservation(PromptDeliveryState.OCCUPIED)
+    return PromptDeliveryObservation(PromptDeliveryState.EMPTY)
+
+
+def _row_has_authored_text(raw_row: str) -> bool:
+    """Return whether a composer row holds text the CLI did not generate itself."""
+    return bool(_normalize_text(_strip_generated_segments(raw_row)).strip())
 
 
 @dataclass(frozen=True)
-class MarkerLineReadinessProfile:
-    """Default readiness profile for marker-based agent prompts."""
+class FramedComposerReadinessProfile:
+    """Readiness profile for composers drawn between two horizontal rules.
+
+    The composer is the prompt row with a rule directly above it, through the
+    rule that closes it below. A prompt-prefixed row without that frame is not
+    a candidate.
+    """
 
     agent: AgentName
-    marker: str
-    match_mode: str = "startswith"
-    ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
 
-    def locate_prompt(self, output: str) -> PromptMatch | None:
-        """Locate the last visible prompt line for a marker-based CLI."""
-        lines = _normalized_lines(output)
-        for idx in range(len(lines) - 1, -1, -1):
-            line = lines[idx].strip()
-            if not line:
+    def _locate(self, observation: PaneObservation) -> _Composer | None:
+        marker = self.agent.prompt_marker.strip()
+        rows = _surface_rows(observation)
+        for index in range(len(rows) - 1, 0, -1):
+            if not _plain_row(rows[index]).startswith(marker) or not _is_horizontal_rule_line(rows[index - 1]):
                 continue
-            if self.match_mode == "contains":
-                matched = self.marker in line
-            else:
-                matched = line.startswith(self.marker)
-            if matched:
-                return PromptMatch(line_index=idx)
+            for end in range(index + 1, len(rows)):
+                if _is_horizontal_rule_line(rows[end]):
+                    return _Composer(marker_index=index, rows=tuple(rows[index:end]))
+            return None
         return None
 
-    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
-        """Build the normalized pre-prompt region used for quiet detection."""
-        return _build_default_stability_view_with_ignored_patterns(
-            output,
-            prompt,
-            ignored_above_patterns=self.ignored_above_patterns,
-        )
+    def locate_prompt(self, observation: PaneObservation) -> PromptMatch | None:
+        """Locate the framed prompt row."""
+        composer = self._locate(observation)
+        return None if composer is None else PromptMatch(line_index=composer.marker_index)
 
-    def observe_composer(self, output: str) -> PromptDeliveryObservation:
-        """Classify this marker-based agent's complete composer."""
-        return _classify_complete_composer(output, self.agent)
+    def build_stability_view(self, observation: PaneObservation, prompt: PromptMatch) -> str:
+        """Build the normalized region above the composer used for quiet detection."""
+        return _rows_above_view(observation, prompt)
 
-
-_CODEX_AGENT_MARKERS = frozenset(
-    {
-        "\u2022",
-        "\u25e6",
-        "\u2736",
-        "\u2726",
-        "\u2727",
-        "\u2734",
-        "\u2738",
-        "\u2739",
-        "\u273a",
-        "\u2605",
-        "\u2606",
-        "\u25cf",
-        "\u25cb",
-        "\u25c6",
-        "\u25c7",
-    }
-)
+    def observe_composer(self, observation: PaneObservation) -> PromptDeliveryObservation:
+        """Classify the framed composer from the rows its frame encloses."""
+        composer = self._locate(observation)
+        if composer is None:
+            return _observe(None, has_input=False)
+        first_row = _strip_live_prompt_marker(composer.rows[0], self.agent.prompt_marker.strip())
+        return _observe(composer, has_input=any(_row_has_authored_text(row) for row in (first_row, *composer.rows[1:])))
 
 
 @dataclass(frozen=True)
 class CodexReadinessProfile:
-    """Codex readiness profile that rejects stale prompts below active output."""
+    """Codex readiness profile that identifies the composer by its input cursor.
 
-    marker: str = AgentName.CODEX.prompt_marker.strip()
-    ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
+    Codex draws no border around its composer, but it indents every row below the
+    prompt row by the width of the prompt marker. The composer runs from the
+    nearest prompt-marker row at or above the visible input cursor through the
+    cursor's row, and every non-blank row in between sits in that gutter, so a
+    draft with blank rows between its lines is one composer wherever the cursor
+    sits in it. A surface with no visible cursor, or whose cursor is reached from
+    a prompt-marker row only across rows outside the gutter, has no composer:
+    selection lists, approval overlays and transcript echoes place no cursor, and
+    a cursor elsewhere does not adopt an earlier prompt row.
+    """
 
-    def locate_prompt(self, output: str) -> PromptMatch | None:
-        """Locate the last live Codex prompt line within the visible pane."""
-        lines = _normalized_lines(output)
-        while lines and not lines[-1].strip():
-            lines.pop()
-        start_index = max(0, len(lines) - 10)
-        for idx in range(len(lines) - 1, start_index - 1, -1):
-            line = lines[idx].strip()
-            if not line:
-                continue
-            if line.startswith(self.marker):
-                return PromptMatch(line_index=idx)
-            if line.startswith("?") and "shortcut" in line.lower():
-                continue
-            if line[0] in _CODEX_AGENT_MARKERS:
+    def _locate(self, observation: PaneObservation) -> _Composer | None:
+        cursor = observation.cursor
+        rows = _surface_rows(observation)
+        if cursor is None or cursor.row >= len(rows):
+            return None
+        for start in range(cursor.row, -1, -1):
+            if _plain_row(rows[start]).startswith(_CODEX_COMPOSER_MARKER):
+                return _Composer(marker_index=start, rows=tuple(rows[start : cursor.row + 1]))
+            if _plain_row(rows[start]) and not strip_ansi_codes(rows[start]).startswith(_CODEX_COMPOSER_GUTTER):
                 return None
         return None
 
-    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
-        """Build the normalized pre-prompt region used for quiet detection."""
-        return _build_default_stability_view_with_ignored_patterns(
-            output,
-            prompt,
-            ignored_above_patterns=self.ignored_above_patterns,
-        )
+    def locate_prompt(self, observation: PaneObservation) -> PromptMatch | None:
+        """Locate the prompt row of the composer holding the input cursor."""
+        composer = self._locate(observation)
+        return None if composer is None else PromptMatch(line_index=composer.marker_index)
 
-    def observe_composer(self, output: str) -> PromptDeliveryObservation:
-        """Classify the complete Codex composer for normal input delivery."""
-        return _classify_complete_composer(output, AgentName.CODEX)
+    def build_stability_view(self, observation: PaneObservation, prompt: PromptMatch) -> str:
+        """Build the normalized region above the composer used for quiet detection."""
+        return _rows_above_view(observation, prompt)
+
+    def observe_composer(self, observation: PaneObservation) -> PromptDeliveryObservation:
+        """Classify the composer: empty only while it shows its generated placeholder.
+
+        Codex renders its placeholder in generated style on the prompt row while
+        the input is empty. A prompt row without it, or any authored text in the
+        composer rows, is a draft.
+        """
+        composer = self._locate(observation)
+        if composer is None:
+            return _observe(None, has_input=False)
+        first_row = _strip_live_prompt_marker(composer.rows[0], _CODEX_COMPOSER_MARKER)
+        placeholder_shown = bool(_normalize_text(first_row).strip())
+        authored = any(_row_has_authored_text(row) for row in (first_row, *composer.rows[1:]))
+        return _observe(composer, has_input=authored or not placeholder_shown)
 
 
 @dataclass(frozen=True)
 class DeepSeekReadinessProfile:
-    """DeepSeek readiness profile that settles on its composer, not its animated splash.
+    """DeepSeek readiness profile that identifies the composer by its rounded border.
 
-    Prompt location and composer classification are unchanged from marker-line
-    readiness for DeepSeek; only the region the settle engine must find quiet
-    differs. DeepSeek renders animated splash art in its pre-prompt region while
-    the conversation is empty, so that region never holds a stable digest;
-    stability is measured on the composer's own live region instead.
+    The composer is the region inside the rounded border whose first content row
+    carries the prompt marker, which may follow the composer's own leading glyph.
+    DeepSeek renders animated splash art above it, so the settle engine measures
+    stability on the composer region itself.
     """
 
-    _marker_profile: MarkerLineReadinessProfile = field(
-        default_factory=lambda: MarkerLineReadinessProfile(
-            agent=AgentName.DEEPSEEK,
-            marker=AgentName.DEEPSEEK.prompt_marker,
+    def _locate(self, observation: PaneObservation) -> _Composer | None:
+        rows = _surface_rows(observation)
+        for top in range(len(rows) - 1, -1, -1):
+            if not _is_deepseek_rounded_border_line(rows[top], _DEEPSEEK_TOP_BORDER_CORNERS):
+                continue
+            for bottom in range(top + 1, len(rows)):
+                if _is_deepseek_rounded_border_line(rows[bottom], _DEEPSEEK_BOTTOM_BORDER_CORNERS):
+                    content = rows[top + 1 : bottom]
+                    if content and _DEEPSEEK_COMPOSER_MARKER in _plain_row(content[0]):
+                        return _Composer(marker_index=top + 1, rows=tuple(content))
+                    break
+        return None
+
+    def locate_prompt(self, observation: PaneObservation) -> PromptMatch | None:
+        """Locate the composer's marker row inside the rounded border."""
+        composer = self._locate(observation)
+        return None if composer is None else PromptMatch(line_index=composer.marker_index)
+
+    def build_stability_view(self, observation: PaneObservation, prompt: PromptMatch) -> str:
+        """Return the composer's own region; the splash above it never settles."""
+        composer = self._locate(observation)
+        if composer is None or composer.marker_index != prompt.line_index:
+            return _NO_VIEW
+        return _ROW_SEPARATOR.join(strip_ansi_codes(row).rstrip() for row in composer.rows).rstrip()
+
+    def observe_composer(self, observation: PaneObservation) -> PromptDeliveryObservation:
+        """Classify the composer from the rows its border encloses."""
+        composer = self._locate(observation)
+        if composer is None:
+            return _observe(None, has_input=False)
+        first_row = composer.rows[0].partition(_DEEPSEEK_COMPOSER_MARKER)[2]
+        texts = (
+            _strip_deepseek_composer_expand_affordance(_normalize_text(_strip_generated_segments(row)).strip())
+            for row in (first_row, *composer.rows[1:])
         )
-    )
-
-    def locate_prompt(self, output: str) -> PromptMatch | None:
-        """Locate the last visible DeepSeek prompt line."""
-        return self._marker_profile.locate_prompt(output)
-
-    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
-        """Return the composer's own live region; the splash above it never settles."""
-        del prompt
-        return _extract_complete_live_region(output, AgentName.DEEPSEEK) or ""
-
-    def observe_composer(self, output: str) -> PromptDeliveryObservation:
-        """Classify the complete DeepSeek composer for normal input delivery."""
-        return self._marker_profile.observe_composer(output)
+        return _observe(composer, has_input=any(texts))
 
 
 _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
-    AgentName.CLAUDE: MarkerLineReadinessProfile(
-        agent=AgentName.CLAUDE,
-        marker=AgentName.CLAUDE.prompt_marker,
-    ),
-    AgentName.GEMINI: MarkerLineReadinessProfile(
-        agent=AgentName.GEMINI,
-        marker=AgentName.GEMINI.prompt_marker,
-        match_mode="contains",
-    ),
+    AgentName.CLAUDE: FramedComposerReadinessProfile(agent=AgentName.CLAUDE),
+    AgentName.GEMINI: FramedComposerReadinessProfile(agent=AgentName.GEMINI),
     AgentName.CODEX: CodexReadinessProfile(),
-    # DeepSeek's pre-prompt region renders animated splash art that never holds
-    # still, so it settles on its own composer instead of the shared pre-prompt
-    # stability view marker-line readiness uses for the other pane-based agents.
     AgentName.DEEPSEEK: DeepSeekReadinessProfile(),
 }
 
@@ -308,245 +309,29 @@ def _get_readiness_profile(agent_name: AgentName) -> AgentReadinessProfile:
 
 
 def classify_prompt_delivery(
-    output: str,
+    observation: PaneObservation,
     active_agent: str | None,
 ) -> PromptDeliveryObservation:
     """Classify delivery through the selected agent's canonical readiness profile."""
     agent = resolve_parser_agent(active_agent)
-    return _get_readiness_profile(agent).observe_composer(output)
+    return _get_readiness_profile(agent).observe_composer(observation)
 
 
-def _classify_complete_composer(output: str, agent: AgentName) -> PromptDeliveryObservation:
-    live_region = _extract_complete_live_region(output, agent)
-    if live_region is None:
-        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS)
-    if _live_region_has_input(live_region, agent):
-        return PromptDeliveryObservation(PromptDeliveryState.OCCUPIED)
-    return PromptDeliveryObservation(PromptDeliveryState.EMPTY)
-
-
-def _find_marker_row_index(lines: list[str], marker: str) -> int | None:
-    """Locate the last raw pane line whose composer marker search matches.
-
-    ANSI removal must run before whitespace stripping: a line's first character is
-    often an escape sequence, so stripping whitespace first is a no-op and leaves
-    any indentation the renderer places after it intact, hiding the marker from a
-    strict ``startswith`` test.
-    """
-    for idx in range(len(lines) - 1, -1, -1):
-        if strip_ansi_codes(lines[idx]).strip().startswith(marker):
-            return idx
-    return None
-
-
-def _extract_complete_live_region(output: str, agent: AgentName) -> str | None:
-    lines = output.rstrip().split("\n")
-    if agent is AgentName.CODEX:
-        return _extract_complete_codex_live_region(lines)
-    if agent is AgentName.GEMINI:
-        return _extract_complete_gemini_live_region(lines)
-    if agent is AgentName.DEEPSEEK:
-        return _extract_complete_deepseek_live_region(lines)
-    marker = agent.prompt_marker.strip()
-    if not marker:
-        return None
-    idx = _find_marker_row_index(lines, marker)
-    if idx is None:
-        return None
-    return _extract_complete_claude_live_region(lines[idx:])
-
-
-def _extract_complete_claude_live_region(lines: list[str]) -> str | None:
-    input_lines: list[str] = []
-    for line in lines:
-        input_lines.append(line)
-        if _is_horizontal_rule_line(line):
-            return "\n".join(input_lines)
-    return None
-
-
-def _extract_complete_codex_live_region(lines: list[str]) -> str | None:
-    marker = AgentName.CODEX.prompt_marker.strip()
-    if not marker:
-        return None
-    idx = _find_marker_row_index(lines, marker)
-    if idx is None:
-        return None
-    return _extract_complete_codex_live_input_block(lines[idx:])
-
-
-def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
-    input_lines: list[str] = []
-    marker = AgentName.CODEX.prompt_marker.strip()
-    previous_was_blank = False
-    for idx, line in enumerate(lines):
-        normalized = strip_ansi_codes(line).strip()
-        if (
-            idx > 0
-            and _is_codex_composer_chrome_line(line)
-            and _has_only_blank_or_codex_hint_trailing_lines(lines[idx + 1 :])
-        ):
-            input_lines.append(line)
-            return "\n".join(input_lines)
-        if idx > 0 and previous_was_blank and _is_complete_codex_passive_workspace_footer(line, lines[idx + 1 :]):
-            return "\n".join(input_lines)
-        if idx > 0 and marker and normalized.startswith(marker):
-            input_lines.append(line)
-            return "\n".join(input_lines)
-        input_lines.append(line)
-        previous_was_blank = not normalized
-    return None
-
-
-def _is_complete_codex_passive_workspace_footer(line: str, trailing_lines: list[str]) -> bool:
-    """Return whether a terminal status row closes Codex's passive composer."""
-    return (
-        _ANSI_ESCAPE_PREFIX in line
-        and strip_ansi_codes(line).startswith(_CODEX_FOOTER_INDENTATION + _CODEX_WORKSPACE_PATH_PREFIX)
-        and _has_only_blank_or_codex_hint_trailing_lines(trailing_lines)
-    )
-
-
-def _has_only_blank_or_codex_hint_trailing_lines(lines: list[str]) -> bool:
-    """Return whether every line after a terminal Codex chrome row is blank or a hint-row affordance.
-
-    Codex 0.157.0 renders an additional chrome row of key-hint affordances
-    (`? for shortcuts`, `f2 to view`) beneath its terminal footer row; such a
-    row carries no composer input and does not unsettle the boundary.
-    """
-    return all(not strip_ansi_codes(line).strip() or _is_codex_footer_hint_row(line) for line in lines)
-
-
-def _is_codex_footer_hint_row(line: str) -> bool:
-    """Return whether a trailing row carries a Codex key-hint affordance rather than input."""
-    normalized = _fold_prompt_whitespace(strip_ansi_codes(line)).lower()
-    return _CodexFooterRowToken.SHORTCUTS_HINT in normalized or _CodexFooterRowToken.WARNING_DETAIL_HINT in normalized
-
-
-def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
-    """Extract the DeepSeek composer up to its closing horizontal rule.
-
-    DeepSeek renders status and hint lines below that rule; they are not
-    editable composer content.
-    """
-    marker = AgentName.DEEPSEEK.prompt_marker.strip()
-    if not marker:
-        return None
-    idx = _find_marker_row_index(lines, marker)
-    if idx is None:
-        return None
-    input_lines: list[str] = []
-    for line in lines[idx:]:
-        if input_lines and (_is_horizontal_rule_line(line) or _is_deepseek_rounded_border_line(line)):
-            return "\n".join(input_lines)
-        input_lines.append(line)
-    return None
-
-
-def _is_deepseek_rounded_border_line(raw_line: str) -> bool:
-    """Recognize DeepSeek's structural rounded input border without reading prose."""
+def _is_deepseek_rounded_border_line(raw_line: str, corners: tuple[str, str]) -> bool:
+    """Recognize one of DeepSeek's structural rounded input borders without reading prose."""
     stripped = strip_ansi_codes(raw_line).strip()
-    if len(stripped) < 2:
+    if len(stripped) < len(corners):
         return False
-    return (
-        (stripped.startswith("╭") and stripped.endswith("╮")) or (stripped.startswith("╰") and stripped.endswith("╯"))
-    ) and all(char in {"╭", "╮", "╰", "╯", "─"} for char in stripped)
+    left, right = corners
+    return stripped.startswith(left) and stripped.endswith(right) and set(stripped) <= _DEEPSEEK_BORDER_CHARACTERS
 
 
-def _extract_complete_gemini_live_region(lines: list[str]) -> str | None:
-    for idx in range(len(lines) - 1, -1, -1):
-        if AgentName.GEMINI.prompt_marker not in strip_ansi_codes(lines[idx]):
-            continue
-        start_idx = idx
-        for preceding_idx in range(idx - 1, max(-1, idx - 20), -1):
-            if strip_ansi_codes(lines[preceding_idx]).strip().startswith(">"):
-                start_idx = preceding_idx
-                break
-        return "\n".join(lines[start_idx : idx + 1])
-    return _extract_complete_gemini_bordered_live_region(lines)
-
-
-def _extract_complete_gemini_bordered_live_region(lines: list[str]) -> str | None:
-    for idx in range(len(lines) - 1, -1, -1):
-        if not strip_ansi_codes(lines[idx]).strip().startswith(">"):
-            continue
-        has_border_above = idx > 0 and _is_horizontal_rule_line(lines[idx - 1])
-        has_border_below = idx + 1 < len(lines) and _is_horizontal_rule_line(lines[idx + 1])
-        if not has_border_above and not has_border_below:
-            continue
-        end_idx = idx + 1
-        while end_idx < len(lines):
-            stripped = strip_ansi_codes(lines[end_idx]).strip()
-            if _is_horizontal_rule_line(lines[end_idx]) or AgentName.GEMINI.prompt_marker in stripped:
-                return "\n".join(lines[idx : end_idx + 1])
-            end_idx += 1
-    return None
-
-
-def _live_region_has_input(live_region: str, agent: AgentName) -> bool:
-    """Return whether a complete composer contains operator-authored input."""
-    lines = live_region.splitlines()
-    for index, raw_line in enumerate(lines):
-        if _is_prompt_chrome_line(raw_line, agent) or (
-            agent is AgentName.GEMINI
-            and index == len(lines) - 1
-            and index > 1
-            and _is_horizontal_rule_line(lines[index - 1])
-            and any(
-                strip_ansi_codes(candidate).strip() == _GeminiFooterRowToken.COMPOSER_MARKER
-                for candidate in lines[: index - 1]
-            )
-            and _is_gemini_footer_chrome_line(raw_line)
-        ):
-            continue
-        input_part = _strip_live_prompt_marker(raw_line, agent)
-        input_part = _strip_generated_segments(input_part)
-        normalized = _normalize_text(input_part).strip()
-        if agent is AgentName.DEEPSEEK:
-            normalized = _strip_deepseek_composer_expand_affordance(normalized)
-        if normalized:
-            return True
-    return False
-
-
-def _is_gemini_footer_chrome_line(line: str) -> bool:
-    """Recognize only the terminal Gemini shortcut row with its model-effort gauge."""
-    normalized = _fold_prompt_whitespace(strip_ansi_codes(line)).lower()
-    if not normalized.startswith(_GeminiFooterRowToken.SHORTCUTS_HINT):
-        return False
-    gauge = normalized[len(_GeminiFooterRowToken.SHORTCUTS_HINT) :].strip()
-    if not gauge.startswith(_GeminiFooterRowToken.MODEL_NAME_PREFIX):
-        return False
-    model_and_effort = gauge[len(_GeminiFooterRowToken.MODEL_NAME_PREFIX) :]
-    model_name, separator, effort = model_and_effort.rpartition(_GeminiFooterRowToken.FIELD_SEPARATOR)
-    if not separator or not model_name.strip():
-        return False
-    return effort.strip() in {
-        _GeminiFooterRowToken.LOW_EFFORT,
-        _GeminiFooterRowToken.MEDIUM_EFFORT,
-        _GeminiFooterRowToken.HIGH_EFFORT,
-    }
-
-
-def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
-    stripped = strip_ansi_codes(raw_line).strip()
-    if not stripped or _is_horizontal_rule_line(raw_line):
-        return True
-    if agent is AgentName.GEMINI and stripped == AgentName.GEMINI.prompt_marker:
-        return True
-    if agent is AgentName.CODEX and _is_codex_composer_chrome_line(raw_line):
-        return True
-    return False
-
-
-def _is_codex_composer_chrome_line(line: str) -> bool:
-    normalized = _fold_prompt_whitespace(line).lower()
-    return (
-        _CodexFooterRowToken.SHIFT_TAB_HINT in normalized and _CodexFooterRowToken.ESC_DISMISS_HINT in normalized
-    ) or (
-        normalized.startswith(_CodexFooterRowToken.MODEL_NAME_PREFIX)
-        and _CodexFooterRowToken.FIELD_SEPARATOR in normalized
-    )
+def _strip_live_prompt_marker(raw_line: str, marker: str) -> str:
+    """Return the row after its leading prompt marker; a row not led by it is returned whole."""
+    marker_pos = raw_line.find(marker)
+    if marker_pos < 0 or strip_ansi_codes(raw_line[:marker_pos]).strip():
+        return raw_line
+    return raw_line[marker_pos + len(marker) :]
 
 
 def _strip_deepseek_composer_expand_affordance(normalized_text: str) -> str:
@@ -561,23 +346,9 @@ def _is_horizontal_rule_line(raw_line: str) -> bool:
     return bool(stripped) and set(stripped) <= {"─"}
 
 
-def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:
-    marker = ">" if agent is AgentName.GEMINI else agent.prompt_marker.strip()
-    if not marker:
-        return raw_line
-    marker_pos = raw_line.find(marker)
-    if marker_pos < 0 or strip_ansi_codes(raw_line[:marker_pos]).strip():
-        return raw_line
-    return raw_line[marker_pos + len(marker) :]
-
-
 def _normalize_text(text: str) -> str:
     stripped = strip_ansi_codes(text or "")
     return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
-
-
-def _fold_prompt_whitespace(text: str) -> str:
-    return " ".join(text.split())
 
 
 def _strip_generated_segments(text: str) -> str:
@@ -625,11 +396,8 @@ def _generated_style_active(params: list[str], active_style: bool) -> bool:
     return active_style
 
 
-async def _capture_snapshot(tmux_session_name: str) -> str:
-    output = await tmux_bridge.capture_pane(tmux_session_name, visible_only=True)
-    if not output:
-        return ""
-    return output[-UI_MESSAGE_MAX_CHARS:]
+async def _capture_snapshot(tmux_session_name: str) -> PaneObservation:
+    return await tmux_bridge.observe_visible_pane(tmux_session_name)
 
 
 def _digest_stability_view(stability_view: str) -> str:
@@ -643,33 +411,34 @@ async def wait_for_agent_ready(
     quiet_s: float,
     poll_interval_s: float = 0.2,
 ) -> tuple[bool, str]:
-    """Wait for a visible prompt and for the pre-prompt pane region to settle."""
+    """Wait for the agent's visible activity to settle, then for its identified composer.
+
+    Settledness comes first: the view the profile declares stable must hold still
+    for ``quiet_s`` while the composer is identified, and identification only
+    resets the window when the composer or the agent process is absent.
+    """
     agent = AgentName.from_str(agent_name)
     profile = _get_readiness_profile(agent)
     deadline = time.monotonic() + timeout_s
-    last_tail = await _capture_snapshot(session.tmux_session_name)
+    last_tail = (await _capture_snapshot(session.tmux_session_name)).text
     last_digest: str | None = None
     quiet_since: float | None = None
     prompt_seen = False
 
     while time.monotonic() < deadline:
-        current_tail = await _capture_snapshot(session.tmux_session_name)
-        last_tail = current_tail
-        prompt = profile.locate_prompt(current_tail)
+        observation = await _capture_snapshot(session.tmux_session_name)
+        last_tail = observation.text
+        prompt = profile.locate_prompt(observation)
         now = time.monotonic()
 
-        if (
-            prompt is None
-            or _get_readiness_profile(agent).observe_composer(current_tail).state is PromptDeliveryState.AMBIGUOUS
-            or not await tmux_bridge.is_process_running(session.tmux_session_name)
-        ):
+        if prompt is None or not await tmux_bridge.is_process_running(session.tmux_session_name):
             last_digest = None
             quiet_since = None
             await asyncio.sleep(poll_interval_s)
             continue
 
         prompt_seen = True
-        stability_view = profile.build_stability_view(current_tail, prompt)
+        stability_view = profile.build_stability_view(observation, prompt)
         current_digest = _digest_stability_view(stability_view)
 
         if current_digest != last_digest:
@@ -693,7 +462,7 @@ async def wait_for_agent_ready(
             quiet_s,
             len(stability_view.splitlines()) if stability_view else 0,
         )
-        return True, current_tail
+        return True, observation.text
 
     elapsed = time.monotonic() - (deadline - timeout_s)
     logger.debug(

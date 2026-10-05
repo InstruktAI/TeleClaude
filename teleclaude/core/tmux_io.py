@@ -393,8 +393,8 @@ async def _observe_prompt_delivery(
     *,
     active_agent: str | None,
 ) -> PromptDeliveryObservation:
-    output = await tmux_bridge.capture_pane(session.tmux_session_name, visible_only=True)
-    return classify_prompt_delivery(output, active_agent)
+    observation = await tmux_bridge.observe_visible_pane(session.tmux_session_name)
+    return classify_prompt_delivery(observation, active_agent)
 
 
 def _log_prompt_observation(
