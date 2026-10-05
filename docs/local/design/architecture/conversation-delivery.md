@@ -82,13 +82,14 @@ flowchart LR
   person's words.
 <!-- planned:relayed-input-never-controls-agent -->
 - **The platform's neutralizing mark is transport framing.** Session input
-  delivery places a runtime's declared neutralizing mark before conversation
-  text that begins with one of that runtime's interface-control characters
-  (`session-input-delivery`). The mark carries no author and no content, so
-  both ingress boundaries remove it together with the runtime's framing,
-  before segmentation. Recognition mirrors construction: only a declared mark
-  directly followed by a declared control character is removed, so every
-  other text keeps its characters.
+  delivery places a runtime's declared neutralizing mark at the start of
+  conversation text whose first character after leading whitespace is one of
+  that runtime's interface-control characters (`session-input-delivery`). The
+  mark carries no author and no content, so both ingress boundaries remove it
+  together with the runtime's framing, before segmentation. Recognition
+  mirrors construction: only a leading declared mark followed, after any
+  whitespace, by a declared control character is removed, so every other text
+  keeps its characters.
 <!-- /planned:relayed-input-never-controls-agent -->
 - **The envelope delimits authorship.** A native entry is an ordered composition
   of platform-authored envelopes and prompt input. Content inside an envelope is

@@ -87,7 +87,8 @@ defect discovered live.
    any other prefix the vendor documents), and which single neutralizing
    character placed before them makes the composer treat the prompt as
    ordinary text and still submit it on one discrete Enter. Verify each by
-   pasting through the platform's own delivery path; a keystroke observation or
+   pasting through the platform's own delivery path, including a control
+   character preceded by leading whitespace; a keystroke observation or
    another runtime's answer does not transfer, because composers trim and strip
    different characters before deciding.
 <!-- /planned:relayed-input-never-controls-agent -->

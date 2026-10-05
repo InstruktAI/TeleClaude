@@ -85,9 +85,11 @@ producer or the session's recorded entry point, never the text. Platform
 commands that a channel's own handlers or command-input recognition resolve
 before delivery keep their contracts unchanged.
 
-When conversation text is submitted to an agent's composer and begins with a
-character that runtime's composer treats as interface control, the runtime's
-neutralizing mark precedes it; the text is otherwise submitted unchanged. Each
+When conversation text is submitted to an agent's composer and its first
+character after any leading whitespace is one that runtime's composer treats as
+interface control, the runtime's neutralizing mark is placed at the very start
+of the text; the text is otherwise submitted unchanged. Leading whitespace
+never hides a control character. Each
 runtime's control characters and its neutralizing mark — a character that
 makes the composer treat the text as an ordinary prompt and submit it on the
 single discrete Enter — are declared once on its canonical agent entry
@@ -367,7 +369,7 @@ And their presence, absence, or wording changes no human-involvement declaration
 ```gherkin
 Given a person writes to an agent session through a conversation channel
 And their message is not a platform command the channel or the platform resolves before delivery
-And the message begins with a character the session's agent treats as interface control
+And the message's first character after any leading whitespace is one the session's agent treats as interface control
 When the message reaches the agent, whether it continues the conversation or starts the session
 Then the agent receives it as an ordinary prompt and submits it once
 And no shell command runs, no interface command executes, and no input mode starts
