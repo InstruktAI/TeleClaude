@@ -20,6 +20,8 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Final, NotRequired, TypedDict
 
+_TRAILING_CONTINUATION_SPACE: Final[str] = " "
+
 
 class AgentName(StrEnum):
     """The closed set of AI agents TeleClaude can launch and dispatch to."""
@@ -254,10 +256,11 @@ class AgentDefinition:
 
 @dataclass(frozen=True)
 class ComposerControl:
-    """Paste-sensitive characters and a neutralizing mark for one runtime."""
+    """Paste-sensitive characters and submission marks for one runtime."""
 
     control_characters: tuple[str, ...]
     neutralizing_mark: str
+    trailing_continuation_mark: str | None
 
 
 def agent_permutation(*order: AgentName) -> tuple[str, ...]:
@@ -300,7 +303,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             key=AgentName.CLAUDE,
             aliases=(),
             prompt_marker="\u276f",
-            composer_control=ComposerControl(("!", "/"), "\u00a0"),
+            composer_control=ComposerControl(("!", "/"), "\u00a0", _TRAILING_CONTINUATION_SPACE),
             startup_signal=AgentStartupSignal.NATIVE,
             discord=DiscordAuthorPresentation(
                 alias="Claude",
@@ -377,7 +380,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             key=AgentName.CODEX,
             aliases=(),
             prompt_marker="\n\u203a ",
-            composer_control=ComposerControl(("!", "/"), "\u200b"),
+            composer_control=ComposerControl(("!", "/"), "\u200b", None),
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Codex",
@@ -472,7 +475,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             key=AgentName.GEMINI,
             aliases=("agy",),
             prompt_marker=">",
-            composer_control=ComposerControl(("!", "/"), "\u200b"),
+            composer_control=ComposerControl(("!", "/"), "\u200b", _TRAILING_CONTINUATION_SPACE),
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Gemini",
@@ -538,7 +541,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             # as Claude) when idle; the daemon's tmux readiness detection
             # watches for it before typing the prompt.
             prompt_marker="\u276f",
-            composer_control=ComposerControl(("!", "/"), "\u200b"),
+            composer_control=ComposerControl(("!", "/"), "\u200b", None),
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="DeepSeek",

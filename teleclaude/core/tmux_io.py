@@ -30,6 +30,7 @@ from teleclaude.core.events import (
 from teleclaude.core.injected_text import (
     InjectedInputAuthority,
     construct_delivered_text,
+    prepare_composer_submission,
 )
 from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -354,10 +355,12 @@ async def inject_user_turn(
 ) -> UserTurnDeliveryResult:
     """Deliver text without allowing platform Enter to submit occupied input."""
     delivered_text = text
+    conversation_agent: AgentName | None = None
     if authority is InjectedInputAuthority.CONVERSATION:
         if active_agent is None:
             raise ValueError(CONVERSATION_REQUIRES_ACTIVE_AGENT_ERROR)
-        delivered_text = construct_delivered_text(text, authority, AgentName.from_str(active_agent))
+        conversation_agent = AgentName.from_str(active_agent)
+        delivered_text = construct_delivered_text(text, authority, conversation_agent)
     tmux_name = session.tmux_session_name or ""
     before_delivery = await _observe_prompt_delivery(session, active_agent=active_agent)
     _log_prompt_observation(
@@ -396,9 +399,12 @@ async def inject_user_turn(
             existing_input_preserved=True,
         )
 
+    submission_text = delivered_text
+    if conversation_agent is not None:
+        submission_text = prepare_composer_submission(delivered_text, conversation_agent)
     submitted = await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,
-        text=delivered_text,
+        text=submission_text,
     )
     if not submitted:
         return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.SUBMIT)

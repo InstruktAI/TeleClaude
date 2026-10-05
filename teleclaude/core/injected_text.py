@@ -49,6 +49,7 @@ class InjectedInputAuthority(StrEnum):
 
 
 _FORMAT_CATEGORY = "Cf"
+_TRAILING_BACKSLASH = "\\"
 
 
 def authority_for_source_feature(source: InjectedTextSourceFeature) -> InjectedInputAuthority:
@@ -88,6 +89,14 @@ def construct_delivered_text(text: str, authority: InjectedInputAuthority, agent
             return f"{control.neutralizing_mark}{text}"
         break
     return text
+
+
+def prepare_composer_submission(text: str, agent: AgentName) -> str:
+    """Append the runtime's continuation mark after a trailing backslash."""
+    mark = AGENT_REGISTRY[agent].composer_control.trailing_continuation_mark
+    if mark is None or not text.rstrip().endswith(_TRAILING_BACKSLASH):
+        return text
+    return text + mark
 
 
 def recognize_delivered_text(text: str, agent: AgentName) -> str:
