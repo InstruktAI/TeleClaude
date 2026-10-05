@@ -76,16 +76,11 @@ defect discovered live.
 
 8. The idle prompt marker — the exact glyph, verified from a pane capture, not
    assumed from what it looks like in a terminal.
-<!-- planned-change:codex-review-startup-composer-readiness -->
-9. The input region's geometry: where the live input ends. A bordered composer
-   needs an extraction rule or status text below the border reads as user input.
-<!-- change:codex-review-startup-composer-readiness -->
 9. The composer's own markers, verified from a pane capture: the prompt glyph,
    the frame, border, or padding the CLI draws as part of the composer, where
    the CLI places the input cursor, and how an empty composer renders. These
    markers alone bound the live input; footers, status lines, hints, and labels
    outside them are never read.
-<!-- /planned-change:codex-review-startup-composer-readiness -->
 10. Terminal behavior: does the TUI self-clamp color under `$TMUX`, and what is
     its escape hatch? Does it need a locale?
 
@@ -167,13 +162,6 @@ the next onboarding will want to diff against.
 ### 4. Readiness and input
 
 1. `_PROMPT_MARKERS_BY_AGENT` — the verified idle glyph.
-<!-- planned-change:codex-review-startup-composer-readiness -->
-2. `teleclaude/core/agent_readiness.py` — the readiness profile and complete
-   composer observation. A pane-based TUI uses marker-line readiness, and its
-   profile owns the live input geometry needed to distinguish a complete empty
-   or occupied composer from any other interactive screen; do not leave a
-   comment claiming a headless posture the runtime does not have.
-<!-- change:codex-review-startup-composer-readiness -->
 2. `teleclaude/core/agent_readiness.py` — the readiness profile and complete
    composer observation. A pane-based TUI uses marker-line readiness, and its
    profile identifies the complete composer, and whether it is empty or
@@ -181,7 +169,6 @@ the next onboarding will want to diff against.
    from any other interactive screen. Readiness is assessed on settled
    activity, and no row outside the composer takes part in identifying it. Do
    not leave a comment claiming a headless posture the runtime does not have.
-<!-- /planned-change:codex-review-startup-composer-readiness -->
 
 3. `teleclaude/core/tmux_bridge/_keys.py` — per-agent input escaping, if the
    harness mishandles any character.
@@ -331,11 +318,9 @@ onboarding done:
 
 - docs/local/spec/feature/agent_runtime/deepseek-harness-integration.md — the
   worked example this procedure was extracted from.
-<!-- planned:codex-review-startup-composer-readiness -->
 - ~/.teleclaude/docs/sdlc/principle/architecture-boundary-purity.md — why
   readiness rests on the composer's own markers, never on the presentation
   around it.
-<!-- /planned:codex-review-startup-composer-readiness -->
 
 - docs/local/procedure/add-adapter.md — the adapter counterpart; adapters are
   transports, agent runtimes are launched processes.

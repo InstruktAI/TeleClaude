@@ -49,7 +49,6 @@ after an empty launch, and resumed or adopted sessions. An initializing
 lifecycle does not prevent delivery when the runtime's input-readiness contract
 is satisfied. Pane readiness permits input only; it never activates lifecycle.
 
-<!-- planned:codex-review-startup-composer-readiness -->
 Live-pane composer readiness rests on settled agent activity: the pane is
 assessed for input only after the agent's visible activity has stopped changing
 for the readiness quiet window, and the composer decision never restarts that
@@ -61,7 +60,6 @@ status lines, hints, warnings, model and context labels, and animation, are
 never read for what they say and never become a candidate composer; changing
 them changes neither readiness nor occupancy. A transcript echo of an earlier
 prompt is not the live composer.
-<!-- /planned:codex-review-startup-composer-readiness -->
 
 Headless adoption uses lower-level pane primitives for shell and runtime launch;
 its triggering conversational message uses the shared input-delivery surface.
@@ -364,7 +362,5 @@ And their presence, absence, or wording changes no human-involvement declaration
 - docs/local/spec/feature/agent_runtime/session-revival.md
 - ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md
-<!-- planned:codex-review-startup-composer-readiness -->
 - ~/.teleclaude/docs/sdlc/principle/architecture-boundary-purity.md — readiness
   rests on the composer, never on the presentation around it.
-<!-- /planned:codex-review-startup-composer-readiness -->
