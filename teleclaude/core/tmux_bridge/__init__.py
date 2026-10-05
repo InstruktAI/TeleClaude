@@ -20,6 +20,8 @@ from teleclaude.core.tmux_bridge._keys import (
 )
 from teleclaude.core.tmux_bridge._pane import (
     FALLBACK_CAPTURE_LINES,
+    PaneCursor,
+    PaneObservation,
     PaneSnapshot,
     capture_pane,
     collect_pane_snapshot,
@@ -33,6 +35,7 @@ from teleclaude.core.tmux_bridge._pane import (
     is_process_running,
     kill_session,
     list_tmux_sessions,
+    observe_visible_pane,
     session_exists,
     start_pipe_pane,
     stop_pipe_pane,
@@ -61,6 +64,8 @@ __all__ = [
     "SUBPROCESS_TIMEOUT_DEFAULT",
     "SUBPROCESS_TIMEOUT_LONG",
     "SUBPROCESS_TIMEOUT_QUICK",
+    "PaneCursor",
+    "PaneObservation",
     "PaneSnapshot",
     "SubprocessTimeoutError",
     "TmuxSnapshotMalformedError",
@@ -81,6 +86,7 @@ __all__ = [
     "is_process_running",
     "kill_session",
     "list_tmux_sessions",
+    "observe_visible_pane",
     "paste_text_existing_tmux",
     "pid_is_alive",
     "send_arrow_key",

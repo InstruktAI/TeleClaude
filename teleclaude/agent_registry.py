@@ -455,7 +455,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
         AgentName.GEMINI: AgentDefinition(
             key=AgentName.GEMINI,
             aliases=("agy",),
-            prompt_marker="? for shortcuts",
+            prompt_marker=">",
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Gemini",

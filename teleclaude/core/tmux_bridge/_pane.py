@@ -32,6 +32,24 @@ _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell
 _TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
 _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
 _SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"
+_OBSERVATION_MARKER = "__TELECLAUDE_PANE_OBSERVATION_BOUNDARY_4c1e7a92__"
+_OBSERVATION_CURSOR_FORMAT = "#{cursor_flag} #{cursor_y} #{cursor_x}"
+_OBSERVATION_DISPLAY_FORMAT = _OBSERVATION_MARKER + _OBSERVATION_CURSOR_FORMAT
+_CURSOR_VISIBLE_FLAG = "1"
+_CURSOR_FIELD_COUNT = 3
+_NO_TEXT = ""
+_OUTPUT_ENCODING = "utf-8"
+_OUTPUT_DECODE_ERRORS = "replace"
+_TMUX_OPERATION_LABEL = "tmux operation"
+_TMUX_CAPTURE_PANE = "capture-pane"
+_TMUX_DISPLAY_MESSAGE = "display-message"
+_TMUX_COMMAND_SEPARATOR = ";"
+_TMUX_TARGET_FLAG = "-t"
+_TMUX_PRINT_FLAG = "-p"
+_TMUX_ESCAPES_FLAG = "-e"
+_OBSERVE_FAILED_LOG = "Failed to observe pane from session %s: returncode=%d, stderr=%s"
+_OBSERVE_TIMEOUT_LOG = "Timeout observing pane from session %s: %s"
+_OBSERVE_ERROR_LOG = "Exception observing pane from session %s: %s"
 _SNAPSHOT_MARKER_MISSING = "tmux snapshot output missing required boundary marker (stdout_bytes={size})"
 _TMUX_UNAVAILABLE_ERROR = "tmux binary unavailable for {session_name}: {error}"
 DEFAULT_CAPTURE_LINES = 200
@@ -61,6 +79,27 @@ class PaneSnapshot:
     pane_dead: bool
     output_raw: str
     output_normalized: str
+
+
+@dataclass(frozen=True)
+class PaneCursor:
+    """Zero-based screen position of the visible input cursor."""
+
+    row: int
+    column: int
+
+
+@dataclass(frozen=True)
+class PaneObservation:
+    """The visible pane surface and its cursor, read in one tmux invocation.
+
+    ``text`` holds one line per screen row, so ``cursor.row`` indexes its lines
+    directly. ``cursor`` is ``None`` when the program hides its cursor or the
+    capture produced nothing.
+    """
+
+    text: str
+    cursor: PaneCursor | None
 
 
 def _normalize_pane_output(text: str) -> str:
@@ -159,7 +198,6 @@ async def capture_pane(
     session_name: str,
     *,
     capture_lines: int | None = None,
-    visible_only: bool = False,
 ) -> str:
     """Capture pane output from tmux session.
 
@@ -183,9 +221,9 @@ async def capture_pane(
             "-p",
             "-J",
             "-e",
+            "-S",
+            f"-{window_lines}",
         ]
-        if not visible_only:
-            cmd.extend(["-S", f"-{window_lines}"])
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -209,6 +247,64 @@ async def capture_pane(
     except (OSError, ValueError) as e:
         logger.error("Exception capturing pane from session %s: %s", session_name, e)
         raise
+
+
+async def observe_visible_pane(session_name: str) -> PaneObservation:
+    """Capture the visible pane surface together with its cursor state.
+
+    Both facts come from one tmux invocation, so the text and the cursor
+    describe the same moment. Wrapped lines are not joined: every screen row is
+    one line of the returned text. A failed capture yields an empty
+    observation, never a surface.
+    """
+    cmd = [
+        config.computer.tmux_binary,
+        _TMUX_CAPTURE_PANE,
+        _TMUX_TARGET_FLAG,
+        session_name,
+        _TMUX_PRINT_FLAG,
+        _TMUX_ESCAPES_FLAG,
+        _TMUX_COMMAND_SEPARATOR,
+        _TMUX_DISPLAY_MESSAGE,
+        _TMUX_TARGET_FLAG,
+        session_name,
+        _TMUX_PRINT_FLAG,
+        _OBSERVATION_DISPLAY_FORMAT,
+    ]
+    try:
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, _TMUX_OPERATION_LABEL)
+
+        if result.returncode != 0:
+            logger.warning(_OBSERVE_FAILED_LOG, session_name, result.returncode, stderr.decode().strip())
+            return PaneObservation(text=_NO_TEXT, cursor=None)
+
+        return _parse_observation_stdout(stdout)
+
+    except SubprocessTimeoutError as e:
+        logger.error(_OBSERVE_TIMEOUT_LOG, session_name, e)
+        raise
+    except (OSError, ValueError) as e:
+        logger.error(_OBSERVE_ERROR_LOG, session_name, e)
+        raise
+
+
+def _parse_observation_stdout(stdout: bytes) -> PaneObservation:
+    """Split one tmux call's surface text from its trailing cursor state."""
+    decoded = stdout.decode(_OUTPUT_ENCODING, errors=_OUTPUT_DECODE_ERRORS)
+    if _OBSERVATION_MARKER not in decoded:
+        raise TmuxSnapshotMalformedError(_SNAPSHOT_MARKER_MISSING.format(size=len(stdout)))
+
+    text, cursor_text = decoded.rsplit(_OBSERVATION_MARKER, 1)
+    fields = cursor_text.split()
+    if len(fields) != _CURSOR_FIELD_COUNT or fields[0] != _CURSOR_VISIBLE_FLAG:
+        return PaneObservation(text=text, cursor=None)
+    row_text, column_text = fields[1:]
+    if not row_text.isdigit() or not column_text.isdigit():
+        return PaneObservation(text=text, cursor=None)
+    return PaneObservation(text=text, cursor=PaneCursor(row=int(row_text), column=int(column_text)))
 
 
 def _parse_snapshot_stdout(stdout: bytes) -> tuple[str, bool]:
