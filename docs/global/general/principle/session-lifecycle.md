@@ -26,12 +26,10 @@ holds the current conversation and remaining obligations. Treating one
 assignment's completion as the whole session's completion can cut off the human
 while that conversation is still forming.
 
-<!-- planned:prepared-releases-prepare-claim -->
 A session and a claim on work answer different questions: whether this agent
 still has something to attend to, and who drives the work next. The next owner
 waits on the claim, not on the session, so a claim held by a session that no
 longer drives the work stalls the owner that does.
-<!-- /planned:prepared-releases-prepare-claim -->
 
 Life does not revolve around individuality. It is the myriad of expressions — coexisting
 and cooperating — that produces continuity. Agents come into existence, live briefly, and
@@ -60,11 +58,9 @@ So ending flows from context, not from a worker's own initiative.
   responsible for it and assesses departure against every current obligation.
   A terminal workflow script does not close that conversation
   (`general/principle/attunement`).
-<!-- planned:prepared-releases-prepare-claim -->
 - **An obligation keeps the session, never the claim.** When a workflow hands
   the next move to another owner, the session's lifecycle claim on that work is
   released with it, whether or not the session stays for another obligation.
-<!-- /planned:prepared-releases-prepare-claim -->
 
 - **Artifacts are the evidence trail.** The durable record, not the transcript, carries the
   outcome. Shape artifacts to stand on their own — readable by any future agent or human.

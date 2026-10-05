@@ -384,7 +384,6 @@ And other live prepare-lane sessions for the slug are still ended, and the live 
 And the direction derives from the Todo's durable build residue, not from the session's memory of how it arrived
 ```
 
-<!-- planned:prepared-releases-prepare-claim -->
 #### UC-WPS27: PREPARED releases the driving session's lifecycle claim
 
 ```gherkin
@@ -397,7 +396,6 @@ And the terminal script states that P no longer holds the claim on my-feature
 And no claim held by a different live session is changed
 But when the Todo carries an in-flight build to resume, P keeps its claim and is directed to re-enter the work machine
 ```
-<!-- /planned:prepared-releases-prepare-claim -->
 
 ### Explicit slug required
 

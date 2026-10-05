@@ -314,7 +314,6 @@ And the script contains neither remembered child identifiers nor a manual child-
 And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and prepare-to-work resumes emit no bulk child cleanup
 ```
 
-<!-- planned:prepared-releases-prepare-claim -->
 #### UC-WSM18: The finalize-ready handoff releases the work orchestrator's lifecycle claim
 
 ```gherkin
@@ -325,7 +324,6 @@ And the Todo's next owner takes it up whether or not W remains open
 And the terminal script states that W no longer holds the claim on my-feature
 And no claim held by a different live session is changed
 ```
-<!-- /planned:prepared-releases-prepare-claim -->
 
 #### UC-WSM14: Every command the work machine emits is domain-qualified
 

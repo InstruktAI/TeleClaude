@@ -56,18 +56,6 @@ lifecycle mutation outside the supported surface.
 
 ### Terminal Child Cleanup
 
-<!-- planned-change:prepared-releases-prepare-claim -->
-At a true terminal state, the state-machine script invokes bare `telec sessions
-end` as terminal worker cleanup. That operation owns caller-scoped enumeration and
-closes every live direct child across computers; the orchestrator never expands
-it into listing prose, remembered worker ids, or per-child commands. A failure
-blocks self-departure, while a non-terminal handoff or resume emits no bulk
-cleanup so the sessions needed for continuing work remain live. Successful
-worker cleanup leaves the orchestrator to assess every remaining session
-obligation before departure. An unfinished human conversation keeps that
-session open; a terminal workflow script settles only its assignment
-(`general/principle/session-lifecycle`, `general/principle/attunement`).
-<!-- change:prepared-releases-prepare-claim -->
 At a true terminal state, the state-machine script invokes bare `telec sessions
 end` as terminal worker cleanup. That operation owns caller-scoped enumeration and
 closes every live direct child across computers; the orchestrator never expands
@@ -82,7 +70,6 @@ cleanup leaves the orchestrator to assess every remaining session obligation
 before departure. An unfinished human conversation keeps the session open,
 never the claim; a terminal workflow script settles only its assignment
 (`general/principle/session-lifecycle`, `general/principle/attunement`).
-<!-- /planned-change:prepared-releases-prepare-claim -->
 
 ### Container Slug Handling
 
