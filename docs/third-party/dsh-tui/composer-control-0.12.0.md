@@ -37,6 +37,12 @@ observed.
 A leading U+200B makes `!` and `/` pastes ordinary prompts that submit on the
 single discrete Enter. U+200B is kept in the session's `user/message` entries.
 
+## Other submission behavior
+
+Enter submits the composer text as it stands when no menu or overlay is open;
+there is no line-continuation rule for a final `\` (`components/PromptInput`
+`handleEnter` → `submitText`). Established from source at tag `v0.12.0` only.
+
 ## Sources
 
 - https://github.com/ccch1mneyyy/dsh-TUI

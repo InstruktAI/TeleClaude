@@ -47,7 +47,23 @@ transcript and the `UserPromptSubmit` payload.
 ## Other submission behavior
 
 A message ending in `\` does not submit: Enter removes the backslash and
-inserts a newline, so the next pasted text is appended.
+inserts a newline, so the next pasted text is appended. A run of backslashes is
+no escape: `\\` loses one backslash the same way.
+
+A character after the final backslash makes the single discrete Enter submit:
+an ASCII space, U+00A0, or a line break, also when the backslash is itself
+followed by whitespace. A normal prompt is recorded with its trailing
+whitespace trimmed, so the `UserPromptSubmit` payload and the transcript hold
+the text with its final backslash and without that character. A trailing
+U+200B does not help: it is stripped and that Enter sends nothing.
+
+A paste over 800 characters or more than three lines collapses into a pasted
+block, which submits even when it ends in `\`; the block keeps a trailing space
+but not a trailing line break, and is recorded inside
+`<pasted_content id="…">` framing. An appended character counts toward both
+limits: a line break turns a three-line paste into a collapsed one, and any
+character turns an 800-character paste into one. A model may treat a collapsed
+block as pasted content rather than as the person's own request.
 
 ## Sources
 

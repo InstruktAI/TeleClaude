@@ -43,7 +43,14 @@ log and conversation database and is absent from the brain `transcript.jsonl`.
 ## Other submission behavior
 
 - A message ending in `\` does not submit: Enter removes the backslash and
-  inserts a newline.
+  inserts a newline. Trailing line breaks of a paste do not prevent this — a
+  message ending in `\` and a line break is held the same way — and `\\` is
+  no escape.
+- A trailing ASCII space, U+00A0 or U+200B after the final backslash makes the
+  single discrete Enter submit, also after a trailing line break; a trailing
+  line break alone does not. The input log, conversation database and brain
+  `transcript.jsonl` hold the text with its final backslash and without a
+  trailing space or U+00A0; U+200B is kept in the input log only.
 - A feedback-survey overlay ("[1] Good [2] Fine [3] Bad [0] Skip") appears
   after some turns; a paste submitted while it shows was lost. Setting:
   `showFeedbackSurvey` (default true).

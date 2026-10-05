@@ -42,6 +42,14 @@ removed by `sanitize_user_text` (which removes Cc controls and ANSI CSI); the
 rollout transcript stores the user text with the U+200B. A leading ASCII space
 stops `/` but not `!`.
 
+## Other submission behavior
+
+A discrete Enter after a bracketed paste submits whatever the paste ends with;
+the composer has no line-continuation rule for a final `\`
+(`bottom_pane/chat_composer.rs`; only an active unbracketed paste burst turns
+Enter into a newline). Established from source only; upstream issue #3556
+asking for backslash continuation was closed as not planned.
+
 ## Sources
 
 - https://github.com/openai/codex/tree/rust-v0.160.0/codex-rs/tui/src
