@@ -15,6 +15,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     find_live_root_prepare_lifecycle_sessions_for_slug,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.unclaim import ClaimReleaseOutcome, unclaim_todo_for_caller
 from teleclaude.session_identity import get_session_id
 from teleclaude.types.todos import TodoState
 
@@ -41,6 +42,10 @@ class _PrepareCompletionLogFields(TypedDict):
     old_plan_digest: str
     current_plan_digest: str
     dependency_gate: NotRequired[str]
+    claim_release_status: NotRequired[str]
+    claim_release_reason: NotRequired[str]
+    claim_active_runner_cleared: NotRequired[bool]
+    claim_working_slug_cleared: NotRequired[bool]
 
 
 if TYPE_CHECKING:
@@ -82,20 +87,32 @@ async def commit_writer(
 
 
 async def prepare_step_prepared(db: Db, todos_db: TodosDb, slug: str, *, project_root: str) -> tuple[bool, str]:
-    """PREPARED: end prepare sessions or resume preserved work in place."""
-    _ = project_root
+    """PREPARED: release terminal claims or resume preserved work in place."""
     state = await todos_db.read_state(slug)
     if state is None:
         raise RuntimeError(f"prepared todo state is missing for {slug}")
     model = TodoState.model_validate(state)
     resume_work = bool(model.build_start_base_sha)
+    claim_release_outcome: ClaimReleaseOutcome | None = None
     session_ids_to_end: list[str] | None = None
     if resume_work:
         live_sessions = await find_live_root_prepare_lifecycle_sessions_for_slug(db, slug)
         self_end_session = await find_live_root_next_prepare_session_for_slug(db, slug)
         excluded_from_id_cleanup = {self_end_session} if self_end_session is not None else set()
         session_ids_to_end = [session_id for session_id in live_sessions if session_id not in excluded_from_id_cleanup]
-    _log_prepare_completed(model, slug=slug, resume_work=resume_work)
+    else:
+        claim_release_outcome = await unclaim_todo_for_caller(
+            db,
+            slug=slug,
+            cwd=project_root,
+            caller_session_id=get_session_id(),
+        )
+    _log_prepare_completed(
+        model,
+        slug=slug,
+        resume_work=resume_work,
+        claim_release_outcome=claim_release_outcome,
+    )
     return False, format_prepared(
         slug,
         session_ids_to_end=session_ids_to_end,
@@ -103,7 +120,13 @@ async def prepare_step_prepared(db: Db, todos_db: TodosDb, slug: str, *, project
     )
 
 
-def _log_prepare_completed(model: TodoState, *, slug: str, resume_work: bool) -> None:
+def _log_prepare_completed(
+    model: TodoState,
+    *,
+    slug: str,
+    resume_work: bool,
+    claim_release_outcome: ClaimReleaseOutcome | None,
+) -> None:
     log_fields: _PrepareCompletionLogFields = {
         "event": _PREPARE_COMPLETED_EVENT,
         "outcome": _PREPARE_RESUME_OUTCOME if resume_work else _PREPARE_TERMINAL_OUTCOME,
@@ -117,4 +140,11 @@ def _log_prepare_completed(model: TodoState, *, slug: str, resume_work: bool) ->
     }
     if plan_review_current(model):
         log_fields["dependency_gate"] = _DEPENDENCY_GATE_OPEN
+    if claim_release_outcome is not None:
+        log_fields["claim_release_status"] = claim_release_outcome.status.value
+        log_fields["claim_release_reason"] = (
+            claim_release_outcome.refusal_reason.value if claim_release_outcome.refusal_reason else _EMPTY_TEXT
+        )
+        log_fields["claim_active_runner_cleared"] = claim_release_outcome.cleared_active_runner
+        log_fields["claim_working_slug_cleared"] = claim_release_outcome.cleared_working_slug
     logger.info(_PREPARE_COMPLETED_MESSAGE, **log_fields)

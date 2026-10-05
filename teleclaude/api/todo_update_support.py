@@ -20,7 +20,11 @@ from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.next_machine.unclaim import unclaim_todo_for_caller
+from teleclaude.core.next_machine.unclaim import (
+    ClaimReleaseRefusal,
+    format_claim_release_outcome,
+    unclaim_todo_for_caller,
+)
 from teleclaude.core.todos_db import (
     GroupCycleRefused,
     GroupDependencyConflict,
@@ -253,13 +257,14 @@ async def apply_unclaim_update(
 ) -> str | None:
     if not unclaim:
         return None
-    unclaim_summary = await unclaim_todo_for_caller(
+    unclaim_outcome = await unclaim_todo_for_caller(
         db,
         slug=slug,
         cwd=cwd,
         caller_session_id=caller_session_id,
     )
-    if unclaim_summary.startswith("error:"):
+    unclaim_summary = format_claim_release_outcome(outcome=unclaim_outcome)
+    if isinstance(unclaim_outcome, ClaimReleaseRefusal):
         raise HTTPException(status_code=409, detail=unclaim_summary)
     return unclaim_summary
 

@@ -36,6 +36,7 @@ __all__ = [
     "format_prepared",
     "format_procedure_load",
     "format_stash_debt",
+    "format_terminal_claim_handoff",
     "format_tool_call",
     "format_uncommitted_changes",
     "format_work_entry_drift_bounce",
@@ -82,10 +83,16 @@ TERMINAL_DEPARTURE_DIRECTIVE = (
     "Once the workflow handoff and any required worker cleanup are complete, this closes only the "
     "workflow assignment; your session may still hold other live obligations. Assess departure "
     "under `general/principle/session-lifecycle` against every "
-    "current obligation of this session; an unfinished human conversation remains a live obligation. "
+    "current obligation of this session; an unfinished human conversation remains a live obligation "
+    "and may keep your session open without holding a todo's lifecycle claim. "
     "When that departure condition holds, emit a brief farewell, then run "
     "`telec reminders set session-departure` as your final action. Nothing follows the reminder arm."
 )
+_HANDOFF_CLAIM_STATEMENT = (
+    "CLAIM RELEASED: This session holds no lifecycle claim on {slug}. The next owner may take it up "
+    "now, whether or not this session stays open for another obligation."
+)
+_PARAGRAPH_BREAK = "\n\n"
 _PENDING_DRIFT_STATUS = "pending"
 _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
     "Run `{command}` and follow the returned procedure exactly for this phase.\n\n"
@@ -443,9 +450,14 @@ def format_prepared(
             "in this same session."
         )
     else:
-        terminal_note = TERMINAL_DEPARTURE_DIRECTIVE
+        terminal_note = format_terminal_claim_handoff(slug)
 
     return f"PREPARED: {slug} is ready for work.\n\n{cleanup_block}\n\n{terminal_note}"
+
+
+def format_terminal_claim_handoff(slug: str) -> str:
+    """State claim release before the shared terminal departure direction."""
+    return _HANDOFF_CLAIM_STATEMENT.format(slug=slug) + _PARAGRAPH_BREAK + TERMINAL_DEPARTURE_DIRECTIVE
 
 
 def format_plan_reconcile_note(slug: str, old_digest: str, new_digest: str) -> str:
@@ -526,7 +538,7 @@ def format_finalize_handoff_complete(slug: str) -> str:
     )
 
     steps.append("2. End child sessions:\n   telec sessions end")
-    steps.append(TERMINAL_DEPARTURE_DIRECTIVE)
+    steps.append(format_terminal_claim_handoff(slug))
 
     instructions = "\n".join(steps)
     return f"""FINALIZE HANDOFF COMPLETE: {slug}

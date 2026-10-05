@@ -60,6 +60,7 @@ from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_p
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.unclaim import ClaimReleaseOutcome, unclaim_todo_for_caller
 from teleclaude.events.envelope_facts import subject_for_project_path
 from teleclaude.session_identity import get_session_id
 
@@ -80,6 +81,8 @@ from teleclaude.core.next_machine.review_rounds import (
 from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, resolve_pending_review_state
 
 logger = get_logger(__name__)
+_FINALIZE_CLAIM_RELEASE_MESSAGE = "todo finalize handoff claim release"
+_EMPTY_SESSION_ID = ""
 
 PREPARED_ARTIFACT_CONTRACT = (
     "Prepared artifact contract for {slug}: PRD is the canonical intent and "
@@ -788,8 +791,27 @@ async def _work_step_finalize_ready(
     worktree_cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """FINALIZE_READY: terminal cleanup. End child sessions and self."""
-    _ = todos_db, cwd, worktree_cwd, state
+    """FINALIZE_READY: release the caller's claim before terminal cleanup."""
+    _ = todos_db, worktree_cwd, state
+    caller_session_id = get_session_id()
+    project_root = _derive_project_root(cwd, slug)
+    claim_release_outcome: ClaimReleaseOutcome = await unclaim_todo_for_caller(
+        db,
+        slug=slug,
+        cwd=project_root,
+        caller_session_id=caller_session_id,
+    )
+    logger.info(
+        _FINALIZE_CLAIM_RELEASE_MESSAGE,
+        slug=slug,
+        caller_session_id=caller_session_id or _EMPTY_SESSION_ID,
+        claim_release_status=claim_release_outcome.status.value,
+        claim_release_reason=(
+            claim_release_outcome.refusal_reason.value if claim_release_outcome.refusal_reason else _EMPTY_SESSION_ID
+        ),
+        claim_active_runner_cleared=claim_release_outcome.cleared_active_runner,
+        claim_working_slug_cleared=claim_release_outcome.cleared_working_slug,
+    )
     return False, format_finalize_handoff_complete(slug)
 
 

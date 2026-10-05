@@ -15,9 +15,9 @@ from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashComm
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.output_formatting import (
-    TERMINAL_DEPARTURE_DIRECTIVE,
     ToolCallRequest,
     dispatch_or_reuse,
+    format_terminal_claim_handoff,
     format_tool_call,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
@@ -98,7 +98,7 @@ def _creative_complete(slug: str, live_sessions: list[str]) -> str:
         f"claims it next.\n\n"
         f"Execute in order:\n\n"
         f"{end_step}"
-        f"{TERMINAL_DEPARTURE_DIRECTIVE}"
+        f"{format_terminal_claim_handoff(slug)}"
     )
 
 
