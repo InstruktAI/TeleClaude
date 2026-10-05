@@ -14,7 +14,7 @@
   dependencies=[
     "GitPython>=3.1.0",
     "aiofiles>=25.1.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.3",
     "aiosqlite>=0.21.0",
     "anthropic>=0.42.0",
     "boto3>=1.34.0",
@@ -73,7 +73,7 @@
 
 [dependency-groups]
   dev=[
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.3",
     "jsonschema>=4.26.0",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
