@@ -8,6 +8,7 @@ model_auto_compact_token_limit    =900000
 model_context_window              =1000000
 model_reasoning_effort            ="high"
 personality                       ="pragmatic"
+project_root_markers              =[]
 sandbox_mode                      ="danger-full-access"
 show_raw_agent_reasoning          =true
 suppress_unstable_features_warning=true
