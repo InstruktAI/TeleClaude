@@ -1,6 +1,8 @@
 ---
 description: 'Integration phase. Drive the integration state machine, handle squash commits, conflicts, push rejections, and lease contention.'
 visibility: 'public'
+subscriptions:
+  - domain.sdlc.planning.todo_finalize_ready
 ---
 
 # Integration — Procedure
@@ -80,8 +82,8 @@ each decision point until the queue is drained.
    `telec code maintenance status` reports the checkout's outstanding actions,
    terminal failures, and integrator judgment, each with its recovery command.
    After the cause of a terminal failure is addressed, `telec code maintenance
- retry` replays that action for its original activation; `telec code
- maintenance drain` resumes interrupted work and records maintenance
+retry` replays that action for its original activation; `telec code
+maintenance drain` resumes interrupted work and records maintenance
    readiness when no owed action remains.
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
 5. Before a candidate push from the integration worktree, run repo-wide verification:
