@@ -28,12 +28,11 @@ database, and the brain transcript. Model replies were not observed.
 - No other leading character has a meaning; Vim editor mode (off by default)
   makes `/` and `!` Normal-mode commands.
 
-## gemini-cli #4454
+## Literal escapes
 
-The gemini-cli defect where a `!` anywhere in pasted text switched to shell
-mode (bracketed paste not recognized) does not occur in agy 1.2.17. A `\!`
-escape is passed to the agent, conversation database and transcript as a
-literal backslash.
+A pasted `!`, leading or mid-text, reaches the agent verbatim. A `\!` escape
+reaches the agent, the conversation database and the transcript as a literal
+backslash followed by `!`.
 
 ## Neutralizing prefix
 
@@ -55,4 +54,3 @@ log and conversation database and is absent from the brain `transcript.jsonl`.
 - https://antigravity.google/docs/cli/reference/
 - https://antigravity.google/docs/cli/prompting/
 - https://antigravity.google/docs/cli/vim-editor-mode/
-- https://github.com/google-gemini/gemini-cli/issues/4454

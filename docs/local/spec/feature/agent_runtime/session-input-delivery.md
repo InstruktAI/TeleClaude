@@ -85,15 +85,17 @@ producer or the session's recorded entry point, never the text. Platform
 commands that a channel's own handlers or command-input recognition resolve
 before delivery keep their contracts unchanged.
 
-When conversation text is pasted into an agent's composer and its first
+Conversation text is delivered only into an empty composer and never joins a
+human draft. While the composer holds input, conversation text waits in
+accepted order: it is retried on the delivery cadence without consuming its
+delivery-attempt budget and ends only with the session, so no submission of a
+human draft carries relayed text.
+
+When conversation text is submitted to an agent's empty composer and its first
 character after any leading whitespace and leading invisible format characters
 is one that runtime's composer treats as interface control, the runtime's
-neutralizing mark is placed at the very start of the pasted text; the text is
-otherwise pasted unchanged. The rule holds for an empty composer, where the
-text is submitted once, and for an occupied one, where the text joins the
-owning human's unsubmitted draft at the composer's insertion point, so no
-submission of that composed input starts interface control from the relayed
-text. Each runtime's control characters and its neutralizing mark — a character
+neutralizing mark is placed at the very start of the text; the text is
+otherwise submitted unchanged. Each runtime's control characters and its neutralizing mark — a character
 that makes the composer treat the text as an ordinary prompt and submit it on
 the single discrete Enter — are declared once on its canonical agent entry
 (`local/projects/teleclaude/spec/feature/agent_runtime/agent-vocabulary`), so a
@@ -106,10 +108,10 @@ submitted as written. The platform's API is a local socket that records
 terminal origin; a conversation channel delivers through its own adapter
 ingress, which records the channel.
 
-The native transcript and prompt-hook text record what the runtime received and
-are never altered to remove the mark. Accepted-input correlation recognizes a
-conversation turn in its accepted and its delivered form, and the projection of
-a correlated turn shows the accepted text
+The platform never alters transcript or prompt-hook text to remove the mark; a
+runtime records it or drops it. Accepted-input correlation recognizes a
+conversation turn in either form, and the projection of a correlated turn shows
+the accepted text
 (`local/projects/teleclaude/design/architecture/conversation-delivery`).
 
 <!-- /planned:relayed-input-never-controls-agent -->
@@ -125,7 +127,12 @@ And a session-originated message identifies its actual sending session
 And a human's direct input remains human-authored
 When the target agent's input-readiness contract is satisfied
 Then its empty composer receives one paste and submission
+<!-- planned-change:relayed-input-never-controls-agent -->
 And its occupied composer preserves the existing text and appends two newlines followed by the accepted message without submission
+<!-- change:relayed-input-never-controls-agent -->
+And its occupied composer preserves the existing text and appends two newlines followed by an accepted message that is not conversation text, without submission
+And accepted conversation text waits for an empty composer instead of joining the existing text
+<!-- /planned-change:relayed-input-never-controls-agent -->
 And its non-composer or ambiguous surface receives no input
 And these rules also govern the conversational message that triggered adoption of a headless agent
 And a session running no agent uses its ordinary terminal-input path
@@ -377,9 +384,10 @@ And their presence, absence, or wording changes no human-involvement declaration
 Given a person writes to an agent session through a conversation channel
 And their message is not a platform command the channel or the platform resolves before delivery
 And the message's first character after any leading whitespace is one the session's agent treats as interface control
-When the message reaches the agent's composer, whether it continues the conversation, starts the session, or joins a draft the owning human has not submitted
-Then an empty composer submits it once as an ordinary prompt
-And no shell command runs, no interface command executes, and no input mode starts from the message whenever the composed input is submitted
+When the message reaches the agent, whether it continues the conversation or starts the session
+Then it waits while the composer holds a draft and joins no draft
+And the empty composer then submits it once as an ordinary prompt
+And no shell command runs, no interface command executes, and no input mode starts from it
 And every reflection shows the message exactly as the person sent it
 ```
 

@@ -85,11 +85,10 @@ flowchart LR
   a runtime's declared neutralizing mark at the start of conversation text that
   would otherwise begin with one of that runtime's interface-control characters
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`).
-  Transcript and prompt-hook text are never altered to remove it; they record
-  what the runtime received. Accepted-input correlation matches a native turn
-  against the accepted text as accepted or as delivery marked it for the
-  session's runtime, and the projection of a correlated turn shows the
-  accepted text.
+  The platform never alters transcript or prompt-hook text to remove it; a
+  runtime records the mark or drops it. Accepted-input correlation matches a
+  native turn against the accepted text in either form, and the projection of
+  a correlated turn shows the accepted text.
 <!-- /planned:relayed-input-never-controls-agent -->
 - **The envelope delimits authorship.** A native entry is an ordered composition
   of platform-authored envelopes and prompt input. Content inside an envelope is
