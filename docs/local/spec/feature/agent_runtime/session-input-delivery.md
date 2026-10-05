@@ -86,10 +86,12 @@ commands that a channel's own handlers or command-input recognition resolve
 before delivery keep their contracts unchanged.
 
 When conversation text is submitted to an agent's composer and its first
-character after any leading whitespace is one that runtime's composer treats as
-interface control, the runtime's neutralizing mark is placed at the very start
-of the text; the text is otherwise submitted unchanged. Leading whitespace
-never hides a control character. Each
+character after any leading whitespace and any leading declared marks is one
+that runtime's composer treats as interface control, the runtime's neutralizing
+mark is placed at the very start of the text; the text is otherwise submitted
+unchanged. Leading whitespace never hides a control character, and text the
+sender began with a declared mark of their own is marked again, so removing the
+one added mark at ingress returns exactly what the sender sent. Each
 runtime's control characters and its neutralizing mark — a character that
 makes the composer treat the text as an ordinary prompt and submit it on the
 single discrete Enter — are declared once on its canonical agent entry
