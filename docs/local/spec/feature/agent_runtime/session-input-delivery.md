@@ -74,6 +74,36 @@ Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
 lifecycle transition. Recovery follows UC-SID6.
 
+<!-- planned:relayed-input-never-controls-agent -->
+### Conversation input authority
+
+Text accepted from a conversation channel is conversation for the agent and
+never control of its interface. A conversation channel is any UI adapter's
+human-to-agent text ingress — including transcribed voice and the message that
+creates a session — and authority follows the accepted input's recorded
+producer or the session's recorded entry point, never the text. Platform
+commands that a channel's own handlers or command-input recognition resolve
+before delivery keep their contracts unchanged.
+
+When conversation text is submitted to an agent's composer and begins with a
+character that runtime's composer treats as interface control, the runtime's
+neutralizing mark precedes it; the text is otherwise submitted unchanged. Each
+runtime's control characters and its neutralizing mark — a character that
+makes the composer treat the text as an ordinary prompt and submit it on the
+single discrete Enter — are declared once on its canonical agent entry
+(`agent-vocabulary`), so a supported runtime without a declaration cannot
+exist. An occupied composer keeps the owning human's draft first, so appended
+text is never at the start of the submitted prompt and receives no mark.
+
+Input a person enters at the terminal or the TUI, input sent through the
+platform's API, and platform-authored text — envelopes, command loaders,
+continuations — keep full interface control and are submitted as written.
+
+The mark is platform transport framing: both ingress boundaries remove it before
+classification, so transcripts, reflections, and accepted-input correlation
+carry the sender's text (`conversation-delivery`).
+
+<!-- /planned:relayed-input-never-controls-agent -->
 ### Use cases
 
 #### Structured message — happy path
@@ -331,6 +361,29 @@ Then the complete caller-supplied details remain available to that session
 And their presence, absence, or wording changes no human-involvement declaration or recency result
 ```
 
+<!-- planned:relayed-input-never-controls-agent -->
+#### UC-SID17: A conversation message never controls the agent interface
+
+```gherkin
+Given a person writes to an agent session through a conversation channel
+And their message is not a platform command the channel or the platform resolves before delivery
+And the message begins with a character the session's agent treats as interface control
+When the message reaches the agent, whether it continues the conversation or starts the session
+Then the agent receives it as an ordinary prompt and submits it once
+And no shell command runs, no interface command executes, and no input mode starts
+And the transcript and every reflection show the message exactly as the person sent it
+```
+
+#### UC-SID18: Terminal and platform input keep interface control
+
+```gherkin
+Given an operator at the terminal or the TUI, or the platform itself, sends text beginning with a character the agent treats as interface control
+When the text is submitted to the agent
+Then the text is submitted exactly as written
+And the agent interface acts on it as it acts on typed input
+```
+
+<!-- /planned:relayed-input-never-controls-agent -->
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
@@ -347,7 +400,11 @@ And their presence, absence, or wording changes no human-involvement declaration
 
 - **Single host-pane paste buffer per call.** The key-injection primitive allocates a unique buffer name per call and always attempts cleanup on the way out, even when the paste step failed; a cleanup failure leaves the user payload resident in the host pane's buffer list until the host-pane server exits and is logged at warning.
 - **A small post-paste gap is hardcoded for paste-and-submit.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every submitted paste. Prompt-state delivery selects that primitive only after its pre-delivery observation finds an empty composer.
+<!-- planned-change:relayed-input-never-controls-agent -->
 - **Gemini `!` escaping is implicit.** When the active agent is Gemini, the key-injection primitive rewrites `!` to `\!` before paste because of a known gemini-cli bug. Other agents pass the payload through unchanged.
+<!-- change:relayed-input-never-controls-agent -->
+- **The host-pane primitives pass text through unchanged.** They paste the payload they receive for every runtime; the only character a delivery adds is the neutralizing mark described under Conversation input authority, chosen before the primitive is reached.
+<!-- /planned-change:relayed-input-never-controls-agent -->
 
 - **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session resolves to a machine role is named by that role — orchestrator, integrator, system, worker, tasker, and job_runner each get their own genuine label. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A caller session id that does not resolve to a session at all is refused with an explicit error, because no truthful identity can be composed for it; no fabricated role, agent, or host attribution is ever substituted to force a header.
 
