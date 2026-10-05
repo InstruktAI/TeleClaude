@@ -406,6 +406,19 @@ And the agent interface acts on it as it acts on typed input
 ```
 
 <!-- /planned:relayed-input-never-controls-agent -->
+<!-- planned:relayed-trailing-backslash-blocks-submit -->
+#### UC-SID19: A message ending in a backslash submits once
+
+```gherkin
+Given a person writes to an agent session through a conversation channel
+And their message ends in a backslash, possibly followed by whitespace
+When the message reaches the agent's empty composer
+Then the composer submits it once as an ordinary prompt
+And the agent receives the message's text with its final backslash
+And the person's next message starts its own prompt instead of joining this one
+```
+
+<!-- /planned:relayed-trailing-backslash-blocks-submit -->
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
