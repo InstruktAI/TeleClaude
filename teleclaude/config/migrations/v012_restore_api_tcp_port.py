@@ -23,12 +23,12 @@ class _ConfigField(StrEnum):
 
 def up(document: MutableMapping[str, object], _subject: SubjectRef) -> None:
     """Ensure computer documents carry the default API TCP port."""
-    if _ConfigField.API not in document:
-        document[_ConfigField.API] = {}
+    if _ConfigField.API.value not in document:
+        document[_ConfigField.API.value] = {}
 
-    api = document[_ConfigField.API]
-    if not isinstance(api, MutableMapping) or _ConfigField.TCP_PORT in api:
+    api = document[_ConfigField.API.value]
+    if not isinstance(api, MutableMapping) or _ConfigField.TCP_PORT.value in api:
         return
 
-    api_defaults = cast(Mapping[str, object], DEFAULT_CONFIG[_ConfigField.API])
-    api[_ConfigField.TCP_PORT] = api_defaults[_ConfigField.TCP_PORT]
+    api_defaults = cast(Mapping[str, object], DEFAULT_CONFIG[_ConfigField.API.value])
+    api[_ConfigField.TCP_PORT.value] = api_defaults[_ConfigField.TCP_PORT.value]
