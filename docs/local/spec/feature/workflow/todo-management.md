@@ -17,7 +17,9 @@ Todo management is the operator-facing surface for the per-project ordered todo 
 
 Each entry is tied to a Todo by durable identity and active slug. Creation goes through `telec todo create`, which requires substantive content and writes the entry, canonical state, and input artifact atomically. The default read path is `telec todo list`, which renders sectioned dependency trees for active todos and optionally includes delivered or iceboxed sections. Active order is derived from workflow state: Ready entries appear before In-prep entries, and each band sorts by its persisted timestamps and slug. Manual position, move, and add-before/add-after ordering are not part of this surface.
 
-Visual hierarchy within a section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. A holder is an explicit row status, entered once when the first child is grouped under a parent and never left; a holder is exempt from the todo lifecycle and exists to bind its artifacts as evidence of the split and to label its children wherever they render. Children reference their holder by durable row id, and every surface renders the holder label as context joined from that row — the holder has no row-presence of its own in any band. Gaining an `after`-child never makes a node a holder; a node keeps its own row state while nesting its dependents.
+Visual hierarchy within an active, icebox, or removed section resolves each node to its **nearest enclosing structural container**: the innermost in-group `after`-dependency visible in the section, otherwise its group holder, otherwise the section root. Group membership and `after` edges compose rather than compete in these sections — an `after`-dependency on a sibling within the same group nests the dependent under that sibling, while an `after` edge crossing into another group orders the roots without re-homing the node out of its own group. A holder is an explicit row status, entered once when the first child is grouped under a parent and never left; a holder is exempt from the todo lifecycle and exists to bind its artifacts as evidence of the split and to label its children wherever they render. Children reference their holder by durable row id, and every surface renders the holder label as context joined from that row — the holder has no row-presence of its own in any band. Gaining an `after`-child never makes a node a holder; a node keeps its own row state while nesting its dependents.
+
+Delivered history is ordered by delivery recency. Group membership supplies the header beneath which a delivered todo appears; dependencies determine neither its nesting nor its order. Children sort newest first, and each group is placed among standalone todos by its newest visible descendant. The holder's own timestamps never determine that placement. Delivery-cutoff filtering applies to each todo independently of group membership, and a group with no visible delivered children contributes no delivered header. Delivered children retain their group context even when other children of that group remain active.
 
 Group membership is set when a todo is created under a parent and can be changed later through the update facade: a live todo moves into a group, into a different group, or out of any group. The move changes only which holder labels the todo and which holder's roll-up counts it; the todo keeps its own lifecycle state, artifacts, and dependencies. Moving into a parent that is not yet a holder makes it one through the same transition group creation uses, and a holder that loses its last live child stays a holder that renders nowhere.
 
@@ -109,7 +111,7 @@ And the holder itself contributes no entry of its own to any section
 #### UC-WM9: Intra-group dependency nests under its dependency
 
 ```gherkin
-Given a group holder "epic" with grouped children "base" and "follow-on"
+Given a group holder "epic" with active grouped children "base" and "follow-on"
 And "follow-on" declares an after-dependency on "base"
 When the workflow projects the todo list
 Then "follow-on" nests under "base" instead of beside it under "epic"
@@ -119,7 +121,7 @@ And "base" retains its own row state and is not made a holder by the after-child
 #### UC-WM10: Cross-group dependency does not re-home the dependent
 
 ```gherkin
-Given a grouped child "left-child" under holder "left-epic"
+Given an active grouped child "left-child" under holder "left-epic"
 And "left-child" declares an after-dependency on "right-anchor" under a different holder "right-epic"
 When the workflow projects the todo list
 Then "left-child" stays nested under "left-epic"
@@ -390,9 +392,10 @@ And the removed and delivered todos do not change
 #### UC-WM35: The TUI's todo data carries recent deliveries and every iced todo
 
 ```
-Given a project with delivered todos, some delivered within `RECENTLY_DELIVERED_HOURS` and some before it, and iced todos of any age
-When the TUI reads that project's todo data
-Then it carries the todos delivered within `RECENTLY_DELIVERED_HOURS` and no earlier delivery
+Given a project with grouped and standalone todos delivered inside and outside the recent-delivery window, and iced todos of any age
+When a human operator views that project's todos in the TUI
+Then it carries only the deliveries inside the recent-delivery window, regardless of group membership
+And group headers appear only for groups with visible delivered children in that section
 And it carries every iced todo, whatever its age
 ```
 
@@ -453,6 +456,27 @@ Or "epic" is not yet a holder and is claimed by a live session outside the agent
 Then the update is refused with an error naming the claiming session
 And neither "moved" nor "epic" is changed
 But a move by a session inside the claiming group proceeds
+```
+
+#### UC-WM41: Delivered history orders group context by delivery recency
+
+```gherkin
+Given a project with grouped and standalone delivered todos whose delivery times differ
+And some delivered todos depend on other delivered todos
+When a human operator views the delivered section
+Then standalone todos and groups are ordered newest first using each todo's delivery time and each group's newest visible delivery
+And children within each group are ordered newest first
+And dependencies change neither the order nor the group nesting
+And the holder's own timestamps do not affect the order
+```
+
+#### UC-WM42: Delivered children retain their group context beside active siblings
+
+```gherkin
+Given a group contains both active and delivered children
+When a human operator views the delivered section
+Then its delivered children appear beneath the group's header
+And its active children remain in the active section
 ```
 
 ### Cross-context references

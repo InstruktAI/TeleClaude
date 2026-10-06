@@ -1,14 +1,15 @@
-"""Sectioned dependency-tree projection for the todo.
+"""Sectioned todo-tree projection.
 
 Single owner of todo shape: takes the flat ``list[TodoDTO]`` from
 ``assemble_todo_from_db`` and returns ``active``/``delivered``/``icebox``
-sections, each a dependency tree. Every consumer (TUI, ``telec todo list``)
+sections. Delivered history groups by membership and sorts by recency;
+the other sections retain dependency trees. Every consumer (TUI, ``telec todo list``)
 renders these — no consumer re-derives hierarchy.
 
 Re-root rule falls out of per-section visibility: a section's tree is built
 over only that section's members, so a delivered parent is simply not visible
-in ``active`` and its not-yet-delivered children re-root there. The same
-mechanism keeps the delivered hierarchy intact among delivered items.
+in ``active`` and its not-yet-delivered children re-root there. Delivered
+children retain only their group hierarchy within the delivered section.
 """
 
 from __future__ import annotations
@@ -245,8 +246,28 @@ def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) 
     return [_node(root) for root in ordered_roots]
 
 
+def _build_delivered_tree(todos: list[TodoDTO]) -> list[TodoNode]:
+    """Group delivered rows by membership with newest-first siblings and roots."""
+    nodes = {todo.todo_id: TodoNode(todo=todo) for todo in todos if todo.todo_id}
+    roots: list[TodoNode] = []
+    for node_id, node in nodes.items():
+        parent = nodes.get(node.todo.group_id) if node.todo.group_id and node.todo.group_id != node_id else None
+        if parent is None:
+            roots.append(node)
+        else:
+            parent.is_holder = True
+            parent.children.append(node)
+
+    def _sort_key(node: TodoNode) -> tuple[int, object, str]:
+        return section_sort_key(node.todo, raw_status=TodoStatus.DELIVERED)
+
+    for node in nodes.values():
+        node.children.sort(key=_sort_key)
+    return sorted(roots, key=_sort_key)
+
+
 def build_todo_sections(todos: list[TodoDTO]) -> TodoSections:
-    """Split the flat todo list into active/delivered/icebox dependency trees.
+    """Split the flat todo list into section-specific trees.
 
     Each section's tree is built over only its own members, so cross-section
     edges (e.g. a delivered parent of an active child) drop out automatically.
@@ -266,10 +287,7 @@ def build_todo_sections(todos: list[TodoDTO]) -> TodoSections:
             active.append(todo)
     return TodoSections(
         active=_build_tree(active, sibling_key=section_sort_key),
-        delivered=_build_tree(
-            delivered,
-            sibling_key=lambda todo: section_sort_key(todo, raw_status=TodoStatus.DELIVERED),
-        ),
+        delivered=_build_delivered_tree(delivered),
         icebox=_build_tree(
             icebox,
             sibling_key=lambda todo: section_sort_key(todo, raw_status=TodoStatus.ICEBOX),

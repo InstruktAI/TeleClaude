@@ -666,7 +666,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_TODO_LIST_JSON,
                 ],
                 notes=[
-                    "Output is sectioned into active/delivered/icebox/removed dependency trees.",
+                    "Output is sectioned into active/delivered/icebox/removed trees; delivered history groups by membership and sorts newest first.",
                     "CONTRACT CHANGE: --json now emits a nested object keyed by section "
                     "(active/delivered/icebox/removed), each a tree with `children`; previously a flat "
                     "list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.",

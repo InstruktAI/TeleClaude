@@ -201,6 +201,30 @@ def _apply_holder_status(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]
     return [*todos, *stubs]
 
 
+def _apply_delivered_holder_labels(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]) -> list[TodoDTO]:
+    """Project group context and latest delivery from visible delivered children."""
+    visible = [
+        todo for todo in todos if not (todo.status == TodoStatus.DELIVERED and todo.todo_id in holder_slug_by_id)
+    ]
+    children_by_holder: dict[str, list[TodoDTO]] = {}
+    for todo in visible:
+        if todo.status == TodoStatus.DELIVERED and todo.group_id and todo.group_id in holder_slug_by_id:
+            children_by_holder.setdefault(todo.group_id, []).append(todo)
+
+    stubs = [
+        TodoDTO(
+            slug=holder_slug_by_id[holder_id],
+            status=TodoStatus.DELIVERED.value,
+            has_requirements=False,
+            has_impl_plan=False,
+            todo_id=holder_id,
+            delivered_at=max((child.delivered_at for child in children if child.delivered_at), default=None),
+        )
+        for holder_id, children in children_by_holder.items()
+    ]
+    return [*visible, *stubs]
+
+
 def _apply_removed_holder_labels(todos: list[TodoDTO], holder_slug_by_id: dict[str, str]) -> list[TodoDTO]:
     """Synthesize a removed-band label stub for holders referenced by removed children.
 
@@ -436,10 +460,9 @@ def assemble_todo_from_db(
     ``include_delivered``/``delivered_only`` return delivered entries.
     ``delivered_since`` optionally restricts delivered entries to those
     delivered at or after the given ISO-8601 timestamp. It is applied as a
-    post-derivation DISPLAY filter — after holder-status derivation, never in
-    SQL — so a holder whose children delivered outside the window still derives
-    as delivered while the genuine old delivered leaf rows are hidden. Callers
-    own their cutoff: the default/TUI list view passes
+    post-derivation display filter, never in SQL. Delivered group labels are
+    projected from the remaining children, independently of active siblings.
+    Callers own their cutoff: the default/TUI list view passes
     ``now - RECENTLY_DELIVERED_HOURS``; the CLI ``--since`` flag passes the
     user-requested cutoff; an absent value returns all delivered entries. The
     value must be a clean ISO timestamp produced by the caller.
@@ -653,25 +676,14 @@ def assemble_todo_from_db(
         todos = _apply_holder_status(todos, holder_slug_by_id)
         todos = _apply_removed_holder_labels(todos, holder_slug_by_id)
         todos = _apply_icebox_holder_labels(todos, holder_slug_by_id)
-        todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_id)
-
-        # Display window: drop genuine delivered entries older than the cutoff.
-        # Holders (derived 'delivered', no own delivered_at) are unaffected.
-        # Children of holders ride along with their holder regardless of age —
-        # filtering them out would orphan the holder row from the work that
-        # produced its derived 'delivered' status.
         if delivered_since is not None:
-            all_slugs = {t.slug for t in todos}
             todos = [
                 t
                 for t in todos
-                if not (
-                    t.status == TodoStatus.DELIVERED
-                    and t.delivered_at
-                    and t.delivered_at < delivered_since
-                    and not (t.group and t.group in all_slugs)
-                )
+                if t.status != TodoStatus.DELIVERED or (t.delivered_at and t.delivered_at >= delivered_since)
             ]
+        todos = _apply_delivered_holder_labels(todos, holder_slug_by_id)
+        todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_id)
 
         total_dt = time.perf_counter() - started_at
         if total_dt >= 2.0:
