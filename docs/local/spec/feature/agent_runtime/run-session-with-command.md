@@ -402,7 +402,11 @@ And an orchestrator-class create request that would bind X — a run-session req
 When the create-door dedup check runs before the session is created
 Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
+<!-- planned-change:kickback-hands-off-to-runner -->
 And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
+<!-- change:kickback-hands-off-to-runner -->
+And the refusal holds even when the requesting session is itself the holder — continuation in the holder's own lane happens in place via the operator door, never by creating a second orchestrator row
+<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 ```
@@ -440,7 +444,12 @@ And an operator work or prepare operation on X
 When the operation's shared dedup check runs
 Then the operation fails with a driver-start conflict whose completion-event error carries the holder, surfacing as an operator toast
 And no second session is created for X
+<!-- planned-change:kickback-hands-off-to-runner -->
 And the caller's own slug — when the caller is itself the holder — continues in place with no new session
+<!-- change:kickback-hands-off-to-runner -->
+And the caller's own slug — when the caller is itself the holder — continues in place with no new session when the operation is for the lane the caller already drives
+And an operation for the other lane is refused, because a session never changes lanes
+<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 ```

@@ -34,7 +34,7 @@ and required: the work phase binds in-scope feature-spec scenarios and implement
 against published contracts. The slug's doc reflection already exists as pending
 markers authored at prepare; the integrator folds them at delivery.
 A doc need discovered mid-build (a missing scenario, a wrong planned contract)
-is a plan defect: surface it and route through the kickback path (Step 8) so
+is a plan defect: surface it and route through the kickback path (Step 9) so
 prepare re-derives on `main` — never edit `docs/**` in the worktree.
 
 ### Work ends in delivery or kickback
@@ -221,6 +221,7 @@ On that grounded direction the orchestrator runs
 stamp appends the reason to `input` (creating `input` when the todo has none) and
 invalidates the implementation-plan, so the phase derives back to `plan_drafting`.
 
+<!-- planned-change:kickback-hands-off-to-runner -->
 The orchestrator then re-enters `telec todo work [slug]`. The work machine hands the
 kickback-invalidated todo into the prepare lane in this same session — the same
 non-terminal bounce a substantive work-entry drift produces. Nothing is torn down:
@@ -233,6 +234,22 @@ into `telec todo work [slug]`. The work machine then re-enters the preserved bui
 and hands the builder machine-derived reconcile instructions — the diff between the
 plan version the build started against and the re-approved plan — so the builder
 reverts what the amendment invalidates, keeps what still serves, and continues.
+<!-- change:kickback-hands-off-to-runner -->
+The stamp ends this orchestrator's part. Once the reason is durable, the
+platform releases the todo's lifecycle claim and ends the slug's work-lane
+sessions — every session this orchestrator started, then the orchestrator
+itself. The orchestrator neither re-enters `telec todo work [slug]` nor ends
+anything itself. The worktree with its build commits, the local and remote
+branch, and the workspace directory remain. The lifecycle runner dispatches a
+fresh prepare orchestrator, whose planner reads the kickback block in `input`
+as authoritative re-derivation context. At PREPARED that orchestrator ends like
+any other, and the lifecycle runner dispatches a fresh work orchestrator under
+the kind's work-lane autostart policy. Its work machine finds the plan changed
+under the existing build and hands the builder machine-derived reconcile
+instructions — the diff between the plan version the build started against and
+the re-approved plan — so the builder reverts what the amendment invalidates,
+keeps what still serves, and continues.
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ## Outputs
 

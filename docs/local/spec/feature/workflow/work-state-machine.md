@@ -19,7 +19,11 @@ Task execution is a separate non-SDLC lane. The lifecycle runner starts `/sdlc/r
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
+<!-- planned-change:kickback-hands-off-to-runner -->
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict hands the same session off to drive `/sdlc/prepare {slug}` without mutating its `job` or `title` itself — the held `active_runner` claim is unchanged, so no new session is dispatched and the claim raises no conflict. The role transition is not a distinct step: the moment this session calls `telec todo prepare {slug}`, the generic claim-reflection mechanism recognizes the same slug already claimed under a different lane and adopts the session as `prepare-orchestrator` in place, before any artifact write happens — so the re-derivation write satisfies the artifact-write guard. The session re-derives the affected artifact and reaches `prepared`. What its terminal output directs derives from the Todo's durable build residue (`build_start_base_sha`, written only when build starts), never from how the session arrived: a Todo that was never built carries none, so it receives the ordinary PREPARED terminal output and does not resume work in this session, while a Todo with build residue is directed to re-enter `telec todo work {slug}` in this same session (see `@spec/feature/workflow/prepare-state-machine`). The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
+<!-- change:kickback-hands-off-to-runner -->
+Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — after the orchestrator has received the machine's answer. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ## Canonical fields
 
@@ -69,11 +73,16 @@ And the machine does NOT create or touch the worktree
 And the machine returns a script that dispatches the sdlc/drift-analyze worker and tells the orchestrator to re-enter "telec todo work my-feature" once the analyzer idles
 And the work orchestrator never calls "telec todo prepare my-feature"
 And on re-entry after a cosmetic verdict the machine observes non-blocking drift and proceeds with worktree creation and dispatch
+<!-- planned-change:kickback-hands-off-to-runner -->
 And on re-entry after a substantive verdict the machine hands the same session off to drive "/sdlc/prepare my-feature" without mutating its job or title itself
 And calling "telec todo prepare my-feature" next adopts this session as prepare-orchestrator in place — claim ownership is the only gate, there is no distinct promotion step
 And the adopted session re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, and reaches prepared
 And the Todo has never been built, so it carries no durable build residue and its terminal output is the ordinary PREPARED output that does not direct work to resume in this session
 But when the Todo does carry durable build residue, its terminal output directs the session to re-enter "telec todo work my-feature" in this same session
+<!-- change:kickback-hands-off-to-runner -->
+And on re-entry after a substantive verdict the work machine releases the Todo's lifecycle claim and the platform ends the work orchestrator and every session it started
+And the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, and reaches prepared
+<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 ```gherkin
@@ -86,6 +95,7 @@ And work-entry drift does not evaluate diagnosis as a tracked artifact
 And the machine never returns WORK_ENTRY_DRIFT for drift.input or drift.diagnosis
 ```
 
+<!-- planned-change:kickback-hands-off-to-runner -->
 #### UC-WSM5: A substantive work-entry drift bounce hands off to prepare in place
 
 ```gherkin
@@ -104,6 +114,21 @@ Then it adopts this session as my-feature's prepare-orchestrator in place — jo
 And the prepare write-authority guard now admits the re-derivation write, because the session carries job=prepare-orchestrator
 And claim ownership (active_runner already naming this session) is the only gate — there is no additional role precondition
 ```
+<!-- change:kickback-hands-off-to-runner -->
+#### UC-WSM5: A substantive work-entry drift verdict returns the Todo to preparation through the lifecycle runner
+
+```gherkin
+Given a work-entry drift bounce dispatched the sdlc/drift-analyze worker for a slug whose lifecycle claim the calling work orchestrator holds
+And that work orchestrator has started worker sessions for the slug, on this computer or another
+When the analyzer stamps a substantive --drift-reviewed verdict and the work orchestrator re-enters "telec todo work my-feature"
+Then the work machine releases the Todo's lifecycle claim
+And the platform ends every session the work orchestrator started, then the work orchestrator itself, without any agent ending them
+And the work orchestrator receives the machine's answer before its own session ends
+And the worktree, local and remote branch, workspace directory, and build commits remain
+And the lifecycle runner then dispatches a fresh prepare orchestrator for the Todo under its normal dispatch policy
+And no human is notified
+```
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ```
 Given a Todo at lifecycle_phase=build_started with a live builder session
@@ -250,6 +275,7 @@ And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
 
+<!-- planned-change:kickback-hands-off-to-runner -->
 #### UC-WSM9: Kickback work re-entry hands off to prepare in place with all working state preserved
 
 ```gherkin
@@ -262,17 +288,39 @@ And it hands off to the prepare orchestrator procedure in the same session, exac
 And it destroys nothing: the worktree, local and remote branch, workspace directory, and live sessions all remain
 And the handoff names where the durable kickback reason lives so the prepare pass reads it as re-derivation context
 ```
+<!-- change:kickback-hands-off-to-runner -->
+#### UC-WSM9: Work entry on a kicked-back Todo returns it to preparation through the lifecycle runner
+
+```gherkin
+Given a Todo whose implementation-plan review was cleared-by-substantive-drift by a kickback stamp
+And that review no longer approves the current implementation-plan digest
+And the Todo has a worktree with build commits and a branch
+When a work orchestrator enters "telec todo work my-feature"
+Then the machine recognizes the kickback before evaluating work-entry drift
+And it returns the Todo to preparation exactly as a substantive work-entry drift verdict does: the claim is released and the platform ends the work orchestrator and every session it started
+And the worktree, local and remote branch, workspace directory, and build commits remain
+And the prepare orchestrator the lifecycle runner dispatches reads the durable kickback reason in input as re-derivation context
+```
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 #### UC-WSM11: Finalize-ready kickback recovery returns to prepare
 
 ```gherkin
 Given a Todo whose implementation-plan review was cleared-by-substantive-drift by a kickback stamp
 And that review no longer approves the current implementation-plan digest
+<!-- planned-change:kickback-hands-off-to-runner -->
 And no live driver remains to continue the in-session handoff
+<!-- change:kickback-hands-off-to-runner -->
+And no live driver holds the Todo
+<!-- /planned-change:kickback-hands-off-to-runner -->
 And the stored lifecycle phase is finalize_ready
 When the lifecycle runner re-evaluates the Todo
 Then it does not skip the Todo as an ordinary finalize-ready candidate
+<!-- planned-change:kickback-hands-off-to-runner -->
 And it routes the Todo into the prepare lane without deleting its worktree, branches, workspace directory, or live worker sessions
+<!-- change:kickback-hands-off-to-runner -->
+And it routes the Todo into the prepare lane without deleting its worktree, branches, or workspace directory
+<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 #### UC-WSM10: Build re-entry after a plan amendment hands the builder reconcile instructions
@@ -311,7 +359,11 @@ When the work machine emits its terminal execution script
 Then the script closes every live direct child of the work orchestrator through the caller-scoped bulk session-end operation
 And only after that operation succeeds does the script direct the orchestrator to end itself
 And the script contains neither remembered child identifiers nor a manual child-listing loop
+<!-- planned-change:kickback-hands-off-to-runner -->
 And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and prepare-to-work resumes emit no bulk child cleanup
+<!-- change:kickback-hands-off-to-runner -->
+And non-terminal handoffs, retries, and reviews emit no bulk child cleanup
+<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 #### UC-WSM18: The finalize-ready handoff releases the work orchestrator's lifecycle claim
@@ -347,6 +399,17 @@ And the work orchestrator agent receives no reviewer dispatch, no follow-up for 
 
 #### UC-WSM17:
 
+<!-- planned:kickback-hands-off-to-runner -->
+#### UC-WSM19: The work machine refuses a session that holds the slug in the prepare lane
+
+```gherkin
+Given a prepare orchestrator session P holds my-feature's lifecycle claim
+When P calls "telec todo work my-feature"
+Then the work machine refuses without adopting P into the work lane, and P's role, title, and claim are unchanged
+And the refusal names the sanctioned path: P completes its prepare lifecycle, whose terminal releases the claim, and the lifecycle runner dispatches a fresh work orchestrator
+```
+<!-- /planned:kickback-hands-off-to-runner -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
@@ -356,7 +419,11 @@ And the work orchestrator agent receives no reviewer dispatch, no follow-up for 
   work orchestrator session. The Phase B orchestrator remains per-slug and
   terminal after finalize-ready cleanup.
 
+<!-- planned-change:kickback-hands-off-to-runner -->
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `/sdlc/work --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically.
+<!-- change:kickback-hands-off-to-runner -->
+- `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `/sdlc/work --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically. A Todo that a kickback or a substantive work-entry drift verdict returned to preparation is dispatched to a fresh `/sdlc/prepare` once no live driver holds it, and, once prepared again, to a fresh `/sdlc/work` under the kind's work-lane autostart policy like any other prepared Todo; that work orchestrator continues the existing build.
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ## Known caveats
 

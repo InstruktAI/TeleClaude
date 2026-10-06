@@ -155,7 +155,11 @@ And build_gate_claim_at is set to the current timestamp and persisted through th
 And the work machine runs the build-complete gates on its next dispatch
 ```
 
+<!-- planned-change:kickback-hands-off-to-runner -->
 #### UC-WSS11: Work orchestrator kicks an unbuildable todo back to plan drafting, preserving all working state
+<!-- change:kickback-hands-off-to-runner -->
+#### UC-WSS11: Work orchestrator kicks an unbuildable todo back to plan drafting and the lifecycle runner re-prepares it
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ```gherkin
 Given a Todo at a work phase whose implementation-plan cannot be executed as written
@@ -166,9 +170,20 @@ And a worker session, a plain operator shell, a missing session id, or an orches
 And the stamp creates the input artifact when the Todo has none or appends a delimited kickback block carrying the reason to the existing input
 And the stamp clears the implementation-plan review verdict and marks it cleared-by-substantive-drift, the same invalidation a substantive plan drift verdict produces
 And the stamp clears any outstanding build-complete gate claim and resets a ready finalize handoff to pending
+<!-- planned-change:kickback-hands-off-to-runner -->
 And the Todo's worktree, branches, workspace directory, and live sessions are left untouched
+<!-- change:kickback-hands-off-to-runner -->
+And the Todo's worktree, branches, workspace directory, and build commits are left untouched
+<!-- /planned-change:kickback-hands-off-to-runner -->
 And the state-write boundary re-validates the full state and persists atomically
+<!-- planned-change:kickback-hands-off-to-runner -->
 And the stamping orchestrator's next work-machine call hands it into the prepare lane in the same session, where the planner reads the input kickback block as authoritative re-derivation context
+<!-- change:kickback-hands-off-to-runner -->
+And once the reason is durable the stamp releases the Todo's lifecycle claim
+And the platform ends every session the stamping orchestrator started, then the stamping orchestrator itself, after it has received the stamp's answer and without any agent ending them
+And the lifecycle runner dispatches a fresh prepare orchestrator, whose planner reads the input kickback block as authoritative re-derivation context
+And no human is notified
+<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 ```
@@ -267,7 +282,11 @@ And no other project's documentation is read or changed by the delivery
 - Cosmetic drift-reviewed stamps are **anchor-scoped, not permanent**. The verdict expires lazily per drift class when current evidence has moved past the recorded anchor on any anchored dimension (HEAD/referenced-paths overlap, upstream digest, owned snippet digest, referenced snippet digest, dep-set). The class re-pends automatically on the next prepare or work-entry derivation; no manual stamp clearing is required. See `@spec/feature/workflow/drift-detection#stamp-scoping-the-evidence-anchor`.
 - Rewriting a drift-tracked artifact (via `telec todo artifacts write`) clears all of its drift-reviewed stamps so the next derivation establishes a fresh anchor against newly captured provenance. Substantive verdicts never need explicit expiry — re-derivation is the path back to a fresh stamp.
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/sdlc/build`) is responsible for issuing it as the last act of the build flow.
+<!-- planned-change:kickback-hands-off-to-runner -->
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a work-orchestrator session whose claim binds the slug may stamp it; a worker session, a plain operator shell, or an orchestrator bound to a different slug is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo), invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`, clears any outstanding build-complete gate claim, and resets a ready finalize handoff to pending. Nothing is torn down: the worktree, local and remote branch, workspace directory, and live sessions are all preserved. On the orchestrator's next `telec todo work` re-entry the work machine emits the in-session prepare handoff — the same non-terminal bounce a substantive work-entry drift produces — and after the plan is re-derived and re-approved, the work machine re-enters the preserved build and hands the builder machine-derived reconcile instructions naming the old and new implementation-plan digests.
+<!-- change:kickback-hands-off-to-runner -->
+- `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a work-orchestrator session whose claim binds the slug may stamp it; a worker session, a plain operator shell, or an orchestrator bound to a different slug is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo), invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`, clears any outstanding build-complete gate claim, and resets a ready finalize handoff to pending. The worktree, local and remote branch, workspace directory, and build commits are preserved. Once the reason is durable, the stamp releases the Todo's lifecycle claim and the platform ends the slug's work-lane sessions — every session the stamping orchestrator started, then the orchestrator itself, after it has received the stamp's answer; no agent ends them and no human is notified. The lifecycle runner dispatches a fresh prepare orchestrator; after the plan is re-derived and re-approved, that orchestrator ends and the lifecycle runner dispatches a fresh work orchestrator, which re-enters the preserved build and hands the builder machine-derived reconcile instructions naming the old and new implementation-plan digests.
+<!-- /planned-change:kickback-hands-off-to-runner -->
 
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A
