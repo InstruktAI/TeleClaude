@@ -124,11 +124,18 @@ audience is empty.
   reported undeliverable — distress goes to that channel instead. One-shot rows
   are not in the audience and so never suppress the fallback, and the channel
   is delivered to at most once per distress event.
+<!-- planned-change:human-alerts-agent-only -->
 - **The fallback is the session's own output lane, not the platform push
   pipeline.** It is the surface that already carries this session's ordinary
   output. It is not the notification projector's action gate, which addresses
   the admin audience, debounces on a trailing window, and fires on an incident
   fingerprint.
+<!-- change:human-alerts-agent-only -->
+- **The fallback is the session's own output lane, not the event pipeline.** It
+  is the surface that already carries this session's ordinary output. The event
+  pipeline records notifications and pushes nothing to a human
+  (`local/projects/teleclaude/design/architecture/notification-delivery`).
+<!-- /planned-change:human-alerts-agent-only -->
 - **A turn's account is decided at normalization, not at delivery.** Every
   mapped runtime emits exactly one terminal signal per turn — a failed turn
   produces the failure signal and no turn-end signal — so the signal that

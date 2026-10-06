@@ -161,6 +161,7 @@ When the restart request is resolved
 Then the request is refused with a "session not found" error rather than silently executing locally
 ```
 
+<!-- planned-change:human-alerts-agent-only -->
 #### UC-AR6: Kill-side restart abort notifies the operator
 
 ```
@@ -205,6 +206,55 @@ When a restart failure occurs for the same session
 Then the restart failure produces its own operator notification
 And it does not update or resolve the pre-existing session notification
 ```
+<!-- change:human-alerts-agent-only -->
+#### UC-AR6: Kill-side restart abort is recorded
+
+```
+Given a restart aborts because the agent process did not exit and the shell never returned ready
+When the handler reports the failure
+Then a restart-failure notification for that session is recorded in the in-app notification list
+And no human is pushed a message about it
+And the in-session failure message remains visible in the session pane
+```
+
+#### UC-AR7: Disabled-agent restart abort is recorded
+
+```
+Given a restart aborts because the target agent is no longer enabled in configuration
+When the handler reports the failure
+Then a restart-failure notification for that session is recorded in the in-app notification list
+And no human is pushed a message about it
+And the in-session failure message remains visible in the session pane
+```
+
+#### UC-AR8: Self-restart readiness-timeout is recorded
+
+```
+Given a self-restart relaunched the agent but readiness timed out before the continuation stimulus could be delivered
+When the handler reports the timeout
+Then a restart-failure notification for that session is recorded in the in-app notification list
+And no human is pushed a message about it
+And the in-session timeout message remains visible in the session pane
+```
+
+#### UC-AR9: Repeated restart failures for one session share one notification record
+
+```
+Given a restart-failure notification is already open for a session
+When another restart failure occurs for the same session
+Then that same notification record is updated rather than a second one created
+And the record shows the latest failure reason and phase
+```
+
+#### UC-AR10: A restart-failure notification is distinct from other same-session notifications
+
+```
+Given a notification already exists for a session under that session's lifecycle grouping
+When a restart failure occurs for the same session
+Then the restart failure records its own notification
+And it does not update or resolve the pre-existing session notification
+```
+<!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-AR11: Self-restart relaunches only after the terminated agent process is confirmed exited
 

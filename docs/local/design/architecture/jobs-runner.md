@@ -36,9 +36,16 @@ notification shape:
   A script job closes synchronously in the same tick; an agent job closes on a later tick
   when its structured outcome report arrives.
 - A run that stays open past its expected window (`timeout`) is marked **stalled**.
+<!-- planned-change:human-alerts-agent-only -->
 - On every close or stall the runner emits a `job.run.*` event; an actionable outcome
   (failure or stall) notifies a human through the notification cartridge, a clean run is
   silent. "Dispatched" never means "succeeded."
+<!-- change:human-alerts-agent-only -->
+- On every close or stall the runner emits a `job.run.*` event; an actionable outcome
+  (failure or stall) is recorded as a notification in-app and in-log, where the log bug
+  hunter picks it up, and no outcome pushes a message to a human. "Dispatched" never
+  means "succeeded."
+<!-- /planned-change:human-alerts-agent-only -->
 
 ### Architecture
 
@@ -102,8 +109,14 @@ is down.
 #### Outcome reporting and notification
 
 Outcomes ride the platform's existing event substrate. The runner emits a `job.run.*`
+<!-- planned-change:human-alerts-agent-only -->
 event on close or stall through `EventProducer`; the notification cartridge projects an
 actionable event (failure or stall) to admins and stays silent for a clean run. The agent
+<!-- change:human-alerts-agent-only -->
+event on close or stall through `EventProducer`; the notification cartridge records an
+actionable event (failure or stall) as a notification in-app and in-log and interrupts no
+human (`local/projects/teleclaude/design/architecture/notification-delivery`). The agent
+<!-- /planned-change:human-alerts-agent-only -->
 never emits events — it reports only through `telec jobs report`, and the runner owns the
 translation to events. When event emission cannot be delivered, the runner persists a
 durable pending-emission record — the full payload keyed by the run's project, job identity,
