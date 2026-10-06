@@ -103,8 +103,8 @@ checkpoint:
           - teleclaude/**/*.py
       actions:
         - log-check
-    # Daemon code needs a restart. The CLI modules imported during daemon
-    # startup are re-included despite the broad cli/** exclusion.
+      # Daemon code needs a restart. The CLI modules imported during daemon
+      # startup are re-included despite the broad cli/** exclusion.
     - scope:
         include:
           - teleclaude/**/*.py
@@ -214,5 +214,5 @@ docs:
   enabled: true
 agents:
   enabled: true
-schema_version: 11
+schema_version: 12
 description: AI-powered multi-agent orchestration platform
