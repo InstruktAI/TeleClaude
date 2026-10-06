@@ -689,7 +689,7 @@ hook_outbox:
   staleness_ttl_s: 300
 api:
 <!-- planned:ingress-listener-removed -->
-  tcp_port: 8420 # loopback HTTP listener port on 127.0.0.1; opened only when computer.is_ingress_node is true, as the reverse proxy's webhook upstream
+  tcp_port: integer # loopback HTTP listener port on 127.0.0.1, defaulted by the runtime config defaults; opened only when computer.is_ingress_node is true, as the reverse proxy's webhook upstream
 <!-- /planned:ingress-listener-removed -->
   watch_interval_s: 5
   watch_lag_threshold_ms: 250
