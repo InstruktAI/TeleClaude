@@ -1,42 +1,50 @@
 {
-  "toolPermission": "always-proceed",
-  "artifactReviewPolicy": "always-proceed",
   "allowNonWorkspaceAccess": true,
-  "enableTerminalSandbox": false,
-  "permissions": {
-    "allow": ["read_file(*)", "write_file(*)", "read_url(*)", "execute_url(*)", "command(*)", "mcp(*)"],
-    "ask": [],
-    "deny": []
-  },
-  "skills": {
-    "enabled": true
-  },
+  "artifactReviewPolicy": "always-proceed",
   "context": {
-    "fileName": ["AGENTS.md", "GEMINI.md"],
-    "includeDirectories": ["/"],
     "fileFiltering": {
       "respectGitIgnore": false
-    }
+    },
+    "fileName": ["AGENTS.md", "GEMINI.md"],
+    "includeDirectories": ["/"]
+  },
+  "enableTerminalSandbox": false,
+  "experimental": {
+    "introspectionAgentSettings": {
+      "enabled": true
+    },
+    "plan": true,
+    "skills": true,
+    "useOSC52Paste": true
   },
   "general": {
     "checkpointing": {
       "enabled": true
     },
-    "previewFeatures": true,
     "disableAutoUpdate": true,
     "enableAutoUpdate": false,
+    "previewFeatures": true,
     "sessionRetention": {
-      "warningAcknowledged": true,
       "enabled": true,
-      "maxAge": "1460d"
+      "maxAge": "1460d",
+      "warningAcknowledged": true
     }
   },
-  "experimental": {
-    "useOSC52Paste": true,
-    "skills": true,
-    "introspectionAgentSettings": {
-      "enabled": true
-    },
-    "plan": true
-  }
+  "permissions": {
+    "allow": ["read_file(*)", "write_file(*)", "read_url(*)", "execute_url(*)", "command(*)", "mcp(*)"],
+    "ask": [],
+    "deny": []
+  },
+  "showFeedbackSurvey": false,
+  "skills": {
+    "enabled": true
+  },
+  "statusLine": {
+    "type": "",
+    "command": "",
+    "enabled": true
+  },
+  "queuedMessages": "send-immediately",
+  "toolPermission": "always-proceed",
+  "verbosity": "high"
 }
