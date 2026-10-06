@@ -48,6 +48,9 @@ _RESTRICTED_SESSION_REFUSED_EVENT = "restricted_session_refused"
 _RESTRICTED_SESSION_REFUSED_TEMPLATE = (
     "Session creation refused: a {role} session runs only inside an enabled help desk"
 )
+_NO_SESSION_IDENTITY_REFUSED_TEMPLATE = (
+    "Session creation failed: no identity resolved and no system_role (origin={origin})"
+)
 _DEFAULT_PLACEMENT_EVENT = "session_creation_default_placement"
 _DESK_NOT_HOSTED_TEMPLATE = "Session creation refused: the requested help desk is not enabled on this computer"
 _WORKTREE_SUBDIR_TEMPLATE = "{worktree_dir}/{slug}"
@@ -68,6 +71,10 @@ class SessionCreationIdentity:
     company_source: str
     initiator_session_id: str | None
     initiator_computer: str | None
+
+
+class SessionCreationRefused(ValueError):
+    """Session creation was refused by identity or placement policy."""
 
 
 def _lower_creation_role(role: str, supplied_role: str | None) -> str:
@@ -193,7 +200,7 @@ async def resolve_session_creation_identity(
         human_email = human_role = principal = None
 
     if not human_role and not cmd_system_role and principal != SYSTEM_DAEMON_PRINCIPAL:
-        raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
+        raise SessionCreationRefused(_NO_SESSION_IDENTITY_REFUSED_TEMPLATE.format(origin=origin))
 
     system_role = cmd_system_role
     if cmd.endpoint is not None and cmd.endpoint.is_help_desk:
@@ -202,7 +209,7 @@ async def resolve_session_creation_identity(
         desk = desk_endpoint_for_stamp(cmd.endpoint, config.computer.name)
         if desk is None:
             logger.warning(_RESTRICTED_SESSION_REFUSED_EVENT, origin=origin, role=human_role)
-            raise ValueError(_DESK_NOT_HOSTED_TEMPLATE)
+            raise SessionCreationRefused(_DESK_NOT_HOSTED_TEMPLATE)
         project_path = str(desk.folder)
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = working_slug = None
@@ -212,7 +219,7 @@ async def resolve_session_creation_identity(
         desk = desk_for_folder(cmd.project_path, config.computer.name) if cmd.project_path else None
         if desk is None:
             logger.warning(_RESTRICTED_SESSION_REFUSED_EVENT, origin=origin, role=human_role)
-            raise ValueError(_RESTRICTED_SESSION_REFUSED_TEMPLATE.format(role=human_role))
+            raise SessionCreationRefused(_RESTRICTED_SESSION_REFUSED_TEMPLATE.format(role=human_role))
         project_path = str(desk.folder)
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = working_slug = None

@@ -41,7 +41,7 @@ from ._session import (
     list_sessions,
     list_todos,
 )
-from ._session_identity import resolve_working_slug_from_subdir
+from ._session_identity import SessionCreationRefused, resolve_working_slug_from_subdir
 from ._utils import (
     EndSessionHandlerResult,
     SessionDataPayload,
@@ -52,6 +52,7 @@ from ._utils import (
 __all__ = [
     # _utils
     "EndSessionHandlerResult",
+    "SessionCreationRefused",
     "SessionDataPayload",
     "StartPollingFunc",
     # _agent

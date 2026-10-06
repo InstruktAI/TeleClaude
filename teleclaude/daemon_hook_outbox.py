@@ -17,6 +17,7 @@ from teleclaude.core import polling_coordinator
 from teleclaude.core.agent_status import AgentStatusIntegrityError
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
+from teleclaude.core.command_handlers import SessionCreationRefused
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.event_bus import event_bus
@@ -370,7 +371,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
 
     def _is_retryable_hook_error(self, exc: Exception) -> bool:
         """Return True if hook dispatch errors should be retried."""
-        if isinstance(exc, AgentStatusIntegrityError):
+        if isinstance(exc, (AgentStatusIntegrityError, SessionCreationRefused)):
             return False
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
