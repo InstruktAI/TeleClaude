@@ -29,8 +29,9 @@ human releases it for materialization (`general/principle/attunement`).
    prior art for how this class of problem is already solved, before asking
    anything (`general/principle/grounding`).
 2. **Open the workspace.** Forming material goes into a scratchpad workspace
-   with its index (`general/procedure/scratchpad-workspace`). Record the human's
-   words under Stated by the human as they arrive.
+   with its index (`general/procedure/scratchpad-workspace`). Record step 1's
+   grounding in its Grounding section, and the human's words under Stated by
+   the human as they arrive.
 3. **Read the phase.** While the human is still adding material, expand: add
    what is missing, ask what else. Do not converge early
    (`general/principle/attunement`).
@@ -48,7 +49,8 @@ human releases it for materialization (`general/principle/attunement`).
    data flow, failure modes, and how it will be verified. State what is about to
    happen and its consequence before a consequential move; the human's
    acknowledgement releases execution and approves no agent-owned choice
-   (`general/policy/leadership`).
+   (`general/policy/leadership`). For each material choice, the design names
+   the prior art it follows, or why it departs from it.
 7. **Converge and record.** A design point is settled when every active
    participant agrees. Log it under Decisions with who agreed, and keep what
    remains open under Open.

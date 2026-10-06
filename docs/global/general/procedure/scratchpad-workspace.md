@@ -34,6 +34,11 @@ still open, and where agreed material went.
 2. **Write `index.md` first**, before any other file, with these sections:
    - **Status** — one line: `active`, `converged`, `closed`, or `abandoned`.
    - **Purpose** — the question the activity answers and the outcome it serves.
+   - **Grounding** — the sources the activity rests on: what was read for
+     current state, and how this class of problem is solved elsewhere, or that
+     no prior art was found (`general/principle/grounding`). What is not yet
+     grounded is listed as such. The section inventories evidence; it proves
+     nothing about the reasoning built on it.
    - **Participants** — one row per session: session id, agent with model and
      thinking mode, role (author, peer, reviewer, dispatcher). The human appears
      by person slug. Session ids are the attribution evidence
@@ -81,6 +86,8 @@ A minimal index skeleton:
 Status: active
 
 ## Purpose
+
+## Grounding
 
 ## Participants
 
