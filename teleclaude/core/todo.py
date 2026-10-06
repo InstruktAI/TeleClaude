@@ -30,7 +30,7 @@ from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
 
 logger = get_logger(__name__)
 
-RECENTLY_DELIVERED_HOURS = 72
+RECENTLY_DELIVERED_HOURS = 168
 READY_BAND = "ready"
 IN_PREP_BAND = "in_prep"
 
