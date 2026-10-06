@@ -493,12 +493,41 @@ class TodoDumpRequest(BaseModel):
         return data
 
 
+class PersonMessageDeliveryResponse(BaseModel):
+    """One successful person-addressed delivery in the CLI response."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    recipient: str = Field(min_length=1)
+    channel: MessagingChannel
+    message_id: str | None
+
+
+class PersonMessageFailureResponse(BaseModel):
+    """One person-addressed delivery failure in the CLI response."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    recipient: str = Field(min_length=1)
+    detail: str = Field(min_length=1)
+
+
+class PersonMessageResponse(BaseModel):
+    """Successful person-addressed message result returned to the CLI."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: Literal["ok"]
+    deliveries: list[PersonMessageDeliveryResponse] = Field(min_length=1)
+    failures: list[PersonMessageFailureResponse]
+
+
 class PersonMessageRequest(BaseModel):
     """Request body for POST /api/people/message."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    slug: str = Field(..., min_length=1)
+    recipient: str | None = Field(default=None, min_length=1)
     text: str = Field(..., min_length=1)
     file: str | None = None
     subject: str | None = None
