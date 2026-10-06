@@ -132,6 +132,7 @@ And any cluster subscriber to error receives the event asynchronously
 And the entry is then removed by the worker as processed
 ```
 
+<!-- planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 #### UC-D7: Retry with exponential backoff on retryable failure
 
 ```gherkin
@@ -142,7 +143,20 @@ And next-attempt-at = now + the configured backoff for that attempt (base 1s, do
 And the entry is marked failed with the last error recorded
 And the claim lock is cleared so a later poll re-claims the entry
 ```
+<!-- change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
+#### UC-D7: Retry with exponential backoff on retryable failure
 
+```gherkin
+Given the dispatcher raises a retryable exception (any error other than a "not found" value error, an "extra data" decoding error, or a session-creation refusal)
+When the worker catches the exception
+Then the attempt count is incremented
+And next-attempt-at = now + the configured backoff for that attempt (base 1s, doubling, capped at 60s)
+And the entry is marked failed with the last error recorded
+And the claim lock is cleared so a later poll re-claims the entry
+```
+<!-- /planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
+
+<!-- planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 #### UC-D8: Missing-session non-start entry logs and removes (no exception)
 
 ````gherkin
@@ -166,6 +180,31 @@ And the entry is removed without retry
 And the processed-count metric is incremented
 This branch covers payload-corruption type errors, not missing-session non-start entries (which are silent).
 ````
+<!-- change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
+#### UC-D8: Missing-session non-start entry logs and removes (no exception)
+
+````gherkin
+Given a claimed entry has event type != agent-session-start
+And the sessions store has no record for that session id
+When the dispatcher evaluates the guard
+Then it logs "ignoring hook event for unknown session (not session_start)" at debug
+And returns normally (no exception raised)
+And the outbox worker treats the dispatch as successful
+And the entry is removed
+And the processed-count metric is incremented
+The entry is NOT classified as a non-retryable failure; the removal follows the normal "processed successfully" path.
+
+#### UC-D8b: Non-retryable failures still drop on actual non-retryable errors
+
+```gherkin
+Given the dispatcher raises a value error whose message contains "not found", OR a decoding error with "extra data", OR a session-creation refusal of the entry's identity or placement
+When the retryable-error classifier returns false
+Then an error "hook outbox event dropped (non-retryable)" is emitted with entry id, attempt, and error
+And the entry is removed without retry
+And the processed-count metric is incremented
+This branch covers payload-corruption type errors and refused session creation, not missing-session non-start entries (which are silent).
+````
+<!-- /planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 
 #### UC-D9: Periodic summary log
 
