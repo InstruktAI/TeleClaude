@@ -141,8 +141,9 @@ record the blocker and stop — do not escalate scope.
 
 ### 6. Deferrals
 
-If `deferrals.md` exists, the state machine dispatches deferral resolution via
-`defer` before or after finalize. New todos are created from justified deferrals.
+If `deferrals` exists, the state machine dispatches deferral resolution via
+`defer` before or after finalize. Deferral processing decides each entry and
+creates or files only what `sdlc/policy/todo-creation-discipline` admits.
 
 ### 7. Bug fix
 
@@ -225,7 +226,7 @@ reverts what the amendment invalidates, keeps what still serves, and continues.
 - Code changes implementing the plan, committed and reviewed.
 - Review findings addressed.
 - Branch finalized and ready for integration.
-- Deferrals processed into new todos when applicable.
+- Deferrals decided, with new todos or bug filings only where admitted.
 
 ## Recovery
 

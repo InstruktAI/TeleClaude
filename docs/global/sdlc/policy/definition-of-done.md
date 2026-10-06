@@ -15,7 +15,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 
 - [ ] All requirements implemented
 - [ ] Code works as specified
-- [ ] Edge cases handled
+- [ ] Edge cases handled: every reachable condition (`sdlc/concept/defect-evidence`)
 - [ ] Error paths handled and reviewed
 - [ ] No debug/temp code remains
 

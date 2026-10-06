@@ -12,6 +12,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Goal
 
@@ -83,7 +84,19 @@ with the governing contract.
    fix the code and do not update the snapshot. Concrete idioms and migration
    patterns live in `sdlc/procedure/snapshot-testing`.
 
-6. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
+6. **Build the plan; relay what lies outside it.** Your tasks are your whole
+   concern. Delivering a task includes handling every reachable condition
+   (`sdlc/concept/defect-evidence`) of the behavior the task adds or changes,
+   and, where a party without reach to the asset can drive input into that
+   behavior, every control `sdlc/policy/security-awareness` requires there,
+   defense in depth included. Handling an unreachable condition is behavior no
+   task carries, and you never add it on your own judgment. A gap in behavior
+   the task does not add or change is outside your tasks. Record in
+   `deferrals`, in the entry shape
+   `sdlc/procedure/lifecycle/work/deferrals` defines, and then continue:
+   - a plan task that is truly out of scope, as a deferred task;
+   - a possible defect you notice outside your tasks, as an observation. You
+     relay it and nothing more (`sdlc/policy/todo-creation-discipline`).
 7. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
    you to build a classifier, scorer, judge, evaluator, or auto-fixer on
    free-text content, stop. Per `principle/intelligence-boundaries`, the
@@ -122,7 +135,8 @@ with the governing contract.
    (`definition-of-done` §2): when the deepening is behavior-preserving,
    owner-local, contract-preserving, one coherent commit, and within the cost
    cap, do it as its own commit and record it in the build report; otherwise
-   record the candidate and the reason for deferral in `deferrals.md`. The
+   record it in `deferrals` as a ratchet candidate, naming the condition that
+   failed. The
    change path is never left worse than it was found.
 
 ### Test-quality self-review
@@ -136,7 +150,7 @@ self-review.
 
 ### Pre-completion checklist
 
-1. Every implementation-plan task is delivered by a commit or explicitly recorded in `deferrals.md`.
+1. Every implementation-plan task is delivered by a commit or explicitly recorded in `deferrals`.
 2. Where the project's testing contract binds tests (`sdlc/policy/testing`), they pass: `telec code test`.
 3. Where the project permits test authorship, every in-scope added or changed scenario is bound and passing; removed scenarios' tests are deleted.
 4. No spec-bound assertion weakened or deleted; no in-scope spec has orphan bindings (run
@@ -157,7 +171,7 @@ self-review.
 
 - Code changes implementing the plan.
 - Commits for each task.
-- Optional `deferrals.md` when scope must be escalated.
+- Optional `deferrals` when a task, a ratchet candidate, or an observation lies outside the build.
 
 ### Report format
 

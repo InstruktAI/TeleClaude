@@ -73,7 +73,10 @@ that set with the plan and the diff; checking only the plan's listed tasks can
 miss an escaped regression. Trace both directions: each required outcome to
 the implementation that delivers it, and each material element of the diff to
 authorized intent or a principle applied to verified substrate. An element
-tracing to neither is invention and a finding. An outcome absent from the plan
+tracing to neither is invention and a finding. Handling of an unreachable
+condition (`sdlc/concept/defect-evidence`) traces to neither unless the plan
+carries it or `sdlc/policy/security-awareness` requires it on a path a party
+without reach to the asset can drive input into. An outcome absent from the plan
 is a preparation defect and triggers kickback; an outcome the diff fails to
 deliver is a build finding.
 
@@ -91,7 +94,13 @@ them unless the review scope explicitly includes planning or state edits.
 
 - Every implementation-plan task is delivered by a commit or explicitly
   deferred under the plan.
-- Every deferral is justified.
+- Every deferred task is justified. A deferred task whose subject is a defect
+  in the delivered change is not justified: the delivery is incomplete.
+- Every ratchet candidate names the structural-ratchet condition that failed
+  (`sdlc/policy/definition-of-done`); a qualifying deepening left undone is
+  unjustified.
+- An observation needs no justification. One whose subject lies inside the
+  delivered change is judged as a defect of the delivery.
 
 An undelivered task without a deferral, or an unjustified deferral, yields
 `REQUEST CHANGES`.

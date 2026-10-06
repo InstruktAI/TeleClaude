@@ -8,6 +8,7 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 @~/.teleclaude/docs/general/policy/documentation-discipline.md
 @~/.teleclaude/docs/general/policy/human-contract.md
+@~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Rules
 
@@ -93,6 +94,42 @@ description: Decide whether a todo should exist, audit that decision at preparat
   creation. The surface verifies the decisions were faced, never that the
   answers are true; judging the answers stays with intelligence.
 
+### Ground every defect claim in evidence
+
+The terms below are defined in `sdlc/concept/defect-evidence`.
+
+- **Workers relay; they never file.** A worker is a session executing one job
+  for a governing session it reports back to: a builder, reviewer, diagnosis
+  peer, fixer, or finalizer. A possible defect it notices while doing that job
+  is relayed as an observation — what it saw, where, and how it came to see
+  it — through the channel its own procedure names, or, where that names none,
+  in its final report to the governing session. The worker does not fix, defer,
+  or file the defect, and proposes no outcome. The session that receives the
+  relay decides it under this standard and otherwise lets it go; deferral
+  processing does so for a build's entries, filing as the work orchestrator
+  (`sdlc/procedure/lifecycle/work/deferrals`).
+- **Every other session files a defect claim on evidence.** A todo whose
+  premise is a defect, or a defense against one, cites an occurrence or a
+  dangerous path, and is filed by its kind: a defect through
+  `telec bugs report`, a defense as the work it is. A filer that can cite
+  neither files nothing.
+- **What a human asks for in their own words is authorized intent, not a defect
+  claim.** It is filed by its content under the rest of this policy, and
+  preparation recovers it from the creating session and never retires it for
+  lacking defect evidence. A human's acknowledgement of an agent's proposal to
+  file leaves the claim agent-originated; it still owes evidence.
+- **Preparation decides.** The filer establishes that its evidence exists and
+  does not classify the claim. Preparation judges it before spending further
+  work — diagnose triage for a bug (`sdlc/procedure/lifecycle/prepare/diagnose`),
+  the entry audit for any other kind — by opening a cited occurrence's address
+  and confirming it shows the claimed defect in real use, or by confirming each
+  step of a cited dangerous path against current sources: the actor holds that
+  access, the surface permits that act, any real-use input is shown, and the
+  consequence meets the bar. A claim whose evidence holds is processed; one
+  without evidence, or whose evidence fails a check, is retired. Confirming
+  cited evidence is preparation's work; supplying evidence the filing lacked is
+  not.
+
 ### Audit at preparation entry
 
 - **Audit before deriving from `input`.** At Step 0a, read the mechanically
@@ -107,7 +144,8 @@ description: Decide whether a todo should exist, audit that decision at preparat
   documentation, dependencies, or other repairable omission in place. Retire
   only a confirmed duplicate, an owner that cannot be corrected in place,
   process intent defensible from neither authorized intent nor applicable
-  principles, or an input for which no defensible intent remains. A
+  principles, a defect claim carrying neither the evidence nor the human
+  request that grounds it, or an input for which no defensible intent remains. A
   human-owned consequence is repaired by returning only that consequence to
   its owner; technical process intent remains agent-owned. Scheduling and
   `hold` state do not decide validity.
@@ -226,6 +264,12 @@ that absence erases the agent's unattempted responsibility and turns a missed
 procedure into product scope. Requiring the failed sanctioned step preserves
 the difference between an observed symptom and a missing platform capability.
 
+A worker sees one job's slice of the system and cannot judge how a defect is
+reached or what it costs; the session governing it holds the wider frame, and
+preparation judges a claim independently of the filer's stake in it. The
+evidence requirement attaches to the premise rather than the todo kind because
+a guard filed as a `change` adds the same conjectural code a bug fix would.
+
 Communication comes before a state brake because only the claimant can report
 what it understood and whether its current derivation remains usable. A hold is
 still necessary when that feedback path is provably unavailable, but it carries
@@ -257,6 +301,9 @@ and every observer that flags a live claimant under this policy.
 - A todo created without the bounded check, in the wrong owning project, for
   plainly duplicate or amendable work, for in-context work, or for process work
   with no defensible intent or principled basis violates this policy.
+- A worker that files, or a filer that files a defect claim without cited
+  evidence, violates this policy; the coordinator catches it. Preparation
+  judges a filed claim only by the evidence it carries, never by who filed it.
 - A prepare claimant that derives from `input` before the entry audit, or
   continues preparation after receiving a flag and before reconciliation,
   violates this policy.

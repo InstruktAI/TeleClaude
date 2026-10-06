@@ -11,6 +11,7 @@ visibility: public
 - @~/.teleclaude/docs/sdlc/procedure/debugging.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
+- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Goal
 
@@ -60,6 +61,14 @@ in-flight bugs (`telec bugs list`, `telec todo list`), read the active suppressi
 same error signature, the same failing surface — not merely the same file or area; that
 judgment is yours to make from the symptoms, not a string match.
 
+- **Judge the filing evidence first.** Find, in the `input` and the creation record, the
+  occurrence or dangerous path the filing cites, and confirm it as
+  `sdlc/policy/todo-creation-discipline` requires. A bug whose evidence holds continues
+  through the rest of triage. A bug without evidence, or whose cited evidence fails a check,
+  is retired: record the reason in the todo's `log`, run `telec todo remove {slug}`, and end
+  the session without dispatching a peer. A fix the human asked for in their own words is
+  authorized intent and is not retired here; a human's acknowledgement of an agent's report
+  is not such a request.
 - **If a sibling for the same defect is already in flight, retire this todo as the
   duplicate.** Resolve the race deterministically so two simultaneous sessions never both
   retire themselves: the **survivor** is whichever twin is already further along (has a
@@ -237,7 +246,8 @@ structural rather than triggered by self-assessment.
 Slides to refuse: (1) accepting a located symptom as a root cause; (2) prescribing a fix or
 verification approach here; (3) asserting a cause the recorded evidence does not carry;
 (4) writing a "likely" cause to keep moving when the mechanism will not ground; (5)
-dispatching past a duplicate or a high-confidence expected or won't-fix signal; (6) adopting
+dispatching past a filing that carries neither an occurrence nor a dangerous path, a
+duplicate, or a high-confidence expected or won't-fix signal; (6) adopting
 a fix-shaped input's premise; (7) briefing the peer with a suspected cause, which decides
 what it finds before it looks; (8) tracing one reproducing path vertically while leaving
 sibling implementations of the same contract horizontally unexamined.

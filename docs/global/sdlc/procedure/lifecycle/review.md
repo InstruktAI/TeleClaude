@@ -15,6 +15,7 @@ description: Shared review execution contract for lanes, evidence, citations, se
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
 - @~/.teleclaude/docs/sdlc/policy/definition-of-done.md
+- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Goal
 
@@ -101,13 +102,19 @@ A finding is valid only when all four hold:
 4. it states the closure condition within the frozen scope, without
    prescribing implementation.
 
+A finding that claims a defect establishes, from current sources, that a
+reachable condition triggers it (`sdlc/concept/defect-evidence`); a defect claim
+on an unreachable condition is an investigation lead.
+
 An observation missing any one of these is an **investigation lead**, not a
 finding: it cannot block, never enters remediation, requires no producer
-response, and cannot enlarge current work. Report it under its own heading or
-route it separately; a lead that silently becomes remediation is the failure
-this contract exists to prevent. Absence of a specific prohibition is never a
-finding's basis when a principle covers the case; "the design feels wrong" is
-not a finding under any citation.
+response, and cannot enlarge current work. Report it under its own heading in
+the review result. The review result is your relay channel
+(`sdlc/policy/todo-creation-discipline`): the session that dispatched the
+review decides what, if anything, follows, and you file nothing. A lead that
+silently becomes remediation is the failure this contract exists to prevent.
+Absence of a specific prohibition is never a finding's basis when a principle
+covers the case; "the design feels wrong" is not a finding under any citation.
 
 An observation without a causal relationship to the reviewed target is outside
 the review, not an investigation lead.
