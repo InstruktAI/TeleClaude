@@ -85,11 +85,24 @@ producer or the session's recorded entry point, never the text. Platform
 commands that a channel's own handlers or command-input recognition resolve
 before delivery keep their contracts unchanged.
 
+<!-- planned-change:codex-unknown-slash-command-holds-composer -->
 Conversation text is delivered only into an empty composer and never joins a
 human draft. While the composer holds input, conversation text waits in
 accepted order: it is retried on the delivery cadence without consuming its
 delivery-attempt budget and ends only with the session, so no submission of a
 human draft carries relayed text.
+<!-- change:codex-unknown-slash-command-holds-composer -->
+Conversation text is delivered only into an empty composer and never joins a
+human draft. While the composer holds input, conversation text waits in
+accepted order. It is retried on the delivery cadence without consuming its
+delivery-attempt budget, for no longer than the delivery-retry window measured
+from its acceptance, so no submission of a human draft carries relayed text.
+A message that has been held is never submitted after that window lapses: it
+ends undelivered when the window lapses, the session's conversation channels
+receive a notice that it did not reach the agent because the agent's input was
+occupied, and the composer's content is left untouched. A startup message held
+past the same window fails its submission.
+<!-- /planned-change:codex-unknown-slash-command-holds-composer -->
 
 When conversation text is submitted to an agent's empty composer and its first
 character after any leading whitespace and leading invisible format characters
@@ -408,6 +421,19 @@ Then the composer submits it once as an ordinary prompt
 And the agent receives the message's text with its final backslash
 And the person's next message starts its own prompt instead of joining this one
 ```
+
+<!-- planned:codex-unknown-slash-command-holds-composer -->
+#### UC-SID20: Held conversation text does not wait forever
+
+```gherkin
+Given a person writes to an agent session through a conversation channel
+And the session's composer holds input that is not cleared
+When the delivery-retry window since the message's acceptance lapses
+Then the message is not delivered to the agent, even if the composer empties afterwards
+And that conversation receives a notice that the message did not reach the agent because its input was occupied
+And the composer's content is unchanged
+```
+<!-- /planned:codex-unknown-slash-command-holds-composer -->
 
 ### Cross-context references
 
