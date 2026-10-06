@@ -13,7 +13,6 @@ description: How the event pipeline decides which events interrupt a human via p
 
 ## Purpose
 
-
 The platform emits a broad stream of events; only an occurrence carrying a
 concrete action or decision for a human should interrupt. This design defines the
 push gate that separates **action-required occurrences** from everything that is
@@ -30,7 +29,6 @@ action is delivered once and only a material escalation can interrupt again.
 
 **Inputs:**
 
-
 - The event schema classification and level, retained for in-app treatment but
   never sufficient to authorize an external interruption.
 - A structured occurrence-level human-action intent: audience, human-facing
@@ -39,7 +37,6 @@ action is delivered once and only a material escalation can interrupt again.
 - The projected notification change produced by the notification-projector,
   including an actual stored-value delta for schema-declared meaningful fields.
 - The durable last-delivered action revision for the incident and audience.
-
 
 - The `EventSchema.delivery_debounce_s` window declared per event type in the
   event catalog. `None` inherits the platform default trailing window of 15
@@ -59,14 +56,6 @@ action is delivered once and only a material escalation can interrupt again.
   and WhatsApp admin DMs, and the WebSocket app-client push — **only** for events
   that pass the gate.
 
-<!-- planned:queue-external-dm-deliveries -->
-
-- External DM pushes enter a shared outbound delivery queue before provider I/O.
-  Channel workers serialize delivery, apply provider rate limits, and retry
-  transient provider rejections without discarding the durable notification.
-
-<!-- /planned:queue-external-dm-deliveries -->
-
 - A notification row written for every projected event regardless of the gate, so
   routine events remain queryable in-app and in-log; the gate suppresses the
   interruption, not the record.
@@ -84,7 +73,6 @@ action is delivered once and only a material escalation can interrupt again.
 
 ## Invariants
 
-
 - **The push gate is keyed on a current human action, never on level or event
   class alone.** A schema may classify an event type as actionable for in-app
   treatment, but external delivery requires a structured occurrence-level action
@@ -99,7 +87,6 @@ action is delivered once and only a material escalation can interrupt again.
   human-action delivery intent.
 - **Recovery remains record-only.** Resolution updates the durable incident and
   in-app state but does not send a positive external push.
-
 
 - **Every push surface honours the same gate.** The interrupting-DM adapters and
   the WebSocket app push apply one shared decision; no surface forwards
@@ -121,43 +108,6 @@ action is delivered once and only a material escalation can interrupt again.
 - **The debounce window is a per-event override.** An event schema sets its own
   `delivery_debounce_s` to widen, narrow, or disable its window; a disabled
   window delivers that event's push immediately.
-
-<!-- planned:queue-external-dm-deliveries -->
-
-- **External DM provider calls are queued and rate-limited.** Every Telegram,
-  Discord, and WhatsApp delivery that survives debounce enters the same
-  channel-specific queue used by both broadcast and targeted notifications.
-  One worker per channel controls provider concurrency and retries retryable
-  throttling or transient failures with bounded backoff; a failed attempt never
-  erases or resolves the durable notification row.
-- **Pacing follows the provider's own signal wherever the provider publishes
-  one.** A rejection carrying a retry-after throttles that channel as a whole
-  for the window the provider asked for, not just the rejected delivery. Where
-  a provider publishes remaining-quota metadata on every response — Discord's
-  per-bucket rate-limit headers, which cover DM-channel creation and message
-  send as separate buckets — the queue observes it and paces from it. A fixed
-  interval is only the floor that governs the first call to a channel, never
-  the mechanism by which a published limit is respected.
-- **Retryability is read from provider-supplied codes, never from provider
-  prose.** The status code, any retry-after, and the provider's own error code
-  where it carries the throttling signal — WhatsApp's throughput and pair rate
-  limits are error codes, not distinct HTTP statuses — travel from the send
-  boundary as structured data. Classification never inspects a message string.
-- **The queue is bounded, and saturation is loud rather than silent.** A
-  channel's queue holds a fixed maximum of pending deliveries. When a sustained
-  provider outage fills it, the oldest pending delivery for that channel is
-  discarded to admit the newest, and the discard is reported with the
-  notification it dropped. An outage degrades the push surface; it never
-  consumes the daemon.
-- **A queued push is best-effort; the notification row is the record.** The
-  queue holds no durable state. On shutdown each channel worker stops admitting
-  work and drains what it holds within a bounded grace window, making one
-  attempt per delivery with no retries; whatever remains undelivered is
-  reported by count. Nothing is persisted for a later process, because the
-  durable row already carries the event — losing a push loses an interruption,
-  never a record.
-
-<!-- /planned:queue-external-dm-deliveries -->
 
 - **An addressed notification reaches only its principal, across every delivery
   surface.** When the projected change carries an addressed recipient, the push
@@ -203,7 +153,6 @@ action is delivered once and only a material escalation can interrupt again.
 
 ## Primary flows
 
-
 ```mermaid
 flowchart TD
     E[Event on pipeline] --> C[Classification cartridge<br/>annotates actionable + treatment]
@@ -214,14 +163,11 @@ flowchart TD
     G -- yes --> D[Action card to configured surface:<br/>Telegram / Discord / WhatsApp / WebSocket]
 ```
 
-
-
 The projector carries one structured delivery intent to the shared gate. The
 intent includes audience, human-facing summary, concrete action, original
 occurrence timestamp, lifecycle-family incident key, and action revision. Every
 surface consumes the same decision and semantic content; channel renderers do not
 reconstruct actionability from event type, level, or prose.
-
 
 Notification lifecycle grouping is scoped by explicit lifecycle family, group
 key/value, and recipient. Related create/update/resolve event types declare the
@@ -244,7 +190,6 @@ not rendered as the message body.
 When a projected change that passes the gate carries an addressed recipient, the
 push forks from the broadcast path to a single targeted delivery:
 
-
 ```mermaid
 flowchart TD
     P[Gate passed:<br/>new concrete human action] --> A{Addressed to<br/>a principal?}
@@ -254,9 +199,7 @@ flowchart TD
     S -- unresolvable --> W[Write row, log warning, no push]
 ```
 
-
 ## Failure modes
-
 
 - **Gate keyed on level or schema actionability instead of a current human
   action** admits both routine success and negative-but-self-handled activity.
@@ -265,7 +208,6 @@ flowchart TD
 - **Grouping by payload field/value without lifecycle family** lets unrelated
   event classes carrying the same entity overwrite one notification row and
   corrupt incident deduplication.
-
 
 - **A surface bypassing the gate** — most easily the WebSocket app push, which
   forwards to subscribed clients — re-floods that surface with routine events even
@@ -289,27 +231,3 @@ flowchart TD
   re-admits the very leak targeting removes: a per-person notification becomes
   visible to every operator. The single-recipient guarantee holds across every
   push and list surface, not only the external DM adapters.
-
-<!-- planned:queue-external-dm-deliveries -->
-
-- **Calling provider DM primitives directly from debounce callbacks** lets a
-  burst create concurrent channel-open or send requests, so provider throttling
-  becomes a silently dropped push. Debounce callbacks enqueue; only the
-  channel worker performs provider I/O, and retry exhaustion remains observable.
-- **Substituting a hard-coded interval for a published provider limit** looks
-  like rate limiting and is not. A provider whose limits vary by route and
-  bucket — Discord — cannot be paced by a constant chosen in advance: the
-  constant is either so slow it throttles delivery for no reason or so fast it
-  earns the rejection it was meant to avoid. The published metadata is the
-  limit; a constant is only the floor before any metadata has been seen.
-- **Classifying a rejection by reading its message text** re-admits the failure
-  under a new name: provider prose is localized, versioned, and outside this
-  system's control, so a throttling response silently becomes a permanent one
-  the first time the wording shifts. Where a provider signals throttling by an
-  error code rather than a status, that code is carried structurally.
-- **An unbounded queue converts a provider outage into a daemon outage.** A
-  queue that only warns as it grows keeps accepting work no worker can drain,
-  trading a degraded push surface for process memory. Bounding the queue and
-  reporting what it discards keeps the failure where it belongs.
-
-<!-- /planned:queue-external-dm-deliveries -->
