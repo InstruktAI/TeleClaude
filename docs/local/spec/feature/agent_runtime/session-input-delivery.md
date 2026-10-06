@@ -75,11 +75,17 @@ ordinary colored human text during occupancy observation.
 When that observation identifies no composer because the agent shows another
 screen, nothing is pasted, typed, or submitted into that screen, whatever the
 input's authority, and the input reaches the agent only once a later
-observation finds an empty composer. A startup message waits for the composer
-for the delivery-retry window and fails its submission when the window lapses.
-Queued conversation text waits as described under Conversation input
-authority; queued platform-authored text keeps its delivery retries and its
-terminal notices. The first observation that finds no composer while the
+observation finds an empty composer. Waiting on that screen is not a delivery
+failure and consumes no delivery attempt. Queued text of either authority waits
+in accepted order for no longer than the delivery-retry window measured from its
+acceptance; conversation text then ends as described under Conversation input
+authority, and platform-authored text ends undelivered with the terminal notice
+its producer receives when its delivery is exhausted. A startup message that
+reaches the observation waits for the same window and fails its submission when
+it lapses. A pane-readiness wait sees the same screen: a surface with no
+composer that has stopped changing for the readiness quiet window counts as
+that observation, and the readiness wait keeps its own limit. The first
+observation that finds no composer while the
 session is not already `blocked` with reason `needs_input` puts it there, which
 wakes its watchers once with a capture of the pane so an agent can clear or
 escalate what the screen shows
