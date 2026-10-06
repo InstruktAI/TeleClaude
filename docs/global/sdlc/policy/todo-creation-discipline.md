@@ -99,15 +99,18 @@ description: Decide whether a todo should exist, audit that decision at preparat
 The terms below are defined in `sdlc/concept/defect-evidence`.
 
 - **Workers relay; they never file.** A worker is a session executing one job
-  for a governing session it reports back to: a builder, reviewer, diagnosis
-  peer, fixer, or finalizer. A possible defect it notices while doing that job
-  is relayed as an observation — what it saw, where, and how it came to see
-  it — through the channel its own procedure names, or, where that names none,
-  in its final report to the governing session. The worker does not fix, defer,
-  or file the defect, and proposes no outcome. The session that receives the
-  relay decides it under this standard and otherwise lets it go; deferral
-  processing does so for a build's entries, filing as the work orchestrator
-  (`sdlc/procedure/lifecycle/work/deferrals`).
+  of the work it is dispatched into for a governing session it reports back
+  to: a builder, reviewer, diagnosis peer, fixer, or finalizer. A possible
+  defect it notices while doing that job is relayed as an observation — what it
+  saw, where, and how it came to see it — through the channel its own procedure
+  names, or, where that names none, in its final report to the governing
+  session. The worker does not fix, defer, or file the defect, and proposes no
+  outcome. The session that receives the relay decides it under this standard
+  and otherwise lets it go.
+- **Deferral processing is the work orchestrator's decision, not a worker's
+  job.** The work orchestrator delegates deciding a build's relayed entries to
+  a child session (`sdlc/procedure/lifecycle/work/deferrals`). That session
+  holds the orchestrator's filing authority for those entries and nothing else.
 - **Every other session files a defect claim on evidence.** A todo whose
   premise is a defect, or a defense against one, cites an occurrence or a
   dangerous path, and is filed by its kind: a defect through
