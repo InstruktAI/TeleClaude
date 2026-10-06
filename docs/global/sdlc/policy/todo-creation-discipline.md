@@ -239,6 +239,21 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   in that idle turn, as one live question. A resolved defense, hold,
   stand-down, or retraction does not become human clerking.
 
+### Withdraw your own filing
+
+- **A filer withdraws its own filing once its premise fails.** When the
+  session that filed a todo establishes that the filing's premise does not
+  hold, it retracts the todo itself rather than flagging its live claimant. It
+  ends every live session working the todo — the claimant and the sessions the
+  claimant started for it — with `telec sessions end <session-id>`, then runs
+  `telec todo remove <slug>`. Removal refuses while a live session still holds
+  the todo and names each holder, so the sessions end first.
+- **Only an agent-originated filing is the filer's to withdraw.** A filing that
+  carries a human's request in their own words is withdrawn only by that human:
+  abandoning an intended outcome is theirs (`general/policy/human-contract`). A
+  human's acknowledgement of the agent's proposal to file does not make the
+  filing theirs.
+
 ### Read authorship from the creation record
 
 - **Never infer who created a todo from account identity.** Read the immutable
@@ -288,6 +303,11 @@ the human contract assigns to the human left as a question, keeps every
 technical disagreement out of the human's attention without inventing a
 channel that may not exist.
 
+The flag serves an observer of someone else's filing. The filer of a disproven
+filing holds the reasoning the filing came from; the claimant only derived from
+it and cannot judge the withdrawal better. Flagging instead would leave a
+session working a premise its author already knows is false.
+
 The message-based flag is deliberately not durable todo state. It protects
 actively prepared work, where a claimant exists and effort is being spent.
 Unclaimed work is protected by the mandatory entry audit when preparation
@@ -296,7 +316,8 @@ next begins.
 ## Scope
 
 All todo creation and preparation, every kind, every human or agent creator,
-and every observer that flags a live claimant under this policy.
+every observer that flags a live claimant, and every filer that withdraws its
+own filing under this policy.
 
 ## Enforcement
 
@@ -311,7 +332,10 @@ and every observer that flags a live claimant under this policy.
   violates this policy.
 - A flagger that supplies remediation content, chooses the claimant's exit,
   continues beyond one grounded follow-up, or carries a resolved case or an
-  unresolved technical deadlock to the human violates this policy.
+  unresolved technical deadlock to the human violates this policy. A filer
+  withdrawing its own agent-originated filing is not a flagger.
+- A filer that leaves its own disproven filing in preparation, or withdraws a
+  filing that carries a human's request, violates this policy.
 - `telec todo update --hold` requires a non-empty `--reason` and refuses the
   request before any write when it is absent or blank; supplying `--reason`
   without `--hold` is likewise refused. A flag-related hold without the
