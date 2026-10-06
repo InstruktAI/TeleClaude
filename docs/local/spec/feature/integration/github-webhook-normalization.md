@@ -16,11 +16,24 @@ and `type=<event>`. For `ping` events specifically, the normalizer also
 passes through `zen` and `hook_id` so downstream handlers can confirm
 the registration handshake.
 
+<!-- planned-change:inbound-event-relay -->
 In v1 production the normalizer is registered at integration service
 startup as a built-in. The downstream consumer is the deployment-update
 handler (matched via a programmatic contract for events `push` /
 `release`), which uses the normalized event to trigger version-fanout
 logic.
+<!-- change:inbound-event-relay -->
+The normalizer is the GitHub adapter of the ingress. A project receives
+GitHub deliveries by declaring a GitHub source in its own configuration
+(`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
+A verified delivery is relayed to the cluster as the platform event
+`github.<event>`, whose subject is that project and whose payload is the
+delivery body. Each computer delivers the relayed event to its own hook
+dispatcher as the normalized hook event above. The downstream consumer
+there is the deployment-update handler (matched via a programmatic
+contract for events `push` / `release`), which uses the normalized event
+to trigger version-fanout logic.
+<!-- /planned-change:inbound-event-relay -->
 
 ## Canonical fields
 
@@ -100,11 +113,32 @@ And the deployment-event handler is invoked
 And the deployment update flow runs (see deployment-version-fanout)
 ```
 
+<!-- planned:inbound-event-relay -->
+#### UC-GH8: A verified delivery is relayed as a GitHub platform event about its project
+
+```gherkin
+Given the project "web" declares a GitHub source
+When GitHub delivers a push signed with that project's secret to /hooks/inbound/github/project/web
+Then the cluster receives the platform event "github.push"
+And its subject is the project "web"
+And its payload is the delivery body
+And every computer's hook dispatcher receives the normalized push event once
+```
+<!-- /planned:inbound-event-relay -->
+
 ### Cross-context references
 
+<!-- planned-change:inbound-event-relay -->
 - Inbound framework wires the GitHub endpoint when configured under
   `hooks.inbound.github` with a `secret` per
   `inbound-webhook-endpoint-framework`.
+<!-- change:inbound-event-relay -->
+- The GitHub endpoint is opened by a project's own GitHub source
+  declaration, with its secret from that project's `.env`, per
+  `inbound-webhook-endpoint-framework`.
+- Relay and per-computer delivery are owned by
+  `single-ingress-webhook-termination`.
+<!-- /planned-change:inbound-event-relay -->
 - Downstream deployment-update handler lives in the deployment
   subsystem, a separate component that `integration` calls via the
   contract dispatcher.
@@ -126,11 +160,19 @@ And the deployment update flow runs (see deployment-version-fanout)
   any contradiction between the header and the body shape (e.g., header
   says `push` but body has no `ref`) is preserved as-is in the emitted
   event.
+<!-- planned-change:inbound-event-relay -->
 - In default v1 production, the GitHub inbound endpoint is registered
   only when configured under `hooks.inbound.github`; production configs
   in this repo do not include it. The normalizer itself is still
   registered globally (so a config-driven activation is an additive
   change).
+<!-- change:inbound-event-relay -->
+- A GitHub endpoint exists only for a project that declares a GitHub
+  source; this repository declares none.
+- The `deployment-github` contract matches every relayed GitHub push or
+  release, whichever project declared the source. Declaring a GitHub
+  source for any project therefore reaches the deployment handler.
+<!-- /planned-change:inbound-event-relay -->
 - The zen/hook_id ping passthrough is the only event-type-specific
   property branch in this normalizer; every other GitHub event uses the
   same {repo, sender, action, ref} property shape.

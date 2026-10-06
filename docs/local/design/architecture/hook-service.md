@@ -16,9 +16,16 @@ Provide a contract-based pub/sub system that:
 
 1. Routes internal daemon events (session lifecycle, agent activity, errors) to
    registered subscribers via declarative contracts.
+<!-- planned-change:inbound-event-relay -->
 2. Receives inbound webhooks from external platforms (GitHub, WhatsApp, etc.),
    normalizes them into a canonical event format, and dispatches them through
    the same contract-matching pipeline.
+<!-- change:inbound-event-relay -->
+2. Delivers relayed GitHub and WhatsApp events, which the ingress publishes
+   on the platform event stream, into the same contract-matching pipeline on
+   every computer. The ingress endpoints themselves are owned by
+   `local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`.
+<!-- /planned-change:inbound-event-relay -->
 3. Delivers matched events to internal async handlers or external URLs with
    durable outbox semantics (retry, backoff, dead-lettering).
 
@@ -34,7 +41,11 @@ boundary prevents confusion:
 | System                         | Table(s)                              | Purpose                                      | Producer                                        | Consumer                                          |
 | ------------------------------ | ------------------------------------- | -------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
 | **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)       | Daemon outbox worker (see outbox.md)              |
+<!-- planned-change:inbound-event-relay -->
 | **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, inbound endpoints, programmatic | HookDispatcher → handlers / WebhookDeliveryWorker |
+<!-- change:inbound-event-relay -->
+| **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, relay delivery, programmatic     | HookDispatcher → handlers / WebhookDeliveryWorker |
+<!-- /planned-change:inbound-event-relay -->
 
 The hook outbox is the **ingestion layer** — it captures raw agent CLI events
 and persists them until the daemon processes them. The webhook service is the
@@ -52,7 +63,12 @@ pipeline.
 
 - Internal domain events from the event bus (SESSION_STARTED, SESSION_CLOSED,
   SESSION_UPDATED, AGENT_EVENT, AGENT_ACTIVITY, ERROR)
+<!-- planned-change:inbound-event-relay -->
 - Inbound HTTP POST payloads from external platforms (via dynamic FastAPI routes)
+<!-- change:inbound-event-relay -->
+- Relayed inbound events read from the platform event stream by each computer's
+  relay delivery
+<!-- /planned-change:inbound-event-relay -->
 - Config-driven contracts from `teleclaude.yml` `hooks` section
 - API-created contracts via REST endpoints (`POST /hooks/contracts`)
 - Programmatic contracts registered by daemon subsystems
@@ -89,9 +105,17 @@ properties, payload)` before entering the dispatch pipeline.
   max attempts prevents infinite retry.
 - **Contract TTL.** Contracts may have `expires_at`. A background sweep
   deactivates expired contracts every 60 seconds.
+<!-- planned-change:inbound-event-relay -->
 - **HMAC verification.** Inbound endpoints verify `X-Hub-Signature-256` or
   `X-Hook-Signature` when a secret is configured. Outbound deliveries sign
   payloads with `X-Hook-Signature` using the contract's target secret.
+<!-- change:inbound-event-relay -->
+- **Outbound signing.** Outbound deliveries sign payloads with the platform's
+  webhook signature using the contract's target secret. Inbound verification
+  belongs to the ingress endpoints, which refuse every unsigned request.
+- **One delivery per computer.** A relayed inbound event is dispatched once on
+  each computer, by that computer's relay delivery.
+<!-- /planned-change:inbound-event-relay -->
 
 ## Primary flows
 
@@ -124,6 +148,7 @@ EventBus                 EventBusBridge              HookDispatcher
 | `AGENT_ACTIVITY`  | `agent`          | `agent.activity.{event_type}` | `session_id`, `agent_event_type`, `tool_name` (if present)          |
 | `ERROR`           | `system`         | `error.{severity}`            | `session_id` (if present), `severity`, `error_source`, `error_code` |
 
+<!-- planned-change:inbound-event-relay -->
 ### 2. Inbound webhook → normalize → dispatch
 
 An external platform sends a webhook to TeleClaude.
@@ -163,6 +188,33 @@ in the `NormalizerRegistry`. It transforms platform-specific payloads into canon
 `HookEvent` instances. Each platform flavor (GitHub, WhatsApp, etc.) provides its
 own normalizer.
 
+<!-- change:inbound-event-relay -->
+### 2. Relayed inbound event → dispatch
+
+The ingress verifies an external request, translates it, and publishes it on
+the platform event stream at cluster scope
+(`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`).
+Every computer, the ingress included, reads the stream through its own relay
+delivery, which turns each relayed GitHub, WhatsApp or native event back into
+the normalized `HookEvent` the ingress produced and dispatches it locally.
+
+```
+Ingress endpoint        Platform event stream        Relay delivery (each computer)     HookDispatcher
+  │                            │                              │                               │
+  ├─ verify + translate        │                              │                               │
+  ├─ publish <domain>.<name> ─►│                              │                               │
+  │                            ├─ per-computer read ─────────►│                               │
+  │                            │                              ├─ rebuild HookEvent            │
+  │                            │                              ├─ dispatch(event) ────────────►│ (same as flow 1)
+```
+
+**Normalizer contract:** A normalizer turns one provider's payload into
+canonical `HookEvent` instances at the ingress. The GitHub and WhatsApp
+normalizers are built in; a native request needs none, because the producer
+already speaks the platform's event shape. A relayed event whose subject is a
+company carries that company as its `company` property.
+
+<!-- /planned-change:inbound-event-relay -->
 ### 3. Outbound delivery (webhook_outbox)
 
 When a contract targets an external URL, the dispatcher enqueues to `webhook_outbox`.
@@ -300,6 +352,7 @@ The `hooks` section in `teleclaude.yml`:
 
 ```yaml
 hooks:
+<!-- planned-change:inbound-event-relay -->
   # Inbound: receive webhooks from external platforms
   inbound:
     github:
@@ -312,6 +365,10 @@ hooks:
       secret: ${WHATSAPP_SECRET}
       normalizer: whatsapp
 
+<!-- change:inbound-event-relay -->
+  # Inbound sources are declared per home; see the inbound endpoint framework
+
+<!-- /planned-change:inbound-event-relay -->
   # Subscriptions: declare interest in events
   subscriptions:
     - id: notify-on-error
@@ -334,10 +391,16 @@ hooks:
 
 **Config schema classes:**
 
+<!-- planned-change:inbound-event-relay -->
 - `HooksConfig`: top-level container with `inbound` and `subscriptions`
 - `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`, and
   `company` — the registered company the source's events belong to, validated
   against registered companies and stamped onto each normalized event
+<!-- change:inbound-event-relay -->
+- `HooksConfig`: top-level container with `inbound` and `subscriptions`; the
+  `inbound` declarations each tier admits are owned by
+  `local/projects/teleclaude/spec/teleclaude-config`
+<!-- /planned-change:inbound-event-relay -->
 - `SubscriptionConfig`: `id`, `contract` (dict), `target` (dict)
 
 ### REST API
@@ -388,8 +451,13 @@ teleclaude/hooks/
   ├─ handlers.py          # HandlerRegistry (key → async callable)
   ├─ bridge.py            # EventBusBridge (internal event bus → HookEvent → dispatch)
   ├─ delivery.py          # WebhookDeliveryWorker (outbox poller, HMAC, retry)
+<!-- planned-change:inbound-event-relay -->
   ├─ inbound.py           # InboundEndpointRegistry, NormalizerRegistry
   ├─ config.py            # load_hooks_config (teleclaude.yml → contracts + endpoints)
+<!-- change:inbound-event-relay -->
+  ├─ inbound.py           # ingress endpoints: declaration lookup, verification, translation, relay
+  ├─ config.py            # load_hooks_config (teleclaude.yml → contracts)
+<!-- /planned-change:inbound-event-relay -->
   ├─ api_routes.py        # FastAPI router (/hooks/contracts, /hooks/properties)
   └─ adapters/
       └─ base.py          # HookAdapter protocol (agent CLI hook normalization)

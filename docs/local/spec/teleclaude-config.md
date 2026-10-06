@@ -35,9 +35,17 @@ authoritative model definitions.
 
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 
+<!-- planned-change:inbound-event-relay -->
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings` |
+<!-- change:inbound-event-relay -->
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks` |
+<!-- /planned-change:inbound-event-relay -->
 
+<!-- planned-change:inbound-event-relay -->
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members` (folder-discovered; composed alongside `project`) |
+<!-- change:inbound-event-relay -->
+| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
+<!-- /planned-change:inbound-event-relay -->
 
 #### Tier declaration and editor schemas
 
@@ -126,11 +134,32 @@ business:
     - slug: string # required: the published domain
       trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
 jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (local/projects/teleclaude/spec/feature/config/job-declaration-model)
+<!-- planned-change:inbound-event-relay -->
 hooks:
   inbound: mapping[string, InboundSourceConfig]
   subscriptions: list[SubscriptionConfig]
+<!-- change:inbound-event-relay -->
+hooks:
+  inbound: # this project's own inbound sources, at most one per protocol
+    native:
+      secret: string # required; a ${NAME} reference resolved from this project's .env
+    github:
+      secret: string # required; a ${NAME} reference resolved from this project's .env
+  subscriptions: list[SubscriptionConfig]
+<!-- /planned-change:inbound-event-relay -->
 channel_subscriptions: list[ChannelSubscription]
 ```
+
+<!-- planned:inbound-event-relay -->
+Every home declares the inbound sources that open endpoints in its own name
+under `hooks.inbound`, keyed by protocol, and each tier admits only its own
+protocols: a project declares `native` and `github`; a company and a person
+declare `native`; the global configuration declares `whatsapp`, which carries a
+`verify_token` beside its `secret`. Every source requires its `secret`, and an
+unknown protocol key fails validation. The endpoints these declarations open
+are owned by
+`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`.
+<!-- /planned:inbound-event-relay -->
 
 The project also declares which platform capabilities it subscribes to. Each block
 is optional, and an omitted block or one without an `enabled` value is

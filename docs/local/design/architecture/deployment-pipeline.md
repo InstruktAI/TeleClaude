@@ -24,6 +24,7 @@ subscriber-driven. This separation is the recorded decision in ADR-0028
 context); ADR-0055 supersedes ADR-0028's bind topology with proxy-fronted reuse
 of the localhost API server.
 
+<!-- planned-change:inbound-event-relay -->
 ### Ingress — `teleclaude/hooks/inbound.py`
 
 `InboundEndpointRegistry` mounts dynamic inbound webhook routes on the existing
@@ -55,6 +56,32 @@ normalized event onto `cluster.webhook.<provider>` and also dispatches it
 locally; the bus drops the ingress's own echo at dispatch (ADR-0013 self-origin),
 so each node — including the ingress — reacts exactly once.
 
+<!-- change:inbound-event-relay -->
+### Ingress — `teleclaude/hooks/inbound.py`
+
+The ingress serves the inbound endpoints on loopback only, behind a mandatory
+same-host reverse proxy that terminates TLS, restricts source, and forwards only
+the inbound path prefix. A project receives GitHub deliveries by declaring a
+GitHub source in its own configuration; the ingress verifies each delivery
+against that project's secret, translates it, and relays it. Webhook routes
+authenticate by signature alone and inherit no loopback identity-trust. One
+ingress terminates requests for every provider and every home. See
+`docs/local/spec/feature/integration/single-ingress-webhook-termination.md` and
+`docs/local/spec/feature/integration/inbound-webhook-endpoint-framework.md`.
+
+### Cluster relay
+
+A verified delivery is published on the platform event stream at cluster scope
+as the platform event `github.<event>`, with the ingress as origin and the
+declaring project as subject. Every computer reads the stream through its own
+consumer group and delivers the event once to its local hook dispatcher, where
+the deployment handler reacts. Only the ingress is publicly exposed. The relay
+is stateless, so a second ingress can be added without redesign. The legacy
+`version_available` fan-out stays the convergence signal for nodes that do not
+read relayed events, and is retired only once the reconciliation capability map
+shows the slowest channel reads them.
+
+<!-- /planned-change:inbound-event-relay -->
 ### Convergence — `reconciliation`
 
 Each computer evaluates a relayed release/version signal against its own channel
@@ -144,9 +171,16 @@ flowchart TD
   periodic desired-state self-check, or a second stateless ingress.
 - **Unverified payload.** Signature verification fails at the ingress; nothing
   is relayed and the sender receives a rejection response.
+<!-- planned-change:inbound-event-relay -->
 - **Cluster pub/sub is fire-and-forget.** A computer offline when a signal
   publishes misses it; recovery is the next signal or a periodic self-check,
   not event replay.
+<!-- change:inbound-event-relay -->
+- **A computer offline misses relayed events.** The event stream is shared and
+  bounded; a computer that returns after its retained window has moved on does
+  not replay what it missed. Recovery is the next signal or a periodic
+  self-check.
+<!-- /planned-change:inbound-event-relay -->
 - **Convergence step failure.** The run halts and records the failure reason;
   the computer does not come up in a partial or unhealthy state. Config-load
   failure is logged and the update skipped (non-fatal).
@@ -162,5 +196,8 @@ flowchart TD
 - docs/local/spec/domain/reconciliation.md
 - docs/local/adr/0028-single-lan-bound-ingress.md
 - docs/local/adr/0055-proxy-fronted-ingress-reuse.md
+<!-- planned:inbound-event-relay -->
+- docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md
+<!-- /planned:inbound-event-relay -->
 - docs/local/adr/0024-reconciliation-bounded-context.md
 - docs/local/spec/teleclaude-config.md — config schema for deployment

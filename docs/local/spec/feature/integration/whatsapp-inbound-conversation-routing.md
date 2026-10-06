@@ -18,11 +18,24 @@ typed command (process-message, handle-file, or handle-voice) through
 the configured WhatsApp UI adapter so the session sees a normalized
 user message.
 
+<!-- planned-change:inbound-event-relay -->
 The pipeline is the canonical example of v1's three-stage inbound
 design: **framework registration** (inbound endpoint with normalizer
 key) → **contract / matcher routing** (built-in contract programmatically
 registered for whatsapp → handler) → **internal handler** (session
 resolution + command dispatch).
+<!-- change:inbound-event-relay -->
+The pipeline has four stages: **the ingress endpoint** (the WhatsApp
+source the global configuration declares, verified with Meta's
+signature) → **the relay** (each message published to the cluster as
+the platform event `whatsapp.message.<type>`, with no subject) →
+**contract / matcher routing** (each computer delivers the relayed
+message to its hook dispatcher as the normalized hook event, where the
+built-in contract routes it to the handler) → **internal handler**
+(session resolution + command dispatch). The endpoint and relay are
+owned by `inbound-webhook-endpoint-framework` and
+`single-ingress-webhook-termination`.
+<!-- /planned-change:inbound-event-relay -->
 
 Every computer receives each message, and the mesh master alone decides where
 it goes (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A message whose text is exactly an entry identifier is an
@@ -165,6 +178,18 @@ And a session is created at the member's own assistant
 And later messages from that number without an identifier reach it
 ```
 
+<!-- planned:inbound-event-relay -->
+#### UC-WI12: A verified message reaches every computer once, about no home
+
+```gherkin
+Given the global configuration declares the WhatsApp source
+When Meta delivers a webhook carrying one text message, signed with the declared secret
+Then the cluster receives one platform event "whatsapp.message.text" whose subject is none
+And each computer's WhatsApp handler receives that message once
+And the person the message comes from is resolved by the handler from the phone number, not from the event's subject
+```
+<!-- /planned:inbound-event-relay -->
+
 ### Cross-context references
 
 - Inbound side of `outbound-messaging-providers`: the same provider
@@ -213,6 +238,12 @@ And later messages from that number without an identifier reach it
 - Image type detection prefers the explicit message.image
   classification but falls back to checking mime type starts-with
   "image/"; documents and unknown media types land in `files/`.
+<!-- planned-change:inbound-event-relay -->
 - v1 does NOT verify the WhatsApp signature at the handler layer —
   that is the inbound framework's responsibility via the inbound
   `secret` config (see `inbound-webhook-endpoint-framework`).
+<!-- change:inbound-event-relay -->
+- The handler does not verify signatures. The ingress refuses every
+  WhatsApp webhook that is not signed with the global WhatsApp secret
+  before anything is relayed (see `inbound-webhook-endpoint-framework`).
+<!-- /planned-change:inbound-event-relay -->
