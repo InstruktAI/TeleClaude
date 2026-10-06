@@ -306,7 +306,11 @@ And the requested mutation is applied to the todo state
 
 ### Role reach
 
+<!-- planned-change:enforce-worker-defect-relay -->
 Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions and reads no history, and starts, revives, restarts or ends no session but its own through the self-acts above. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local code-tooling commands `code lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
+<!-- change:enforce-worker-defect-relay -->
+Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions and reads no history, and starts, revives, restarts or ends no session but its own through the self-acts above. It files no work: it creates no todo and reports no bug (`sdlc/policy/todo-creation-discipline`). A worker's not-permitted failure names the session that dispatched it as the door — what the worker would have done or filed is relayed there. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local code-tooling commands `code lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
+<!-- /planned-change:enforce-worker-defect-relay -->
 
 #### UC-CCB1: Tasker starts a session
 
@@ -390,6 +394,26 @@ When it runs `telec sessions list`, `telec sessions send` or `telec sessions sta
 Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
 ```
+
+<!-- planned:enforce-worker-defect-relay -->
+#### UC-CCR6: A worker files nothing and is pointed at the session governing it
+
+```
+Given an agent inside a session whose resolved system role is `worker`
+When it runs `telec bugs report` or `telec todo create`, with or without the filing acknowledgment
+Then the command is refused before its handler runs, with the not-permitted failure naming `worker` and the verb
+And the refusal names the session that dispatched the worker as the door to relay the observation to
+And no todo is created, no bug is filed, and no pre-filing interrogation is printed
+```
+
+#### UC-CCR7: Deferral resolution files under the work orchestrator's role
+
+```
+Given a work orchestrator dispatched deferral resolution for its todo
+When the deferral-resolution session runs `telec bugs report` or `telec todo create`
+Then its resolved system role is `orchestrator` and the command is admitted to its interrogation and filing
+```
+<!-- /planned:enforce-worker-defect-relay -->
 
 ### Local read clearance
 
