@@ -587,11 +587,7 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
-<!-- planned-change:ingress-listener-removed -->
-  is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the cluster.webhook relay (default: false)
-<!-- change:ingress-listener-removed -->
   is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the loopback HTTP listener on 127.0.0.1:api.tcp_port and the cluster.webhook relay (default: false)
-<!-- /planned-change:ingress-listener-removed -->
 <!-- planned:distributed-todo-postgres -->
   is_cluster_db_host: boolean # designates this node as the host of the shared cluster database (Postgres); exactly one per fleet; default false. Independent of is_master and is_ingress_node — it is its own role. Currently this is usually the ingress node by deployment convention (no secure cross-node transport yet), but that is convention, not a requirement: the host may relocate once secure inter-node transport exists.
 <!-- /planned:distributed-todo-postgres -->
@@ -717,9 +713,7 @@ hook_outbox:
   max_lag_samples: 2048
   staleness_ttl_s: 300
 api:
-<!-- planned:ingress-listener-removed -->
   tcp_port: integer # public; loopback HTTP listener port on 127.0.0.1, defaulted by the runtime config defaults and carried in every machine configuration; opened only when computer.is_ingress_node is true, as the reverse proxy's webhook upstream
-<!-- /planned:ingress-listener-removed -->
   watch_interval_s: 5
   watch_lag_threshold_ms: 250
   watch_inflight_threshold_s: 1
