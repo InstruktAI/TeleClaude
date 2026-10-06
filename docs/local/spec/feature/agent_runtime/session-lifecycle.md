@@ -243,6 +243,19 @@ Then the session's agent status becomes `stalled` with reason `no_start`
 And a later normalized agent event sets the status that event maps to
 ```
 
+<!-- planned:no-composer-wakes-parent -->
+#### UC-SL51: Input waiting on a screen other than the composer makes the session blocked
+
+```
+Given a non-terminal agent session
+When delivery holds input because it cannot identify the agent's composer
+Then the session's agent status becomes `blocked` with reason `needs_input`
+And the status records the moment it was entered
+And no native runtime signal is required for that transition
+And the next normalized agent event sets the status that event maps to
+```
+<!-- /planned:no-composer-wakes-parent -->
+
 #### UC-SL44: Listings carry the agent status with its reason and since
 
 ```

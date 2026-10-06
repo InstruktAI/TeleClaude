@@ -36,6 +36,11 @@ audience is empty.
 - Inferred stall transitions from the agent-status watchdogs — `stalled` with
   reason `no_signal` or `no_start` — delivered as the turn-failure kind with the
   daemon's own evidence in place of a native payload
+<!-- planned:no-composer-wakes-parent -->
+- Blocked transitions raised by input delivery when it holds input because no
+  composer can be identified — `blocked` with reason `needs_input` — delivered
+  as the blocked kind with a capture of the pane in place of a native payload
+<!-- /planned:no-composer-wakes-parent -->
 - Forwarded distress from another computer, naming the target, its computer,
   the distress kind, and the initiator session to deliver to
 - Unsubscribe requests via `POST /sessions/{id}/unsubscribe`
@@ -80,6 +85,9 @@ audience is empty.
   terminal signal per turn, so the slot never chooses between two accounts. It
   bounds a runtime that violated that guarantee to one notice plus a
   diagnostic, and claims no power to retract a notification already delivered.
+
+<!-- planned-change:no-composer-wakes-parent -->
+
 - **Distress follows the agent-status transition.** Every entry into `blocked`
   or `stalled` produces one notification of the matching kind for that turn,
   whether the runtime reported it or a watchdog inferred it, under the same
@@ -87,6 +95,20 @@ audience is empty.
   gate, never the terminal-outcome slot, so the turn's own end or
   runtime-reported failure still notifies when it arrives. A `no_start` stall
   happens before any turn and is gated once per start.
+
+<!-- change:no-composer-wakes-parent -->
+
+- **Distress follows the agent-status transition.** Every entry into `blocked`
+  or `stalled` produces one notification of the matching kind for that turn,
+  whether the runtime reported it, a watchdog inferred it, or input delivery
+  observed that no composer can be identified, under the same
+  per-`(target, kind)` gate. An inferred stall claims its own slot in that
+  gate, never the terminal-outcome slot, so the turn's own end or
+  runtime-reported failure still notifies when it arrives. A `no_start` stall
+  happens before any turn and is gated once per start.
+
+<!-- /planned-change:no-composer-wakes-parent -->
+
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither reads, delivers to, nor removes a
   one-shot row, so its turn-end semantics above are untouched.
@@ -222,6 +244,15 @@ An inferred stall renders the turn-failure kind with the daemon's evidence:
 | `no_start`   | `Session {id} [on {computer}] "{title}" did not start within {timeout}. Pane: {last pane lines}`             |
 
 `{timeout}` states the configured watchdog window, not the measured elapsed time.
+
+<!-- planned:no-composer-wakes-parent -->
+A blocked transition raised by input delivery renders the blocked kind with the
+daemon's evidence:
+
+| Blocked cause         | Message Format                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| no composer           | `Session {id} [on {computer}] "{title}" shows a screen other than its composer while input waits. Pane: {last pane lines}` |
+<!-- /planned:no-composer-wakes-parent -->
 
 Every kind names the target session and states which of the three it is, so a
 caller can decide its next move without first tailing the target. The computer
