@@ -258,7 +258,6 @@ And the lifecycle router consumes the event and dispatches /sdlc/prepare for the
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
-<!-- planned-change:enforce-worker-defect-relay -->
 #### UC-WTC27: Bug report invocation interrogates before filing
 
 ```gherkin
@@ -270,20 +269,6 @@ And exits 0 without creating a todo — serving the interrogation is the success
 And only that output names how to complete the filing
 And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
 ```
-<!-- change:enforce-worker-defect-relay -->
-#### UC-WTC27: Bug report invocation interrogates before filing
-
-```gherkin
-Given an agent invokes `telec bugs report '<description>'` carrying only the report payload
-When the command runs
-Then it prints the pre-filing decisions to stderr: fix-directly-in-context (five-minute rule), duplication (todo list, in-flight bug lanes, suppressions), ordering behind in-flight work, defect evidence, and validity plus owning project
-And the defect-evidence decision asks the filer to cite the occurrence the report rests on — an address a reader can open showing the defect in real use — or the dangerous path that reaches it, in the terms of `sdlc/concept/defect-evidence`, and states that a filer who can cite neither files nothing
-And the owning-project decision states that a symptom which stops once the observing project's own configuration matches a TeleClaude default is that project's to fix, and files nothing
-And exits 0 without creating a todo — serving the interrogation is the successful outcome of that invocation
-And only that output names how to complete the filing
-And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
-```
-<!-- /planned-change:enforce-worker-defect-relay -->
 
 #### UC-WTC28: Todo creation interrogates before creating
 

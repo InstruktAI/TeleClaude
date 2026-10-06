@@ -396,7 +396,6 @@ And a peer session it starts without a lifecycle command is not a dispatch and i
 
 #### Lifecycle driver-start dedup
 
-<!-- planned-change:enforce-worker-defect-relay -->
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
 And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("prepare", "work", or a prepare drafting phase the orchestrator performs inline: "prepare-intake", "prepare-architecture", "prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
@@ -405,16 +404,6 @@ Then the request is refused with a driver-start conflict that names the holder, 
 And no second session is created for X
 And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
 ```
-<!-- change:enforce-worker-defect-relay -->
-```
-Given a todo slug X already driven by a live driver — a live orchestrator driving X's lifecycle and bound to X, or a live active-runner recorded for X
-And an orchestrator-class create request that would bind X — a run-session request whose command drives the todo's lifecycle under the orchestrator system role ("prepare", "work", or a prepare drafting phase the orchestrator performs inline: "prepare-intake", "prepare-architecture", "prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
-When the create-door dedup check runs before the session is created
-Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
-And no second session is created for X
-And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
-```
-<!-- /planned-change:enforce-worker-defect-relay -->
 
 ```
 Given a todo slug X with a live active-runner recorded for X
@@ -431,17 +420,6 @@ When the create-door dedup check runs
 Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
 ```
 
-<!-- planned:enforce-worker-defect-relay -->
-#### UC-DSD5: Deferral resolution is a child of its work orchestrator, not a second driver
-
-```
-Given a todo slug X driven by its live work orchestrator
-When that orchestrator dispatches deferral resolution ("defer") for X
-Then the request is allowed and the session is created on X's worktree, sharing working_slug X and carrying the orchestrator system role
-And while it is live it is not counted as a driver of X: a later driver-start request for X, the lifecycle runner's pickup of X, and the work orchestrator's own continuation are decided by X's driving orchestrator and active runner alone
-```
-
-<!-- /planned:enforce-worker-defect-relay -->
 #### UC-DSD4: Every request for a held review subject is refused, with nothing a caller can say to admit a second
 
 ```
