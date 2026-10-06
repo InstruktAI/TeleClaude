@@ -16,6 +16,7 @@ from teleclaude.config.migrations import (
     v009_fold_trusted_directories,
     v010_declare_help_desk,
     v011_retire_help_desk_dir,
+    v012_restore_api_tcp_port,
 )
 
 STEPS: Final = (
@@ -30,4 +31,5 @@ STEPS: Final = (
     v009_fold_trusted_directories,
     v010_declare_help_desk,
     v011_retire_help_desk_dir,
+    v012_restore_api_tcp_port,
 )

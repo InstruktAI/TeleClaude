@@ -50,6 +50,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.event_subscription_routes import router as event_subscription_router
+from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
@@ -120,7 +121,7 @@ ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bo
 
 
 class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableOverride]
-    """HTTP API server on Unix socket."""
+    """HTTP API server on Unix socket with an optional webhook ingress listener."""
 
     def __init__(
         self,
@@ -144,6 +145,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             person_secret_resolver=resolve_person_mcp_secret_values,
         )
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
+        self._webhook_ingress_listener: WebhookIngressListener | None = None
+        if config.computer.is_ingress_node:
+            self._webhook_ingress_listener = WebhookIngressListener(
+                self.app,
+                port=config.api.tcp_port,
+                keep_alive_timeout_s=API_TIMEOUT_KEEP_ALIVE_S,
+                stop_timeout_s=API_STOP_TIMEOUT_S,
+            )
         self._setup_routes()
 
         # --- Route modules ---
@@ -529,7 +538,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             )
 
     async def start(self) -> None:
-        """Start the API server on Unix socket."""
+        """Start the Unix API server and configured webhook ingress listener."""
         self._running = True
         logger.info("API server starting")
         await self._start_server()
@@ -664,7 +673,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 self._dump_stacks("slow_requests")
 
     async def _start_server(self) -> None:
-        """Start uvicorn server and attach restart handler."""
+        """Start the Unix API server and optional webhook ingress listener."""
         if self.server_task and not self.server_task.done():
             logger.warning("API server already running; skipping start")
             return
@@ -705,6 +714,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             raise TimeoutError("API server failed to start within timeout")
 
         logger.info("API server listening on %s", self.socket_path)
+        if self._running and self._webhook_ingress_listener is not None:
+            await self._webhook_ingress_listener.start()
 
     async def restart_server(self) -> None:
         """Restart uvicorn server without tearing down server state."""
@@ -719,7 +730,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._on_server_exit = handler
 
     async def _stop_server(self) -> None:
-        """Stop uvicorn server task safely."""
+        """Stop the webhook ingress listener before the Unix API server."""
+        if self._webhook_ingress_listener is not None:
+            await self._webhook_ingress_listener.stop()
+
         server = self.server
         if server:
             logger.debug(

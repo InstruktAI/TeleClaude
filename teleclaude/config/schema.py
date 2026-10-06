@@ -21,7 +21,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 def normalize_env_allow_list(value: list[str]) -> list[str]:

@@ -100,6 +100,7 @@ class HookOutboxConfig(ClosedModel):
 class ApiConfig(ClosedModel):
     """Resolved API transport and monitoring tunables."""
 
+    tcp_port: INT_STRICT = Field(json_schema_extra={"tier": Tier.PUBLIC})
     watch_interval_s: FLOAT_STRICT
     watch_lag_threshold_ms: FLOAT_STRICT
     watch_inflight_threshold_s: FLOAT_STRICT
