@@ -206,7 +206,7 @@ Then the ingress accepts it and relays the event
 
 ```gherkin
 Given a project declares a native source
-When its producer posts a signed request with domain "erp", name "invoice.overdue.reminded" and a payload of any shape
+When its producer posts a signed request with domain "erp", name "invoice.overdue.reminded" and a payload object with any members
 Then the relayed event is named "erp.invoice.overdue.reminded"
 And its payload is exactly the payload the producer sent
 ```

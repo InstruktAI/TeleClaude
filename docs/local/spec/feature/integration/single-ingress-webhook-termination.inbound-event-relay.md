@@ -64,10 +64,13 @@ producers for every procedure and agent.
   - its payload is what the producer sent.
 - **No per-name registration.** Relayed event names are not entries in the event
   catalog. A domain's own documentation states which names it emits.
-- **Platform consumers read the stream.** Each computer delivers relayed GitHub
-  and WhatsApp events from the stream to its own platform handlers, once per
-  computer per event. The ingress delivers to its own handlers the same way and
-  does not also dispatch the request locally.
+- **Platform consumers read the stream.** Each computer delivers every relayed
+  event from the stream to its own platform handlers, once per computer per
+  event, according to the protocol the ingress accepted it through: an event
+  relayed from the GitHub or WhatsApp endpoint as that provider's delivery, and
+  an event relayed from a native endpoint as a native event, whatever its name.
+  The ingress delivers to its own handlers the same way and does not also
+  dispatch the request locally.
 - **Provider-agnostic.** Adding a producer or a domain changes no part of this
   contract.
 
@@ -157,6 +160,16 @@ Given three computers, one of which is the ingress
 When the ingress relays a verified WhatsApp message
 Then each of the three computers delivers that message to its own WhatsApp conversation handling once
 And the ingress does not deliver it a second time from the request itself
+```
+
+#### UC-SIT-10: A native event keeps native treatment whatever its name
+
+```gherkin
+Given a company home declares a native source
+When its producer posts a signed request with domain "github" and name "push"
+Then the relayed event is named "github.push" and its subject is that company
+And each computer delivers it as a native event carrying that company
+And no computer treats it as a GitHub delivery
 ```
 
 ### Cross-context references
