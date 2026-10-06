@@ -201,7 +201,7 @@ jobs:
   - category: system
     name: log-bug-hunter
     when:
-      at: 03:00
+      every: 1h
     job: sdlc/procedure/maintenance/log-bug-hunter
     agent:
       - codex
