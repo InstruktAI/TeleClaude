@@ -61,14 +61,17 @@ producers for every procedure and agent.
     home, as for any event platform automation emits;
   - its subject is the home that declared the source, or none for a source the
     platform itself declares;
-  - its payload is what the producer sent.
+  - its payload is what the producer sent;
+  - its source, the envelope's producer field, names the protocol the ingress
+    accepted it through: native, GitHub or WhatsApp. Two relayed events with
+    the same name, subject and payload remain distinguishable by it.
 - **No per-name registration.** Relayed event names are not entries in the event
   catalog. A domain's own documentation states which names it emits.
 - **Platform consumers read the stream.** Each computer delivers every relayed
   event from the stream to its own platform handlers, once per computer per
-  event, according to the protocol the ingress accepted it through: an event
-  relayed from the GitHub or WhatsApp endpoint as that provider's delivery, and
-  an event relayed from a native endpoint as a native event, whatever its name.
+  event, according to the protocol its source names: an event relayed from the
+  GitHub or WhatsApp endpoint as that provider's delivery, and an event relayed
+  from a native endpoint as a native event, whatever its name.
   The ingress delivers to its own handlers the same way and does not also
   dispatch the request locally.
 - **Provider-agnostic.** Adding a producer or a domain changes no part of this
@@ -168,8 +171,20 @@ And the ingress does not deliver it a second time from the request itself
 Given a company home declares a native source
 When its producer posts a signed request with domain "github" and name "push"
 Then the relayed event is named "github.push" and its subject is that company
+And its source names the native protocol
 And each computer delivers it as a native event carrying that company
 And no computer treats it as a GitHub delivery
+```
+
+#### UC-SIT-11: Same name, subject and payload through two protocols stay distinct
+
+```gherkin
+Given the project "web" declares both a native source and a GitHub source
+When GitHub delivers a push to its GitHub endpoint
+And its native producer posts domain "github", name "push" and the same payload to its native endpoint
+Then the cluster receives two events named "github.push" about the project "web"
+And one names the GitHub protocol as its source and the other the native protocol
+And each computer delivers the first as a GitHub delivery and the second as a native event
 ```
 
 ### Cross-context references
