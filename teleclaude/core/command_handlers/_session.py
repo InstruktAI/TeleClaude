@@ -15,7 +15,7 @@ from teleclaude.config import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, SlashCommand
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -380,7 +380,10 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     command_line = next(iter((cmd.initial_input or "").splitlines()), "")
     _, _, command_args = command_line.partition(" ")
-    title = cmd.title or (compose_command_session_title(cmd.command, command_args) if cmd.command is not None else "")
+    title_args = command_args
+    if cmd.command == SlashCommand.RUN_JOB.value and cmd.job is not None:
+        title_args = cmd.job
+    title = cmd.title or (compose_command_session_title(cmd.command, title_args) if cmd.command is not None else "")
 
     # A desk session records its confinement in the creating write, so no
     # delivery or bootstrap ever observes it without the stamp.
