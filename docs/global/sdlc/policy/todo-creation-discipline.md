@@ -105,9 +105,11 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   it — through the channel its own procedure names, or, where that names none,
   in its final report to the governing session. The worker does not fix, defer,
   or file the defect, and proposes no outcome. The session that receives the
-  relay decides it under this standard and otherwise lets it go; deferral
-  processing does so for a build's entries, filing as the work orchestrator
-  (`sdlc/procedure/lifecycle/work/deferrals`).
+  relay decides it under this standard and otherwise lets it go. For a build's
+  entries that decision is the work orchestrator's, delegated to a child
+  session (`sdlc/procedure/lifecycle/work/deferrals`). That session is the work
+  orchestrator for that decision, not its worker: the job it executes is the
+  governing session's own judgment, not a slice of the work.
 - **Every other session files a defect claim on evidence.** A todo whose
   premise is a defect, or a defense against one, cites an occurrence or a
   dangerous path, and is filed by its kind: a defect through
