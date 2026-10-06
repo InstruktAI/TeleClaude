@@ -27,16 +27,34 @@ Use this when you need to:
 | `telec sessions escalate` | Escalate a help-desk visitor to the owning home's admins | `--customer`, `--reason`, `--summary` |
 | `telec channels publish`  | Publish to internal Redis channel                        | `channel`, `--data`                   |
 
+<!-- planned-change:message-recipient-default -->
 | `telec message` | Send a message to a person by slug | `<slug> <text>`, `--file <path>`, `--subject <text>`, `--channel <name>` |
+<!-- change:message-recipient-default -->
+| `telec message` | Send a message to a person | `<text>`, `--recipient <slug>`, `--file <path>`, `--subject <text>`, `--channel <name>` |
+<!-- /planned-change:message-recipient-default -->
 
 ### Person-addressed delivery (`telec message`)
 
+<!-- planned-change:message-recipient-default -->
 `telec message <person-slug> <text> [--file <path>] [--subject <text>] [--channel <telegram|discord|whatsapp|email>]`
 delivers a message to a **person**, decoupled from any session origin. The CLI
 handler posts the request over the daemon socket; a core person-messaging
 service resolves the recipient and dispatches through the existing outbound
 provider primitives (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
 — the same layer the invitation flow uses. No new transport exists.
+<!-- change:message-recipient-default -->
+`telec message <text> [--recipient <person-slug>] [--file <path>] [--subject <text>] [--channel <telegram|discord|whatsapp|email>]`
+delivers a message to a **person**, decoupled from any session origin. The CLI
+handler posts the request over the daemon socket; a core person-messaging
+service resolves the recipients and dispatches through the existing outbound
+provider primitives (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
+— the same layer the invitation flow uses. No new transport exists.
+
+**Recipients.** `--recipient` names one person by slug. Without it, the
+recipients are resolved from the caller's authority, as
+`local/projects/teleclaude/spec/feature/integration/person-addressed-messaging`
+specifies.
+<!-- /planned-change:message-recipient-default -->
 
 **Channel resolution — the recipient owns routing.** The person is resolved by
 slug through the identity layer. The delivery channel is `--channel` when
@@ -56,10 +74,21 @@ other channel. When the resolved channel is email and `--subject` is omitted,
 the subject defaults to `TeleClaude message`. The email body carries the
 message as plain text plus a minimal HTML rendering derived from it.
 
+<!-- planned-change:message-recipient-default -->
 **Failure contract.** An unresolvable slug, a missing credential for the
 resolved channel, a channel that cannot carry the request, or a provider send
 failure each return a distinct, actionable error to the caller; no partial or
 silent delivery occurs. A failed send never cascades to another channel.
+<!-- change:message-recipient-default -->
+**Failure contract.** An unresolvable recipient, a missing credential for the
+resolved channel, a channel that cannot carry the request, or a provider send
+failure each return a distinct, actionable error to the caller. A message to one
+person is delivered in full or not at all, and nothing is dropped silently. A
+failed send never cascades to another channel. Delivery to several recipients
+reports each recipient's outcome, as
+`local/projects/teleclaude/spec/feature/integration/person-addressed-messaging`
+specifies.
+<!-- /planned-change:message-recipient-default -->
 
 **Discovery.** `telec config person list` exposes each person's `slug`, so a
 caller can discover the addressable identifier.
