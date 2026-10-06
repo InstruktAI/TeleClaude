@@ -1,8 +1,8 @@
 ---
-description: Who receives a person-addressed message — the named person, or by default the person whose authority the calling session runs under, with the platform admins standing in for system authority.
+description: Who receives a person-addressed message — the named person, or by default
+  the person whose authority the calling session runs under, with the platform admins
+  standing in for system authority.
 visibility: internal
-delivered_by:
-  - message-recipient-default
 ---
 
 # Person-Addressed Messaging — Spec
