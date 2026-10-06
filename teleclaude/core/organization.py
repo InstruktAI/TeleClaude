@@ -17,7 +17,7 @@ from teleclaude.config.loader import (
     load_global_config,
     load_person_config_for_entry,
 )
-from teleclaude.config.schema import CompanyRole, PersonConfig
+from teleclaude.config.schema import CompanyRole, PersonConfig, PersonEntry
 from teleclaude.config_roster import load_people_roster
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.paths import PEOPLE_DIR
@@ -160,6 +160,11 @@ def platform_admin_people() -> list[tuple[str, PersonConfig]]:
         if person_config is not None:
             admins.append((slug, person_config))
     return admins
+
+
+def platform_admin_roster() -> list[PersonEntry]:
+    """Return every platform admin declared on the people roster."""
+    return [person for person in load_global_config().people if person.role == HUMAN_ROLE_ADMIN]
 
 
 def company_admin_slugs(company_slug: str, companies_root: Path | None = None) -> list[str]:

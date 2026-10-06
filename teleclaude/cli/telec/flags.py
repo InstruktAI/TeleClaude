@@ -142,6 +142,7 @@ FLAG_CHANNEL_DATA = Flag("--data", desc="JSON payload to publish", arity=VALUE)
 # message
 # =============================================================================
 
+FLAG_MSG_RECIPIENT = Flag("--recipient", desc="Person slug; defaults to the caller's authority", arity=VALUE)
 FLAG_MSG_FILE = Flag("--file", desc="Path to a single file to attach (Telegram, Discord, email only)", arity=VALUE)
 FLAG_MSG_SUBJECT = Flag(
     "--subject", desc="Email subject line; ignored on channels without a subject concept", arity=VALUE

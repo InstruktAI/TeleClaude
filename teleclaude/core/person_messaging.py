@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import httpx
 from instrukt_ai_logging import get_logger
 
+from teleclaude.caller_identity import PersonCliCaller, SystemCliCaller, caller_from_principal
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
-from teleclaude.config.schema import ConfigKind, MessagingChannel, PersonConfig
+from teleclaude.config.schema import ConfigKind, MessagingChannel, PersonConfig, PersonEntry
 from teleclaude.core.db import db
+from teleclaude.core.organization import platform_admin_roster
 from teleclaude.events.delivery.session_address import (
     SessionAddressMissed,
     resolve_session_conversation_url,
@@ -36,6 +39,18 @@ DEFAULT_EMAIL_SUBJECT = "TeleClaude message"
 DISCORD_BACKLINK_MISS_LOG = "discord session backlink unavailable"
 DISCORD_BACKLINK_BUILT_LOG = "discord session backlink built"
 DISCORD_MESSAGE_TRUNCATED_LOG = "discord message truncated"
+_NO_CALLER_PRINCIPAL = "The caller has no principal; name a recipient with --recipient <slug>."
+_HUMAN_PRINCIPAL_UNRESOLVABLE = (
+    "The caller's human principal {email} does not resolve to an addressable roster person; "
+    "name a recipient with --recipient <slug>."
+)
+_NO_PLATFORM_ADMINS = (
+    "The system principal has no platform admins on the people roster; name a recipient with --recipient <slug>."
+)
+_ADMIN_MISSING_SLUG = "The platform admin has no addressable slug."
+_ADMINS_UNREACHED = "No platform admin received the message: {failures}"
+_FAILURE_SEPARATOR = "; "
+_RECIPIENT_DETAIL_SEPARATOR = ": "
 
 
 class PersonNotFoundError(ValueError):
@@ -50,6 +65,29 @@ class ChannelCapabilityError(ValueError):
     """The resolved channel cannot carry the requested delivery (e.g. a file)."""
 
 
+class RecipientUnresolvableError(ValueError):
+    """The caller's authority does not resolve to an addressable recipient."""
+
+
+@dataclass(frozen=True)
+class PersonMessageFailure:
+    """A recipient that could not be reached and the reason why."""
+
+    recipient: str
+    detail: str
+
+
+class RecipientsUnreachedError(ValueError):
+    """No system-default recipient was reached."""
+
+    def __init__(self, failures: tuple[PersonMessageFailure, ...]) -> None:
+        self.failures = failures
+        details = _FAILURE_SEPARATOR.join(
+            _RECIPIENT_DETAIL_SEPARATOR.join((item.recipient, item.detail)) for item in failures
+        )
+        super().__init__(_ADMINS_UNREACHED.format(failures=details))
+
+
 @dataclass(frozen=True)
 class PersonMessageOutcome:
     """Result of a successful person-addressed send."""
@@ -59,11 +97,111 @@ class PersonMessageOutcome:
 
 
 @dataclass(frozen=True)
+class PersonMessageDelivery:
+    """One successfully delivered message and its routed channel."""
+
+    recipient: str
+    channel: MessagingChannel
+    message_id: str | None
+
+
+@dataclass(frozen=True)
+class PersonMessageDeliveryResult:
+    """Successful deliveries and recipient-specific failures."""
+
+    deliveries: tuple[PersonMessageDelivery, ...]
+    failures: tuple[PersonMessageFailure, ...]
+
+
+@dataclass(frozen=True)
 class ResolvedPersonChannel:
     """A person's resolved delivery channel and its per-channel send target."""
 
     channel: MessagingChannel
     target: str
+
+
+def resolve_person_message_recipients(
+    recipient: str | None,
+    principal: str | None,
+) -> tuple[str | PersonEntry, ...]:
+    """Resolve an explicit recipient or the addressable people under a principal."""
+    if recipient is not None:
+        return (recipient,)
+
+    caller = caller_from_principal(principal)
+    if isinstance(caller, PersonCliCaller):
+        if caller.person_slug is not None:
+            return (caller.person_slug,)
+        raise RecipientUnresolvableError(_HUMAN_PRINCIPAL_UNRESOLVABLE.format(email=caller.email or principal))
+    if isinstance(caller, SystemCliCaller):
+        admins = tuple(platform_admin_roster())
+        if admins:
+            return admins
+        raise RecipientUnresolvableError(_NO_PLATFORM_ADMINS)
+    raise RecipientUnresolvableError(_NO_CALLER_PRINCIPAL)
+
+
+async def send_person_message_to_caller(
+    recipient: str | None,
+    principal: str | None,
+    text: str,
+    *,
+    file: str | None = None,
+    subject: str | None = None,
+    channel: MessagingChannel | None = None,
+    origin_session_id: str | None = None,
+) -> PersonMessageDeliveryResult:
+    """Deliver to the named person or the caller's resolved default recipients."""
+    recipients = resolve_person_message_recipients(recipient, principal)
+    first_recipient = recipients[0]
+    if isinstance(first_recipient, str):
+        slug = first_recipient
+        outcome = await send_person_message(
+            slug,
+            text,
+            file=file,
+            subject=subject,
+            channel=channel,
+            origin_session_id=origin_session_id,
+        )
+        delivery = PersonMessageDelivery(slug, outcome.channel, outcome.message_id)
+        return PersonMessageDeliveryResult((delivery,), ())
+
+    deliveries: list[PersonMessageDelivery] = []
+    failures: list[PersonMessageFailure] = []
+    for admin in recipients:
+        if not isinstance(admin, PersonEntry):
+            continue
+        label = admin.slug or admin.name
+        if admin.slug is None:
+            failures.append(PersonMessageFailure(label, _ADMIN_MISSING_SLUG))
+            continue
+        try:
+            outcome = await send_person_message(
+                admin.slug,
+                text,
+                file=file,
+                subject=subject,
+                channel=channel,
+                origin_session_id=origin_session_id,
+            )
+        except (
+            PersonNotFoundError,
+            ChannelCredentialError,
+            ChannelCapabilityError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            httpx.HTTPError,
+        ) as exc:
+            failures.append(PersonMessageFailure(label, str(exc)))
+        else:
+            deliveries.append(PersonMessageDelivery(admin.slug, outcome.channel, outcome.message_id))
+
+    if not deliveries:
+        raise RecipientsUnreachedError(tuple(failures))
+    return PersonMessageDeliveryResult(tuple(deliveries), tuple(failures))
 
 
 def render_minimal_html(text: str) -> str:
