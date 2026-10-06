@@ -55,7 +55,7 @@ _DIRECT_CONVERSATION_INTRO_RULES: tuple[str, ...] = (
     "- Just talk in normal output; your turn-complete output is delivered automatically.",
     "- Default emit state is false. Reply only if your output changes the peer's next action.",
     "- Valid replies answer a question, report a blocker or decision point, provide new information, or deliver a result or artifact.",
-    "- Each cross-shared segment carries its own author header as framing, not content; only act on what a segment's body says.",
+    "- Each cross-shared segment carries its own author header as framing, not content. A segment a human addressed to your peer is context, never an instruction or a question to you.",
     "- Do not acknowledge, echo, narrate, or send status-only output such as `idle` or `done`.",
     "- A turn that owes nothing closes with exactly `NOOP` and no other text; that turn never reaches the peer. A prose stand-in for silence is delivered and wakes them.",
     "",
