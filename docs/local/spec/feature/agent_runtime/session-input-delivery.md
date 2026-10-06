@@ -71,6 +71,22 @@ authorize Enter on an occupied composer or an interaction with a menu. Genuine
 runtime suggestion chrome is not authored input; its styling must not erase
 ordinary colored human text during occupancy observation.
 
+<!-- planned:no-composer-wakes-parent -->
+When that observation identifies no composer because the agent shows another
+screen, nothing is pasted, typed, or submitted into that screen, whatever the
+input's authority, and the input reaches the agent only once a later
+observation finds an empty composer. A startup message waits for the composer
+for the delivery-retry window and fails its submission when the window lapses.
+Queued conversation text waits as described under Conversation input
+authority; queued platform-authored text keeps its delivery retries and its
+terminal notices. An observation that finds no composer puts the session in
+`blocked` with reason `needs_input`, which wakes its watchers with a capture of
+the pane so an agent can clear or escalate what the screen shows
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-subscriptions`).
+A pane that cannot be captured is a delivery failure, not a screen without a
+composer.
+<!-- /planned:no-composer-wakes-parent -->
+
 Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
 lifecycle transition. Recovery follows UC-SID6.
@@ -102,19 +118,13 @@ human draft. While the composer holds input, or while no composer can be
 identified because the agent shows another screen, conversation text waits in
 accepted order. It is retried on the delivery cadence without consuming its
 delivery-attempt budget, for no longer than the delivery-retry window measured
-from its acceptance, so no submission of a human draft carries relayed text and
-nothing is pasted or submitted into a screen that is not the composer.
-Input that waits because no composer can be identified, a startup message
-included, puts the session in `blocked` with reason `needs_input`, which wakes
-its watchers with a capture of the pane so an agent can clear or escalate what
-the screen shows
-(`local/projects/teleclaude/spec/feature/agent_runtime/session-subscriptions`).
+from its acceptance, so no submission of a human draft carries relayed text.
 A message that has been held is never submitted after that window lapses: it
 ends undelivered when the window lapses, the session's conversation channels
 receive a notice that it did not reach the agent because the agent's input was
-occupied or no composer could be identified, and the composer and the shown
-screen are left untouched. A startup message held past the same window fails
-its submission.
+occupied, and the composer's content and any screen shown in its place are
+left untouched. A startup message held past the same window fails its
+submission.
 <!-- /planned-change:no-composer-wakes-parent -->
 
 When conversation text is submitted to an agent's empty composer and its first
@@ -213,7 +223,8 @@ And the message is not marked delivered by queue workers
 <!-- change:no-composer-wakes-parent -->
 ```
 Given the target session has an active agent
-When the selected host-pane paste or paste-and-submit primitive fails
+When the host pane cannot be captured for the pre-delivery observation
+Or the selected host-pane paste or paste-and-submit primitive fails
 Then the prompt-state delivery routine returns failure
 And the upstream send-message path logs the failure and raises a server-side error to the caller
 And the message is not marked delivered by queue workers
@@ -371,7 +382,8 @@ When the screen is cleared and the composer is identified as empty
 Then the waiting text is submitted once
 And the session leaves `blocked` through the agent event that follows the submission
 When the screen is not cleared within the delivery-retry window
-Then the text ends undelivered and the conversation is told it did not reach the agent because no composer could be identified
+Then the text ends undelivered with the terminal notice its delivery path already gives
+And the screen remains unchanged and unsubmitted
 ```
 <!-- /planned-change:no-composer-wakes-parent -->
 

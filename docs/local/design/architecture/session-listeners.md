@@ -37,8 +37,8 @@ audience is empty.
   reason `no_signal` or `no_start` — delivered as the turn-failure kind with the
   daemon's own evidence in place of a native payload
 <!-- planned:no-composer-wakes-parent -->
-- Blocked transitions raised by input delivery when it holds input because no
-  composer can be identified — `blocked` with reason `needs_input` — delivered
+- Blocked transitions raised by input delivery when it withholds input because
+  no composer can be identified — `blocked` with reason `needs_input` — delivered
   as the blocked kind with a capture of the pane in place of a native payload
 <!-- /planned:no-composer-wakes-parent -->
 - Forwarded distress from another computer, naming the target, its computer,

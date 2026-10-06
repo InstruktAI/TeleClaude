@@ -248,10 +248,11 @@ And a later normalized agent event sets the status that event maps to
 
 ```
 Given a non-terminal agent session
-When delivery holds input because it cannot identify the agent's composer
+When input delivery withholds input because it cannot identify the agent's composer
 Then the session's agent status becomes `blocked` with reason `needs_input`
 And the status records the moment it was entered
 And no native runtime signal is required for that transition
+And the transition records no runtime activity
 And the next normalized agent event sets the status that event maps to
 ```
 <!-- /planned:no-composer-wakes-parent -->
