@@ -91,17 +91,6 @@ accepted order: it is retried on the delivery cadence without consuming its
 delivery-attempt budget and ends only with the session, so no submission of a
 human draft carries relayed text.
 
-<!-- planned-change:relayed-trailing-backslash-blocks-submit -->
-When conversation text is submitted to an agent's empty composer and its first
-character after any leading whitespace and leading invisible format characters
-is one that runtime's composer treats as interface control, the runtime's
-neutralizing mark is placed at the very start of the text; the text is
-otherwise submitted unchanged. Each runtime's control characters and its neutralizing mark — a character
-that makes the composer treat the text as an ordinary prompt and submit it on
-the single discrete Enter — are declared once on its canonical agent entry
-(`local/projects/teleclaude/spec/feature/agent_runtime/agent-vocabulary`), so a
-supported runtime without a declaration cannot exist.
-<!-- change:relayed-trailing-backslash-blocks-submit -->
 When conversation text is submitted to an agent's empty composer and its first
 character after any leading whitespace and leading invisible format characters
 is one that runtime's composer treats as interface control, the runtime's
@@ -115,7 +104,6 @@ submit it on the single discrete Enter — and its trailing mark, if any, are
 declared once on its canonical agent entry
 (`local/projects/teleclaude/spec/feature/agent_runtime/agent-vocabulary`), so a
 supported runtime without a declaration cannot exist.
-<!-- /planned-change:relayed-trailing-backslash-blocks-submit -->
 
 Input a person enters at the terminal or the TUI, including what the TUI and
 the `telec` CLI send through the platform's API, and platform-authored text —
@@ -410,7 +398,6 @@ Then the text is submitted exactly as written
 And the agent interface acts on it as it acts on typed input
 ```
 
-<!-- planned:relayed-trailing-backslash-blocks-submit -->
 #### UC-SID19: A message ending in a backslash submits once
 
 ```gherkin
@@ -422,7 +409,6 @@ And the agent receives the message's text with its final backslash
 And the person's next message starts its own prompt instead of joining this one
 ```
 
-<!-- /planned:relayed-trailing-backslash-blocks-submit -->
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
@@ -439,11 +425,7 @@ And the person's next message starts its own prompt instead of joining this one
 
 - **Single host-pane paste buffer per call.** The key-injection primitive allocates a unique buffer name per call and always attempts cleanup on the way out, even when the paste step failed; a cleanup failure leaves the user payload resident in the host pane's buffer list until the host-pane server exits and is logged at warning.
 - **A small post-paste gap is hardcoded for paste-and-submit.** The ordering margin between the bracketed-paste close marker and the discrete submit does NOT scale with payload size; resizing this constant affects every submitted paste. Prompt-state delivery selects that primitive only after its pre-delivery observation finds an empty composer.
-<!-- planned-change:relayed-trailing-backslash-blocks-submit -->
-- **The host-pane primitives pass text through unchanged.** They paste the payload they receive for every runtime; the only character a delivery adds is the neutralizing mark described under Conversation input authority, chosen before the primitive is reached.
-<!-- change:relayed-trailing-backslash-blocks-submit -->
 - **The host-pane primitives pass text through unchanged.** They paste the payload they receive for every runtime; the characters a delivery adds are the marks described under Conversation input authority, chosen before the primitive is reached.
-<!-- /planned-change:relayed-trailing-backslash-blocks-submit -->
 
 - **Origin wrapping identifies every session-originated send.** The wrapping step prepends an identity header to every plain send that carries a caller session id. A caller whose session resolves to a machine role is named by that role — orchestrator, integrator, system, worker, tasker, and job_runner each get their own genuine label. A caller whose session resolves to no machine role, such as a top-level interactive session, is named as an agent and identified by its active agent and session id; it is delivered, not refused. The human whose account the session runs under is lineage, not authorship, and never appears in the header. Only genuine human direct input, which carries no caller session id, is delivered unwrapped. A caller session id that does not resolve to a session at all is refused with an explicit error, because no truthful identity can be composed for it; no fabricated role, agent, or host attribution is ever substituted to force a header.
 
