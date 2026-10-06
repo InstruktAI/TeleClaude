@@ -62,6 +62,7 @@ from teleclaude.core.session_startup_message import compose_command_loader, reso
 from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
+from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
 from ._message_delivery import inject_inbound_text
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
 
