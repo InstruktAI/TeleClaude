@@ -164,7 +164,7 @@ class SessionRow(TelecMixin, Widget):
         return resolve_style(self.agent, self._tier("normal"))
 
     def _build_title_line(self, *, selected: bool = False, previewed: bool = False) -> Text:
-        """Build the header: `• [N] ▶ agent/mode "Title"`, the dot only for attention states."""
+        """Build the header with a dot for active, blocked, and stalled agents."""
         line = Text(no_wrap=True)
         attention_color = get_agent_attention_color(self.session.agent_status)
         if attention_color is not None:

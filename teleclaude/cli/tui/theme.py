@@ -175,6 +175,7 @@ STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
         "input_border": "#444444",
         "banner": "#585858",
         "status_fg": "#727578",
+        "agent_status_active": "#4caf50",
         "agent_status_blocked": "#ff9d00",
         "agent_status_stalled": "#ff4d4d",
     },
@@ -184,12 +185,14 @@ STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
         "input_border": "#c0c0c0",
         "banner": "#a0a0a0",
         "status_fg": "#727578",
+        "agent_status_active": "#238636",
         "agent_status_blocked": "#a94f00",
         "agent_status_stalled": "#b42318",
     },
 }
 
 _AGENT_ATTENTION_COLOR_KEYS: dict[AgentStatusValue, str] = {
+    AgentStatusValue.ACTIVE: "agent_status_active",
     AgentStatusValue.BLOCKED: "agent_status_blocked",
     AgentStatusValue.STALLED: "agent_status_stalled",
 }
@@ -262,7 +265,7 @@ def get_structural_color(key: str) -> str:
 
 
 def get_agent_attention_color(status: AgentStatusValue | None) -> str | None:
-    """Return the mode-aware dot color for a blocked or stalled session."""
+    """Return the mode-aware dot color for an active, blocked, or stalled session."""
     if status is None:
         return None
     color_key = _AGENT_ATTENTION_COLOR_KEYS.get(status)
