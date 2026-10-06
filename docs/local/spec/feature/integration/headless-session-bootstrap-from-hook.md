@@ -157,13 +157,8 @@ And provider-supplied data cannot opt into headless bootstrap
   payload normalization. The receiver removes or overwrites any provider field
   with the same name, so external hook input cannot grant creation authority.
 
-<!-- planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
-- Bootstrap failures retry with the dispatcher's exponential backoff,
-  with no attempt limit.
-<!-- change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 - A bootstrap that session creation refuses — the entry's identity or
   placement is not admitted — is dropped without retry
   (`local/projects/teleclaude/spec/feature/integration/hook-outbox-dispatcher`,
   UC-D8b). Any other bootstrap failure retries with the dispatcher's
   exponential backoff, with no attempt limit.
-<!-- /planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->

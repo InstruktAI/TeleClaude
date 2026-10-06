@@ -135,11 +135,7 @@ And the entry is then removed by the worker as processed
 #### UC-D7: Retry with exponential backoff on retryable failure
 
 ```gherkin
-<!-- planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
-Given the dispatcher raises a retryable exception (any error other than an agent-status integrity failure, a "not found" value error, or an "extra data" decoding error)
-<!-- change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 Given the dispatcher raises a retryable exception (any error other than an agent-status integrity failure, a "not found" value error, an "extra data" decoding error, or a session-creation refusal)
-<!-- /planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 When the worker catches the exception
 Then the attempt count is incremented
 And next-attempt-at = now + the configured backoff for that attempt (base 1s, doubling, capped at 60s)
@@ -164,20 +160,12 @@ The entry is NOT classified as a non-retryable failure; the removal follows the 
 #### UC-D8b: Non-retryable failures still drop on actual non-retryable errors
 
 ```gherkin
-<!-- planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
-Given the dispatcher raises a value error whose message contains "not found", OR a decoding error with "extra data"
-<!-- change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 Given the dispatcher raises a value error whose message contains "not found", OR a decoding error with "extra data", OR a session-creation refusal of the entry's identity or placement
-<!-- /planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 When the retryable-error classifier returns false
 Then an error "hook outbox event dropped (non-retryable)" is emitted with entry id, attempt, and error
 And the entry is removed without retry
 And the processed-count metric is incremented
-<!-- planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
-This branch covers payload-corruption type errors, not missing-session non-start entries (which are silent).
-<!-- change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 This branch covers payload-corruption type errors and refused session creation, not missing-session non-start entries (which are silent).
-<!-- /planned-change:fix-hook-outbox-dispatch-keeps-retrying-cust -->
 ```
 
 #### UC-D9: Periodic summary log
