@@ -79,10 +79,13 @@ observation finds an empty composer. A startup message waits for the composer
 for the delivery-retry window and fails its submission when the window lapses.
 Queued conversation text waits as described under Conversation input
 authority; queued platform-authored text keeps its delivery retries and its
-terminal notices. An observation that finds no composer puts the session in
-`blocked` with reason `needs_input`, which wakes its watchers with a capture of
-the pane so an agent can clear or escalate what the screen shows
-(`local/projects/teleclaude/spec/feature/agent_runtime/session-subscriptions`).
+terminal notices. The first observation that finds no composer while the
+session is not already `blocked` with reason `needs_input` puts it there, which
+wakes its watchers once with a capture of the pane so an agent can clear or
+escalate what the screen shows
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-subscriptions`);
+later observations of the same screen change neither the status nor the
+watchers.
 A pane that cannot be captured is a delivery failure, not a screen without a
 composer.
 <!-- /planned:no-composer-wakes-parent -->
