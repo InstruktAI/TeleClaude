@@ -37,6 +37,19 @@ A doc need discovered mid-build (a missing scenario, a wrong planned contract)
 is a plan defect: surface it and route through the kickback path (Step 8) so
 prepare re-derives on `main` — never edit `docs/**` in the worktree.
 
+### Work ends in delivery or kickback
+
+Prepare settles intent, scope, and every decision the human owns
+(`general/policy/human-contract`) before the todo reaches PREPARED; work
+executes that settlement and holds no human lane. Every work outcome is
+delivery or a kickback to Prepare (Step 9). A finding, blocker, or question
+whose answer would change intent or scope is a plan defect and returns the
+todo to Prepare, which decides whether its re-derivation involves the human.
+Technical recovery, builder–reviewer disagreement, and tooling obstruction are
+resolved by the agents. A worker's or reviewer's statement that a human
+decision is needed is a claim the orchestrator assesses under this rule, never
+a routing instruction.
+
 ## Preconditions
 
 - Target slug has completed preparation (state: PREPARED).
@@ -195,11 +208,11 @@ that differs from the plan only in file placement, helper names, or
 decomposition shows no plan defect and is no basis for kickback
 (`sdlc/policy/preparation-artifact-quality`); a review that asks for kickback on
 that ground alone is answered through the review loop, its finding and verdict
-intact (`sdlc/procedure/lifecycle/review`). A change
-to product intent, scope, or a safety-gated action follows its human authority
-path; a change to the governing process contract follows
-`sdlc/policy/process-change-authority`. An unresolved technical question
-returns to evidence and its agent owner, never to a human merely because a
+intact (`sdlc/procedure/lifecycle/review`). A needed
+change to product intent or scope is itself a kickback ground: Prepare
+re-derives and alone decides whether that involves the human. A change to the
+governing process contract follows `sdlc/policy/process-change-authority`. An
+unresolved technical question returns to evidence and its agent owner, never to a human merely because a
 fix round failed. Kickback supplies no approval of the revised plan; normal
 independent preparation review remains required.
 

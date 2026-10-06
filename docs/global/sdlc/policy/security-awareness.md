@@ -126,6 +126,11 @@ Always escalate before:
 - Adding or updating dependencies with native code or broad permissions.
 - Disabling or weakening any existing security control.
 
+Inside a todo, its approved intent is where these triggers are settled: a
+change the intent calls for has already passed them, and a change it does not
+call for is a scope finding. Build, review, and fix never escalate them
+(`sdlc/procedure/lifecycle/work/overview`).
+
 ## Rationale
 
 - Assume-breach posture limits damage when (not if) controls fail.
@@ -133,6 +138,9 @@ Always escalate before:
 - Runtime identity belongs to the live discovery surface; copying it into durable content
   exposes private topology and creates stale operational guidance.
 - Dense coverage across attack surfaces activates systematic security reasoning.
+- An escalation trigger asks whether a security-relevant change is wanted. For
+  lifecycle work, preparation and its independent review answer that once;
+  escalating again from build or review reopens a settled decision.
 
 ## Scope
 

@@ -73,6 +73,11 @@ description: How a configuration migration is written — one numbered step in o
   documents, and the migration list together. A new document is written at the
   current version; a migration alone leaves new documents wrong, and a model
   change alone leaves stored documents unreadable.
+- **A migration change never stamps a stored document.** It ships the step and
+  the current-version advance. It never edits the version or shape of a tracked
+  configuration document, this repository's own included: the migration run
+  persists and commits every registry-named document once the change reaches
+  canonical main (`local/projects/teleclaude/spec/feature/config/document-migration`).
 - **A shape no machine still carries gets no migration.** Its keys fail as
   unknown wherever they reappear.
 
@@ -110,6 +115,12 @@ lose a value that is still on disk. Taking the value from the migration's own
 definition keeps one statement of what moves. A reader that answered with either
 side of a conflict would make, silently and on every read, the choice the run
 leaves to judgment.
+
+A stored document has exactly two persistence paths, the run and a writer. A
+hand stamp is a third that skips the run's per-document outcome and commit. In
+a worktree it is also fatal to the change itself: the document then states a
+version newer than the installed runtime, which refuses to load it, and every
+tool there that reads the project declaration refuses with it.
 
 A retirement effect is keyed to the run rather than to a document's version because the
 records it removes belong to no document: an installation can be current in every document

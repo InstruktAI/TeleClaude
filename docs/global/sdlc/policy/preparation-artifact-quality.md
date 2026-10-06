@@ -508,6 +508,10 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
   item, is defective. Copy-pasting the upstream text into the task is
   defective; the reference is the contract.
 - Every task has a rationale explaining _why_ this approach, not just _what_.
+- **A rationale rests on a contract, never on a precedent.** A past commit
+  shows what was done once; it authorizes nothing. A task step a precedent
+  suggests is checked against the contract that governs that act before the
+  plan adopts it, and a step no contract supports is dropped.
 - Where the project opts into tests, each task that binds a scenario names the
   specific scenario-bound test. Do not name logger/config/native-shape/private-
   helper/wiring assertions as deliverables.
@@ -568,6 +572,10 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
   Binding what the delivery must preserve keeps kickback for a prepared outcome,
   contract, or reviewed decision that is wrong, and keeps the diff, not the
   plan's forecast of it, as what build review judges.
+- A precedent records an act, not whether it was right or whether it holds in
+  the role and environment the plan assigns. Copied without its contract, it
+  carries an unchecked act into a plan that every later gate then reads as
+  settled.
 - Runtime log judgment belongs to the integrator after activation. Designing
   per-outcome evidence during preparation adds contracts and review work
   without improving that judgment.

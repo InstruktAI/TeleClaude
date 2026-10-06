@@ -88,6 +88,10 @@ Review attempts to falsify the target's claims against its governing contract.
 It does not brainstorm risks, maximize findings, improve the design, or
 prescribe speculative defenses.
 
+The review result carries findings, investigation leads, and the verdict. It
+names no owner, destination, or decision for another party: what follows a
+review is the dispatching orchestrator's (§6, `general/concept/orchestrator`).
+
 A finding is valid only when all four hold:
 
 1. it cites the specific policy, Definition of Done line, principle, or spec it
@@ -96,11 +100,17 @@ A finding is valid only when all four hold:
    artifact, that the cited clause applies here — including that no more
    specific contract on the same subject decides the case otherwise, such as a
    project policy that settles what a general spec leaves open
-   (`general/policy/conflict-resolution`);
-3. it explains the contradiction causally — what the target does and why that
-   conflicts with the clause;
-4. it states the closure condition within the frozen scope, without
-   prescribing implementation.
+   (`general/policy/conflict-resolution`), or, for a bug, the bug-fix lane's
+   scope authority (`sdlc/policy/definition-of-done-lanes`);
+3. it explains the contradiction causally — what the target introduces and why
+   that conflicts with the clause. Every factual premise the contradiction rests
+   on is shown by an observation of current substrate — the file, the command
+   output — never asserted (`general/principle/grounding`). A condition the
+   target leaves as it was, or restores to its previously delivered behavior,
+   is not introduced by the target;
+4. it states the closure condition as a state of the target within the frozen
+   scope, without prescribing implementation. A closure that waits on a
+   decision or an authorization names no state of the target.
 
 A finding that claims a defect establishes, from current sources, that a
 reachable condition triggers it (`sdlc/concept/defect-evidence`); a defect claim
@@ -125,7 +135,8 @@ Use this format:
 Severity — Policy: <citation>
 Location: <file:line>
 Violation: <one sentence stating what the target does that the cited rule forbids>
-Closure: <the condition that resolves it, within the frozen scope, stated without prescribing implementation>
+Evidence: <each factual premise of the violation, with the observation that shows it>
+Closure: <the state of the target that resolves it, within the frozen scope, stated without prescribing implementation>
 ```
 
 Use exactly three severity tiers:
@@ -231,8 +242,8 @@ The target returns to drafting only when the evidence requires re-deriving a
 prepared artifact. Reviewer incompleteness stays a review correction; an
 implementation defect within the approved contract stays with the producer. The
 findings and the current verdict are preserved. An unresolved contract dispute
-goes to that contract's owner. Human escalation follows the closed human lane
-(`general/policy/human-contract`), never the round count.
+returns the target to the phase that owns that contract; a review loop never
+carries it to the human, and neither does the round count.
 
 Neither elapsed rounds nor stopping authorizes approval, scope growth, or a
 weakened finding.
