@@ -34,6 +34,11 @@ class InboundQueueRow(TypedDict):
     attempt_count: int
     next_retry_at: str | None
     last_error: str | None
+    was_held: bool
+    hold_notice_pending: bool
+    hold_notice_attempt_count: int
+    hold_notice_next_retry_at: str | None
+    hold_notice_error: str | None
     source_message_id: str | None
     source_channel_id: str | None
     caller_session_id: str | None
@@ -47,6 +52,7 @@ class InboundQueueRow(TypedDict):
     caller_origin_suffix_len: int | None
     binding_disposition: str | None
     reflection_claimed_at: str | None
+    locked_at: str | None
 
 
 class OperationRow(TypedDict):

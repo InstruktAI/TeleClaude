@@ -47,6 +47,11 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         attempt_count=row.attempt_count,
         next_retry_at=row.next_retry_at,
         last_error=row.last_error,
+        was_held=row.was_held,
+        hold_notice_pending=row.hold_notice_pending,
+        hold_notice_attempt_count=row.hold_notice_attempt_count,
+        hold_notice_next_retry_at=row.hold_notice_next_retry_at,
+        hold_notice_error=row.hold_notice_error,
         source_message_id=row.source_message_id,
         source_channel_id=row.source_channel_id,
         caller_session_id=row.caller_session_id,
@@ -60,6 +65,7 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         caller_origin_suffix_len=row.caller_origin_suffix_len,
         binding_disposition=row.binding_disposition,
         reflection_claimed_at=row.reflection_claimed_at,
+        locked_at=row.locked_at,
     )
 
 
@@ -234,7 +240,14 @@ class DbInboundMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def mark_inbound_expired(self, row_id: int, error: str, now_iso: str) -> None:
+    async def mark_inbound_expired(
+        self,
+        row_id: int,
+        error: str,
+        now_iso: str,
+        *,
+        hold_notice_pending: bool = False,
+    ) -> None:
         """Mark an inbound queue row as expired (permanent drop)."""
         stmt = (
             update(db_models.InboundQueue)
@@ -243,6 +256,11 @@ class DbInboundMixin:
                 status="expired",
                 processed_at=now_iso,
                 last_error=error,
+                was_held=True if hold_notice_pending else db_models.InboundQueue.was_held,
+                hold_notice_pending=hold_notice_pending,
+                hold_notice_attempt_count=0,
+                hold_notice_next_retry_at=None,
+                hold_notice_error=None,
                 locked_at=None,
             )
         )
@@ -261,6 +279,111 @@ class DbInboundMixin:
                 attempt_count=db_models.InboundQueue.attempt_count + 1,
                 next_retry_at=None,
                 last_error=error,
+                locked_at=None,
+            )
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
+    async def fetch_inbound_hold_notices(self, session_id: str) -> list[InboundQueueRow]:
+        """Fetch expired inbound rows whose conversation notice remains owed."""
+        stmt = (
+            select(db_models.InboundQueue)
+            .where(db_models.InboundQueue.session_id == session_id)
+            .where(db_models.InboundQueue.status == "expired")
+            .where(db_models.InboundQueue.hold_notice_pending.is_(True))
+            .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(stmt)).all()
+            return [_decode_inbound_row(row) for row in rows]
+
+    async def claim_inbound_hold_notice(
+        self,
+        row_id: int,
+        now_iso: str,
+        lock_cutoff_iso: str,
+    ) -> bool:
+        """Claim one pending conversation notice for delivery."""
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(
+                db_models.InboundQueue.id == row_id,
+                db_models.InboundQueue.status == "expired",
+                db_models.InboundQueue.hold_notice_pending.is_(True),
+                or_(
+                    db_models.InboundQueue.hold_notice_next_retry_at.is_(None),
+                    db_models.InboundQueue.hold_notice_next_retry_at <= now_iso,
+                ),
+                or_(
+                    db_models.InboundQueue.locked_at.is_(None),
+                    db_models.InboundQueue.locked_at <= lock_cutoff_iso,
+                ),
+            )
+            .values(locked_at=now_iso)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return (result.rowcount or 0) == 1
+
+    async def mark_inbound_hold_notice_delivered(self, row_id: int) -> None:
+        """Clear a terminal row's pending notice after a channel receipt."""
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .where(db_models.InboundQueue.status == "expired")
+            .values(
+                hold_notice_pending=False,
+                hold_notice_next_retry_at=None,
+                hold_notice_error=None,
+                locked_at=None,
+            )
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
+    async def mark_inbound_hold_notice_unaddressable(self, row_id: int, reason: str) -> None:
+        """Retire a notice obligation with a durable terminal recipient reason."""
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .where(db_models.InboundQueue.status == "expired")
+            .where(db_models.InboundQueue.hold_notice_pending.is_(True))
+            .values(
+                hold_notice_pending=False,
+                hold_notice_next_retry_at=None,
+                hold_notice_error=reason,
+                locked_at=None,
+            )
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
+    async def mark_inbound_hold_notice_failed(
+        self,
+        row_id: int,
+        error: str,
+        now_iso: str,
+        backoff_seconds: float,
+    ) -> None:
+        """Retain a failed notice obligation and schedule another channel attempt."""
+        dt = parse_iso_datetime(now_iso)
+        if dt is None:
+            dt = datetime.now(UTC)
+        next_retry = (dt + timedelta(seconds=backoff_seconds)).isoformat()
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .where(db_models.InboundQueue.status == "expired")
+            .where(db_models.InboundQueue.hold_notice_pending.is_(True))
+            .values(
+                hold_notice_attempt_count=db_models.InboundQueue.hold_notice_attempt_count + 1,
+                hold_notice_next_retry_at=next_retry,
+                hold_notice_error=error,
                 locked_at=None,
             )
         )
@@ -309,6 +432,7 @@ class DbInboundMixin:
                 status=_FAILED_STATUS,
                 next_retry_at=next_retry,
                 last_error=_COMPOSER_OCCUPIED_REASON,
+                was_held=True,
                 locked_at=None,
             )
         )
@@ -507,10 +631,15 @@ class DbInboundMixin:
             return result.rowcount or 0
 
     async def fetch_sessions_with_pending_inbound(self) -> list[str]:
-        """Return distinct session_ids that have pending/failed inbound rows (for startup recovery)."""
+        """Return sessions with retryable inbound rows or pending hold notices."""
         stmt = (
             select(db_models.InboundQueue.session_id)
-            .where(db_models.InboundQueue.status.in_(["pending", "failed"]))
+            .where(
+                or_(
+                    db_models.InboundQueue.status.in_(["pending", "failed"]),
+                    db_models.InboundQueue.hold_notice_pending.is_(True),
+                )
+            )
             .distinct()
         )
         async with self._session() as db_session:
@@ -522,6 +651,7 @@ class DbInboundMixin:
         stmt = (
             delete(db_models.InboundQueue)
             .where(db_models.InboundQueue.status.in_(["delivered", "expired"]))
+            .where(db_models.InboundQueue.hold_notice_pending.is_(False))
             .where(db_models.InboundQueue.created_at < older_than_iso)
         )
         async with self._session() as db_session:

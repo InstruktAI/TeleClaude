@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import Future
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.inbound_queue import _HELD_MESSAGE_TIMEOUT_S
 from teleclaude.core.injected_text import InjectedInputAuthority
 
 logger = get_logger(__name__)
@@ -81,18 +83,30 @@ async def deliver_startup_message(
     )
     if not await tmux_io.is_process_running(session):
         raise RuntimeError(AGENT_STARTUP_DELIVERY_PROCESS_EXITED_ERROR)
-    while True:
+    result = await tmux_io.inject_user_turn(
+        session,
+        message,
+        active_agent=agent_name,
+        authority=authority,
+    )
+    held_at: datetime | None = None
+    while result.outcome is tmux_io.UserTurnDeliveryOutcome.HELD:
+        if held_at is None:
+            held_at = datetime.now(UTC)
+        remaining = _startup_hold_seconds_remaining(held_at, datetime.now(UTC))
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(quiet_s, remaining))
+        if not await tmux_io.is_process_running(session):
+            raise RuntimeError(AGENT_STARTUP_DELIVERY_PROCESS_EXITED_ERROR)
+        if _startup_hold_seconds_remaining(held_at, datetime.now(UTC)) <= 0:
+            break
         result = await tmux_io.inject_user_turn(
             session,
             message,
             active_agent=agent_name,
             authority=authority,
         )
-        if result.outcome is not tmux_io.UserTurnDeliveryOutcome.HELD:
-            break
-        await asyncio.sleep(quiet_s)
-        if not await tmux_io.is_process_running(session):
-            raise RuntimeError(AGENT_STARTUP_DELIVERY_PROCESS_EXITED_ERROR)
     emit_agent_startup_delivery_decision(
         session_id=session.session_id,
         agent_name=agent_name,
@@ -105,3 +119,9 @@ async def deliver_startup_message(
         existing_input_preserved=result.existing_input_preserved,
     )
     return result
+
+
+def _startup_hold_seconds_remaining(held_at: datetime, now: datetime) -> float:
+    """Return the non-negative time left in the startup composer hold window."""
+    deadline = held_at + timedelta(seconds=_HELD_MESSAGE_TIMEOUT_S)
+    return max(0.0, (deadline - now).total_seconds())

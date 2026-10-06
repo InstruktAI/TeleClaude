@@ -9,14 +9,22 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.inbound_errors import InboundMessageHeldError, SessionMessageRejectedError
 from teleclaude.core.inbound_types import InboundMessageType
-from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
+from teleclaude.core.injected_text import (
+    InjectedInputAuthority,
+    InjectedTextSourceFeature,
+    TranscriptEntryKind,
+    authority_for_source_feature,
+)
 from teleclaude.core.models import MessageAuthor
+from teleclaude.core.origins import InputOrigin
 
 logger = get_logger(__name__)
 
@@ -31,6 +39,8 @@ _WORKER_DONE_EVENT = "inbound_worker_done"
 _ROW_CLAIM_FAILED_EVENT = "inbound_row_claim_failed"
 _ROW_DELIVERED_EVENT = "inbound_row_delivered"
 _ROW_EXPIRED_EVENT = "inbound_row_expired"
+_ROW_HOLD_NOTICE_FAILED_EVENT = "inbound_hold_expiry_notice_failed"
+_ROW_HOLD_NOTICE_UNADDRESSABLE_EVENT = "inbound_hold_expiry_notice_unaddressable"
 _ROW_DELIVERY_FAILED_EVENT = "inbound_row_delivery_failed"
 _ROW_DELIVERY_HELD_EVENT = "inbound_row_delivery_held"
 _SESSION_EXPIRED_EVENT = "inbound_session_expired"
@@ -40,6 +50,13 @@ _WORKERS_SHUTDOWN_EVENT = "inbound_workers_shutdown"
 # Backoff schedule in seconds: attempt N uses index min(N, last) from this list
 _BACKOFF_SCHEDULE = [5, 10, 20, 40, 80, 160, 300]
 _MAX_DELIVERY_ATTEMPTS = len(_BACKOFF_SCHEDULE) + 1
+_HELD_MESSAGE_TIMEOUT_S = float(sum(_BACKOFF_SCHEDULE))
+_HELD_MESSAGE_EXPIRED_REASON = "hold_expired"
+_INVALID_HELD_MESSAGE_CREATED_AT_ERROR = "Invalid inbound message created_at timestamp: {created_at}"
+_INVALID_HOLD_NOTICE_RETRY_TIME_ERROR = "Invalid persisted hold-notice retry timestamp"
+_HOLD_NOTICE_CALLBACK_UNAVAILABLE_ERROR = "Hold-expiry notice callback is unavailable"
+_HOLD_NOTICE_FAILED_ERROR = "hold_expiry_notice_failed"
+_CONVERSATION_UI_ORIGINS = frozenset({InputOrigin.DISCORD, InputOrigin.TELEGRAM, InputOrigin.WHATSAPP})
 # Lock timeout: rows locked longer than this are considered stale and reclaimable
 _LOCK_TIMEOUT_S = 300  # 5 minutes
 # Fetch page size per worker drain tick
@@ -47,7 +64,26 @@ _FETCH_LIMIT = 1  # Process one at a time to preserve FIFO ordering
 
 TypingCallback = Callable[[str, str], Awaitable[None]]
 DeliverCallback = Callable[[InboundQueueRow], Awaitable[None]]
-DeliveryExhaustedCallback = Callable[[InboundQueueRow], Awaitable[None]]
+
+
+class DeliveryTerminalCause(StrEnum):
+    """Closed causes for terminal inbound delivery notifications."""
+
+    RETRY_EXHAUSTED = "retry_exhausted"
+    HOLD_EXPIRED = _HELD_MESSAGE_EXPIRED_REASON
+
+
+class HoldNoticeTerminalDisposition(StrEnum):
+    """Closed terminal outcomes for a held-message channel notice."""
+
+    RECIPIENT_UNAVAILABLE = "recipient_unavailable"
+
+
+class HoldNoticeRecipientUnavailableError(Exception):
+    """The accepted conversation no longer has an addressable UI recipient."""
+
+
+DeliveryExhaustedCallback = Callable[[InboundQueueRow, DeliveryTerminalCause], Awaitable[None]]
 PostInsertCallback = Callable[[int], Awaitable[None]]
 
 _manager: InboundQueueManager | None = None
@@ -88,6 +124,41 @@ def reset_inbound_queue_manager() -> None:
 def _backoff_for_attempt(attempt: int) -> float:
     idx = min(attempt, len(_BACKOFF_SCHEDULE) - 1)
     return float(_BACKOFF_SCHEDULE[idx])
+
+
+def _held_message_seconds_remaining(created_at: str, now: datetime) -> float:
+    """Return the non-negative time before an accepted held message expires."""
+    accepted_at = parse_iso_datetime(created_at)
+    if accepted_at is None:
+        raise ValueError(_INVALID_HELD_MESSAGE_CREATED_AT_ERROR.format(created_at=created_at))
+    deadline = accepted_at + timedelta(seconds=_HELD_MESSAGE_TIMEOUT_S)
+    return max(0.0, (deadline - now).total_seconds())
+
+
+def _hold_notice_seconds_until_retry(row: InboundQueueRow, now: datetime, lock_cutoff: datetime) -> float:
+    """Return when a persisted hold notice can be claimed again."""
+    retry_at_text = row["hold_notice_next_retry_at"]
+    retry_at = parse_iso_datetime(retry_at_text) if retry_at_text is not None else now
+    if retry_at is None:
+        raise ValueError(_INVALID_HOLD_NOTICE_RETRY_TIME_ERROR)
+    locked_at_text = row["locked_at"]
+    if locked_at_text is not None:
+        locked_at = parse_iso_datetime(locked_at_text)
+        if locked_at is None:
+            raise ValueError(_INVALID_HOLD_NOTICE_RETRY_TIME_ERROR)
+        if locked_at > lock_cutoff:
+            retry_at = max(retry_at, locked_at + timedelta(seconds=_LOCK_TIMEOUT_S))
+    return max(0.0, (retry_at - now).total_seconds())
+
+
+def _hold_notice_is_required(row: InboundQueueRow) -> bool:
+    """Return whether this expired occurrence has a conversation UI recipient."""
+    source = InjectedTextSourceFeature(row["source_feature"])
+    origin = InputOrigin(row["origin"])
+    return (
+        authority_for_source_feature(source) is InjectedInputAuthority.CONVERSATION
+        and origin in _CONVERSATION_UI_ORIGINS
+    )
 
 
 class InboundQueueManager:
@@ -223,13 +294,77 @@ class InboundQueueManager:
                 exc_info=task.exception(),
             )
 
+    async def _process_pending_hold_notice(
+        self,
+        session_id: str,
+        now: datetime,
+        lock_cutoff: datetime,
+    ) -> tuple[bool, float | None]:
+        """Deliver one due terminal notice or return its next retry delay."""
+        notices = await db.fetch_inbound_hold_notices(session_id)
+        if not notices:
+            return False, None
+        retry_delays = [_hold_notice_seconds_until_retry(notice, now, lock_cutoff) for notice in notices]
+        due_index = next((index for index, delay in enumerate(retry_delays) if delay <= 0), None)
+        if due_index is None:
+            return False, min(retry_delays)
+        notice = notices[due_index]
+
+        claimed = await db.claim_inbound_hold_notice(
+            notice["id"],
+            now_iso=now.isoformat(),
+            lock_cutoff_iso=lock_cutoff.isoformat(),
+        )
+        if not claimed:
+            return False, 0.1
+        try:
+            if self._delivery_exhausted_callback is None:
+                raise RuntimeError(_HOLD_NOTICE_CALLBACK_UNAVAILABLE_ERROR)
+            await self._delivery_exhausted_callback(notice, DeliveryTerminalCause.HOLD_EXPIRED)
+        except HoldNoticeRecipientUnavailableError:
+            await db.mark_inbound_hold_notice_unaddressable(
+                notice["id"],
+                HoldNoticeTerminalDisposition.RECIPIENT_UNAVAILABLE,
+            )
+            logger.warning(
+                _ROW_HOLD_NOTICE_UNADDRESSABLE_EVENT,
+                session_id=session_id,
+                inbound_row_id=notice["id"],
+                disposition=HoldNoticeTerminalDisposition.RECIPIENT_UNAVAILABLE,
+            )
+        except Exception as notice_exc:
+            backoff = _backoff_for_attempt(notice["hold_notice_attempt_count"])
+            failed_at = datetime.now(UTC)
+            await db.mark_inbound_hold_notice_failed(
+                notice["id"],
+                error=_HOLD_NOTICE_FAILED_ERROR,
+                now_iso=failed_at.isoformat(),
+                backoff_seconds=backoff,
+            )
+            logger.warning(
+                _ROW_HOLD_NOTICE_FAILED_EVENT,
+                session_id=session_id,
+                inbound_row_id=notice["id"],
+                attempt=notice["hold_notice_attempt_count"] + 1,
+                backoff_seconds=backoff,
+                error_type=type(notice_exc).__name__,
+            )
+        else:
+            await db.mark_inbound_hold_notice_delivered(notice["id"])
+        return True, None
+
     async def _worker_loop(self, session_id: str) -> None:
         """FIFO drain loop for a single session. Self-terminates when queue is empty."""
         logger.debug(_WORKER_STARTING_EVENT, session_id=session_id)
         while True:
             now = datetime.now(UTC)
             now_iso = now.isoformat()
-            lock_cutoff_iso = (now - timedelta(seconds=_LOCK_TIMEOUT_S)).isoformat()
+            lock_cutoff = now - timedelta(seconds=_LOCK_TIMEOUT_S)
+            lock_cutoff_iso = lock_cutoff.isoformat()
+            notice_processed, notice_retry_delay = await self._process_pending_hold_notice(session_id, now, lock_cutoff)
+            if notice_processed:
+                continue
+
             rows = await db.fetch_inbound_pending(
                 session_id=session_id,
                 limit=_FETCH_LIMIT,
@@ -237,6 +372,9 @@ class InboundQueueManager:
                 lock_cutoff_iso=lock_cutoff_iso,
             )
             if not rows:
+                if notice_retry_delay is not None:
+                    await asyncio.sleep(max(notice_retry_delay, 0.1))
+                    continue
                 logger.debug(_WORKER_DONE_EVENT, session_id=session_id)
                 return
 
@@ -248,6 +386,10 @@ class InboundQueueManager:
                 # Another worker claimed it — shouldn't happen (per-session) but be safe
                 logger.debug(_ROW_CLAIM_FAILED_EVENT, session_id=session_id, inbound_row_id=row_id)
                 await asyncio.sleep(0.1)
+                continue
+
+            if row["was_held"] and _held_message_seconds_remaining(row["created_at"], datetime.now(UTC)) <= 0:
+                await self._expire_held_message(row)
                 continue
 
             try:
@@ -265,9 +407,15 @@ class InboundQueueManager:
                 logger.debug(_ROW_DELIVERED_EVENT, session_id=session_id, inbound_row_id=row_id)
             except InboundMessageHeldError as exc:
                 backoff = _backoff_for_attempt(row["attempt_count"])
+                retry_at = datetime.now(UTC)
+                remaining = _held_message_seconds_remaining(row["created_at"], retry_at)
+                if remaining <= 0:
+                    await self._expire_held_message(row)
+                    continue
+                backoff = min(backoff, remaining)
                 await db.mark_inbound_held(
                     row_id,
-                    now_iso=datetime.now(UTC).isoformat(),
+                    now_iso=retry_at.isoformat(),
                     backoff_seconds=backoff,
                 )
                 logger.info(
@@ -277,7 +425,8 @@ class InboundQueueManager:
                     backoff_seconds=backoff,
                     reason=str(exc),
                 )
-                await asyncio.sleep(backoff)
+                remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
+                await asyncio.sleep(min(backoff, remaining))
             except SessionMessageRejectedError as exc:
                 error_str = str(exc)
                 await db.mark_inbound_expired(
@@ -323,7 +472,7 @@ class InboundQueueManager:
                     )
                     if self._delivery_exhausted_callback is not None:
                         try:
-                            await self._delivery_exhausted_callback(row)
+                            await self._delivery_exhausted_callback(row, DeliveryTerminalCause.RETRY_EXHAUSTED)
                         except Exception as callback_exc:
                             logger.warning(
                                 "inbound_delivery_exhausted_callback_failed",
@@ -333,6 +482,14 @@ class InboundQueueManager:
                             )
                     continue
                 backoff = _backoff_for_attempt(row["attempt_count"])
+                retry_at: datetime | None = None
+                if row["was_held"]:
+                    retry_at = datetime.now(UTC)
+                    remaining = _held_message_seconds_remaining(row["created_at"], retry_at)
+                    if remaining <= 0:
+                        await self._expire_held_message(row)
+                        continue
+                    backoff = min(backoff, remaining)
                 logger.warning(
                     _ROW_DELIVERY_FAILED_EVENT,
                     session_id=session_id,
@@ -344,11 +501,41 @@ class InboundQueueManager:
                 await db.mark_inbound_failed(
                     row_id,
                     error=error_str,
-                    now_iso=datetime.now(UTC).isoformat(),
+                    now_iso=(retry_at or datetime.now(UTC)).isoformat(),
                     backoff_seconds=backoff,
                 )
                 # Wait before next iteration to avoid tight retry loops
-                await asyncio.sleep(backoff)
+                if row["was_held"]:
+                    remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
+                    await asyncio.sleep(min(backoff, remaining))
+                else:
+                    await asyncio.sleep(backoff)
+
+    async def _expire_held_message(self, row: InboundQueueRow) -> None:
+        """End a held message at its deadline and surface its terminal cause."""
+        now_iso = datetime.now(UTC).isoformat()
+        await db.mark_inbound_expired(
+            row["id"],
+            error=_HELD_MESSAGE_EXPIRED_REASON,
+            now_iso=now_iso,
+            hold_notice_pending=_hold_notice_is_required(row),
+        )
+        logger.info(
+            _ROW_EXPIRED_EVENT,
+            session_id=row["session_id"],
+            inbound_row_id=row["id"],
+            error=_HELD_MESSAGE_EXPIRED_REASON,
+        )
+        logger.info(
+            _INBOUND_DELIVERY_COMMITTED_EVENT,
+            outcome="failed",
+            reason=_HELD_MESSAGE_EXPIRED_REASON,
+            inbound_row_id=row["id"],
+            target_session_id=row["session_id"],
+            occurrence_key=row["occurrence_key"],
+            source_feature=row["source_feature"],
+            text_kind=row["text_kind"],
+        )
 
     async def expire_session(self, session_id: str) -> None:
         """Mark all pending messages for a session as expired and cancel the worker."""
@@ -363,6 +550,8 @@ class InboundQueueManager:
         count = await db.expire_inbound_for_session(session_id, datetime.now(UTC).isoformat())
         if count:
             logger.info(_SESSION_EXPIRED_EVENT, session_id=session_id, expired_count=count)
+        if await db.fetch_inbound_hold_notices(session_id):
+            self._ensure_worker(session_id)
 
     async def startup(self) -> None:
         """Scan for pending messages and spawn workers for non-empty sessions."""

@@ -60,9 +60,9 @@ from teleclaude.core.session_cleanup import is_legacy_restricted_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
 from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
+from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
 from ._message_delivery import inject_inbound_text
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
 
@@ -76,28 +76,12 @@ _INBOUND_COMMAND_INPUT_KEY = "command_input"
 _COMMAND_INPUT_SOURCE_TEXT_KEY = "source_text"
 _COMMAND_INPUT_COMMAND_KEY = "command"
 _COMMAND_INPUT_ARGS_KEY = "args"
-_CONTINUATION_DELIVERY_FAILURE_NOTICE = (
-    "Restart continuation stimulus could not be confirmed delivered. Session kept alive for inspection."
-)
-_CALLER_SEND_DELIVERY_EXHAUSTED_EVENT = "caller_send_delivery_exhausted"
-_CALLER_SEND_DELIVERY_FAILURE_NOTICE_TEMPLATE = (
-    "Delivery to session {target_session_id} was exhausted before reaching its agent."
-)
-_CALLER_SEND_CONTROL_SOURCE_KEY_TEMPLATE = "caller-send-delivery-exhausted:{inbound_row_id}"
 _PEER_ATTENTION_HANDOFF_DECIDED_EVENT = "peer_attention_handoff_decided"
 _PEER_ATTENTION_CONTROL_SOURCE_KEY_TEMPLATE = "peer-attention:{source_occurrence_id}"
 _PEER_ATTENTION_NOTIFICATION = (
     "Peer input is pending. If unfinished work needs to resume, preserve continuation through the existing "
     "reminder mechanism, then yield voluntarily so the peer input becomes your next conversational input."
 )
-
-
-class _CallerSendDeliveryExhaustedOutcome(StrEnum):
-    """Closed terminal outcomes for a caller-send delivery exhaustion."""
-
-    CALLER_NOTIFIED = "caller_notified"
-    UNADDRESSABLE = "unaddressable"
-    NOTIFICATION_FAILED = "notification_failed"
 
 
 class _InboundCommandInput(TypedDict):
@@ -113,18 +97,6 @@ class _InboundPayload(TypedDict, total=False):
 
     origin_metadata: Mapping[str, object]
     command_input: _InboundCommandInput
-
-
-class _CallerSendDeliveryExhaustedReason(StrEnum):
-    """Closed reasons for each caller-send delivery exhaustion outcome."""
-
-    CALLER_NOTIFIED = "caller_notified"
-    CALLER_TERMINAL = "caller_terminal"
-    CALLER_NOT_LOCAL = "caller_not_local"
-    CALLER_ABSENT = "caller_absent"
-    SELF_SEND = "self_send"
-    CALLER_BECAME_UNAVAILABLE = "caller_became_unavailable"
-    HANDOFF_ERROR = "handoff_error"
 
 
 class _PeerAttentionHandoffOutcome(StrEnum):
@@ -154,18 +126,6 @@ class _DeliveryLogFields(TypedDict):
     platform_enter_sent: bool
     existing_input_preserved: bool
     separator_newlines: int
-
-
-class _CallerSendDeliveryExhaustedLogFields(TypedDict):
-    """Body-free correlations for one terminal caller-send exhaustion decision."""
-
-    inbound_row_id: int
-    target_session_id: str
-    caller_session_id: str | None
-    source_occurrence_id: str | None
-    outcome: _CallerSendDeliveryExhaustedOutcome
-    reason: _CallerSendDeliveryExhaustedReason
-    control_payload_row_id: NotRequired[int]
 
 
 class _PeerAttentionSnapshot(TypedDict):
@@ -709,138 +669,6 @@ async def deliver_inbound(
     await db.update_last_activity(session_id)
     await start_polling(session_id, session.tmux_session_name)
     logger.debug("Started polling for session %s", session_id)
-
-
-def _record_caller_send_delivery_exhausted(
-    row: InboundQueueRow,
-    *,
-    outcome: _CallerSendDeliveryExhaustedOutcome,
-    reason: _CallerSendDeliveryExhaustedReason,
-    control_payload_row_id: int | None = None,
-) -> None:
-    """Emit one body-free terminal decision for an exhausted caller-send row."""
-    fields: _CallerSendDeliveryExhaustedLogFields = {
-        "inbound_row_id": row["id"],
-        "target_session_id": row["session_id"],
-        "caller_session_id": row["caller_session_id"],
-        "source_occurrence_id": row["occurrence_key"],
-        "outcome": outcome,
-        "reason": reason,
-    }
-    if control_payload_row_id is not None:
-        fields["control_payload_row_id"] = control_payload_row_id
-    logger.info(_CALLER_SEND_DELIVERY_EXHAUSTED_EVENT, **fields)
-
-
-def _session_is_addressable(session: Session | None) -> bool:
-    """Return whether a local session can receive a control-delivery handoff."""
-    return session is not None and not is_session_terminal(
-        lifecycle_status=session.lifecycle_status,
-        closed_at=session.closed_at,
-    )
-
-
-async def _notify_caller_send_delivery_exhausted(row: InboundQueueRow) -> None:
-    """Persist an exhaustion notice only for the original live local caller."""
-    caller_session_id = row["caller_session_id"]
-    target_session_id = row["session_id"]
-    if caller_session_id is None:
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.UNADDRESSABLE,
-            reason=_CallerSendDeliveryExhaustedReason.CALLER_ABSENT,
-        )
-        return
-    if caller_session_id == target_session_id:
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.UNADDRESSABLE,
-            reason=_CallerSendDeliveryExhaustedReason.SELF_SEND,
-        )
-        return
-
-    caller_session = await db.get_session(caller_session_id)
-    if caller_session is None:
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.UNADDRESSABLE,
-            reason=_CallerSendDeliveryExhaustedReason.CALLER_NOT_LOCAL,
-        )
-        return
-    if not _session_is_addressable(caller_session):
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.UNADDRESSABLE,
-            reason=_CallerSendDeliveryExhaustedReason.CALLER_TERMINAL,
-        )
-        return
-
-    notice_body = _CALLER_SEND_DELIVERY_FAILURE_NOTICE_TEMPLATE.format(target_session_id=target_session_id)
-    try:
-        control_payload_row_id = await handoff_control_payload(
-            session_id=caller_session_id,
-            body=notice_body,
-            source_key=_CALLER_SEND_CONTROL_SOURCE_KEY_TEMPLATE.format(inbound_row_id=row["id"]),
-            envelope=semantic_envelope(
-                EnvelopeName.NOTIFICATION,
-                body=notice_body,
-            ),
-        )
-    except SessionMessageRejectedError:
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.UNADDRESSABLE,
-            reason=_CallerSendDeliveryExhaustedReason.CALLER_BECAME_UNAVAILABLE,
-        )
-        return
-    except Exception:
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.NOTIFICATION_FAILED,
-            reason=_CallerSendDeliveryExhaustedReason.HANDOFF_ERROR,
-        )
-        raise
-
-    if not _session_is_addressable(await db.get_session(caller_session_id)):
-        _record_caller_send_delivery_exhausted(
-            row,
-            outcome=_CallerSendDeliveryExhaustedOutcome.UNADDRESSABLE,
-            reason=_CallerSendDeliveryExhaustedReason.CALLER_BECAME_UNAVAILABLE,
-            control_payload_row_id=control_payload_row_id,
-        )
-        return
-    _record_caller_send_delivery_exhausted(
-        row,
-        outcome=_CallerSendDeliveryExhaustedOutcome.CALLER_NOTIFIED,
-        reason=_CallerSendDeliveryExhaustedReason.CALLER_NOTIFIED,
-        control_payload_row_id=control_payload_row_id,
-    )
-
-
-async def notify_delivery_exhausted(row: InboundQueueRow, client: "AdapterClient") -> None:
-    """Present terminal delivery exhaustion for sources with a return channel."""
-    if row["source_feature"] == InjectedTextSourceFeature.CALLER_SEND.value:
-        await _notify_caller_send_delivery_exhausted(row)
-        return
-    if row["source_feature"] != InjectedTextSourceFeature.AGENT_RESTART.value:
-        return
-    session = await db.get_session(row["session_id"])
-    if session is None or is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
-        return
-    event_bus.emit(
-        TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-        SessionLifecycleContext(session_id=session.session_id),
-        visibility=EventVisibility.LOCAL,
-    )
-    await client.send_message(session, _CONTINUATION_DELIVERY_FAILURE_NOTICE)
-    logger.info(
-        "agent_restart_continuation_delivery_failed",
-        outcome="operator_notified",
-        session_active=True,
-        session_id=session.session_id,
-        inbound_row_id=row["id"],
-        occurrence_key=row["occurrence_key"],
-    )
 
 
 def _caller_author_from_command(cmd: ProcessMessageCommand) -> MessageAuthor | None:
