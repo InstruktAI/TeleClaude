@@ -15,7 +15,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import DriverLaunchClass, SlashCommand
+from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, WORK_LANE_JOB_ROLES, DriverLaunchClass, SlashCommand
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
@@ -57,7 +57,12 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
-from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
+from teleclaude.core.todos_db._exceptions import (
+    ClaimConflict,
+    LaneCrossingRefused,
+    ReviewerConflict,
+    ReviewerIdentityUnresolved,
+)
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 
@@ -71,6 +76,24 @@ __all__ = [
     "manual_start_lifecycle_session",
     "resolve_manual_dispatch_intent",
 ]
+
+
+_LANE_JOB_ROLES: dict[RunnerLane, frozenset[str]] = {
+    RunnerLane.PREPARE: PREPARE_AUTHOR_JOB_ROLES,
+    RunnerLane.WORK: WORK_LANE_JOB_ROLES,
+}
+_SANCTIONED_PATH_FROM_PREPARE = (
+    "complete the prepare lifecycle, whose terminal releases the claim; "
+    "the lifecycle runner then dispatches a fresh work orchestrator"
+)
+_SANCTIONED_PATH_FROM_WORK = (
+    "return the todo through `telec todo stamp {slug} --kickback --reason <why>`; "
+    "the lifecycle runner then dispatches a fresh prepare orchestrator"
+)
+_SANCTIONED_PATH_BY_HELD_LANE: dict[RunnerLane, str] = {
+    RunnerLane.PREPARE: _SANCTIONED_PATH_FROM_PREPARE,
+    RunnerLane.WORK: _SANCTIONED_PATH_FROM_WORK,
+}
 
 
 @dataclass(frozen=True)
@@ -99,14 +122,15 @@ async def _reflect_claim_on_caller_session(
 
     This fires both for a session that holds no claim yet (empty
     ``working_slug``) and for a session already bound to this same ``slug``
-    under a different lane — calling either lifecycle machine implicitly
-    adopts the role that comes with it, for whichever lane the caller already
-    legitimately claims. Claim ownership (checked by the caller before this
-    runs) is the only gate; there is no additional role precondition. Each
-    field is written only when it differs from the claimed lane's value, so
-    the writes are idempotent — a session already at the lane's identity is
-    left alone. A pre-existing *different* ``working_slug`` is a conflict
-    refused by the caller before adoption, never silently overwritten here.
+    in this same lane — calling the lifecycle machine adopts the role that
+    comes with it. A session that holds the slug in the other SDLC lane never
+    reaches this point (see :func:`_refuse_lane_crossing`). Claim ownership
+    (checked by the caller before this runs) is the only gate; there is no
+    additional role precondition. Each field is written only when it differs
+    from the claimed lane's value, so the writes are idempotent — a session
+    already at the lane's identity is left alone. A pre-existing *different*
+    ``working_slug`` is a conflict refused by the caller before adoption, never
+    silently overwritten here.
     """
     if session.working_slug and session.working_slug != slug:
         return
@@ -371,6 +395,43 @@ async def manual_start_lifecycle_session(
     )
 
 
+def _lane_of_job(job: str | None) -> RunnerLane | None:
+    """Return the SDLC lane a session job belongs to, or ``None`` when no lane owns it."""
+    for lane, jobs in _LANE_JOB_ROLES.items():
+        if job in jobs:
+            return lane
+    return None
+
+
+async def _refuse_lane_crossing(
+    runtime_db: Db,
+    todo: RunnerTodo | None,
+    slug: str,
+    caller_session_id: str,
+    requested_lane: RunnerLane,
+) -> None:
+    """Refuse a caller that holds ``slug`` in the other SDLC lane, before any claim write.
+
+    The caller holds the slug when it is the todo's ``active_runner`` or its session
+    row is bound to the slug. Its lane is read from its ``job``; a job no lane owns
+    (reviewers, drift analyzers, standing roles, unbound sessions) is never refused.
+    The refusal names how the todo changes hands through the lifecycle runner instead.
+    """
+    session = await runtime_db.get_session(caller_session_id)
+    holds_slug = (todo is not None and todo.active_runner == caller_session_id) or (
+        session is not None and session.working_slug == slug
+    )
+    held_lane = _lane_of_job(session.job if session is not None else None)
+    if not holds_slug or held_lane is None or held_lane is requested_lane or requested_lane not in _LANE_JOB_ROLES:
+        return
+    raise LaneCrossingRefused(
+        slug=slug,
+        held_lane=held_lane.value,
+        requested_lane=requested_lane.value,
+        sanctioned_path=_SANCTIONED_PATH_BY_HELD_LANE[held_lane].format(slug=slug),
+    )
+
+
 async def adopt_manual_lifecycle_session(
     project_path: str | Path,
     slug: str,
@@ -400,6 +461,9 @@ async def adopt_manual_lifecycle_session(
     value. A caller that knows which command it invoked removes the ambiguity;
     a caller that does not (existing test call sites, headless adoption)
     falls back to the heuristic unchanged.
+
+    Raises :class:`LaneCrossingRefused` before any claim write or role reflection
+    when the caller holds ``slug`` in the other SDLC lane.
     """
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
@@ -422,6 +486,7 @@ async def adopt_manual_lifecycle_session(
             lane = requested_lane
         elif todo.lifecycle_phase == LifecyclePhase.PREPARED.value:
             lane = RunnerLane.WORK
+    await _refuse_lane_crossing(runtime_db, todo, slug, caller_session_id, lane)
     if todo is not None and todo.active_runner == caller_session_id:
         await set_active_runner(todos_db, slug, caller_session_id, lane=lane, manually_started=True, release_hold=False)
         active_session = await runtime_db.get_session(caller_session_id)

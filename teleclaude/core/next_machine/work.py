@@ -58,8 +58,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_send_command,
     format_stash_debt,
     format_work_entry_drift_bounce,
-    format_work_entry_kickback_handoff,
-    format_work_entry_substantive_handoff,
+    format_work_returned_to_preparation,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.slug_resolution import (
@@ -72,6 +71,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 from teleclaude.core.next_machine.state_io import ensure_quality_checklist
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason, work_lane_return_follow_through
 from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
@@ -81,6 +81,7 @@ from teleclaude.snippet_validation import snippet_body_digest_for
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
+from teleclaude.core.operation_follow_through import defer_follow_through
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -103,8 +104,7 @@ _WORK_ENTRY_ROUTED_EVENT = "todo_work_entry_routed"
 _WORK_ENTRY_ACCEPTED_MESSAGE = "todo work entry accepted"
 _WORK_ENTRY_ROUTED_MESSAGE = "todo work entry routed"
 _PREPARE_HANDOFF_OUTCOME = "prepare_handoff"
-_KICKBACK_REASON = "kickback"
-_SUBSTANTIVE_DRIFT_REASON = "substantive_drift"
+_NO_CALLER_SESSION_MESSAGE = "work entry returned the todo to preparation without a calling session to end"
 _RESOURCE_ACTION_PRESERVE = "preserve"
 _EMPTY_TEXT = ""
 _WORK_ENTRY_MERGE_DECIDED_EVENT = "todo_work_entry_merge_decided"
@@ -242,7 +242,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         return precondition_error
 
     _log_work_entry_accepted(resolved_slug)
-    kickback_handoff = await _check_work_entry_kickback(todos_db, resolved_slug)
+    kickback_handoff = await _check_work_entry_kickback(db, todos_db, resolved_slug, cwd)
     if kickback_handoff is not None:
         return kickback_handoff
 
@@ -462,12 +462,11 @@ async def _check_work_entry_drift(
 
     Re-derives drift, then branches three ways on the collapsed verdict: a
     ``pending`` artifact dispatches the drift analyzer and re-enters work once it
-    idles; a ``substantive`` artifact hands the same session off to drive
-    ``/prepare`` (its next ``telec todo prepare`` call implicitly adopts the
-    prepare-orchestrator role in place — the claim is unchanged, only the lane
-    changes); ``cosmetic`` and ``fresh`` are non-blocking and proceed to
-    worktree creation. The work orchestrator never re-enters the prepare
-    machine itself before this hand-off.
+    idles; a ``substantive`` artifact returns the todo to preparation through the
+    lifecycle runner (the platform releases the claim and ends this work lane, and
+    the runner dispatches a fresh prepare orchestrator); ``cosmetic`` and ``fresh``
+    are non-blocking and proceed to worktree creation. The work orchestrator never
+    enters the prepare machine itself.
     """
     drift_started = perf_counter()
     state = await todos_db.read_state(resolved_slug)
@@ -505,13 +504,13 @@ async def _check_work_entry_drift(
             project_root=cwd,
             pending_classes=format_pending_classes_for_dispatch(drift_result),
         )
-    _log_work_entry_routed(writer, resolved_slug, _SUBSTANTIVE_DRIFT_REASON)
+    _log_work_entry_routed(writer, resolved_slug, WorkLaneReturnReason.SUBSTANTIVE_DRIFT)
     _log_next_work_phase(phase_slug, "drift_check", drift_started, "handoff", reason)
-    return format_work_entry_substantive_handoff(resolved_slug)
+    return _return_to_preparation(db, cwd, resolved_slug, WorkLaneReturnReason.SUBSTANTIVE_DRIFT)
 
 
-async def _check_work_entry_kickback(todos_db: TodosDb, resolved_slug: str) -> str | None:
-    """Recognize a kickback on work re-entry and preserve the active work state.
+async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str) -> str | None:
+    """Recognize a kickback on work re-entry and return the todo to preparation.
 
     A kickback (``telec todo stamp <slug> --kickback``) invalidates the implementation-plan
     by marking ``plan_review.cleared_by_substantive_drift``. After a *work* call the stored
@@ -519,8 +518,8 @@ async def _check_work_entry_kickback(todos_db: TodosDb, resolved_slug: str) -> s
     it is unique to a kickback here (drift-analyze substantive verdicts occur only in the
     prepare lane, where the plan is re-approved and the flag self-clears before work resumes).
 
-    Unlike the former terminal path, this preserves the worktree, branch, workspace,
-    and live sessions while handing the claiming work orchestrator into prepare.
+    The worktree, branch, workspace, and build commits are preserved. The claiming work
+    orchestrator and the sessions it started are ended by the platform, not by any agent.
     """
     kickback_started = perf_counter()
     state = await todos_db.read_state(resolved_slug)
@@ -530,9 +529,31 @@ async def _check_work_entry_kickback(todos_db: TodosDb, resolved_slug: str) -> s
     if not writer.state.plan_review.cleared_by_substantive_drift:
         return None
 
-    _log_work_entry_routed(writer, resolved_slug, _KICKBACK_REASON)
-    _log_next_work_phase(resolved_slug, "kickback_handoff", kickback_started, "handoff", _KICKBACK_REASON)
-    return format_work_entry_kickback_handoff(resolved_slug)
+    _log_work_entry_routed(writer, resolved_slug, WorkLaneReturnReason.KICKBACK)
+    _log_next_work_phase(resolved_slug, "kickback_handoff", kickback_started, "handoff", WorkLaneReturnReason.KICKBACK)
+    return _return_to_preparation(db, cwd, resolved_slug, WorkLaneReturnReason.KICKBACK)
+
+
+def _return_to_preparation(db: Db, cwd: str, slug: str, reason: WorkLaneReturnReason) -> str:
+    """Defer the work-lane release until this work entry has answered, and say so.
+
+    The calling session is the work orchestrator the operator door bound to the slug.
+    The release runs after the operation's result is recorded and delivered, so every
+    session of the lane ends only after the machine has answered its call.
+    """
+    orchestrator_session_id = get_session_id()
+    if orchestrator_session_id is None:
+        raise RuntimeError(_NO_CALLER_SESSION_MESSAGE)
+    defer_follow_through(
+        work_lane_return_follow_through(
+            db,
+            slug=slug,
+            project_root=cwd,
+            orchestrator_session_id=orchestrator_session_id,
+            reason=reason,
+        )
+    )
+    return format_work_returned_to_preparation(slug, reason.value)
 
 
 def _log_work_entry_accepted(slug: str) -> None:
@@ -544,12 +565,12 @@ def _log_work_entry_accepted(slug: str) -> None:
     )
 
 
-def _log_work_entry_routed(writer: StateWriter, slug: str, reason: str) -> None:
+def _log_work_entry_routed(writer: StateWriter, slug: str, reason: WorkLaneReturnReason) -> None:
     logger.info(
         _WORK_ENTRY_ROUTED_MESSAGE,
         event=_WORK_ENTRY_ROUTED_EVENT,
         outcome=_PREPARE_HANDOFF_OUTCOME,
-        reason=reason,
+        reason=reason.value,
         slug=slug,
         caller_session_id=get_session_id() or _EMPTY_TEXT,
         build_residue_present=bool(writer.state.build_start_base_sha),

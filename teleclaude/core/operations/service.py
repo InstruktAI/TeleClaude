@@ -46,6 +46,7 @@ from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
+from teleclaude.core.operation_follow_through import follow_through_scope
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.operations._command_outcome import command_result_outcome
 from teleclaude.core.operations._delivery import DeliveryOutcome, DeliveryReason, deliver_recovered_operations
@@ -106,6 +107,7 @@ class SerializedOperation(TypedDict, total=False):
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
+_FOLLOW_THROUGH_TASK_NAME_TEMPLATE = "operation-follow-through-{operation_id}"
 
 
 def _operation_payload_abandon(operation: Operation) -> bool:
@@ -640,7 +642,7 @@ class OperationsService:
 
             token = set_progress_callback(_capture_progress)
             caller_token = set_caller_session_id(operation.caller_session_id)
-            async with pin_operation_todo_identity(operation):
+            async with pin_operation_todo_identity(operation), follow_through_scope() as follow_throughs:
                 result = await coro_factory(operation)
             await self._flush_latest_progress(operation_id, latest_progress)
             await self._db.complete_operation(
@@ -650,6 +652,10 @@ class OperationsService:
             )
             self._emit_outcome_event(kind, operation_id)
             await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED)
+            for follow_through in follow_throughs:
+                self._task_registry.spawn(
+                    follow_through(), name=_FOLLOW_THROUGH_TASK_NAME_TEMPLATE.format(operation_id=operation_id)
+                )
         except asyncio.CancelledError:
             error_text = "operation cancelled before completion"
             await self._db.fail_operation(

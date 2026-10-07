@@ -459,6 +459,11 @@ TODO_WORKTREE_WRITER_JOB_ROLES: frozenset[str] = frozenset(
     }
 )
 
+# The jobs that belong to the work lane: the work orchestrator and its worktree
+# writers. `reviewer` and `drift-analyzer` are dispatched by both lanes, so no
+# job places them in either one.
+WORK_LANE_JOB_ROLES: frozenset[str] = frozenset({JobRole.WORK_ORCHESTRATOR.value, *TODO_WORKTREE_WRITER_JOB_ROLES})
+
 # Standing roles carry no commanding session, whatever door created them. The
 # integrator and the coordinator are identified by the session's `job` field;
 # the job runner is identified by `system_role`, because its own command

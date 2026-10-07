@@ -78,6 +78,8 @@ from teleclaude.core.next_machine.state_mutation import (
     StateMutationError,
     StateWriter,
 )
+from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason, work_lane_return_follow_through
+from teleclaude.core.operation_follow_through import FollowThrough
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
@@ -214,6 +216,30 @@ async def apply_todo_stamp(
         phase=phase,
         caller_session_id=caller_session_id,
         cwd=project_root,
+    )
+
+
+def stamp_follow_through(
+    stamp_type: str,
+    *,
+    slug: str,
+    cwd: str,
+    caller_session_id: str | None,
+) -> FollowThrough | None:
+    """The deferred follow-through an applied stamp owes, run after its call has answered.
+
+    A kickback returns the todo to preparation: the platform releases the stamping work
+    orchestrator's claim and ends the work lane. It runs only after the stamp has
+    answered, so the answer is returned before any session of the lane ends.
+    """
+    if stamp_type != _KICKBACK_REASON or caller_session_id is None:
+        return None
+    return work_lane_return_follow_through(
+        runtime_db,
+        slug=slug,
+        project_root=str(resolve_project_root(cwd)),
+        orchestrator_session_id=caller_session_id,
+        reason=WorkLaneReturnReason.KICKBACK,
     )
 
 
