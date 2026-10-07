@@ -91,6 +91,7 @@ All Committizen types are allowed.
   declared. The declared set is what `telec code commit` commits, so an
   undeclared change does not ship. Declaring is free and repeats safely; when in
   doubt, declare.
+<!-- planned-change:commit-review-stamp -->
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. When the post-commit
   gate determines that independent review is required, the authoring session
@@ -119,6 +120,49 @@ All Committizen types are allowed.
   integrator publishes committed canonical main after its own maintenance and
   any owed log judgment; it does not inspect or wait for other sessions' review
   verdicts, and their review state is not a direct-main publication gate.
+<!-- change:commit-review-stamp -->
+- Post-commit review is routed by the committed diff, not by pre-commit
+  permission. Functional code/tests are committed first. The post-commit gate
+  names the commits that are review candidates; the authoring session decides
+  for each whether independent review is owed. A commit that changes a
+  contract, a behavior, a process, or what a governed snippet or agent artifact
+  says goes to an independent reviewer, dispatched automatically, and the
+  author waits for the verdict. A commit that changes none of these — a
+  removal, a mechanical correction — is discarded as a candidate: the author
+  stamps it `approve` with `telec code stamp` and a one-line reason. Discarding
+  is not reviewing; it records that no review is owed, never that the change
+  is correct. Review is technical stewardship, never a human ratification step.
+- Every commit-review outcome is a stamp on the commits it covers. The reviewer
+  stamps its verdict on exactly the SHAs it reviewed, and the author stamps the
+  candidates it discards. A stamp lands in the review state of the todo whose
+  lifecycle claim the stamping session or the session that started it holds,
+  and lands on no todo when neither holds one. Either way it discharges the
+  checkpoint's post-commit review gate for those commits. The stamp records
+  the session that gave it, so a discard stays distinguishable from a
+  reviewer's verdict.
+- A `REQUEST CHANGES` verdict stays with the authoring session for
+  evidence-based rejection or in-scope remediation and re-review. Before
+  remediation, the author records each finding's disposition and its
+  independently established basis in the follow-up to the continuing reviewer,
+  applying the finding-validation and disposition rules in
+  `sdlc/procedure/lifecycle/fix-review-findings`. After remediation, the
+  follow-up identifies the fixing commits and closure evidence; an
+  evidence-only rejection names its sources. For commit review, this exchange
+  carries the disposition record, and the stamp records only the verdict. The
+  author retains commit and review-routing responsibilities; the reviewer alone
+  determines the verdict. What cannot proceed — a genuine human-owned decision,
+  a safety gate, or a disagreement author and reviewer cannot resolve — is
+  held, and the session goes idle with it; nothing routes it to another party
+  (`general/principle/autonomy`).
+  The main-branch checkpoint's code-scoped review gate applies to every
+  committed non-documentation path; runtime path classification does not infer
+  a weaker review obligation from whether a file appears to be bookkeeping.
+  The authoring session owns acting on its review verdict — remediation,
+  re-review routing and recovery; the verdict itself is the reviewer's. The standing
+  integrator publishes committed canonical main after its own maintenance and
+  any owed log judgment; it does not inspect or wait for other sessions' review
+  verdicts, and their review state is not a direct-main publication gate.
+<!-- /planned-change:commit-review-stamp -->
 
 ## Rationale
 

@@ -94,6 +94,7 @@ And the same invocation with `origin/main` in place of the local ref passes thro
 And a pathspec after `--` that happens to be named main is not a ref and is unaffected
 ```
 
+<!-- planned-change:commit-review-stamp -->
 #### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
@@ -106,6 +107,21 @@ And the gate points at `telec code add` for declaring the authoritative commit s
 And the gate surfaces `--only` for splitting a declared set into separable intents
 ```
 
+<!-- change:commit-review-stamp -->
+#### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
+
+```
+Given an agent on the `main` branch with a non-integrator role
+When the agent invokes `telec code commit` with no message and no flags
+Then the command prints the commit-first review-routing gate to stderr
+And exits 0 — serving the gate is the successful outcome, not a failure
+And the gate names review candidates by what the diff touches: functional code/tests → med code review; doc snippets (docs/**) or authored agent artifacts → fast doc-hygiene review; incorporated third-party skill packages under agents/global/skills/<name>/** → no review; neither → no review
+And the gate states that the author decides whether each candidate owes review, and stamps a candidate it discards with `telec code stamp <sha> --verdict approve --reason <text>`
+And the gate points at `telec code add` for declaring the authoritative commit scope
+And the gate surfaces `--only` for splitting a declared set into separable intents
+```
+
+<!-- /planned-change:commit-review-stamp -->
 #### telec code commit with a message but no --approved is a forgotten gate
 
 ```
@@ -115,6 +131,7 @@ Then the command prints the commit-first review-routing gate to stderr without p
 And exits non-zero without producing a commit
 ```
 
+<!-- planned-change:commit-review-stamp -->
 #### Doc-snippet commit on main requires an independent doc-hygiene review
 
 ```
@@ -125,6 +142,20 @@ And the agent reuses the reviewer already open for the patch series, or starts o
 And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
 ```
+<!-- change:commit-review-stamp -->
+#### Doc-snippet commit on main is a review candidate
+
+```
+Given an agent on `main` commits a change that touches a doc snippet (docs/**)
+When the commit lands via `telec code commit --approved`
+Then the commit is a doc-hygiene review candidate
+And when it changes what a snippet says, an independent fast-or-medium reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `/review-commits`
+And the agent reuses the reviewer already open for the patch series, or starts one if none is open — never a second
+And when it changes nothing a snippet says, such as a removal, the author discards it with `telec code stamp <sha> --verdict approve --reason <text>` instead
+And the authoring agent never reviews a snippet it wrote
+And a config/state/README-only commit with no doc snippet requires no review
+```
+<!-- /planned-change:commit-review-stamp -->
 
 ```
 Given a live commit reviewer for this project opened by this agent

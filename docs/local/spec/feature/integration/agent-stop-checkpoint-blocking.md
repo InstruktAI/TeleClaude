@@ -553,6 +553,19 @@ When the heuristic engine evaluates the turn window
 Then the agent receives no companion-drift action for that parent
 ```
 
+
+<!-- planned:commit-review-stamp -->
+#### UC-CP39: A commit-review stamp discharges the post-commit review gate
+
+```gherkin
+Given the current branch is main
+And this session's authored-main-commit marker is present
+And a `telec code stamp` covering this session's commits is recorded, by a reviewer this session started or by this session itself
+When the heuristic engine evaluates the turn window
+Then the post-commit review-gate surfacing action is not emitted
+And the authored-main-commit marker is consumed
+```
+<!-- /planned:commit-review-stamp -->
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside

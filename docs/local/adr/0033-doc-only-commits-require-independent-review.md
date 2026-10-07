@@ -39,3 +39,7 @@ The mechanism already exists: `/review-commits` runs the lane catalog by SHA, an
 - **Author self-review against the lane.** Rejected — an agent does not catch the narration it just wrote; confirmation, not review.
 - **A `telec sync` / commit-time validator that scans snippet prose.** Rejected — it inspects free text to judge it, violating `intelligence-boundaries` (see ADR-0029). The reviewer is an agent, not a regex.
 - **Route doc-only commits through the full lifecycle.** Rejected — a fresh worker re-derives the design cold, the exact failure `documentation-discipline` exists to prevent. A post-commit review reads the diff without re-authoring, so it avoids that.
+
+## Status
+
+Superseded in part by ADR-0113: the author may discard a commit that changes nothing a snippet says as a review candidate.

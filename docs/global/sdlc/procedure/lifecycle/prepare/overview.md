@@ -433,6 +433,16 @@ Clear the relevant approval stamps and re-run the affected phases.
 
 ### 8. Terminal state
 
+<!-- planned:commit-review-stamp -->
+Before deriving `PREPARED`, the state machine checks the commits this session
+authored on main while holding the claim. Each needs an `approve`
+commit-review stamp: a reviewer's verdict, or this session's own discard of a
+commit that owes no review (`general/policy/commits`). While any lacks one,
+the machine returns those SHAs instead of `PREPARED`; dispatch review for the
+ones that need it, stamp the rest, and call again. A `request_changes` stamp
+keeps its commits pending until their remediation is approved.
+<!-- /planned:commit-review-stamp -->
+
 When all required phases have approval stamps and grounding is fresh, the
 state machine derives `PREPARED`. Deriving `PREPARED` releases this session's
 claim on the todo, whether or not the todo carries an in-flight build, and the

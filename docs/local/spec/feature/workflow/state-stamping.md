@@ -252,6 +252,22 @@ Then the delivery reconciles the lifecycle markers in that project's documentati
 And no other project's documentation is read or changed by the delivery
 ```
 
+<!-- planned:commit-review-stamp -->
+#### UC-WSS24: A commit-review stamp lands on the todo its session chain claims
+
+```gherkin
+Given a prepare orchestrator session P holds the lifecycle claim on my-feature
+And P authored commits A and B on main
+And P started a commit-review session R for A and B
+When R runs "telec code stamp A,B --verdict approve"
+Then my-feature's review state records approve for A and for B, with R as the stamping session
+And P's authored-main-commit review gate is discharged
+When P runs "telec code stamp C --verdict approve --reason 'removes a retired section'" for its own commit C
+Then my-feature's review state records approve for C, with P as the stamping session and the reason
+And a stamp by a session whose chain holds no lifecycle claim records nothing on any todo and still discharges that chain's review gate
+```
+
+<!-- /planned:commit-review-stamp -->
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.

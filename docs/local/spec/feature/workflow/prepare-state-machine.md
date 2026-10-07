@@ -405,6 +405,22 @@ And the terminal script states that P no longer holds the claim on my-feature
 And no claim held by a different live session is changed
 ```
 
+<!-- planned:commit-review-stamp -->
+#### UC-WPS29: PREPARED waits for the driving session's commits to be stamped
+
+```gherkin
+Given a Todo whose phases all carry approval stamps and whose grounding is fresh
+And its prepare orchestrator session P authored commits A and B on main while holding the claim
+And my-feature's review state records approve for A and no stamp for B
+When P calls "telec todo prepare my-feature"
+Then the machine does not derive PREPARED and P keeps the claim
+And it returns an instruction naming B: dispatch commit review when B needs it, or stamp it approve when it does not, then call again
+When B is stamped approve and P calls "telec todo prepare my-feature"
+Then the machine derives PREPARED
+And a commit stamped request_changes keeps PREPARED withheld until an approve stamp covers it
+```
+
+<!-- /planned:commit-review-stamp -->
 ### Explicit slug required
 
 The prepare state machine requires an explicit slug. Invoked without one it returns a `TODO_SLUG_REQUIRED` error rather than resolving a candidate itself. Choosing which Todo enters prepare belongs to the lifecycle runner's dependency-gated dispatch (see `@spec/feature/workflow/dependency-graph`), which always dispatches a concrete slug; the state machine never auto-selects.
