@@ -1,5 +1,5 @@
 ---
-description: Start a new project for the person when they ask their assistant to build something — shaped by the platform's new-build intake, placed in their own projects area without asking, and adopted as a project of their own.
+description: Start a new project for the person when they ask their assistant to build something — shaped by the platform's new-build intake, created in their own projects area without asking, scaffolded and converged.
 activation_trigger: Use when the person asks you to build something new for them — a tool, an automation, a script, a small app — that no existing project of theirs already holds.
 delivered_by:
   - personal-assistant-project-creation
@@ -35,34 +35,34 @@ from its first moment and belongs to them
    `sdlc/procedure/greenfield-intake` with its closure, together with the
    `sdlc` bundle it presumes, and run it with the person. They answer only what
    that intake marks as theirs; there is no separate assistant conversation.
-3. **Place it.** Unless the person named a destination themselves, the
-   project's folder is `projects/<name>/` in their workspace — the person home
-   this session runs in — where `<name>` is the project's short kebab-case name.
-   A destination the person names is their instruction; use it. Where the
-   project lands decides whose it is, so declare no owner yourself.
-4. **Scaffold it** in that folder as the intake's flavor directs.
-5. **Adopt it.** From the project folder, run `telec config project init`.
-   Adoption gives the project a repository of its own and registers it; inside
-   the person's home the project is theirs. This is the initialization the
-   intake's scaffolding step ends with; run it once.
+3. **Create it.** Run `telec config project create <name>`, where `<name>` is
+   the project's short kebab-case name. It makes an empty project with its own
+   repository in the person's own projects area, owned by them, and registers
+   it. For a company the person belongs to, add `--company <slug>`. Never pick a
+   folder yourself.
+4. **Scaffold it** inside that project folder as the intake's flavor directs.
+5. **Converge it.** From the project folder, run `telec config project init`,
+   which detects its capabilities from what was built and sets up its
+   TeleClaude plumbing. This is the step the intake's scaffolding ends with; run
+   it once.
 6. **Hand it over.** Tell the person where the project is. Building it out is
    ordinary project work in that project from here.
 
 ## Outputs
 
 - The intake's approved brief.
-- An adopted project with its own history, owned by whoever owns the home it
-  landed in.
+- A created, scaffolded and converged project with its own history, owned by the
+  person, or by their company when asked.
 
 ## Recovery
 
-- **Adoption is refused because another entry holds the identity.** The
-  identity is the project's declared slug, else its declared name, else its
-  folder name. Choose a more specific name and change whichever of those
-  governs — the folder name only when the project declares neither — then adopt
-  again.
-- **Adoption is refused by clearance or placement.** Tell the person what was
-  refused and why — usually a destination they cannot create projects in — and
-  offer their own projects area instead. Never route around the refusal.
+- **`create` refuses the name.** The name is taken on this computer, or is not
+  a valid slug. Choose a more specific name and create again.
+- **`create` is refused by clearance.** Tell the person what was refused and
+  why — usually a company they are not a member of — and offer their own
+  projects area instead. Never route around the refusal.
+- **The person wants it somewhere outside their home.** A project outside every
+  home is a platform project, created only by a platform administrator. Tell
+  them so, and offer their own projects area.
 - **The intake's classification changes mid-conversation.** Follow the intake's
-  own recovery; placement and adoption are unaffected.
+  own recovery; creation is unaffected.

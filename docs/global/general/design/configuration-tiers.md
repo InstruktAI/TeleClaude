@@ -100,18 +100,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
   terminates context resolution with no context root, and an invocation from
   within one behaves as an invocation with no context root.
 
-<!-- planned:personal-assistant-project-creation -->
-
-- **A home decides whose its projects are.** A project inside a person's or a
-  company's home belongs to that home's owner, and is created only in that
-  home's projects area. Ownership is a fact about where the project lives, read
-  from the registries that designate each home; it is never a fact about where a
-  caller stands. A project outside every home states its owner, or has none.
-  Whose a project is and what kind a configuration file is are separate
-  questions: the file's declaration alone answers the second.
-
-<!-- /planned:personal-assistant-project-creation -->
-
 <!-- planned:cross-tier-native-emission -->
 
 - **Artifact reach follows ownership; documentation reach follows membership.**
@@ -150,22 +138,12 @@ one index entry, listed on demand — rather than autoloaded into every session.
   including every company they own.
 - **Reach is wider than the relationship-derived part, and depth is not.** Global
   documentation is in every caller's scope because global is nobody's
-
-<!-- planned-change:personal-assistant-project-creation -->
-
-relationship, and the invocation itself offers the project it resolves to and
-the company that project declares as its owner. Those sources enter reach
-<!-- change:personal-assistant-project-creation -->
-
-relationship, and the invocation itself offers the project it resolves to and
-the company that owns that project. Those sources enter reach
-<!-- /planned-change:personal-assistant-project-creation -->
-
-without a relationship; what they do not do is grant the depth a relationship
-grants. A caller holding no relationship to a source reads it at whatever its
-snippets declare about themselves, which is what lets a help desk answer public
-questions about a company it does not belong to.
-
+  relationship, and the invocation itself offers the project it resolves to and
+  the company that project declares as its owner. Those sources enter reach
+  without a relationship; what they do not do is grant the depth a relationship
+  grants. A caller holding no relationship to a source reads it at whatever its
+  snippets declare about themselves, which is what lets a help desk answer public
+  questions about a company it does not belong to.
 - **Where there is no relationship, the snippet decides.** Each snippet declares
   itself public or internal, and that declaration is the only gate an outsider
   meets. Public material is readable by anyone with a legitimate reason to reach
@@ -183,20 +161,10 @@ questions about a company it does not belong to.
 - **Landing and reading are two mechanisms.** Where a session may run is decided
   by routing and folder scoping; what a caller may read is decided by identity,
   visibility, and the selectors the caller supplies. They meet at one point: the
-
-<!-- planned-change:personal-assistant-project-creation -->
-
-location an invocation lands in sets its default read set — that home (with,
-for a project, the company it declares as its owner), the caller's own person
-<!-- change:personal-assistant-project-creation -->
-
-location an invocation lands in sets its default read set — that home (with,
-for a project, the company that owns it), the caller's own person
-<!-- /planned-change:personal-assistant-project-creation -->
-
-tier, the companies they belong to, and global documentation. Location never
-sets depth.
-
+  location an invocation lands in sets its default read set — that home (with,
+  for a project, the company it declares as its owner), the caller's own person
+  tier, the companies they belong to, and global documentation. Location never
+  sets depth.
 - **Any home is readable from anywhere by naming it.** A home selector names the
   home's published half, the local selector names its local half, and a qualified
   identity names the half its prefix states. The named half is read from

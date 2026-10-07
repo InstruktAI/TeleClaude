@@ -29,23 +29,10 @@ surface that starts agents.
 
 ## Steps
 
-<!-- planned-change:personal-assistant-project-creation -->
-
 1. **Initialize.** From the project root, run `telec config project init`. It executes
    project artifact sync, slug derivation, project registration, the release-channel
    prompt, and event-domain seeding; see the project-initialization procedure for the
    per-step contract. It returns when plumbing is complete and starts no session.
-
-<!-- change:personal-assistant-project-creation -->
-
-1. **Initialize.** From the project root, run `telec config project init`. It
-   gives the folder its repository when it needs one, checks placement, converges
-   plumbing, derives the slug and registers the project; see the
-   project-initialization procedure for the per-step contract. It returns when
-   plumbing is complete, starts no session, and writes nothing outside the
-   project and the project registry.
-
-<!-- /planned-change:personal-assistant-project-creation -->
 
 2. **Check for sessions already in flight.** Run `telec sessions list` and look for an
    open session whose project path is this root and whose command is the one about to

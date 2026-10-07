@@ -78,28 +78,14 @@ TeleClaudeNext.
   foreign tier's default. The behavioral contract is
   `local/projects/teleclaude/spec/feature/config/tier-permissions`.
 - **Also owns:** two further declarations and their validation: the person
-
-<!-- planned-change:personal-assistant-project-creation -->
-
-overlay's identity claim naming the registered person its workspace belongs
-to, and the project overlay's declared owner — a company or a person, at
-most one, with no owner a valid state. Owning the declarations is not owning
-what they mean: what an accepted person binding confers belongs to
-`local/projects/teleclaude/spec/domain/identity`, and no permission follows from ownership.
-<!-- change:personal-assistant-project-creation -->
-
-overlay's identity claim naming the registered person its workspace belongs
-to, and the project's owner — its home's owner inside a home, otherwise the
-owner the project overlay declares: a company or a person, at most one, with
-no owner a valid state. Owning these answers is not owning what they
-confer: what an accepted person binding and a project's ownership confer
-belongs to `local/projects/teleclaude/spec/domain/identity`.
-<!-- /planned-change:personal-assistant-project-creation -->
-
-The behavioral contracts are
-`local/projects/teleclaude/spec/feature/identity/person-context-binding` and
-`local/projects/teleclaude/spec/feature/config/project-ownership`.
-
+  overlay's identity claim naming the registered person its workspace belongs
+  to, and the project overlay's declared owner — a company or a person, at
+  most one, with no owner a valid state. Owning the declarations is not owning
+  what they mean: what an accepted person binding confers belongs to
+  `local/projects/teleclaude/spec/domain/identity`, and no permission follows from ownership.
+  The behavioral contracts are
+  `local/projects/teleclaude/spec/feature/identity/person-context-binding` and
+  `local/projects/teleclaude/spec/feature/config/project-ownership`.
 - **Also does not own:** where a project's shared state lives. That rule reads
   the checkout-and-worktree relation rather than any configuration, and belongs
   to the context that creates linked worktrees and defines what they share.

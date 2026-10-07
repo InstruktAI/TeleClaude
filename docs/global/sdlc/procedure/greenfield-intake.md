@@ -74,6 +74,8 @@ every production default ships silently from the applicable baseline.
    branches — as the contract. Baseline items appear as delivered scope, not
    questions. On approval, the brief feeds the normal prepare/PRD machinery.
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 6. **Scaffold via the flavor's own generator**, then wire the quality gates
    and CI _before_ feature work. The flavor selects its scaffolding procedure:
 
@@ -90,6 +92,32 @@ every production default ships silently from the applicable baseline.
    For sites,
    follow `sdlc/procedure/setup-visual-regression` — and end
    by running `telec config project init` for the TeleClaude plumbing.
+
+<!-- change:personal-assistant-project-creation -->
+
+6. **Create the project, then scaffold inside it.** Run
+   `telec config project create <name>` — with `--company <slug>` for a
+   company's project, or `--path <dir>` for a platform project outside every
+   home. It makes an empty, registered project with its own repository in its
+   owner's home. Scaffold inside that folder via the flavor's own generator,
+   aimed at the existing folder, then wire the quality gates and CI _before_
+   feature work. The flavor selects its scaffolding procedure:
+
+   - Python → `sdlc/procedure/scaffolding/python`
+   - Rust → `sdlc/procedure/scaffolding/rust`
+   - TypeScript → `sdlc/procedure/scaffolding/typescript`, plus
+     the platform's own snippet:
+     `sdlc/procedure/scaffolding/typescript-platforms/astro`,
+     `sdlc/procedure/scaffolding/typescript-platforms/next-js`,
+     `sdlc/procedure/scaffolding/typescript-platforms/node-js`,
+     `sdlc/procedure/scaffolding/typescript-platforms/vite`, or
+     `sdlc/procedure/scaffolding/typescript-platforms/hono`.
+
+   For sites, follow `sdlc/procedure/setup-visual-regression`. End by running
+   `telec config project init` in the project, which converges its TeleClaude
+   plumbing and detects its capabilities from what was built.
+
+<!-- /planned-change:personal-assistant-project-creation -->
 
 ## Outputs
 

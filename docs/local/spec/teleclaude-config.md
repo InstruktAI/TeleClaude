@@ -204,8 +204,6 @@ person is resolved by the identity context against the person registry, fails
 closed on unknown, ambiguous, or disagreeing claims, and is never a load-time
 grant; the contract is `local/projects/teleclaude/spec/feature/identity/person-context-binding`.
 
-<!-- planned-change:personal-assistant-project-creation -->
-
 `ProjectConfig` alternatively carries an optional `person` key —
 `person: string` — a kebab-case, validated person slug declaring a person as
 the project's owner. `company` and `person` are mutually exclusive: a project
@@ -214,20 +212,6 @@ neither remains valid and composes no company. A declared owner naming a
 company or person that no registry knows refuses composition with a clear
 result naming the unresolved owner; no partial owner state reaches consumers.
 The contract is `local/projects/teleclaude/spec/feature/config/project-ownership`.
-<!-- change:personal-assistant-project-creation -->
-
-`ProjectConfig` alternatively carries an optional `person` key —
-`person: string` — a kebab-case, validated person slug declaring a person as
-the project's owner. `company` and `person` are mutually exclusive: a project
-configuration declaring both is invalid and refused at the model. Declaring
-neither remains valid. Both keys are declarations for a project outside every
-home; inside a home the owner is the home's, and a declaration that disagrees
-with it is refused. A declared owner naming a company or person that no
-registry knows refuses composition with a clear result naming the unresolved
-owner; no partial owner state reaches consumers. The loaded project
-configuration carries the resolved owner, so every consumer reads one answer.
-The contract is `local/projects/teleclaude/spec/feature/config/project-ownership`.
-<!-- /planned-change:personal-assistant-project-creation -->
 
 `env_allow_list` is an explicit pass-through list for agent sessions. It is the
 authorization/filter surface: a name not listed in the effective allow list must

@@ -14,11 +14,25 @@ description: A project's owner is a declared relationship on the project itself 
 
 ## What it is
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 A project states whom it belongs to. That statement is a declared relationship
 carried by the project's own configuration, and it is the only thing that
 establishes ownership: the directory a project sits in, the tier of any
 enclosing root, and the repository that holds the project's history establish
 nothing about who owns it.
+<!-- change:personal-assistant-project-creation -->
+
+A project states whom it belongs to. That statement is a declared relationship
+carried by the project's own configuration, and it is the only thing that
+establishes ownership: the tier of any enclosing root and the repository that
+holds the project's history establish nothing about who owns it.
+
+A project inside a person's or a company's home declares that home's owner.
+Creating or adopting a project there records it, and a configuration inside a
+home that declares any other owner, or none, is refused. Outside every home the
+declaration is free: a company, a person, or no owner.
+<!-- /planned-change:personal-assistant-project-creation -->
 
 An owner is a company or a person. The two are alternatives, not layers — a
 project has at most one owner, and a declaration naming both is refused rather
@@ -65,15 +79,23 @@ Then the owner is that company
 And the project composes that company's configuration
 ```
 
+<!-- planned-change:personal-assistant-project-creation -->
+
+#### UC-POWN-3: An ownerless project stays ownerless
+
+````gherkin
+Given a project whose configuration declares no owner
+<!-- change:personal-assistant-project-creation -->
 #### UC-POWN-3: An ownerless project stays ownerless
 
 ```gherkin
-Given a project whose configuration declares no owner
+Given a project outside every home whose configuration declares no owner
+<!-- /planned-change:personal-assistant-project-creation -->
 When the project's owner is resolved
 Then the project has no owner
 And no owner is inferred from the root that contains it
 And the project composes no company configuration
-```
+````
 
 #### UC-POWN-4: Two simultaneous owners are not a valid declaration
 
@@ -92,6 +114,29 @@ When that configuration is loaded
 Then loading fails with a clear result naming the unresolved owner
 And the project is left with no owner rather than a partial one
 ```
+
+<!-- planned:personal-assistant-project-creation -->
+
+#### UC-POWN-6: A project inside a home is owned by that home
+
+```gherkin
+Given a project created or adopted inside a person's home
+When the project's owner is resolved
+Then the owner is that person
+And the project's configuration declares that person
+```
+
+#### UC-POWN-7: A home refuses a project that names another owner
+
+```gherkin
+Given a project inside a company's home
+And its configuration declares a different company, a person, or no owner
+When that configuration is loaded
+Then loading fails with a clear result naming the home and its owner
+And no owner is selected
+```
+
+<!-- /planned:personal-assistant-project-creation -->
 
 ## Known caveats
 

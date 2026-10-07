@@ -11,16 +11,14 @@ delivered_by:
 A personal project is a project a person's own assistant starts for them when
 they ask for something new to be built — a tool, an automation, a small app. The
 assistant recognises the request, shapes the build with the platform's new-build
-intake, places the project in the person's own projects area inside their
-workspace, and adopts it there. The result is an ordinary TeleClaude project in
-every respect, and it belongs to the person.
+intake, creates the project in the person's own projects area, scaffolds it and
+converges it. The result is an ordinary TeleClaude project in every respect, and
+it belongs to the person.
 
-Placement in the person's own projects area is the default the assistant
-applies without asking. A spot the person names themselves is their
-instruction. Whose the project is follows from where it lands, never from a
-declaration the assistant makes: in the person's own home it is theirs. A
-destination outside their home is created only when the platform lets that
-person create projects there.
+The person's own projects area is where the assistant creates the project,
+without asking. A company project the person asks for is created in that
+company's projects area. A project outside every home is a platform project
+that only a platform administrator creates.
 
 The assistant's part ends when the project exists. Building it out is ordinary
 project work in that project, and a change to a project that already exists is
@@ -56,7 +54,7 @@ Then the project appears in that person's own projects area
 And the person was never asked where it should go
 ```
 
-#### UC-PPROJ4: The assistant leaves the project adopted, not merely placed
+#### UC-PPROJ4: The assistant leaves a registered project, not merely a folder
 
 ```gherkin
 Given a person's assistant has created a project in that person's own projects area

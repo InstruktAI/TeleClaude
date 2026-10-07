@@ -20,10 +20,23 @@ the files.
 
 ## Steps
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 1. **Scaffold with the framework's own generator, always** — the current
    `npm create` / `create-next-app` incantation for the chosen flavor. Never
    deploy scaffold files from a blessed folder — a baked scaffold is a stale
    cache of the generator.
+
+<!-- change:personal-assistant-project-creation -->
+
+1. **Scaffold with the framework's own generator, always** — the current
+   `npm create` / `create-next-app` incantation for the chosen flavor, aimed at
+   the project folder `telec config project create` made (target `.`) rather
+   than a new directory. Never deploy scaffold files from a blessed folder — a
+   baked scaffold is a stale cache of the generator.
+
+<!-- /planned-change:personal-assistant-project-creation -->
+
 2. **Package manager ruling**: pnpm blessed for greenfield; in any existing
    repo the lockfile is law; never mix. The button contract is
    manager-agnostic, so this choice never leaks into scripts or CI.

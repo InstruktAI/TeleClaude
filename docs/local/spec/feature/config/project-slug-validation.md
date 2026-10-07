@@ -28,8 +28,19 @@ leading/trailing hyphens and no consecutive hyphens. The stripped slug is
 returned; anything that fails the pattern raises a validation error and the
 schema layer surfaces the failure on the `project_slug` field.
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 The slug is _populated_ — not validated — by project adoption, the sole writer
 of `~/.teleclaude/projects.yaml` (`local/projects/teleclaude/spec/feature/config/project-registry`).
+<!-- change:personal-assistant-project-creation -->
+
+The slug is _populated_ — not validated — by project creation, which takes it
+from the name it is given, and by project adoption: the two writers of
+`~/.teleclaude/projects.yaml` (`local/projects/teleclaude/spec/feature/config/project-registry`).
+A name that is not a valid slug is refused by creation before anything is
+written.
+<!-- /planned-change:personal-assistant-project-creation -->
+
 Existing project files whose
 `project_slug` is still missing or empty load successfully as `None`; init then
 fills the value during registration.

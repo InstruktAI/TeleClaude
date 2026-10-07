@@ -50,46 +50,32 @@ a refused read returns no configuration.
 
 ### Standing
 
+| Target               | Operation                                                                               | Standing required                               |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| computer, global     | list, get                                                                               | none beyond the verb band                       |
+| computer, global     | init, patch                                                                             | platform administrator                          |
+| person, own instance | get; patch of settings                                                                  | the person                                      |
+| person, any instance | get; patch of settings                                                                  | platform administrator                          |
+| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
+| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
+| company              | list                                                                                    | platform administrator                          |
+| company              | get, patch                                                                              | `admin` effective role for that company         |
+| company              | init                                                                                    | none beyond the verb band                       |
+
 <!-- planned-change:personal-assistant-project-creation -->
 
-| Target               | Operation                                                                               | Standing required                               |
-| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| computer, global     | list, get                                                                               | none beyond the verb band                       |
-| computer, global     | init, patch                                                                             | platform administrator                          |
-| person, own instance | get; patch of settings                                                                  | the person                                      |
-| person, any instance | get; patch of settings                                                                  | platform administrator                          |
-| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
-| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
-| company              | list                                                                                    | platform administrator                          |
-| company              | get, patch                                                                              | `admin` effective role for that company         |
-| company              | init                                                                                    | none beyond the verb band                       |
-| project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
-| project              | patch                                                                                   | `admin` effective role for that project         |
-| company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
-| project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
-
+| project | list, get; init of the caller's checkout | none beyond the verb band |
 <!-- change:personal-assistant-project-creation -->
 
-| Target               | Operation                                                                               | Standing required                               |
-| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| computer, global     | list, get                                                                               | none beyond the verb band                       |
-| computer, global     | init, patch                                                                             | platform administrator                          |
-| person, own instance | get; patch of settings                                                                  | the person                                      |
-| person, any instance | get; patch of settings                                                                  | platform administrator                          |
-| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
-| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
-| company              | list                                                                                    | platform administrator                          |
-| company              | get, patch                                                                              | `admin` effective role for that company         |
-| company              | init                                                                                    | none beyond the verb band                       |
-| project              | list, get; init re-converging a registered project                                      | none beyond the verb band                       |
-| project              | init adopting an existing project outside every home                                    | none beyond the verb band                       |
-| project              | init adopting a new or existing project inside a person's or company's home             | `admin` effective role for that home            |
-| project              | init creating a new project outside every home                                          | platform administrator                          |
-| project              | patch                                                                                   | `admin` effective role for that project         |
-| company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
-| project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
-
+| project | list, get; adopt; init of a registered project | none beyond the verb band |
+| project | create in the caller's own home | the person |
+| project | create with `--company` | membership of that company, any role |
+| project | create with `--path` | platform administrator |
 <!-- /planned-change:personal-assistant-project-creation -->
+
+| project | patch | `admin` effective role for that project |
+| company | init with `--help-desk`; help-desk links | `admin` effective role for that company |
+| project | init of the caller's checkout with `--help-desk`; help-desk links | `admin` effective role for that project |
 
 ### Use cases
 
@@ -201,55 +187,6 @@ Then the operation is refused before any configuration is read or written
 And the refusal names the company administrator standing it requires
 And the same operation for a person holding that company's admin role is accepted
 ```
-
-<!-- planned:personal-assistant-project-creation -->
-
-The home a new project lands in is its owner's
-(`local/projects/teleclaude/spec/feature/config/project-ownership`), so
-standing for creation is standing over that owner: a person creates in their
-own home, a company administrator in their company's, and only a platform
-administrator outside every home. What counts as new, and where inside a home a
-project may live, is adoption's rule (`general/procedure/project-initialization`).
-
-#### UC-CTC11: A person creates projects only in their own home
-
-```gherkin
-Given an agent acts for a person whose platform role is member
-When it initializes a new project in that person's own projects area
-Then the project is created
-And initializing a new project in another person's home, in a company's home, or outside every home is refused before anything is written
-And each refusal names the standing it requires
-```
-
-#### UC-CTC12: A company administrator creates projects only in their company's home
-
-```gherkin
-Given an agent acts for a person who administers one company and holds no platform administrator role
-When it initializes a new project in that company's projects area
-Then the project is created
-And initializing a new project in another company's home or outside every home is refused before anything is written
-```
-
-#### UC-CTC13: A platform administrator creates projects anywhere
-
-```gherkin
-Given an agent acts for a platform administrator
-When it initializes a new project outside every home
-Then the project is created with no owner
-And the administrator can then name a registered company as its owner
-```
-
-#### UC-CTC14: Re-initializing a registered project needs only the command's band
-
-```gherkin
-Given a registered project owned by a company
-And a person assigned to that project whose company role is member
-When an agent acting for that person re-initializes the project
-Then the project converges
-And no standing beyond the command's band is required
-```
-
-<!-- /planned:personal-assistant-project-creation -->
 
 ## Known caveats
 

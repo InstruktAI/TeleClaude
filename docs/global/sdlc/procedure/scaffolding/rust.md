@@ -20,8 +20,19 @@ dominate iteration speed.
 
 ## Steps
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 1. Scaffold with `cargo new` (binary) or `cargo new --lib`; single Cargo
    workspace at the repo root.
+
+<!-- change:personal-assistant-project-creation -->
+
+1. Scaffold with `cargo init` (binary) or `cargo init --lib` inside the
+   project folder `telec config project create` made; single Cargo workspace at
+   the repo root.
+
+<!-- /planned-change:personal-assistant-project-creation -->
+
 2. Apply the platform's Rust policies (`sdlc/policy/rust/core`
    and `rust/testing`) — they own idiom, DI, and test shape.
 3. Clippy + rustfmt are the lint/format lane; the compiler is the built-in

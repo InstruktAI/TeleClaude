@@ -30,6 +30,8 @@ slug. A company home's display name is its declared name, then its slug. Each
 entry's description comes from its own configuration when present. Identities
 are unique among a machine's entries.
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 Adoption is what writes the registry, and nothing else does: no deployment or
 synchronization path adds, removes, or rewrites an entry. Adoption is reached
 through `telec config project init`, through the daemon's add-project request
@@ -41,6 +43,28 @@ describes, and a folder that declares no tier becomes a project. A folder
 declaring the global tier is refused, and so is a folder whose identity another
 entry already holds. Recording is idempotent, so adopting an already-recorded
 folder changes nothing.
+<!-- change:personal-assistant-project-creation -->
+
+Creation and adoption are what write the registry, and nothing else does: no
+deployment or synchronization path adds, removes, or rewrites an entry.
+Creation is reached through `telec config project create`, which makes a new
+project and records it. Adoption is reached through `telec config project
+adopt`, through the daemon's add-project request that TUIs send, and through
+the configuration migration that retires the machine configuration's former
+trusted-directory list. Adopting a folder that declares the person or company
+tier records it as it is. Any other folder is set up as a project first, as
+`general/procedure/project-initialization` describes, and a folder that
+declares no tier becomes a project. A folder declaring the global tier is
+refused, and so is a folder whose identity another entry already holds.
+Recording is idempotent, so adopting an already-recorded folder changes
+nothing. Initializing a project records nothing: it converges a project already
+recorded.
+
+A project inside a person's or a company's home lives directly in that home's
+`projects/` folder, and is its own repository there; the global home's
+repository never holds a project. Creating or adopting a project anywhere else
+inside a home is refused.
+<!-- /planned-change:personal-assistant-project-creation -->
 
 The recorded path is always the durable main checkout. A project may be adopted
 from inside a linked worktree, and the registry still names the checkout that
@@ -78,8 +102,19 @@ project to the project-acting consumers.
   name for a person home, then the slug.
 - **Order.** Entries keep the order in which they were adopted. Consumers that
   present entries follow it.
+
+<!-- planned-change:personal-assistant-project-creation -->
+
 - **Writer.** Adoption only. Idempotent, and never performed by a deployment or
   synchronization path.
+
+<!-- change:personal-assistant-project-creation -->
+
+- **Writer.** Creation and adoption only. Idempotent, and never performed by a
+  deployment or synchronization path.
+
+<!-- /planned-change:personal-assistant-project-creation -->
+
 - **Readers.** Project-acting consumers read project entries; session-placing
   consumers read every entry. None discovers projects from the filesystem or
   from any other list.
@@ -177,23 +212,32 @@ And the company home is still not on the registry
 
 <!-- planned:personal-assistant-project-creation -->
 
-#### UC-CFG-REG10: A project adopted inside the global home is registered as itself
+#### UC-CFG-REG10: Adopting a folder inside a home registers it as itself
 
 ```gherkin
-Given a folder inside a person's or a company's home in the global home, holding no repository of its own
-When an operator or agent adopts that folder as a project
+Given a folder in a person's projects area that holds work but no repository of its own
+When an operator or agent adopts that folder
 Then the folder holds its own repository on main
-And the registry lists that folder under its own identity
+And the registry lists that folder under its own identity, owned by that person
 And the global home is not listed as a project
 ```
 
-#### UC-CFG-REG11: A home's projects live in its projects area
+#### UC-CFG-REG11: A project inside a home lives in its projects area
 
 ```gherkin
 Given a folder inside a person's or a company's home, outside that home's projects area
-When an operator or agent adopts that folder as a project
-Then the adoption is refused before anything is written
+When an operator or agent creates or adopts a project there
+Then the request is refused before anything is written
 And the refusal names the home's projects area
+```
+
+#### UC-CFG-REG12: Initializing an unregistered folder records nothing
+
+```gherkin
+Given a folder that is not a registered project
+When an agent initializes the project configuration there
+Then the registry is unchanged and nothing is written
+And the refusal names project creation and project adoption
 ```
 
 <!-- /planned:personal-assistant-project-creation -->
