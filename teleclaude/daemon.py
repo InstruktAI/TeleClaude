@@ -464,6 +464,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, self._handle_session_close_requested)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error)
+        event_bus.subscribe(TeleClaudeEvents.DELIVERY_NO_COMPOSER, self._handle_delivery_no_composer)
         event_bus.subscribe("system_command", self._handle_system_command)
 
         # Note: Adapters are loaded in client.start(), not here

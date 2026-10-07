@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.agent_registry import AgentName
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator, session_cleanup
-from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agent_readiness import AGENT_START_STABILIZE_QUIET_S, await_agent_readiness
 from teleclaude.core.agent_startup_delivery import (
     AgentStartupDeliveryMode,
     deliver_startup_message,
@@ -26,6 +26,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
+    DeliveryNoComposerContext,
     ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
@@ -64,7 +65,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-AGENT_START_STABILIZE_QUIET_S = 3.0  # How long output must be quiet to be "stable"
 AGENT_PROMPT_READY_TIMEOUT_S = config.daemon.agent_prompt_ready_timeout_s
 _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
 
@@ -120,6 +120,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             await handle_mirror_agent_stop(context)
         except Exception as exc:
             logger.error("Mirror AGENT_STOP handler failed: %s", exc, exc_info=True)
+
+    async def _handle_delivery_no_composer(self, _event: str, context: DeliveryNoComposerContext) -> None:
+        """Hand the delivery-observed no-composer fact to the coordinator, which owns status and distress."""
+        await self.agent_coordinator.handle_delivery_no_composer(context)
 
     async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Observer-only handler for session_closed events.

@@ -23,7 +23,7 @@ async def inject_inbound_text(
             active_agent=active_agent,
             authority=authority,
         )
-    return await tmux_io.process_text(
+    return await tmux_io.route_text(
         session,
         text,
         working_dir=working_dir,

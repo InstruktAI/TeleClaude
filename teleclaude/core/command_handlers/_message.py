@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
-from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agent_readiness import NoComposerReadinessTimeout, await_agent_readiness
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_input import (
     CommandInputError,
@@ -31,6 +31,7 @@ from teleclaude.core.help_desk_relay import (
     is_visitor_input,
 )
 from teleclaude.core.inbound_errors import (
+    InboundHoldReason,
     InboundMessageHeldError,
     SessionMessageRejectedError,
     SessionMessageRejectionReason,
@@ -78,6 +79,10 @@ _COMMAND_INPUT_COMMAND_KEY = "command"
 _COMMAND_INPUT_ARGS_KEY = "args"
 _PEER_ATTENTION_HANDOFF_DECIDED_EVENT = "peer_attention_handoff_decided"
 _PEER_ATTENTION_CONTROL_SOURCE_KEY_TEMPLATE = "peer-attention:{source_occurrence_id}"
+_HOLD_REASON_BY_DELIVERY_REASON: dict[tmux_io.UserTurnDeliveryReason, InboundHoldReason] = {
+    tmux_io.UserTurnDeliveryReason.COMPOSER_OCCUPIED: InboundHoldReason.COMPOSER_OCCUPIED,
+    tmux_io.UserTurnDeliveryReason.NO_COMPOSER: InboundHoldReason.NO_COMPOSER,
+}
 _PEER_ATTENTION_NOTIFICATION = (
     "Peer input is pending. If unfinished work needs to resume, preserve continuation through the existing "
     "reminder mechanism, then yield voluntarily so the peer input becomes your next conversational input."
@@ -518,7 +523,13 @@ async def handle_file(
 
 
 async def _wait_for_session_ready(session_id: str) -> Session | None:
-    """Wait for a current session binding to reach its delivery authority."""
+    """Wait for a current session binding to reach its delivery authority.
+
+    Returns ``None`` when the session is gone or the gate times out. A pane
+    readiness wait that ends on a settled screen with no composer raises
+    ``NoComposerReadinessTimeout``: the session is alive and showing something
+    else, which callers hold input for rather than treat as a missing session.
+    """
     deadline = time.monotonic() + STARTUP_GATE_TIMEOUT_S
     while time.monotonic() < deadline:
         session = await db.get_session(session_id)
@@ -566,6 +577,8 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
                 quiet_s=STARTUP_GATE_POLL_INTERVAL_S,
                 timeout_s=remaining_s,
             )
+        except NoComposerReadinessTimeout:
+            raise
         except TimeoutError:
             break
         finally:
@@ -596,7 +609,10 @@ async def deliver_inbound(
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
 
     if session.lifecycle_status == "initializing":
-        session = await _wait_for_session_ready(session_id)
+        try:
+            session = await _wait_for_session_ready(session_id)
+        except NoComposerReadinessTimeout as exc:
+            raise InboundMessageHeldError(session_id=session_id, reason=InboundHoldReason.NO_COMPOSER) from exc
         if not session:
             raise RuntimeError(f"Startup gate timeout for session {session_id}")
 
@@ -646,7 +662,7 @@ async def deliver_inbound(
         isinstance(tmux_result, tmux_io.UserTurnDeliveryResult)
         and tmux_result.outcome is tmux_io.UserTurnDeliveryOutcome.HELD
     ):
-        raise InboundMessageHeldError(session_id=session_id)
+        raise InboundMessageHeldError(session_id=session_id, reason=_HOLD_REASON_BY_DELIVERY_REASON[tmux_result.reason])
     if isinstance(tmux_result, Exception):
         if is_active_agent_delivery:
             logger.info(

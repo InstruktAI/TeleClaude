@@ -32,7 +32,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 AGENT_STATUS_WATCHDOG_INTERVAL_S = 10.0
-AGENT_STATUS_PANE_CAPTURE_LINES = 40
 _AGENT_STATUS_WATCHDOG_TASK_NAME = "agent-status-watchdog"
 _CATCH_UP_ROW_LABEL = "catch_up_notification"
 _WATCHDOG_ROW_FAILED_EVENT = "agent_status_watchdog_row_failed"
@@ -66,7 +65,7 @@ async def _capture_pane_tail(session: Session) -> str | None:
     try:
         pane_tail = await tmux_bridge.capture_pane(
             session.tmux_session_name,
-            capture_lines=AGENT_STATUS_PANE_CAPTURE_LINES,
+            capture_lines=tmux_bridge.PANE_EVIDENCE_LINES,
         )
     except Exception as exc:
         logger.warning(

@@ -69,6 +69,16 @@ _INFERRED_STALL_HUMAN_NOTIFICATION_TEMPLATE = (
     "Session{location_part}{title_part} stalled: {evidence}. "
     "Use telec sessions tail {target_session_id}{computer_selector} to inspect."
 )
+_PARENT_DELIVERY_BLOCK_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} shows a screen other than its composer while input waits. "
+    "Evidence: {evidence}. "
+    "Assess its current state and recover within your mandate. "
+    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
+)
+_DELIVERY_BLOCK_HUMAN_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} shows a screen other than its composer while input waits: {evidence}. "
+    "Use telec sessions tail {target_session_id}{computer_selector} to inspect."
+)
 _ATTENTION_EVIDENCE_PROVIDER_KEY = "provider"
 _ATTENTION_EVIDENCE_NATIVE_EVENT_KEY = "native_event"
 _ATTENTION_EVIDENCE_DETAILS_KEY = "details"
@@ -80,6 +90,9 @@ INFERRED_STALL_REASON_FIELD = "reason"
 INFERRED_STALL_PANE_TAIL_FIELD = "pane_tail"
 _INFERRED_STALL_NO_SIGNAL_TEMPLATE = "gave no agent activity for {timeout}"
 _INFERRED_STALL_NO_START_TEMPLATE = "did not start within {timeout}\nPane last lines:\n{pane_tail}"
+DELIVERY_BLOCK_EVIDENCE_METADATA_KEY: Final[Literal["delivery_block_evidence"]] = "delivery_block_evidence"
+DELIVERY_BLOCK_PANE_TAIL_FIELD = "pane_tail"
+_DELIVERY_BLOCK_PANE_TEMPLATE = "Pane last lines:\n{pane_tail}"
 _INFERRED_STALL_REASON_REQUIRED_ERROR = "Inferred stall evidence requires a watchdog reason"
 _INFERRED_STALL_TIMEOUTS: dict[AgentStatusReason, str] = {
     AgentStatusReason.NO_SIGNAL: f"{AGENT_NO_SIGNAL_TIMEOUT_S // 60}m",
@@ -141,6 +154,18 @@ def _inferred_stall_summary(evidence: InferredStallEvidence) -> str:
         return _INFERRED_STALL_NO_SIGNAL_TEMPLATE.format(timeout=evidence.timeout)
     pane_tail = evidence.pane_tail or _ATTENTION_EVIDENCE_UNAVAILABLE
     return _INFERRED_STALL_NO_START_TEMPLATE.format(timeout=evidence.timeout, pane_tail=pane_tail)
+
+
+@dataclass(frozen=True)
+class DeliveryBlockEvidence:
+    """Daemon-observed capture of the screen input delivery found in place of the composer."""
+
+    pane_tail: str
+
+
+def _delivery_block_summary(evidence: DeliveryBlockEvidence) -> str:
+    """Render the captured screen as labelled data."""
+    return _DELIVERY_BLOCK_PANE_TEMPLATE.format(pane_tail=evidence.pane_tail or _ATTENTION_EVIDENCE_UNAVAILABLE)
 
 
 class StopNotificationVariant(StrEnum):
@@ -468,12 +493,16 @@ def _distress_notification_message(
     title: str | None,
     notification_kind: NotificationKind,
     inferred_stall_evidence: InferredStallEvidence | None = None,
+    delivery_block_evidence: DeliveryBlockEvidence | None = None,
 ) -> str:
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
     if inferred_stall_evidence is not None:
         template = _INFERRED_STALL_HUMAN_NOTIFICATION_TEMPLATE
         evidence = _inferred_stall_summary(inferred_stall_evidence)
+    elif delivery_block_evidence is not None:
+        template = _DELIVERY_BLOCK_HUMAN_NOTIFICATION_TEMPLATE
+        evidence = _delivery_block_summary(delivery_block_evidence)
     else:
         template = (
             _BLOCKED_NOTIFICATION_TEMPLATE
@@ -515,13 +544,17 @@ def _parent_attention_message(
     notification_kind: NotificationKind,
     observation: AgentAttentionObservation | None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
+    delivery_block_evidence: DeliveryBlockEvidence | None = None,
 ) -> str:
-    """Format parent-only guidance around labelled native evidence."""
+    """Format parent-only guidance around labelled native or daemon-observed evidence."""
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
     if inferred_stall_evidence is not None:
         template = _PARENT_INFERRED_STALL_NOTIFICATION_TEMPLATE
         evidence = _inferred_stall_summary(inferred_stall_evidence)
+    elif delivery_block_evidence is not None:
+        template = _PARENT_DELIVERY_BLOCK_NOTIFICATION_TEMPLATE
+        evidence = _delivery_block_summary(delivery_block_evidence)
     else:
         template = (
             _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
@@ -569,9 +602,10 @@ async def notify_distress(
     *,
     observation: AgentAttentionObservation | None = None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
+    delivery_block_evidence: DeliveryBlockEvidence | None = None,
     occurrence_key: str | None = None,
 ) -> set[str]:
-    """Notify persistent listeners of one native attention occurrence."""
+    """Notify persistent listeners of one attention occurrence."""
     message = _parent_attention_message(
         target_session_id,
         computer,
@@ -579,6 +613,7 @@ async def notify_distress(
         notification_kind,
         observation,
         inferred_stall_evidence,
+        delivery_block_evidence,
     )
     reached = await _notify_listeners(
         target_session_id,
@@ -596,6 +631,7 @@ async def notify_distress_human_fallback(
     client: "AdapterClient",
     title: str | None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
+    delivery_block_evidence: DeliveryBlockEvidence | None = None,
 ) -> bool:
     """Deliver unwatched distress only to the target session's own adapter."""
     target = await db.get_session(target_session_id)
@@ -607,6 +643,7 @@ async def notify_distress_human_fallback(
         title,
         notification_kind,
         inferred_stall_evidence,
+        delivery_block_evidence,
     )
     return (
         await client.send_message(
@@ -672,6 +709,7 @@ async def deliver_remote_distress_notification(
     occurrence_key: str | None = None,
     observation: AgentAttentionObservation | None = None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
+    delivery_block_evidence: DeliveryBlockEvidence | None = None,
 ) -> bool:
     """Deliver a forwarded distress notification directly to the remote caller."""
     caller = await db.get_session(caller_session_id)
@@ -684,6 +722,7 @@ async def deliver_remote_distress_notification(
         notification_kind,
         observation,
         inferred_stall_evidence,
+        delivery_block_evidence,
     )
     try:
         await handoff_control_payload(

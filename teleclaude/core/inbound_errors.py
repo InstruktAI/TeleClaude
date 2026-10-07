@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-_INBOUND_MESSAGE_HELD_ERROR = "Conversation input held for session {session_id}"
+_INBOUND_MESSAGE_HELD_ERROR = "Input held for session {session_id}: {reason}"
+
+
+class InboundHoldReason(StrEnum):
+    """Closed reasons for holding input without consuming a delivery attempt."""
+
+    COMPOSER_OCCUPIED = "composer_occupied"
+    NO_COMPOSER = "no_composer"
 
 
 class SessionMessageRejectionReason(StrEnum):
@@ -51,11 +58,12 @@ class SessionMessageRejectedError(RuntimeError):
 
 
 class InboundMessageHeldError(RuntimeError):
-    """Temporary hold when conversation input must wait for an empty composer."""
+    """Temporary hold when input must wait for an empty composer or for a composer to appear."""
 
-    def __init__(self, *, session_id: str) -> None:
+    def __init__(self, *, session_id: str, reason: InboundHoldReason) -> None:
         self.session_id = session_id
-        super().__init__(_INBOUND_MESSAGE_HELD_ERROR.format(session_id=session_id))
+        self.reason = reason
+        super().__init__(_INBOUND_MESSAGE_HELD_ERROR.format(session_id=session_id, reason=reason.value))
 
 
 class UnidentifiableCallerError(RuntimeError):

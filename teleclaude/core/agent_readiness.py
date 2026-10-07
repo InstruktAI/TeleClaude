@@ -7,6 +7,7 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
@@ -14,7 +15,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName, AgentStartupSignal, resolve_parser_agent
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import DeliveryNoComposerContext, TeleClaudeEvents
 from teleclaude.core.tmux_bridge import PaneObservation
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
@@ -34,6 +38,9 @@ _DEEPSEEK_BORDER_CHARACTERS = frozenset({"╭", "╮", "╰", "╯", _RULE_CHARA
 _CODEX_COMPOSER_MARKER = AgentName.CODEX.prompt_marker.strip()
 _CODEX_COMPOSER_GUTTER = "  "
 _DEEPSEEK_COMPOSER_MARKER = AgentName.DEEPSEEK.prompt_marker.strip()
+# How long visible agent output must hold still after a launch before its pane
+# is judged: a composer for input readiness, a screen with none for a block.
+AGENT_START_STABILIZE_QUIET_S = 3.0
 
 
 class ReadinessSignal(StrEnum):
@@ -54,6 +61,24 @@ class _ReadinessTimeoutReason(StrEnum):
     """Closed reason for a readiness race without a signal."""
 
     NO_SIGNAL = "no_signal"
+    SCREEN_WITHOUT_COMPOSER = "screen_without_composer"
+
+
+class PaneReadiness(StrEnum):
+    """How a pane-authority readiness wait ended."""
+
+    OPENED = "opened"
+    TIMED_OUT = "timed_out"
+    TIMED_OUT_ON_SCREEN = "timed_out_on_screen"
+
+
+class NoComposerReadinessTimeout(TimeoutError):
+    """A readiness wait ended while the pane showed a settled screen with no composer.
+
+    That screen is a dialog, menu, or overlay that waits for an agent. Callers
+    that treat every readiness timeout alike catch ``TimeoutError``; callers
+    that hold input for a composer tell this cause apart by type.
+    """
 
 
 class PromptDeliveryState(StrEnum):
@@ -69,6 +94,24 @@ class PromptDeliveryObservation:
     """Content-independent observation of a complete live composer."""
 
     state: PromptDeliveryState
+
+
+def publish_delivery_no_composer(session_id: str, surface_text: str) -> None:
+    """Publish the fact that a captured pane shows no recognized composer.
+
+    The fact carries the bounded last lines of the surface so the session's
+    watchers can see what it displays. What the status owner and the watchers
+    do with it is theirs; observers publish and move on.
+    """
+    event_bus.emit(
+        TeleClaudeEvents.DELIVERY_NO_COMPOSER,
+        DeliveryNoComposerContext(
+            session_id=session_id,
+            observed_at=datetime.now(UTC).isoformat(),
+            pane_tail=tmux_bridge.pane_evidence_tail(surface_text),
+        ),
+        visibility=EventVisibility.LOCAL,
+    )
 
 
 def _log_readiness_decision(
@@ -396,12 +439,17 @@ def _generated_style_active(params: list[str], active_style: bool) -> bool:
     return active_style
 
 
-async def _capture_snapshot(tmux_session_name: str) -> PaneObservation:
+async def _capture_snapshot(tmux_session_name: str) -> PaneObservation | None:
     return await tmux_bridge.observe_visible_pane(tmux_session_name)
 
 
 def _digest_stability_view(stability_view: str) -> str:
     return hashlib.sha256(stability_view.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _surface_view(observation: PaneObservation) -> str:
+    """Return the ANSI-free visible surface, row by row."""
+    return _ROW_SEPARATOR.join(strip_ansi_codes(row).rstrip() for row in _surface_rows(observation))
 
 
 async def wait_for_agent_ready(
@@ -410,28 +458,62 @@ async def wait_for_agent_ready(
     timeout_s: float,
     quiet_s: float,
     poll_interval_s: float = 0.2,
-) -> tuple[bool, str]:
+) -> PaneReadiness:
     """Wait for the agent's visible activity to settle, then for its identified composer.
 
     Settledness comes first: the view the profile declares stable must hold still
     for ``quiet_s`` while the composer is identified, and identification only
     resets the window when the composer or the agent process is absent.
+
+    While the agent runs and no composer is identified, the whole surface is
+    watched too: once it has held still for the startup quiet window it is a
+    screen waiting for an agent, published once per wait as the delivery
+    no-composer fact. The wait itself is unchanged: it opens only on a settled
+    composer and ends at ``timeout_s``, reporting whether the last surface it
+    judged was such a screen. A composer, a changed surface, or a failed capture
+    restarts that settle clock.
     """
     agent = AgentName.from_str(agent_name)
     profile = _get_readiness_profile(agent)
     deadline = time.monotonic() + timeout_s
-    last_tail = (await _capture_snapshot(session.tmux_session_name)).text
     last_digest: str | None = None
     quiet_since: float | None = None
+    screen_digest: str | None = None
+    screen_since: float | None = None
+    screen_published = False
+    on_settled_screen = False
     prompt_seen = False
 
     while time.monotonic() < deadline:
         observation = await _capture_snapshot(session.tmux_session_name)
-        last_tail = observation.text
+        if observation is None:
+            last_digest = None
+            quiet_since = None
+            screen_digest = None
+            screen_since = None
+            on_settled_screen = False
+            await asyncio.sleep(poll_interval_s)
+            continue
         prompt = profile.locate_prompt(observation)
         now = time.monotonic()
+        process_running = await tmux_bridge.is_process_running(session.tmux_session_name)
 
-        if prompt is None or not await tmux_bridge.is_process_running(session.tmux_session_name):
+        on_settled_screen = False
+        if prompt is None and process_running:
+            current_screen_digest = _digest_stability_view(_surface_view(observation))
+            if current_screen_digest != screen_digest:
+                screen_digest = current_screen_digest
+                screen_since = now
+            elif screen_since is not None and now - screen_since >= AGENT_START_STABILIZE_QUIET_S:
+                on_settled_screen = True
+                if not screen_published:
+                    publish_delivery_no_composer(session.session_id, observation.text)
+                    screen_published = True
+        else:
+            screen_digest = None
+            screen_since = None
+
+        if prompt is None or not process_running:
             last_digest = None
             quiet_since = None
             await asyncio.sleep(poll_interval_s)
@@ -462,7 +544,7 @@ async def wait_for_agent_ready(
             quiet_s,
             len(stability_view.splitlines()) if stability_view else 0,
         )
-        return True, observation.text
+        return PaneReadiness.OPENED
 
     elapsed = time.monotonic() - (deadline - timeout_s)
     logger.debug(
@@ -471,7 +553,7 @@ async def wait_for_agent_ready(
         prompt_seen,
         elapsed,
     )
-    return False, last_tail
+    return PaneReadiness.TIMED_OUT_ON_SCREEN if on_settled_screen else PaneReadiness.TIMED_OUT
 
 
 async def await_agent_readiness(
@@ -491,7 +573,9 @@ async def await_agent_readiness(
     authority of normalized runtime hooks.
 
     Returns the selected signal. Raises ``TimeoutError`` when that provider's
-    selected detector does not open within ``timeout_s``.
+    selected detector does not open within ``timeout_s``;
+    ``NoComposerReadinessTimeout`` when a pane-authority wait ended on a settled
+    screen with no composer.
     """
     agent = AgentName.from_str(agent_name)
     if agent.startup_signal is AgentStartupSignal.NATIVE:
@@ -522,12 +606,24 @@ async def await_agent_readiness(
         name=f"agent-readiness-pane:{session_id}",
     )
     try:
-        ready, _ = await pane_task
+        readiness = await pane_task
     finally:
         if not pane_task.done():
             pane_task.cancel()
 
-    if not ready:
+    if readiness is PaneReadiness.TIMED_OUT_ON_SCREEN:
+        _log_readiness_decision(
+            agent_name=agent_name,
+            session_id=session_id,
+            outcome=_ReadinessDecisionOutcome.TIMED_OUT,
+            reason=_ReadinessTimeoutReason.SCREEN_WITHOUT_COMPOSER,
+            quiet_s=quiet_s,
+        )
+        raise NoComposerReadinessTimeout(
+            f"agent readiness: pane shows a screen with no composer at timeout (agent={agent_name})"
+        )
+
+    if readiness is PaneReadiness.TIMED_OUT:
         _log_readiness_decision(
             agent_name=agent_name,
             session_id=session_id,

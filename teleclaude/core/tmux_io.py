@@ -15,10 +15,12 @@ from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import (
+    NoComposerReadinessTimeout,
     PromptDeliveryObservation,
     PromptDeliveryState,
     await_agent_readiness,
     classify_prompt_delivery,
+    publish_delivery_no_composer,
 )
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
@@ -56,6 +58,7 @@ ADOPTION_STABILIZE_QUIET_S = 1.0
 # Structured log event names for the adoption readiness gate.
 ADOPTION_READINESS_TIMEOUT_EVENT = "adoption_readiness_timeout"
 ADOPTION_TEARDOWN_PANE_SURVIVED_EVENT = "adoption_teardown_pane_survived"
+ADOPTION_HELD_ON_SCREEN_EVENT = "adoption_held_on_screen_without_composer"
 
 # Sentinel for an unbound tmux pane, named so callers never inline the literal.
 TMUX_SESSION_NAME_UNBOUND = ""
@@ -86,7 +89,7 @@ class UserTurnDeliveryReason(StrEnum):
 
     COMPOSER_EMPTY = "composer_empty"
     COMPOSER_OCCUPIED = "composer_occupied"
-    OBSERVATION_AMBIGUOUS = "observation_ambiguous"
+    NO_COMPOSER = "no_composer"
     HOST_OPERATION_FAILED = "host_operation_failed"
     EXECUTION_ERROR = "execution_error"
 
@@ -205,6 +208,18 @@ async def _revive_headless_and_send(
                     quiet_s=ADOPTION_STABILIZE_QUIET_S,
                     timeout_s=ADOPTION_READINESS_TIMEOUT_S,
                 )
+            except NoComposerReadinessTimeout:
+                # The resumed agent shows a screen other than its composer. Keep
+                # its pane bound and the session initializing so the woken parent
+                # can see and clear it; the waiting input reaches the agent
+                # through this session once a composer appears.
+                logger.info(
+                    ADOPTION_HELD_ON_SCREEN_EVENT,
+                    agent_name=session.active_agent,
+                    session_id=session.session_id,
+                    tmux_session_name=tmux_name,
+                )
+                return _no_composer_hold()
             except TimeoutError:
                 logger.warning(
                     ADOPTION_READINESS_TIMEOUT_EVENT,
@@ -307,7 +322,7 @@ async def _send_to_tmux(
     return False
 
 
-async def process_text(
+async def route_text(
     session: Session,
     text: str,
     *,
@@ -315,7 +330,11 @@ async def process_text(
     authority: InjectedInputAuthority,
     working_dir: str,
 ) -> bool | UserTurnDeliveryResult:
-    """Process and route text input to the appropriate tmux session."""
+    """Route text input to the appropriate tmux session and return the delivery decision as made.
+
+    A raw pane write answers with a bool; delivery into an agent composer answers
+    with its typed result, including a hold, which is a wait and not a failure.
+    """
     text_sha = hashlib.sha256(text.encode()).hexdigest()[:12]
     logger.info(
         "process_text_write",
@@ -331,19 +350,38 @@ async def process_text(
         authority=authority,
         working_dir=working_dir,
     )
-    success = (
-        result.succeeded
-        if authority is InjectedInputAuthority.INTERFACE and isinstance(result, UserTurnDeliveryResult)
-        else result
+    write_failed = (
+        result.outcome is UserTurnDeliveryOutcome.FAILED if isinstance(result, UserTurnDeliveryResult) else not result
     )
-    if not success:
+    if write_failed:
         logger.warning(
             "process_text_write_failed",
             session_id=session.session_id,
             text_len=len(text),
             text_sha=text_sha,
         )
-    return success
+    return result
+
+
+async def process_text(
+    session: Session,
+    text: str,
+    *,
+    active_agent: str | None = None,
+    authority: InjectedInputAuthority,
+    working_dir: str,
+) -> bool | UserTurnDeliveryResult:
+    """Route text input; interface authority collapses a typed delivery result to whether it succeeded."""
+    result = await route_text(
+        session,
+        text,
+        active_agent=active_agent,
+        authority=authority,
+        working_dir=working_dir,
+    )
+    if authority is InjectedInputAuthority.INTERFACE and isinstance(result, UserTurnDeliveryResult):
+        return result.succeeded
+    return result
 
 
 async def inject_user_turn(
@@ -362,17 +400,23 @@ async def inject_user_turn(
         conversation_agent = AgentName.from_str(active_agent)
         delivered_text = construct_delivered_text(text, authority, conversation_agent)
     tmux_name = session.tmux_session_name or ""
-    before_delivery = await _observe_prompt_delivery(session, active_agent=active_agent)
+    observation = await tmux_bridge.observe_visible_pane(tmux_name)
+    if observation is None:
+        return _failed_delivery(
+            UserTurnDeliveryReason.HOST_OPERATION_FAILED,
+            stage=UserTurnDeliveryStage.OBSERVATION,
+        )
+    before_delivery = classify_prompt_delivery(observation, active_agent)
     _log_prompt_observation(
         "inject_user_turn: pre-delivery observation",
         session=session,
         observation=before_delivery,
     )
     if before_delivery.state is PromptDeliveryState.AMBIGUOUS:
-        return _failed_delivery(
-            UserTurnDeliveryReason.OBSERVATION_AMBIGUOUS,
-            stage=UserTurnDeliveryStage.OBSERVATION,
-        )
+        # The pane shows a screen other than the composer: nothing is pasted or
+        # pressed into it, for any authority, and the input waits as a hold.
+        publish_delivery_no_composer(session.session_id, observation.text)
+        return _no_composer_hold()
 
     if before_delivery.state is PromptDeliveryState.OCCUPIED:
         if authority is InjectedInputAuthority.CONVERSATION:
@@ -418,6 +462,18 @@ async def inject_user_turn(
     )
 
 
+def _no_composer_hold() -> UserTurnDeliveryResult:
+    """Build the hold for input that met a screen with no composer; nothing was sent."""
+    return UserTurnDeliveryResult(
+        UserTurnDeliveryOutcome.HELD,
+        UserTurnDeliveryStage.OBSERVATION,
+        UserTurnDeliveryReason.NO_COMPOSER,
+        paste_performed=False,
+        platform_enter_sent=False,
+        existing_input_preserved=False,
+    )
+
+
 def _failed_delivery(
     reason: UserTurnDeliveryReason,
     *,
@@ -434,15 +490,6 @@ def _failed_delivery(
         platform_enter_sent=platform_enter_sent,
         existing_input_preserved=False,
     )
-
-
-async def _observe_prompt_delivery(
-    session: Session,
-    *,
-    active_agent: str | None,
-) -> PromptDeliveryObservation:
-    observation = await tmux_bridge.observe_visible_pane(session.tmux_session_name)
-    return classify_prompt_delivery(observation, active_agent)
 
 
 def _log_prompt_observation(

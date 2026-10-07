@@ -192,11 +192,17 @@ async def notify_delivery_exhausted(
     *,
     client: AdapterClient,
 ) -> None:
-    """Present the durable notice associated with a terminal delivery cause."""
-    if cause is DeliveryTerminalCause.HOLD_EXPIRED:
-        source = InjectedTextSourceFeature(row["source_feature"])
-        if authority_for_source_feature(source) is not InjectedInputAuthority.CONVERSATION:
-            return
+    """Present the durable notice associated with a terminal delivery cause.
+
+    A conversation row that expired while held notifies its conversation
+    channel. Every other terminal cause, including the expiry of a held
+    platform-authored row, reaches the producer of the row.
+    """
+    source = InjectedTextSourceFeature(row["source_feature"])
+    if (
+        cause is DeliveryTerminalCause.HOLD_EXPIRED
+        and authority_for_source_feature(source) is InjectedInputAuthority.CONVERSATION
+    ):
         origin = InputOrigin(row["origin"])
         if origin not in _HOLD_NOTICE_UI_ORIGINS:
             raise HoldNoticeRecipientUnavailableError

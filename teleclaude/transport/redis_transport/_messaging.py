@@ -46,9 +46,12 @@ from teleclaude.core.relayed_intake import (
     execute_relayed_read,
 )
 from teleclaude.core.session_listeners import (
+    DELIVERY_BLOCK_EVIDENCE_METADATA_KEY,
+    DELIVERY_BLOCK_PANE_TAIL_FIELD,
     INFERRED_STALL_EVIDENCE_METADATA_KEY,
     INFERRED_STALL_PANE_TAIL_FIELD,
     INFERRED_STALL_REASON_FIELD,
+    DeliveryBlockEvidence,
     InferredStallEvidence,
     NotificationKind,
     StopNotificationVariant,
@@ -171,6 +174,17 @@ def _inferred_stall_evidence_from_metadata(metadata: JsonDict | None) -> Inferre
     except ValueError:
         logger.warning("Ignoring unsupported inferred stall reason", reason=reason)
         return None
+
+
+def _delivery_block_evidence_from_metadata(metadata: JsonDict | None) -> DeliveryBlockEvidence | None:
+    """Decode additive daemon-side delivery evidence, ignoring older unknown shapes."""
+    if metadata is None:
+        return None
+    raw_evidence = metadata.get(DELIVERY_BLOCK_EVIDENCE_METADATA_KEY)
+    if not isinstance(raw_evidence, dict):
+        return None
+    raw_pane_tail = raw_evidence.get(DELIVERY_BLOCK_PANE_TAIL_FIELD)
+    return DeliveryBlockEvidence(pane_tail=raw_pane_tail if isinstance(raw_pane_tail, str) else "")
 
 
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
@@ -523,6 +537,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 occurrence_key,
                 _attention_observation_from_metadata(origin_metadata),
                 _inferred_stall_evidence_from_metadata(origin_metadata),
+                _delivery_block_evidence_from_metadata(origin_metadata),
             )
             return {"status": "success", "data": {"delivered": delivered}}
 

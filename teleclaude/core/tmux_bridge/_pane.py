@@ -37,7 +37,6 @@ _OBSERVATION_CURSOR_FORMAT = "#{cursor_flag} #{cursor_y} #{cursor_x}"
 _OBSERVATION_DISPLAY_FORMAT = _OBSERVATION_MARKER + _OBSERVATION_CURSOR_FORMAT
 _CURSOR_VISIBLE_FLAG = "1"
 _CURSOR_FIELD_COUNT = 3
-_NO_TEXT = ""
 _OUTPUT_ENCODING = "utf-8"
 _OUTPUT_DECODE_ERRORS = "replace"
 _TMUX_OPERATION_LABEL = "tmux operation"
@@ -52,8 +51,11 @@ _OBSERVE_TIMEOUT_LOG = "Timeout observing pane from session %s: %s"
 _OBSERVE_ERROR_LOG = "Exception observing pane from session %s: %s"
 _SNAPSHOT_MARKER_MISSING = "tmux snapshot output missing required boundary marker (stdout_bytes={size})"
 _TMUX_UNAVAILABLE_ERROR = "tmux binary unavailable for {session_name}: {error}"
+_ROW_SEPARATOR = "\n"
 DEFAULT_CAPTURE_LINES = 200
 FALLBACK_CAPTURE_LINES = 40
+# Rows of a pane shown to an agent as evidence of what the pane displays.
+PANE_EVIDENCE_LINES = 40
 
 
 class _MissingPaneDiagnostic(StrEnum):
@@ -106,6 +108,16 @@ def _normalize_pane_output(text: str) -> str:
     """Normalize pane text for generic tmux change detection."""
     stripped = strip_ansi_codes(text).replace("\r\n", "\n").replace("\r", "\n")
     return "\n".join(line.rstrip() for line in stripped.split("\n"))
+
+
+def pane_evidence_tail(surface_text: str) -> str:
+    """Return the last evidence rows of a captured surface as plain text.
+
+    Escape sequences are stripped and trailing blank rows dropped, so the bound
+    counts rows that show something.
+    """
+    rows = _normalize_pane_output(surface_text).rstrip().split(_ROW_SEPARATOR)
+    return _ROW_SEPARATOR.join(rows[-PANE_EVIDENCE_LINES:])
 
 
 async def get_pane_tty(session_name: str) -> str | None:
@@ -249,13 +261,13 @@ async def capture_pane(
         raise
 
 
-async def observe_visible_pane(session_name: str) -> PaneObservation:
+async def observe_visible_pane(session_name: str) -> PaneObservation | None:
     """Capture the visible pane surface together with its cursor state.
 
     Both facts come from one tmux invocation, so the text and the cursor
     describe the same moment. Wrapped lines are not joined: every screen row is
-    one line of the returned text. A failed capture yields an empty
-    observation, never a surface.
+    one line of the returned text. A capture that failed returns ``None``: no
+    surface was seen, which is not the same as a surface showing nothing.
     """
     cmd = [
         config.computer.tmux_binary,
@@ -279,7 +291,7 @@ async def observe_visible_pane(session_name: str) -> PaneObservation:
 
         if result.returncode != 0:
             logger.warning(_OBSERVE_FAILED_LOG, session_name, result.returncode, stderr.decode().strip())
-            return PaneObservation(text=_NO_TEXT, cursor=None)
+            return None
 
         return _parse_observation_stdout(stdout)
 

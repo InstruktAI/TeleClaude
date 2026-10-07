@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, assert_never
 
 from teleclaude.config._models import AGENT_NO_SIGNAL_TIMEOUT_S, AGENT_NO_START_TIMEOUT_S
 from teleclaude.core.event_bus import event_bus
@@ -27,6 +27,7 @@ _CONTENTION_ERROR_MESSAGE = "Agent status contention retries exhausted for sessi
 _BLOCKED_REASON_REQUIRED_ERROR = "agent_blocked requires a supported blocked reason"
 _STATUS_TARGET_LABEL = "%s->%s"
 _RUN_START_LABEL = "agent_run_start"
+_DELIVERY_BLOCK_LABEL = "delivery_observed_block"
 _INFERRED_STALL_LABEL = "inferred_stall:%s"
 _MAX_VERSION_ATTEMPTS = 3
 
@@ -106,7 +107,16 @@ class InferredStallVerdict:
     rule: InferredStallRule
 
 
-type AgentStatusCause = AgentEventCause | AgentRunStart | InferredStallVerdict
+@dataclass(frozen=True)
+class DeliveryObservedBlock:
+    """Cause representing input delivery finding no composer to deliver into.
+
+    The agent CLI shows some other screen and the runtime sent no signal about
+    it, so the daemon's own observation is the evidence.
+    """
+
+
+type AgentStatusCause = AgentEventCause | AgentRunStart | InferredStallVerdict | DeliveryObservedBlock
 
 
 class AgentStatusCommit(StrEnum):
@@ -186,24 +196,54 @@ BLOCKED_REASONS = frozenset({AgentStatusReason.NEEDS_INPUT, AgentStatusReason.QU
 
 
 def _attempted_transition(cause: AgentStatusCause, status: AgentStatusValue) -> str:
-    if isinstance(cause, AgentRunStart):
-        cause_name = _RUN_START_LABEL
-    elif isinstance(cause, InferredStallVerdict):
-        cause_name = _INFERRED_STALL_LABEL % cause.rule.reason.value
-    else:
-        cause_name = cause.event.value
+    match cause:
+        case AgentRunStart():
+            cause_name = _RUN_START_LABEL
+        case InferredStallVerdict():
+            cause_name = _INFERRED_STALL_LABEL % cause.rule.reason.value
+        case DeliveryObservedBlock():
+            cause_name = _DELIVERY_BLOCK_LABEL
+        case AgentEventCause():
+            cause_name = cause.event.value
+        case _:
+            assert_never(cause)
     return _STATUS_TARGET_LABEL % (cause_name, status.value)
 
 
 def _next_status_record(
     session: Session,
-    cause: AgentEventCause | AgentRunStart,
-    event_rule: AgentStatusRule,
+    cause: AgentEventCause | AgentRunStart | DeliveryObservedBlock,
     at: datetime,
 ) -> tuple[AgentStatusValue, AgentStatusReason | None, datetime | None, datetime | None, frozenset[str]]:
-    if isinstance(cause, AgentRunStart):
-        return AgentStatusValue.UNKNOWN, None, at, None, frozenset()
-    status, reason = event_rule
+    match cause:
+        case AgentRunStart():
+            return AgentStatusValue.UNKNOWN, None, at, None, frozenset()
+        case DeliveryObservedBlock():
+            return _delivery_block_record(session, at)
+        case AgentEventCause():
+            return _event_status_record(session, cause, at)
+        case _:
+            assert_never(cause)
+
+
+def _delivery_block_record(
+    session: Session,
+    at: datetime,
+) -> tuple[AgentStatusValue, AgentStatusReason | None, datetime | None, datetime | None, frozenset[str]]:
+    """Enter ``blocked`` / ``needs_input``; the runtime did nothing, so its activity and tool calls stay as they were."""
+    status = AgentStatusValue.BLOCKED
+    reason = AgentStatusReason.NEEDS_INPUT
+    status_changed = session.agent_status is not status or session.agent_status_reason is not reason
+    since = at if status_changed else session.agent_status_since
+    return status, reason, since, session.runtime_activity_at, frozenset(session.open_tool_calls)
+
+
+def _event_status_record(
+    session: Session,
+    cause: AgentEventCause,
+    at: datetime,
+) -> tuple[AgentStatusValue, AgentStatusReason | None, datetime | None, datetime | None, frozenset[str]]:
+    status, reason = AGENT_STATUS_RULES[cause.event]
     if cause.event is AgentHookEvents.AGENT_BLOCKED:
         reason = cause.blocked_reason
     open_tool_calls = set(session.open_tool_calls)
@@ -230,29 +270,28 @@ async def transition_agent_status(
     *,
     at: datetime,
 ) -> AgentStatusTransition | None:
-    """Apply one event, run-start, or inferred-stall transition through its owner."""
-    if isinstance(cause, InferredStallVerdict):
-        committed = await store.commit_inferred_stall(session_id, cause.rule, at=at)
-        if committed is None:
-            return None
-        _publish_status(session_id, AgentStatusValue.STALLED, cause.rule.reason, at, committed.runtime_activity_at)
-        return AgentStatusTransition(previous=cause.rule.status, entered=AgentStatusValue.STALLED)
-
-    event_rule: AgentStatusRule | None = None
-    if isinstance(cause, AgentEventCause):
-        event_rule = AGENT_STATUS_RULES.get(cause.event)
-        if event_rule is None:
-            return None
-        if cause.event is AgentHookEvents.AGENT_BLOCKED and cause.blocked_reason not in BLOCKED_REASONS:
-            raise ValueError(_BLOCKED_REASON_REQUIRED_ERROR)
-    else:
-        await store.release_turn_notification(session_id, TurnNotificationRecord.INFERRED_STALL)
-
-    if isinstance(cause, AgentRunStart):
-        target_status = AgentStatusValue.UNKNOWN
-    else:
-        assert event_rule is not None
-        target_status = event_rule[0]
+    """Apply one event, run-start, delivery-observed block, or inferred-stall transition through its owner."""
+    match cause:
+        case InferredStallVerdict():
+            committed = await store.commit_inferred_stall(session_id, cause.rule, at=at)
+            if committed is None:
+                return None
+            _publish_status(session_id, AgentStatusValue.STALLED, cause.rule.reason, at, committed.runtime_activity_at)
+            return AgentStatusTransition(previous=cause.rule.status, entered=AgentStatusValue.STALLED)
+        case AgentRunStart():
+            await store.release_turn_notification(session_id, TurnNotificationRecord.INFERRED_STALL)
+            target_status = AgentStatusValue.UNKNOWN
+        case DeliveryObservedBlock():
+            target_status = AgentStatusValue.BLOCKED
+        case AgentEventCause():
+            event_rule = AGENT_STATUS_RULES.get(cause.event)
+            if event_rule is None:
+                return None
+            if cause.event is AgentHookEvents.AGENT_BLOCKED and cause.blocked_reason not in BLOCKED_REASONS:
+                raise ValueError(_BLOCKED_REASON_REQUIRED_ERROR)
+            target_status = event_rule[0]
+        case _:
+            assert_never(cause)
     attempted_transition = _attempted_transition(cause, target_status)
     for _ in range(_MAX_VERSION_ATTEMPTS):
         session = await store.get_session(session_id)
@@ -261,12 +300,7 @@ async def transition_agent_status(
         if session.closed_at is not None or session.lifecycle_status in TERMINAL_LIFECYCLE_STATUSES:
             return None
 
-        status, reason, since, runtime_activity_at, open_tool_calls = _next_status_record(
-            session,
-            cause,
-            event_rule if event_rule is not None else (AgentStatusValue.UNKNOWN, None),
-            at,
-        )
+        status, reason, since, runtime_activity_at, open_tool_calls = _next_status_record(session, cause, at)
 
         changed = (
             session.agent_status is not status

@@ -43,6 +43,7 @@ EventType = Literal[
     "operation.task_run.failed",
     "agent_runtime.procedure_activation.completed",
     "agent_runtime.procedure_activation.failed",
+    "delivery_no_composer",
     "projects_changed",
     "session.close.completed",
     "session.close.failed",
@@ -354,6 +355,9 @@ class TeleClaudeEvents:
     AGENT_ACTIVITY: Literal["agent_activity"] = (
         "agent_activity"  # Agent activity events (pre_tool_use, agent_stop, etc.)
     )
+    DELIVERY_NO_COMPOSER: Literal["delivery_no_composer"] = (
+        "delivery_no_composer"  # Fact: input delivery observed a pane showing no recognized composer.
+    )
     PROJECTS_CHANGED: Literal["projects_changed"] = "projects_changed"
     ERROR: Literal["error"] = "error"
 
@@ -450,6 +454,19 @@ class SessionLifecycleContext:
     """Context for session lifecycle events."""
 
     session_id: str
+
+
+@dataclass(frozen=True)
+class DeliveryNoComposerContext:
+    """Context for the fact that input delivery observed a pane with no recognized composer.
+
+    ``pane_tail`` is the bounded, ANSI-free last lines of the observed surface;
+    ``observed_at`` is the ISO 8601 UTC moment of that observation.
+    """
+
+    session_id: str
+    observed_at: str
+    pane_tail: str
 
 
 class ProjectRefreshTrigger(StrEnum):
@@ -687,6 +704,7 @@ EventContext = (
     AgentActivityEvent
     | AgentAvailabilityContext
     | AgentEventContext
+    | DeliveryNoComposerContext
     | ErrorEventContext
     | JobCompletedPayload
     | JobFailedPayload

@@ -56,6 +56,7 @@ _INVALID_HELD_MESSAGE_CREATED_AT_ERROR = "Invalid inbound message created_at tim
 _INVALID_HOLD_NOTICE_RETRY_TIME_ERROR = "Invalid persisted hold-notice retry timestamp"
 _HOLD_NOTICE_CALLBACK_UNAVAILABLE_ERROR = "Hold-expiry notice callback is unavailable"
 _HOLD_NOTICE_FAILED_ERROR = "hold_expiry_notice_failed"
+_DELIVERY_EXHAUSTED_CALLBACK_FAILED_EVENT = "inbound_delivery_exhausted_callback_failed"
 _CONVERSATION_UI_ORIGINS = frozenset({InputOrigin.DISCORD, InputOrigin.TELEGRAM, InputOrigin.WHATSAPP})
 # Lock timeout: rows locked longer than this are considered stale and reclaimable
 _LOCK_TIMEOUT_S = 300  # 5 minutes
@@ -151,14 +152,15 @@ def _hold_notice_seconds_until_retry(row: InboundQueueRow, now: datetime, lock_c
     return max(0.0, (retry_at - now).total_seconds())
 
 
+def _row_authority(row: InboundQueueRow) -> InjectedInputAuthority:
+    """Return the input authority recorded by the row's producer."""
+    return authority_for_source_feature(InjectedTextSourceFeature(row["source_feature"]))
+
+
 def _hold_notice_is_required(row: InboundQueueRow) -> bool:
     """Return whether this expired occurrence has a conversation UI recipient."""
-    source = InjectedTextSourceFeature(row["source_feature"])
     origin = InputOrigin(row["origin"])
-    return (
-        authority_for_source_feature(source) is InjectedInputAuthority.CONVERSATION
-        and origin in _CONVERSATION_UI_ORIGINS
-    )
+    return _row_authority(row) is InjectedInputAuthority.CONVERSATION and origin in _CONVERSATION_UI_ORIGINS
 
 
 class InboundQueueManager:
@@ -417,13 +419,14 @@ class InboundQueueManager:
                     row_id,
                     now_iso=retry_at.isoformat(),
                     backoff_seconds=backoff,
+                    reason=exc.reason,
                 )
                 logger.info(
                     _ROW_DELIVERY_HELD_EVENT,
                     session_id=session_id,
                     inbound_row_id=row_id,
                     backoff_seconds=backoff,
-                    reason=str(exc),
+                    reason=exc.reason.value,
                 )
                 remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
                 await asyncio.sleep(min(backoff, remaining))
@@ -470,16 +473,7 @@ class InboundQueueManager:
                         text_kind=row["text_kind"],
                         attempts=attempt,
                     )
-                    if self._delivery_exhausted_callback is not None:
-                        try:
-                            await self._delivery_exhausted_callback(row, DeliveryTerminalCause.RETRY_EXHAUSTED)
-                        except Exception as callback_exc:
-                            logger.warning(
-                                "inbound_delivery_exhausted_callback_failed",
-                                session_id=session_id,
-                                inbound_row_id=row_id,
-                                error=str(callback_exc),
-                            )
+                    await self._notify_terminal_cause(row, DeliveryTerminalCause.RETRY_EXHAUSTED)
                     continue
                 backoff = _backoff_for_attempt(row["attempt_count"])
                 retry_at: datetime | None = None
@@ -511,8 +505,27 @@ class InboundQueueManager:
                 else:
                     await asyncio.sleep(backoff)
 
+    async def _notify_terminal_cause(self, row: InboundQueueRow, cause: DeliveryTerminalCause) -> None:
+        """Hand a row's terminal cause to the producer-notice callback, best-effort."""
+        if self._delivery_exhausted_callback is None:
+            return
+        try:
+            await self._delivery_exhausted_callback(row, cause)
+        except Exception as callback_exc:
+            logger.warning(
+                _DELIVERY_EXHAUSTED_CALLBACK_FAILED_EVENT,
+                session_id=row["session_id"],
+                inbound_row_id=row["id"],
+                error=str(callback_exc),
+            )
+
     async def _expire_held_message(self, row: InboundQueueRow) -> None:
-        """End a held message at its deadline and surface its terminal cause."""
+        """End a held message at its deadline and surface its terminal cause.
+
+        A conversation row's notice is persisted with the row and delivered by
+        the worker's notice pass. A platform-authored row has no such channel;
+        its producer hears through the same callback retry exhaustion uses.
+        """
         now_iso = datetime.now(UTC).isoformat()
         await db.mark_inbound_expired(
             row["id"],
@@ -536,6 +549,8 @@ class InboundQueueManager:
             source_feature=row["source_feature"],
             text_kind=row["text_kind"],
         )
+        if _row_authority(row) is not InjectedInputAuthority.CONVERSATION:
+            await self._notify_terminal_cause(row, DeliveryTerminalCause.HOLD_EXPIRED)
 
     async def expire_session(self, session_id: str) -> None:
         """Mark all pending messages for a session as expired and cancel the worker."""

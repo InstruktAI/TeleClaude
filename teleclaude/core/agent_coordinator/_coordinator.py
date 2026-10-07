@@ -15,6 +15,7 @@ from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agent_status import (
     AgentEventCause,
     AgentStatusTransition,
+    DeliveryObservedBlock,
     transition_agent_status,
 )
 from teleclaude.core.agents import AgentName
@@ -35,6 +36,7 @@ from teleclaude.core.events import (
     AgentSessionStartPayload,
     AgentStopActivityEvent,
     AgentStopPayload,
+    DeliveryNoComposerContext,
     ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
@@ -50,7 +52,7 @@ from teleclaude.core.session_lifecycle import (
     LifecycleTransitionReason,
     transition_session,
 )
-from teleclaude.core.session_listeners import NotificationKind, StopNotificationVariant
+from teleclaude.core.session_listeners import DeliveryBlockEvidence, NotificationKind, StopNotificationVariant
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
@@ -410,6 +412,30 @@ class AgentCoordinator(
             notification_kind,
             source_computer=payload.source_computer,
             observation=payload.observation,
+        )
+
+    async def handle_delivery_no_composer(self, context: DeliveryNoComposerContext) -> None:
+        """Block the session on the screen delivery found and wake its watchers once per entry.
+
+        Input delivery observed a pane showing no recognized composer and sent
+        nothing into it. The block is recorded through the status owner; the
+        owner turns a request for the status the session already holds into no
+        transition, so watchers are notified on entry into ``blocked`` only.
+        """
+        observed_at = parse_iso_datetime(context.observed_at) or datetime.now(UTC)
+        transition = await transition_agent_status(
+            db,
+            context.session_id,
+            DeliveryObservedBlock(),
+            at=observed_at,
+        )
+        if transition is None or transition.entered is not AgentStatusValue.BLOCKED:
+            return
+        await self._notify_session_distress(
+            context.session_id,
+            NotificationKind.BLOCKED,
+            source_computer=config.computer.name,
+            delivery_block_evidence=DeliveryBlockEvidence(pane_tail=context.pane_tail),
         )
 
     async def handle_session_start(self, context: AgentEventContext) -> None:

@@ -20,7 +20,7 @@ from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
-from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agent_readiness import AGENT_START_STABILIZE_QUIET_S, await_agent_readiness
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
@@ -46,7 +46,7 @@ from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.tmux_io import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
-from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S
+from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map

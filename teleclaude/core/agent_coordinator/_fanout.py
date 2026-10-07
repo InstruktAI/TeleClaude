@@ -15,9 +15,12 @@ from teleclaude.core.db import db
 from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.models import MessageMetadata, Session, SessionOriginMetadata
 from teleclaude.core.session_listeners import (
+    DELIVERY_BLOCK_EVIDENCE_METADATA_KEY,
+    DELIVERY_BLOCK_PANE_TAIL_FIELD,
     INFERRED_STALL_EVIDENCE_METADATA_KEY,
     INFERRED_STALL_PANE_TAIL_FIELD,
     INFERRED_STALL_REASON_FIELD,
+    DeliveryBlockEvidence,
     InferredStallEvidence,
     NotificationKind,
     StopNotificationVariant,
@@ -54,8 +57,9 @@ _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED = "blocked_already_observed_this_
 def _attention_observation_metadata(
     observation: AgentAttentionObservation | None,
     inferred_stall_evidence: InferredStallEvidence | None,
+    delivery_block_evidence: DeliveryBlockEvidence | None,
 ) -> SessionOriginMetadata:
-    """Serialize native or daemon-inferred evidence for the remote parent path."""
+    """Serialize native or daemon-observed evidence for the remote parent path."""
     metadata: SessionOriginMetadata = cast(SessionOriginMetadata, {})
     if observation is not None:
         metadata[_ATTENTION_METADATA_KEY] = {
@@ -69,6 +73,10 @@ def _attention_observation_metadata(
         metadata[INFERRED_STALL_EVIDENCE_METADATA_KEY] = {
             INFERRED_STALL_REASON_FIELD: inferred_stall_evidence.reason.value,
             INFERRED_STALL_PANE_TAIL_FIELD: inferred_stall_evidence.pane_tail,
+        }
+    if delivery_block_evidence is not None:
+        metadata[DELIVERY_BLOCK_EVIDENCE_METADATA_KEY] = {
+            DELIVERY_BLOCK_PANE_TAIL_FIELD: delivery_block_evidence.pane_tail,
         }
     return metadata
 
@@ -174,8 +182,14 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         source_computer: str | None = None,
         observation: AgentAttentionObservation | None = None,
         inferred_stall_evidence: InferredStallEvidence | None = None,
+        delivery_block_evidence: DeliveryBlockEvidence | None = None,
     ) -> bool:
-        """Notify parents while retaining terminal and fallback slot semantics."""
+        """Notify parents while retaining terminal and fallback slot semantics.
+
+        Delivery-observed block evidence is a native-style blocked occurrence:
+        it claims the blocked slot and follows the blocked fallback rules. Only
+        an inferred stall claims its own slot.
+        """
         blocked_claimed = True
         if inferred_stall_evidence is None:
             record = (
@@ -220,6 +234,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             title,
             observation=observation,
             inferred_stall_evidence=inferred_stall_evidence,
+            delivery_block_evidence=delivery_block_evidence,
             occurrence_key=occurrence_key,
         )
         remote_reached = await self._forward_distress_to_initiator(
@@ -229,6 +244,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             title,
             observation=observation,
             inferred_stall_evidence=inferred_stall_evidence,
+            delivery_block_evidence=delivery_block_evidence,
             occurrence_key=occurrence_key,
         )
         fallback_delivered = False
@@ -243,6 +259,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                 self.client,
                 title,
                 inferred_stall_evidence,
+                delivery_block_evidence,
             )
         delivered = bool(reached or remote_reached or fallback_delivered)
         outcome = (
@@ -275,6 +292,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         *,
         observation: AgentAttentionObservation | None,
         inferred_stall_evidence: InferredStallEvidence | None,
+        delivery_block_evidence: DeliveryBlockEvidence | None,
         occurrence_key: str,
     ) -> bool:
         """Forward distress and count a remote subscriber only when delivery succeeds."""
@@ -290,7 +308,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         encoded_title = base64.b64encode(title.encode()).decode() if title else "-"
         try:
             metadata = MessageMetadata(
-                origin_metadata=_attention_observation_metadata(observation, inferred_stall_evidence)
+                origin_metadata=_attention_observation_metadata(
+                    observation, inferred_stall_evidence, delivery_block_evidence
+                )
             )
             request_id = await self.client.send_request(
                 destination,

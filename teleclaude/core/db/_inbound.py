@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from .. import db_models
 from ..dates import parse_iso_datetime
+from ..inbound_errors import InboundHoldReason
 from ..inbound_types import InboundBindingDisposition, InboundMessageType, TurnPartKind
 from ..injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from ..models import MessageAuthor, MessageAuthorKind
@@ -24,7 +25,6 @@ logger = get_logger(__name__)
 _MISSING_PLATFORM_SOURCE_ERROR = "Platform-originated text requires a source occurrence key"
 _DELIVERED_STATUS = "delivered"
 _FAILED_STATUS = "failed"
-_COMPOSER_OCCUPIED_REASON = "composer_occupied"
 
 
 def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
@@ -419,8 +419,14 @@ class DbInboundMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def mark_inbound_held(self, row_id: int, now_iso: str, backoff_seconds: float) -> None:
-        """Release a held inbound row for retry without consuming an attempt."""
+    async def mark_inbound_held(
+        self,
+        row_id: int,
+        now_iso: str,
+        backoff_seconds: float,
+        reason: InboundHoldReason,
+    ) -> None:
+        """Release a held inbound row for retry without consuming an attempt, recording why it waits."""
         dt = parse_iso_datetime(now_iso)
         if dt is None:
             dt = datetime.now(UTC)
@@ -431,7 +437,7 @@ class DbInboundMixin:
             .values(
                 status=_FAILED_STATUS,
                 next_retry_at=next_retry,
-                last_error=_COMPOSER_OCCUPIED_REASON,
+                last_error=reason.value,
                 was_held=True,
                 locked_at=None,
             )
