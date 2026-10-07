@@ -111,6 +111,14 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   deferral worker the work orchestrator dispatches: deciding them, and
   creating or filing what this policy admits, is that worker's job
   (`sdlc/procedure/lifecycle/work/deferrals`).
+- **A defect contradicts a current contract.** A defect is observed behavior
+  that a current contract states otherwise, so its fix restores what that
+  contract already says. The filing names that contract: a snippet without
+  pending ownership, or the declared outcome of the surface that misbehaved.
+  Where making the behavior right takes a new or changed contract, the work is a
+  `change`, however real the failure, and is created with
+  `telec todo create --kind change`. Evidence shows the behavior happened; the
+  contract shows it is wrong.
 - **A filed defect claim carries its evidence.** A todo whose premise is a
   defect, or a defense against one, cites an occurrence or a dangerous path,
   and is filed by its kind: a defect through `telec bugs report`, a defense as
@@ -289,6 +297,14 @@ reached or what it costs; the session governing it holds the wider frame, and
 preparation judges a claim independently of the filer's stake in it. The
 evidence requirement attaches to the premise rather than the todo kind because
 a guard filed as a `change` adds the same conjectural code a bug fix would.
+
+Kind routes the work, and evidence cannot choose it: a real failure proves that
+something happened, never that a contract forbids it. The bug lane spends an
+independent diagnosis on finding why behavior departs from its contract; when
+no contract states the wanted behavior, that diagnosis rediscovers the gap and
+the work still needs the contract authored first, as a change does. Naming the
+violated contract at filing makes that difference visible before the lane is
+entered.
 
 Communication comes before a state brake because only the claimant can report
 what it understood and whether its current derivation remains usable. A hold is
