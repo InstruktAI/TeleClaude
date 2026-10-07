@@ -154,36 +154,31 @@ _real_git() {
     # wrapper silently — rc surfaces but the diagnostic stderr is lost.
     local _rc=0
     "$_real_git_bin" "$@" 2>"$_stderr_capture" || _rc=$?
-    local _had_stderr=0
     if [ -s "$_stderr_capture" ]; then
-        _had_stderr=1
         while IFS= read -r _line || [ -n "$_line" ]; do
-            # WARNING, not DEBUG: this is git's own diagnostic chatter (hook
-            # output, ref warnings) even on a successful (rc=0) invocation —
-            # the learning signal for refining agent git usage, distinct from
-            # the routine-noise TRACE tier removed from this wrapper.
-            if _level_enabled WARNING; then
-                echo "$(_ts_cmd) level=WARNING logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
+            # Git writes routine progress and diagnostics to stderr even on
+            # successful invocations. Keep the captured text available for
+            # investigation without presenting it as a warning; non-zero
+            # failures are recorded separately by _log_wrapper_end.
+            if _level_enabled DEBUG; then
+                echo "$(_ts_cmd) level=DEBUG logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
             fi
             printf '%s\n' "$_line" >&2
         done < "$_stderr_capture"
     fi
     rm -f "$_stderr_capture"
 
-    _log_wrapper_end "$_inv_id" "$_rc" "$_had_stderr"
+    _log_wrapper_end "$_inv_id" "$_rc"
     return $_rc
 }
 
-# Only a real git failure is worth a record: a non-zero rc with no stderr is a
-# benign query outcome (git grep / diff --quiet / rev-parse --verify signalling
-# "no match"), not a failure. The routine per-invocation start/end tracing this
-# wrapper used to emit unconditionally carried no anomaly value — every
-# expected-friction event already has its own record via event=blocked (DEBUG).
+# A non-zero git exit is an error outcome, whether or not the command wrote
+# stderr. The captured stderr stays at DEBUG because its contents can be routine
+# progress or diagnostics; this ERROR record carries the process result.
 _log_wrapper_end() {
     local _inv_id="$1"
     local _rc="$2"
-    local _had_stderr="${3:-0}"
-    if [ "$_rc" -ne 0 ] && [ "$_had_stderr" -eq 1 ]; then
+    if [ "$_rc" -ne 0 ]; then
         if _level_enabled ERROR; then
             { echo "$(_ts_cmd) level=ERROR logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
         fi
