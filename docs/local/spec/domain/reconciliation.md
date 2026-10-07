@@ -138,7 +138,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Decision boundary (core).** One reconciliation core operation converges
   the DeepSeek stack. It reads the stack — the installed runtime, every
   profile's manifest, and the required plugins the installation declares — and
-  refuses to change anything while the stack is in use. It orders the
+  refuses to change anything while another run is in progress. It orders the
   candidate runtimes, judges fit, selects the adopted set with the newest
   fitting version of each registry package and one registry requirement per
   registry plugin, and decides from the gate's verdict whether the applied set

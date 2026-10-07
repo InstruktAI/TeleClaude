@@ -70,12 +70,13 @@ make surface, and installation reaches the runtime only through it.
   without the first-run guide; and, in the launch profile, a prompt completes a
   turn without a turn error and a turn completes while a hook returns
   additional context.
-- **In use.** A DeepSeek runtime process is running, or another convergence is
-  in progress. Convergence changes nothing while the stack is in use.
+- **Run in progress.** Another convergence holds the stack. A run changes
+  nothing while another run is in progress. Running DeepSeek sessions are not
+  inspected: the runtime and profile packages are replaced in place.
 - **Outcome.** Exactly one of: upgraded, unchanged, rolled back, or rollback
   incomplete. The report names the outcome and the evidence behind it,
   including every library advisory of the adopted set; an unchanged outcome
-  names whether no newer set fits or the stack was in use.
+  names whether no newer set fits or another run was in progress.
 
 ### Use cases
 
@@ -193,13 +194,13 @@ When the DeepSeek stack convergence adopts a set in which that plugin fits
 Then the profile holds the plugin after the run, at its fitting version or through its local reference
 ```
 
-#### UC-DSC13: Convergence waits while the stack is in use
+#### UC-DSC13: A run changes nothing while another run is in progress
 
 ```gherkin
-Given a DeepSeek session is running, or another convergence is in progress
+Given another DeepSeek stack convergence is in progress
 When an operator or the installer runs the DeepSeek stack convergence
 Then the runtime, every profile manifest and every profile's lock state are unchanged
-And the operator's report states the outcome as unchanged because the stack was in use
+And the operator's report states the outcome as unchanged because another run was in progress
 ```
 
 #### UC-DSC14: Newer plugin releases are adopted on the installed runtime
