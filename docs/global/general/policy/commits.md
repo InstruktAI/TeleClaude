@@ -92,39 +92,6 @@ All Committizen types are allowed.
   undeclared change does not ship. Declaring is free and repeats safely; when in
   doubt, declare.
 
-<!-- planned-change:commit-review-stamp -->
-
-- Post-commit review is routed by the committed diff, not by pre-commit
-  permission. Functional code/tests are committed first. When the post-commit
-  gate determines that independent review is required, the authoring session
-  dispatches it automatically and waits for the verdict; review is technical
-  stewardship, never a human ratification step. A `REQUEST CHANGES` verdict
-  stays with the authoring session for evidence-based rejection or in-scope
-  remediation and re-review. Before remediation, the author records each
-  finding's disposition and its independently established basis in the
-  follow-up to the continuing reviewer, applying the finding-validation and
-  disposition rules in `sdlc/procedure/lifecycle/fix-review-findings`. After
-  remediation, the follow-up identifies the fixing commits and closure evidence;
-  an evidence-only rejection names its sources. For commit review, this exchange
-  carries the disposition record — no todo artifact or lifecycle stamp is
-  introduced. The author retains commit and review-routing responsibilities; the
-  reviewer alone determines the verdict. What cannot proceed — a genuine
-  human-owned decision, a safety gate, or a disagreement author and reviewer
-  cannot resolve — is held, and the session goes idle with it; nothing routes
-  it to another party (`general/principle/autonomy`).
-  Governed contracts (documentation snippets) and agent artifacts require
-  independent review after commit. The main-branch checkpoint's code-scoped
-  review gate applies to every committed non-documentation path; runtime path
-  classification does not infer a weaker review obligation from whether a file
-  appears to be bookkeeping.
-  The authoring session owns acting on its review verdict — remediation,
-  re-review routing and recovery; the verdict itself is the reviewer's. The standing
-  integrator publishes committed canonical main after its own maintenance and
-  any owed log judgment; it does not inspect or wait for other sessions' review
-  verdicts, and their review state is not a direct-main publication gate.
-
-<!-- change:commit-review-stamp -->
-
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. The post-commit gate
   names the commits that are review candidates; the authoring session decides
@@ -169,8 +136,6 @@ All Committizen types are allowed.
   integrator publishes committed canonical main after its own maintenance and
   any owed log judgment; it does not inspect or wait for other sessions' review
   verdicts, and their review state is not a direct-main publication gate.
-
-<!-- /planned-change:commit-review-stamp -->
 
 ## Rationale
 

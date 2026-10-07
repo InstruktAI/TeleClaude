@@ -252,8 +252,6 @@ Then the delivery reconciles the lifecycle markers in that project's documentati
 And no other project's documentation is read or changed by the delivery
 ```
 
-<!-- planned:commit-review-stamp -->
-
 #### UC-WSS24: A commit-review stamp lands on the todo its session chain claims
 
 ```gherkin
@@ -267,8 +265,6 @@ When P runs "telec code stamp C --verdict approve --reason 'removes a retired se
 Then my-feature's review state records approve for C, with P as the stamping session and the reason
 And a stamp by a session whose chain holds no lifecycle claim records nothing on any todo and still discharges that chain's review gate
 ```
-
-<!-- /planned:commit-review-stamp -->
 
 ### Cross-context references
 

@@ -405,8 +405,6 @@ And the terminal script states that P no longer holds the claim on my-feature
 And no claim held by a different live session is changed
 ```
 
-<!-- planned:commit-review-stamp -->
-
 #### UC-WPS29: PREPARED waits for the driving session's commits to be stamped
 
 ```gherkin
@@ -420,8 +418,6 @@ When B is stamped approve and P calls "telec todo prepare my-feature"
 Then the machine derives PREPARED
 And a commit stamped request_changes keeps PREPARED withheld until an approve stamp covers it
 ```
-
-<!-- /planned:commit-review-stamp -->
 
 ### Explicit slug required
 
