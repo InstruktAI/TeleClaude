@@ -22,8 +22,15 @@ The runtime's own surface — profiles, plugin management, launcher flags, the
 headless one-shot contract, and the hook executor's compatibility limits — is
 the vendor's, and is documented against the installed binary in
 `third-party/deepseek-dsh/runtime-surface` and `third-party/deepseek-dsh/hooks`.
+<!-- planned-change:dsh-compatible-upgrade -->
 Provisioning steps belong to `local/projects/teleclaude/procedure/onboard-agent-harness` and to
 the installer itself.
+<!-- change:dsh-compatible-upgrade -->
+Provisioning steps belong to `local/projects/teleclaude/procedure/onboard-agent-harness`.
+Installing and moving the runtime, its TUI and every profile plugin is
+installation convergence, owned by reconciliation
+(`local/projects/teleclaude/spec/feature/reconciliation/deepseek-stack-convergence`).
+<!-- /planned-change:dsh-compatible-upgrade -->
 
 ## Canonical fields
 

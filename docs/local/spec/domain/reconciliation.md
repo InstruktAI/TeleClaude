@@ -126,6 +126,68 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   reaches them through it. No other surface establishes an owner.
 
 <!-- /planned:startable-unattended-install -->
+<!-- planned:dsh-compatible-upgrade -->
+#### DeepSeek stack convergence
+
+- **State.** No durable state. A run owns a scratch area for its own length,
+  holding the snapshot — every profile directory as found and the installed
+  runtime version — and the verification gate's working directory and harness
+  home. A run ending upgraded, unchanged or rolled back removes the area; a run
+  ending rollback incomplete keeps the snapshot and names it in its report.
+  One run at a time holds a harness home.
+- **Decision boundary (core).** One reconciliation core operation converges
+  the DeepSeek stack. It reads the stack — the installed runtime, every
+  profile's manifest, and the required plugins the installation declares — and
+  refuses to change anything while the stack is in use. It orders the
+  candidate runtimes, judges fit, selects the adopted set with the newest
+  fitting version of each registry package and one registry requirement per
+  registry plugin, and decides from the gate's verdict whether the applied set
+  stays or the snapshot is restored. Every range is judged by the package
+  registry's own resolution of that range against published versions, so the
+  strict prerelease rule is the registry's and is never restated. The recorded
+  requirement is a range admitting the adopted version, never an exact
+  version. Its published result names the outcome; each package's previous and
+  adopted version; each blocking package with its requirement and the version
+  that fails it; the failed step or check; and, for a rollback that cannot
+  complete, every part that still differs and where the snapshot is kept.
+- **Infrastructure.** Registry queries, the global runtime installation, each
+  profile's plugin manager, the profile copies and every launch the gate makes
+  execute behind ports the core operation drives; they decide nothing. Every
+  external tool runs without terminal input, so no vendor prompt — a
+  compatibility exemption included — can be accepted on the operator's behalf,
+  and the operation never asks a profile's plugin manager to grant one.
+- **Verification gate.** The gate runs under a throwaway harness home of its
+  own. The operator's profiles, the subject under test, and the operator's
+  credentials are shared into it; the rest of the home's configuration is
+  copied in; its session, storage, history and log stores start empty; and its
+  hook layer is the gate's own, so the operator's hooks — TeleClaude's receiver
+  among them — never fire for a gate turn and no gate turn becomes a TeleClaude
+  session or history entry. Before the gate runs, the operation applies the
+  installation's first-run-guide convergence. Each profile is booted through
+  its own app far enough to mount every plugin, and its composed configuration
+  is dumped; any startup diagnostic fails the check. The launch profile runs in
+  a terminal server the gate starts for itself. Its readiness is judged by the
+  agent runtime's composer classification for the DeepSeek agent, which the
+  gate consumes and never restates, and the gate types its prompts there. Turn
+  outcomes come from the gate's own hooks: a stop hook records completion, a
+  stop-failure hook records a turn error, and a prompt-submit hook returns the
+  additional context of the hook turn. Every check is bounded in time. Teardown
+  stops the terminal server and every process the gate started and removes
+  the gate's working directory and harness home, whatever the verdict.
+- **Consumed contracts.** From the agent runtime: the DeepSeek agent
+  definition's launch profile, and the composer classification of a pane
+  observation for the DeepSeek agent. From this context: the installation's
+  first-run-guide convergence.
+- **Consumers.** The full installer installs or moves the runtime only by
+  invoking the operation, declares the required plugins, and adds no plugin to
+  a profile outside it; it ensures the local checkout of TeleClaude's plugins
+  repository exists first. An unchanged or rolled-back outcome is reported
+  without failing the rest of the installation; a rollback that cannot
+  complete is reported as a failure of the DeepSeek step. Operators and agents
+  run the same operation on demand through the repository's make surface.
+  Post-commit maintenance reaches it through the full installer.
+
+<!-- /planned:dsh-compatible-upgrade -->
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
@@ -136,6 +198,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 <!-- planned:startable-unattended-install -->
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 <!-- /planned:startable-unattended-install -->
+<!-- planned:dsh-compatible-upgrade -->
+- **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
+<!-- /planned:dsh-compatible-upgrade -->
 
 
 ### Event subjects

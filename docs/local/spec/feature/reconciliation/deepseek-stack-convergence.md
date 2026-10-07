@@ -31,6 +31,11 @@ make surface, and installation reaches the runtime only through it.
 - **Stack.** The installed runtime version and, per profile, the TUI package
   and every installed plugin. A plugin installed from a local checkout belongs
   to the stack and is judged from its own manifest.
+- **Required plugins.** The plugins TeleClaude's installation requires every
+  profile to hold: its own hook plugin, from the local checkout of its plugins
+  repository, and the checkpoint plugin, from the registry. A profile missing
+  one gains it only as part of an adopted set, fitted like every installed
+  package.
 - **Candidate runtime.** Any published runtime release no older than the
   installed one, whatever release channel publishes it. The installed runtime
   is always a candidate, so staying put is always available.
@@ -43,23 +48,29 @@ make surface, and installation reaches the runtime only through it.
   Every fitting set therefore also passes the runtime's own startup check,
   which admits prereleases more broadly.
 - **Adopted set.** The newest candidate runtime for which every package in
-  every profile fits: a registry package through some published version, a
-  local-checkout plugin through the manifest it already has. The set carries
-  the newest fitting published version of each registry package. A candidate
-  that leaves any installed package without a fit is rejected, never adopted by
-  dropping that package.
+  every profile, and every required plugin, fits: a registry package through
+  some published version, a local-checkout plugin through the manifest it
+  already has. The set carries the newest fitting published version of each
+  registry package. A candidate that leaves any of them without a fit is
+  rejected, never adopted by dropping that package.
 - **Plugin reference.** Every profile that holds a given registry plugin
   references it through the same registry requirement. A plugin from a local
   checkout keeps its local reference.
 - **Snapshot.** Taken before the first change: the installed runtime version
   and every profile's manifest and lock state.
+- **Launch profile.** The profile TeleClaude launches every DeepSeek session
+  with, which holds the TUI.
 - **Verification gate.** An adopted set is kept only when, run from a
   throwaway working directory, every profile starts with no startup diagnostic
-  and a composed configuration; the TUI profile reaches its ready composer
-  without the first-run guide; a prompt completes a turn without a turn error;
-  and a turn completes while a hook returns additional context.
+  and a composed configuration; the launch profile reaches its ready composer
+  without the first-run guide; and, in the launch profile, a prompt completes a
+  turn without a turn error and a turn completes while a hook returns
+  additional context.
+- **In use.** A DeepSeek runtime process is running, or another convergence is
+  in progress. Convergence changes nothing while the stack is in use.
 - **Outcome.** Exactly one of: upgraded, unchanged, rolled back, or rollback
-  incomplete. The report names the outcome and the evidence behind it.
+  incomplete. The report names the outcome and the evidence behind it; an
+  unchanged outcome names whether no newer set fits or the stack was in use.
 
 ### Use cases
 
@@ -87,7 +98,7 @@ And every plugin installed before the run is still installed in every profile th
 #### UC-DSC3: With no consistent newer set the machine stays put and says why
 
 ```gherkin
-Given no candidate runtime newer than the installed one keeps every installed package fitting
+Given no candidate runtime newer than the installed one keeps every installed package and every required plugin fitting
 When an operator runs the DeepSeek stack convergence
 Then the runtime, every profile manifest and every profile's lock state are unchanged
 And the operator's report names each blocking package, the requirement it declares, and the version that fails it
@@ -167,6 +178,23 @@ And every other installed package fits that candidate
 When an operator runs the DeepSeek stack convergence
 Then the runtime moves to that candidate
 And the local plugin stays installed through its local reference
+```
+
+#### UC-DSC12: A profile missing a required plugin gains it within the adopted set
+
+```gherkin
+Given a profile does not hold one of the required plugins
+When the DeepSeek stack convergence adopts a set in which that plugin fits
+Then the profile holds the plugin after the run, at its fitting version or through its local reference
+```
+
+#### UC-DSC13: Convergence waits while the stack is in use
+
+```gherkin
+Given a DeepSeek session is running, or another convergence is in progress
+When an operator or the installer runs the DeepSeek stack convergence
+Then the runtime, every profile manifest and every profile's lock state are unchanged
+And the operator's report states the outcome as unchanged because the stack was in use
 ```
 
 ## Known caveats
