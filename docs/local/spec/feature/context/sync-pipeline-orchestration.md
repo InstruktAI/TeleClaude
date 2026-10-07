@@ -18,19 +18,13 @@ publication derives and never validates: it resolves committed source, rebuilds
 derived indexes, and distributes runtime artifacts. It never reads a working
 tree.
 
-<!-- planned-change:startable-unattended-install -->
-
-Two entry points run the same routine:
-<!-- change:startable-unattended-install -->
 
 Three entry points run the same routine:
-<!-- /planned-change:startable-unattended-install -->
 
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
 
-<!-- planned:startable-unattended-install -->
 
 - **Installation** — the full installer publishes the installed checkout's home
   at the commit it installed, when that home does not already record it. A
@@ -43,7 +37,6 @@ Three entry points run the same routine:
   deployed documentation matches the installed code. It holds the same
   publication serialization, and the installer acts only on its result.
 
-<!-- /planned:startable-unattended-install -->
 <!-- planned-change:telec-sync-runs-maintenance -->
 
 - **`telec sync`** — an operator command that publishes the home at the
@@ -79,20 +72,12 @@ lifecycle before the delivery commit is made.
 
 The unit of publication is one home. For each home in scope:
 
-<!-- planned-change:startable-unattended-install -->
-
-1. **Resolve committed source** — read the canonical checkout's committed
-   `main` tip while holding publication serialization and materialize it; every
-   other publisher keeps its previously activated revision.
-
-<!-- change:startable-unattended-install -->
 
 1. **Resolve committed source** — while holding publication serialization,
    read the canonical checkout's committed `main` tip, or for the installation
    entry point the installed commit, and materialize it; every other publisher
    keeps its previously activated revision.
 
-<!-- /planned-change:startable-unattended-install -->
 
 2. **Build indexes** — derive the home's indexes from that snapshot and write
    portable derived indexes to the canonical checkout.
@@ -107,14 +92,6 @@ home is reported with its build error and with the commit gate's lint findings
 over that home's committed files. The findings explain a skip; they never
 select what publishes. `telec sync` exits non-zero when any home was skipped.
 
-<!-- planned-change:startable-unattended-install -->
-
-The tip is read under serialization, so a later publication never deploys an
-older tip than an earlier one. A commit range decides only whether publication
-is owed, never what is published. Maintenance publication of a home that
-already records the tip changes nothing; `telec sync` always rebuilds the homes
-in scope.
-<!-- change:startable-unattended-install -->
 
 For maintenance and `telec sync`, the tip is read under serialization, so a
 later publication never deploys an older tip than an earlier one. A commit range
@@ -123,7 +100,6 @@ publication of a home that already records the tip changes nothing; `telec sync`
 always rebuilds the homes in scope. The installation entry point deploys the
 installed commit, whichever generation the home records, and changes nothing
 when the home already records that commit.
-<!-- /planned-change:startable-unattended-install -->
 
 A Mother publication also refreshes the home entrypoints that inline the
 Mother's documentation.
@@ -310,7 +286,6 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
-<!-- planned:startable-unattended-install -->
 
 #### UC-SPO34: Installation publishes the commit it installed
 
@@ -323,7 +298,6 @@ And a deployed generation from a different commit is replaced by the installed c
 And the installer is told whether that home was published, already current, or skipped with its build error
 ```
 
-<!-- /planned:startable-unattended-install -->
 
 #### UC-SPO29: telec sync refuses outside a home
 

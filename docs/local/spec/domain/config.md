@@ -150,7 +150,6 @@ The behavioral contracts are
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
 
-<!-- planned:startable-unattended-install -->
 
 ### Installation registration and environment defaults
 
@@ -173,7 +172,6 @@ Installation submits two named operations to the config context:
 Neither operation passes configuration clearance: their caller is installation,
 not a configuration-surface caller.
 
-<!-- /planned:startable-unattended-install -->
 
 ### Personal MCP secret store
 

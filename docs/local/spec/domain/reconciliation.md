@@ -83,7 +83,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   that step's own failure handling. Post-commit maintenance reaches it through
   the full installer. No consumer reads the store, the secret or the record.
 
-<!-- planned:startable-unattended-install -->
 
 #### Fresh-machine bootstrap
 
@@ -126,7 +125,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Consumers.** The full installer runs every part; post-commit maintenance
   reaches them through it. No other surface establishes an owner.
 
-<!-- /planned:startable-unattended-install -->
 <!-- planned:dsh-compatible-upgrade -->
 
 #### DeepSeek stack convergence
@@ -206,11 +204,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
 - **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
 
-<!-- planned:startable-unattended-install -->
 
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 
-<!-- /planned:startable-unattended-install -->
 <!-- planned:dsh-compatible-upgrade -->
 
 - **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin

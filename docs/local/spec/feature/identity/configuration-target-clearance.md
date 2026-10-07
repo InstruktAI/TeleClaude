@@ -260,7 +260,6 @@ And no standing beyond the command's band is required
   configuration surface; it is not a boundary against that account's own file
   access.
 
-<!-- planned:startable-unattended-install -->
 
 - Installation establishes a machine's first platform administrator from its
   own input while no person is registered, and creates the checkout's
@@ -270,7 +269,6 @@ And no standing beyond the command's band is required
   person is registered, every addition passes this clearance, and changing
   environment settings stays a cleared operation.
 
-<!-- /planned:startable-unattended-install -->
 
 ## See Also
 

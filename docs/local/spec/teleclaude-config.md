@@ -530,7 +530,6 @@ environment_variables:
   - BACKUP_BACKUP_PREFIX
 ```
 
-<!-- planned:startable-unattended-install -->
 
 Installation inputs are not configuration values. `make install` reads them once
 and persists nothing under their names:
@@ -542,7 +541,6 @@ and persists nothing under their names:
   Both are set or neither is. Exactly one set is an incomplete seed and fails
   the installation.
 
-<!-- /planned:startable-unattended-install -->
 
 `teleclaude.runtime.config` is the one-shot owner for the controlled path env
 surface. It reads `TELECLAUDE_HOME` once at module import and freezes it into

@@ -12,15 +12,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:startable-unattended-install -->
-
-The setup wizard (`telec config wizard`) is the single TeleClaude-owned
-interactive surface where a human completes machine-wide setup. It is the
-guided experience the human sees after `make install` and before
-`make start` on a fresh machine, and the same surface they re-open later to
-inspect or change configuration without leaving the TeleClaude CLI.
-<!-- change:startable-unattended-install -->
-
 The setup wizard (`telec config wizard`) is the single TeleClaude-owned
 interactive surface where a human completes machine-wide setup. Installation
 already leaves a fresh machine startable and owned
@@ -28,7 +19,6 @@ already leaves a fresh machine startable and owned
 The wizard is where its owner then adds integrations and the rest of the
 machine's configuration, and the surface they re-open later to inspect or
 change configuration without leaving the TeleClaude CLI.
-<!-- /planned-change:startable-unattended-install -->
 
 The wizard owns every persisted value TeleClaude needs to come up cleanly:
 system identity (computer name), platform adapters (Telegram, Discord,
@@ -43,17 +33,6 @@ must own.
 
 The user experience holds five guarantees:
 
-<!-- planned-change:startable-unattended-install -->
-
-1. **Single setup surface.** No other TeleClaude-owned code path asks the
-   human for a TeleClaude-persisted value during normal setup. External
-   prompts owned by other systems — OS permission dialogs, OAuth browser
-   consent, WhatsApp QR pairing, agent CLI permission probes — are
-   acceptable exceptions; the wizard guides them but does not replace
-   them.
-
-<!-- change:startable-unattended-install -->
-
 1. **Single setup surface.** No other TeleClaude-owned code path asks the
    human for a TeleClaude-persisted value during normal setup, with one
    exception: installation asks a terminal operator for the machine's first
@@ -62,8 +41,6 @@ The user experience holds five guarantees:
    browser consent, WhatsApp QR pairing, agent CLI permission probes — are
    also acceptable exceptions; the wizard guides them but does not replace
    them.
-
-<!-- /planned-change:startable-unattended-install -->
 
 2. **Idempotent re-runs.** Re-opening the wizard loads the current
    persisted values as defaults, presents them masked where appropriate,
@@ -104,25 +81,6 @@ persisted surface the wizard writes is documented in
 
 #### UC-WIZ-1: Fresh-machine single-pass setup
 
-<!-- planned-change:startable-unattended-install -->
-
-```
-Given a fresh machine with no TeleClaude configuration
-And `make install` has completed non-interactively
-When the human runs `telec config wizard`
-Then the wizard opens with the at-a-glance status showing every section as `unconfigured`
-And the wizard guides the human through every section in turn
-  (system identity, adapters, people, notifications, environment,
-   agent environment access, release channel, permissions/preflight)
-And every value the human provides is written through the atomic config-write path
-When the human exits the wizard with all required sections completed
-And the human runs `make start`
-Then the runtime comes up cleanly
-And no further TeleClaude-owned interactive prompt is presented during the install→wizard→start path
-```
-
-<!-- change:startable-unattended-install -->
-
 ```
 Given a fresh machine with no TeleClaude configuration
 And `make install` has completed and established the machine's first administrator
@@ -137,8 +95,6 @@ And the human runs `make start`
 Then the runtime comes up cleanly
 And no further TeleClaude-owned interactive prompt is presented during the install→wizard→start path
 ```
-
-<!-- /planned-change:startable-unattended-install -->
 
 #### UC-WIZ-2: Every legacy `bin/init.sh` question is reachable
 
@@ -252,13 +208,8 @@ Note: `simplify-install-flow-cleanup` delivers the shell-side half of this contr
 
 ```
 Given a delivery where this feature spec is `actual`
-<!-- planned-change:startable-unattended-install -->
-When a human runs `make install`
-Then no interactive prompt collects a TeleClaude-persisted value
-<!-- change:startable-unattended-install -->
 When a human runs `make install`
 Then no interactive prompt collects a TeleClaude-persisted value other than the machine's first platform administrator, asked for only while no person is registered
-<!-- /planned-change:startable-unattended-install -->
 When a human runs `make start` on a configured machine
 Then the runtime starts without any interactive prompt
 When a human runs `make start` on a machine missing required configuration

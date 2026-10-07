@@ -1,8 +1,9 @@
 ---
-description: Installation takes a fresh machine to a startable, owned TeleClaude that serves its published documentation, with or without a person present — never blocking on input it was not given, never leaving the machine without an owner, and converging on every repeat run.
+description: Installation takes a fresh machine to a startable, owned TeleClaude that
+  serves its published documentation, with or without a person present — never blocking
+  on input it was not given, never leaving the machine without an owner, and converging
+  on every repeat run.
 visibility: internal
-delivered_by:
-  - startable-unattended-install
 ---
 
 # Fresh-Machine Bootstrap — Spec
