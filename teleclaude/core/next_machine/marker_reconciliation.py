@@ -20,7 +20,6 @@ from teleclaude.docs_reconcile import (
     ReconciliationPlan,
     ReconciliationWrite,
     apply_reconciliation_plan,
-    has_pending_material,
     iter_reconciliation_roots,
     plan_snippet_reconciliation,
     restore_reconciliation_plan,
@@ -747,15 +746,13 @@ def _normalized_plan(plan: ReconciliationPlan, formatted: dict[str, Reconciliati
     )
 
 
-def _format_current_delivery_writes(
+def _format_reconciliation_writes(
     project_root: Path,
     attempt: _FormatAttempt,
 ) -> None:
-    """Format current writes and capture snapshots in a finally block."""
+    """Format every reconciliation write and capture snapshots in a finally block."""
     selected_writes = {
-        write.relative_path: write
-        for write in attempt.plan.writes
-        if write.rendered_content is not None and not has_pending_material(write.rendered_content)
+        write.relative_path: write for write in attempt.plan.writes if write.rendered_content is not None
     }
     if not selected_writes:
         return
@@ -821,43 +818,38 @@ def _apply_commit_with_compensation(
     *,
     apply_plan: ReconciliationPlan | None = None,
     residue: tuple[_FoldResidue, ...] = (),
-    format_current_delivery: bool = False,
 ) -> _ApplyCommitOutcome:
     """Apply one plan and restore its sources if its commit step faults."""
     writes_to_apply = apply_plan or plan
     residue_paths = frozenset(evidence.write.relative_path for evidence in residue)
     staged_before = _preflight_plan(project_root, slug, plan, allowed_dirty_paths=residue_paths)
     apply_reconciliation_plan(writes_to_apply)
-    normalized_path_count = 0
-    if format_current_delivery:
-        format_attempt = _FormatAttempt(plan, writes_to_apply, residue, 0, FormatGateOutcome(), EMPTY_ERROR)
-        formatter_succeeded = False
-        try:
-            _format_current_delivery_writes(project_root, format_attempt)
-            plan = format_attempt.plan
-            writes_to_apply = format_attempt.apply_plan
-            residue = format_attempt.residue
-            normalized_path_count = format_attempt.normalized_path_count
-            outcome = format_attempt.outcome
-            snapshot_error = format_attempt.snapshot_error
-            if snapshot_error or outcome.failure_reason or outcome.failed_homes:
-                reason = (
-                    snapshot_error
-                    or outcome.failure_reason
-                    or FORMAT_FAILURE_REASON_TEMPLATE.format(
-                        homes=", ".join(str(home) for home in outcome.failed_homes)
-                    )
-                )
-                affected_write = plan.writes[0]
-                raise ReconciliationFault(slug, affected_write.relative_path, affected_write.line, reason)
-            formatter_succeeded = True
-        finally:
-            plan = format_attempt.plan
-            writes_to_apply = format_attempt.apply_plan
-            residue = format_attempt.residue
-            normalized_path_count = format_attempt.normalized_path_count
-            if not formatter_succeeded:
-                _restore_transaction_sources(project_root, slug, writes_to_apply, residue)
+    format_attempt = _FormatAttempt(plan, writes_to_apply, residue, 0, FormatGateOutcome(), EMPTY_ERROR)
+    formatter_succeeded = False
+    try:
+        _format_reconciliation_writes(project_root, format_attempt)
+        plan = format_attempt.plan
+        writes_to_apply = format_attempt.apply_plan
+        residue = format_attempt.residue
+        normalized_path_count = format_attempt.normalized_path_count
+        outcome = format_attempt.outcome
+        snapshot_error = format_attempt.snapshot_error
+        if snapshot_error or outcome.failure_reason or outcome.failed_homes:
+            reason = (
+                snapshot_error
+                or outcome.failure_reason
+                or FORMAT_FAILURE_REASON_TEMPLATE.format(homes=", ".join(str(home) for home in outcome.failed_homes))
+            )
+            affected_write = plan.writes[0]
+            raise ReconciliationFault(slug, affected_write.relative_path, affected_write.line, reason)
+        formatter_succeeded = True
+    finally:
+        plan = format_attempt.plan
+        writes_to_apply = format_attempt.apply_plan
+        residue = format_attempt.residue
+        normalized_path_count = format_attempt.normalized_path_count
+        if not formatter_succeeded:
+            _restore_transaction_sources(project_root, slug, writes_to_apply, residue)
     try:
         result = _commit_plan(project_root, slug, plan, staged_before, transition_id, residue)
     except ReconciliationFault:
@@ -936,7 +928,6 @@ def reconcile_lifecycle_markers(
             transition_id,
             apply_plan=apply_plan,
             residue=residue,
-            format_current_delivery=moment is MarkerMoment.DELIVER,
         )
         plan = commit_outcome.plan
         commit = commit_outcome.commit
