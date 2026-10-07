@@ -21,6 +21,8 @@ from hashlib import sha256
 from typing import Final, NotRequired, TypedDict
 
 _TRAILING_CONTINUATION_SPACE: Final[str] = " "
+_CLAUDE_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/81847?v=4"
+_CODEX_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/267193182?v=4"
 
 
 class AgentName(StrEnum):
@@ -311,7 +313,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             startup_signal=AgentStartupSignal.NATIVE,
             discord=DiscordAuthorPresentation(
                 alias="Claude",
-                avatar_url="https://avatars.githubusercontent.com/u/81847?v=4",
+                avatar_url=_CLAUDE_DISCORD_AVATAR_URL,
             ),
             git_identity="claude[bot] <209825114+claude[bot]@users.noreply.github.com>",
             protocol={
@@ -388,7 +390,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Codex",
-                avatar_url="https://avatars.githubusercontent.com/u/267193182?v=4",
+                avatar_url=_CODEX_DISCORD_AVATAR_URL,
             ),
             git_identity=(
                 "chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"
