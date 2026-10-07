@@ -178,9 +178,8 @@ Merges default event domain configurations into the global config
 if domains already have entries, preserving user customizations.
 
 Only `init` runs this step, and only for a caller whose platform role is
-member or administrator: it writes global configuration, which only a platform
-role reaches. For any other caller `init` converges the project and skips this
-step. `create` and `adopt` write nothing outside the project and the project
+member or administrator. For any other caller `init` converges the project and
+skips this step. `create` and `adopt` write nothing outside the project and the project
 registry, so they skip it.
 
 Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
