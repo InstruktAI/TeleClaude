@@ -15,6 +15,7 @@ from typing import Protocol
 
 RUNTIME_PACKAGE = "@deepseek-ai/dsh"
 RUNTIME_ENGINE = "dsh"
+LOCAL_REFERENCE_PREFIX = "file:"
 _RUNTIME_FAMILY_PREFIX = "@deepseek-ai/dsh-"
 _WORKSPACE_RANGE_PREFIX = "workspace:"
 _REGISTRY_REFERENCE_TEMPLATE = "{name}@{version}"
@@ -209,8 +210,13 @@ def _identifier_key(identifier: str) -> tuple[int, int, str]:
 
 
 def registry_reference(name: str, version: str) -> str:
-    """The exact registry reference a profile records for an adopted package version."""
+    """A registry package reference for an exact version or a requirement range."""
     return _REGISTRY_REFERENCE_TEMPLATE.format(name=name, version=version)
+
+
+def package_source(reference: str) -> PackageSource:
+    """The source named by a profile package reference."""
+    return PackageSource.LOCAL_CHECKOUT if reference.startswith(LOCAL_REFERENCE_PREFIX) else PackageSource.REGISTRY
 
 
 def select_adoption(stack: Stack, view: CompatibilityView) -> Adoption | tuple[Blocker, ...]:

@@ -12,6 +12,7 @@ from pathlib import Path
 from instrukt_ai_logging import configure_logging
 
 from teleclaude.core.reconciliation.deepseek_fit import (
+    LOCAL_REFERENCE_PREFIX,
     Blocker,
     CompatibilityView,
     DeepSeekStackError,
@@ -38,7 +39,6 @@ from teleclaude.install.deepseek_registry import RegistryCompatibilityView
 _HOOKS_PLUGIN = "dsh-hooks"
 _CHECKPOINT_PLUGIN = "dsh-checkpoint-rewind"
 _PLUGINS_DIRECTORY = "plugins"
-_LOCAL_REFERENCE_PREFIX = "file:"
 
 EXIT_CONVERGED = 0
 EXIT_OPERATION_ERROR = 1
@@ -125,7 +125,7 @@ def required_plugins() -> tuple[RequiredPlugin, ...]:
     """The plugins every profile must hold: the hook plugin from the local checkout, the checkpoint plugin from the registry."""
     checkout = harness_home() / _PLUGINS_DIRECTORY / _HOOKS_PLUGIN
     return (
-        RequiredPlugin(_HOOKS_PLUGIN, PackageSource.LOCAL_CHECKOUT, _LOCAL_REFERENCE_PREFIX + str(checkout)),
+        RequiredPlugin(_HOOKS_PLUGIN, PackageSource.LOCAL_CHECKOUT, LOCAL_REFERENCE_PREFIX + str(checkout)),
         RequiredPlugin(_CHECKPOINT_PLUGIN, PackageSource.REGISTRY, None),
     )
 

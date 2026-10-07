@@ -32,8 +32,8 @@ from teleclaude.core.agent_readiness import PromptDeliveryState, classify_prompt
 from teleclaude.core.reconciliation.deepseek_fit import DeepSeekStackError, ProfileStack, Stack
 from teleclaude.core.reconciliation.deepseek_stack import GateCheck, GateVerdict
 from teleclaude.core.tmux_bridge import PaneCursor, PaneObservation
-from teleclaude.install.deepseek_profiles import dsh_executable, harness_home
-from teleclaude.install.deepseek_registry import read_manifest
+from teleclaude.install.deepseek_profiles import DSH_PROFILE_FLAG, PROFILES_DIRECTORY, dsh_executable, harness_home
+from teleclaude.install.deepseek_registry import MANIFEST_FILENAME, read_manifest
 from teleclaude.install.dsh_hooks_install import DSH_TUI_DATA_DIRNAME, configure_dsh_tui_onboarding
 
 logger = get_logger(__name__)
@@ -43,16 +43,14 @@ _HARNESS_HOME_DIRECTORY = "home"
 _USER_HOME_DIRECTORY = "user"
 _WORKING_DIRECTORY = "work"
 _SIGNALS_DIRECTORY = "signals"
-_PROFILES_DIRECTORY = "profiles"
 _CREDENTIALS_FILE = ".credentials.yaml"
 _HOOKS_FILE = "hooks.json"
 _PRESETS_DIRECTORY = ".agent-presets"
 # The runtime keeps these data stores in the harness home (third-party/deepseek-dsh/runtime-surface, Harness
 # home); the gate's own home starts without them so no gate turn lands in the operator's sessions or history.
 _NOT_COPIED = frozenset(
-    {"sessions", "storages", ".history", "logs", _HOOKS_FILE, _PROFILES_DIRECTORY, _CREDENTIALS_FILE}
+    {"sessions", "storages", ".history", "logs", _HOOKS_FILE, PROFILES_DIRECTORY, _CREDENTIALS_FILE}
 )
-_MANIFEST_FILE = "package.json"
 _PROFILE_FIELD = "dsh"
 _PROFILE_SECTION = "profile"
 _PROFILES_PROTOCOL_FIELD: Final = "profiles"
@@ -89,7 +87,6 @@ _ENV_TRUSTED_TOOL = "TELECLAUDE_TRUSTED_TOOL"
 _ENV_TRUSTED_TOOL_ON = "1"
 _ENV_TERMINAL_SERVER = ("TMUX", "TMUX_PANE")
 _DUMP_CONFIG_FLAGS = ("--dump-config",)
-_PROFILE_FLAG = "--profile"
 _WEB_FLAGS = ("--no-open", "--port", "0", "--host", "127.0.0.1")
 _WEB_READY_PREFIX = "dsh web: "
 _HEADLESS_JSON_FLAG = "--json"
@@ -279,7 +276,7 @@ class DeepSeekGate:
 
     def _check_composed_config(self, profile: str) -> None:
         completed = self._run_bounded(
-            (str(dsh_executable()), _PROFILE_FLAG, profile, *_DUMP_CONFIG_FLAGS), _CONFIG_DUMP_TIMEOUT_SECONDS
+            (str(dsh_executable()), DSH_PROFILE_FLAG, profile, *_DUMP_CONFIG_FLAGS), _CONFIG_DUMP_TIMEOUT_SECONDS
         )
         if completed is None:
             raise _CheckFailed(
@@ -305,7 +302,7 @@ class DeepSeekGate:
 
     def _start_web(self, profile: str) -> None:
         stdout_path, stderr_path = self._app_logs(profile)
-        process = self._spawn((str(dsh_executable()), _PROFILE_FLAG, profile, *_WEB_FLAGS), stdout_path, stderr_path)
+        process = self._spawn((str(dsh_executable()), DSH_PROFILE_FLAG, profile, *_WEB_FLAGS), stdout_path, stderr_path)
         ready = _wait_until(
             lambda: _WEB_READY_PREFIX in _read_text(stdout_path, GateCheck.PROFILE_START) or process.poll() is not None,
             _WEB_READY_TIMEOUT_SECONDS,
@@ -321,7 +318,7 @@ class DeepSeekGate:
 
     def _start_headless(self, profile: str) -> None:
         completed = self._run_bounded(
-            (str(dsh_executable()), _PROFILE_FLAG, profile, _HEADLESS_JSON_FLAG, _HEADLESS_TASK),
+            (str(dsh_executable()), DSH_PROFILE_FLAG, profile, _HEADLESS_JSON_FLAG, _HEADLESS_TASK),
             _HEADLESS_TIMEOUT_SECONDS,
         )
         if completed is None:
@@ -351,7 +348,7 @@ class DeepSeekGate:
 
     def _start_other(self, profile: str) -> None:
         stdout_path, stderr_path = self._app_logs(profile)
-        process = self._spawn((str(dsh_executable()), _PROFILE_FLAG, profile), stdout_path, stderr_path)
+        process = self._spawn((str(dsh_executable()), DSH_PROFILE_FLAG, profile), stdout_path, stderr_path)
         exited = _wait_until(lambda: process.poll() is not None, _OTHER_APP_SETTLE_SECONDS)
         if exited:
             raise _CheckFailed(
@@ -625,14 +622,14 @@ def _launch_profile_name() -> str:
 
 def _profile_in(arguments: Sequence[str]) -> str | None:
     for index, argument in enumerate(arguments[:-1]):
-        if argument == _PROFILE_FLAG:
+        if argument == DSH_PROFILE_FLAG:
             return arguments[index + 1]
     return None
 
 
 def _build_harness_home(operator_home: Path, gate_home: Path) -> None:
     """Share the operator's profiles and credentials; copy the remaining configuration; start the data stores empty."""
-    (gate_home / _PROFILES_DIRECTORY).symlink_to(operator_home / _PROFILES_DIRECTORY)
+    (gate_home / PROFILES_DIRECTORY).symlink_to(operator_home / PROFILES_DIRECTORY)
     credentials = operator_home / _CREDENTIALS_FILE
     if credentials.exists():
         (gate_home / _CREDENTIALS_FILE).symlink_to(credentials)
@@ -691,7 +688,7 @@ def _hook_context_decision(token: str) -> str:
 
 def _app_kind(profile: str) -> AppKind:
     """The app kind a profile declares through its bundle list; the first recognized app bundle decides."""
-    manifest_path = harness_home() / _PROFILES_DIRECTORY / profile / _MANIFEST_FILE
+    manifest_path = harness_home() / PROFILES_DIRECTORY / profile / MANIFEST_FILENAME
     manifest = read_manifest(manifest_path)
     section = manifest.get(_PROFILE_FIELD)
     profile_section = section.get(_PROFILE_SECTION) if isinstance(section, dict) else None

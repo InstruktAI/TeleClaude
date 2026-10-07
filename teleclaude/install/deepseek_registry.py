@@ -20,10 +20,14 @@ from urllib.parse import urlparse
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.reconciliation.deepseek_fit import (
+    LOCAL_REFERENCE_PREFIX,
     RUNTIME_ENGINE,
     RUNTIME_PACKAGE,
     DeepSeekStackError,
     PackageRequirements,
+    PackageSource,
+    package_source,
+    registry_reference,
 )
 
 logger = get_logger(__name__)
@@ -34,15 +38,14 @@ _NPM_GET = "get"
 _NPM_REGISTRY_KEY = "registry"
 _NPM_ROOT = "root"
 _NPM_PREFIX = "prefix"
-_NPM_GLOBAL_FLAG = "-g"
+NPM_GLOBAL_FLAG = "-g"
 _NPM_VIEW = "view"
 _NPM_VERSION_FIELD = "version"
 _NPM_JSON_FLAG = "--json"
-_NPM_INSTALL = "install"
+NPM_INSTALL_COMMAND = "install"
 _NPM_PREFIX_FLAG = "--prefix"
 _NPM_STAGE_FLAGS = ("--ignore-scripts", "--no-audit", "--no-fund")
 _NPM_NO_MATCH_CODE = "E404"
-_NPM_QUERY_TEMPLATE = "{name}@{range}"
 _NPM_QUERY_FAILURE_TEMPLATE = "npm query {query} failed: {detail}"
 _NPM_UNAVAILABLE = "npm is not installed or not on PATH"
 _NPM_TIMEOUT_TEMPLATE = "npm {action} timed out after {seconds} seconds"
@@ -67,9 +70,8 @@ _PACKUMENT_VERSIONS = "versions"
 _MANIFEST_PEERS = "peerDependencies"
 _MANIFEST_ENGINES = "engines"
 _MANIFEST_VERSION = "version"
-_MANIFEST_FILE = "package.json"
-_NODE_MODULES = "node_modules"
-_LOCAL_REFERENCE_PREFIX = "file:"
+MANIFEST_FILENAME = "package.json"
+NODE_MODULES_DIRECTORY = "node_modules"
 _LOCAL_REFERENCE_TEMPLATE = "Local plugin reference {reference} is not an absolute file: path"
 _MANIFEST_UNREADABLE_TEMPLATE = "Cannot read manifest {path}: {error}"
 _STAGE_FAILURE_TEMPLATE = "Staging runtime {version} to read its bundled libraries failed: {detail}"
@@ -77,7 +79,6 @@ _STAGE_DIRECTORY = "candidates"
 _JSON_ENCODING = "utf-8"
 _ERROR_KEY = "error"
 _ERROR_CODE_KEY = "code"
-_PACKAGE_VERSION_LABEL = "{name}@{version}"
 _FIELD_LABEL = "{label} {key}"
 _UNEXPECTED_JSON_TEMPLATE = "{what} is {kind}, expected {expected}"
 _EXPECTED_OBJECT = "an object"
@@ -126,12 +127,12 @@ def run_npm(arguments: Sequence[str], *, timeout_seconds: int) -> NpmResult:
 
 def npm_global_root() -> Path:
     """The directory npm installs global packages into."""
-    return Path(_npm_path_output((_NPM_ROOT, _NPM_GLOBAL_FLAG)))
+    return Path(_npm_path_output((_NPM_ROOT, NPM_GLOBAL_FLAG)))
 
 
 def npm_global_prefix() -> Path:
     """The prefix npm links global executables under."""
-    return Path(_npm_path_output((_NPM_PREFIX, _NPM_GLOBAL_FLAG)))
+    return Path(_npm_path_output((_NPM_PREFIX, NPM_GLOBAL_FLAG)))
 
 
 def installed_runtime_directory() -> Path:
@@ -174,12 +175,12 @@ class RegistryCompatibilityView:
 
     def local_requirements(self, reference: str) -> PackageRequirements:
         """The peer and runtime-engine ranges in the manifest a ``file:`` reference points at."""
-        if not reference.startswith(_LOCAL_REFERENCE_PREFIX):
+        if package_source(reference) is not PackageSource.LOCAL_CHECKOUT:
             raise DeepSeekStackError(_LOCAL_REFERENCE_TEMPLATE.format(reference=reference))
-        path = Path(reference.removeprefix(_LOCAL_REFERENCE_PREFIX))
+        path = Path(reference.removeprefix(LOCAL_REFERENCE_PREFIX))
         if not path.is_absolute():
             raise DeepSeekStackError(_LOCAL_REFERENCE_TEMPLATE.format(reference=reference))
-        return _requirements_of(read_manifest(path / _MANIFEST_FILE), reference)
+        return _requirements_of(read_manifest(path / MANIFEST_FILENAME), reference)
 
     def satisfies(self, requirement_name: str, version: str, requirement_range: str) -> bool:
         """Whether the registry resolves the range to include the version."""
@@ -189,9 +190,9 @@ class RegistryCompatibilityView:
         """The version of a package the candidate runtime supplies, or ``None`` when it supplies none."""
         runtime_directory = self._runtime_directory(candidate)
         for directory in (runtime_directory, *runtime_directory.parents):
-            if directory.name == _NODE_MODULES:
+            if directory.name == NODE_MODULES_DIRECTORY:
                 continue
-            manifest = directory / _NODE_MODULES / requirement_name / _MANIFEST_FILE
+            manifest = directory / NODE_MODULES_DIRECTORY / requirement_name / MANIFEST_FILENAME
             if manifest.is_file():
                 return string_field(read_manifest(manifest), _MANIFEST_VERSION, str(manifest))
         return None
@@ -202,7 +203,7 @@ class RegistryCompatibilityView:
         if known is not None:
             return known
         installed = installed_runtime_directory()
-        installed_manifest = installed / _MANIFEST_FILE
+        installed_manifest = installed / MANIFEST_FILENAME
         if (
             installed_manifest.is_file()
             and string_field(read_manifest(installed_manifest), _MANIFEST_VERSION, str(installed_manifest)) == candidate
@@ -218,24 +219,24 @@ class RegistryCompatibilityView:
         logger.info(_LOG_STAGE_START, version=candidate, prefix=str(prefix))
         result = run_npm(
             (
-                _NPM_INSTALL,
+                NPM_INSTALL_COMMAND,
                 _NPM_PREFIX_FLAG,
                 str(prefix),
                 *_NPM_STAGE_FLAGS,
-                _NPM_QUERY_TEMPLATE.format(name=RUNTIME_PACKAGE, range=candidate),
+                registry_reference(RUNTIME_PACKAGE, candidate),
             ),
             timeout_seconds=_NPM_STAGE_TIMEOUT_SECONDS,
         )
         if result.returncode != 0:
             raise DeepSeekStackError(_STAGE_FAILURE_TEMPLATE.format(version=candidate, detail=result.detail))
-        return prefix / _NODE_MODULES / RUNTIME_PACKAGE
+        return prefix / NODE_MODULES_DIRECTORY / RUNTIME_PACKAGE
 
     def _satisfying_versions(self, name: str, requirement_range: str) -> frozenset[str]:
         key = (name, requirement_range)
         known = self._satisfying.get(key)
         if known is not None:
             return known
-        query = _NPM_QUERY_TEMPLATE.format(name=name, range=requirement_range)
+        query = registry_reference(name, requirement_range)
         result = run_npm(
             (_NPM_VIEW, query, _NPM_VERSION_FIELD, _NPM_JSON_FLAG), timeout_seconds=_NPM_QUERY_TIMEOUT_SECONDS
         )
@@ -252,7 +253,7 @@ class RegistryCompatibilityView:
         if not isinstance(versions, dict):
             raise DeepSeekStackError(_REGISTRY_SHAPE_TEMPLATE.format(name=name, detail=_PACKUMENT_VERSIONS))
         parsed = {
-            version: _requirements_of(manifest, _PACKAGE_VERSION_LABEL.format(name=name, version=version))
+            version: _requirements_of(manifest, registry_reference(name, version))
             for version, manifest in versions.items()
         }
         self._packuments[name] = parsed

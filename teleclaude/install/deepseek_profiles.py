@@ -22,12 +22,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.reconciliation.deepseek_fit import (
     RUNTIME_PACKAGE,
     DeepSeekStackError,
-    PackageSource,
     PlannedPackage,
     ProfileStack,
     RequiredPlugin,
     Stack,
     StackPackage,
+    package_source,
     registry_reference,
 )
 from teleclaude.core.reconciliation.deepseek_stack import (
@@ -36,6 +36,10 @@ from teleclaude.core.reconciliation.deepseek_stack import (
     StackDifference,
 )
 from teleclaude.install.deepseek_registry import (
+    MANIFEST_FILENAME,
+    NODE_MODULES_DIRECTORY,
+    NPM_GLOBAL_FLAG,
+    NPM_INSTALL_COMMAND,
     NPM_INSTALL_TIMEOUT_SECONDS,
     installed_runtime_directory,
     npm_global_prefix,
@@ -50,26 +54,20 @@ logger = get_logger(__name__)
 _DSH_HOME_VARIABLE = "DSH_HOME"
 _UNSET_HOME = ""
 _DEFAULT_HOME_DIRECTORY = ".dsh"
-_PROFILES_DIRECTORY = "profiles"
-_MANIFEST_FILE = "package.json"
+PROFILES_DIRECTORY = "profiles"
 _PNPM_LOCK_FILE = "pnpm-lock.yaml"
 _EXEMPTION_FILE = "compatibility.json"
-_RESTORE_COMPARED_FILES = (_MANIFEST_FILE, _PNPM_LOCK_FILE, _EXEMPTION_FILE)
-_NODE_MODULES = "node_modules"
+_RESTORE_COMPARED_FILES = (MANIFEST_FILENAME, _PNPM_LOCK_FILE, _EXEMPTION_FILE)
 _DEPENDENCIES_FIELD = "dependencies"
 _VERSION_FIELD = "version"
 _BIN_NAME = "dsh"
-_LOCAL_REFERENCE_PREFIX = "file:"
 _EXECUTABLES_DIRECTORY = "bin"
 _PLUGIN_COMMAND = "plugin"
-_PROFILE_FLAG = "--profile"
+DSH_PROFILE_FLAG = "--profile"
 _ADD_COMMAND = "add"
-_NPM_INSTALL = "install"
 _NPM_UNINSTALL = "uninstall"
-_NPM_GLOBAL_FLAG = "-g"
 _APPLY_TIMEOUT_SECONDS = 900
 _SNAPSHOT_DIRECTORY = "snapshot"
-_SNAPSHOT_PROFILES_DIRECTORY = "profiles"
 _LOCK_DIGEST_CHARS = 16
 _LOCK_FILE_TEMPLATE = "teleclaude-deepseek-stack-{digest}.lock"
 _LOCK_FILE_MODE = 0o600
@@ -135,7 +133,7 @@ class DeepSeekProfileEffects:
             try:
                 shutil.copytree(
                     _profile_directory(profile.name),
-                    snapshot / _SNAPSHOT_PROFILES_DIRECTORY / profile.name,
+                    snapshot / PROFILES_DIRECTORY / profile.name,
                     symlinks=True,
                 )
             except (OSError, shutil.Error) as error:
@@ -146,10 +144,7 @@ class DeepSeekProfileEffects:
 
     def install_runtime(self, version: str) -> None:
         """Install the exact runtime version globally."""
-        spec = registry_reference(RUNTIME_PACKAGE, version)
-        result = run_npm((_NPM_INSTALL, _NPM_GLOBAL_FLAG, spec), timeout_seconds=NPM_INSTALL_TIMEOUT_SECONDS)
-        if result.returncode != 0:
-            raise DeepSeekStackError(_RUNTIME_INSTALL_FAILURE_TEMPLATE.format(spec=spec, detail=result.detail))
+        _set_runtime(version)
 
     def apply_profile(self, profile: str, packages: tuple[PlannedPackage, ...]) -> None:
         """Add each package to the profile through the runtime's plugin manager, at its exact reference."""
@@ -160,7 +155,7 @@ class DeepSeekProfileEffects:
             # The runtime's plugin manager owns profile installation (pnpm underneath); no Python API exists.
             # stdin is closed so no vendor prompt, a compatibility exemption included, can be accepted.
             completed = subprocess.run(
-                (str(executable), _PLUGIN_COMMAND, _PROFILE_FLAG, profile, _ADD_COMMAND, *references),
+                (str(executable), _PLUGIN_COMMAND, DSH_PROFILE_FLAG, profile, _ADD_COMMAND, *references),
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 check=False,
@@ -205,7 +200,7 @@ class DeepSeekProfileEffects:
 
     def _restore_profiles(self, snapshot: SnapshotRef) -> list[StackDifference]:
         differences: list[StackDifference] = []
-        snapshot_profiles = Path(snapshot.location) / _SNAPSHOT_PROFILES_DIRECTORY
+        snapshot_profiles = Path(snapshot.location) / PROFILES_DIRECTORY
         if not snapshot_profiles.is_dir():
             return differences
         for recorded in sorted(snapshot_profiles.iterdir()):
@@ -231,14 +226,14 @@ class DeepSeekProfileEffects:
 
 
 def _set_runtime(version: str | None) -> None:
-    """Reinstall the recorded runtime version, or remove the runtime when none was installed."""
+    """Install an exact runtime version, or remove the runtime when no version is given."""
     if version is not None:
         spec = registry_reference(RUNTIME_PACKAGE, version)
-        result = run_npm((_NPM_INSTALL, _NPM_GLOBAL_FLAG, spec), timeout_seconds=NPM_INSTALL_TIMEOUT_SECONDS)
+        result = run_npm((NPM_INSTALL_COMMAND, NPM_GLOBAL_FLAG, spec), timeout_seconds=NPM_INSTALL_TIMEOUT_SECONDS)
         if result.returncode != 0:
             raise DeepSeekStackError(_RUNTIME_INSTALL_FAILURE_TEMPLATE.format(spec=spec, detail=result.detail))
         return
-    result = run_npm((_NPM_UNINSTALL, _NPM_GLOBAL_FLAG, RUNTIME_PACKAGE), timeout_seconds=NPM_INSTALL_TIMEOUT_SECONDS)
+    result = run_npm((_NPM_UNINSTALL, NPM_GLOBAL_FLAG, RUNTIME_PACKAGE), timeout_seconds=NPM_INSTALL_TIMEOUT_SECONDS)
     if result.returncode != 0:
         raise DeepSeekStackError(_RUNTIME_UNINSTALL_FAILURE_TEMPLATE.format(name=RUNTIME_PACKAGE, detail=result.detail))
 
@@ -248,23 +243,23 @@ def _file_bytes(path: Path) -> bytes | None:
 
 
 def _profile_directory(name: str) -> Path:
-    return harness_home() / _PROFILES_DIRECTORY / name
+    return harness_home() / PROFILES_DIRECTORY / name
 
 
 def _installed_runtime_version() -> str | None:
-    manifest_path = installed_runtime_directory() / _MANIFEST_FILE
+    manifest_path = installed_runtime_directory() / MANIFEST_FILENAME
     if not manifest_path.is_file():
         return None
     return string_field(read_manifest(manifest_path), _VERSION_FIELD, str(manifest_path))
 
 
 def _read_profiles() -> tuple[ProfileStack, ...]:
-    profiles_directory = harness_home() / _PROFILES_DIRECTORY
+    profiles_directory = harness_home() / PROFILES_DIRECTORY
     if not profiles_directory.is_dir():
         return ()
     profiles: list[ProfileStack] = []
     for directory in sorted(profiles_directory.iterdir()):
-        manifest_path = directory / _MANIFEST_FILE
+        manifest_path = directory / MANIFEST_FILENAME
         if not manifest_path.is_file():
             continue
         dependencies = string_mapping(read_manifest(manifest_path).get(_DEPENDENCIES_FIELD), str(manifest_path))
@@ -272,7 +267,7 @@ def _read_profiles() -> tuple[ProfileStack, ...]:
             ProfileStack(
                 directory.name,
                 tuple(
-                    StackPackage(name, _source_of(reference), reference, _installed_version(directory, name))
+                    StackPackage(name, package_source(reference), reference, _installed_version(directory, name))
                     for name, reference in sorted(dependencies.items())
                 ),
             )
@@ -280,12 +275,8 @@ def _read_profiles() -> tuple[ProfileStack, ...]:
     return tuple(profiles)
 
 
-def _source_of(reference: str) -> PackageSource:
-    return PackageSource.LOCAL_CHECKOUT if reference.startswith(_LOCAL_REFERENCE_PREFIX) else PackageSource.REGISTRY
-
-
 def _installed_version(profile_directory: Path, name: str) -> str | None:
-    manifest_path = profile_directory / _NODE_MODULES / name / _MANIFEST_FILE
+    manifest_path = profile_directory / NODE_MODULES_DIRECTORY / name / MANIFEST_FILENAME
     if not manifest_path.is_file():
         return None
     return string_field(read_manifest(manifest_path), _VERSION_FIELD, str(manifest_path))
