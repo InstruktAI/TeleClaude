@@ -168,9 +168,9 @@ Then the result includes the post-commit review-gate surfacing action
 And that action instructs the authoring session to dispatch the commit(s) to independent review automatically
 And waits for REVIEW COMPLETE before reporting completion
 <!-- change:commit-review-stamp -->
-And that action names the commit(s) as review candidates and states that the authoring session decides whether each owes independent review
-And directs a commit that owes review to an independent reviewer the session dispatches automatically, waiting for its verdict before reporting completion
-And directs a commit that owes none to the author's discard, `telec code stamp <sha> --verdict approve --reason <text>`
+And that action names the commit(s) as review candidates and states that the authoring session decides whether each owes independent review by what the commit set out to do
+And directs a commit through which the session wrote new or changed code or documentation content to an independent reviewer the session dispatches automatically, waiting for its verdict before reporting completion
+And directs a commit through which the session wrote neither — a removal, a merge of already-reviewed work, a validation or other mechanical repair — to the author's discard, `telec code stamp <sha> --verdict approve --reason <text>`
 <!-- /planned-change:commit-review-stamp -->
 And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `general/policy/commits`
 And the authored-main-commit marker is consumed

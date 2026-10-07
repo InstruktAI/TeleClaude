@@ -124,12 +124,15 @@ All Committizen types are allowed.
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. The post-commit gate
   names the commits that are review candidates; the authoring session decides
-  for each whether independent review is owed. A commit that changes a
-  contract, a behavior, a process, or what a governed snippet or agent artifact
-  says goes to an independent reviewer, dispatched automatically, and the
-  author waits for the verdict. A commit that changes none of these — a
-  removal, a mechanical correction — is discarded as a candidate: the author
-  stamps it `approve` with `telec code stamp` and a one-line reason. Discarding
+  for each whether independent review is owed, by what the commit set out to
+  do. A commit through which the author wrote new or changed code, or new or
+  changed content in a governed snippet or agent artifact, goes to an
+  independent reviewer, dispatched automatically, and the author waits for the
+  verdict. A commit through which the author wrote neither — a removal, a merge
+  of work already reviewed where it was written, a validation or other
+  mechanical repair — is discarded as a candidate: the author stamps it
+  `approve` with `telec code stamp` and a one-line reason. Which paths the diff
+  touches names the candidate; it never decides that review is owed. Discarding
   is not reviewing; it records that no review is owed, never that the change
   is correct. Review is technical stewardship, never a human ratification step.
 - Every commit-review outcome is a stamp on the commits it covers. The reviewer
