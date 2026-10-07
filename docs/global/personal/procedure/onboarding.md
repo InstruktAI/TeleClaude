@@ -70,23 +70,11 @@ record of what was completed so a later run continues rather than restarts.
    as characteristically them. This is reading, and it happens once. Nothing is
    written to the workspace from it yet.
 
-<!-- planned-change:personal-knowledge-taxonomy -->
-
 7. **Propose, and let them correct.** Show the identity registry and the
    candidate examples as a proposal in one pass, not a document at a time. They
    confirm, cut, and correct. What survives is authored in their person-owned
    documentation taxonomy, in their words rather than a summary of them.
    Disclosure requires their explicit choice under `personal/spec/person-knowledge`.
-
-<!-- change:personal-knowledge-taxonomy -->
-
-7. **Propose, and let them correct.** Show the identity registry and the
-   candidate examples as a proposal in one pass, not a document at a time. They
-   confirm, cut, and correct. What survives is authored in their local taxonomy,
-   in their words rather than a summary of them. Disclosure into their global
-   subtree requires their explicit choice under `personal/spec/person-knowledge`.
-
-<!-- /planned-change:personal-knowledge-taxonomy -->
 
 8. **Record what this run completed** in the person's own data, so a later run
    can offer the difference rather than the whole. When a run finds steps

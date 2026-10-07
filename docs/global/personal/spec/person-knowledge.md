@@ -18,28 +18,6 @@ document store.
 
 ## Canonical fields
 
-<!-- planned:personal-knowledge-taxonomy -->
-
-### Location and audience
-
-| Person-home subtree | Contents and reach                                                                                                                                                                                                                            |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/global/`      | Knowledge the person discloses for retrieval outside their home. Public snippets can answer visitors to a public help desk of a company the person belongs to; private snippets serve eligible internal users under the role-access contract. |
-| `docs/local/`       | Personal context and instructions supplied to an agent operating in that person's home. These snippets are indexed locally rather than published into the global corpus.                                                                      |
-
-Visibility follows `general/spec/snippet-authoring-schema`; wider disclosure is
-the person's deliberate choice (`general/policy/human-contract`). Visibility and
-location have separate meanings: locality describes where a snippet is served,
-while the caller's identity and role determine its permitted audience. The home
-agent's local baseline supplies its required context. Retrieval from another
-location remains subject to the same audience contract.
-
-Mail-derived private context, correspondent details, voice examples, and
-assistant instructions belong in the local subtree unless the person explicitly
-discloses particular material. The publication boundary is not authority to
-operate mail or calendars (`personal/policy/assistant-conduct`).
-<!-- /planned:personal-knowledge-taxonomy -->
-
 ### Discovery and ownership
 
 Retrieve person-owned knowledge through `telec docs`, explicitly selecting the
@@ -48,6 +26,11 @@ person's scope and identity, under `general/policy/context-retrieval`.
 Person-specific snippets state the person's facts, choices, and extensions;
 shared rules are cited from their owners
 (`general/policy/referencing-doc-snippets`).
+
+A person's knowledge is authored in the local half of their documentation
+(`docs/local/`), which is private to them (`general/policy/artifact-scope`).
+Material reaches the published half (`docs/global/`) only when the person
+explicitly discloses it (`general/policy/human-contract`).
 
 ### Personal contents
 

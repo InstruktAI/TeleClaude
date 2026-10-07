@@ -92,23 +92,12 @@ rather than worked around.
 
 ### Standing instructions
 
-<!-- planned-change:personal-knowledge-taxonomy -->
-
 "Always", "never again", "yes — and always" is an instruction like any other: do
 it now, and record it in the person's own documentation taxonomy under
 `personal/spec/person-knowledge` so it keeps holding. Recording is
 part of executing, not a separate duty. Nothing else is watched for — an agent
 does not scan a conversation for preferences to extract, and does not turn an
 aside into doctrine.
-<!-- change:personal-knowledge-taxonomy -->
-
-"Always", "never again", "yes — and always" is an instruction like any other: do
-it now, and record it in the person's local taxonomy under
-`personal/spec/person-knowledge` so it keeps holding. Recording is
-part of executing, not a separate duty. Nothing else is watched for — an agent
-does not scan a conversation for preferences to extract, and does not turn an
-aside into doctrine.
-<!-- /planned-change:personal-knowledge-taxonomy -->
 
 ### Instructions never conflict
 

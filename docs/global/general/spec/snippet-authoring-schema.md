@@ -54,26 +54,11 @@ Frontmatter (required, authored):
 
 Frontmatter (optional, authored):
 
-<!-- planned-change:personal-knowledge-taxonomy -->
-
 - `visibility` — access classification: `public` or `internal`. Defaults to
   `internal` when omitted. It gates a caller who holds no declared relationship
   to the snippet's tier: such a caller sees only `public` snippets. A caller who
   holds a relationship to that tier reads it in full, and a platform admin reads
   every tier in full.
-
-<!-- change:personal-knowledge-taxonomy -->
-
-- `visibility` — access classification. Person-owned snippets use `public` or
-  `private`, with `visibility: private` explicitly authored on new snippets in
-  both halves of the person's documentation tree. `public` identifies approved
-  disclosure; `private` requires the eligible internal relationship and role.
-  A caller with public-only access sees only public snippets. Existing shared,
-  project, and company snippets retain their `public`/`internal` vocabulary and
-  internal default. Locality and audience are separate: visibility does not
-  publish a local snippet or confer operational authority over its owner.
-
-<!-- /planned-change:personal-knowledge-taxonomy -->
 
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of its domain's generated bundle, or of the project's generated AGENTS.md for a project's own procedure, for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 
@@ -160,24 +145,10 @@ half is readable only by that person and the system principal
 - `docs/global/{domain}/{taxonomy}/` — a published domain's documentation (e.g., `general`, `sdlc`).
 - `docs/local/{taxonomy}/` — project-scoped documentation.
 
-<!-- planned-change:personal-knowledge-taxonomy -->
-
 - `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` and
   `~/.teleclaude/people/{person}/docs/local/{taxonomy}/` — a person's published
   and local documentation. Path-derived identity carries the tier and the
   person: `people/{person}/{taxonomy}/{rest}`.
-
-<!-- change:personal-knowledge-taxonomy -->
-
-- `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` — a person's disclosed
-  documentation, published with that person's ownership and visibility.
-- `~/.teleclaude/people/{person}/docs/local/{taxonomy}/` — a person's local
-  documentation, indexed in the home rather than globally published. Its local
-  baseline supplies context to the home agent. Both halves follow the same
-  taxonomy and frontmatter schema; knowledge contents and disclosure boundaries
-  are owned by `personal/spec/person-knowledge`.
-
-<!-- /planned-change:personal-knowledge-taxonomy -->
 
 - `~/.teleclaude/companies/{company}/docs/global/{taxonomy}/` and
   `~/.teleclaude/companies/{company}/docs/local/{taxonomy}/` — a company's
@@ -232,17 +203,7 @@ do not accumulate by default.
   prefix `local`. They are reserved: no published domain carries one of these
   names.
 
-<!-- planned-change:personal-knowledge-taxonomy -->
-
 - `visibility`: public, internal. Default: `internal`.
-
-<!-- change:personal-knowledge-taxonomy -->
-
-- `visibility`: person-owned snippets use `public` or `private`, defaulting to
-  explicitly authored `private`; other existing scopes use `public` or
-  `internal`, defaulting to `internal`.
-
-<!-- /planned-change:personal-knowledge-taxonomy -->
 
 ## Known caveats
 
