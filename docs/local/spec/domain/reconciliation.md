@@ -201,12 +201,15 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   packages that must fit every candidate, and the adopted set plans the launch
   profile with the TUI and every required plugin. A planned creation is a change
   on its own, so a stack whose runtime and packages are already the newest that
-  fit still adopts the set that creates it. Profiles that exist, the launch
-  profile among them, are planned exactly as before; no other profile is ever
+  fit still adopts the set that creates it. A profile that exists, the launch
+  profile among them, is planned by the same fit and reference rules as every
+  installed profile, and creation never applies to it; no other profile is ever
   planned into existence.
-- **Infrastructure.** The launch profile is created by adding its planned
-  packages through that profile's plugin manager, which initializes a profile
-  that does not exist. The operation writes no profile file of its own.
+- **Infrastructure.** The launch profile is created only by adding its planned
+  packages through that profile's plugin manager, relying on the plugin
+  manager's initialization of a missing profile as
+  `third-party/deepseek-dsh/runtime-surface` documents it. The operation writes
+  no profile file of its own.
 - **Snapshot and restore.** The snapshot records which profiles existed. A
   restore removes a profile the run created; a created profile that cannot be
   removed is one of the differences a rollback-incomplete outcome names.
