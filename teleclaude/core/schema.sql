@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP,
-    terminal_size TEXT DEFAULT '80x24',
     project_path TEXT,
     subdir TEXT,
     config_subject TEXT,

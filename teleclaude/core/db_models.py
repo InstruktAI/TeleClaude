@@ -36,7 +36,6 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
-    terminal_size: str | None = "80x24"
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
