@@ -191,8 +191,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   run the same operation on demand through the repository's make surface.
   Post-commit maintenance reaches it through the full installer.
 
-<!-- planned:deepseek-launch-profile-convergence -->
-
 #### DeepSeek launch-profile creation
 
 - **Decision boundary (core).** Whether the launch profile exists is part of
@@ -215,8 +213,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   removed is one of the differences a rollback-incomplete outcome names.
 - **Published result.** The result of a run that keeps a created launch
   profile names that profile as created.
-
-<!-- /planned:deepseek-launch-profile-convergence -->
 
 #### Use cases (index of feature specs)
 
