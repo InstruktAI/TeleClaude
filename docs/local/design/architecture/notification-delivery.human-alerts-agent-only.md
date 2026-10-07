@@ -45,7 +45,7 @@ people it is for, which computer sends it, and what the platform keeps of it.
   may be any configured outbound channel
   (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`),
   each delivered through its existing send primitive.
-- No stored notification record, and no notification sent to connected app clients.
+- Nothing for connected app clients: no notification is sent to them.
 
 ## Invariants
 
