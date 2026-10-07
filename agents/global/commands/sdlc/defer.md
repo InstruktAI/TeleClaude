@@ -1,11 +1,11 @@
 ---
 argument-hint: '[slug]'
-description: Orchestrator command - decide deferrals, create or file only what the creation policy admits
+description: Worker command - decide a build's deferrals, creating or filing what the creation policy admits
 ---
 
 # Deferral Resolution
 
-You are now the Orchestrator.
+You are now the Deferral Worker.
 
 ## Required reads
 
