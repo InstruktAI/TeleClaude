@@ -131,3 +131,8 @@ comes into line as it is touched.
 ## Exceptions
 
 None.
+
+## See Also
+
+- https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices — Anthropic, Prompting best practices: instructions stated as what to do, with their reason, in ordinary register.
+- https://arxiv.org/abs/2402.07896 — Castricato et al., Suppressing Pink Elephants with Direct Principle Feedback: naming a topic in a prompt raises its occurrence even when the instruction is to avoid it.
