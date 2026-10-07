@@ -37,18 +37,6 @@ One computer is the ingress. It need not be the master — a cheap always-on
 appliance (e.g. a Raspberry Pi) is ideal. It is the only node exposed to the
 internet:
 
-<!-- planned-change:inbound-event-relay -->
-1. The ingress webhook server binds to the machine's LAN/router address. The
-   router port-forwards public inbound traffic to it, and accepted sources are
-   restricted to the router — reachable for legitimate forwarded traffic
-   without being promiscuously open.
-2. An external provider (GitHub releases, provider webhooks) sends a webhook;
-   it arrives only at the ingress.
-3. The ingress verifies each payload (per-provider signature), normalizes it
-   into the unified event shape, and relays it onto the cluster event bus
-   **unconditionally** — regardless of its own channel or whether it would
-   itself act. The ingress decides nothing about the reaction.
-<!-- change:inbound-event-relay -->
 1. The ingress serves its inbound endpoints over plain HTTP on loopback only.
    A reverse proxy on the same computer is the public surface: it terminates
    TLS and forwards the inbound path prefix to the ingress. Any local reverse
@@ -59,7 +47,6 @@ internet:
    declared its source, translates it into a platform event, and relays it to
    the cluster **unconditionally** — regardless of its own channel or whether
    it would itself act. The ingress decides nothing about the reaction.
-<!-- /planned-change:inbound-event-relay -->
 
 No other computer accepts external webhooks; the cluster's single public
 surface is the ingress alone.
@@ -76,12 +63,6 @@ not a public endpoint.
 
 ### Operator setup (ingress only, one-time)
 
-<!-- planned-change:inbound-event-relay -->
-- Port-forward the provider's public webhook traffic at the router to the
-  ingress's LAN bind address.
-- Configure the shared webhook secret used for signature verification.
-- Register the public webhook URL at the provider (e.g. GitHub).
-<!-- change:inbound-event-relay -->
 - Flag the ingress computer as the ingress node in its machine configuration.
 - Route the inbound path prefix of the public webhook host from the local
   reverse proxy to the ingress's loopback listener.
@@ -89,7 +70,6 @@ not a public endpoint.
   its secret as a reference resolved from that project's `.env`, on the ingress
   computer (`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
 - Register the project's endpoint URL and the same secret at the provider.
-<!-- /planned-change:inbound-event-relay -->
 
 ### Monitoring
 
@@ -125,8 +105,6 @@ redesign.
 - docs/local/spec/feature/reconciliation/channel-gated-self-update.md — self-update contract
 - docs/local/spec/domain/reconciliation.md — reconciliation bounded context
 - docs/local/adr/0028-single-lan-bound-ingress.md
-<!-- planned:inbound-event-relay -->
 - docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md
-<!-- /planned:inbound-event-relay -->
 - docs/local/adr/0024-reconciliation-bounded-context.md
 - docs/local/spec/teleclaude-config.md — deployment channel configuration

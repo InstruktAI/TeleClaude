@@ -1,5 +1,5 @@
 ---
-description: 'Dynamic route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.'
+description: 'The ingress inbound endpoints: a home declares its source in its own teleclaude.yml with a secret from its own .env, the endpoint path is derived from the declaring home, every request is signed, and the native protocol carries a domain, a name and an opaque payload that TeleClaude relays without interpreting.'
 visibility: 'public'
 ---
 
@@ -7,230 +7,270 @@ visibility: 'public'
 
 ## What it is
 
-A pluggable inbound webhook framework that lets a provider's POST
-endpoint be declared in `teleclaude.yml` (under
-`hooks.inbound.<source_name>`) without writing new HTTP handler code.
-On integration service startup, the hooks config loader reads the
-inbound section and, for each entry, registers a verification handler
-(for verification challenges) and a delivery handler (for the webhook
-payload) on the inbound endpoint surface.
+The inbound endpoints the ingress computer serves, and the declarations that
+open them. A home opens an endpoint in its own name by declaring a source in
+its own `teleclaude.yml`, with the source's secret resolved from that home's
+own `.env` (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`).
+The path is derived from the declaring home and the source's protocol; it is
+never configured. The declaration shape is owned by the configuration models
+(`local/projects/teleclaude/spec/teleclaude-config`).
 
-The delivery handler verifies the request signature when a `secret` is
-configured, parses the body, looks up the registered normalizer by key,
-invokes it to produce a hook event (or a list of events), and forwards
-each event to the hook dispatcher. The verification handler implements
-the WhatsApp / Meta verification challenge protocol when a
-`verify_token` is configured.
+Three protocols exist:
+
+- **Native.** A producer that is ours, such as an app another repository
+  ships, sends a signed request carrying a domain, a name and an opaque
+  payload. TeleClaude verifies the request and relays it. It never parses or
+  validates the payload and holds no knowledge of the producer's domain.
+- **GitHub.** A project receives GitHub webhooks, verified with GitHub's own
+  signature.
+- **WhatsApp.** The platform receives WhatsApp Cloud API webhooks for its own
+  number, verified with Meta's signature and answering Meta's subscription
+  handshake.
+
+A verified request is relayed as an ordinary platform event under
+`local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`.
+Only the ingress computer serves these endpoints.
 
 ## Canonical fields
 
+### Endpoints
+
+| Path                                   | Opened by                                                        | Protocol | Relayed subject |
+| -------------------------------------- | ---------------------------------------------------------------- | -------- | --------------- |
+| `/hooks/inbound/<kind>/<slug>`         | a native source declared by that company, person or project home | native   | that home       |
+| `/hooks/inbound/github/project/<slug>` | a GitHub source declared by that project                         | GitHub   | that project    |
+| `/hooks/inbound/whatsapp`              | the WhatsApp source declared by the global configuration         | WhatsApp | none            |
+
+`<kind>` is one of the event envelope's home kinds and `<slug>` is that home's
+slug as registered on the ingress computer. A home declares at most one source
+per protocol, and only the protocols its tier admits: a native source in a
+company, person or project home; a GitHub source in a project; the WhatsApp
+source in the global configuration.
+
+### Declaration and resolution
+
+- Every source carries a secret. A declaration without one does not validate.
+  The WhatsApp source additionally carries the token Meta's subscription
+  handshake presents.
+- The ingress reads the declaring home's configuration when a request arrives,
+  so a declaration added, changed or removed takes effect on the next request
+  without a restart.
+- A path whose home is not registered on the ingress, or whose home declares
+  no source of that protocol, has no endpoint.
+
+### Native request
+
+- The body is a JSON object with exactly three members: `domain`, a single
+  name segment; `name`, one or more name segments joined by dots; and
+  `payload`, a JSON object.
+- A name segment starts with a lowercase letter and holds only lowercase
+  letters, digits and underscores.
+- The request is signed with the platform's webhook signature: the scheme the
+  platform signs its own outbound deliveries with
+  (`local/projects/teleclaude/spec/feature/integration/outbound-webhook-delivery`),
+  computed over the raw body under the declaring home's secret.
+- The relayed event is named `<domain>.<name>` and carries `payload` as its
+  payload.
+
+### Provider requests
+
+- A GitHub delivery is verified with GitHub's signature over the raw body under
+  the project's secret. It is relayed as `github.<event>`, where `<event>` is
+  GitHub's event type for the delivery, with the delivery body as its payload.
+- A WhatsApp webhook is verified with Meta's signature over the raw body under
+  the global WhatsApp secret. Each message it carries is relayed as one event,
+  `whatsapp.message.<type>`, with that message as its payload. A webhook that
+  carries no message is accepted and relays nothing.
+
+### Responses
+
+| Request                                           | Response                                 |
+| ------------------------------------------------- | ---------------------------------------- |
+| No endpoint exists for the path                   | not found; nothing relayed               |
+| Signature missing or invalid                      | unauthorized; nothing relayed            |
+| Body malformed for its protocol                   | client error; nothing relayed            |
+| The declaring home's configuration cannot be read | server error; nothing relayed            |
+| Relaying fails                                    | transient failure, so the sender retries |
+| Verified and relayed                              | accepted                                 |
+
+The signature is checked before the body is read as a structured payload, and
+with a constant-time comparison. No response and no log record carries a secret.
+
 ### Use cases
-
-#### UC-IF1: Config-driven registration
-
-```gherkin
-Given teleclaude.yml contains:
-    hooks:
-      inbound:
-        whatsapp:
-          path: /hooks/whatsapp
-          normalizer: whatsapp
-          verify_token: <token>
-          secret: <hmac-secret>
-When the integration service starts up and the hooks config loader processes the inbound section
-Then the inbound-registration resolver extracts path, normalizer key, and verification config
-And the inbound endpoint registry mounts the verification and delivery handlers
-And both registrations are recorded
-And an INFO log "registered inbound endpoint: /hooks/whatsapp (normalizer=whatsapp)" is emitted
-```
-
-#### UC-IF2: Path defaulted from source name
-
-```gherkin
-Given a hooks.inbound entry omits the path field
-When the inbound-registration resolver runs
-Then the path defaults to /hooks/inbound/<source_name>
-And an INFO log records the derived path
-```
 
 #### UC-IF3: Verification challenge handshake (WhatsApp / Meta)
 
 ```gherkin
-Given the inbound entry has verify_token = "abc123"
-And an external provider issues a verification challenge with mode=subscribe, verify_token=abc123, challenge=xyz
-When the verification handler runs
-Then it checks mode == "subscribe", token matches verify_token, challenge is present
-And echoes the challenge value as plain text in the accepted response
-And NO hook event is created, NO dispatch happens
+Given the global configuration declares the WhatsApp source with verify token "abc123"
+And Meta issues a verification challenge with mode=subscribe, verify_token=abc123, challenge=xyz
+When the ingress handles the challenge
+Then it echoes the challenge value as plain text in the accepted response
+And no event is relayed
 ```
 
 #### UC-IF4: Verification challenge rejected
 
 ```gherkin
-Given a verification challenge arrives without the correct verify_token, or with a missing mode
-When the verification handler evaluates the parameters
+Given a verification challenge arrives without the declared verify token, or with a missing mode
+When the ingress evaluates the parameters
 Then it rejects the challenge as forbidden
 ```
 
-#### UC-IF5: Verification on non-verification endpoint is unsupported
+#### UC-IF5: Verification on a native or GitHub endpoint is unsupported
 
 ```gherkin
-Given the inbound entry has no verify_token set
-When any verification request arrives at the registered path
-Then the verification handler rejects it as method-not-supported
-```
-
-#### UC-IF6: HMAC signature verification
-
-```gherkin
-Given the inbound entry has secret = "shared-key" and the path is /hooks/github
-And a delivery arrives carrying a signature header "sha256=<expected>"
-When the delivery handler processes the request
-Then it reads the raw body bytes
-And computes an HMAC-SHA256 digest of the body under the shared secret
-And compares against the signature header using a constant-time check
-And on match: proceeds to normalization
-And on mismatch: rejects the delivery as unauthorized
-And on missing header (with secret configured): rejects the delivery as unauthorized
-```
-
-#### UC-IF7: Non-string secret rejected as misconfiguration
-
-```gherkin
-Given the verification config's secret is non-string (misconfiguration, e.g., a structured value)
-When the delivery handler evaluates the secret
-Then a warning "ignoring non-string secret config for inbound webhook" is logged
-And the delivery is rejected as an internal misconfiguration
+Given a native or GitHub endpoint
+When a verification challenge arrives at it
+Then the ingress rejects it as method-not-supported
 ```
 
 #### UC-IF8: Invalid body returns a client error
 
 ```gherkin
-Given a delivery arrives with a body that does not parse as a structured payload
-When the delivery handler runs the parser
-Then the delivery is rejected with an "invalid payload" client error
-And the exception is logged
+Given a correctly signed request whose body does not parse as a structured payload
+When the ingress handles it
+Then the request is rejected with an "invalid payload" client error
+And nothing is relayed
 ```
 
-#### UC-IF9: Missing normalizer is an internal error
+#### UC-IF12: Multi-message WhatsApp webhook
 
 ```gherkin
-Given the normalizer key is not registered in the normalizer registry
-When the delivery handler looks up the normalizer
-Then the delivery is rejected with a "normalizer not configured" internal error
-And the error is logged
+Given a verified WhatsApp webhook carries several messages
+When the ingress handles it
+Then it relays one event per message, in order
+And returns an accepted response
 ```
 
-#### UC-IF10: Normalizer raising → client error
+#### UC-IF16: A home's own declaration opens its native endpoint
 
 ```gherkin
-Given the normalizer raises an exception while parsing
-When the delivery handler invokes the normalizer
-Then the exception is caught
-And the delivery is rejected with a "failed to normalize payload" client error chained with the original exception
+Given the company "acme" declares a native source in its own configuration, with its secret in its own .env
+When a producer posts a request signed with that secret to /hooks/inbound/company/acme
+Then the ingress accepts it
+And relays an event whose subject is the company "acme"
 ```
 
-#### UC-IF11: Dispatch escape vs swallowed handler failures
+#### UC-IF17: A path no declaration opens has no endpoint
 
 ```gherkin
-Given normalization succeeded and produced one or more hook events
-And the dispatcher internally catches per-contract handler exceptions and webhook-enqueue exceptions, logging them and continuing to the next match
-When dispatch returns normally (the common case, even when individual handlers raised inside)
-Then the delivery handler returns an accepted response
-And the provider sees a successful delivery (no retry)
-
-Given an exception ESCAPES the dispatcher itself (e.g., the matcher faults, the contract iteration crashes, or a downstream component raises outside the per-contract guard)
-When dispatch raises
-Then the delivery handler's outer guard catches the exception
-And the delivery is rejected with a transient upstream-failure status
-And the provider (WhatsApp, GitHub) interprets the transient status as retry-eligible
-
-In v1 practice, handler exceptions do NOT trigger a retry-eligible
-rejection — they are absorbed by dispatch. Operators inspecting
-"missing" inbound events must check error logs for the per-contract
-"internal handler failed" entries.
-```
-
-#### UC-IF12: Multi-event normalizer
-
-```gherkin
-Given a normalizer returns a list of hook events (e.g., WhatsApp may carry multiple messages in one webhook)
-When the delivery handler processes the normalized result
-Then it iterates and dispatches every event in order
-And returns an accepted response on completion
-```
-
-#### UC-IF13: Duplicate path registration is ignored
-
-```gherkin
-Given the inbound endpoint registry has already registered a path
-When a second registration call arrives for the same path
-Then a warning "inbound path already registered" is logged
-And the function returns without re-mounting handlers
-```
-
-#### UC-IF14: Normalizer signature compatibility
-
-```gherkin
-Given a normalizer's signature accepts only (payload) — the legacy form
-When the normalizer-invoke helper inspects the signature
-Then it detects the lack of headers support
-And invokes the normalizer with payload only
-Given a normalizer accepts (payload, headers) or variadic args
-When the same invocation runs
-Then the normalizer is called with both arguments
-```
-
-#### UC-IF15: A normalized event carries its source's configured company
-
-```gherkin
-Scenario Outline: The company on an inbound event is the one its source declares
-  Given a hooks.inbound source <declaration>
-  And a verified payload for that source <payload company>
-  When the delivery handler normalizes and dispatches the payload
-  Then every dispatched event carries <carried company>
-  And the company is the same on every computer the event is relayed to
+Scenario Outline: Only a home's own declaration opens an endpoint in its name
+  Given <situation>
+  When a signed request arrives at <path>
+  Then the ingress responds not found
+  And nothing is relayed
 
   Examples:
-    | declaration                        | payload company                 | carried company                 |
-    | declares a registered company      | names no company                | the declared company            |
-    | declares a registered company      | names a different company       | the declared company            |
-    | declares no company                | names a company                 | no company                      |
+    | situation                                              | path                                   |
+    | the company "acme" declares no native source           | /hooks/inbound/company/acme            |
+    | no home "ghost" is registered on the ingress           | /hooks/inbound/person/ghost            |
+    | the project "web" declares a native but no GitHub source | /hooks/inbound/github/project/web    |
+```
+
+#### UC-IF18: Every request is signed
+
+```gherkin
+Scenario Outline: An unsigned or wrongly signed request is refused
+  Given the project "web" declares a GitHub source
+  When a delivery arrives at /hooks/inbound/github/project/web <signature>
+  Then the ingress responds unauthorized
+  And nothing is relayed
+
+  Examples:
+    | signature                                  |
+    | with no signature                          |
+    | signed with a different secret             |
+    | signed with the project's secret but carrying the native protocol's signature instead of GitHub's |
+```
+
+#### UC-IF19: A source without a secret cannot be declared
+
+```gherkin
+Given a home's configuration declares a native source with no secret
+When that configuration is validated
+Then validation fails and names the missing secret
+And the ingress opens no endpoint for that home
+```
+
+#### UC-IF20: A declaration takes effect without a restart
+
+```gherkin
+Given the ingress is running
+And the person "mo" declares no native source
+When a native source is added to that person's configuration, with its secret in their .env
+And a request signed with that secret arrives at /hooks/inbound/person/mo
+Then the ingress accepts it and relays the event
+```
+
+#### UC-IF21: TeleClaude relays the native payload without interpreting it
+
+```gherkin
+Given a project declares a native source
+When its producer posts a signed request with domain "erp", name "invoice.overdue.reminded" and a payload object with any members
+Then the relayed event is named "erp.invoice.overdue.reminded"
+And its payload is exactly the payload the producer sent
+```
+
+#### UC-IF22: A malformed native event name is refused
+
+```gherkin
+Scenario Outline: The relayed name is built only from well-formed segments
+  Given a project declares a native source
+  When its producer posts a signed request with domain <domain> and name <name>
+  Then the ingress rejects it with a client error
+  And nothing is relayed
+
+  Examples:
+    | domain  | name           |
+    | ""      | "paid"         |
+    | "erp"   | ""             |
+    | "Erp"   | "paid"         |
+    | "erp"   | "invoice..paid"|
+    | "e.rp"  | "paid"         |
+```
+
+#### UC-IF23: A failed relay asks the sender to retry
+
+```gherkin
+Given a verified request
+When relaying it to the cluster fails
+Then the ingress responds with a transient failure status
+And the sender may deliver the request again
+```
+
+#### UC-IF24: An unreadable declaring home is a server error
+
+```gherkin
+Given the project "web" declares a GitHub source whose secret references a name missing from its .env
+When a delivery arrives at /hooks/inbound/github/project/web
+Then the ingress responds with a server error
+And the error record names the project and the unresolved reference, never a secret
 ```
 
 ### Cross-context references
 
 - This is the canonical inbound boundary for the `integration` context.
-- The dispatch callback wires through `eventbus-hook-bridge`'s
-  hook dispatcher to the contract registry's matcher.
-- Built-in normalizers consumed: `github-webhook-normalization` and
-  `whatsapp-inbound-conversation-routing` register their normalizers
-  here.
-- Verification posture is the v1 implementation of the v2 domain spec's
-  "fail-closed allowlist" + "webhook authentication is provider-specific"
-  rules.
+- Declarations are configuration owned by the `config` context; their
+  environment references resolve under
+  `local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`.
+- Relay and delivery are owned by
+  `local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`.
+- The GitHub and WhatsApp translations are owned by
+  `local/projects/teleclaude/spec/feature/integration/github-webhook-normalization`
+  and
+  `local/projects/teleclaude/spec/feature/integration/whatsapp-inbound-conversation-routing`.
 
 ## Known caveats
 
-- In default v1 production configs, the `hooks.inbound` section is empty
-  — no inbound endpoints are registered from YAML. The framework is
-  wired and exercised by test suites and by deployment configurations
-  that populate `hooks.inbound` (e.g., help-desk WhatsApp deployments).
-  Production observability for the framework therefore comes from
-  configuration-driven activation, not from baseline service startup.
-- HMAC signature verification accepts EITHER `X-Hub-Signature-256`
-  (GitHub-style) OR `X-Hook-Signature` (TeleClaude internal contract
-  delivery format). The same handler serves both naming conventions.
-- The verification challenge handler is hard-coded to the Meta /
-  WhatsApp subscribe protocol; other providers requiring different
-  challenge handshakes would need code changes, not config.
-- The framework does NOT enforce an allowlist on event NAMES — only on
-  path mounting. Any event the normalizer produces is forwarded to the
-  dispatcher; allowlist enforcement is a contract-level concern in v1.
-- A retry-eligible rejection invites provider retries; the dispatcher
-  itself does NOT implement provider-side dedupe — duplicate deliveries
-  from retried providers will produce duplicate hook events.
-- The framework mounts handlers on whichever inbound endpoint surface
-  the integration service exposes at startup; if the inbound surface
-  is not available at startup, inbound registration is skipped with a
-  warning and inbound endpoints remain inactive until restart.
+- A provider retries a transient failure, and the ingress does not deduplicate
+  retried deliveries. A retried request is relayed as a new event; consumers own
+  the idempotency of their work.
+- The ingress must hold the configuration and `.env` of every home that
+  receives external events, because verification happens there.
+- The subscription handshake is Meta's protocol; the native and GitHub
+  endpoints answer no handshake.
+
+## See Also
+
+- docs/local/adr/0055-proxy-fronted-ingress-reuse.md
+- docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md

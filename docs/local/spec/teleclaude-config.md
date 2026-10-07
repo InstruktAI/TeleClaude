@@ -35,17 +35,9 @@ authoritative model definitions.
 
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 
-<!-- planned-change:inbound-event-relay -->
-| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings` |
-<!-- change:inbound-event-relay -->
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks` |
-<!-- /planned-change:inbound-event-relay -->
 
-<!-- planned-change:inbound-event-relay -->
-| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members` (folder-discovered; composed alongside `project`) |
-<!-- change:inbound-event-relay -->
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
-<!-- /planned-change:inbound-event-relay -->
 
 #### Tier declaration and editor schemas
 
@@ -134,11 +126,6 @@ business:
     - slug: string # required: the published domain
       trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
 jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (local/projects/teleclaude/spec/feature/config/job-declaration-model)
-<!-- planned-change:inbound-event-relay -->
-hooks:
-  inbound: mapping[string, InboundSourceConfig]
-  subscriptions: list[SubscriptionConfig]
-<!-- change:inbound-event-relay -->
 hooks:
   inbound: # this project's own inbound sources, at most one per protocol
     native:
@@ -146,11 +133,9 @@ hooks:
     github:
       secret: string # required; a ${NAME} reference resolved from this project's .env
   subscriptions: list[SubscriptionConfig]
-<!-- /planned-change:inbound-event-relay -->
 channel_subscriptions: list[ChannelSubscription]
 ```
 
-<!-- planned:inbound-event-relay -->
 Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own
 protocols: a project declares `native` and `github`; a company and a person
@@ -159,7 +144,6 @@ declare `native`; the global configuration declares `whatsapp`, which carries a
 unknown protocol key fails validation. The endpoints these declarations open
 are owned by
 `local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`.
-<!-- /planned:inbound-event-relay -->
 
 The project also declares which platform capabilities it subscribes to. Each block
 is optional, and an omitted block or one without an `enabled` value is
@@ -587,11 +571,7 @@ These keys are loaded by the daemon runtime config parser in `teleclaude/config/
 computer:
   name: string
   is_master: boolean # exactly one master per fleet; gates shared Discord channel provisioning (non-master computers resolve shared channels by name, never create)
-<!-- planned-change:inbound-event-relay -->
-  is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the loopback HTTP listener on 127.0.0.1:api.tcp_port and the cluster.webhook relay (default: false)
-<!-- change:inbound-event-relay -->
   is_ingress_node: boolean # designates this node as the cluster's single webhook ingress; gates the loopback HTTP listener on api.tcp_port and the inbound endpoints, which relay verified requests onto the platform event stream; defaulted by the runtime config defaults
-<!-- /planned-change:inbound-event-relay -->
 <!-- planned:distributed-todo-postgres -->
   is_cluster_db_host: boolean # designates this node as the host of the shared cluster database (Postgres); exactly one per fleet; default false. Independent of is_master and is_ingress_node — it is its own role. Currently this is usually the ingress node by deployment convention (no secure cross-node transport yet), but that is convention, not a requirement: the host may relocate once secure inter-node transport exists.
 <!-- /planned:distributed-todo-postgres -->

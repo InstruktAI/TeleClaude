@@ -24,39 +24,6 @@ subscriber-driven. This separation is the recorded decision in ADR-0028
 context); ADR-0055 supersedes ADR-0028's bind topology with proxy-fronted reuse
 of the localhost API server.
 
-<!-- planned-change:inbound-event-relay -->
-### Ingress — `teleclaude/hooks/inbound.py`
-
-`InboundEndpointRegistry` mounts dynamic inbound webhook routes on the existing
-localhost API server's FastAPI app. For each registered provider path it
-verifies the payload signature (HMAC-SHA256, constant-time), normalizes the body
-into the unified `HookEvent` shape via a registered normalizer, and relays the
-event onto the cluster event bus (CLUSTER visibility). The ingress endpoint is
-localhost-only and never bound to a LAN or promiscuous address; a mandatory
-same-host reverse proxy is the public surface — it terminates TLS, restricts
-source, and forwards only the webhook path prefix to the localhost endpoint.
-Webhook routes authenticate by HMAC signature alone and inherit no loopback
-identity-trust. It is provider-agnostic: one ingress terminates webhooks for
-every provider and project. See
-`docs/local/spec/feature/integration/single-ingress-webhook-termination.md`.
-
-### Cluster relay
-
-The verified, normalized event is published onto the event bus at CLUSTER
-scope. Every computer consumes it through its own subscription; only the
-ingress is publicly exposed. The relay is stateless, so a second ingress can be
-added without redesign.
-
-The relay is a new cross-node capability gated behind an ignorable feature-ID
-(ADR-0027): a node that does not carry it drops `cluster.webhook.*` cleanly and
-keeps converging through the legacy `version_available` fan-out. That fan-out is
-the expand-phase bridge and is retired only once the reconciliation capability
-map shows the slowest channel carries the feature. The ingress publishes the
-normalized event onto `cluster.webhook.<provider>` and also dispatches it
-locally; the bus drops the ingress's own echo at dispatch (ADR-0013 self-origin),
-so each node — including the ingress — reacts exactly once.
-
-<!-- change:inbound-event-relay -->
 ### Ingress — `teleclaude/hooks/inbound.py`
 
 The ingress serves the inbound endpoints on loopback only, behind a mandatory
@@ -81,7 +48,6 @@ is stateless, so a second ingress can be added without redesign. The legacy
 read relayed events, and is retired only once the reconciliation capability map
 shows the slowest channel reads them.
 
-<!-- /planned-change:inbound-event-relay -->
 ### Convergence — `reconciliation`
 
 Each computer evaluates a relayed release/version signal against its own channel
@@ -171,16 +137,10 @@ flowchart TD
   periodic desired-state self-check, or a second stateless ingress.
 - **Unverified payload.** Signature verification fails at the ingress; nothing
   is relayed and the sender receives a rejection response.
-<!-- planned-change:inbound-event-relay -->
-- **Cluster pub/sub is fire-and-forget.** A computer offline when a signal
-  publishes misses it; recovery is the next signal or a periodic self-check,
-  not event replay.
-<!-- change:inbound-event-relay -->
 - **A computer offline misses relayed events.** The event stream is shared and
   bounded; a computer that returns after its retained window has moved on does
   not replay what it missed. Recovery is the next signal or a periodic
   self-check.
-<!-- /planned-change:inbound-event-relay -->
 - **Convergence step failure.** The run halts and records the failure reason;
   the computer does not come up in a partial or unhealthy state. Config-load
   failure is logged and the update skipped (non-fatal).
@@ -196,8 +156,6 @@ flowchart TD
 - docs/local/spec/domain/reconciliation.md
 - docs/local/adr/0028-single-lan-bound-ingress.md
 - docs/local/adr/0055-proxy-fronted-ingress-reuse.md
-<!-- planned:inbound-event-relay -->
 - docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md
-<!-- /planned:inbound-event-relay -->
 - docs/local/adr/0024-reconciliation-bounded-context.md
 - docs/local/spec/teleclaude-config.md — config schema for deployment
