@@ -31,10 +31,9 @@ make surface, and installation reaches the runtime only through it.
 - **Stack.** The installed runtime version and, per profile, the TUI package
   and every installed plugin. A plugin installed from a local checkout belongs
   to the stack and is judged from its own manifest.
-- **Candidate runtime.** A published runtime release no older than the
-  installed one and no newer than the release the vendor marks as its default.
-  The installed runtime is always a candidate, so staying put is always
-  available.
+- **Candidate runtime.** Any published runtime release no older than the
+  installed one, whatever release channel publishes it. The installed runtime
+  is always a candidate, so staying put is always available.
 - **Fit.** A package fits a candidate runtime when every compatibility
   requirement it declares holds: requirements on the runtime's own packages are
   judged against the candidate's version exactly as the runtime judges them at
