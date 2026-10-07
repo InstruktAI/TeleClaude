@@ -53,6 +53,7 @@ from teleclaude.cli.telec.surface import (
 )
 from teleclaude.config import config
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
+from teleclaude.config.project_subject_init import init_project_subject
 from teleclaude.config.resource_contract import (
     InvalidCandidate,
     PartialCommitFailure,
@@ -62,7 +63,6 @@ from teleclaude.config.resource_contract import (
 )
 from teleclaude.config.resources import (
     affected_sections,
-    init_project_subject,
     init_subject,
     list_subjects,
     patch_subject,

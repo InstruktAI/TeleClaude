@@ -119,6 +119,31 @@ print_header() {
     echo ""
 }
 
+_run_sudo() {
+    local step="$1"
+    shift
+    if [ "$NON_INTERACTIVE" = true ]; then
+        if sudo -n "$@"; then
+            return 0
+        fi
+        print_error "$step needs sudo access that works without a prompt; run install from an authorized terminal or provide non-interactive sudo access"
+        return 1
+    fi
+    if sudo "$@"; then
+        return 0
+    fi
+    print_error "$step failed"
+    return 1
+}
+
+_run_agent_cli_installer() {
+    if [ "$NON_INTERACTIVE" = true ] || [ ! -t 0 ]; then
+        "$@" </dev/null
+    else
+        "$@"
+    fi
+}
+
 ensure_teleclaude_yaml() {
     if [ ! -f "$INSTALL_DIR/teleclaude.yml" ]; then
         cat > "$INSTALL_DIR/teleclaude.yml" <<'EOF'
@@ -257,7 +282,7 @@ setup_agents_interactive() {
             local install_ok=0
             curl -fsSL https://antigravity.google/cli/install.sh > /tmp/agy_install.sh 2>> "$LOG_FILE" || install_ok=1
             if [ $install_ok -eq 0 ]; then
-                bash /tmp/agy_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+                _run_agent_cli_installer bash /tmp/agy_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
             fi
             if [ $install_ok -eq 0 ]; then
                 print_success "Antigravity CLI (agy) installed"
@@ -275,7 +300,7 @@ setup_agents_interactive() {
             local install_ok=0
             curl -fsSL https://chatgpt.com/codex/install.sh > /tmp/codex_install.sh 2>> "$LOG_FILE" || install_ok=1
             if [ $install_ok -eq 0 ]; then
-                CODEX_NON_INTERACTIVE=1 sh /tmp/codex_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+                CODEX_NON_INTERACTIVE=1 _run_agent_cli_installer sh /tmp/codex_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
             fi
             if [ $install_ok -eq 0 ]; then
                 print_success "OpenAI Codex CLI installed"
@@ -307,7 +332,7 @@ setup_agents_interactive() {
             fi
         else
             print_info "Installing DeepSeek Harness (dsh)..."
-            npm install -g @deepseek-ai/dsh >> "$LOG_FILE" 2>&1 || deepseek_install_ok=1
+            _run_agent_cli_installer npm install -g @deepseek-ai/dsh >> "$LOG_FILE" 2>&1 || deepseek_install_ok=1
             if [ $deepseek_install_ok -eq 0 ]; then
                 print_success "DeepSeek Harness (dsh) installed"
             else
@@ -422,14 +447,14 @@ install_package() {
 
     case "$DISTRO" in
         ubuntu|debian)
-            sudo apt-get update -qq
-            sudo apt-get install -y "$package"
+            _run_sudo "refresh apt package lists before installing $package" apt-get update -qq
+            _run_sudo "install $package with apt-get" apt-get install -y "$package"
             ;;
         fedora|rhel|centos)
-            sudo dnf install -y "$package"
+            _run_sudo "install $package with dnf" dnf install -y "$package"
             ;;
         arch|manjaro)
-            sudo pacman -S --noconfirm "$package"
+            _run_sudo "install $package with pacman" pacman -S --noconfirm "$package"
             ;;
         macos)
             if ! command -v brew &> /dev/null; then
@@ -828,7 +853,10 @@ ensure_local_redis_running() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         brew services start redis >> "$LOG_FILE" 2>&1 || true
     else
-        sudo systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" > /dev/null || true
+        if ! _run_sudo "enable and start the Redis service" systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" > /dev/null; then
+            print_error "Could not enable and start Redis; ensure the unattended installer can use sudo and re-run make install"
+            exit 1
+        fi
     fi
     print_success "Redis service management delegated to OS"
 }
@@ -920,13 +948,19 @@ install_macos_casks() {
         return 0
     fi
 
-    _maybe_install_cask "lm-studio" "Install LM Studio (local LLM server for summarizer)?" "LM Studio"
-    # llmster background service follows LM Studio: install non-interactively when
-    # LM Studio is present (just installed or pre-existing) and the service is absent.
-    if brew list --cask lm-studio &> /dev/null || [ -d "/Applications/LM Studio.app" ]; then
-        _ensure_llmster_installed
+    local lm_studio_chosen=false
+    if _maybe_install_cask "lm-studio" "Install LM Studio (local LLM server for summarizer)?" "LM Studio"; then
+        lm_studio_chosen=true
     fi
-    _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?" "Handy"
+    if [ "$lm_studio_chosen" = true ]; then
+        _ensure_llmster_installed
+    elif [ "$NON_INTERACTIVE" = false ] && [ -t 0 ] && { brew list --cask lm-studio &> /dev/null || [ -d "/Applications/LM Studio.app" ]; } && ! _resolve_lms_binary >/dev/null; then
+        if confirm "Install the llmster background service for existing LM Studio?" "n"; then
+            _ensure_llmster_installed
+        fi
+    fi
+    # A skipped optional cask is a normal outcome, not a failure of this step.
+    _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?" "Handy" || true
 }
 
 # Resolves lms the way its own installer does: PATH, then the home-pointer file
@@ -977,20 +1011,26 @@ _maybe_install_cask() {
     local app_name="$3"
     if brew list --cask "$cask" &> /dev/null; then
         print_info "$cask cask already installed"
-        return 0
+        return 1
     fi
     if [ -n "$app_name" ] && [ -d "/Applications/${app_name}.app" ]; then
         print_info "$app_name already installed (found in /Applications)"
+        return 1
+    fi
+    if [ "$NON_INTERACTIVE" = true ] || [ ! -t 0 ]; then
+        print_info "Skipping optional $cask cask during an unattended install"
+        return 1
+    fi
+    if ! confirm "$prompt_text" "n"; then
+        return 1
+    fi
+    print_info "Installing $cask via brew cask..."
+    if brew install --cask "$cask" >> "$LOG_FILE" 2>&1; then
+        print_success "$cask installed"
         return 0
     fi
-    if confirm "$prompt_text" "y"; then
-        print_info "Installing $cask via brew cask..."
-        if brew install --cask "$cask" >> "$LOG_FILE" 2>&1; then
-            print_success "$cask installed"
-        else
-            print_warning "Failed to install $cask cask (see $LOG_FILE)"
-        fi
-    fi
+    print_warning "Failed to install $cask cask (see $LOG_FILE)"
+    return 1
 }
 
 # Install or update Claude Code
@@ -1006,7 +1046,7 @@ install_claude_code() {
     local install_ok=0
     curl -fsSL https://claude.ai/install.sh > /tmp/claude_install.sh 2>> "$LOG_FILE" || install_ok=1
     if [ $install_ok -eq 0 ]; then
-        bash /tmp/claude_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
+        _run_agent_cli_installer bash /tmp/claude_install.sh >> "$LOG_FILE" 2>&1 || install_ok=2
     fi
     if [ $install_ok -eq 0 ]; then
         print_success "Claude Code installed"
@@ -1020,7 +1060,7 @@ setup_dsh_integration() {
     # The global hooks.json is written later by configure_agent_cli.
     # Install the TeleClaude global dsh plugins
     local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
-    if sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
+    if _run_agent_cli_installer sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
         print_success "dsh global plugins installed into existing profiles"
     else
         print_warning "dsh global plugin install reported failures (see $LOG_FILE)"
@@ -1045,7 +1085,8 @@ install_uv() {
             ;;
         linux)
             if command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update -qq && sudo apt-get install -y uv
+                _run_sudo "refresh apt package lists before installing uv" apt-get update -qq &&
+                _run_sudo "install uv with apt-get" apt-get install -y uv
             else
                 print_error "apt-get not found. Install uv manually."
                 exit 1
@@ -1069,6 +1110,15 @@ install_python_deps() {
     print_header "Installing Python Dependencies"
 
     install_uv
+
+    local uv_tool_bin
+    if ! uv_tool_bin=$(uv tool dir --bin 2>> "$LOG_FILE"); then
+        print_error "Could not resolve uv's tool bin directory; check the uv installation and re-run make install"
+        exit 1
+    fi
+    if [ -n "$uv_tool_bin" ] && [ "$uv_tool_bin" != "$HOME/.local/bin" ]; then
+        export PATH="$uv_tool_bin:$PATH"
+    fi
 
     # Baseline sync installs core deps only: platform markers select the right
     # packages for any platform, and uv sync never pulls an extra. The
@@ -1099,6 +1149,13 @@ converge_docs_layout() {
 
 publish_config_schemas() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.core.reconciliation.config_schemas
+}
+
+publish_installed_commit() {
+    if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.install_publication; then
+        print_error "Installed-checkout documentation publication failed — fix the reported cause and re-run make install"
+        exit 1
+    fi
 }
 
 install_voice_bridge() {
@@ -1173,7 +1230,9 @@ publish_binary() {
     for d in /opt/homebrew/bin /usr/local/bin; do
         other="$d/$name"
         if [ -L "$other" ] && [ "$(readlink "$other")" = "$source" ]; then
-            rm -f "$other" 2>/dev/null || sudo rm -f "$other"
+            if ! rm -f "$other" 2>/dev/null; then
+                _run_sudo "remove TeleClaude's stale $name link from $d" rm -f "$other" || return 1
+            fi
             print_info "Migrated $name out of $d into $TELEC_BIN_DIR"
         fi
     done
@@ -1240,7 +1299,9 @@ install_blueprint_engine() {
     # Skip only when the pinned version is already present in the managed venv —
     # an arbitrary graphify already on PATH is never trusted.
     if [ -x "$graphify_bin" ] && [ "$("$graphify_bin" --version 2>/dev/null | awk '{print $2}')" = "$GRAPHIFY_PINNED_VERSION" ]; then
-        [ "$CI_MODE" = false ] && publish_binary graphify "$graphify_bin"
+        if [ "$CI_MODE" = false ]; then
+            publish_binary graphify "$graphify_bin" || exit 1
+        fi
         print_info "Blueprint engine (graphify $GRAPHIFY_PINNED_VERSION) already installed"
         return 0
     fi
@@ -1501,6 +1562,21 @@ activate_home_repository() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/bin/init/activate_home_repository.py"
 }
 
+run_owner_establishment() {
+    local operation="$1"
+    if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.core.reconciliation.owner_establishment "$operation"; then
+        print_error "Owner establishment $operation failed; fix the reported cause and re-run make install"
+        exit 1
+    fi
+}
+
+run_environment_defaults() {
+    if ! PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.environment_defaults; then
+        print_error "Local environment defaults could not be written; fix the reported cause and re-run make install"
+        exit 1
+    fi
+}
+
 # Load modular install steps
 # shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/redis_locality.sh"
@@ -1515,6 +1591,7 @@ source "$INSTALL_DIR/bin/init/install_services.sh"
 main() {
     parse_args "$@"
     select_install_mode
+    export PATH="$HOME/.local/bin:$PATH"
 
     print_header "TeleClaude Install"
     log "Install started in $INSTALL_DIR"
@@ -1536,6 +1613,10 @@ main() {
 
     install_system_deps
     install_python_deps
+    if [ "$CI_MODE" = false ]; then
+        run_owner_establishment decide
+        run_environment_defaults
+    fi
     ensure_config_yml
     install_blueprint_engine
     if [ "$CI_MODE" = false ]; then
@@ -1553,6 +1634,9 @@ main() {
     migrate_config_documents
     discard_declaration_views
     validate_config
+    if [ "$CI_MODE" = false ]; then
+        run_owner_establishment establish
+    fi
     install_global_cli
     _ensure_local_bin_on_path
 
@@ -1567,6 +1651,7 @@ main() {
     if [ "$CI_MODE" = false ]; then
         configure_agent_cli
         activate_home_repository
+        publish_installed_commit
         publish_config_schemas
     fi
     converge_plumbing

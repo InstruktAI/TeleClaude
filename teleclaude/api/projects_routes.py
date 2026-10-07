@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller, require_clearance
 from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
 from teleclaude.config import config
-from teleclaude.config.resources import init_project_subject
+from teleclaude.config.project_subject_init import init_project_subject
 from teleclaude.core import command_handlers
 from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.models import ProjectInfo

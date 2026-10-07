@@ -1,0 +1,16 @@
+company:
+  name: Acme
+  slug: acme
+people:
+  - slug: coadmin
+    name: coadmin
+    email: company-admin@probe.invalid
+  - slug: member1
+    name: member1
+    email: project-member@probe.invalid
+  - slug: cust1
+    name: cust1
+    email: customer@probe.invalid
+  - slug: gone1
+    name: gone1
+    email: removed-person@probe.invalid

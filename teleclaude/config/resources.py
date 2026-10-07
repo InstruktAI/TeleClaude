@@ -26,7 +26,6 @@ from teleclaude.config._environment import (
     find_environment_references,
     read_environment_file,
 )
-from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
 from teleclaude.config.loader import list_company_config_paths
@@ -39,7 +38,34 @@ from teleclaude.config.machine_config_mutation import (
 )
 from teleclaude.config.migrations import upcast
 from teleclaude.config.migrations._runner import upcast_for_read
-from teleclaude.config.person_registry import with_person, without_person
+from teleclaude.config.person_registry import without_person
+from teleclaude.config.person_resource import (
+    append_person_candidate,
+)
+from teleclaude.config.person_resource import (
+    find_person_raw as _find_person_raw,
+)
+from teleclaude.config.person_resource import (
+    person_identity_section as _person_identity_section,
+)
+from teleclaude.config.person_resource import (
+    person_init_lookup_key as _person_init_lookup_key,
+)
+from teleclaude.config.person_resource import (
+    person_is_registered as _person_is_registered,
+)
+from teleclaude.config.person_resource import (
+    person_overlay_path as _person_overlay_path,
+)
+from teleclaude.config.person_resource import (
+    person_revision as _person_revision,
+)
+from teleclaude.config.person_resource import (
+    person_settings_section as _person_settings_section,
+)
+from teleclaude.config.person_resource import (
+    person_view as _person_view,
+)
 from teleclaude.config.resource_catalog import list_subjects as _list_subjects
 from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import (
@@ -69,13 +95,11 @@ from teleclaude.config.roster import (
 )
 from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.docs_index import get_project_slug
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.file_transaction import file_transaction
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
-from teleclaude.project_setup.init_flow import ProjectInitializationResult, ProjectInitializationTrigger, init_project
 from teleclaude.services.project_catalog import get_project_catalog_service
-from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 _KIND_KEY = "kind"
 _SCHEMA_VERSION_KEY = "schema_version"
@@ -93,6 +117,7 @@ _HELP_DESK_HOME_REFUSAL = "a person or company home keeps its help desk through 
 _PERSON_IDENTITY_FIELDS = frozenset({"name", "email", "username", "role", "preferences", "expertise"})
 _DOCUMENT_MAPPING_ERROR = "Configuration document must be a mapping: {path}"
 _READ_ONLY_SCHEMA_VERSION_ERROR = "`schema_version` is read-only; the migration list owns its value."
+_FIRST_PERSON_REGISTRY_NOT_EMPTY = "First-person registration requires an empty people registry."
 
 _SINGLETON_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL})
 
@@ -167,68 +192,6 @@ def _computer_view(inspection: MachineConfigInspection | MachineConfigMutationRe
 
 
 # --- person helpers ---
-
-
-def _person_overlay_path(slug: str) -> Path:
-    return PEOPLE_DIR / slug / ConfigFileName.OVERLAY
-
-
-def _person_init_lookup_key(fields: Mapping[str, object] | None) -> str | None:
-    """Return the person key init will address, whether supplied or name-derived."""
-    fields = fields or {}
-    requested_slug = fields.get(_SLUG_KEY)
-    if requested_slug:
-        return str(requested_slug)
-    name = fields.get(_NAME_KEY)
-    return normalize_slug(str(name)) if name else None
-
-
-def _person_is_registered(slug: str) -> bool:
-    """Check the global registry without opening the person's overlay transaction."""
-    with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
-        global_raw = load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
-        return _find_person_raw(raw_people(global_raw), slug) is not None
-
-
-def _find_person_raw(
-    people: list[object], slug: str
-) -> dict[str, object] | None:  # guard: loose-dict - raw YAML config
-    """Locate one raw person entry by slug in a raw `people` list."""
-    for entry in people:
-        if isinstance(entry, dict) and entry.get(_SLUG_KEY) == slug:
-            return cast(dict[str, object], entry)  # guard: loose-dict - raw YAML config
-    return None
-
-
-def _person_identity_section(
-    entry_raw: Mapping[str, object],
-) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    return {key: value for key, value in entry_raw.items() if key != _SLUG_KEY}
-
-
-def _person_settings_section(
-    overlay_raw: Mapping[str, object],
-) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    return {key: value for key, value in overlay_raw.items() if key not in (_KIND_KEY, _SLUG_KEY, _SCHEMA_VERSION_KEY)}
-
-
-def _person_revision(identity: Mapping[str, object], settings: Mapping[str, object]) -> str:
-    return view_revision({_IDENTITY_SECTION: identity, _SETTINGS_SECTION: settings})
-
-
-def _person_view(slug: str, global_raw: Mapping[str, object], overlay_raw: Mapping[str, object]) -> SubjectView:
-    entry_raw = _find_person_raw(raw_people(global_raw), slug)
-    if entry_raw is None:
-        raise SubjectNotFound(f"person '{slug}' is not registered")
-    identity = _person_identity_section(entry_raw)
-    settings = _person_settings_section(overlay_raw)
-    return SubjectView(
-        ref=SubjectRef(ConfigSubjectKind.PERSON, slug),
-        sources=(GLOBAL_CONFIG_PATH, _person_overlay_path(slug)),
-        sections={_IDENTITY_SECTION: identity, _SETTINGS_SECTION: settings},
-        read_only={},
-        revision=_person_revision(identity, settings),
-    )
 
 
 def _split_person_patch(
@@ -417,26 +380,16 @@ def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence
             email = fields.get("email")
             if not name or not email:
                 raise InvalidCandidate("person init requires `name` and `email` for a new person")
-            reserved = {
-                str(entry[_SLUG_KEY]) for entry in people_raw if isinstance(entry, dict) and entry.get(_SLUG_KEY)
-            }
-            base_slug = normalize_slug(str(requested_slug)) if requested_slug else normalize_slug(str(name))
-            slug = ensure_unique_slug(PEOPLE_DIR, base_slug, reserved=reserved)
             raw_role = fields.get("role")
             raw_username = fields.get("username")
-            entry = PersonEntry.model_validate(
-                {
-                    "name": str(name),
-                    "email": str(email),
-                    "slug": slug,
-                    **({"role": raw_role} if raw_role else {}),
-                    **({"username": raw_username} if raw_username else {}),
-                }
+            slug, candidate_document = append_person_candidate(
+                global_raw,
+                name=str(name),
+                email=str(email),
+                role=raw_role,
+                username=raw_username,
+                requested_slug=requested_slug,
             )
-            candidate_raw = with_person(cast(dict[object, object], global_raw), entry)
-            candidate_document = {
-                str(key): value for key, value in candidate_raw.items() if key != _KIND_KEY
-            }  # guard: loose-dict - raw YAML config
             _validate_global_candidate(candidate_document)
             carry_resource_migrations(global_stored, global_ref, evidence)
             commit_documents(
@@ -447,6 +400,78 @@ def _init_person(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence
     evidence.enter_unobserved()
     scaffold_personal_workspace(slug)
     return _read_person(SubjectRef(ConfigSubjectKind.PERSON, slug))
+
+
+def register_first_person(name: str, email: str, *, request_id: str | None = None) -> SubjectView:
+    """Register a platform administrator only while the global roster is empty."""
+    global_ref = SubjectRef(ConfigSubjectKind.GLOBAL)
+
+    def compute(evidence: OwnEvidence) -> SubjectView:
+        with file_transaction(GLOBAL_CONFIG_PATH) as g_txn:
+            committed_text = g_txn.read_text()
+            global_stored = load_mapping(committed_text, GLOBAL_CONFIG_PATH)
+            global_raw = dict(upcast(global_stored, global_ref))
+            if raw_people(global_raw):
+                raise InvalidCandidate(_FIRST_PERSON_REGISTRY_NOT_EMPTY)
+            slug, candidate_document = append_person_candidate(
+                global_raw,
+                name=name,
+                email=email,
+                role=HUMAN_ROLE_ADMIN,
+                username=None,
+                requested_slug=None,
+            )
+            _validate_global_candidate(candidate_document)
+            carry_resource_migrations(global_stored, global_ref, evidence)
+            overlay_path = _person_overlay_path(slug)
+            registry_target = target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY)
+            overlay_target = target_id(ConfigSubjectKind.PERSON, slug, TargetDocument.OVERLAY)
+            with file_transaction(overlay_path) as person_txn:
+                try:
+                    commit_documents(
+                        [
+                            CommitEntry(
+                                g_txn,
+                                committed_text,
+                                render_declared_config(ConfigKind.GLOBAL, candidate_document),
+                            ),
+                            CommitEntry(
+                                person_txn,
+                                person_txn.read_text(),
+                                render_declared_config(ConfigKind.PERSON, {_SLUG_KEY: slug}),
+                            ),
+                        ]
+                    )
+                except PartialCommitFailure as exc:
+                    failed_targets = tuple(
+                        registry_target if path == g_txn.path else overlay_target for path in exc.failed_paths
+                    )
+                    evidence.mark(*failed_targets)
+                    raise
+            evidence.mark(registry_target, overlay_target)
+        evidence.enter_unobserved()
+        return _read_person(SubjectRef(ConfigSubjectKind.PERSON, slug))
+
+    view = run_observed(
+        compute,
+        request_id=request_id,
+        kind=ConfigSubjectKind.PERSON,
+        instance=None,
+        operation=ResourceOperation.INIT,
+        revision_before=None,
+        person_key_derived=False,
+    )
+    emit_resource_change(
+        request_id=request_id,
+        kind=ConfigSubjectKind.PERSON,
+        instance=view.ref.instance,
+        operation=ResourceOperation.INIT,
+        outcome=ResourceChangeOutcome.COMMITTED,
+        revision_before=None,
+        revision_after=view.revision,
+        person_key_derived=False,
+    )
+    return view
 
 
 def _init_company(_ref: SubjectRef, fields: Mapping[str, object] | None, evidence: OwnEvidence) -> SubjectView:
@@ -929,72 +954,3 @@ def _remove_person_subject(slug: str, evidence: OwnEvidence, *, delete_dir: bool
             shutil.rmtree(person_dir)
 
     return outcome
-
-
-def init_project_subject(
-    root: Path,
-    *,
-    request_id: str | None = None,
-    trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
-    help_desk: bool = False,
-) -> SubjectView:
-    """Adopt the caller's folder and return its declared subject view.
-
-    Not reachable through `init_subject`: folder adoption addresses a
-    filesystem context no `SubjectRef` carries before its identity is derived.
-
-    The setup operation determines the declared tier. Project folders return
-    their catalog view; person and company homes return their corresponding
-    configuration subject view.
-    """
-    config_path = root.expanduser().resolve() / ConfigFileName.OVERLAY
-    kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
-    subject_kind = ConfigSubjectKind(kind.value)
-    if help_desk and kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
-        raise InvalidCandidate(_HELP_DESK_HOME_REFUSAL)
-    if kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
-        identity = root.name
-    elif kind is ConfigKind.PROJECT:
-        identity = get_project_slug(root)
-    else:
-        identity = None
-    revision_before = _try_revision_before(subject_kind, identity)
-
-    result: ProjectInitializationResult | None = None
-
-    def _compute(evidence: OwnEvidence) -> SubjectView:
-        nonlocal result
-        evidence.enter_unobserved()
-        result = init_project(root, trigger=trigger, help_desk=help_desk)
-        ref = SubjectRef(ConfigSubjectKind(result.kind.value), result.identity)
-        evidence.mark(target_id(ref.kind, ref.instance, TargetDocument.REGISTRY))
-        if result.kind is ConfigKind.PROJECT:
-            evidence.mark(target_id(ref.kind, ref.instance, TargetDocument.PLUMBING))
-            catalog = get_project_catalog_service()
-            catalog.refresh()
-            node = catalog.get_by_slug(result.identity)
-            if node is None:
-                raise SubjectNotFound(f"project at {root} did not register after init")
-            ref = SubjectRef(ConfigSubjectKind.PROJECT, node.slug)
-        return read_subject(ref)
-
-    view = run_observed(
-        _compute,
-        request_id=request_id,
-        kind=subject_kind,
-        instance=identity,
-        operation=ResourceOperation.INIT,
-        revision_before=revision_before,
-    )
-    emit_resource_change(
-        request_id=request_id,
-        kind=view.ref.kind,
-        instance=view.ref.instance,
-        operation=ResourceOperation.INIT,
-        outcome=ResourceChangeOutcome.UNCHANGED
-        if result is not None and result.already_registered and revision_before == view.revision
-        else ResourceChangeOutcome.COMMITTED,
-        revision_before=revision_before,
-        revision_after=view.revision,
-    )
-    return view

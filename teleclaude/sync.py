@@ -49,6 +49,7 @@ from teleclaude.quality.gate import LintGateResult, run_home_guardrail_gate
 logger = get_logger(__name__)
 
 _GIT_MAIN_TIP_ARGS = ("--verify", "refs/heads/main^{commit}")
+_GIT_INSTALLED_COMMIT_ARGS = ("--verify", "HEAD^{commit}")
 _GIT_IGNORED_UNTRACKED_ARGS = ("-z", "--others", "--ignored", "--exclude-standard", "--")
 _GIT_PATH_SEPARATOR = "\0"
 _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
@@ -63,7 +64,8 @@ _GIT_VERIFY_ERROR = "Could not resolve the canonical refs/heads/main commit."
 _INVALID_HOME_STATE = "Per-home publication state is malformed: {path}"
 _INVALID_HOME_STATE_ENTRY = "Per-home publication state has an invalid entry: {root}"
 _HOME_SCOPE_REQUIRED = "Publication requires exactly one directory scope or changed-path scope."
-_HOME_NOT_COMMITTED = "Home is not present in the committed main tip: {home}"
+_HOME_NOT_COMMITTED = "Home is not present in the selected committed tree: {home}"
+_INSTALLED_COMMIT_UNAVAILABLE = "Could not resolve the installed checkout's committed HEAD."
 _UNSUPPORTED_HOME_POSITION = "Home kind {kind} at {root} is outside the supported home model."
 _HOME_DECLARATION_FAILED = "Home declaration could not be read: {error}"
 _HOME_BUILD_FAILED = "Home build failed: {error}"
@@ -110,6 +112,13 @@ class PublicationMode(StrEnum):
     REBUILD = "rebuild"
 
 
+class PublicationSource(StrEnum):
+    """Committed tree selected as the source of a publication run."""
+
+    MAIN_TIP = "main_tip"
+    INSTALLED_COMMIT = "installed_commit"
+
+
 class HomePublicationOutcome(StrEnum):
     """One home's terminal result for a publication run."""
 
@@ -123,6 +132,7 @@ class PublicationRunFailure(StrEnum):
     """A run-level refusal that happens before any home is built."""
 
     MAIN_TIP_UNAVAILABLE = "main_tip_unavailable"
+    INSTALLED_COMMIT_UNAVAILABLE = "installed_commit_unavailable"
     HOME_NOT_COMMITTED = "home_not_committed"
     RUN_FAILED = "run_failed"
 
@@ -182,16 +192,23 @@ def publish_homes(
     directory: str | Path | None = None,
     changed_paths: list[str] | None = None,
     required_home: Path | None = None,
+    source: PublicationSource = PublicationSource.MAIN_TIP,
 ) -> PublicationRun:
-    """Converge selected homes to the canonical main tip under the docs lease."""
+    """Converge selected homes to one committed source under the docs lease."""
     if (directory is None) == (changed_paths is None):
         raise ValueError(_HOME_SCOPE_REQUIRED)
     try:
         canonical_root = git_common_root(project_root).resolve()
         with docs_lease(DocsLockOperation.SYNCHRONIZATION):
-            tip = _main_tip(canonical_root)
+            tip = _main_tip(canonical_root) if source is PublicationSource.MAIN_TIP else _installed_commit(project_root)
             if tip is None:
-                return _failed_run(mode, _GIT_VERIFY_ERROR, PublicationRunFailure.MAIN_TIP_UNAVAILABLE)
+                if source is PublicationSource.MAIN_TIP:
+                    return _failed_run(mode, _GIT_VERIFY_ERROR, PublicationRunFailure.MAIN_TIP_UNAVAILABLE)
+                return _failed_run(
+                    mode,
+                    _INSTALLED_COMMIT_UNAVAILABLE,
+                    PublicationRunFailure.INSTALLED_COMMIT_UNAVAILABLE,
+                )
             return _publish_under_lease(canonical_root, tip, mode, directory, changed_paths, required_home)
     except DocsLeaseTimeoutError as exc:
         return _failed_run(mode, str(exc), PublicationRunFailure.RUN_FAILED)
@@ -746,6 +763,15 @@ def _main_tip(canonical_root: Path) -> str | None:
     except GitCommandError:
         return None
     return tip if _COMMIT_ID_PATTERN.fullmatch(tip) else None
+
+
+def _installed_commit(project_root: Path) -> str | None:
+    """Resolve the commit checked out in the installation's project root."""
+    try:
+        commit = cast(str, Repo(str(project_root)).git.rev_parse(*_GIT_INSTALLED_COMMIT_ARGS)).strip()
+    except GitCommandError:
+        return None
+    return commit if _COMMIT_ID_PATTERN.fullmatch(commit) else None
 
 
 def _failed_run(
