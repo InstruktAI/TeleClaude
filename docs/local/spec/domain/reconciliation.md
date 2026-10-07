@@ -131,8 +131,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 - **State.** No durable state. A run owns a scratch area for its own length,
   holding the snapshot — every profile directory as found and the installed
-  runtime version — and the verification gate's working directory and harness
-  home. A run ending upgraded, unchanged or rolled back removes the area; a run
+  runtime version — and the verification gate's working directory, harness
+  home and user home. A run ending upgraded, unchanged or rolled back removes the area; a run
   ending rollback incomplete keeps the snapshot and names it in its report.
   One run at a time holds a harness home.
 - **Decision boundary (core).** One reconciliation core operation converges
@@ -162,8 +162,14 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   copied in; its session, storage, history and log stores start empty; and its
   hook layer is the gate's own, so the operator's hooks — TeleClaude's receiver
   among them — never fire for a gate turn and no gate turn becomes a TeleClaude
-  session or history entry. Before the gate runs, the operation applies the
-  installation's first-run-guide convergence. Each profile is booted through
+  session or history entry. Every process the gate starts also runs under a
+  throwaway user home of the gate's own, so anything a profile keeps beside
+  the harness home — the TUI's per-machine data, its session history and
+  resume record among it — is written there and never into the operator's.
+  Before the gate runs, the operation applies the installation's
+  first-run-guide convergence to the operator's TUI data, then copies that
+  data into the gate's user home, so the launch is checked against the
+  operator's own record. Each profile is booted through
   its own app far enough to mount every plugin, and its composed configuration
   is dumped; any startup diagnostic fails the check. The launch profile runs in
   a terminal server the gate starts for itself. Its readiness is judged by the
@@ -173,7 +179,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   stop-failure hook records a turn error, and a prompt-submit hook returns the
   additional context of the hook turn. Every check is bounded in time. Teardown
   stops the terminal server and every process the gate started and removes
-  the gate's working directory and harness home, whatever the verdict.
+  the gate's working directory, harness home and user home, whatever the
+  verdict.
 - **Consumed contracts.** From the agent runtime: the DeepSeek agent
   definition's launch profile, and the composer classification of a pane
   observation for the DeepSeek agent. From this context: the installation's
