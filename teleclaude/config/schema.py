@@ -21,7 +21,9 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 13
+_BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
+_BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
 
 
 def normalize_env_allow_list(value: list[str]) -> list[str]:
@@ -377,26 +379,50 @@ SubscriptionEntry = Annotated[
 ]
 
 
-class InboundSourceConfig(ClosedModel):
-    """Inbound webhook source configuration."""
+class SignedInboundSource(ClosedModel):
+    """One inbound source whose requests are verified under the declaring home's secret."""
 
-    path: str | None = None
-    verify_token: Annotated[str | None, SENSITIVE] = None
-    secret: Annotated[str | None, SENSITIVE] = None
-    normalizer: str | None = None
-    company: str | None = None
+    secret: Annotated[str, SENSITIVE]
 
-    @field_validator("company")
+    @field_validator("secret")
     @classmethod
-    def validate_inbound_source_company(cls, value: str | None) -> str | None:
-        """Enforce slug format on the declared company, like ``CompanyConfig.slug``."""
-        if value is None:
-            return None
-        stripped = value.strip()
-        if not stripped:
-            return None
-        validate_slug(stripped)
-        return stripped
+    def require_nonblank_secret(cls, value: str) -> str:
+        """Refuse a blank secret: every inbound request is verified, so a source cannot omit one."""
+        if not value.strip():
+            raise ValueError(_BLANK_INBOUND_SECRET_ERROR)
+        return value
+
+
+class WhatsAppInboundSource(SignedInboundSource):
+    """The WhatsApp Cloud API source: Meta's signature secret and its subscription handshake token."""
+
+    verify_token: Annotated[str, SENSITIVE]
+
+    @field_validator("verify_token")
+    @classmethod
+    def require_nonblank_verify_token(cls, value: str) -> str:
+        """Refuse a blank handshake token."""
+        if not value.strip():
+            raise ValueError(_BLANK_INBOUND_VERIFY_TOKEN_ERROR)
+        return value
+
+
+class NativeInboundSources(ClosedModel):
+    """Inbound protocols a company or person home may declare."""
+
+    native: SignedInboundSource | None = None
+
+
+class ProjectInboundSources(NativeInboundSources):
+    """Inbound protocols a project home may declare."""
+
+    github: SignedInboundSource | None = None
+
+
+class GlobalInboundSources(ClosedModel):
+    """Inbound protocols the global configuration may declare."""
+
+    whatsapp: WhatsAppInboundSource | None = None
 
 
 class SubscriptionContractConfig(ClosedModel):
@@ -432,10 +458,22 @@ class ChannelSubscription(ClosedModel):
 
 
 class HooksConfig(ClosedModel):
-    """Hooks and subscriptions configuration."""
+    """A project's hook subscriptions and its own inbound sources."""
 
-    inbound: dict[str, InboundSourceConfig] = {}
+    inbound: ProjectInboundSources = ProjectInboundSources()
     subscriptions: list[SubscriptionConfig] = []
+
+
+class HomeHooksConfig(ClosedModel):
+    """A company's or person's own inbound sources."""
+
+    inbound: NativeInboundSources = NativeInboundSources()
+
+
+class GlobalHooksConfig(ClosedModel):
+    """The global configuration's inbound sources."""
+
+    inbound: GlobalInboundSources = GlobalInboundSources()
 
 
 class CheckpointActionConfig(ClosedModel):
@@ -698,6 +736,7 @@ class GlobalConfig(ClosedModel):
     event_domains: DomainsConfig | None = None
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
     help_desk: HelpDeskConfig = HelpDeskConfig()
+    hooks: GlobalHooksConfig = GlobalHooksConfig()
 
     @field_validator("jobs")
     @classmethod
@@ -747,6 +786,7 @@ class PersonConfig(ClosedModel):
     settings: PersonSettings = PersonSettings()
     color: PersonChipColor | None = None
     preferred_channel: MessagingChannel | None = None
+    hooks: HomeHooksConfig = HomeHooksConfig()
 
     @field_validator("slug")
     @classmethod
@@ -798,6 +838,7 @@ class CompanyConfig(ClosedModel):
     erp_id: str | None = None
     members: dict[str, CompanyMember] = Field(default_factory=dict)
     help_desk: HelpDeskConfig = HelpDeskConfig()
+    hooks: HomeHooksConfig = HomeHooksConfig()
 
     @field_validator("slug")
     @classmethod

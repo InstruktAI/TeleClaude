@@ -1,194 +1,373 @@
-"""Inbound webhook endpoint framework for external platforms."""
+"""The ingress's inbound endpoints: verify an external request, translate it, relay it onto the event stream.
+
+Three fixed route groups serve every home. The path names the declaring home, and
+the home's own configuration, read when the request arrives, opens or closes the
+endpoint. A request is verified under that home's secret over the raw body before
+it is parsed, translated into one or more ``<domain>.<name>`` events, and emitted
+on the platform event stream with the ingress as origin and the declaring home as
+subject. Delivery to this computer's handlers and to every other computer's is the
+stream consumers' work (``teleclaude.hooks.relay_delivery``); the request path
+dispatches nothing itself.
+"""
 
 from __future__ import annotations
 
-import hashlib
+import asyncio
 import hmac
-import inspect
 import json
-from collections.abc import Awaitable, Callable
-from dataclasses import replace
-from typing import cast
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from http import HTTPMethod
+from typing import Final
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from instrukt_ai_logging import get_logger
 
-from teleclaude.hooks.webhook_models import HookEvent
+from teleclaude.config.inbound_sources import (
+    InboundDeclarationError,
+    declared_inbound_sources,
+    declared_whatsapp_source,
+)
+from teleclaude.config.schema import ProjectInboundSources, WhatsAppInboundSource
+from teleclaude.config_subjects import ConfigSubjectKind
+from teleclaude.events.envelope import (
+    EventEnvelope,
+    EventHomeKind,
+    EventHomeRef,
+    EventLevel,
+    EventSubject,
+    EventSubjectMarker,
+    EventVisibility,
+)
+from teleclaude.events.producer import EventProducer
+from teleclaude.hooks.delivery import compute_signature
+from teleclaude.hooks.normalizers.github import github_event_type
+from teleclaude.hooks.normalizers.whatsapp import whatsapp_message_type, whatsapp_messages
+from teleclaude.hooks.relay_delivery import RelayProtocol, relayed_hook_event
 
 logger = get_logger(__name__)
 
+INBOUND_PATH_PREFIX: Final = "/hooks/inbound"
+
 _INBOUND_WEBHOOK_EVENT_ACCEPTED = "inbound_webhook_event_accepted"
+_INBOUND_WEBHOOK_REFUSED = "inbound_webhook_refused"
+_INBOUND_WEBHOOK_RELAY_FAILED = "inbound_webhook_relay_failed"
+_INBOUND_DECLARATION_UNREADABLE = "inbound_declaration_unreadable"
+_ROUTE_TAG = "hooks-inbound"
+_HOME_DESCRIPTION = "{kind}/{slug}"
+_NO_HOME = "-"
+_WHATSAPP_ROUTE = INBOUND_PATH_PREFIX + "/whatsapp"
+_GITHUB_ROUTE = INBOUND_PATH_PREFIX + "/github/project/{slug}"
+_NATIVE_ROUTE = INBOUND_PATH_PREFIX + "/{kind}/{slug}"
 
-# guard: loose-dict - Inbound payload is dynamic JSON.
-NormalizerResult = HookEvent | list[HookEvent]
-Normalizer = Callable[
-    [dict[str, object], dict[str, str]],  # guard: loose-dict - Inbound payload JSON is platform-defined.
-    NormalizerResult,
-]
+_NATIVE_SIGNATURE_HEADER = "X-Hook-Signature"
+_HUB_SIGNATURE_HEADER = "X-Hub-Signature-256"
+_HANDSHAKE_MODE = "subscribe"
+_HANDSHAKE_MODE_PARAM = "hub.mode"
+_HANDSHAKE_TOKEN_PARAM = "hub.verify_token"
+_HANDSHAKE_CHALLENGE_PARAM = "hub.challenge"
+_PLAIN_TEXT = "text/plain"
+_ACCEPTED_BODY: Final = {"status": "accepted"}
+
+_NATIVE_SEGMENT = re.compile(r"^[a-z][a-z0-9_]*$")
+_NAME_SEPARATOR = "."
+_WHATSAPP_DOMAIN = RelayProtocol.WHATSAPP.value
+_GITHUB_DOMAIN = RelayProtocol.GITHUB.value
+
+_DETAIL_NOT_FOUND = "No such endpoint"
+_DETAIL_DECLARATION_UNREADABLE = "Inbound declaration unreadable"
+_DETAIL_MISSING_SIGNATURE = "Missing signature"
+_DETAIL_INVALID_SIGNATURE = "Invalid signature"
+_DETAIL_INVALID_PAYLOAD = "Invalid payload"
+_DETAIL_VERIFICATION_FAILED = "Verification failed"
+_DETAIL_RELAY_ERROR = "Relay error"
+
+_STATUS_NOT_FOUND = 404
+_STATUS_UNAUTHORIZED = 401
+_STATUS_FORBIDDEN = 403
+_STATUS_BAD_REQUEST = 400
+_STATUS_SERVER_ERROR = 500
+_STATUS_BAD_GATEWAY = 502
 
 
-class NormalizerRegistry:
-    """Registry for inbound payload normalizers."""
+class _Refusal(StrEnum):
+    """Why an inbound request was refused."""
 
-    def __init__(self) -> None:
-        self._normalizers: dict[str, Normalizer] = {}
-
-    def register(self, key: str, normalizer: Normalizer) -> None:
-        """Register a payload normalizer by key."""
-        self._normalizers[key] = normalizer
-        logger.debug("Registered normalizer: %s", key)
-
-    def get(self, key: str) -> Normalizer | None:
-        """Return a previously registered normalizer, if present."""
-        return self._normalizers.get(key)
+    NO_ENDPOINT = "no_endpoint"
+    DECLARATION_UNREADABLE = "declaration_unreadable"
+    MISSING_SIGNATURE = "missing_signature"
+    INVALID_SIGNATURE = "invalid_signature"
+    INVALID_BODY = "invalid_body"
+    VERIFICATION_FAILED = "verification_failed"
 
 
-class InboundEndpointRegistry:
-    """Manages dynamic inbound webhook routes on a FastAPI app."""
+_REFUSAL_RESPONSES: Final[Mapping[_Refusal, tuple[int, str]]] = {
+    _Refusal.NO_ENDPOINT: (_STATUS_NOT_FOUND, _DETAIL_NOT_FOUND),
+    _Refusal.DECLARATION_UNREADABLE: (_STATUS_SERVER_ERROR, _DETAIL_DECLARATION_UNREADABLE),
+    _Refusal.MISSING_SIGNATURE: (_STATUS_UNAUTHORIZED, _DETAIL_MISSING_SIGNATURE),
+    _Refusal.INVALID_SIGNATURE: (_STATUS_UNAUTHORIZED, _DETAIL_INVALID_SIGNATURE),
+    _Refusal.INVALID_BODY: (_STATUS_BAD_REQUEST, _DETAIL_INVALID_PAYLOAD),
+    _Refusal.VERIFICATION_FAILED: (_STATUS_FORBIDDEN, _DETAIL_VERIFICATION_FAILED),
+}
 
-    def __init__(
-        self,
-        app: FastAPI,
-        normalizer_registry: NormalizerRegistry,
-        dispatch: Callable[[HookEvent], Awaitable[None]],
-    ) -> None:
-        self._app = app
-        self._normalizers = normalizer_registry
-        self._dispatch = dispatch
-        self._registered_paths: set[str] = set()
 
-    def register(
-        self,
-        path: str,
-        normalizer_key: str,
-        verify_config: dict[str, object] | None = None,  # guard: loose-dict - Verify config is dynamic JSON
-        company: str | None = None,
-    ) -> None:
-        """Register an inbound webhook endpoint.
+class _InvalidBody(Exception):
+    """A verified request whose body does not fit its protocol."""
 
-        Args:
-            path: URL path (e.g., "/hooks/whatsapp")
-            normalizer_key: Key in NormalizerRegistry
-            verify_config: Optional verification config (verify_token, secret, etc.)
-            company: The source's declared company, stamped onto every event this
-                source produces, overriding any payload-supplied value.
-        """
-        if path in self._registered_paths:
-            logger.warning("Inbound path already registered: %s", path)
-            return
 
-        config = verify_config or {}
+@dataclass(frozen=True)
+class _Endpoint:
+    """One resolved endpoint: who declared it, how its requests are signed, and whom its events are about."""
 
-        async def handle_get(request: Request) -> Response:
-            """Handle verification challenges (e.g., WhatsApp)."""
-            verify_token = config.get("verify_token")
-            if not verify_token:
-                raise HTTPException(status_code=405, detail="GET not supported for this endpoint")
+    protocol: RelayProtocol
+    home: str
+    secret: str
+    signature_header: str
+    subject: EventSubject
 
-            params = request.query_params
-            mode = params.get("hub.mode")
-            token = params.get("hub.verify_token")
-            challenge = params.get("hub.challenge")
 
-            if mode == "subscribe" and token == verify_token and challenge:
-                logger.info("Verification challenge accepted: %s", path)
-                return Response(content=challenge, media_type="text/plain")
+@dataclass(frozen=True)
+class _RelayedEvent:
+    """One event a verified request translates into."""
 
-            raise HTTPException(status_code=403, detail="Verification failed")
+    domain: str
+    name: str
+    payload: dict[str, object]  # guard: loose-dict - Producer or provider payload is relayed uninterpreted.
 
-        async def handle_post(request: Request) -> dict[str, str]:
-            """Handle incoming webhook payload."""
-            body = await request.body()
-            headers = {name.lower(): value for name, value in request.headers.items()}
 
-            # Verify signature if configured
-            secret = config.get("secret")
-            if isinstance(secret, str):
-                signature = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Hook-Signature")
-                if not signature:
-                    raise HTTPException(status_code=401, detail="Missing signature")
-                expected = f"sha256={hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()}"
-                if not hmac.compare_digest(signature, expected):
-                    raise HTTPException(status_code=401, detail="Invalid signature")
-            elif secret is not None:
-                logger.warning("Ignoring non-string secret config for inbound webhook: %s", normalizer_key)
-                raise HTTPException(status_code=500, detail="Invalid webhook secret config")
+def _refuse(refusal: _Refusal, protocol: RelayProtocol, home: str) -> HTTPException:
+    """Log a refusal and return the response that carries it. Neither the log nor the response holds a secret."""
+    logger.warning(_INBOUND_WEBHOOK_REFUSED, reason=refusal.value, protocol=protocol.value, home=home)
+    status, detail = _REFUSAL_RESPONSES[refusal]
+    return HTTPException(status_code=status, detail=detail)
 
-            try:
-                payload = json.loads(body)
-            except json.JSONDecodeError as exc:
-                logger.error("Invalid JSON payload for inbound webhook: %s", path, exc_info=True)
-                raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-            normalizer = self._normalizers.get(normalizer_key)
-            if not normalizer:
-                logger.error("Normalizer not found: %s", normalizer_key)
-                raise HTTPException(status_code=500, detail="Normalizer not configured")
+def _verify_signature(body: bytes, presented: str | None, endpoint: _Endpoint) -> None:
+    """Check the signature over the raw body in constant time, before any parsing."""
+    if not presented:
+        raise _refuse(_Refusal.MISSING_SIGNATURE, endpoint.protocol, endpoint.home)
+    if not hmac.compare_digest(presented, compute_signature(body, endpoint.secret)):
+        raise _refuse(_Refusal.INVALID_SIGNATURE, endpoint.protocol, endpoint.home)
 
-            try:
-                normalized = self._invoke_normalizer(normalizer, payload, headers)
-            except Exception as exc:
-                logger.error("Normalization failed: %s error=%s", normalizer_key, exc, exc_info=True)
-                raise HTTPException(status_code=400, detail="Failed to normalize payload") from exc
 
-            events: list[HookEvent]
-            if isinstance(normalized, list):
-                events = normalized
-            else:
-                events = [normalized]
+class _NativeField(StrEnum):
+    """The three members of a native request body."""
 
-            events = [replace(event, properties={**event.properties, "company": company}) for event in events]
-            for event in events:
-                logger.info(
-                    _INBOUND_WEBHOOK_EVENT_ACCEPTED,
-                    source=event.source,
-                    type=event.type,
-                    event_ts=event.timestamp,
-                    company=company or "",
-                )
+    DOMAIN = "domain"
+    NAME = "name"
+    PAYLOAD = "payload"
 
-            try:
-                for event in events:
-                    await self._dispatch(event)
-            except Exception as exc:
-                logger.error("Dispatch failed for inbound %s: %s", path, exc, exc_info=True)
-                # Return 502 so platforms (WhatsApp, etc.) can retry the delivery.
-                raise HTTPException(status_code=502, detail="dispatch error") from exc
 
-            return {"status": "accepted"}
+def _native_event_name(domain: object, name: object) -> tuple[str, str]:
+    """Return the domain and the ``<domain>.<name>`` event name, refusing any malformed segment."""
+    if not isinstance(domain, str) or not isinstance(name, str):
+        raise _InvalidBody
+    segments = (domain, *name.split(_NAME_SEPARATOR))
+    if not all(_NATIVE_SEGMENT.match(segment) for segment in segments):
+        raise _InvalidBody
+    return domain, _NAME_SEPARATOR.join(segments)
 
-        # Register routes
-        self._app.add_api_route(path, handle_get, methods=["GET"], tags=["hooks-inbound"])
-        self._app.add_api_route(path, handle_post, methods=["POST"], tags=["hooks-inbound"])
-        self._registered_paths.add(path)
-        logger.info("Registered inbound endpoint: %s (normalizer=%s)", path, normalizer_key)
 
-    @staticmethod
-    # guard: loose-dict-func - Inbound payload structure is dynamic.
-    def _invoke_normalizer(
-        normalizer: Normalizer,
-        payload: dict[str, object],  # guard: loose-dict - Inbound payload is dynamic JSON.
-        headers: dict[str, str],
-    ) -> NormalizerResult:
-        """Invoke normalizer, supporting both old and new signatures."""
+# guard: loose-dict-func - The native request body is third-party JSON, relayed uninterpreted.
+def _translate_native(body: dict[str, object], _headers: Mapping[str, str]) -> list[_RelayedEvent]:
+    """Translate a native request: exactly a domain, a name and an opaque payload object."""
+    payload = body.get(_NativeField.PAYLOAD)
+    if set(body) != set(_NativeField) or not isinstance(payload, dict):
+        raise _InvalidBody
+    domain, event_name = _native_event_name(body[_NativeField.DOMAIN], body[_NativeField.NAME])
+    return [_RelayedEvent(domain=domain, name=event_name, payload=payload)]
+
+
+# guard: loose-dict-func - GitHub webhook payload is third-party JSON.
+def _translate_github(body: dict[str, object], headers: Mapping[str, str]) -> list[_RelayedEvent]:
+    """Translate a GitHub delivery into ``github.<event>`` carrying the delivery body."""
+    event_type = github_event_type(dict(headers))
+    return [_RelayedEvent(domain=_GITHUB_DOMAIN, name=_NAME_SEPARATOR.join((_GITHUB_DOMAIN, event_type)), payload=body)]
+
+
+# guard: loose-dict-func - WhatsApp webhook payload is third-party JSON.
+def _translate_whatsapp(body: dict[str, object], _headers: Mapping[str, str]) -> list[_RelayedEvent]:
+    """Translate a WhatsApp webhook into one ``whatsapp.message.<type>`` event per message, in order."""
+    return [
+        _RelayedEvent(
+            domain=_WHATSAPP_DOMAIN,
+            name=_NAME_SEPARATOR.join((_WHATSAPP_DOMAIN, whatsapp_message_type(message))),
+            payload=message,
+        )
+        for message in whatsapp_messages(body)
+    ]
+
+
+# guard: loose-dict - Translators receive third-party request JSON and relay it uninterpreted.
+_TRANSLATORS: Final[Mapping[RelayProtocol, Callable[[dict[str, object], Mapping[str, str]], list[_RelayedEvent]]]] = {
+    RelayProtocol.NATIVE: _translate_native,
+    RelayProtocol.GITHUB: _translate_github,
+    RelayProtocol.WHATSAPP: _translate_whatsapp,
+}
+
+
+def _declaration_failure(home: str, protocol: RelayProtocol, error: InboundDeclarationError) -> HTTPException:
+    """Log an unreadable declaration at error with the home and the cause, and return the server error."""
+    logger.error(_INBOUND_DECLARATION_UNREADABLE, home=home, protocol=protocol.value, cause=str(error.cause))
+    return _refuse(_Refusal.DECLARATION_UNREADABLE, protocol, home)
+
+
+def _home_kind(kind: str) -> EventHomeKind | None:
+    try:
+        return EventHomeKind(kind)
+    except ValueError:
+        return None
+
+
+async def _resolve_native(kind: str, slug: str) -> _Endpoint:
+    home = _HOME_DESCRIPTION.format(kind=kind, slug=slug)
+    home_kind = _home_kind(kind)
+    if home_kind is None:
+        raise _refuse(_Refusal.NO_ENDPOINT, RelayProtocol.NATIVE, home)
+    try:
+        sources = await asyncio.to_thread(declared_inbound_sources, ConfigSubjectKind(home_kind.value), slug)
+    except InboundDeclarationError as error:
+        raise _declaration_failure(home, RelayProtocol.NATIVE, error) from error
+    if sources is None or sources.native is None:
+        raise _refuse(_Refusal.NO_ENDPOINT, RelayProtocol.NATIVE, home)
+    return _Endpoint(
+        protocol=RelayProtocol.NATIVE,
+        home=home,
+        secret=sources.native.secret,
+        signature_header=_NATIVE_SIGNATURE_HEADER,
+        subject=EventHomeRef(home_kind, slug),
+    )
+
+
+async def _resolve_github(slug: str) -> _Endpoint:
+    home = _HOME_DESCRIPTION.format(kind=EventHomeKind.PROJECT.value, slug=slug)
+    try:
+        sources = await asyncio.to_thread(declared_inbound_sources, ConfigSubjectKind.PROJECT, slug)
+    except InboundDeclarationError as error:
+        raise _declaration_failure(home, RelayProtocol.GITHUB, error) from error
+    if not isinstance(sources, ProjectInboundSources) or sources.github is None:
+        raise _refuse(_Refusal.NO_ENDPOINT, RelayProtocol.GITHUB, home)
+    return _Endpoint(
+        protocol=RelayProtocol.GITHUB,
+        home=home,
+        secret=sources.github.secret,
+        signature_header=_HUB_SIGNATURE_HEADER,
+        subject=EventHomeRef(EventHomeKind.PROJECT, slug),
+    )
+
+
+async def _load_whatsapp_source() -> WhatsAppInboundSource:
+    try:
+        source = await asyncio.to_thread(declared_whatsapp_source)
+    except InboundDeclarationError as error:
+        raise _declaration_failure(_NO_HOME, RelayProtocol.WHATSAPP, error) from error
+    if source is None:
+        raise _refuse(_Refusal.NO_ENDPOINT, RelayProtocol.WHATSAPP, _NO_HOME)
+    return source
+
+
+async def _resolve_whatsapp() -> _Endpoint:
+    source = await _load_whatsapp_source()
+    return _Endpoint(
+        protocol=RelayProtocol.WHATSAPP,
+        home=_NO_HOME,
+        secret=source.secret,
+        signature_header=_HUB_SIGNATURE_HEADER,
+        subject=EventSubjectMarker.NONE,
+    )
+
+
+class InboundRelay:
+    """Verify, translate and relay inbound requests for one ingress computer."""
+
+    def __init__(self, producer: EventProducer) -> None:
+        self._producer = producer
+
+    async def relay(self, request: Request, endpoint: _Endpoint) -> dict[str, str]:
+        """Handle one signed POST: verify the raw body, parse it, translate it, emit each event."""
+        body = await request.body()
+        _verify_signature(body, request.headers.get(endpoint.signature_header), endpoint)
         try:
-            signature = inspect.signature(normalizer)
-        except (TypeError, ValueError):
-            normalizer_dynamic = cast(Callable[..., NormalizerResult], normalizer)
-            return normalizer_dynamic(payload, headers)
+            document = json.loads(body)
+            if not isinstance(document, dict):
+                raise _InvalidBody
+            relayed = _TRANSLATORS[endpoint.protocol](document, {k.lower(): v for k, v in request.headers.items()})
+        except (json.JSONDecodeError, _InvalidBody) as error:
+            raise _refuse(_Refusal.INVALID_BODY, endpoint.protocol, endpoint.home) from error
+        for event in relayed:
+            await self._emit(endpoint, event)
+        return dict(_ACCEPTED_BODY)
 
-        positional_parameters = [
-            param
-            for param in signature.parameters.values()
-            if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-        ]
-        supports_headers = (
-            any(param.kind == inspect.Parameter.VAR_POSITIONAL for param in signature.parameters.values())
-            or len(positional_parameters) >= 2
+    async def _emit(self, endpoint: _Endpoint, event: _RelayedEvent) -> None:
+        envelope = EventEnvelope(
+            event=event.name,
+            source=endpoint.protocol.value,
+            level=EventLevel.BUSINESS,
+            domain=event.domain,
+            visibility=EventVisibility.CLUSTER,
+            subject=endpoint.subject,
+            payload=event.payload,
+            timestamp=datetime.now(UTC),
+        )
+        hook_event = relayed_hook_event(envelope)
+        try:
+            await self._producer.emit(envelope)
+        except Exception as error:
+            logger.error(
+                _INBOUND_WEBHOOK_RELAY_FAILED,
+                event=event.name,
+                protocol=endpoint.protocol.value,
+                home=endpoint.home,
+                exc_info=True,
+            )
+            # A transient failure so the sender retries the delivery.
+            raise HTTPException(status_code=_STATUS_BAD_GATEWAY, detail=_DETAIL_RELAY_ERROR) from error
+        logger.info(
+            _INBOUND_WEBHOOK_EVENT_ACCEPTED,
+            source=hook_event.source,
+            type=hook_event.type,
+            event_ts=hook_event.timestamp,
+            event=event.name,
+            protocol=endpoint.protocol.value,
+            subject=endpoint.home,
         )
 
-        normalizer_dynamic = cast(Callable[..., NormalizerResult], normalizer)
 
-        if supports_headers:
-            return normalizer_dynamic(payload, headers)
-        return normalizer_dynamic(payload)
+def install_inbound_routes(app: FastAPI, producer: EventProducer) -> None:
+    """Mount the three fixed inbound route groups on the API app."""
+    relay = InboundRelay(producer)
+
+    async def whatsapp_handshake(request: Request) -> Response:
+        """Answer Meta's subscription handshake against the declared verify token."""
+        source = await _load_whatsapp_source()
+        params = request.query_params
+        token = params.get(_HANDSHAKE_TOKEN_PARAM)
+        challenge = params.get(_HANDSHAKE_CHALLENGE_PARAM)
+        if (
+            params.get(_HANDSHAKE_MODE_PARAM) != _HANDSHAKE_MODE
+            or token is None
+            or not hmac.compare_digest(token, source.verify_token)
+            or not challenge
+        ):
+            raise _refuse(_Refusal.VERIFICATION_FAILED, RelayProtocol.WHATSAPP, _NO_HOME)
+        return Response(content=challenge, media_type=_PLAIN_TEXT)
+
+    async def whatsapp_post(request: Request) -> dict[str, str]:
+        """Relay a WhatsApp webhook."""
+        return await relay.relay(request, await _resolve_whatsapp())
+
+    async def github_post(slug: str, request: Request) -> dict[str, str]:
+        """Relay a GitHub delivery for a project."""
+        return await relay.relay(request, await _resolve_github(slug))
+
+    async def native_post(kind: str, slug: str, request: Request) -> dict[str, str]:
+        """Relay a native event for a company, person or project."""
+        return await relay.relay(request, await _resolve_native(kind, slug))
+
+    app.add_api_route(_WHATSAPP_ROUTE, whatsapp_handshake, methods=[HTTPMethod.GET], tags=[_ROUTE_TAG])
+    app.add_api_route(_WHATSAPP_ROUTE, whatsapp_post, methods=[HTTPMethod.POST], tags=[_ROUTE_TAG])
+    app.add_api_route(_GITHUB_ROUTE, github_post, methods=[HTTPMethod.POST], tags=[_ROUTE_TAG])
+    app.add_api_route(_NATIVE_ROUTE, native_post, methods=[HTTPMethod.POST], tags=[_ROUTE_TAG])

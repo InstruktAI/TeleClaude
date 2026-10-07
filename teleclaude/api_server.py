@@ -92,6 +92,7 @@ from teleclaude.core.operation_caller_identity import reset_caller_session_id, s
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.hooks.api_routes import router as hooks_router
+from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
@@ -491,7 +492,9 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                     path=request.url.path,
                     operation=operation,
                 )
-            caller_token = set_caller_session_id(carried_caller_session_id(request))
+            # Inbound external requests authenticate by signature alone and carry no caller identity.
+            carries_caller = not request.url.path.startswith(INBOUND_PATH_PREFIX)
+            caller_token = set_caller_session_id(carried_caller_session_id(request) if carries_caller else None)
             try:
                 return await call_next(request)
             finally:

@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from teleclaude.hooks.webhook_models import HookEvent
 
 CONTEXT_MESSAGE_ID_PROPERTY = "context_message_id"
+WHATSAPP_SOURCE = "whatsapp"
+_TIMESTAMP_FIELD = "timestamp"
 _CONTEXT_ID_FIELD = "id"
 _CONTEXT_FIELD = "context"
 
@@ -24,7 +26,7 @@ def _to_event_timestamp(raw_timestamp: object) -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _message_type(
+def whatsapp_message_type(
     message: dict[str, object],  # guard: loose-dict - Raw webhook message JSON is dynamic.
 ) -> str:
     msg_type = str(message.get("type") or "unknown")
@@ -45,7 +47,7 @@ def _message_type(
     return f"message.{msg_type}"
 
 
-def _iter_whatsapp_messages(
+def whatsapp_messages(
     payload: dict[str, object],  # guard: loose-dict - dynamic payload
 ) -> list[dict[str, object]]:  # guard: loose-dict - webhook payload
     """Yield message dictionaries found in a WhatsApp webhook payload."""
@@ -111,21 +113,15 @@ def _build_message_properties(
     return properties
 
 
-def normalize_whatsapp_webhook(
-    payload: dict[str, object],  # guard: loose-dict - webhook payload is dynamic
-    headers: dict[str, str],
-) -> list[HookEvent]:
-    """Normalize WhatsApp webhook payload into HookEvent list."""
-    _ = headers
-
-    return [
-        HookEvent(
-            source="whatsapp",
-            type=message_type,
-            timestamp=_to_event_timestamp(message.get("timestamp")),
-            properties=_build_message_properties(message, message_type),
-            payload=message,
-        )
-        for message in _iter_whatsapp_messages(payload)
-        for message_type in [_message_type(message)]
-    ]
+def whatsapp_hook_event(
+    message_type: str,
+    message: dict[str, object],  # guard: loose-dict - webhook payload is dynamic
+) -> HookEvent:
+    """Build the canonical WhatsApp HookEvent for one message of the given ``message.<type>``."""
+    return HookEvent(
+        source=WHATSAPP_SOURCE,
+        type=message_type,
+        timestamp=_to_event_timestamp(message.get(_TIMESTAMP_FIELD)),
+        properties=_build_message_properties(message, message_type),
+        payload=message,
+    )

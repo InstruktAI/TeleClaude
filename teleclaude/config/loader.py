@@ -21,6 +21,7 @@ from teleclaude.config._environment import (
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.inbound_secret_references import require_inbound_secret_references
 from teleclaude.config.migrations import (
     Destination,
     RegistrySubjectRequired,
@@ -182,6 +183,7 @@ def load_config[T: BaseModel](
     if not isinstance(raw, Mapping):
         return model_class.model_validate(raw)
     raw = upcast_for_read(path, raw)
+    require_inbound_secret_references(path, raw)
     expanded = expanded_overlay_input(path, raw, kind).value
     try:
         model = model_class.model_validate(expanded)

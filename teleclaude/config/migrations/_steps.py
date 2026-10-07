@@ -17,6 +17,7 @@ from teleclaude.config.migrations import (
     v010_declare_help_desk,
     v011_retire_help_desk_dir,
     v012_restore_api_tcp_port,
+    v013_declare_inbound_sources,
 )
 
 STEPS: Final = (
@@ -32,4 +33,5 @@ STEPS: Final = (
     v010_declare_help_desk,
     v011_retire_help_desk_dir,
     v012_restore_api_tcp_port,
+    v013_declare_inbound_sources,
 )
