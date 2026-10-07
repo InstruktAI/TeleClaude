@@ -54,9 +54,9 @@ project.
    Every maintenance action also carries its on-demand disposition
    (`local/projects/teleclaude/design/architecture/checkpoint-system`, Invariant 29).
    An action that disrupts a live process — restarting a service, reloading an
-   interface — is written with `on_demand: defer`, plus a `revision_probe`
-   when the project can report the commit that process started from. Every other
-   action keeps the default.
+   interface — is written with `on_demand: defer`, plus an `owed_probe` when
+   the project can tell whether that disruption is owed. Every other action
+   keeps the default.
    <!-- /planned:telec-sync-runs-maintenance -->
 3. The assessor writes the result into `ProjectConfig.checkpoint` via
    `telec config project patch --revision <rev> [--yaml <patch> | --from-file

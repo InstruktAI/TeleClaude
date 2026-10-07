@@ -281,7 +281,6 @@ And the same holds for a project that subscribes neither code nor docs
 Given a project whose installed TeleClaude-owned hooks lag their current templates
 And which also carries a hook the project authored itself
 And whose docs filter driver does not match its docs subscription
-And whose working tree holds no uncommitted edits
 When an agent runs telec sync in that project's canonical checkout on main
 Then the project's TeleClaude-owned hooks are refreshed
 And the project-authored hook is left in place

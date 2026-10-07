@@ -111,7 +111,7 @@ Every checkpoint-registry action also carries its judgment owner: an ordinary se
 <!-- planned-change:telec-sync-runs-maintenance -->
 An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only` and `precedence`, beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
 <!-- change:telec-sync-runs-maintenance -->
-An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only`, `precedence`, and the optional on-demand `on_demand` disposition and `revision_probe` command (Invariant 29), beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
+An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only`, `precedence`, and the optional on-demand `on_demand` disposition and `owed_probe` command (Invariant 29), beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
 <!-- /planned-change:telec-sync-runs-maintenance -->
 
 The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
@@ -171,21 +171,17 @@ owed, and the registry itself tells the run what to do with each one, through
 the action's `on_demand` disposition:
 
 - `run`, the default: performed.
-- `defer`: never performed on demand. The run reports the action as owed when
-  a process it refreshes started from an earlier commit than the converged tip,
-  and the changed paths between the two owe the action under the root's own
-  bindings, through the same scope matcher (Invariant 25). The action's
-  `revision_probe` command reports the commit each live process it refreshes
-  started from: one revision per line, no line when no such process runs, and a
-  non-zero exit when it cannot tell. With no probe, a probe that cannot tell, or
-  a reported commit that is not an ancestor of the tip, the run reports that it
-  cannot tell. A reported commit that already contains the tip owes nothing.
+- `defer`: never performed on demand. The action's `owed_probe` command
+  decides whether the run reports it as owed: it prints one line per reason the
+  action is owed, prints nothing when nothing is owed, and exits non-zero when it
+  cannot tell. With no probe, or a probe that cannot tell, the run reports that
+  it cannot tell. The run names the action's command beside its reasons.
 
-An action also states whether its command reads only committed state. That is a
-claim about the command's own behavior, so only the platform base declares it,
-on publication, and an overlay that overrides that action by id does not inherit
-it. When the root's repository holds uncommitted changes, an on-demand run
-performs only those actions, and holds every other owed action.
+An on-demand run tells each command it runs that the run is on demand. A command
+told so changes no running host service: it deploys no service definition and
+loads, unloads or restarts no service. In every other respect a command behaves
+as it does at the commit boundary and reads the canonical checkout as it stands;
+only publication reads committed state alone, under its own contract.
 
 An action whose command finds nothing to act on in a root completes and says
 so rather than failing. The platform base's installation runs the root's
@@ -199,9 +195,20 @@ The platform base also declares converging the invoking root's own plumbing as
 `plumbing-convergence`, with no base binding. Commit-boundary maintenance in a
 project is therefore unchanged, and every on-demand run converges the root's
 plumbing. TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
-convergence bound to its hook templates, and declares `restart` and
-`tui-reload` `defer`, each with a probe that reads the commit the daemon and
-each live TUI started from.
+convergence bound to its hook templates.
+
+TeleClaude's overlay declares `restart` and `tui-reload` `defer`. Each probe
+reads the commit the daemon, or each live TUI, started from, and reports the
+action owed when that commit is older than the converged tip and the changed
+paths between the two owe the action under the root's own bindings, through the
+same scope matcher (Invariant 25). A start commit that is not an ancestor of the
+tip is a cannot-tell, one that already contains the tip owes nothing, and no
+live process owes nothing. The overlay also declares `service-deploy`, deferred
+and bound to no scope, whose command is `make install` and whose probe names
+each host service installation manages whose deployed definition differs from
+the one installation would deploy, or that installation would withdraw.
+Commit-boundary installation deploys and reloads those services as before
+(`local/projects/teleclaude/policy/agent-service-control`).
 
 An on-demand run fills a command without a range. `{after_sha}` takes the
 converged tip, the `--before-sha {before_sha}` pair is omitted, and the

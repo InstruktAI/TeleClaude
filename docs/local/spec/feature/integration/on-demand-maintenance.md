@@ -34,41 +34,48 @@ Publication is one of those steps and keeps its own contract
 
 ## Canonical fields
 
-- **Location.** A run acts only from the canonical checkout on its main branch,
-  and only on committed state. From a worktree, from a canonical checkout on
-  another branch, or from a directory holding no `teleclaude.yml`, it refuses
-  before any step runs and names where to run it instead.
+- **Location.** A run acts only from the canonical checkout on its main branch.
+  From a worktree, from a canonical checkout on another branch, or from a
+  directory holding no `teleclaude.yml`, it refuses before any step runs and
+  names where to run it instead.
 - **Steps.** The owed steps run in the registry's declared order through the
   commit-boundary executor, with the same structured attempt and outcome
   records, marked as an on-demand run. Each step's outcome is reported as it
   completes. A failed step never stops a later one. A run in which any step
-  failed or was held exits non-zero. The run leaves no queued obligation behind:
-  its caller holds the outcome, and running it again is its recovery.
+  failed exits non-zero. The run leaves no queued obligation behind: its caller
+  holds the outcome, and running it again is its recovery.
 - **Uncommitted edits.** The step set is resolved from the root's committed
-  declaration. When the root's repository holds uncommitted changes, a step that
-  reads only committed state, such as publication, still runs, and every other
-  step is held: it is not performed, and the run reports it with the uncommitted
-  paths and, where known, the sessions holding them. Steps that run from the
-  checkout would otherwise consume those edits.
+  declaration. Publication reads committed state alone, under its own contract.
+  Every other step reads the canonical checkout as it stands, exactly as it does
+  at the commit boundary, so an uncommitted edit there can reach its output.
+  When the root's repository holds uncommitted changes, the run says so before
+  its first step, naming the uncommitted paths and, where known, the sessions
+  holding them, and then performs every step. Uncommitted edits never make a run
+  refuse or skip a step.
 - **Plumbing.** Every project's steps include converging that project's own
   plumbing, whatever else its declaration carries.
-- **Disruptive steps.** Restarting the daemon and reloading the terminal
-  interface are never performed by a run. After its steps, the run reports each
-  of them that is owed. One is owed when a process it refreshes started from an
-  earlier commit than the one the run converged, and the changes between the two
-  owe that step under the root's own bindings. The report names the command that
-  performs it. A run that establishes nothing is owed adds nothing. A run that
-  cannot establish which commit a running process started from says so.
+- **Disruptive steps.** Nothing a run performs restarts or reloads a running
+  service. Restarting the daemon and reloading the terminal interface are never
+  performed by a run, and installation deploys no service definition during a
+  run and loads, unloads or restarts no service. After its steps, the run
+  reports each such change that is owed, with the command that performs it. A
+  restart or reload is owed when a process it refreshes started from an earlier
+  commit than the one the run converged, and the changes between the two owe that
+  step under the root's own bindings. Deploying service definitions is owed when
+  a deployed definition differs from what installation would deploy, or a
+  service is due for withdrawal. A run that establishes nothing is owed adds
+  nothing. A run that cannot establish whether a change is owed, such as which
+  commit a running process started from, says so.
 - **Earlier failures.** A step that an earlier commit-boundary run recorded as
   failed is named after the run's own steps, with the replay that recovers it.
   That replay re-runs the recorded action for its original range. The run never
   replaces or clears that record. The report names the standing integrator as
   the owner of that replay.
-- **Report order.** Step outcomes come first, then held steps, then earlier
-  failures, and owed disruptive steps last.
+- **Report order.** Uncommitted edits come first, then step outcomes, then
+  earlier failures, and owed disruptive steps last.
 - **Listing.** `telec sync --list` prints, in order, every step the root's
-  registry declares with what a run would do with it — perform it, hold it, or
-  only report whether it is owed — and changes nothing.
+  registry declares with what a run would do with it — perform it or only
+  report whether it is owed — and changes nothing.
 - **Concurrency.** A run started while commit-boundary maintenance is still
   running never performs a step at the same time as that run, and leaves both
   runs' records accurate.
@@ -160,15 +167,15 @@ Then telec sync refuses before any step runs
 And the agent is told to run it from the canonical checkout on main
 ```
 
-#### UC-ODM10: Uncommitted edits never reach a step
+#### UC-ODM10: Uncommitted edits are named, and never published
 
 ```gherkin
 Given a root whose working tree holds uncommitted edits
 When an agent runs telec sync there
-Then publication publishes the committed main tip
-And every step that would run from the working tree is held and reported with those uncommitted paths
-And no uncommitted edit appears in any step's output
-And telec sync exits non-zero
+Then before the first step the agent sees those uncommitted paths and, where known, the sessions holding them
+And every step runs
+And publication publishes the committed main tip
+And no uncommitted edit appears in the published output
 ```
 
 #### UC-ODM11: A run during automatic maintenance does not collide with it
@@ -206,6 +213,15 @@ When an agent runs telec sync in that root's canonical checkout on main
 Then the installation step runs and reports that there is nothing to install
 And it completes successfully
 And it does not make telec sync exit non-zero
+```
+
+#### UC-ODM15: Installation leaves running services alone
+
+```gherkin
+Given the service definitions installation would deploy differ from the deployed ones
+When an agent runs telec sync in that root's canonical checkout on main
+Then installation runs without deploying a service definition or restarting any service
+And the run ends by stating that deploying the changed service definitions is owed and names the command that performs it
 ```
 
 ## See Also
