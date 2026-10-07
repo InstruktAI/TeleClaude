@@ -84,6 +84,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   the full installer. No consumer reads the store, the secret or the record.
 
 <!-- planned:startable-unattended-install -->
+
 #### Fresh-machine bootstrap
 
 - **Decision boundary (core).** One reconciliation operation decides the
@@ -127,6 +128,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 <!-- /planned:startable-unattended-install -->
 <!-- planned:dsh-compatible-upgrade -->
+
 #### DeepSeek stack convergence
 
 - **State.** No durable state. A run owns a scratch area for its own length,
@@ -195,6 +197,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   Post-commit maintenance reaches it through the full installer.
 
 <!-- /planned:dsh-compatible-upgrade -->
+
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
@@ -202,18 +205,21 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
 - **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
 - **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
+
 <!-- planned:startable-unattended-install -->
+
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
+
 <!-- /planned:startable-unattended-install -->
 <!-- planned:dsh-compatible-upgrade -->
-- **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
-<!-- /planned:dsh-compatible-upgrade -->
 
+- **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
+
+<!-- /planned:dsh-compatible-upgrade -->
 
 ### Event subjects
 
 Node presence and schema-governance events state no subject.
-
 
 ## See Also
 
