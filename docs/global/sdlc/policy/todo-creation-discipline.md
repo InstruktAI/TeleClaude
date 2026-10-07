@@ -21,18 +21,20 @@ description: Decide whether a todo should exist, audit that decision at preparat
   Otherwise create nothing and let the current session retain the conversation
   until it is valid. Neither icebox nor hold makes unfinished intent valid.
 - **Run the bounded creation check before every `telec todo create`.** Read
-  `telec todo list`. For each plausible match, read its `input`; if whether it
-  has started build affects the choice, inspect its current state too. This is
+  `telec todo list`, which lists the live work — the todos a new one could
+  overlap with. For each plausible match, read its `input`; if whether it has
+  started build affects the choice, inspect its current state too. This is
   a cheap check for an obvious existing home, not the deeper judgment about
   whether one premise yields to, supersedes, or depends on another.
 - **Use what the check finds.** Do not create a todo when the work is already
   plainly covered. When a small addition belongs in an existing `change`,
   `bug`, or `feature` that has not started build, route it to that todo's live
   claimant for amendment; when the todo is dormant and unclaimed, amend it
-  directly in the session that found it. Do not create a sibling merely to
-  bypass artifact authority. A separate todo is warranted when the work is
-  independently shippable, substantial in its own right, or the related todo
-  is already building or finalizing.
+  directly in the session that found it. The check and any amendment concern
+  live work; parked intent is re-grounded when it is picked up. Do not create a
+  sibling merely to bypass artifact authority. A separate todo is warranted when
+  the work is independently shippable, substantial in its own right, or the
+  related todo is already building or finalizing.
 - **Do not infer a platform gap from missing automatic action.** When a report's
   premise is that no role automatically owned the next move, establish which
   agent observed the condition, which existing procedure governed its recovery,
@@ -267,7 +269,9 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
 Creation stays intentionally cheap. Its bounded check prevents obvious waste
 without forcing every creator to perform the preparation worker's deeper
 landscape analysis. The entry audit then reads the actual todo and current
-landscape before the input becomes authority for derived work.
+landscape before the input becomes authority for derived work. Picking up
+parked intent re-grounds it against the code and docs as they then stand, so
+keeping it in step while parked is work that preparation repeats.
 
 Documentation-only work stays in its live authoring context because a todo
 would dispatch a fresh worker that never saw the conversation which made the
