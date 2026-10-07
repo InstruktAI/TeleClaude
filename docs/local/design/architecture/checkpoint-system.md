@@ -178,9 +178,9 @@ the action's `on_demand` disposition:
   it cannot tell. The run names the action's command beside its reasons.
 
 An on-demand run tells each command it runs that the run is on demand. A command
-told so stops, restarts or reloads no running host service: where applying a
-changed service definition would reload a running service, it leaves that
-definition undeployed. It may still start a service that is not running. In every other respect a command behaves
+told so deploys none of the service definitions TeleClaude's installation
+renders, and stops, restarts or reloads no running host service. It may still
+start a service that is not running. In every other respect a command behaves
 as it does at the commit boundary and reads the canonical checkout as it stands;
 only publication reads committed state alone, under its own contract.
 
@@ -206,9 +206,9 @@ same scope matcher (Invariant 25). A start commit that is not an ancestor of the
 tip is a cannot-tell, one that already contains the tip owes nothing, and no
 live process owes nothing. The overlay also declares `service-deploy`, deferred
 and bound to no scope, whose command is `make install` and whose probe names
-each host service TeleClaude's installation deploys — the daemon, the cron
-runner and the tmux server — whose deployed definition differs from the one
-installation would deploy, and each service installation would withdraw.
+each service whose definition TeleClaude's installation renders and whose
+deployed definition differs from the rendered one, and each service
+installation would withdraw.
 Commit-boundary installation deploys and reloads those services as before
 (`local/projects/teleclaude/policy/agent-service-control`).
 

@@ -56,10 +56,11 @@ Publication is one of those steps and keeps its own contract
   plumbing, whatever else its declaration carries.
 - **Disruptive steps.** Nothing a run performs stops, restarts or reloads a
   running service. Restarting the daemon and reloading the terminal interface
-  are never performed by a run. During a run, installation stops, restarts or
-  reloads no running service: where applying a changed service definition would
-  reload a running service, it leaves that definition undeployed. It may still
-  start a service that is not running. After its steps, the run
+  are never performed by a run. During a run, installation deploys none of the
+  service definitions TeleClaude's installation renders, and stops, restarts or
+  reloads no running service. It may still start a service that is not running,
+  and a component it sets up may still rewrite its own scheduler configuration
+  where that reloads nothing. After its steps, the run
   reports each such change that is owed, with the command that performs it. A
   restart or reload is owed when a process it refreshes started from an earlier
   commit than the one the run converged, and the changes between the two owe that
@@ -220,10 +221,9 @@ And it does not make telec sync exit non-zero
 #### UC-ODM15: Installation leaves running services alone
 
 ```gherkin
-Given a running service whose definition installation would change
+Given a service whose definition TeleClaude's installation renders differs from the deployed one
 When an agent runs telec sync in that root's canonical checkout on main
-Then installation runs without restarting or reloading that service
-And leaves the changed definition undeployed
+Then installation runs without deploying that definition or restarting any service
 And the run ends by stating that deploying the changed service definitions is owed and names the command that performs it
 ```
 
