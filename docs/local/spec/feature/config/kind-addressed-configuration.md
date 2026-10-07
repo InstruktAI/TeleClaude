@@ -8,6 +8,7 @@ description: One kind-addressed CLI contract for initializing, listing, reading,
 ## What it is
 
 <!-- planned-change:personal-assistant-project-creation -->
+
 `telec config <kind> init|list|get|patch` is the agent-facing resource surface
 for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
@@ -19,6 +20,7 @@ checkout the caller stands in: the owning checkout of the repository that holds
 the caller's current directory, or that directory itself when no repository
 holds it.
 <!-- change:personal-assistant-project-creation -->
+
 `telec config <kind> init|list|get|patch` is the agent-facing resource surface
 for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared

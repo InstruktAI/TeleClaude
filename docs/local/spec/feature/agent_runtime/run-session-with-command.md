@@ -11,9 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-
 The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a selected TeleClaude command from the shared command corpus — not a free-form user message. The CLI verb `telec sessions run --command <cmd> --args ... --path ... --agent ... --mode ...` (a leading slash on the command is tolerated and stripped) normalizes the request, resolves the effective agent, composes the command loader startup message, sets the session title from the structured fields as `<cmd> <args>`, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the loader message is delivered and polling begins. The loader is identical for every enabled runtime — no agent-specific rewrite exists. This is conceptually distinct from `sessions start` because the session is preloaded with a TeleClaude command: the very first thing the agent sees is the loader, not a human turn.
-
 
 How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens.
 
@@ -22,7 +20,6 @@ How the startup message reaches the agent depends on the agent CLI's own launch 
 ### Use cases
 
 #### Agent resolution
-
 
 ```
 Given a run-session request from a caller without a system role
@@ -81,8 +78,8 @@ Then the request is rejected before session creation
 And TeleClaude does not substitute the available agent
 ```
 
-
 <!-- planned:adaptive-usage-routing -->
+
 ```
 Given an automatic-preference run-session request has a preferred agent
 And the preferred agent is enabled, available, and below quota-pressure thresholds
@@ -121,6 +118,7 @@ When the dispatch resolver runs
 Then it selects the supplied agent
 And quota pressure does not reroute the manual preference
 ```
+
 <!-- /planned:adaptive-usage-routing -->
 
 #### UC-ARS1: Reviewer history and producer identity constrain no dispatch
@@ -133,9 +131,7 @@ Then those sessions' agents remain as eligible as if those sessions had never ex
 And the accepted request reports the chosen agent and typed routing reason exactly as any automatic request with the same role context does
 ```
 
-
 #### Command and arguments normalization
-
 
 #### UC-CLR7: Normalization accepts a bare or slash-prefixed command token
 
@@ -154,13 +150,11 @@ Then it is accepted and normalized to the command name without the slash
 And no request is rejected for lacking a leading slash
 ```
 
-
 ```
 Given a request with an empty project
 When the request is validated
 Then it is rejected with "project required"
 ```
-
 
 ```
 Given a request whose normalized command is in the worker-lifecycle command set (build, review-build, finalize)
@@ -168,8 +162,6 @@ And the args field is empty after trimming
 When the run-session preparation validates the request
 Then it is rejected with "<command> requires a slug argument"
 ```
-
-
 
 #### UC-CLR6: Startup-message assembly composes the runtime-identical loader
 
@@ -264,7 +256,6 @@ And every other session records no command
 And the count of migrated sessions equals the count of slash-titled sessions, so a partial migration fails rather than silently dropping sessions
 ```
 
-
 #### Subfolder routing
 
 ```
@@ -295,7 +286,6 @@ And the created session's subdirectory is that worktree, so the workflow's live-
 
 #### Additional context propagation
 
-
 ```
 Given a request with additional_context="<some preamble>"
 When the run-session preparation assembles the launch payload
@@ -312,7 +302,6 @@ Then the composed message carries the additional context exactly once
 And the context appears after the loader, never inside the marker line and never inside the provided-inputs section
 And this holds whether the request supplies command arguments or none
 ```
-
 
 #### UC-CLR12: An agent dispatches a global command by domain, or by a bare name that names exactly one
 
@@ -337,10 +326,7 @@ Then it is given that session
 And the session's recorded command and title carry the command exactly as dispatched
 ```
 
-
-
 #### Dispatch privilege enforcement
-
 
 ```
 Given the resolved command maps to a target system role
@@ -349,7 +335,6 @@ When the run-session preparation checks dispatch privilege
 And the target role is NOT in the caller's allowed dispatch set
 Then it is rejected with "role '<caller>' cannot dispatch <command> (requires dispatch privilege for '<target>')"
 ```
-
 
 ```
 Given a caller carrying the integrator system role
@@ -383,7 +368,6 @@ When it dispatches an orchestrator-role command (/prepare, /work)
 Then it is rejected — the tasker's dispatch grant is worker-only
 And the tasker drives no todo state machine, which only an orchestrator runs (`local/projects/teleclaude/design/cli-authorization-matrix`)
 ```
-
 
 #### UC-DPE5: The coordinator dispatches no lifecycle command
 
@@ -433,7 +417,6 @@ And no request the caller can compose admits a second live reviewer for C on X, 
 And a live reviewer holding a different review command on X does not refuse this one, because each review phase carries its own verdict
 ```
 
-
 ```
 Given a todo slug X already driven by a live driver from a session other than the caller
 And an operator work or prepare operation on X
@@ -459,7 +442,6 @@ When the shared driver-start dedup check runs
 Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
 
-
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes
@@ -470,7 +452,6 @@ read: doc-hygiene runs at `fast` over snippet conformance, code review at `slow`
 behavior. A mode-blind subject collapses them, so the cheap lane is refused as a duplicate
 of the expensive one and its work lands on the wrong reviewer. Two starts at the same mode
 remain one subject and still dedup.
-
 
 ```
 Given a live "review-commits" session for project P opened by initiator session I
@@ -496,7 +477,6 @@ When the create-door dedup check runs
 Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
 ```
 
-
 #### UC-DSD1: Held unclaimed lifecycle create requests are allowed but keep hold
 
 ```
@@ -507,7 +487,6 @@ Then the held flag alone does not refuse creation
 And the create door does not clear hold
 And hold release belongs to the lifecycle command's operator path after that path successfully claims or dispatches X
 ```
-
 
 #### UC-DSD2: Generic create door stamps working_slug from a command argument
 
@@ -520,7 +499,6 @@ And this holds without a "trees/X" worktree subdir, so a repo-root manual start 
 And the create-door dedup check then refuses a duplicate driver for X exactly as it does for a run-session request
 And a command with no slug argument, such as "integrate", stamps no working_slug
 ```
-
 
 #### Initiator binding
 
@@ -567,7 +545,6 @@ And the caller's session is registered as a listener on the new session via the 
 And turn-complete output from the spawned session is forwarded back to the caller
 ```
 
-
 #### Unknown command handling
 
 ```
@@ -589,7 +566,6 @@ Then the startup message is passed to the agent start command as its initial-pro
 And no prompt-state delivery is attempted for that startup message
 ```
 
-
 #### UC-RSC-RG1: Pre-render stillness does not establish startup readiness
 
 ```gherkin
@@ -609,6 +585,7 @@ When TeleClaude delivers the initial message
 Then the session does not appear active on the strength of host-pane readiness
 And the session appears active only after the launched agent reports that it started
 ```
+
 #### UC-RSC-RG3: Fresh post-launch initial input preserves composer protection
 
 ```gherkin
@@ -621,28 +598,20 @@ And an occupied composer retains its existing text with the platform message app
 And a menu or ambiguous screen is left unchanged
 ```
 
-
 ### Cross-context references
-
 
 - **workflow** — commands resolved here correspond to workflow lifecycle verbs (`build`, `review-build`, `finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
 
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Email-bearing identities produce terminal-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
 
-
 - **context** — the command corpus lives in the context bounded context. agent_runtime validates the run-session command token shape, routes the new-session dispatch, and composes the command loader message; it does not interpret command semantics.
-
-
 
 - **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `review-commits` defaults to `slow`; doc-only commit review explicitly supplies `fast`.
 
-
 ## Known caveats
-
 
 - **Command loader-message assembly is uniform.** Every enabled runtime receives the same loader; no agent-specific rewrite path exists, so no behavior difference can hide in one runtime.
 - **The full-command and the startup message diverge for every supported agent.** The full-command (used for the human-visible "initial input" echo) carries the bare `<command> <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the loader startup message.
-
 
 - **Claim-time session metadata repair is fallback only.** Both create doors — `/sessions/run` and the generic `POST /sessions` (New Session modal / `telec sessions start`) — stamp known slug-bound lifecycle metadata from the command argument at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
 
@@ -650,10 +619,7 @@ And a menu or ambiguous screen is left unchanged
 
 - **Unknown command names are not rejected.** A typo in `--command` (e.g., `nxt-build`) passes validation — it simply launches a session that immediately fails inside the agent. Validation here is shape-only, and the shape no longer includes required punctuation: a bare command name is the expected form, and a leading slash is tolerated for compatibility rather than demanded.
 
-
-
 - **Worker-lifecycle slug guard fires AFTER dispatch resolution.** A preferred-agent or no-agents-available failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. dispatch-related) to disambiguate.
-
 
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
 

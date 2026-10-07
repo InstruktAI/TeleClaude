@@ -30,6 +30,7 @@ Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path
   therefore never share an identity. `<slug>` is the slug the home declares,
   never a directory name. Each catalog stores its entries under these qualified
   identities; no identity has a shorter or location-relative form.
+
 - `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
 - `domain` — **Derived** as the first path segment of the id. It holds either a
   published knowledge domain (`general`, `sdlc`, and their peers) or a
@@ -54,12 +55,15 @@ Frontmatter (required, authored):
 Frontmatter (optional, authored):
 
 <!-- planned-change:personal-knowledge-taxonomy -->
+
 - `visibility` — access classification: `public` or `internal`. Defaults to
   `internal` when omitted. It gates a caller who holds no declared relationship
   to the snippet's tier: such a caller sees only `public` snippets. A caller who
   holds a relationship to that tier reads it in full, and a platform admin reads
   every tier in full.
+
 <!-- change:personal-knowledge-taxonomy -->
+
 - `visibility` — access classification. Person-owned snippets use `public` or
   `private`, with `visibility: private` explicitly authored on new snippets in
   both halves of the person's documentation tree. `public` identifies approved
@@ -68,13 +72,20 @@ Frontmatter (optional, authored):
   project, and company snippets retain their `public`/`internal` vocabulary and
   internal default. Locality and audience are separate: visibility does not
   publish a local snippet or confer operational authority over its owner.
+
 <!-- /planned-change:personal-knowledge-taxonomy -->
+
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of its domain's generated bundle, or of the project's generated AGENTS.md for a project's own procedure, for progressive disclosure. Validation rejects this field on non-procedure snippet types.
+
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 - `subscriptions` — procedures only. A non-empty list of event type names, each the type a verified event carries as its own source names it — no registration in the platform event catalog is required — whose arrival activates the procedure through the platform's procedure-activation contract. A procedure declares `subscriptions` or `activation_trigger`, never both, because each names who is responsible for starting the work; a procedure used only as supporting knowledge declares neither. A procedure declaring `subscriptions` is excluded from the "Activatable Procedures" section and listed as a configured responsibility instead. Validation rejects this field on non-procedure snippet types, on a procedure published in a tier the procedure-activation contract does not route, and on a procedure declaring both activation fields.
+
 <!-- change:procedure-activation-gated-on-company -->
+
 - `subscriptions` — procedures only. A non-empty list of event type names, each the type of a platform event as its producer names it — no registration in the platform event catalog is required — whose arrival activates the procedure through the platform's procedure-activation contract. A procedure declares `subscriptions` or `activation_trigger`, never both, because each names who is responsible for starting the work; a procedure used only as supporting knowledge declares neither. A procedure declaring `subscriptions` is excluded from the "Activatable Procedures" section and listed as a configured responsibility instead. Validation rejects this field on non-procedure snippet types, on a procedure published in a tier the procedure-activation contract does not route, and on a procedure declaring both activation fields.
 - `subscription_subject` — required on a procedure declaring `subscriptions`. The one kind of subject the procedure answers: `company`, `person`, `project`, or `platform`. The procedure is activated only by events of a subscribed type whose subject is of that kind; `platform` answers events that concern no registered home. A procedure published in a company's tier answers `company` and one published in a person's tier answers `person`; validation rejects any other kind there, a missing or unrecognized kind, and the field on any snippet that declares no `subscriptions`.
+
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
 - `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `sdlc/principle/documentation-first-development` §10); source validation checks frontmatter shape and the index build records the source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
@@ -150,11 +161,14 @@ half is readable only by that person and the system principal
 - `docs/local/{taxonomy}/` — project-scoped documentation.
 
 <!-- planned-change:personal-knowledge-taxonomy -->
+
 - `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` and
   `~/.teleclaude/people/{person}/docs/local/{taxonomy}/` — a person's published
   and local documentation. Path-derived identity carries the tier and the
   person: `people/{person}/{taxonomy}/{rest}`.
+
 <!-- change:personal-knowledge-taxonomy -->
+
 - `~/.teleclaude/people/{person}/docs/global/{taxonomy}/` — a person's disclosed
   documentation, published with that person's ownership and visibility.
 - `~/.teleclaude/people/{person}/docs/local/{taxonomy}/` — a person's local
@@ -162,7 +176,9 @@ half is readable only by that person and the system principal
   baseline supplies context to the home agent. Both halves follow the same
   taxonomy and frontmatter schema; knowledge contents and disclosure boundaries
   are owned by `personal/spec/person-knowledge`.
+
 <!-- /planned-change:personal-knowledge-taxonomy -->
+
 - `~/.teleclaude/companies/{company}/docs/global/{taxonomy}/` and
   `~/.teleclaude/companies/{company}/docs/local/{taxonomy}/` — a company's
   published and local documentation.
@@ -215,12 +231,17 @@ do not accumulate by default.
 - Home identity prefixes: `projects`, `people`, `companies`, and the local-half
   prefix `local`. They are reserved: no published domain carries one of these
   names.
+
 <!-- planned-change:personal-knowledge-taxonomy -->
+
 - `visibility`: public, internal. Default: `internal`.
+
 <!-- change:personal-knowledge-taxonomy -->
+
 - `visibility`: person-owned snippets use `public` or `private`, defaulting to
   explicitly authored `private`; other existing scopes use `public` or
   `internal`, defaulting to `internal`.
+
 <!-- /planned-change:personal-knowledge-taxonomy -->
 
 ## Known caveats

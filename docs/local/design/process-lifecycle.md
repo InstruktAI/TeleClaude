@@ -52,6 +52,7 @@ policy row, so a recurrence becomes configuration rather than a fresh incident.
   silent.
 
 <!-- planned-change:human-alerts-agent-only -->
+
 - Each reap event carries a deterministic `idempotency_key` derived from the
   observed process and its matched signature, bucketed by a revalidation window
   from the typed config surface. The notification projector collapses repeat
@@ -60,11 +61,14 @@ policy row, so a recurrence becomes configuration rather than a fresh incident.
   surfaces once per window rather than once per scan. The event still reaches the
   `telec events` stream on each scan — observability is unchanged; only the
   human-facing notification queue is de-duplicated.
+
 <!-- change:human-alerts-agent-only -->
+
 - Each reap event carries a deterministic `idempotency_key` derived from the
   observed process and its matched signature, bucketed by a revalidation window
   from the typed config surface. The event reaches the `telec events` stream on
   each scan. It asks for no human delivery, so a reap notifies no one.
+
 <!-- /planned-change:human-alerts-agent-only -->
 
 - Registry rows mutated as detached children are registered, adopted, or reaped.

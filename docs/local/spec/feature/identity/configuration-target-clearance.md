@@ -203,6 +203,7 @@ And the same operation for a person holding that company's admin role is accepte
 ```
 
 <!-- planned:personal-assistant-project-creation -->
+
 The home a new project lands in is its owner's
 (`local/projects/teleclaude/spec/feature/config/project-ownership`), so
 standing for creation is standing over that owner: a person creates in their
@@ -258,7 +259,9 @@ And no standing beyond the command's band is required
   configuration files directly. Clearance directs agents through the
   configuration surface; it is not a boundary against that account's own file
   access.
+
 <!-- planned:startable-unattended-install -->
+
 - Installation establishes a machine's first platform administrator from its
   own input while no person is registered, and creates the checkout's
   environment settings file from local defaults when none exists
@@ -266,6 +269,7 @@ And no standing beyond the command's band is required
   Neither act is a configuration operation, and neither is cleared here. Once a
   person is registered, every addition passes this clearance, and changing
   environment settings stays a cleared operation.
+
 <!-- /planned:startable-unattended-install -->
 
 ## See Also

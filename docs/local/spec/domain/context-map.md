@@ -37,17 +37,23 @@ contracts and never creates shared ownership.
   facts, no persistence, and no other context's semantics; it never redefines,
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
+
 <!-- planned-change:retire-event-domains -->
+
 - `marketing` and `creative_production`: company business domains hosted as
   domain cartridges on the event platform. Each owns its event vocabulary's
   meaning, emission invariants, and handler reactions; hosting confers none of
   that on the event platform.
+
 <!-- change:retire-event-domains -->
+
 - `marketing` and `creative_production`: company business domains whose event
   vocabulary the event platform's catalog hosts. Each owns its event
   vocabulary's meaning and emission invariants; hosting confers none of that on
   the event platform.
+
 <!-- /planned-change:retire-event-domains -->
+
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — origin and subject — and each event type's
   declared subject assignment and payload fields. It owns no event's meaning
@@ -146,11 +152,11 @@ contracts and never creates shared ownership.
   narrows a company session by the event's subject. `event-catalog` publishes the registry and declarations an
   agent's CLI validates a subscription against, and the discovery views; it
   decides no receipt. `identity` decides reach and holds no subscription.
-The daemon, handler, adapter, database, and background-worker labels are layers
-or hosting mechanisms, not additional contexts. The TUI and the CLI are
-`presentation`'s hosting surfaces. Existing placement outside
-these relationships is not precedent; the owning context and published contract
-remain authoritative.
+  The daemon, handler, adapter, database, and background-worker labels are layers
+  or hosting mechanisms, not additional contexts. The TUI and the CLI are
+  `presentation`'s hosting surfaces. Existing placement outside
+  these relationships is not precedent; the owning context and published contract
+  remain authoritative.
 
 ## See Also
 

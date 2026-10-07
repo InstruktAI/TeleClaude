@@ -35,16 +35,20 @@ nothing about its consumers:
   configuration-subject vocabulary; none when the event concerns no registered
   home; or unknown when the event does not carry it, because it predates these
   facts or reports an act whose record was kept before its home was. A project
+
 <!-- planned-change:personal-assistant-project-creation -->
-  subject also carries its owner as the emitting computer
-  resolves it: the declared company or person, declared ownerless, or
-  unresolved when that computer cannot read the project's ownership declaration.
+
+subject also carries its owner as the emitting computer
+resolves it: the declared company or person, declared ownerless, or
+unresolved when that computer cannot read the project's ownership declaration.
 <!-- change:personal-assistant-project-creation -->
-  subject also carries its owner as the emitting computer
-  resolves it under `local/projects/teleclaude/spec/feature/config/project-ownership`: a company or a person, ownerless, or
-  unresolved when that computer cannot resolve the project's ownership.
+
+subject also carries its owner as the emitting computer
+resolves it under `local/projects/teleclaude/spec/feature/config/project-ownership`: a company or a person, ownerless, or
+unresolved when that computer cannot resolve the project's ownership.
 <!-- /planned-change:personal-assistant-project-creation -->
-  Unresolved is never reported as ownerless.
+
+Unresolved is never reported as ownerless.
 
 The producer supplies the subject: the envelope cannot be built without one,
 and none and unknown must be stated explicitly. None is a claim that the event
@@ -85,10 +89,12 @@ concerned:
   machine configuration that no registered home declares.
 
 <!-- planned-change:retire-event-domains -->
+
 The company business domains the platform hosts state their own subjects
 (`local/projects/teleclaude/spec/domain/marketing`, `local/projects/teleclaude/spec/domain/creative_production`).
 Hosting their handlers confers no ownership of their subjects.
 <!-- change:retire-event-domains -->
+
 The company business domains whose event vocabulary the catalog hosts state
 their own subjects
 (`local/projects/teleclaude/spec/domain/marketing`, `local/projects/teleclaude/spec/domain/creative_production`).
@@ -108,6 +114,7 @@ Hosting their vocabulary confers no ownership of their subjects.
   it; a cluster or public event concerns every computer. Every computer reads
   the shared stream, so a consumer that acts per computer applies visibility
   where it receives the event.
+
 ### Ownership boundary
 
 The catalog owns registry shape, discovery metadata, and delivery-envelope
@@ -121,8 +128,13 @@ reaction. Catalog registration does not transfer either responsibility.
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md
 - docs/local/spec/feature/event-catalog/event-envelope.md
+
 <!-- planned-change:retire-event-domains -->
+
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's handlers confers no ownership of its event subjects.
+
 <!-- change:retire-event-domains -->
+
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a domain's event vocabulary confers no ownership of its event subjects.
+
 <!-- /planned-change:retire-event-domains -->

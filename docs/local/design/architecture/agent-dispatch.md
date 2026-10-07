@@ -23,6 +23,7 @@ The ordered role policy and observable deterministic outcomes live in
 selection executes and which context crosses each boundary.
 
 <!-- planned:adaptive-usage-routing -->
+
 Provider-neutral quota state extends automatic preference only after deterministic
 eligibility. Its observable outcomes live in
 `local/projects/teleclaude/spec/feature/agent_runtime/usage-aware-agent-dispatch`.
@@ -38,8 +39,11 @@ eligibility. Its observable outcomes live in
   manual preference, while a system-role caller contributes an automatic preferred
   candidate. A bound runtime agent remains fixed continuation.
 - Configured agent inventory, enabled state, and operator availability.
+
 <!-- planned:adaptive-usage-routing -->
+
 - Normalized quota condition and headroom for deterministically eligible candidates.
+
 <!-- /planned:adaptive-usage-routing -->
 
 **Output:**
@@ -156,6 +160,7 @@ configuration and availability never travel to a caller for speculative selectio
   evidence and never enters spawned-agent context.
 
 <!-- planned:adaptive-usage-routing -->
+
 ### Adaptive quota extension
 
 - Quota ranking receives only the candidates that survive deterministic eligibility.
@@ -165,6 +170,7 @@ configuration and availability never travel to a caller for speculative selectio
   order when comparison is unsupported.
 - Confirmed exhaustion may establish quota-owned hard unavailability but never
   overwrites operator-owned status.
+
 <!-- /planned:adaptive-usage-routing -->
 
 ## Primary flows
@@ -238,6 +244,7 @@ origin computer would apply the wrong configured inventory or stale availability
 therefore forbidden.
 
 <!-- planned:adaptive-usage-routing -->
+
 ### Quota collection and projection
 
 ```mermaid
@@ -286,9 +293,12 @@ provider parsing in callers.
   reproduce selection policy.
 - **Direct spawners:** scheduled jobs, adapters, and integration declare automatic or
   fixed intent instead of choosing configured defaults.
+
 <!-- planned:adaptive-usage-routing -->
+
 - **Quota state and presentation:** provider adapters feed one normalized snapshot;
   availability clients render the same compact pressure projection.
+
 <!-- /planned:adaptive-usage-routing -->
 
 ## Failure modes
@@ -313,13 +323,16 @@ provider parsing in callers.
   responses. Keep prose at the relevant human boundary and machine feedback typed.
 - **Partial creation on refusal.** A session row exists after no-candidate or invalid
   manual selection. Resolution must precede the first durable session write.
+
 <!-- planned:adaptive-usage-routing -->
+
 - **Quota establishes eligibility.** Ranking reintroduces a candidate deterministic
   eligibility removed. Adaptive ranking must only reorder the surviving set.
 - **Unknown quota treated as healthy.** Missing, stale, or failed data wins a comparison.
   Preserve deterministic order where normalized comparison is unsupported.
 - **Provider probe creates agent activity.** Refuse the probe path rather than invoking a
   model or creating a session artifact.
+
 <!-- /planned:adaptive-usage-routing -->
 
 ## See Also

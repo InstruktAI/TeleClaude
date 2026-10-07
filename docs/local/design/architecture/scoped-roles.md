@@ -50,15 +50,21 @@ session's role and its help-desk confinement in
    - **Company** — a roster membership's role. It contains the company itself,
      the projects that company owns, and the platform's shared documentation,
      which every company inherits as its lineage.
+
 <!-- planned-change:personal-assistant-project-creation -->
-   - **Person** — every person is `admin` of their own person scope: their own
-     settings and their own person documentation tier.
+
+- **Person** — every person is `admin` of their own person scope: their own
+  settings and their own person documentation tier.
+
 <!-- change:personal-assistant-project-creation -->
-   - **Person** — every person is `admin` of their own person scope: their own
-     settings, their own person documentation tier, their own home, and the
-     projects that person owns
-     (`local/projects/teleclaude/spec/feature/config/project-ownership`).
+
+- **Person** — every person is `admin` of their own person scope: their own
+  settings, their own person documentation tier, their own home, and the
+  projects that person owns
+  (`local/projects/teleclaude/spec/feature/config/project-ownership`).
+
 <!-- /planned-change:personal-assistant-project-creation -->
+
 3. **Project reach below `admin`.** A company role below `admin` reaches only
    the company projects the person is assigned to. `admin` reaches every project
    the company owns, which is identity's coverage fact.

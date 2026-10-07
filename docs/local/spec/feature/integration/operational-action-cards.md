@@ -33,6 +33,7 @@ And every human push adapter receives that same rendered envelope rather than a 
 ```
 
 <!-- planned:human-alerts-agent-only -->
+
 #### UC-OAC2: An occurrence yields one card, from the computer where it happened
 
 ```gherkin
@@ -51,6 +52,7 @@ Then each administrator who turned admin push on receives it on their configured
 And an administrator who has not turned it on receives no card
 And admin push is off for an administrator until they turn it on
 ```
+
 <!-- /planned:human-alerts-agent-only -->
 
 ### Cross-context references

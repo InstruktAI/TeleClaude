@@ -54,6 +54,7 @@ Per tier:
   subscriptions.
 
 <!-- planned-change:personal-assistant-project-creation -->
+
 A project root may sit inside a person's personal space. Resolution takes the
 nearest declaration, so such a root is a project on every axis: it registers as
 a project, its own repository holds its history, and it carries project
@@ -62,6 +63,7 @@ takes nothing from it. Whom it belongs to is a declared relationship like any
 other, never read off its location, and the acting caller's identity is
 resolved independently of the enclosing person context.
 <!-- change:personal-assistant-project-creation -->
+
 A project root may sit inside a person's or a company's home. Resolution takes
 the nearest declaration, so such a root is a project on every axis: it
 registers as a project, its own repository holds its history, and it carries
@@ -137,6 +139,7 @@ And the acting caller's identity is resolved independently of the enclosing pers
 ```
 
 <!-- planned-change:personal-assistant-project-creation -->
+
 #### UC-TIERP-6: Location never establishes ownership
 
 ```
@@ -146,7 +149,9 @@ When the owner of that project is resolved
 Then the owner is the person the project declares
 And the person whose personal space contains the project is not its owner
 ```
+
 <!-- change:personal-assistant-project-creation -->
+
 #### UC-TIERP-6: A home decides ownership and nothing else
 
 ```
@@ -155,6 +160,7 @@ When an agent asks what the root permits and who owns it
 Then the root answers every permission axis as a project
 And its owner is the person whose home contains it
 ```
+
 <!-- /planned-change:personal-assistant-project-creation -->
 
 ## Known caveats

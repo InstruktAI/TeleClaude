@@ -240,6 +240,7 @@ And the live snippet is still validated in full
 ```
 
 <!-- planned:procedure-activation-gated-on-company -->
+
 #### UC-SFV6: A subscribed procedure declares the one subject kind it answers
 
 ```gherkin

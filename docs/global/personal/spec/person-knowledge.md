@@ -19,12 +19,13 @@ document store.
 ## Canonical fields
 
 <!-- planned:personal-knowledge-taxonomy -->
+
 ### Location and audience
 
-| Person-home subtree | Contents and reach |
-| --- | --- |
-| `docs/global/` | Knowledge the person discloses for retrieval outside their home. Public snippets can answer visitors to a public help desk of a company the person belongs to; private snippets serve eligible internal users under the role-access contract. |
-| `docs/local/` | Personal context and instructions supplied to an agent operating in that person's home. These snippets are indexed locally rather than published into the global corpus. |
+| Person-home subtree | Contents and reach                                                                                                                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/global/`      | Knowledge the person discloses for retrieval outside their home. Public snippets can answer visitors to a public help desk of a company the person belongs to; private snippets serve eligible internal users under the role-access contract. |
+| `docs/local/`       | Personal context and instructions supplied to an agent operating in that person's home. These snippets are indexed locally rather than published into the global corpus.                                                                      |
 
 Visibility follows `general/spec/snippet-authoring-schema`; wider disclosure is
 the person's deliberate choice (`general/policy/human-contract`). Visibility and

@@ -31,12 +31,12 @@ The Integration state machine is the **only role authorized to push canonical `m
 
 ### Referenced doc snippets
 
-| Snippet ID                                             | Content                                                    |
-| ------------------------------------------------------ | ---------------------------------------------------------- |
-| `sdlc/procedure/lifecycle/integration` | Integration procedure with agent actions                   |
-| `local/projects/teleclaude/spec/integration-orchestrator`                | Full integrator contract (events, lease, queue, lifecycle) |
-| `sdlc/policy/version-control-safety`   | Git safety rules for all agents                            |
-| `general/policy/commits`                  | Commit format and attribution                              |
+| Snippet ID                                                | Content                                                    |
+| --------------------------------------------------------- | ---------------------------------------------------------- |
+| `sdlc/procedure/lifecycle/integration`                    | Integration procedure with agent actions                   |
+| `local/projects/teleclaude/spec/integration-orchestrator` | Full integrator contract (events, lease, queue, lifecycle) |
+| `sdlc/policy/version-control-safety`                      | Git safety rules for all agents                            |
+| `general/policy/commits`                                  | Commit format and attribution                              |
 
 ## Inputs/Outputs
 

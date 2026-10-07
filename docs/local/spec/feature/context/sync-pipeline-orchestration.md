@@ -19,15 +19,19 @@ derived indexes, and distributes runtime artifacts. It never reads a working
 tree.
 
 <!-- planned-change:startable-unattended-install -->
+
 Two entry points run the same routine:
 <!-- change:startable-unattended-install -->
+
 Three entry points run the same routine:
 <!-- /planned-change:startable-unattended-install -->
 
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+
 <!-- planned:startable-unattended-install -->
+
 - **Installation** — the full installer publishes the installed checkout's home
   at the commit it installed, when that home does not already record it. A
   fresh machine therefore serves the installed checkout's committed
@@ -38,8 +42,10 @@ Three entry points run the same routine:
   deploys that commit even when the home records a different one, so the
   deployed documentation matches the installed code. It holds the same
   publication serialization, and the installer acts only on its result.
+
 <!-- /planned:startable-unattended-install -->
 <!-- planned-change:telec-sync-runs-maintenance -->
+
 - **`telec sync`** — an operator command that publishes the home at the
   invocation directory and every nested home beneath it in the committed tree:
   in the global home, its company and person homes. It runs only when the invocation directory itself holds a
@@ -47,7 +53,9 @@ Three entry points run the same routine:
   anywhere else it refuses and names that requirement. It is an agent command,
   reached by every agent role except the worker, and admits members and admins
   (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+
 <!-- change:telec-sync-runs-maintenance -->
+
 - **`telec sync`** — the on-demand maintenance run
   (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`),
   whose publication step publishes the home at the invocation directory and
@@ -58,6 +66,7 @@ Three entry points run the same routine:
   anywhere else it refuses and names that requirement. It is an agent command,
   reached by every agent role except the worker, and admits members and admins
   (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+
 <!-- /planned-change:telec-sync-runs-maintenance -->
 
 Home vocabulary follows `local/projects/teleclaude/spec/domain/glossary`. Homes are
@@ -71,15 +80,20 @@ lifecycle before the delivery commit is made.
 The unit of publication is one home. For each home in scope:
 
 <!-- planned-change:startable-unattended-install -->
+
 1. **Resolve committed source** — read the canonical checkout's committed
    `main` tip while holding publication serialization and materialize it; every
    other publisher keeps its previously activated revision.
+
 <!-- change:startable-unattended-install -->
+
 1. **Resolve committed source** — while holding publication serialization,
    read the canonical checkout's committed `main` tip, or for the installation
    entry point the installed commit, and materialize it; every other publisher
    keeps its previously activated revision.
+
 <!-- /planned-change:startable-unattended-install -->
+
 2. **Build indexes** — derive the home's indexes from that snapshot and write
    portable derived indexes to the canonical checkout.
 3. **Distribute** — compose and atomically deploy the home's capability-gated
@@ -94,12 +108,14 @@ over that home's committed files. The findings explain a skip; they never
 select what publishes. `telec sync` exits non-zero when any home was skipped.
 
 <!-- planned-change:startable-unattended-install -->
+
 The tip is read under serialization, so a later publication never deploys an
 older tip than an earlier one. A commit range decides only whether publication
 is owed, never what is published. Maintenance publication of a home that
 already records the tip changes nothing; `telec sync` always rebuilds the homes
 in scope.
 <!-- change:startable-unattended-install -->
+
 For maintenance and `telec sync`, the tip is read under serialization, so a
 later publication never deploys an older tip than an earlier one. A commit range
 decides only whether publication is owed, never what is published. Maintenance
@@ -295,6 +311,7 @@ And its absence before first deployment is not a finding
 ```
 
 <!-- planned:startable-unattended-install -->
+
 #### UC-SPO34: Installation publishes the commit it installed
 
 ```gherkin
@@ -307,6 +324,7 @@ And the installer is told whether that home was published, already current, or s
 ```
 
 <!-- /planned:startable-unattended-install -->
+
 #### UC-SPO29: telec sync refuses outside a home
 
 ```gherkin

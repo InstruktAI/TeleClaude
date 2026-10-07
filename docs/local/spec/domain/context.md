@@ -73,6 +73,7 @@ any location.
   collision, or unclassifiable-source findings that name the offending files.
 
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 - **Also owns:** a procedure's activation declaration — whether agents start it
   by selecting it through an activation trigger, the platform starts it when
   events it subscribes to arrive, or it is supporting knowledge started by
@@ -88,7 +89,9 @@ any location.
   configured sources emit a matching event; one published in a company's tier
   subscribes for that company only. `integration` consumes this answer and never
   reads procedure metadata itself.
+
 <!-- change:procedure-activation-gated-on-company -->
+
 - **Also owns:** a procedure's activation declaration — whether agents start it
   by selecting it through an activation trigger, the platform starts it when
   events it subscribes to arrive, or it is supporting knowledge started by
@@ -109,6 +112,7 @@ any location.
   A tier entry whose company or person cannot be read is refused rather than
   published with global reach. `integration` consumes this answer and never
   reads procedure metadata itself.
+
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
 ### Use cases (index of feature specs)

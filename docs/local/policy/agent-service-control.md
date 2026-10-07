@@ -9,9 +9,13 @@ visibility: 'public'
 
 - **Agents operate the daemon through `make` targets, never through raw host primitives.** The `make` targets own every host-level service mechanic internally: `make install` deploys the launchd/systemd service definitions, and `make start`/`stop`/`restart`/`kill`/`status` operate the services already deployed.
 - **Service definition deployment belongs to `make install`; `bin/daemon-control.sh` operates lifecycle only.** Deployment is content-gated — a definition is rewritten and its unit reloaded only when the content rendered from the template differs from what is deployed. An unchanged definition leaves its running service untouched, and a corrected template reaches every host on that host's next `make install`.
+
 <!-- planned:telec-sync-runs-maintenance -->
+
 - **On-demand maintenance defers service deployment.** Run as a step of `telec sync` (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`), `make install` deploys none of the service definitions it renders and stops, restarts or reloads no running service, though it may still start a service that is not running; the run instead reports a plain `make install` as owed whenever a deployed definition differs from what installation would deploy, or a service is due for withdrawal.
+
 <!-- /planned:telec-sync-runs-maintenance -->
+
 - **Lifecycle and setup `make` targets are first-class agent commands:** `make restart`, `make start`, `make stop`, `make status`, `make install`, alongside `telec config wizard` and `telec config project init`. `make stop`/`make start` cover the case where a restart is insufficient.
 - **Commit-boundary maintenance and agent-operated recovery use the same targets.** The deterministic maintenance a canonical-main advancement owes — `make install` after setup changes, `make restart` after daemon-code changes — is performed automatically from the canonical checkout (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). An agent does not repeat completed maintenance. When separate operational or recovery work requires the same effect, the agent invokes the applicable `make` target and never substitutes a raw host primitive — even when that target internally deploys or reloads a service definition.
 - **Checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.

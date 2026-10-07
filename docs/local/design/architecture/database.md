@@ -22,9 +22,7 @@ visibility: public
 - **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 - **Bounded Runtime State**: Operational rows are retained only while live or within the runtime retention window. Closed sessions, terminal queue rows, stale mappings, resolved event notifications, reviewed quarantines, session scratch directories, and session-owned workspaces are pruned by daemon maintenance.
 
-
 - **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. An inbound row is never pruned before its binding is durable, and cleanup never creates a gap in which neither the accepted row nor its binding can identify the turn.
-
 
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 - Schema bootstraps from `teleclaude/core/schema.sql`.
@@ -151,7 +149,6 @@ erDiagram
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_OBSERVATIONS : "project memory"
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_SUMMARIES : "project summaries"
 ```
-
 
 ### Discord reflection state
 
@@ -281,7 +278,6 @@ candidate without provider mutation. The master may delete the child only after
 the same candidate survives two consecutive complete epochs; restart and
 concurrent passes therefore cannot erase or fabricate the proof.
 
-
 The daemon owns `voice_transcriptions`; it is the single source of truth for
 the durability requirement in `@prd#scope` (a transcription in progress at
 shutdown is not lost) and the recovery contract in `@prd#success-criteria`.
@@ -342,12 +338,10 @@ lets recovery verify the captured audio still exists before resubmitting.
    with a fresh placeholder rather than an edit, since no original placeholder is
    known to exist.
 
-
 2. The row transitions `in_progress` when the speech-to-text call starts,
    `succeeded` once the transcription is fed to the session, and `failed` when
    the bounded speech-to-text call times out or terminally fails. Blocking STT
    backend setup must run off the event loop so this timeout can fire.
-
 
 3. If the owning task is cancelled during shutdown (the voice flow runs as a
    tracked task, cancelled at shutdown step 9 before adapters stop at step 10 —
@@ -381,7 +375,6 @@ lets recovery verify the captured audio still exists before resubmitting.
 6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
 7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
 
-
 ### 6. Native-entry generation and Discord-send durability
 
 1. Queue insertion keeps the source-provided deduplication key, full accepted payload, immutable turn source, UI surface when present, and acceptance order together.
@@ -389,7 +382,6 @@ lets recovery verify the captured audio still exists before resubmitting.
 3. Discord persists a send intent before webhook create and the returned platform message id after success. Recovery adopts only a uniquely proven platform message; it never blind-resends an ambiguous create.
 4. A bounded unresolved Discord create becomes a visible omitted generation so later generations continue, while explicit recovery or later proof may adopt it.
 5. Cleanup retains every row needed by a live cursor, unsealed generation, pending migration, or unresolved send intent. Terminal accepted inbound rows expire under their own status and retention contract.
-
 
 ## Failure modes
 

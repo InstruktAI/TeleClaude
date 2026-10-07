@@ -162,6 +162,7 @@ skipped in CI mode and in the deps-only install a git worktree resolves to.
 Source: `teleclaude/core/reconciliation/config_schemas.py`
 
 <!-- planned:startable-unattended-install -->
+
 ### 6. Fresh-machine bootstrap (`make install`)
 
 `make install` leaves a fresh machine startable, owned and serving its published
@@ -187,6 +188,7 @@ boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
   when chosen at a terminal.
 
 <!-- /planned:startable-unattended-install -->
+
 ## Outputs
 
 - Launcher apps installed to `~/Applications/` by `make install` (macOS only).
@@ -195,10 +197,13 @@ boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
 - Logging runtime present, current, and wired by `make install`, with the resolved log
   root and health status reported to the user.
 - Configuration schemas published into the TeleClaude home by `make install`.
+
 <!-- planned:startable-unattended-install -->
+
 - A startable checkout, a registered first administrator and the checkout's
   committed documentation published into the home, from `make install`, with or
   without a person present.
+
 <!-- /planned:startable-unattended-install -->
 
 ## Recovery

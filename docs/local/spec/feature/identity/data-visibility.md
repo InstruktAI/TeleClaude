@@ -41,6 +41,7 @@ one's own act and following one's own workers do not depend on where that work
 landed.
 
 <!-- planned-change:human-alerts-agent-only -->
+
 Every surface that lists or pushes platform data to a principal applies that
 reach and holds no visibility rule of its own: session listings and live session
 updates, conversation history, operation status, documentation depth,
@@ -51,6 +52,7 @@ does not know a project can still admit the owning company's people or the ownin
 person. Stored records carry their subject from the moment they are written;
 records that existed before subjects were recorded receive theirs once.
 <!-- change:human-alerts-agent-only -->
+
 Every surface that lists or pushes platform data to a principal applies that
 reach and holds no visibility rule of its own: session listings and live session
 updates, conversation history, operation status, documentation depth,
@@ -67,6 +69,7 @@ separate, up-front decision (`local/projects/teleclaude/spec/feature/identity/co
 and is not changed by this contract.
 
 <!-- planned-change:human-alerts-agent-only -->
+
 Three audience facts a record states about itself sit beside reach, and reach
 neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
@@ -78,6 +81,7 @@ channel, and appears on no shared surface, for platform reach too
 (`local/projects/teleclaude/design/architecture/notification-delivery`); reach governs broadcast
 notifications.
 <!-- change:human-alerts-agent-only -->
+
 Two audience facts a record states about itself sit beside reach, and reach
 neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
@@ -93,6 +97,7 @@ system principal, platform administrators included (same contract).
 #### UC-DV1: A platform administrator and the system principal see everything
 
 <!-- planned-change:human-alerts-agent-only -->
+
 ```gherkin
 Given a person holding the platform administrator role, or an agent session whose lineage roots at the system principal
 When it lists or receives platform data on any computer
@@ -101,7 +106,9 @@ And a platform administrator who is not the system principal does not receive an
 And records with no subject are included
 And records whose subject the showing computer does not know are included
 ```
+
 <!-- change:human-alerts-agent-only -->
+
 ```gherkin
 Given a person holding the platform administrator role, or an agent session whose lineage roots at the system principal
 When it lists or receives platform data on any computer
@@ -110,6 +117,7 @@ And a platform administrator who is not the system principal does not receive an
 And records with no subject are included
 And records whose subject the showing computer does not know are included
 ```
+
 <!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV2: Everyone else sees exactly the subjects their reach admits
@@ -134,24 +142,29 @@ Examples:
 #### UC-DV3: A platform role below administrator reaches nothing by itself
 
 <!-- planned-change:human-alerts-agent-only -->
+
 ```gherkin
 Given a person whose platform role is member, contributor, or newcomer
 And who holds no company membership and no project of their own
 When the person lists sessions, history, projects, or notifications
 Then only records about their own person home are shown
 ```
+
 <!-- change:human-alerts-agent-only -->
+
 ```gherkin
 Given a person whose platform role is member, contributor, or newcomer
 And who holds no company membership and no project of their own
 When the person lists sessions, history, or projects
 Then only records about their own person home are shown
 ```
+
 <!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV4: Every data surface applies the same reach
 
 <!-- planned-change:human-alerts-agent-only -->
+
 ```gherkin
 Given two principals with different reach
 When each views the same platform data through any surface that shows it
@@ -169,7 +182,9 @@ Examples:
   | the project listing and the todos shown per project      |
   | memory observations: search, listing, and timeline       |
 ```
+
 <!-- change:human-alerts-agent-only -->
+
 ```gherkin
 Given two principals with different reach
 When each views the same platform data through any surface that shows it
@@ -186,6 +201,7 @@ Examples:
   | the project listing and the todos shown per project      |
   | memory observations: search, listing, and timeline       |
 ```
+
 <!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV5: A page is filled with visible records only
@@ -228,19 +244,23 @@ And a person newly added gains those records the same way
 #### UC-DV9: Records written before subjects existed keep the right audience
 
 <!-- planned-change:human-alerts-agent-only -->
+
 ```gherkin
 Given sessions, conversation history, operations, and notifications that were stored before records carried a subject
 When the platform has been upgraded
 Then each such record is visible to the principals whose reach admits the subject it is derived to have
 And a record whose subject cannot be derived is visible only to a platform administrator and the system principal
 ```
+
 <!-- change:human-alerts-agent-only -->
+
 ```gherkin
 Given sessions, conversation history, and operations that were stored before records carried a subject
 When the platform has been upgraded
 Then each such record is visible to the principals whose reach admits the subject it is derived to have
 And a record whose subject cannot be derived is visible only to a platform administrator and the system principal
 ```
+
 <!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV10: Published documentation stays readable outside reach
@@ -253,6 +273,7 @@ And it receives none of that tier's other snippets
 ```
 
 <!-- planned-change:human-alerts-agent-only -->
+
 #### UC-DV11: An addressed notification stays with its recipient
 
 ```gherkin
@@ -264,6 +285,7 @@ And the addressed person receives it through their own channel
 
 <!-- change:human-alerts-agent-only -->
 <!-- /planned-change:human-alerts-agent-only -->
+
 #### UC-DV12: A principal's own work stays visible outside its reach
 
 ```gherkin

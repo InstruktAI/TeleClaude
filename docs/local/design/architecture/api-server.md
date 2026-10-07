@@ -184,6 +184,7 @@ and `—` a route that carries no command at all; neither has a response mode to
 | GET    | /api/memory/timeline         | READ      | Timeline around anchor             |
 
 <!-- planned:telec-sync-runs-maintenance -->
+
 `/health` reports, beside its status, the commit the daemon's code checkout was
 at when the daemon started, and omits it when that commit could not be read. It
 is how on-demand maintenance tells whether a restart is owed

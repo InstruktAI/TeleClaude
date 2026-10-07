@@ -86,6 +86,7 @@ TeleClaudeNext repository.
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
 
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 - **Owns (procedure activation runner):** on each computer, one standing agent
   per procedure per company, as the runner's own behavior. The runner resolves
   the agent through the inbound resolve-or-create seam, serialized per
@@ -105,7 +106,9 @@ TeleClaudeNext repository.
   completion or failure is recorded once, a failure is never presented as
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
+
 <!-- change:procedure-activation-gated-on-company -->
+
 - **Owns (procedure activation runner):** on the computer an event originated
   on, one standing agent per procedure per activation subject — a company, a
   person, a project, or the platform — as the runner's own behavior. The runner
@@ -133,7 +136,9 @@ TeleClaudeNext repository.
   completion or failure is recorded once, a failure is never presented as
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
+
 <!-- /planned-change:procedure-activation-gated-on-company -->
+
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is
   recorded on the session record and carried to every session it starts
@@ -203,7 +208,6 @@ concerned:
 - events a session's own tools emit about its work, such as captured content or
   a raised escalation: that session's recorded configuration subject;
 - daemon and process-supervision events: no subject.
-
 
 ## See Also
 

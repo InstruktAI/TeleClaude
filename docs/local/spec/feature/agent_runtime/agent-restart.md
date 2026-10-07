@@ -191,18 +191,22 @@ And the in-session timeout message remains visible in the session pane
 #### UC-AR9: Repeated restart failures for one session coalesce into one operator notification
 
 <!-- planned-change:human-alerts-agent-only -->
+
 ```
 Given several restart failures occur for the same session within the platform's trailing delivery window
 When the failures are reported
 Then the operator receives a single external notification for that session after the window elapses
 And each failure still updates the durable notification record immediately
 ```
+
 <!-- change:human-alerts-agent-only -->
+
 ```
 Given several restart failures occur for the same session within the platform's trailing delivery window
 When the failures are reported
 Then the operator receives a single external notification for that session after the window elapses
 ```
+
 <!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-AR10: A restart-failure notification is distinct from other same-session notifications

@@ -29,18 +29,19 @@ exploration that a symbol or file has no dependents.
    freshness for you.
 
 <!-- planned:code-uc-blueprint-traceability -->
-   Inspect structural dependents and lifecycle-linked use cases as separate
-   evidence classes. A lifecycle link is grounded in an approved plan association
-   or an actual delivery commit; it does not prove that every reached symbol
-   implements the behavior. Read the defining feature and domain specifications
-   before deciding the change surface.
 
-   When the intended change starts from a use case rather than a source
-   file, ask the Blueprint for the exact `spec_id + UC-id` delivery view. Inspect
-   the linked plans, delivery commits, actual changed source paths, and structural
-   reach before changing the predicate. A changed-predicate finding is evidence
-   that the current Gherkin differs from the linked Git snapshot, not a demand to
-   migrate source metadata.
+Inspect structural dependents and lifecycle-linked use cases as separate
+evidence classes. A lifecycle link is grounded in an approved plan association
+or an actual delivery commit; it does not prove that every reached symbol
+implements the behavior. Read the defining feature and domain specifications
+before deciding the change surface.
+
+When the intended change starts from a use case rather than a source
+file, ask the Blueprint for the exact `spec_id + UC-id` delivery view. Inspect
+the linked plans, delivery commits, actual changed source paths, and structural
+reach before changing the predicate. A changed-predicate finding is evidence
+that the current Gherkin differs from the linked Git snapshot, not a demand to
+migrate source metadata.
 <!-- /planned:code-uc-blueprint-traceability -->
 
 2. Check the reported freshness. A stale answer is headed by a line naming the

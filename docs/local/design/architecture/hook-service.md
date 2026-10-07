@@ -32,10 +32,10 @@ FastAPI app.
 TeleClaude has two distinct event persistence systems. Understanding the
 boundary prevents confusion:
 
-| System                         | Table(s)                              | Purpose                                      | Producer                                        | Consumer                                          |
-| ------------------------------ | ------------------------------------- | -------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
-| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)       | Daemon outbox worker (see outbox.md)              |
-| **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, relay delivery, programmatic     | HookDispatcher → handlers / WebhookDeliveryWorker |
+| System                         | Table(s)                              | Purpose                                      | Producer                                     | Consumer                                          |
+| ------------------------------ | ------------------------------------- | -------------------------------------------- | -------------------------------------------- | ------------------------------------------------- |
+| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)    | Daemon outbox worker (see outbox.md)              |
+| **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, relay delivery, programmatic | HookDispatcher → handlers / WebhookDeliveryWorker |
 
 The hook outbox is the **ingestion layer** — it captures raw agent CLI events
 and persists them until the daemon processes them. The webhook service is the
@@ -80,12 +80,16 @@ properties, payload)` before entering the dispatch pipeline.
 - **Handlers see their contract.** An internal handler receives the matched
   contract alongside the event, so a handler shared by several contracts knows
   which one matched.
+
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 - **Derived contracts are not persisted.** A contract its owner derives from its
   own source of truth is held in the registry's memory only. It is never
   restored from storage at startup; its owner rebuilds it.
+
 <!-- change:procedure-activation-gated-on-company -->
 <!-- /planned-change:procedure-activation-gated-on-company -->
+
 - **At-least-once external delivery.** External webhooks are enqueued in
   `webhook_outbox` and delivered with exponential backoff. Dead-lettering after
   max attempts prevents infinite retry.
@@ -191,14 +195,15 @@ After 10 attempts: dead-lettered (status=`dead_letter`).
 ### 4. Contract lifecycle
 
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 Contracts enter the system through four paths:
 
-| Source | How | Persistence |
-| --- | --- | --- |
-| **Config** | `teleclaude.yml` `hooks.subscriptions` list | Loaded at startup via `load_hooks_config` → DB |
-| **API** | `POST /hooks/contracts` | DB + in-memory cache |
-| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache |
-| **Derived** | Rebuilt by their owner from its own source of truth | In-memory cache only |
+| Source           | How                                                   | Persistence                                    |
+| ---------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| **Config**       | `teleclaude.yml` `hooks.subscriptions` list           | Loaded at startup via `load_hooks_config` → DB |
+| **API**          | `POST /hooks/contracts`                               | DB + in-memory cache                           |
+| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache                           |
+| **Derived**      | Rebuilt by their owner from its own source of truth   | In-memory cache only                           |
 
 Config, API, and programmatic contracts are persisted in the
 `webhook_contracts` table and cached in-memory by `ContractRegistry`; the cache
@@ -208,13 +213,14 @@ them from its source of truth after registering the handler they target, so a
 restart never restores one ahead of its handler. Procedure-subscription
 contracts are derived, rebuilt from the documentation publication index.
 <!-- change:procedure-activation-gated-on-company -->
+
 Contracts enter the system through three paths:
 
-| Source | How | Persistence |
-| --- | --- | --- |
-| **Config** | `teleclaude.yml` `hooks.subscriptions` list | Loaded at startup via `load_hooks_config` → DB |
-| **API** | `POST /hooks/contracts` | DB + in-memory cache |
-| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache |
+| Source           | How                                                   | Persistence                                    |
+| ---------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| **Config**       | `teleclaude.yml` `hooks.subscriptions` list           | Loaded at startup via `load_hooks_config` → DB |
+| **API**          | `POST /hooks/contracts`                               | DB + in-memory cache                           |
+| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache                           |
 
 Contracts are persisted in the `webhook_contracts` table and cached in-memory by
 `ContractRegistry`; the cache is the authoritative source for matching and the

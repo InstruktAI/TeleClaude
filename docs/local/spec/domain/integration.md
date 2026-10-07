@@ -50,6 +50,7 @@ implementation remain the current appliance contract.
   delivery requests and results, and provider-neutral transport types.
 
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 - **Owns (procedure subscription routing):** stamping a verified event, at the
   ingress and before it is relayed, with the company `config` declares for its
   source; turning each published procedure subscription into a contract in the
@@ -72,7 +73,9 @@ implementation remain the current appliance contract.
   a restart or a separate trigger. Editing a procedure's subscriptions changes
   its event membership and never the procedure-and-company identity of its
   agent.
+
 <!-- change:procedure-activation-gated-on-company -->
+
 - **Owns (procedure subscription routing):** reading each published procedure
   subscription, with the subject kind it answers and the tier it is published
   in, from the publication index `context` publishes; and, for each platform
@@ -97,7 +100,9 @@ implementation remain the current appliance contract.
   effect at the next event without a restart or a separate trigger. Editing a
   procedure's subscriptions changes its event membership and never the
   procedure-and-subject identity of its agent.
+
 <!-- /planned-change:procedure-activation-gated-on-company -->
+
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.

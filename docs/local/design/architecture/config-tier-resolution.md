@@ -93,17 +93,23 @@ and how existing installations reach the declared state.
 - **The schema reference is advisory and never load-bearing.** Loading reads
   the declaration alone, so a missing, stale, or unresolvable modeline is never
   an error.
+
 <!-- planned-change:personal-assistant-project-creation -->
+
 - **Company composition runs through membership, not through the walk.** A
   company configuration is reached through a project's declared company
   membership, never through a context root, so no context walk composes a
   company layer.
+
 <!-- change:personal-assistant-project-creation -->
+
 - **Company composition runs through ownership, not through the walk.** A
   company configuration is reached through the company that owns a project, as
   `local/projects/teleclaude/spec/feature/config/project-ownership` resolves it, never through a context root, so no context walk composes a
   company layer.
+
 <!-- /planned-change:personal-assistant-project-creation -->
+
 - **Working-checkout resolution is outside this design.** Locating the checkout
   in which file and quality operations run is a working-copy question, not a
   question about what a root is, and it keeps its own resolver and its own
@@ -128,9 +134,11 @@ flowchart TD
 declared tier and dispatches on the declaration: a person context loads the
 per-person overlay, a project context loads the project overlay, and the global
 <!-- planned-change:personal-assistant-project-creation -->
+
 overlay always loads. The company layer composes from the project overlay's
 declared company membership. The loader applies no path-shape test.
 <!-- change:personal-assistant-project-creation -->
+
 overlay always loads. The company layer composes from the company that owns
 the project. The loader applies no path-shape test.
 <!-- /planned-change:personal-assistant-project-creation -->

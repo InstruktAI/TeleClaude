@@ -64,13 +64,17 @@ contract governs only what happens when maintenance runs.
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
   Every other repository remains at its previously activated revision until its
   own maintenance or `telec sync` runs. Working-tree files are never inputs.
+
 <!-- planned-change:telec-sync-runs-maintenance -->
+
 - **Recovery.** A failed action is replayed through this executor for its
   original recorded range and action id, with the same attempt and outcome
   records as the first run; a replayed publication converges to the committed
   `main` tip and never substitutes the working tree. Where no action was
   recorded, `telec sync` in the affected home publishes its committed state.
+
 <!-- change:telec-sync-runs-maintenance -->
+
 - **Recovery.** A failed action is replayed through this executor for its
   original recorded range and action id, with the same attempt and outcome
   records as the first run; a replayed publication converges to the committed
@@ -78,7 +82,9 @@ contract governs only what happens when maintenance runs.
   recorded, or maintenance did not run or left a root unconverged, `telec sync`
   in the affected root performs that root's maintenance on demand through this
   executor (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
+
 <!-- /planned-change:telec-sync-runs-maintenance -->
+
 - **Absence.** A commit made where the hook is not installed performs no
   maintenance and raises no signal. Nothing detects that absence here:
   installed plumbing is machine state whose comparison against the project's
@@ -99,14 +105,18 @@ contract governs only what happens when maintenance runs.
   admits a single active drain; contenders wait for that lock, process pending
   activations in Git ancestry order and actions by declared precedence, then
   exit when no pending work remains. Lock-file presence never means ownership.
+
 <!-- planned:telec-sync-runs-maintenance -->
+
 - **On-demand runs.** An on-demand run holds the same lock for its whole run, so
   a drain and an on-demand run never perform a step at the same time. Its
   attempts and outcomes are marked as on-demand in the structured records. A
   drain never executes an on-demand run's steps, and an on-demand run never
   executes, replaces or clears a recorded activation's actions; it reads a
   terminal failure only to name it with its replay.
+
 <!-- /planned:telec-sync-runs-maintenance -->
+
 - **Execution.** No maintenance action and no drain contender goes through the
   `telec` command surface. An action that runs TeleClaude's own code runs a
   module entrypoint of the installed checkout under the interpreter of the

@@ -176,6 +176,7 @@ And the company home is still not on the registry
 ```
 
 <!-- planned:personal-assistant-project-creation -->
+
 #### UC-CFG-REG10: A project adopted inside the global home is registered as itself
 
 ```gherkin
@@ -196,6 +197,7 @@ And the refusal names the home's projects area
 ```
 
 <!-- /planned:personal-assistant-project-creation -->
+
 ## Known caveats
 
 - A project cloned onto a machine and never adopted there is absent from the

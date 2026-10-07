@@ -11,13 +11,10 @@ visibility: 'public'
 
 ## What it is
 
-
 The distribution phase writes the outputs each agent CLI reads at runtime.
 Recorded-commit publication invokes its internal deployment entry after
 validating the committed source. Direct invocation builds for inspection only.
 Deployment runs two phases:
-
-
 
 1. **Global phase** — sources from `agents/global/` (domain-partitioned
    commands from every repository for the domains it publishes, `general`
@@ -28,14 +25,10 @@ Deployment runs two phases:
    repository carrying global artifacts outside its declared reach fails
    validation rather than being silently skipped.
 
-
-
 2. **Local phase** — sources from `agents/local/` (any repository) are
    built under a transient distribution directory and then deployed to that
    project's own runtime locations. `.agents/` is one of those delivery
    locations, never an input.
-
-
 
 Global skill publication is the mother's alone: `agents/global/skills/<name>/`
 folders in the mother repository materialize under `~/.teleclaude/skills/`, and
@@ -48,7 +41,6 @@ listing is rendered on demand by `general/procedure/skill-use` — reached from
 `AGENTS.global.md` as a curated index entry, never an `@` ref — so the global
 catalog stays lazy. Tier-local skills are the ones that reach native CLI
 directories, eager-indexed in their context's generated entrypoint.
-
 
 TeleClaude command artifacts are not runtime artifacts at all: global command
 documents deploy to `~/.teleclaude/commands/<domain>/` from the global phase,
@@ -75,7 +67,6 @@ legacy Node Gemini CLI layout — `~/.gemini/commands/`, `~/.gemini/skills/`,
 provisioned. Content in any runtime home that this pipeline did not produce is
 left untouched.
 
-
 The global documentation tree at `~/.teleclaude/docs/` is a complete materialized
 snapshot. Publication stages the deployed generation, replaces only the
 triggering repository's owned contribution from its recorded commit, rebuilds
@@ -87,7 +78,6 @@ No domain is implicit: `general` enters the valid set, is materialized, and has
 its bundle generated only because a registered publisher declares it. Where no
 registered publisher declares a domain, identifiers and references naming it
 belong to no published domain.
-
 
 The registered-publisher set is maintained automatically: committed-state
 publication from a project declaring `business.publishes` registers that
@@ -108,7 +98,6 @@ carries no cross-owner id collision to resolve. The single filesystem root
 `~/.teleclaude/docs` is preserved so the three readers that resolve global docs —
 the SessionStart hook, `telec docs`, and the index build — read one root
 unchanged.
-
 
 For each published domain, `general` included, the deploy inflates the
 domain's `baseline.md` and its `baseline-progressive.md` sibling into
@@ -201,7 +190,6 @@ Scenario: UC-ARD5 Distribution invoked directly builds and never deploys
   And the dist/ output is left in place for inspection
 ```
 
-
 #### UC-ARD13: A generated domain bundle resolves as an explicit Required Read
 
 ```
@@ -246,7 +234,6 @@ Scenario: UC-ARD7 A missing generated bundle blocks artifact deployment
   And unrelated SessionStart additional-context duties remain unchanged
 ```
 
-
 ```
 Scenario: UC-ARD8 Split domain ownership blocks the deploy
   Given two registered publishers that both declare the same domain in business.publishes
@@ -254,7 +241,6 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
   Then the deploy aborts with a sync-blocking error naming the split domain and both publishers
   And nothing is composed and no merged index is written
 ```
-
 
 #### UC-ARD11: The mother composes one lazy global skill catalog
 
@@ -285,7 +271,6 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only in it
   And no such procedure is dropped from its domain bundle
 ```
 
-
 #### UC-ARD12: Deleted command sources are retracted from the shared commands directory
 
 ```
@@ -307,8 +292,6 @@ Scenario: UC-ARD40 A session can still load a retiring command until its deliver
   And an agent session finds no command named after the companion
 ```
 
-
-
 #### UC-ARD33: The corpus is reached only through the composed loader
 
 ```
@@ -319,8 +302,6 @@ Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
   And a procedure load the state machine emits into an already-running session carries that same composed loader
   And both are produced by one composition, so the two forms cannot diverge
 ```
-
-
 
 #### UC-ARD10: Command documents deploy to the corpus and to no runtime home
 
@@ -355,8 +336,6 @@ Scenario: UC-ARD34 Retraction removes what the pipeline deployed and keeps what 
   And the command corpus is unaffected
   And a second deploy-mode sync removes nothing further
 ```
-
-
 
 #### UC-ARD15: A repository's project-scoped skills are delivered to that project's runtimes and its project commands are validated
 
@@ -451,7 +430,6 @@ Scenario: UC-ARD32 Every artifact source path is classified by one registry boun
   And no consumer carries a local exception for the catalog master or package bodies
   And a path matching no boundary, more than one boundary, or a record with no explicit disposition fails the run rather than being skipped
 ```
-
 
 #### UC-ARD35: A participating tier's published half is materialized into the deployed snapshot
 
@@ -579,7 +557,6 @@ Scenario: UC-ARD28 Person-tier artifacts reach only that person's workspace
 
 <!-- /planned:cross-tier-native-emission -->
 
-
 #### UC-ARD31: A saved source deploys nothing; its commit deploys it
 
 ```gherkin
@@ -603,18 +580,15 @@ And the agent reads the committed content from the deployed tree
 
 ## Known caveats
 
-
 - TeleClaude command artifacts route to `~/.teleclaude/commands/` rather
   than per-agent native command directories. This is deliberate cross-project
   sharing. The composed loader message is the only runtime entrypoint:
   `telec sessions run` preloads it into a new session, and machine-emitted
   procedure loads carry it into a running one.
 
-
 - Deployed documentation is read-only. It is a materialized snapshot; authored
   documentation changes only in its owning source tree and becomes visible after
   a successful synchronization publishes the next snapshot.
-
 
 - Global skill publication is mother-curated. A project wanting a skill
   machine-wide contributes it to the mother repository; the catalog is a

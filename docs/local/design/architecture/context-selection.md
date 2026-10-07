@@ -160,12 +160,15 @@ decides which tiers are assembled and which of their halves; depth decides how
 much of an assembled half is read. The default read set is the caller's own
 person tier, every company they belong to, global, and what the invocation
 <!-- planned-change:personal-assistant-project-creation -->
+
 offers — the home it lands in (the project being worked in, or a person's home)
 and the company a landed project declares as its owner — the last two met at
 <!-- change:personal-assistant-project-creation -->
+
 offers — the home it lands in (the project being worked in, or a person's home)
 and the company that owns a landed project — the last two met at
 <!-- /planned-change:personal-assistant-project-creation -->
+
 whatever depth the caller's relationship grants, public-only where there is
 none. Every home in the set contributes both of its halves: its published
 material from the deployed corpus and its local material from that home's local

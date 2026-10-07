@@ -102,6 +102,7 @@ listing — verify with the command itself, not the help text, if a subcommand
 appears to be missing.
 
 <!-- planned:code-uc-blueprint-traceability -->
+
 ### Delivery traceability
 
 Blueprint supplements structural traversal with lifecycle-derived use-case

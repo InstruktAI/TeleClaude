@@ -58,6 +58,7 @@ project.
    the project can tell whether that disruption is owed. Every other action
    keeps the default.
    <!-- /planned:telec-sync-runs-maintenance -->
+
 3. The assessor writes the result into `ProjectConfig.checkpoint` via
    `telec config project patch --revision <rev> [--yaml <patch> | --from-file
 <path>]` — never a direct edit of `teleclaude.yml`. The file's mutation is

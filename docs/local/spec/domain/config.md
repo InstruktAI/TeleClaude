@@ -78,23 +78,28 @@ TeleClaudeNext.
   foreign tier's default. The behavioral contract is
   `local/projects/teleclaude/spec/feature/config/tier-permissions`.
 - **Also owns:** two further declarations and their validation: the person
+
 <!-- planned-change:personal-assistant-project-creation -->
-  overlay's identity claim naming the registered person its workspace belongs
-  to, and the project overlay's declared owner — a company or a person, at
-  most one, with no owner a valid state. Owning the declarations is not owning
-  what they mean: what an accepted person binding confers belongs to
-  `local/projects/teleclaude/spec/domain/identity`, and no permission follows from ownership.
+
+overlay's identity claim naming the registered person its workspace belongs
+to, and the project overlay's declared owner — a company or a person, at
+most one, with no owner a valid state. Owning the declarations is not owning
+what they mean: what an accepted person binding confers belongs to
+`local/projects/teleclaude/spec/domain/identity`, and no permission follows from ownership.
 <!-- change:personal-assistant-project-creation -->
-  overlay's identity claim naming the registered person its workspace belongs
-  to, and the project's owner — its home's owner inside a home, otherwise the
-  owner the project overlay declares: a company or a person, at most one, with
-  no owner a valid state. Owning these answers is not owning what they
-  confer: what an accepted person binding and a project's ownership confer
-  belongs to `local/projects/teleclaude/spec/domain/identity`.
+
+overlay's identity claim naming the registered person its workspace belongs
+to, and the project's owner — its home's owner inside a home, otherwise the
+owner the project overlay declares: a company or a person, at most one, with
+no owner a valid state. Owning these answers is not owning what they
+confer: what an accepted person binding and a project's ownership confer
+belongs to `local/projects/teleclaude/spec/domain/identity`.
 <!-- /planned-change:personal-assistant-project-creation -->
-  The behavioral contracts are
-  `local/projects/teleclaude/spec/feature/identity/person-context-binding` and
-  `local/projects/teleclaude/spec/feature/config/project-ownership`.
+
+The behavioral contracts are
+`local/projects/teleclaude/spec/feature/identity/person-context-binding` and
+`local/projects/teleclaude/spec/feature/config/project-ownership`.
+
 - **Also does not own:** where a project's shared state lives. That rule reads
   the checkout-and-worktree relation rather than any configuration, and belongs
   to the context that creates linked worktrees and defines what they share.
@@ -115,8 +120,8 @@ TeleClaudeNext.
   supply strictness as a validation argument. The behavioral contract is
   `local/projects/teleclaude/spec/feature/config/unknown-key-warning`.
 
-
 <!-- planned-change:procedure-activation-gated-on-company -->
+
 - **Also owns:** an inbound event source's company declaration — the registered
   company its events belong to — validated against registered companies; a
   source naming an unregistered company is rejected. It also answers, on each
@@ -125,7 +130,9 @@ TeleClaudeNext.
   is not owning what a company context means, which belongs to
   `local/projects/teleclaude/spec/domain/identity`, or what a session does with it, which belongs
   to `local/projects/teleclaude/spec/domain/agent_runtime`.
+
 <!-- change:procedure-activation-gated-on-company -->
+
 - **Also owns:** an inbound event source's company declaration — the registered
   company its events belong to — validated against registered companies; a
   source naming an unregistered company is rejected. It also answers, on each
@@ -136,14 +143,15 @@ TeleClaudeNext.
   the registry answers is not owning what a company context means, which
   belongs to `local/projects/teleclaude/spec/domain/identity`, or what a session does in a home,
   which belongs to `local/projects/teleclaude/spec/domain/agent_runtime`.
+
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
 
-
 <!-- planned:startable-unattended-install -->
+
 ### Installation registration and environment defaults
 
 Installation submits two named operations to the config context:
@@ -166,6 +174,7 @@ Neither operation passes configuration clearance: their caller is installation,
 not a configuration-surface caller.
 
 <!-- /planned:startable-unattended-install -->
+
 ### Personal MCP secret store
 
 The config context owns the opaque personal MCP secret store beside each typed
@@ -178,7 +187,6 @@ Keep performs no write. Replace and clear use locked atomic targeted mutation
 and preserve every unrelated key and line. Runtime and TUI consumers use this
 published contract and never parse the store or consult the process environment
 directly.
-
 
 ### Membership declaration changes
 
@@ -196,7 +204,6 @@ it, so the next listing and every later live push read the changed declaration
 (`local/projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
 reach per request and needs no notice.
 
-
 ### Event subjects
 
 Every platform event config emits states as its subject what its act concerned:
@@ -207,7 +214,6 @@ Every platform event config emits states as its subject what its act concerned:
   whose project cannot be recovered from its record, states an unknown subject.
 - an effective configuration change: the project whose configuration changed.
   A machine or global configuration change has no subject.
-
 
 ## See Also
 

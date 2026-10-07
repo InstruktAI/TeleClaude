@@ -391,7 +391,6 @@ Then each command is admitted
 But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
 ```
 
-
 ### Local read clearance
 
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
@@ -506,13 +505,17 @@ supplies.
   company at that company, a project at that project, a person at that person.
   Machine and global configuration, and the listing, creation and management of
   people and companies, are judged at platform scope.
+
 <!-- planned-change:personal-assistant-project-creation -->
+
 - Initializing a company or a project with `--help-desk` is judged at the home
   whose help desk it enables, under the administrator band: a company init at the
   company it names (its `--slug`, otherwise its normalized name), a project init at
   the project of the checkout it initializes. The same init without the flag stays
   a platform-scope act.
+
 <!-- change:personal-assistant-project-creation -->
+
 - Initializing a company or a project with `--help-desk` is judged at the home
   whose help desk it enables, under the administrator band: a company init at the
   company it names (its `--slug`, otherwise its normalized name), a project init at
@@ -522,7 +525,9 @@ supplies.
   registered project at that project, and a new project at the home it lands in,
   or at platform scope outside every home. Its standing is configuration target
   clearance's (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
+
 <!-- /planned-change:personal-assistant-project-creation -->
+
 - A command that names a target session is judged at the project that session runs
   in.
 - A command that names a directory to act in is judged at the project containing

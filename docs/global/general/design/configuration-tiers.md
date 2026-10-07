@@ -33,7 +33,6 @@ read.
 **Output — the tier set for an invocation**, the documentation sources it
 implies, and the portion of those sources the caller may see.
 
-
 **Input — agent artifacts carry the same shape at every tier.** Each tier root
 carries `agents/` beside `docs/`. In a repository, scope is in the path, exactly
 as it is for documentation: `agents/{global,local}/{commands,skills}`.
@@ -47,7 +46,6 @@ the same one-owner declaration that governs documentation domains, `general`
 included; global skills are the mother's alone. A
 repository that carries global artifacts outside its declared reach fails
 validation loudly. The open `.agents/` convention is never read as input.
-
 
 <!-- planned:tier-command-corpus -->
 
@@ -101,7 +99,9 @@ one index entry, listed on demand — rather than autoloaded into every session.
   against.** Standing inside one confers nothing: a company declaration
   terminates context resolution with no context root, and an invocation from
   within one behaves as an invocation with no context root.
+
 <!-- planned:personal-assistant-project-creation -->
+
 - **A home decides whose its projects are.** A project inside a person's or a
   company's home belongs to that home's owner, and is created only in that
   home's projects area. Ownership is a fact about where the project lives, read
@@ -109,6 +109,7 @@ one index entry, listed on demand — rather than autoloaded into every session.
   caller stands. A project outside every home states its owner, or has none.
   Whose a project is and what kind a configuration file is are separate
   questions: the file's declaration alone answers the second.
+
 <!-- /planned:personal-assistant-project-creation -->
 
 <!-- planned:cross-tier-native-emission -->
@@ -126,7 +127,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
   act.
 
 <!-- /planned:cross-tier-native-emission -->
-
 
 - **Belonging is binary for reading a company.** A company role carries business
   authority; it does not grade documentation access. Anyone with a declared
@@ -150,17 +150,22 @@ one index entry, listed on demand — rather than autoloaded into every session.
   including every company they own.
 - **Reach is wider than the relationship-derived part, and depth is not.** Global
   documentation is in every caller's scope because global is nobody's
+
 <!-- planned-change:personal-assistant-project-creation -->
-  relationship, and the invocation itself offers the project it resolves to and
-  the company that project declares as its owner. Those sources enter reach
+
+relationship, and the invocation itself offers the project it resolves to and
+the company that project declares as its owner. Those sources enter reach
 <!-- change:personal-assistant-project-creation -->
-  relationship, and the invocation itself offers the project it resolves to and
-  the company that owns that project. Those sources enter reach
+
+relationship, and the invocation itself offers the project it resolves to and
+the company that owns that project. Those sources enter reach
 <!-- /planned-change:personal-assistant-project-creation -->
-  without a relationship; what they do not do is grant the depth a relationship
-  grants. A caller holding no relationship to a source reads it at whatever its
-  snippets declare about themselves, which is what lets a help desk answer public
-  questions about a company it does not belong to.
+
+without a relationship; what they do not do is grant the depth a relationship
+grants. A caller holding no relationship to a source reads it at whatever its
+snippets declare about themselves, which is what lets a help desk answer public
+questions about a company it does not belong to.
+
 - **Where there is no relationship, the snippet decides.** Each snippet declares
   itself public or internal, and that declaration is the only gate an outsider
   meets. Public material is readable by anyone with a legitimate reason to reach
@@ -178,15 +183,20 @@ one index entry, listed on demand — rather than autoloaded into every session.
 - **Landing and reading are two mechanisms.** Where a session may run is decided
   by routing and folder scoping; what a caller may read is decided by identity,
   visibility, and the selectors the caller supplies. They meet at one point: the
+
 <!-- planned-change:personal-assistant-project-creation -->
-  location an invocation lands in sets its default read set — that home (with,
-  for a project, the company it declares as its owner), the caller's own person
+
+location an invocation lands in sets its default read set — that home (with,
+for a project, the company it declares as its owner), the caller's own person
 <!-- change:personal-assistant-project-creation -->
-  location an invocation lands in sets its default read set — that home (with,
-  for a project, the company that owns it), the caller's own person
+
+location an invocation lands in sets its default read set — that home (with,
+for a project, the company that owns it), the caller's own person
 <!-- /planned-change:personal-assistant-project-creation -->
-  tier, the companies they belong to, and global documentation. Location never
-  sets depth.
+
+tier, the companies they belong to, and global documentation. Location never
+sets depth.
+
 - **Any home is readable from anywhere by naming it.** A home selector names the
   home's published half, the local selector names its local half, and a qualified
   identity names the half its prefix states. The named half is read from
@@ -200,7 +210,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
 company directories from their designated locations, and load the registered
 project roots from the manifest. That set is the whole configuration surface;
 there is no fifth place to look.
-
 
 **Reading documentation.** Sources are aggregated into an index and the caller
 sees the portion their relationships permit. Global documentation loads for
@@ -257,10 +266,7 @@ local half, which is refused.
   consumer looks like a working feature and is not. Presence in the schema is
   not presence in behaviour.
 
-
 - **Reading authored input from a location the platform writes.** Treating the
   open `.agents/` directory, or any delivery location, as a source root makes a
   file's provenance unreadable from its path and lets a regenerating deploy
   overwrite authored work. Sources and outputs never share a location.
-
-
