@@ -18,6 +18,7 @@ from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
 from teleclaude.cli.telec.surface_types import CommandAuth
+from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
@@ -62,6 +63,13 @@ _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
     "todos autostart their prepare lane, so filing is pipeline entry):\n"
     "\n"
+    "- Bug or change — which current contract states the behavior you expected?\n"
+    "   A bug contradicts one, and its fix restores what that contract says; name\n"
+    "   it with --contract <snippet-id>. Where no current contract states the\n"
+    "   wanted behavior, this is a change, however real the failure:\n"
+    "     telec todo create <slug> <content> --kind change\n"
+    "   Authority: sdlc/policy/todo-creation-discipline.\n"
+    "\n"
     f"{CREATION_VALIDITY_GATE_ITEM}\n"
     "- Duplication — already reported, already being fixed, or a triaged\n"
     "   known issue? Check:\n"
@@ -80,9 +88,39 @@ _BUG_FILING_GATE = (
     "   blessed template line) is that project's to fix, there.\n"
     "\n"
     "Only once these are faced, file with:\n"
-    f"  telec bugs report {_FILING_ACK_FLAG} '<description>' [--slug <slug>] "
+    f"  telec bugs report {_FILING_ACK_FLAG} '<description>' --contract <snippet-id> [--slug <slug>] "
     "[--body <text>] [--project <name>] [--human-involved]\n"
 )
+_MISSING_CONTRACT_MESSAGE = (
+    "Missing required --contract: the snippet id of the current contract the reported behavior "
+    "contradicts. Where no current contract states the wanted behavior, this is a change: "
+    "telec todo create <slug> <content> --kind change."
+)
+_UNKNOWN_CONTRACT_MESSAGE = (
+    "--contract '{contract}' resolves to no doc snippet in the owning project. Find the contract with telec docs index."
+)
+_PENDING_CONTRACT_MESSAGE = (
+    "--contract '{contract}' is not a current contract: {slugs} still delivers it. Behavior it describes "
+    "is that delivery's to provide; route the observation there."
+)
+_BUG_CONTRACT_LINE = "\n**Violated contract:** `{contract}`\n"
+
+
+def _require_current_contract(contract: str | None, project_root: Path) -> str:
+    """Return the cited contract id once it resolves to a current snippet in the owning project."""
+    if not contract:
+        print(_MISSING_CONTRACT_MESSAGE)
+        print(_usage("bugs", "report"))
+        raise SystemExit(1)
+    contract_id = contract.strip()
+    metadata = resolve_snippet_meta(contract_id, project_root=project_root)
+    if metadata is None:
+        print(_UNKNOWN_CONTRACT_MESSAGE.format(contract=contract_id))
+        raise SystemExit(1)
+    if metadata.delivered_by:
+        print(_PENDING_CONTRACT_MESSAGE.format(contract=contract_id, slugs=", ".join(metadata.delivered_by)))
+        raise SystemExit(1)
+    return contract_id
 
 
 def _resolve_project_by_name(name: str, command_path: str) -> Path:
@@ -221,6 +259,8 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(_usage("bugs", "report"))
         raise SystemExit(1)
 
+    contract = _require_current_contract(parsed.value(F.FLAG_BUG_CONTRACT), project_root)
+
     # Auto-generate slug if not provided
     if not slug:
         slug_base = normalize_slug(description)
@@ -230,6 +270,7 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     # Build bug content from description + body
     bug_content = f"# {slug}\n\n**Symptom:** {description}\n"
+    bug_content += _BUG_CONTRACT_LINE.format(contract=contract)
     if body:
         bug_content += f"\n{body}\n"
 

@@ -263,11 +263,10 @@ If the recorded kind does not match the intent, reclassify it with `telec todo
 update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
 force an intent through the wrong lane to preserve an already chosen kind.
 
-A `bug` keeps its lane when it names a current contract that its observed
-behavior contradicts, and that contract states what the fix restores. Open the
-cited contract and confirm it says so. When the filing names no contract, the
-contract does not state the wanted behavior, or making it right takes a new or
-changed contract, the work is a `change`: reclassify before calling
+A `bug` keeps its lane when a current contract states the behavior its report
+expected. Open the contract the filing cites, or locate it when the filing
+cites none, and confirm it states that behavior. When no current contract
+does, the work is a `change`: reclassify before calling
 `telec todo prepare {slug}` (`sdlc/policy/todo-creation-discipline`).
 
 ### 1c. Settled change

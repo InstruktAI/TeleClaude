@@ -932,10 +932,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Interrogate the pre-filing decisions before scaffolding a bug; a completed filing "
                     "enters the bug lane and the lifecycle router dispatches /prepare"
                 ),
-                args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]",
+                args=(
+                    "<description> --contract <snippet-id> [--slug <slug>] [--body <text>] [--project <name>] "
+                    "[--human-involved <reason>]"
+                ),
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_BUG_APPROVED,
+                    F.FLAG_BUG_CONTRACT,
                     F.FLAG_BUG_SLUG,
                     F.FLAG_BUG_BODY,
                     F.FLAG_BUG_PROJECT,
@@ -943,7 +947,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "An invocation carrying only the report payload does not file: it presents the required "
-                    "pre-filing decisions (fix-directly, duplication, ordering, validity and ownership) and "
+                    "pre-filing decisions (bug or change, fix-directly, duplication, ordering, validity and "
+                    "ownership) and "
                     "only that output names how to complete the filing.",
                     "File against the project that OWNS the defective code, not the one you happen to be "
                     "standing in. Platform behavior misbehaving inside a side project is a platform bug: "

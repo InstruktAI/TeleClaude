@@ -112,11 +112,11 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   creating or filing what this policy admits, is that worker's job
   (`sdlc/procedure/lifecycle/work/deferrals`).
 - **A defect contradicts a current contract.** A defect is observed behavior
-  that a current contract states otherwise, so its fix restores what that
-  contract already says. The filing names that contract: a snippet without
-  pending ownership, or the declared outcome of the surface that misbehaved.
-  Where making the behavior right takes a new or changed contract, the work is a
-  `change`, however real the failure, and is created with
+  that a current contract states otherwise: a snippet without pending
+  ownership. Its fix restores what that contract says, correcting any lower
+  text that contradicts it on the way. A bug filing names that contract. Where
+  no current contract states the wanted behavior, the work is a `change`,
+  however real the failure, and is created with
   `telec todo create --kind change`. Evidence shows the behavior happened; the
   contract shows it is wrong.
 - **A filed defect claim carries its evidence.** A todo whose premise is a

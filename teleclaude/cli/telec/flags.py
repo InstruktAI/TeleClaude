@@ -434,6 +434,14 @@ FLAG_STAMP_BUILD_STARTED = Flag("--build-started", hidden=True, arity=SWITCH)
 
 FLAG_BUG_SLUG = Flag("--slug", desc="Custom slug (default: auto-generated)", arity=VALUE)
 FLAG_BUG_BODY = Flag("--body", desc="Detailed description body for bug.md", arity=VALUE)
+FLAG_BUG_CONTRACT = Flag(
+    "--contract",
+    desc=(
+        "Doc snippet id of the current contract the reported behavior contradicts — the "
+        "behavior the fix restores. Resolved in the owning project."
+    ),
+    arity=VALUE,
+)
 FLAG_BUG_PROJECT = Flag(
     "--project",
     desc=(
