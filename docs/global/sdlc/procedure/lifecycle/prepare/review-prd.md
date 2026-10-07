@@ -16,7 +16,7 @@ activation_trigger: The prepare state machine routes a feature from PRD drafting
 ## Goal
 
 Decide whether a drafted `prd` is a trustworthy product contract ready for
-human judgment. Review the authority and reasoning that survived into the PRD,
+human judgment, and whether an earlier human approval carries to it. Review the authority and reasoning that survived into the PRD,
 then independently probe for supported outcomes the draft may have omitted. Do
 not review architecture, implementation mechanism, or concrete proof.
 
@@ -68,7 +68,16 @@ not review architecture, implementation mechanism, or concrete proof.
    decide product intent, or turn evidence into requirements. Every finding
    cites the preparation contract it violates and states what the intake pass
    must reconsider.
-6. Write the complete `prd-review-findings` report for this pass, including all
+6. When the human approved an earlier digest of this PRD
+   (`approved_digest` in `telec todo show {slug}`), judge whether that
+   approval carries to this revision under the carry rule owned by
+   `sdlc/procedure/lifecycle/prepare/overview`. Compare the two versions with
+   `telec todo artifacts diff {slug} prd <approved-digest> <current-digest>`.
+   In an `## Approval carry` section, state for each change the ground it
+   carries on or why it needs the human, and conclude `carries` or
+   `returns to the human`; an uncertain change returns. This judgment is not a
+   finding and does not enter the verdict.
+7. Write the complete `prd-review-findings` report for this pass, including all
    review sections and the verdict even when no findings remain. Classify and
    cite every finding under the severity schema and citation requirement the
    shared review procedure defines, and derive the verdict arithmetically from
@@ -79,7 +88,8 @@ not review architecture, implementation mechanism, or concrete proof.
 
 ## Outputs
 
-- A complete `prd-review-findings` report for every pass.
+- A complete `prd-review-findings` report for every pass, with an
+  `## Approval carry` conclusion whenever an earlier human approval exists.
 - A `prd_review` verdict bound to the current PRD and report digests.
 - No edit to the PRD or any downstream artifact.
 

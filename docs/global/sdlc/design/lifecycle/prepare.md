@@ -54,9 +54,9 @@ human, who is the sole authority on intent.
   tails it, and reads its findings and verdict on the next state-machine
   advance.
 - The PRD is the only human approval gate. The human reviews the PRD and
-  stamps `prd_approved`; a later revision that adds no intent the human has
-  not already decided carries that approval (prepare overview procedure, step
-  4). Architecture and plan advance on reviewer verdict alone.
+  stamps `prd_approved`; a later revision can carry that approval
+  (`sdlc/procedure/lifecycle/prepare/overview`). Architecture and plan advance
+  on reviewer verdict alone.
 - The architecture phase may be skipped when it doesn't earn its place.
   During intake, the BA stamps `architecture_skipped` with
   reason when the work doesn't warrant the phase. Plan and PRD are

@@ -400,9 +400,9 @@ and the reviewer stamps the digest-bound `prd_review` verdict.
 - **`approve`** — present the reviewed PRD, its authorized-horizon sentence,
   and genuine human-owned decisions. The human approves or refines product
   intent. A human refinement rewrites the PRD and therefore re-runs review.
-  When an earlier human approval carries to the reviewed revision
-  (`sdlc/procedure/lifecycle/prepare/overview`, step 4), nothing is
-  presented: the claimant records the carry and stamps `prd_approved`.
+  When the current review report concludes that an earlier human approval
+  carries (`sdlc/procedure/lifecycle/prepare/overview`), nothing is presented:
+  the claimant records the carry and stamps `prd_approved`.
 
 An agent may shape a draft but never reviews or approves its own output. The
 human remains the sole authority for the intent `prd_approved` records; a
@@ -416,7 +416,8 @@ corrected PRD, the claimant records `prd_approved` and advances normally.
 
 ### 7. Final step — advance
 
-When `prd_approved` is stamped (by the real human), along with any size-based
+When `prd_approved` is current — given by the human, or carried from their
+earlier approval — along with any size-based
 skip stamp (`architecture_skipped`), call:
 
 ```
@@ -438,7 +439,9 @@ re-engages and stamps approval.
 - **Feature spec snippet** at `docs/local/spec/feature/<context>/<concept-name>.md` — produced for human-facing and agent/operator-facing behavioral features alike. Concept-named, never slug-named. Its new or changed material is pending under this slug.
 - **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — when the behavioral feature also changes domain or cross-cutting design. The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
 - **No feature-lane artifacts for a non-behavioral kind mismatch** — reclassify to `change`, leave intake, and let prepare routing derive the change lane.
-- **`prd_approved` stamp** — recorded when the human confirms. The human always owns final approval.
+- **`prd_approved` stamp** — recorded when the human confirms, or when the
+  review report concludes that the human's earlier approval carries. The human
+  always owns the intent it records.
 - **Skip stamp** when applicable: `architecture_skipped`, with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.
 - **Dependency edges + overlap reconciliation** (step 1.6) — an undeclared

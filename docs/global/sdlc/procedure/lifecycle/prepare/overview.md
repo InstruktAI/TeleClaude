@@ -351,22 +351,30 @@ rewritten PRD returns to the human only when the approval does not carry.
 
 The human approves intent, not a digest. Once the human has approved a PRD, a
 later revision returns to them only when it carries intent they have not
-already decided. Every other revision carries their approval: after
-`prd_review` approves the revised digest, the prepare claimant stamps
-`prd_approved` without asking. A revision carries the approval when each of its
-changes is one of these:
+already decided. Every other revision carries their approval. The independent
+PRD reviewer judges whether it does, in its report on the revised digest
+(`sdlc/procedure/lifecycle/prepare/review-prd`); the claimant never classifies
+its own revision. When the current `prd_review` approves and its report
+concludes that the approval carries, the prepare claimant stamps `prd_approved`
+without asking. A revision carries the approval when each of its changes is
+one of these:
 
 - a decision the human gave in the live conversation, applied as given;
-- removal or narrowing of scope the `input` does not carry;
+- removal or narrowing of scope that the `input` does not carry and the human
+  never asked for;
 - a correction of reasoning, evidence, wording, or mechanism that leaves every
   outcome and success criterion as the human approved it.
+
+For the first ground, the claimant records the human's direction and the
+session that carries it in the todo `log` before the review is dispatched, so
+the reviewer judges it against the source.
 
 A revision that adds or widens an outcome, changes a success criterion beyond
 the human's own direction, or raises a new decision in the human's closed lane
 (`general/policy/human-contract`) returns to the human, and so does one whose
 classification remains uncertain. A carried approval never skips
 `prd_review`. Before stamping, the claimant records in the todo `log` the
-approved digest it carries forward and the ground for each change. The human
+approved digest it carries forward and the review report that carried it. The human
 is not asked to confirm a carried approval and receives no separate notice of
 it.
 
