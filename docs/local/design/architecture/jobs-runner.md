@@ -160,7 +160,7 @@ and the walk continues.
 <!-- planned-change:human-alerts-agent-only -->
 - `job.run.*` events on close/stall, projected to a human when actionable
 <!-- change:human-alerts-agent-only -->
-- `job.run.*` events on close/stall, recorded as notifications in-app and in-log and pushed to no human
+- `job.run.*` events on close/stall; a failure or stall is also recorded as a notification in-app and in-log, and no outcome is pushed to a human
 <!-- /planned-change:human-alerts-agent-only -->
 - Run reports under `JOBS_DIR`, keyed by project and declared job name (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
