@@ -12,14 +12,8 @@ description: How an event that asks for human delivery becomes a push to the peo
 
 ## Purpose
 
-A notification is a delivery: an event that asks for a human's attention, sent to
-the people it is for. It is not a record. The event stream and the logs are where
-events are found later; nothing is stored for a notification beyond the delivery
-itself.
-
-An event is delivered when it carries a human-action intent and the computer it
-happened on has an audience for it: the person it is addressed to, or the platform
-administrators who turned admin push on. Otherwise nothing happens.
+This design defines how an event that asks for a human's attention reaches the
+people it is for, which computer sends it, and what the platform keeps of it.
 
 ## Inputs/Outputs
 
@@ -42,14 +36,15 @@ administrators who turned admin push on. Otherwise nothing happens.
 
 **Outputs:**
 
-- For an intent that addresses no one, a push to the Telegram, Discord, and
-  WhatsApp DMs of each platform administrator who turned admin push on.
+- For an intent that addresses no one, a push to the configured direct-message
+  channels of each platform administrator who turned admin push on.
 - For an intent addressed to a principal, a single push to that principal's
   resolved channel instead of the administrator fan-out. The channel is resolved
   from the per-person channel configuration the platform uses for person-addressed
   delivery — the person's preferred channel, then the per-channel credential — and
-  may be any configured channel (Telegram, Discord, WhatsApp, or email), each
-  delivered through its existing send primitive.
+  may be any configured outbound channel
+  (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`),
+  each delivered through its existing send primitive.
 - No stored notification record, and no notification sent to connected app clients.
 
 ## Invariants
@@ -106,7 +101,7 @@ flowchart TD
     I -- yes --> A{Addressed to<br/>a principal?}
     A -- no --> F{Any administrator<br/>opted in?}
     F -- no --> N
-    F -- yes --> D[Push to opted-in administrators<br/>Telegram / Discord / WhatsApp]
+    F -- yes --> D[Push to opted-in administrators<br/>on their configured DM channels]
     A -- yes --> S[Resolve principal to channel<br/>preferred channel + credential]
     S -- resolved --> T[Push to that channel]
     S -- unresolvable --> W[Log warning, no push]
