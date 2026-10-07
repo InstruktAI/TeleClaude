@@ -321,28 +321,7 @@ setup_agents_interactive() {
             fi
         fi
 
-        local deepseek_install_ok=0
-        if command -v dsh &> /dev/null; then
-            print_info "Checking for DeepSeek Harness (dsh) updates..."
-            if npm install -g @deepseek-ai/dsh </dev/null >> "$LOG_FILE" 2>&1; then
-                print_success "DeepSeek Harness (dsh) is up to date"
-            else
-                print_warning "Failed to update DeepSeek Harness (see $LOG_FILE); preserving existing profiles"
-                deepseek_install_ok=1
-            fi
-        else
-            print_info "Installing DeepSeek Harness (dsh)..."
-            _run_agent_cli_installer npm install -g @deepseek-ai/dsh >> "$LOG_FILE" 2>&1 || deepseek_install_ok=1
-            if [ $deepseek_install_ok -eq 0 ]; then
-                print_success "DeepSeek Harness (dsh) installed"
-            else
-                print_warning "Failed to install DeepSeek Harness (see $LOG_FILE)"
-                print_info "You can install manually: npm install -g @deepseek-ai/dsh"
-            fi
-        fi
-        if [ $deepseek_install_ok -eq 0 ]; then
-            setup_dsh_integration
-        fi
+        setup_dsh_integration
     fi
 
     # Determine default agent
@@ -1057,14 +1036,25 @@ install_claude_code() {
 }
 
 setup_dsh_integration() {
-    # The global hooks.json is written later by configure_agent_cli.
-    # Install the TeleClaude global dsh plugins
-    local plugins_script="$INSTALL_DIR/teleclaude/install/dsh_install_plugins_all_profiles.sh"
-    if _run_agent_cli_installer sh "$plugins_script" >> "$LOG_FILE" 2>&1; then
-        print_success "dsh global plugins installed into existing profiles"
-    else
-        print_warning "dsh global plugin install reported failures (see $LOG_FILE)"
+    # The runtime, the TUI and every profile plugin move only through the DeepSeek stack
+    # convergence: it picks the newest set in which everything installed fits, verifies it and
+    # restores the previous set when verification fails. The global hooks.json is written later
+    # by configure_agent_cli.
+    if ! _run_agent_cli_installer sh "$INSTALL_DIR/teleclaude/install/dsh_plugins_checkout.sh" >> "$LOG_FILE" 2>&1; then
+        print_warning "Could not ensure the dsh plugins checkout (see $LOG_FILE)"
     fi
+    print_info "Converging the DeepSeek Harness stack..."
+    local report
+    local convergence_status=0
+    report=$(PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.install.deepseek_stack </dev/null 2>&1) || convergence_status=$?
+    echo "$report"
+    log "DeepSeek stack convergence report: $report"
+    case "$convergence_status" in
+        0) print_success "DeepSeek Harness stack is converged" ;;
+        2) print_warning "DeepSeek Harness stack was rolled back to the previous set (see the report above)" ;;
+        3) print_error "DeepSeek Harness stack rollback is incomplete (see the report above)" ;;
+        *) print_warning "DeepSeek Harness stack convergence changed nothing (see the report above)" ;;
+    esac
 }
 
 # Install uv if needed
