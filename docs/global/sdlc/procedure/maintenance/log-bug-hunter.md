@@ -7,6 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
+- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 - @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 
 ## Goal
