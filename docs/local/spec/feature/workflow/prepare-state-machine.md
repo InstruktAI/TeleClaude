@@ -406,6 +406,7 @@ And no claim held by a different live session is changed
 ```
 
 <!-- planned:commit-review-stamp -->
+
 #### UC-WPS29: PREPARED waits for the driving session's commits to be stamped
 
 ```gherkin
@@ -421,6 +422,7 @@ And a commit stamped request_changes keeps PREPARED withheld until an approve st
 ```
 
 <!-- /planned:commit-review-stamp -->
+
 ### Explicit slug required
 
 The prepare state machine requires an explicit slug. Invoked without one it returns a `TODO_SLUG_REQUIRED` error rather than resolving a candidate itself. Choosing which Todo enters prepare belongs to the lifecycle runner's dependency-gated dispatch (see `@spec/feature/workflow/dependency-graph`), which always dispatches a concrete slug; the state machine never auto-selects.

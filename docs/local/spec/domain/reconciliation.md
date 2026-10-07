@@ -83,7 +83,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   that step's own failure handling. Post-commit maintenance reaches it through
   the full installer. No consumer reads the store, the secret or the record.
 
-
 #### Fresh-machine bootstrap
 
 - **Decision boundary (core).** One reconciliation operation decides the
@@ -203,7 +202,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
 - **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
 - **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
-
 
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 

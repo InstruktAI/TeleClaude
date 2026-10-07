@@ -18,13 +18,11 @@ publication derives and never validates: it resolves committed source, rebuilds
 derived indexes, and distributes runtime artifacts. It never reads a working
 tree.
 
-
 Three entry points run the same routine:
 
 - **Commit-boundary maintenance** — a canonical-main activation whose changed
   paths owe publication publishes the homes it touched
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
-
 
 - **Installation** — the full installer publishes the installed checkout's home
   at the commit it installed, when that home does not already record it. A
@@ -72,12 +70,10 @@ lifecycle before the delivery commit is made.
 
 The unit of publication is one home. For each home in scope:
 
-
 1. **Resolve committed source** — while holding publication serialization,
    read the canonical checkout's committed `main` tip, or for the installation
    entry point the installed commit, and materialize it; every other publisher
    keeps its previously activated revision.
-
 
 2. **Build indexes** — derive the home's indexes from that snapshot and write
    portable derived indexes to the canonical checkout.
@@ -91,7 +87,6 @@ deployment stays in place, every other home in scope still publishes, and the
 home is reported with its build error and with the commit gate's lint findings
 over that home's committed files. The findings explain a skip; they never
 select what publishes. `telec sync` exits non-zero when any home was skipped.
-
 
 For maintenance and `telec sync`, the tip is read under serialization, so a
 later publication never deploys an older tip than an earlier one. A commit range
@@ -286,7 +281,6 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
-
 #### UC-SPO34: Installation publishes the commit it installed
 
 ```gherkin
@@ -297,7 +291,6 @@ And a home that already records that commit is left unchanged
 And a deployed generation from a different commit is replaced by the installed commit's
 And the installer is told whether that home was published, already current, or skipped with its build error
 ```
-
 
 #### UC-SPO29: telec sync refuses outside a home
 

@@ -530,7 +530,6 @@ environment_variables:
   - BACKUP_BACKUP_PREFIX
 ```
 
-
 Installation inputs are not configuration values. `make install` reads them once
 and persists nothing under their names:
 
@@ -540,7 +539,6 @@ and persists nothing under their names:
   (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
   Both are set or neither is. Exactly one set is an incomplete seed and fails
   the installation.
-
 
 `teleclaude.runtime.config` is the one-shot owner for the controlled path env
 surface. It reads `TELECLAUDE_HOME` once at module import and freezes it into

@@ -260,7 +260,6 @@ And no standing beyond the command's band is required
   configuration surface; it is not a boundary against that account's own file
   access.
 
-
 - Installation establishes a machine's first platform administrator from its
   own input while no person is registered, and creates the checkout's
   environment settings file from local defaults when none exists
@@ -268,7 +267,6 @@ And no standing beyond the command's band is required
   Neither act is a configuration operation, and neither is cleared here. Once a
   person is registered, every addition passes this clearance, and changing
   environment settings stays a cleared operation.
-
 
 ## See Also
 

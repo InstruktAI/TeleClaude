@@ -95,6 +95,7 @@ And a pathspec after `--` that happens to be named main is not a ref and is unaf
 ```
 
 <!-- planned-change:commit-review-stamp -->
+
 #### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
@@ -108,6 +109,7 @@ And the gate surfaces `--only` for splitting a declared set into separable inten
 ```
 
 <!-- change:commit-review-stamp -->
+
 #### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
@@ -124,6 +126,7 @@ And the gate surfaces `--only` for splitting a declared set into separable inten
 ```
 
 <!-- /planned-change:commit-review-stamp -->
+
 #### telec code commit with a message but no --approved is a forgotten gate
 
 ```
@@ -134,6 +137,7 @@ And exits non-zero without producing a commit
 ```
 
 <!-- planned-change:commit-review-stamp -->
+
 #### Doc-snippet commit on main requires an independent doc-hygiene review
 
 ```
@@ -144,7 +148,9 @@ And the agent reuses the reviewer already open for the patch series, or starts o
 And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
 ```
+
 <!-- change:commit-review-stamp -->
+
 #### Doc-snippet commit on main is a review candidate
 
 ```
@@ -157,6 +163,7 @@ And when the author wrote no snippet content through it — a removal, or a repa
 And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
 ```
+
 <!-- /planned-change:commit-review-stamp -->
 
 ```

@@ -43,15 +43,18 @@ review gate. The review gate defers while the working tree still carries an
 uncommitted change owing a commit, so the marker persists across those turns
 rather than being consumed; it surfaces once on a turn with no pending commit
 <!-- planned-change:commit-review-stamp -->
+
 and is consumed then, or is consumed when the review is dispatched. A
 force-fire that has nothing left to surface — no changed files, no required
 actions, no observations, and no commit action — produces no checkpoint.
 <!-- change:commit-review-stamp -->
+
 and is consumed then, or is consumed when the review is dispatched or when a
 commit-review stamp covers this session's commits. A force-fire that has
 nothing left to surface — no changed files, no required actions, no
 observations, and no commit action — produces no checkpoint.
 <!-- /planned-change:commit-review-stamp -->
+
 An **integrator-maintenance marker** carries canonical-main activations whose
 deterministic maintenance was recorded and whose live-runtime log judgment
 remains. It is keyed to the canonical checkout rather than to a session, so a
@@ -566,8 +569,8 @@ When the heuristic engine evaluates the turn window
 Then the agent receives no companion-drift action for that parent
 ```
 
-
 <!-- planned:commit-review-stamp -->
+
 #### UC-CP39: A commit-review stamp discharges the post-commit review gate
 
 ```gherkin
@@ -578,7 +581,9 @@ When the heuristic engine evaluates the turn window
 Then the post-commit review-gate surfacing action is not emitted
 And the authored-main-commit marker is consumed
 ```
+
 <!-- /planned:commit-review-stamp -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside

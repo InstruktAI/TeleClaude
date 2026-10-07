@@ -434,6 +434,7 @@ Clear the relevant approval stamps and re-run the affected phases.
 ### 8. Terminal state
 
 <!-- planned:commit-review-stamp -->
+
 Before deriving `PREPARED`, the state machine checks the commits this session
 authored on main while holding the claim. Each needs an `approve`
 commit-review stamp: a reviewer's verdict, or this session's own discard of a

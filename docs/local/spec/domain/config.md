@@ -150,7 +150,6 @@ The behavioral contracts are
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
 
-
 ### Installation registration and environment defaults
 
 Installation submits two named operations to the config context:
@@ -171,7 +170,6 @@ Installation submits two named operations to the config context:
 
 Neither operation passes configuration clearance: their caller is installation,
 not a configuration-surface caller.
-
 
 ### Personal MCP secret store
 

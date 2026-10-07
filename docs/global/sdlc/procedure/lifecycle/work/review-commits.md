@@ -68,15 +68,21 @@ For this invocation:
 - Check material claims in the authored message against the diff and resulting
   behavior. Classify any contradiction under the governing contract; message
   consistency does not establish intent authority.
+
 <!-- planned-change:commit-review-stamp -->
+
 - The authoring caller owns continuation and recovery for this review; the
   reviewer retains verdict authority. Apply the shared convergence contract
   without introducing a lifecycle phase or stamp.
+
 <!-- change:commit-review-stamp -->
+
 - The authoring caller owns continuation and recovery for this review; the
   reviewer retains verdict authority. Apply the shared convergence contract
   without introducing a lifecycle phase.
+
 <!-- /planned-change:commit-review-stamp -->
+
 - Every other lane runs according to the shared catalog's trigger conditions,
   against only the named changes.
 - The doc-hygiene lane runs whenever a named commit changes a doc snippet.
@@ -96,9 +102,11 @@ and record evidence or a reasoned `N/A`.
 Print the complete report the shared review procedure requires — every executed
 lane's section and, when no Important-or-higher finding remains, its clean-pass
 <!-- planned-change:commit-review-stamp -->
+
 evidence — with the verdict, to the caller. Do not select a todo, write a todo
 artifact, or stamp lifecycle state.
 <!-- change:commit-review-stamp -->
+
 evidence — with the verdict, to the caller. Then stamp the verdict on exactly
 the named SHAs:
 
@@ -139,6 +147,7 @@ An acknowledgement without a verdict line is never a review outcome; the caller
 never infers one.
 
 <!-- planned:commit-review-stamp -->
+
 Stamp the remediation verdict on every named SHA the report covers, original
 and remediation alike.
 <!-- /planned:commit-review-stamp -->
@@ -147,10 +156,15 @@ and remediation alike.
 
 - Review findings printed to the caller.
 - Verdict printed to the caller.
+
 <!-- planned-change:commit-review-stamp -->
+
 - No todo artifact or lifecycle stamp.
+
 <!-- change:commit-review-stamp -->
+
 - A commit-review stamp over the named SHAs; no todo artifact.
+
 <!-- /planned-change:commit-review-stamp -->
 
 ## Recovery

@@ -253,6 +253,7 @@ And no other project's documentation is read or changed by the delivery
 ```
 
 <!-- planned:commit-review-stamp -->
+
 #### UC-WSS24: A commit-review stamp lands on the todo its session chain claims
 
 ```gherkin
@@ -268,6 +269,7 @@ And a stamp by a session whose chain holds no lifecycle claim records nothing on
 ```
 
 <!-- /planned:commit-review-stamp -->
+
 ### Cross-context references
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.

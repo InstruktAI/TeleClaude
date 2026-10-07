@@ -91,7 +91,9 @@ All Committizen types are allowed.
   declared. The declared set is what `telec code commit` commits, so an
   undeclared change does not ship. Declaring is free and repeats safely; when in
   doubt, declare.
+
 <!-- planned-change:commit-review-stamp -->
+
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. When the post-commit
   gate determines that independent review is required, the authoring session
@@ -120,7 +122,9 @@ All Committizen types are allowed.
   integrator publishes committed canonical main after its own maintenance and
   any owed log judgment; it does not inspect or wait for other sessions' review
   verdicts, and their review state is not a direct-main publication gate.
+
 <!-- change:commit-review-stamp -->
+
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. The post-commit gate
   names the commits that are review candidates; the authoring session decides
@@ -165,6 +169,7 @@ All Committizen types are allowed.
   integrator publishes committed canonical main after its own maintenance and
   any owed log judgment; it does not inspect or wait for other sessions' review
   verdicts, and their review state is not a direct-main publication gate.
+
 <!-- /planned-change:commit-review-stamp -->
 
 ## Rationale
