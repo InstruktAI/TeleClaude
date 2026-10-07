@@ -7,6 +7,10 @@ delivered_by:
 
 # On-Demand Maintenance — Spec
 
+## Required reads
+
+@docs/local/spec/feature/integration/post-commit-maintenance.md
+
 ## What it is
 
 Commit-boundary maintenance performs the steps a canonical-main advancement
@@ -16,12 +20,11 @@ run in a root, performs that root's maintenance steps now. It serves the case
 where the automation did not run, or ran and left something wrong, and lets the
 caller see at which step a failure happens.
 
-The steps come from the root's maintenance registry and its bindings, the same
-merged model the commit boundary reads. `telec sync` keeps no list of its own,
-so the fallback cannot drift from the automation. A manual run has no commit
-range, so every step the root's active bindings can select is owed. A step the
-root declares but no active binding can select is not performed, because the
-commit boundary would never perform it there either.
+The steps are every maintenance action the root's registry declares — the
+platform base merged with the root's own overlay, the same merged model the
+commit boundary reads. `telec sync` keeps no list of its own, so the fallback
+cannot drift from the automation. A manual run has no commit range, so every
+declared step is owed.
 
 Publication is one of those steps and keeps its own contract
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
@@ -64,7 +67,7 @@ Publication is one of those steps and keeps its own contract
 ```gherkin
 Given an agent in the canonical checkout of a project on its main branch
 When the agent runs telec sync
-Then each maintenance step the project's commit-boundary maintenance can perform runs in declared order
+Then every maintenance step the project's registry declares runs in declared order
 And the agent sees each step's outcome as that step completes
 And the structured records hold the same per-step outcomes commit-boundary maintenance records
 ```
@@ -180,6 +183,5 @@ And states that it performs the root's maintenance steps, leaves restarts and re
 
 ## See Also
 
-- docs/local/spec/feature/integration/post-commit-maintenance.md — the automation this run stands in for.
 - docs/local/spec/feature/context/sync-pipeline-orchestration.md — publication, one of the steps.
 - docs/local/adr/0094-publication-activates-from-recorded-commits.md — committed-state activation and replay-based recovery.
