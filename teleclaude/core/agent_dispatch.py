@@ -213,7 +213,6 @@ def classify_fresh_agent_preference(
 
 _GLOBAL_ORDER = agent_permutation(AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI, AgentName.DEEPSEEK)
 _CODEX_FIRST = agent_permutation(AgentName.CODEX, AgentName.CLAUDE, AgentName.GEMINI, AgentName.DEEPSEEK)
-_GEMINI_FIRST = agent_permutation(AgentName.GEMINI, AgentName.CLAUDE, AgentName.CODEX, AgentName.DEEPSEEK)
 
 _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.BUILD: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
@@ -222,7 +221,7 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.REVIEW_PLAN: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
     SlashCommand.REVIEW_ARCHITECTURE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
     SlashCommand.REVIEW_COMMITS: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.FINALIZE: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.FAST),
+    SlashCommand.FINALIZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
     SlashCommand.PREPARE_INTAKE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.PREPARE_ARCHITECTURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.PREPARE_DIAGNOSE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
@@ -232,11 +231,11 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.PREPARE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.WORK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.RUN_TASK: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
-    SlashCommand.INTEGRATE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
+    SlashCommand.INTEGRATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.COORDINATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.CREATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.CREATE_ART: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
-    SlashCommand.CREATE_HTML: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
+    SlashCommand.CREATE_ART: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
+    SlashCommand.CREATE_HTML: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
     SlashCommand.DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.ACTIVATE_PROCEDURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
 }
