@@ -118,11 +118,15 @@ whose records support a failure in the scanned project's own handling through
      sequence (`general/principle/grounding`). Where an operator-initiated or
      otherwise deliberate action sits in the sequence, establish it before
      attributing anything downstream of it to a failure upstream.
-     State an expected outcome only with its supporting source.
-     Preserve an unknown operation, outcome, or expectation explicitly; never
-     infer one from an error signature. A reporting defect is stated as the
-     discrepancy in reporting, without asserting that the underlying operation
-     failed.
+     State the expected outcome with its supporting source: the current
+     contract the operation contradicts, located through `telec docs index` and
+     cited with `--contract`. Preserve an unknown operation or outcome
+     explicitly; never infer one from an error signature. A signal whose
+     expected outcome no current contract states is not a bug
+     (`sdlc/policy/todo-creation-discipline`): carry it in the
+     run report with the operation and consequence its records show. A
+     reporting defect is stated as the discrepancy in reporting, without
+     asserting that the underlying operation failed.
    - Submit the observed error summary and a representative log excerpt through
      `telec bugs report '<description>'`. Use `--project <owner>` when the
      defective system belongs to a different project than the scanned logs.
@@ -136,7 +140,7 @@ whose records support a failure in the scanned project's own handling through
 5. Write the run report under Outputs, including a clean or failed scan.
    Mark the scan complete only after log collection, causal classification, and
    deduplication succeeded and every eligible error signal has been filed, excluded,
-   carried for recurrence, or matched to an active suppression, existing work, or
+   carried for recurrence, carried for want of a contract, or matched to an active suppression, existing work, or
    in-flight work. An outstanding filing keeps the scan incomplete.
    Return the outcome to the job brief's structured close-out step.
 
