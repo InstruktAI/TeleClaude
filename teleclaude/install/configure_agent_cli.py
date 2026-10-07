@@ -27,7 +27,7 @@ from teleclaude.install.codex_hooks_install import (
     merge_codex_hook_trust_state,
     write_codex_hooks_json,
 )
-from teleclaude.install.dsh_hooks_install import configure_dsh
+from teleclaude.install.dsh_hooks_install import configure_dsh, configure_dsh_tui_onboarding
 from teleclaude.install.mcp_config import load_managed_mcp_server_names as _load_managed_mcp_server_names
 from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR, ConfigFileName
 from teleclaude.project_root import resolve_project_root
@@ -452,6 +452,7 @@ def _configure_dsh(repo_root: Path) -> None:
         merge_hook_maps=merge_hooks,
         prune_hook_maps=_prune_agent_hooks,
     )
+    configure_dsh_tui_onboarding()
 
 
 def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str]) -> dict[str, Any]:

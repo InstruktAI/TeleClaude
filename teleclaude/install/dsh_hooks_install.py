@@ -9,6 +9,22 @@ from pathlib import Path
 from typing import Any
 
 HOOKS_KEY = "hooks"
+
+# dsh-TUI keeps its first-run guide state in its own per-machine data directory.
+# The guide is recorded as done only when completed, never when skipped, so an
+# unrecorded machine is offered it on every launch and the composer is not
+# reachable until it is dismissed. The record shape and revision are owned by
+# the dsh-TUI package (its onboarding preferences module).
+DSH_TUI_DATA_DIRNAME = ".dsh-tui"
+DSH_TUI_ONBOARDING_FILENAME = "onboarding.json"
+DSH_TUI_ONBOARDING_VERSION = 1
+_ONBOARDING_COMPLETED_KEY = "completed"
+_ONBOARDING_VERSION_KEY = "version"
+_ONBOARDING_RECORD: dict[str, bool | int] = {
+    _ONBOARDING_COMPLETED_KEY: True,
+    _ONBOARDING_VERSION_KEY: DSH_TUI_ONBOARDING_VERSION,
+}
+_ONBOARDING_RECORDED_MESSAGE = "DeepSeek TUI first-run guide recorded as complete in {path}"
 HookMerger = Callable[  # guard: loose-dict - hooks.json is a dynamic external wire shape
     [dict[str, Any], dict[str, Any]], dict[str, Any]
 ]
@@ -55,6 +71,38 @@ def configure_dsh(
 
     hooks_path.write_text(json.dumps(out_settings, indent=2) + "\n")
     print(f"DeepSeek Harness hooks configured in {hooks_path}")
+
+
+def configure_dsh_tui_onboarding() -> None:
+    """Record dsh-TUI's first-run guide as complete so launches reach the composer.
+
+    A record that already marks the guide complete at this revision or later is
+    left untouched; anything else (absent, unreadable, incomplete, older) is
+    replaced, matching how dsh-TUI itself reads such a file as "not done yet".
+    """
+    onboarding_path = Path.home() / DSH_TUI_DATA_DIRNAME / DSH_TUI_ONBOARDING_FILENAME
+    if _onboarding_recorded(onboarding_path):
+        return
+    onboarding_path.parent.mkdir(parents=True, exist_ok=True)
+    onboarding_path.write_text(json.dumps(_ONBOARDING_RECORD, indent=2) + "\n")
+    print(_ONBOARDING_RECORDED_MESSAGE.format(path=onboarding_path))
+
+
+def _onboarding_recorded(path: Path) -> bool:
+    """Whether the file already records the guide complete at this revision or later."""
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(record, dict):
+        return False
+    version = record.get(_ONBOARDING_VERSION_KEY)
+    return (
+        record.get(_ONBOARDING_COMPLETED_KEY) is True
+        and isinstance(version, int)
+        and not isinstance(version, bool)
+        and version >= DSH_TUI_ONBOARDING_VERSION
+    )
 
 
 # guard: loose-dict-func - hooks.json is a dynamic external wire shape

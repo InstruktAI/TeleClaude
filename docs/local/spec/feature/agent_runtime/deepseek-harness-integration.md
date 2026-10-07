@@ -155,6 +155,10 @@ agent session's author identity.
 
 ### Boundaries
 
+- A launched deepseek session reaches the TUI idle prompt, never the TUI's
+  first-run guide: agent-CLI configuration records the guide as complete in the
+  TUI's per-machine data directory and leaves a record that already marks it
+  complete at a newer revision untouched.
 - Structured schema-constrained one-shot calls are unsupported by the DeepSeek
   runtime. The headless profile accepts task text and prints a final message,
   but exposes no output-format, schema, response-field, or response-type
