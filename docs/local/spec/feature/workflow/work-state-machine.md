@@ -358,7 +358,7 @@ And the refusal names the sanctioned path: P completes its prepare lifecycle, wh
 
 <!-- change:consumer-framework -->
 
-- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload). The integration trigger consumer dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
+- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload). The event's id is derived from `(slug, sha, worker_session_id)`, so the consumer framework hands the integration trigger consumer each logical transition once before it spawns the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 
 <!-- /planned-change:consumer-framework -->
 

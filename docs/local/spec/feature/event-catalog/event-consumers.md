@@ -33,9 +33,9 @@ A type pattern is one of:
   that starts with that prefix and has at least one more segment;
 - `*`, which matches every type.
 
-Procedure subscriptions and person notification preferences select events with
-the same patterns, so a pattern means the same wherever it is written. A pattern
-in any other form is refused where it is declared.
+A pattern in any other form is refused where it is declared. Every context that
+lets an author select events by type pattern matches with this one matcher, so a
+pattern means the same wherever it is written.
 
 The platform hands a consumer each event it is interested in once. A stream
 entry delivered again, or an occurrence re-emitted with the same id, is not
@@ -206,9 +206,8 @@ And no other computer emits a degradation event for those failures
   router consumer decides nothing about which todo is dispatched.
 - **integration** — owns the integrator the integration trigger spawns and its
   singleton lease; procedure activation is a consumer under its own contract.
-- **context** and **identity** — procedure subscriptions and person
-  notification preferences declare patterns in this grammar; their owners
-  validate the declarations with this matcher.
+- **context** and **identity** — a context that lets authors select events by
+  type pattern owns that declaration and matches it with this matcher.
 
 ## Known caveats
 

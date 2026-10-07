@@ -131,8 +131,7 @@ the stream on each computer
   subject or home kinds it answers.
 - **Type patterns** are an exact type name, a whole-segment prefix followed by
   `.*`, or `*`. The catalog owns this one matcher; every context that lets an
-  author select events by type, such as procedure subscriptions and person
-  notification preferences, validates and matches with it.
+  author select events by type pattern matches with it.
 - **Duplicate protection** is the platform's: a consumer is handed an event
   once per event id while its record of the event is retained.
 - **Retry and dead letter** are per consumer: bounded attempts, then the event
