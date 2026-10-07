@@ -110,9 +110,11 @@ Document structure:
 `Discipline` is the only additional procedure H2. It is optional unless an
 agent command explicitly delegates to that procedure's discipline; such a
 delegation requires the procedure to define it. The section is the procedure's
-behavioral anchor: it names the specific failure mode the procedure guards
-against and the rule that prevents it. A caution that would fit any procedure
-is not a Discipline, and its measure is specificity, never length.
+behavioral anchor: it states the act the procedure's agent holds to at the
+moment of acting, where the work is most likely to drift, as the reality
+wanted from it (`general/policy/agent-facing-text`). An anchor another
+procedure could carry equally is not a Discipline, and its measure is
+specificity, never length.
 
 Supporting material stays subordinate to the required section that owns it:
 

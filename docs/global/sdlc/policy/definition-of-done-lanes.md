@@ -45,23 +45,23 @@ later log judgment is not a per-criterion proof source. Demanding or rewarding
 forbidden test authorship violates the project ruling. All other lanes apply
 unchanged; in every project without such a ruling this catalog applies in full.
 
-| Lane                    | Reference                                                                              | Task                                                                                                                               |
-| ----------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| scope                   | § Scope verification                                                                   | Verify delivery matches PRD intent — no gold-plating, no gaps                                                                      |
-| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`                 | Find bugs and pattern violations                                                                                                   |
-| ownership               | § Domain ownership review; `domain-ownership`                                          | Verify every domain rule is implemented by its single owning context and crossed only through a published contract                 |
-| paradigm                | § Paradigm-fit assessment                                                              | Check data flow, component reuse, pattern consistency, forward-migration of owned data                                             |
-| principles              | § Principle violation hunt; `principle-violation-hunt`                                 | Structural violation hunt against design principles                                                                                |
-| intelligence-boundaries | `principle/intelligence-boundaries`                                                    | Find code that classifies, scores, judges, or auto-edits free-text content semantics                                               |
-| security                | § Security review                                                                      | Check for secrets, injection, auth gaps, and repository-privacy leakage                                                            |
-| tests                   | § Test coverage check; `quality-predicate-registry`                                    | Evaluate behavioral value, weak-test anti-patterns, and coverage                                                                   |
-| errors                  | § Error handling review; `silent-failure-audit`                                        | Find silent failures and inadequate error handling                                                                                 |
-| types                   | § Type design review (when types added/modified)                                       | Validate type invariants, encapsulation, and enforcement                                                                           |
-| comments                | § Comment accuracy review                                                              | Verify comments are accurate, non-stale, and earn their place                                                                      |
-| logging                 | § Logging review                                                                       | Enforce logging policy; reject ad-hoc debug probes                                                                                 |
-| docs                    | § Documentation and config surface check (when CLI, config, or API changed)            | Verify help text, config surface, README, and affected doc snippets reflect changes                                                |
-| doc-hygiene             | § Doc-snippet hygiene (when a `docs/**` snippet or any directive-text surface changed) | Verify changed snippet bodies state present-tense contract — no narration; verify changed directive text was the author's to write |
-| simplify                | § Simplification review (after other lanes pass)                                       | Simplify without behavior changes                                                                                                  |
+| Lane                    | Reference                                                                              | Task                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| scope                   | § Scope verification                                                                   | Verify delivery matches PRD intent — no gold-plating, no gaps                                                                                                                    |
+| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`                 | Find bugs and pattern violations                                                                                                                                                 |
+| ownership               | § Domain ownership review; `domain-ownership`                                          | Verify every domain rule is implemented by its single owning context and crossed only through a published contract                                                               |
+| paradigm                | § Paradigm-fit assessment                                                              | Check data flow, component reuse, pattern consistency, forward-migration of owned data                                                                                           |
+| principles              | § Principle violation hunt; `principle-violation-hunt`                                 | Structural violation hunt against design principles                                                                                                                              |
+| intelligence-boundaries | `principle/intelligence-boundaries`                                                    | Find code that classifies, scores, judges, or auto-edits free-text content semantics                                                                                             |
+| security                | § Security review                                                                      | Check for secrets, injection, auth gaps, and repository-privacy leakage                                                                                                          |
+| tests                   | § Test coverage check; `quality-predicate-registry`                                    | Evaluate behavioral value, weak-test anti-patterns, and coverage                                                                                                                 |
+| errors                  | § Error handling review; `silent-failure-audit`                                        | Find silent failures and inadequate error handling                                                                                                                               |
+| types                   | § Type design review (when types added/modified)                                       | Validate type invariants, encapsulation, and enforcement                                                                                                                         |
+| comments                | § Comment accuracy review                                                              | Verify comments are accurate, non-stale, and earn their place                                                                                                                    |
+| logging                 | § Logging review                                                                       | Enforce logging policy; reject ad-hoc debug probes                                                                                                                               |
+| docs                    | § Documentation and config surface check (when CLI, config, or API changed)            | Verify help text, config surface, README, and affected doc snippets reflect changes                                                                                              |
+| doc-hygiene             | § Doc-snippet hygiene (when a `docs/**` snippet or any directive-text surface changed) | Verify changed snippet bodies state present-tense contract — no narration; verify changed directive text was the author's to write and states the reality wanted from its reader |
+| simplify                | § Simplification review (after other lanes pass)                                       | Simplify without behavior changes                                                                                                                                                |
 
 ### A verdict and its lane scores are written together
 
@@ -479,7 +479,7 @@ Missing documentation updates are **Important** findings. Missing config surface
 
 #### Doc-snippet hygiene
 
-**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (full anti-pattern list, not Narration alone) + `general/policy/referencing-doc-snippets` (citation form) + `sdlc/policy/process-change-authority` + `sdlc/policy/language-policy-ownership`.
+**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (full anti-pattern list, not Narration alone) + `general/policy/referencing-doc-snippets` (citation form) + `general/policy/agent-facing-text` (reader framing) + `sdlc/policy/process-change-authority` + `sdlc/policy/language-policy-ownership`.
 
 Conditional lane — fires whenever the diff touches a `docs/**` snippet **or any
 directive-text surface** (below). The DoD docs lane above checks that docs _exist
@@ -517,7 +517,7 @@ reader that names a next move: build-target and script output (`Makefile`,
 and skill bodies, and dispatched-worker briefs. `general/policy/documentation-discipline`
 owns the directive-versus-descriptive cut; apply it rather than re-deriving one.
 On these surfaces the narration anti-patterns below do not apply — they are
-snippet-body rules — and two checks do:
+snippet-body rules — and three checks do:
 
 - **Authorization.** The changed directive text is one the approved intent called
   for. Text authored where the intent called only for removal or correction is
@@ -527,6 +527,10 @@ snippet-body rules — and two checks do:
   verify the agent-owned mechanism is covered by a current or pending contract
   and independently reviewed, and classify only its underlying consequence
   under `general/policy/human-contract`.
+- **Reader framing.** The changed text states the reality wanted from the role
+  its load path reaches (`general/policy/agent-facing-text`). Text that names
+  acts that role excludes is this check's finding, unless it is that policy's
+  counter for an act the reader is already invited to take.
 
 **Frontmatter liveness check.** `delivered_by` is authorship provenance, not a
 dispatch gate. The reviewer checks frontmatter shape and stale delivered
@@ -631,6 +635,10 @@ own trigger below, additionally flag the coherence anti-patterns
     already-loaded global policy or principle, the project's README, or an
     existing snippet does not already answer. A new snippet that fails is
     rejected or collapsed into a citation from an existing one.
+12. **Prohibition priming** — the changed region names acts its reader's role
+    excludes instead of stating the reality wanted from that role. The reader
+    is the role the snippet's load path reaches; `general/policy/agent-facing-text`
+    owns the definition and the counter for an invited act.
 
 When the changed snippet is an ADR (`docs/local/adr/**`), additionally hold its
 body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/adr-authoring`
@@ -672,6 +680,8 @@ Severity guidance:
   entry, or example of a schema-, generator-, or config-owned artifact —
   introduced or left uncorrected by this change → **Important**.
 - A new snippet that fails the value test → **Important**.
+- Prohibition priming introduced by this change, in a snippet body or on a
+  directive-text surface → **Important**.
 - A language-specific directive introduced in a generic snippet → **Important**;
   **Critical** when it conflicts with the applicable language owner or directs
   implementation through the wrong language mechanism.

@@ -9,6 +9,7 @@ activation_trigger: When dispatching a session, collaborating with a peer, or re
 ## Required reads
 
 - @~/.teleclaude/docs/general/spec/tools/telec-cli.md
+- @~/.teleclaude/docs/general/policy/agent-facing-text.md
 
 ## Goal
 
@@ -31,8 +32,9 @@ or lifecycle contract.
    project path in the dispatch, rather than substituting the caller's computer.
 2. Use `telec sessions run` for a canonical command and `telec sessions start`
    for a general-purpose brief. The required-read CLI contract owns argument
-   shapes, command examples, and subscription options. Preserve the returned
-   session identity and owning computer for follow-up.
+   shapes, command examples, and subscription options. Write a brief as the
+   reality wanted from the dispatched role (`general/policy/agent-facing-text`).
+   Preserve the returned session identity and owning computer for follow-up.
 3. Keep ordinary conversation separate from attention handling. For a peer
    discussion, establish a direct link using `telec sessions send ... --direct`.
    Once linked, converse through turn output, which is shared automatically;

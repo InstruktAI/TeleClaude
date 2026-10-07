@@ -12,6 +12,7 @@ visibility: public
 
 - @~/.teleclaude/docs/general/policy/artifact-scope.md
 - @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
+- @~/.teleclaude/docs/general/policy/agent-facing-text.md
 
 ## Goal
 
@@ -45,7 +46,9 @@ for supported CLIs.
    or addendum stays at the artifact root and follows its own contract. Third-party
    skill packages are incorporated rather than authored; follow
    `general/procedure/skill-management` for those.
-2. Follow the corresponding schema and taxonomy requirements.
+2. Follow the corresponding schema and taxonomy requirements. Name the role of the
+   reader the artifact reaches, and write the reality wanted from that role
+   (`general/policy/agent-facing-text`).
 3. Ensure frontmatter fields are complete and consistent (a master has none).
 4. If the command takes multiple arguments, declare `parameters` in frontmatter
    as an ordered list with `name` and optional `required`/`default` per entry.

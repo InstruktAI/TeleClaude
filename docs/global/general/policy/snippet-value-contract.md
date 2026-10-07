@@ -84,6 +84,11 @@ The default is **skip unless justified**, not "produce when applicable."
 - **Coverage instinct.** Producing a snippet to fill a taxonomy slot rather
   than to capture intent. The discovery-to-taxonomy table is a list of
   shapes worth considering, not a checklist to complete.
+- **Prohibition priming.** Agent-facing text that names acts its reader's role
+  excludes, instead of stating the reality wanted from that role, places the
+  excluded acts in the reader's awareness. `general/policy/agent-facing-text`
+  owns the definition, the reader roles, and the bounded counter for an act
+  the reader is already invited to take.
 - **Narration (log-in-the-doc).** A snippet body that records _how it got
   here_ or _what is coming_ instead of stating _what is_. A body states
   present-tense intent and contract — nothing else. Each form of narration

@@ -12,7 +12,7 @@ visibility: public
 
 - @~/.teleclaude/docs/general/concept/documentation-snippets.md
 - @~/.teleclaude/docs/general/policy/artifact-scope.md
-- @~/.teleclaude/docs/general/principle/priming.md
+- @~/.teleclaude/docs/general/policy/agent-facing-text.md
 - @~/.teleclaude/docs/general/principle/intent-first-documentation.md
 - @~/.teleclaude/docs/sdlc/principle/documentation-first-development.md
 - @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
@@ -54,7 +54,7 @@ tooling.
     is **skip unless justified**, not "produce when applicable."
 
 1.  Place the file at the correct path per the artifact-scope policy — the path determines `id`/`type`/`scope`/`domain` (the index build derives and materializes them; you do not author them).
-2.  Author top-down: broader context should point to narrower details, not the other way around.
+2.  Author top-down: broader context should point to narrower details, not the other way around. Name the role of the reader this snippet's load path reaches, and write the reality wanted from that role (`general/policy/agent-facing-text`).
 <!-- planned-change:personal-knowledge-taxonomy -->
 3.  Add frontmatter: `description` (required) and `visibility`; `id`/`type`/`scope`/`domain` are derived from the path and must NOT be authored. Classify `visibility` deliberately: `internal` is the default. Promote to `public` only when both conditions hold — (a) the snippet contains nothing sensitive (no credentials, no private infra, no non-public business intel, no personal data), and (b) the content is useful to anyone outside the project who asks the help desk about it. When in doubt, leave it `internal`. Visibility does not permit repository-local identity: internal snippets also use semantic placeholders for computer, user, host, path, and topology values, then direct readers to the runtime discovery surface. TeleClaude fleet snippets use `telec computers list` for computer, user, and host discovery, and `telec projects list --computer <computer>` for project locations. Repository privacy is reviewed semantically; never create or request a prose scanner for it.
 <!-- change:personal-knowledge-taxonomy -->
