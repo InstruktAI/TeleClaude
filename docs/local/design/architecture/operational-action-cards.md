@@ -37,15 +37,7 @@ details out of the primary message.
 - No external action card for routine success, automatically handled failure,
   repeated same-state activity, or recovery.
 
-<!-- planned-change:human-alerts-agent-only -->
-
 - Complete provenance in the notification record and delivery metadata.
-
-<!-- change:human-alerts-agent-only -->
-
-- Complete provenance in the delivery metadata.
-
-<!-- /planned-change:human-alerts-agent-only -->
 
 - A native Discord jump-link backlink to the originating session's Discord
   thread or channel, appended on the Discord surface only, when the occurrence
@@ -56,30 +48,11 @@ details out of the primary message.
 - **Current human action is required.** Severity and schema-level actionability
   alone never justify interruption.
 
-<!-- planned-change:human-alerts-agent-only -->
-
 - **One action revision, one interruption.** Repeated state does not repeatedly
   notify; a later card requires a material change to the requested action.
 
-<!-- change:human-alerts-agent-only -->
-
-- **One requested delivery, one card.** Each occurrence that asks for delivery
-  produces one card. Matching occurrences inside the delivery debounce window
-  coalesce into one; nothing is remembered across occurrences, so a later
-  occurrence produces a later card.
-
-<!-- /planned-change:human-alerts-agent-only -->
-<!-- planned-change:human-alerts-agent-only -->
-
 - **Human copy explains the situation.** Event types, notification row IDs,
   attempts, and persistence verbs remain metadata.
-
-<!-- change:human-alerts-agent-only -->
-
-- **Human copy explains the situation.** Event types, event identities,
-  attempts, and persistence verbs remain metadata.
-
-<!-- /planned-change:human-alerts-agent-only -->
 
 - **Presentation may vary, meaning may not.** Native cards and text fallbacks
   render the same structured action envelope. Text fallback uses the shared
@@ -98,8 +71,6 @@ details out of the primary message.
 
 ## Primary flows
 
-<!-- planned-change:human-alerts-agent-only -->
-
 ```mermaid
 flowchart TD
     E[Operational occurrence] --> A{Concrete human action now?}
@@ -108,17 +79,6 @@ flowchart TD
     F -- no --> R
     F -- yes --> C[Render action card once]
 ```
-
-<!-- change:human-alerts-agent-only -->
-
-```mermaid
-flowchart TD
-    E[Operational occurrence] --> A{Concrete human action now?}
-    A -- no --> R[No card]
-    A -- yes --> C[Render action card once]
-```
-
-<!-- /planned-change:human-alerts-agent-only -->
 
 The text fallback is:
 

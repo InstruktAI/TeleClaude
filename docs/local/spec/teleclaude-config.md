@@ -300,8 +300,6 @@ The home name takes precedence for session placement; without it, the global
 person name remains the display name, falling back to the slug. The home's
 description is shown when present.
 
-<!-- planned-change:human-alerts-agent-only -->
-
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
@@ -314,31 +312,6 @@ settings:
     system_messages: null | off | mobile | full | both
     tool_calls: null | off | mobile | full | both
 ```
-
-<!-- change:human-alerts-agent-only -->
-
-```yaml
-creds:
-  telegram: { user_name, user_id, chat_id }
-  discord: { user_id, nick, avatar_url, voice_bot_token } # voice_bot_token is ${DISCORD_TOKEN} in the owner-only person .env and must authenticate the same bot the Discord adapter runs; the person's live private channel comes from Discord voice state and is not config
-  whatsapp: { phone_number }
-subscriptions: list[SubscriptionEntry]
-interests: list[string]
-settings:
-  output_visibility:
-    system_messages: null | off | mobile | full | both
-    tool_calls: null | off | mobile | full | both
-  admin_push: false
-```
-
-<!-- /planned-change:human-alerts-agent-only -->
-<!-- planned:human-alerts-agent-only -->
-
-`settings.admin_push` (boolean, default `false`) decides whether a platform
-administrator receives the platform's admin notifications on their configured
-direct-message channels. It has no effect for a person who is not a platform
-administrator, and a change takes effect at the next daemon start.
-<!-- /planned:human-alerts-agent-only -->
 
 `accounts` is an additional per-person key: the list of mail accounts a person's
 assistant may act as. Each entry declares the connector it belongs to, drawn from
