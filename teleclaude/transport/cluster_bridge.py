@@ -52,7 +52,6 @@ SESSION_PREFIX = "cluster.session."
 PROJECT_PREFIX = "cluster.project."
 TODO_PREFIX = "cluster.todo."
 COMPUTER_PREFIX = "cluster.computer."
-WEBHOOK_PREFIX = "cluster.webhook."
 
 
 class ClusterCategory(StrEnum):
@@ -60,7 +59,6 @@ class ClusterCategory(StrEnum):
     PROJECT = "project"
     TODO = "todo"
     COMPUTER = "computer"
-    WEBHOOK = "webhook"
 
 
 @dataclass(frozen=True)
@@ -92,8 +90,6 @@ class ClusterEnvelope:
             return ClusterCategory.TODO
         if self.channel.startswith(COMPUTER_PREFIX):
             return ClusterCategory.COMPUTER
-        if self.channel.startswith(WEBHOOK_PREFIX):
-            return ClusterCategory.WEBHOOK
         return None
 
 

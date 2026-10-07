@@ -5,7 +5,6 @@ import atexit
 import fcntl
 import hashlib
 import inspect
-import json
 import os
 import signal
 import sys
@@ -227,7 +226,6 @@ from teleclaude.events.envelope import (
 )
 from teleclaude.events.envelope_facts import subject_for_project_path as _workflow_event_subject
 from teleclaude.events.producer import emit_event
-from teleclaude.hooks.webhook_models import HookEvent
 
 _record_import_timing("teleclaude.events", _t)
 
@@ -291,6 +289,8 @@ init_voice_handler = voice_message_handler.init_voice_handler
 SLOW_STARTUP_WARNING_S = 30.0
 _EVENT_SUBSCRIPTION_PROCESSOR_STOPPED = "Event subscription processor stopped"
 _EVENT_SUBSCRIPTION_PROCESSOR_TASK_ATTRIBUTE = "_event_subscription_processor_task"
+_RELAY_DELIVERY_TASK_ATTRIBUTE = "_relay_delivery_task"
+_RELAY_DELIVERY_STOPPED = "Relay delivery processor stopped"
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
@@ -497,6 +497,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
         self._event_subscription_processor_task: asyncio.Task[object] | None = None
+        self._relay_delivery_task: asyncio.Task[object] | None = None
         self._event_subscription_service: EventSubscriptionService | None = self.event_subscription_service
         self._internal_event_bus_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
@@ -1082,6 +1083,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             _EVENT_SUBSCRIPTION_PROCESSOR_STOPPED,
             timeout=5.0,
         )
+        await self._await_task_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)
         self.event_subscription_service.close()
 
         for attr_name, log_message in (
@@ -1460,9 +1462,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if category == ClusterCategory.SESSION:
             self._apply_session_envelope(envelope)
             return
-        if category == ClusterCategory.WEBHOOK:
-            self._dispatch_webhook_envelope(envelope)
-            return
         if category is not None:
             # Project / todo / computer categories land in subsequent commits.
             logger.debug(
@@ -1471,15 +1470,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 category=category,
                 origin=envelope.origin,
             )
-
-    def _dispatch_webhook_envelope(self, envelope: ClusterEnvelope) -> None:
-        """Schedule delivery of a relayed webhook event through the hook dispatcher."""
-        dispatcher = self._hook_dispatcher
-        if dispatcher is None:
-            raise RuntimeError("Webhook cluster event received before webhook dispatcher initialized")
-        event = HookEvent.from_json(json.dumps(envelope.payload))
-        task = asyncio.create_task(dispatcher.dispatch(event), name="cluster-webhook-dispatch")
-        task.add_done_callback(self._log_background_task_exception("cluster_webhook_dispatch"))
 
     def _apply_session_envelope(self, envelope: ClusterEnvelope) -> None:
         """Translate a ``cluster.session.*`` envelope into a cache mutation."""

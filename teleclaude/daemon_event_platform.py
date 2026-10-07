@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -22,7 +21,6 @@ from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, e
 from teleclaude.core.event_subscriptions import EventSubscriptionService
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.organization import platform_admin_people
-from teleclaude.core.reconciliation import WEBHOOK_INGRESS_FEATURE_ID
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -68,13 +66,12 @@ from teleclaude.hooks.config import load_hooks_config
 from teleclaude.hooks.delivery import WebhookDeliveryWorker
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.handlers import HandlerRegistry
-from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
-from teleclaude.hooks.normalizers import register_builtin_normalizers
+from teleclaude.hooks.inbound import install_inbound_routes
 from teleclaude.hooks.registry import ContractRegistry
-from teleclaude.hooks.webhook_models import Contract, HookEvent, PropertyCriterion, Target
+from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, RelayProtocol
+from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.paths import ConfigFileName
-from teleclaude.transport.cluster_bridge import WEBHOOK_PREFIX
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -95,8 +92,20 @@ _EVENT_STREAM_MISSING_LAST_ID_ERROR = "Redis event stream metadata is missing it
 _EVENT_SUBSCRIPTION_PROCESSOR_TASK_NAME = "event-subscription-processor"
 _EVENT_SUBSCRIPTION_PROCESSOR_LOG_TASK_NAME = "event_subscription_processor"
 _EVENT_SUBSCRIPTION_PROCESSOR_STARTED_EVENT = "Event subscription processor started"
+_RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
+_RELAY_DELIVERY_CONSUMER_SUFFIX = "-relay-"
+_RELAY_DELIVERY_TASK_NAME = "relay-delivery-processor"
+_RELAY_DELIVERY_LOG_TASK_NAME = "relay_delivery_processor"
+_RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
+_API_SERVER_ATTRIBUTE = "api_server"
+_API_APP_ATTRIBUTE = "app"
+_INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
+_INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbound endpoints are not installed"
+_RELAY_DELIVERY_NO_REDIS_EVENT = "Event Redis client unavailable; relayed external events are not delivered here"
 
-type ClusterWebhookPayload = dict[str, object]  # guard: loose-dict - HookEvent JSON payload for cluster envelope
+_KNOWN_EVENT_SOURCES = frozenset({"daemon", "prepare-worker", "review-worker", "correlation"}) | frozenset(
+    RelayProtocol
+)
 
 
 def daemon_project_config_path() -> Path:
@@ -201,6 +210,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _contract_sweep_task: asyncio.Task[object] | None
         _event_processor_task: asyncio.Task[object] | None
         _event_subscription_processor_task: asyncio.Task[object] | None
+        _relay_delivery_task: asyncio.Task[object] | None
         _event_subscription_service: EventSubscriptionService | None
         _internal_event_bus_task: asyncio.Task[object] | None
         _ingest_scheduler_task: asyncio.Task[object] | None
@@ -371,9 +381,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             catalog=event_catalog,  # type: ignore[arg-type]
             db=self._event_db,
             push_callbacks=push_callbacks,
-            trust_config=TrustConfig(
-                known_sources=frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})
-            ),
+            trust_config=TrustConfig(known_sources=_KNOWN_EVENT_SOURCES),
             correlation_config=CorrelationConfig(),
             producer=event_producer,
         )
@@ -485,6 +493,30 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             self._log_background_task_exception(_EVENT_SUBSCRIPTION_PROCESSOR_LOG_TASK_NAME)
         )
         logger.info(_EVENT_SUBSCRIPTION_PROCESSOR_STARTED_EVENT, computer=computer_label)
+
+    def _start_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
+        """Start the per-computer group that delivers relayed external events to the local hook dispatcher."""
+        redis_client = self._event_redis_client
+        if redis_client is None:
+            logger.warning(_RELAY_DELIVERY_NO_REDIS_EVENT)
+            return
+        computer_label = config.computer.name
+        reliability = config.event_reliability
+        processor = EventProcessor(
+            redis_client=redis_client,
+            pipeline=RelayDeliveryPipeline(dispatcher),
+            group=_RELAY_DELIVERY_GROUP_PREFIX + computer_label,
+            consumer_name=computer_label + _RELAY_DELIVERY_CONSUMER_SUFFIX + str(os.getpid()),
+            idle_threshold_ms=reliability.idle_threshold_ms,
+            max_attempts=reliability.max_attempts,
+            sweep_interval_ms=reliability.sweep_interval_ms,
+            dlq_destination=reliability.dlq_destination,
+        )
+        self._relay_delivery_task = asyncio.create_task(
+            processor.start(self.shutdown_event), name=_RELAY_DELIVERY_TASK_NAME
+        )
+        self._relay_delivery_task.add_done_callback(self._log_background_task_exception(_RELAY_DELIVERY_LOG_TASK_NAME))
+        logger.info(_RELAY_DELIVERY_STARTED_EVENT, computer=computer_label)
 
     def _start_internal_event_bus(self, redis_client: object) -> None:
         """Configure and start the daemon role's internal EventBus consumer."""
@@ -722,29 +754,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
             self._deployment_fanout_task.add_done_callback(self._log_background_task_exception("deployment_fanout"))
 
-        # Register built-in normalizers.
-        normalizer_registry = NormalizerRegistry()
-        register_builtin_normalizers(normalizer_registry)
-
-        # Load config-driven contracts and inbound endpoints.
-        # Contracts load regardless of API server availability; inbound routes require it.
-        lifecycle_api_server = getattr(self.lifecycle, "api_server", None)
-        app = getattr(lifecycle_api_server, "app", None)
-        inbound_registry = None
-        if app is not None:
-            inbound_registry = InboundEndpointRegistry(
-                app,
-                normalizer_registry,
-                lambda event: self._dispatch_inbound_webhook_event(dispatcher, event),
-            )
-        else:
-            logger.warning("API server app unavailable; inbound webhooks will not be registered")
-        await load_hooks_config(
-            project_config.hooks.model_dump(),
-            contract_registry,
-            inbound_registry=inbound_registry,
-        )
+        # Load config-driven contracts. Contracts load regardless of API server availability.
+        await load_hooks_config(project_config.hooks.model_dump(), contract_registry)
         procedure_activation.install(contract_registry, handler_registry, dispatcher)
+        self._start_relay_delivery_consumer(dispatcher)
+        self._install_inbound_routes()
 
         if project_config.channel_subscriptions:
             redis_adapter = self.client.transport
@@ -792,22 +806,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
 
-    async def _dispatch_inbound_webhook_event(self, dispatcher: HookDispatcher, event: HookEvent) -> None:
-        """Relay verified ingress webhooks to the cluster before local dispatch."""
-        if config.computer.is_ingress_node:
-            publisher = self.cache.cluster_publisher
-            if publisher is None:
-                raise RuntimeError("Ingress webhook relay requires an attached cluster publisher")
-            event_payload = cast(ClusterWebhookPayload, json.loads(event.to_json()))
-            published = await publisher.publish(
-                f"{WEBHOOK_PREFIX}{event.source}",
-                event_payload,
-                feature_id=WEBHOOK_INGRESS_FEATURE_ID,
-            )
-            if not published:
-                raise RuntimeError("Ingress webhook relay publish failed")
-
-        await dispatcher.dispatch(event)
+    def _install_inbound_routes(self) -> None:
+        """Mount the inbound endpoints on the API app, on the ingress computer only."""
+        if not config.computer.is_ingress_node:
+            return
+        app = getattr(getattr(self.lifecycle, _API_SERVER_ATTRIBUTE, None), _API_APP_ATTRIBUTE, None)
+        producer = self._event_producer
+        if app is None or producer is None:
+            logger.warning(_INBOUND_ROUTES_UNAVAILABLE_EVENT)
+            return
+        install_inbound_routes(app, producer)
+        logger.info(_INBOUND_ROUTES_INSTALLED_EVENT)
 
     async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: RedisTransport) -> None:
         """Consume deployment version_available events from Redis Stream and dispatch locally.

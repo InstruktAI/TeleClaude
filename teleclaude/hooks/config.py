@@ -1,4 +1,4 @@
-"""Config loading for webhook service hooks section."""
+"""Config loading for the hooks section's subscriptions."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 
 if TYPE_CHECKING:
-    from teleclaude.hooks.inbound import InboundEndpointRegistry
     from teleclaude.hooks.registry import ContractRegistry  # type: ignore[import-not-found]  # Track B dependency
 
 logger = get_logger(__name__)
@@ -68,32 +67,15 @@ def _build_config_contract(sub: dict[str, Any]) -> Contract:  # guard: loose-dic
     )
 
 
-def _resolve_inbound_registration(
-    source_name: str,
-    source_config: dict[str, Any],  # guard: loose-dict - YAML config
-) -> tuple[str, str, dict[str, Any] | None, str | None]:  # guard: loose-dict - YAML config
-    """Resolve an inbound endpoint definition from config."""
-    path = source_config.get("path")
-    if not path:
-        path = f"/hooks/inbound/{source_name}"
-        logger.info("Inbound path derived from source name: %s -> %s", source_name, path)
-    normalizer_key = source_config.get("normalizer") or source_name
-    verify_config = {key: source_config[key] for key in ("verify_token", "secret") if key in source_config}
-    company = source_config.get("company")
-    return path, normalizer_key, verify_config or None, company if isinstance(company, str) else None
-
-
 async def load_hooks_config(
     hooks_config: dict[str, Any],  # guard: loose-dict - Config YAML is unstructured
     contract_registry: ContractRegistry,
-    inbound_registry: InboundEndpointRegistry | None = None,
 ) -> None:
-    """Load hooks configuration and register contracts + inbound endpoints.
+    """Load the hooks section's subscriptions and register them as contracts.
 
     Args:
         hooks_config: The 'hooks' section from teleclaude.yml
         contract_registry: Registry to register contracts into
-        inbound_registry: Optional inbound endpoint registry
     """
     # Load subscriptions (contracts)
     subscriptions = hooks_config.get("subscriptions", [])
@@ -114,14 +96,3 @@ async def load_hooks_config(
         total_subscriptions,
         failed_subscriptions,
     )
-
-    # Load inbound endpoints
-    if inbound_registry:
-        inbound = hooks_config.get("inbound", {})
-        for source_name, source_config in inbound.items():
-            try:
-                path, normalizer_key, verify_config, company = _resolve_inbound_registration(source_name, source_config)
-                inbound_registry.register(path, normalizer_key, verify_config, company)
-                logger.info("Loaded inbound endpoint: %s → %s", source_name, path)
-            except (AttributeError, TypeError, ValueError) as exc:
-                logger.error("Failed to load inbound %s: %s", source_name, exc, exc_info=True)

@@ -21,7 +21,6 @@ import teleclaude.config as _tc_config_module
 from teleclaude.config._environment import write_environment_value
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
 from teleclaude.config.loader import (
-    find_company_config_path,
     find_person_config_path,
     list_company_config_paths,
     load_company_config,
@@ -261,22 +260,6 @@ def validate_all() -> list[ValidationResult]:
             )
         else:
             results.append(ValidationResult(area=project_area, passed=True))
-            unhosted = sorted(
-                {
-                    f"{name}:{source.company}"
-                    for name, source in declared.hooks.inbound.items()
-                    if source.company and find_company_config_path(source.company) is None
-                }
-            )
-            if unhosted:
-                results.append(
-                    ValidationResult(
-                        area=f"{project_area}:hooks.inbound",
-                        passed=False,
-                        errors=[f"Inbound source '{entry}' declares an unconfigured company" for entry in unhosted],
-                        suggestions=["Register the company, or correct the source's `company:` declaration."],
-                    )
-                )
 
     missing_sections: dict[str, list[str]] = {}
     if app_config is not None:

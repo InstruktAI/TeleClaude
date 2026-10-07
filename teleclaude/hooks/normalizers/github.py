@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Final
+
 from teleclaude.hooks.webhook_models import HookEvent
+
+GITHUB_SOURCE: Final = "github"
+_EVENT_HEADER: Final = "x-github-event"
+_UNKNOWN_EVENT: Final = "unknown"
 
 
 # guard: loose-dict-func - GitHub webhook payload is third-party JSON.
@@ -34,9 +40,8 @@ def _get_sender_login(payload: dict[str, object]) -> str | None:
 
 
 # guard: loose-dict-func - GitHub webhook payload is third-party JSON.
-def normalize_github(payload: dict[str, object], headers: dict[str, str]) -> HookEvent:
-    """Normalize GitHub webhook payloads into a canonical HookEvent."""
-    event_type = (headers.get("x-github-event") or headers.get("X-GitHub-Event") or "").lower() or "unknown"
+def github_hook_event(event_type: str, payload: dict[str, object], timestamp: str) -> HookEvent:
+    """Build the canonical GitHub HookEvent for one delivery's event type and body."""
     action = _get_str(payload, "action")
     ref = _get_str(payload, "ref")
     zen = _get_str(payload, "zen")
@@ -55,4 +60,9 @@ def normalize_github(payload: dict[str, object], headers: dict[str, str]) -> Hoo
         if isinstance(hook_id, int | str):
             properties["hook_id"] = hook_id
 
-    return HookEvent.now(source="github", type=event_type, properties=properties, payload=payload)
+    return HookEvent(source=GITHUB_SOURCE, type=event_type, timestamp=timestamp, properties=properties, payload=payload)
+
+
+def github_event_type(headers: dict[str, str]) -> str:
+    """Return GitHub's event type for a delivery from its lowercased-name headers, or the unknown type when absent."""
+    return (headers.get(_EVENT_HEADER) or _UNKNOWN_EVENT).lower()
