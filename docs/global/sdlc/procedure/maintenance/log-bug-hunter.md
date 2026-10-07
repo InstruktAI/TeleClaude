@@ -12,9 +12,10 @@ visibility: 'public'
 
 ## Goal
 
-Scan the current project's logs, reject warnings and errors attributable to congestion or
-a computer restart, deduplicate the remaining error signals, and file the observed failures
-through `telec bugs report`. The bug lifecycle owns diagnosis and implementation.
+Scan the current project's logs, reject warnings and exclude errors attributable to
+congestion, a computer restart, or an upstream dependency's own failure. File only errors
+whose records support a failure in the scanned project's own handling through
+`telec bugs report`. The bug lifecycle owns diagnosis and implementation.
 
 ## Preconditions
 
@@ -46,6 +47,14 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
      context for an eligible error; they are not findings and are omitted from the report.
    - Group related eligible records into distinct error signals. Use the observed messages
      and context; do not investigate the codebase to establish a diagnosis.
+   - Establish which system owns the failed operation. An upstream 5xx response, rate limit,
+     timeout, or connection reset is an external failure and does not by itself establish a
+     defect in the scanned project. Exclude the upstream failure unless records also show that
+     the scanned project violated a supported contract in handling it, such as a required
+     retry or recovery not occurring; cite that contract. When ownership or the local handling
+     outcome is unknown, exclude the signal as causally inconclusive. An ERROR level, a failed
+     delivery, or the absence of a matching suppression does not establish a local defect
+     (`sdlc/policy/todo-creation-discipline`, `general/policy/human-contract`).
    - Before an error signal may proceed, falsify both operational explanations: congestion
      and a computer restart. Correlate its timing and surrounding records with the available
      restart evidence, resource-pressure or backlog evidence, and subsequent recovery. The
@@ -59,6 +68,11 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
    - Read `telec bugs suppressions` for the project. Match only active entries,
      using each entry's declared substring or regex semantics. Record matches
      with their suppression IDs. Skip an invalid regex and record that error.
+   - Suppressions deduplicate specific signals already triaged as accepted recurring noise;
+     they do not establish defect ownership or causal eligibility. Handle an upstream
+     failure at the causal gate rather than adding a broad suppression for external errors.
+     A recurring signature belongs in suppression only after separate triage establishes that
+     it is accepted noise.
    - Read `telec bugs list` and `telec todo list`. These return slugs, and a
      slug names work rather than a mechanism, so a signal that matches no slug
      is not thereby untracked. Select candidates by token overlap between the
