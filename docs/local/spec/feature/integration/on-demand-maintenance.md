@@ -1,8 +1,8 @@
 ---
-description: telec sync performs a root's commit-boundary maintenance on demand, step by step through the same executor, leaves disruptive steps undone, and ends by naming what is still owed and how to do it.
+description: telec sync performs a root's commit-boundary maintenance on demand, step
+  by step through the same executor, leaves disruptive steps undone, and ends by naming
+  what is still owed and how to do it.
 visibility: internal
-delivered_by:
-  - telec-sync-runs-maintenance
 ---
 
 # On-Demand Maintenance — Spec

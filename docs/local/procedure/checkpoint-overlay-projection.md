@@ -49,7 +49,6 @@ project.
    rejected when the declaration is validated. The assessor then binds path scopes to action
    ids, referencing base action ids where they apply and declaring project actions
    otherwise; a binding names an id without regard to which registry declares it.
-   <!-- planned:telec-sync-runs-maintenance -->
 
    Every maintenance action also carries its on-demand disposition
    (`local/projects/teleclaude/design/architecture/checkpoint-system`, Invariant 29).
@@ -57,7 +56,6 @@ project.
    interface — is written with `on_demand: defer`, plus an `owed_probe` when
    the project can tell whether that disruption is owed. Every other action
    keeps the default.
-   <!-- /planned:telec-sync-runs-maintenance -->
 
 3. The assessor writes the result into `ProjectConfig.checkpoint` via
    `telec config project patch --revision <rev> [--yaml <patch> | --from-file

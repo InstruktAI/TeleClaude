@@ -1,7 +1,7 @@
 ---
 description: Convergence of a project's installed git plumbing — the TeleClaude-owned
   hooks and the docs filter driver — to its capability declaration, performed at project
-  initialization and by no synchronization path.
+  initialization and by an on-demand maintenance run, and never by publication.
 visibility: internal
 ---
 
@@ -37,9 +37,11 @@ own those behaviors.
 
 Convergence runs at project initialization for a project, and at machine
 installation for the platform home — the repository declaring the global tier,
-which holds the person and company homes. No synchronization path performs
-either: a deploying synchronization installs, refreshes and withdraws nothing,
-and the read-only gate touches nothing.
+which holds the person and company homes. An on-demand maintenance run
+(`telec sync`, `local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`)
+performs the same act for the root it runs in, as one of that root's maintenance
+steps. Publication performs none of it: deploying committed sources installs,
+refreshes and withdraws nothing, and the read-only gate touches nothing.
 
 Convergence additionally runs without an initialization or an installation when a
 TeleClaude-owned hook template changes and that change reaches the canonical
@@ -47,7 +49,7 @@ checkout's main branch: the commit-boundary maintenance then converges every
 registered root on that machine. The act is the one initialization already
 performs — the same comparison against the template, the same sanctioned actions,
 the same preservation of a root's own hooks — reached by a different trigger. It
-remains outside every synchronization path.
+remains outside publication.
 
 ## Canonical fields
 
@@ -168,11 +170,11 @@ And hooks the home carries that TeleClaude does not own are preserved
 And a repeated run with nothing changed writes nothing
 ```
 
-#### UC-RPC6: No synchronization path converges project plumbing
+#### UC-RPC6: Publication converges no project plumbing
 
 ```gherkin
 Given a project whose git hooks and docs filter driver are both out of date
-When an agent invokes a deploy-mode synchronization for that project
+When publication deploys that project's committed sources
 Then no git hook is installed or refreshed
 And the docs filter driver is neither configured nor removed
 ```
@@ -206,7 +208,7 @@ And the checkout's docs filter driver is configured
 #### UC-RPC11: One act converges plumbing, whatever triggers it
 
 ```gherkin
-Given plumbing is converged from project initialization, from machine installation, and from the commit-boundary trigger
+Given plumbing is converged from project initialization, from machine installation, from the commit-boundary trigger, and from an on-demand maintenance run
 When any of those paths runs
 Then each performs the same comparison against the current templates
 And each preserves a hook its root authored itself
@@ -273,6 +275,19 @@ Then the operator's `git status` in that folder lists neither the project's Tele
 And the same holds for a project that subscribes neither code nor docs
 ```
 
+#### UC-RPC19: An on-demand maintenance run converges the root it runs in
+
+```gherkin
+Given a project whose installed TeleClaude-owned hooks lag their current templates
+And which also carries a hook the project authored itself
+And whose docs filter driver does not match its docs subscription
+When an agent runs telec sync in that project's canonical checkout on main
+Then the project's TeleClaude-owned hooks are refreshed
+And the project-authored hook is left in place
+And the docs filter driver matches the project's docs subscription
+And no tracked file is written and no commit is produced
+```
+
 ## Known caveats
 
 - A changed hook template reaches a machine's registered roots when that change
@@ -284,4 +299,5 @@ And the same holds for a project that subscribes neither code nor docs
 - The TeleClaude checkout's own hooks and filter driver, and the platform
   home's, are installed by the machine installation target, which is not a
   project initialization path; between one installation and the next the
-  home's plumbing can lag a changed hook template exactly as a project's can.
+  home's plumbing can lag a changed hook template exactly as a project's can,
+  until an installation or an on-demand maintenance run in the home converges it.
