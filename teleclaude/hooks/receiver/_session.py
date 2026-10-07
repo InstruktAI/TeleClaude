@@ -470,7 +470,10 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             data = _load_session_map(path)
-            data[_session_map_key(agent, native_session_id)] = session_id
+            key = _session_map_key(agent, native_session_id)
+            if data.get(key) == session_id:
+                return
+            data[key] = session_id
             _write_session_map_atomic(path, data)
             logger.debug(
                 "Session map persisted",
