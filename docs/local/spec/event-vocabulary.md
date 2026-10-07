@@ -96,6 +96,8 @@ hook-level event type so existing consumers that inspect `type`/`event_type` rem
 functional. Downstream adapters (`ucap-tui-adapter-alignment`)
 will migrate to consume `canonical_type` directly in later phases.
 
+<!-- planned-change:event-envelope -->
+
 ### Core Event Taxonomy
 
 The platform registers the following root-level event families as built-in catalog entries.
@@ -150,6 +152,25 @@ event per run; both script and agent jobs use the same vocabulary.
 | `job.run.stalled`   | OPERATIONAL | A run opened at dispatch never closed in its window (actionable) | `job_name`, `status`, `message`                    |
 
 The idempotency key is `job_name` + `run_started_at`.
+
+<!-- change:event-envelope -->
+
+### Event type names
+
+Every platform event type name is dotted, and its first segment names the
+type's owner:
+
+| First segment                                        | Owner                          | Covers                                                                                                |
+| ---------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `teleclaude`                                         | the platform itself            | its own operation: sessions, job runs, deployments, node presence, configuration, event-stream health |
+| a published domain's name, such as `sdlc`            | that domain                    | the domain's work, such as todo preparation, build, review, and integration                           |
+| the domain an inbound source declares, such as `erp` | the external producer's domain | events relayed from external systems, named `<domain>.<name>`                                         |
+
+Each type's name, declaration, and data fields are read from the generated
+catalog with `telec events list` and `telec events schema <type>`; this
+vocabulary does not restate them.
+
+<!-- /planned-change:event-envelope -->
 
 ### Expansion Joint
 

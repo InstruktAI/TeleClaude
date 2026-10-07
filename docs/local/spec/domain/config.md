@@ -186,6 +186,8 @@ it, so the next listing and every later live push read the changed declaration
 (`local/projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
 reach per request and needs no notice.
 
+<!-- planned-change:event-envelope -->
+
 ### Event subjects
 
 Every platform event config emits states as its subject what its act concerned:
@@ -197,9 +199,34 @@ Every platform event config emits states as its subject what its act concerned:
 - an effective configuration change: the project whose configuration changed.
   A machine or global configuration change has no subject.
 
+<!-- change:event-envelope -->
+
+### Event subjects and homes
+
+Every platform event config emits states as its subject and home what its act
+concerned:
+
+- a job run's outcome: the job run, with the project the run executes for as
+  home, including a globally published job run in a subscribing project. Every
+  job run executes for a registered project; an outcome recorded before runs
+  were keyed by project, whose project cannot be recovered from its record,
+  states an unknown home.
+- an effective configuration change: the configuration that changed, with the
+  project whose configuration it is as home. A machine or global configuration
+  change has no home.
+
+<!-- /planned-change:event-envelope -->
+
 ## See Also
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
+
+<!-- planned:event-envelope -->
+
+- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+
+<!-- /planned:event-envelope -->
+
 - docs/local/spec/teleclaude-config.md
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

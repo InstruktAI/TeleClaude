@@ -87,3 +87,8 @@ Superseded in part by ADR-0109: an event's subject is a registered home, none
 when it concerns no registered home, or unknown when it cannot be established,
 and events from computers that predate the subject read as unknown. The rest of
 the decision stands.
+
+Superseded in part by ADR-0114: the registered home an event concerns is its
+`home`, and its `subject` names the one thing the event is about. Access
+follows the home. The emitting session is a related reference, and an event
+names no origin home.

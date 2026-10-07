@@ -54,10 +54,22 @@ contracts and never creates shared ownership.
 
 <!-- /planned-change:retire-event-domains -->
 
+<!-- planned-change:event-envelope -->
+
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — origin and subject — and each event type's
   declared subject assignment and payload fields. It owns no event's meaning
   and no consumer's reaction.
+
+<!-- change:event-envelope -->
+
+- `event-catalog`: the platform event stream's envelope shape, the facts every
+  event states about itself — its type, source, subject, home, related
+  references, and causation — the kinds of thing a reference can name, and the
+  event type declarations the catalog is generated from. It owns no event's
+  meaning and no consumer's reaction.
+
+<!-- /planned-change:event-envelope -->
 
 ### Boundary contracts
 
@@ -129,6 +141,8 @@ contracts and never creates shared ownership.
   decides whether an agent stands, `agent_runtime` never matches events for
   activation or reads procedure metadata, and `identity` never chooses a session's company.
 
+<!-- planned-change:event-envelope -->
+
 - Every context that emits onto the platform event stream states each event's
   subject — the registered home its act concerned, none when the event concerns
   no registered home, or unknown when the event does not carry that home — and owns
@@ -142,6 +156,23 @@ contracts and never creates shared ownership.
   owner. It restates none of their rules, validates nothing, and decides no
   audience. Consumers read origin and subject from the event, and receipt
   decisions stay with the consuming contexts.
+
+<!-- change:event-envelope -->
+
+- Every context that emits onto the platform event stream states each event's
+  subject — the one thing its act concerned — and its home — the registered home
+  that thing belongs to, none when it belongs to no registered home, or unknown
+  when the event does not carry that home — and owns those choices as part of
+  its emission invariant. `event-catalog` composes the rest of the envelope at
+  emission from the owners' published answers. From `identity`, it takes the
+  caller session resolved at the request boundary for the request that produced
+  the event, held for the request's whole duration, and references that session.
+  From `config`, it takes the registered-subject vocabulary and a project home's
+  declared owner. It restates none of their rules, validates nothing, and
+  decides no audience. Consumers read the event's attributes, and receipt
+  decisions stay with the consuming contexts.
+
+<!-- /planned-change:event-envelope -->
 
 - `agent_runtime` matches platform stream events against the event
   subscriptions its own sessions hold, on the computer that hosts each session,

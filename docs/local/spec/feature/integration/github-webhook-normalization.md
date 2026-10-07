@@ -16,6 +16,8 @@ single hook event with `source="github"` and `type=<event>`. For `ping`
 events specifically, the normalizer also passes through `zen` and
 `hook_id` so downstream handlers can confirm the registration handshake.
 
+<!-- planned-change:event-envelope -->
+
 The normalizer is the GitHub adapter of the ingress. A project receives
 GitHub deliveries by declaring a GitHub source in its own configuration
 (`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
@@ -27,6 +29,23 @@ event's timestamp, and delivers it to its own hook dispatcher. The
 downstream consumer there is the deployment-update handler (matched via a
 programmatic contract for events `push` / `release`), which uses the
 normalized event to trigger version-fanout logic.
+
+<!-- change:event-envelope -->
+
+The normalizer is the GitHub adapter of the ingress. A project receives
+GitHub deliveries by declaring a GitHub source in its own configuration
+(`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
+The ingress reads the event type from a verified delivery and relays it to
+the cluster as the platform event `github.<event>`, whose home is that
+project, whose subject is the project's GitHub source, and whose data is the
+delivery body. Each computer turns the
+relayed event back into the hook event above, stamped with the relayed
+event's timestamp, and delivers it to its own hook dispatcher. The
+downstream consumer there is the deployment-update handler (matched via a
+programmatic contract for events `push` / `release`), which uses the
+normalized event to trigger version-fanout logic.
+
+<!-- /planned-change:event-envelope -->
 
 ## Canonical fields
 
@@ -108,6 +127,8 @@ And the deployment update flow runs (see deployment-version-fanout)
 
 #### UC-GH8: A verified delivery is relayed as a GitHub platform event about its project
 
+<!-- planned-change:event-envelope -->
+
 ```gherkin
 Given the project "web" declares a GitHub source
 When GitHub delivers a push signed with that project's secret to /hooks/inbound/github/project/web
@@ -116,6 +137,20 @@ And its subject is the project "web"
 And its payload is the delivery body
 And every computer's hook dispatcher receives the normalized push event once
 ```
+
+<!-- change:event-envelope -->
+
+```gherkin
+Given the project "web" declares a GitHub source
+When GitHub delivers a push signed with that project's secret to /hooks/inbound/github/project/web
+Then the cluster receives the platform event "github.push"
+And its home is the project "web"
+And its subject is the project's GitHub source
+And its data is the delivery body
+And every computer's hook dispatcher receives the normalized push event once
+```
+
+<!-- /planned-change:event-envelope -->
 
 ### Cross-context references
 

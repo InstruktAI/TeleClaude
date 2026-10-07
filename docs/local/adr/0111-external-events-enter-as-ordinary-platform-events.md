@@ -115,3 +115,9 @@ one home's configuration could open an endpoint in another home's name.
 **Refuse inbound names that use a platform event's namespace.** Rejected: only
 a sender holding a home's secret can post at all, and such a producer is
 trusted. A misnamed event is a visible, repairable configuration mistake.
+
+## Status
+
+Superseded in part by ADR-0114: a relayed event's source is the ingress
+computer, its home is the declaring home, and its subject is the declared
+source that received it. The rest of the decision stands.

@@ -69,3 +69,9 @@ shape: an owner the emitting computer cannot read is unresolved, never no owner.
 - **Have a newer computer infer the subject of an older event from its
   payload.** Rejected: inference from a payload is a guess dressed as a fact,
   which is the failure this decision removes.
+
+## Status
+
+Superseded in part by ADR-0114: the three values this decision gave the subject
+belong to the event's `home`, and `subject` names the one thing the event is
+about. The rest of the decision stands for the home.

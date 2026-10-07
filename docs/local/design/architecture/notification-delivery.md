@@ -124,6 +124,9 @@ action is delivered once and only a material escalation can interrupt again.
   shared notification list — exclude addressed rows; the addressed
   notification is delivered through its principal's channel rather than shown on
   the shared console.
+
+<!-- planned-change:event-envelope -->
+
 - **Broadcast notifications on the shared console follow the viewer's reach.**
   The notification row records the subject of the event it projects and that
   subject's owner. The notification list a TUI or web-console client receives
@@ -132,6 +135,20 @@ action is delivered once and only a material escalation can interrupt again.
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`); a platform
   administrator and the system principal receive every broadcast notification.
   The external DM admin fan-out keeps its audience, the platform administrators.
+
+<!-- change:event-envelope -->
+
+- **Broadcast notifications on the shared console follow the viewer's reach.**
+  The notification row records the home of the event it projects and that
+  home's owner. The notification list a TUI or web-console client receives
+  and every live push to it carry only the broadcast notifications whose home
+  the viewing principal's reach admits
+  (`local/projects/teleclaude/spec/feature/identity/data-visibility`); a platform
+  administrator and the system principal receive every broadcast notification.
+  The external DM admin fan-out keeps its audience, the platform administrators.
+
+<!-- /planned-change:event-envelope -->
+
 - **Recipient routing reuses the existing person-to-channel resolution and covers
   every configured channel.** The channel for an addressed principal comes from
   the per-person preferred-channel configuration and per-channel credential, and
