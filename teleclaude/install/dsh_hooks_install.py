@@ -24,6 +24,7 @@ _ONBOARDING_RECORD: dict[str, bool | int] = {
     _ONBOARDING_COMPLETED_KEY: True,
     _ONBOARDING_VERSION_KEY: DSH_TUI_ONBOARDING_VERSION,
 }
+_ONBOARDING_FILE_TERMINATOR = "\n"
 _ONBOARDING_RECORDED_MESSAGE = "DeepSeek TUI first-run guide recorded as complete in {path}"
 HookMerger = Callable[  # guard: loose-dict - hooks.json is a dynamic external wire shape
     [dict[str, Any], dict[str, Any]], dict[str, Any]
@@ -84,7 +85,7 @@ def configure_dsh_tui_onboarding() -> None:
     if _onboarding_recorded(onboarding_path):
         return
     onboarding_path.parent.mkdir(parents=True, exist_ok=True)
-    onboarding_path.write_text(json.dumps(_ONBOARDING_RECORD, indent=2) + "\n")
+    onboarding_path.write_text(json.dumps(_ONBOARDING_RECORD, indent=2) + _ONBOARDING_FILE_TERMINATOR)
     print(_ONBOARDING_RECORDED_MESSAGE.format(path=onboarding_path))
 
 
