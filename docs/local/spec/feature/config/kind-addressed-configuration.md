@@ -330,6 +330,28 @@ And the same request naming a company, or a path inside a home, is refused befor
 
 <!-- /planned:personal-assistant-project-creation -->
 
+<!-- planned:retire-project-init -->
+
+#### UC-KAC19: Project init names what replaced it
+
+```gherkin
+Given a person or agent in any folder, registered as a project or not
+When they run init for a project
+Then nothing is created, adopted, registered or converged
+And they see one line naming create, adopt and telec sync
+```
+
+#### UC-KAC20: A created project is set up without init
+
+```gherkin
+Given a project created empty and then scaffolded with code and authored documentation
+When an agent brings it in line using only create, adopt and telec sync
+Then the project ends with the setup that adopting a folder holding that content gives
+And a capability the project already declared keeps its declared value
+```
+
+<!-- /planned:retire-project-init -->
+
 ## Known caveats
 
 - `computer` has a different filename and runtime loader from the overlays.
