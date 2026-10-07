@@ -63,7 +63,8 @@ The producer supplies the subject and the home: the envelope cannot be built
 without them, and a home of none or unknown is stated explicitly. None is a
 claim that the event belongs to no registered home; unknown makes no claim, and
 a producer never states none or a guessed home in its place. The emission
-boundary adds the id, source, time, session reference, and project owner. Which
+boundary adds the source, time, session reference, and project owner, and an
+id when the producer states none. Which
 subject and home an event states, including for an event caused by earlier
 events, is the producing context's emission invariant. Emission refuses and
 alters nothing on the strength of these facts.
@@ -133,9 +134,8 @@ responsibility.
   it, every event also carries the earlier envelope's fields in the shape those
   computers read, under the fleet's interoperability contract
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
-  The notification projector, until it is replaced, also reads those fields and
-  the notification rules kept beside the type declarations; no other consumer
-  reads either.
+  The notification projector reads those fields and the notification rules
+  kept beside the type declarations; no other consumer reads either.
 
 ## See Also
 

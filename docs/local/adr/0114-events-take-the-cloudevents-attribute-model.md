@@ -46,8 +46,14 @@ resource an event is about, within the context its source names.
   owner as resolved where the event happened. Reach and procedure homes key on
   `home`.
 - **`related` references the other things involved,** each typed the same way.
-  The session that emitted an event is one of them. **`causationid`** names the
-  event that caused this one.
+  The session that emitted an event is one of them, and replaces the separate
+  origin home: the session's home is a fact of the session, not of the event.
+  **`causationid`** names the event that caused this one.
+- **A relayed external event is about the source that received it.** Its subject
+  is the declared inbound source, its home is the home that declared that
+  source, and its source is the ingress computer. The payload is opaque to the
+  platform, so the receiving source is the one thing the platform knows the
+  event is about.
 - **Type names are namespaced by owner.** `teleclaude.` prefixes what the
   platform itself emits. A published domain's name prefixes its events, and an
   external system's events enter through an inbound endpoint as events of their
