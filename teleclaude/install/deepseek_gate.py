@@ -149,6 +149,7 @@ _LAUNCH_ARGUMENTS_TEMPLATE = "The DeepSeek launch arguments {arguments!r} name n
 _CONFIG_FAILED_TEMPLATE = "{profile}: --dump-config exited {code}; stderr: {stderr}"
 _CONFIG_TIMEOUT_TEMPLATE = "{profile}: --dump-config did not finish within {seconds} seconds"
 _START_STDERR_TEMPLATE = "{profile}: startup wrote diagnostics: {stderr}"
+_FILE_READ_FAILURE_TEMPLATE = "Cannot read gate file {path}: {error}"
 _WEB_NOT_READY_TEMPLATE = "{profile}: no {prefix!r} line within {seconds} seconds"
 _HEADLESS_FAILED_TEMPLATE = "{profile}: headless one-shot exited {code}; stderr: {stderr}"
 _HEADLESS_TIMEOUT_TEMPLATE = "{profile}: headless one-shot did not finish within {seconds} seconds"
@@ -304,10 +305,10 @@ class DeepSeekGate:
         stdout_path, stderr_path = self._app_logs(profile)
         process = self._spawn((str(dsh_executable()), _PROFILE_FLAG, profile, *_WEB_FLAGS), stdout_path, stderr_path)
         ready = _wait_until(
-            lambda: _WEB_READY_PREFIX in _read_text(stdout_path) or process.poll() is not None,
+            lambda: _WEB_READY_PREFIX in _read_text(stdout_path, GateCheck.PROFILE_START) or process.poll() is not None,
             _WEB_READY_TIMEOUT_SECONDS,
         )
-        if not ready or _WEB_READY_PREFIX not in _read_text(stdout_path):
+        if not ready or _WEB_READY_PREFIX not in _read_text(stdout_path, GateCheck.PROFILE_START):
             raise _CheckFailed(
                 GateCheck.PROFILE_START,
                 _WEB_NOT_READY_TEMPLATE.format(
@@ -424,15 +425,17 @@ class DeepSeekGate:
         self._tmux(_TMUX_SEND_KEYS, _TMUX_TARGET_FLAG, _TMUX_SESSION, _TMUX_ENTER_KEY)
         finished = _wait_until(
             lambda: (
-                _record_count(stop_path) >= expected_stops
-                or _record_count(failure_path) > 0
+                _record_count(stop_path, check) >= expected_stops
+                or _record_count(failure_path, check) > 0
                 or not self._session_exists()
             ),
             _TURN_TIMEOUT_SECONDS,
         )
-        if _record_count(failure_path) > 0:
-            raise _CheckFailed(check, _TURN_FAILED_TEMPLATE.format(label=label, error=_tail(_read_text(failure_path))))
-        if _record_count(stop_path) < expected_stops:
+        if _record_count(failure_path, check) > 0:
+            raise _CheckFailed(
+                check, _TURN_FAILED_TEMPLATE.format(label=label, error=_tail(_read_text(failure_path, check)))
+            )
+        if _record_count(stop_path, check) < expected_stops:
             if finished:
                 raise _CheckFailed(check, _TURN_SESSION_GONE_TEMPLATE.format(label=label))
             raise _CheckFailed(
@@ -455,7 +458,7 @@ class DeepSeekGate:
         return observation is not None and token in observation.text
 
     def _require_quiet_stderr(self, profile: str, stderr_path: Path) -> None:
-        stderr = _read_text(stderr_path).strip()
+        stderr = _read_text(stderr_path, GateCheck.PROFILE_START).strip()
         if stderr:
             raise _CheckFailed(
                 GateCheck.PROFILE_START, _START_STDERR_TEMPLATE.format(profile=profile, stderr=_tail(stderr))
@@ -723,15 +726,15 @@ def _has_event(stdout: str, event: str) -> bool:
     return False
 
 
-def _record_count(path: Path) -> int:
-    return len([line for line in _read_text(path).splitlines() if line.strip()])
+def _record_count(path: Path, check: GateCheck) -> int:
+    return len([line for line in _read_text(path, check).splitlines() if line.strip()])
 
 
-def _read_text(path: Path) -> str:
+def _read_text(path: Path, check: GateCheck) -> str:
     try:
         return path.read_text(encoding=_OUTPUT_ENCODING, errors=_ERRORS_REPLACE)
-    except OSError:
-        return _EMPTY_FILE_TEXT
+    except OSError as error:
+        raise _CheckFailed(check, _FILE_READ_FAILURE_TEMPLATE.format(path=path, error=error)) from error
 
 
 def _tail(text: str) -> str:
