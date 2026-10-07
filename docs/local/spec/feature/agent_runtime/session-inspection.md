@@ -1,8 +1,8 @@
 ---
-description: "Read one session's stored record — a named session or the caller's own — as grouped diagnostic detail or as the complete record, under the same reach as listing, on any computer."
+description: Read one session's stored record — a named session or the caller's own
+  — as grouped diagnostic detail or as the complete record, under the same reach as
+  listing, on any computer.
 visibility: internal
-delivered_by:
-  - sessions-show
 ---
 
 # Session Inspection — Spec
