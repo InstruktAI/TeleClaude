@@ -177,8 +177,8 @@ Merges default event domain configurations into the global config
 (`~/.teleclaude/teleclaude.yml`) under `event_domains.domains`. Idempotent — skips
 if domains already have entries, preserving user customizations.
 
-This step applies to every project because event domains are global infrastructure
-that all projects share.
+Only `init` runs this step. `create` and `adopt` write nothing outside the
+project and the project registry, so they skip it.
 
 Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
@@ -202,7 +202,7 @@ Source: `teleclaude/project_manifest.py:register_root()`
 - `project_slug` persisted in `teleclaude.yml` and, for `create` and `adopt`, the
   project root registered in `~/.teleclaude/projects.yaml`.
 - For a project inside a home, that home's owner declared in `teleclaude.yml`.
-- Event domains seeded in global config (if not already populated).
+- For `init` only: event domains seeded in global config (if not already populated).
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
 
