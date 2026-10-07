@@ -76,6 +76,9 @@ _PERSON_MIRROR_ACCESS_CLAUSE_TEMPLATE = "({session_scope_clause} OR ({unattribut
 _SQL_AND_SEPARATOR = " AND "
 _BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
 _SELECT_EXISTING_MIRROR_METADATA_SQL = "SELECT metadata FROM mirrors WHERE source_identity = :source_identity"
+_SELECT_MIRROR_TOMBSTONES_SQL = (
+    "SELECT source_identity, agent, transcript_path, file_size, file_mtime, created_at FROM mirror_tombstones"
+)
 _SEARCH_SQL_TEMPLATE = """
     WITH ranked_candidates AS (
         SELECT
@@ -880,33 +883,17 @@ def mark_mirror_unreprojectable(
         )
 
 
-def get_mirror_tombstone(source_identity: str, *, db: str | Path | None = None) -> MirrorTombstoneRecord | None:
-    """Fetch a tombstone by source identity."""
+def get_mirror_tombstones(db: str | Path | None = None) -> dict[str, MirrorTombstoneRecord]:
+    """Read a source-identity keyed snapshot of existing tombstones."""
     try:
         with _get_ro_engine(db).connect() as conn:
-            row = (
-                conn.execute(
-                    text(
-                        """
-                SELECT source_identity, agent, transcript_path, file_size, file_mtime, created_at
-                FROM mirror_tombstones
-                WHERE source_identity = :source_identity
-                """
-                    ),
-                    {"source_identity": source_identity},
-                )
-                .mappings()
-                .first()
-            )
+            rows = conn.execute(text(_SELECT_MIRROR_TOMBSTONES_SQL)).mappings().all()
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):
-            return None
+            return {}
         raise
-
-    if row is None:
-        return None
-
-    return _tombstone_from_row(row)
+    records = (_tombstone_from_row(row) for row in rows)
+    return {record.source_identity: record for record in records}
 
 
 def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: str | Path | None = None) -> None:

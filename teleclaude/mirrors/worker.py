@@ -32,7 +32,7 @@ from .session_context import get_session_context
 from .store import (
     MirrorTombstoneRecord,
     delete_mirror_tombstone,
-    get_mirror_tombstone,
+    get_mirror_tombstones,
     mark_mirror_unreprojectable,
     open_attributed_session_ids,
     record_session_close,
@@ -103,8 +103,8 @@ class MirrorWorker:
         self,
         source_identity: str,
         candidate: TranscriptCandidate,
+        tombstone: MirrorTombstoneRecord | None,
     ) -> bool:
-        tombstone = get_mirror_tombstone(source_identity, db=self.db_path)
         if tombstone is None:
             return False
         file_size, file_mtime = self._candidate_file_state(candidate)
@@ -113,19 +113,18 @@ class MirrorWorker:
         delete_mirror_tombstone(source_identity, db=self.db_path)
         return False
 
-    def _record_tombstone(self, source_identity: str, candidate: TranscriptCandidate) -> None:
+    def _record_tombstone(self, source_identity: str, candidate: TranscriptCandidate) -> MirrorTombstoneRecord:
         file_size, file_mtime = self._candidate_file_state(candidate)
-        upsert_mirror_tombstone(
-            MirrorTombstoneRecord(
-                source_identity=source_identity,
-                agent=candidate.agent.value,
-                transcript_path=str(candidate.path),
-                file_size=file_size,
-                file_mtime=file_mtime,
-                created_at=datetime.now(UTC).isoformat(),
-            ),
-            db=self.db_path,
+        record = MirrorTombstoneRecord(
+            source_identity=source_identity,
+            agent=candidate.agent.value,
+            transcript_path=str(candidate.path),
+            file_size=file_size,
+            file_mtime=file_mtime,
+            created_at=datetime.now(UTC).isoformat(),
         )
+        upsert_mirror_tombstone(record, db=self.db_path)
+        return record
 
     def _log_reconcile_result(
         self,
@@ -171,6 +170,7 @@ class MirrorWorker:
                 return False
 
         transcripts = _discover_transcripts(known_unchanged=known_unchanged)
+        tombstones = get_mirror_tombstones(self.db_path)
         result = ReconcileResult(
             discovered=len(transcripts),
             regenerated=0,
@@ -190,9 +190,10 @@ class MirrorWorker:
                     continue
 
                 source_identity = build_source_identity(candidate.path, candidate.agent)
-                if self._should_skip_tombstoned_transcript(source_identity, candidate):
+                if self._should_skip_tombstoned_transcript(source_identity, candidate, tombstones.get(source_identity)):
                     result.skipped_unchanged += 1
                     continue
+                tombstones.pop(source_identity, None)
 
                 native_session_id = extract_session_id(candidate.path, candidate.agent)
                 context = get_session_context(transcript_path=transcript_path)
@@ -220,7 +221,7 @@ class MirrorWorker:
                     # Tombstone only. Generation declining is evidence about the source,
                     # never a verdict on the stored mirror — an existing row keeps its
                     # conversation text, which for most sessions is the only copy left.
-                    self._record_tombstone(source_identity, candidate)
+                    tombstones[source_identity] = self._record_tombstone(source_identity, candidate)
             except Exception as exc:
                 result.failed += 1
                 logger.error(
