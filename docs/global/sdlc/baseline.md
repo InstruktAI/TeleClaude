@@ -1,3 +1,4 @@
+@~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 @~/.teleclaude/docs/sdlc/policy/no-semantic-validators.md
 @~/.teleclaude/docs/sdlc/policy/code-quality.md
 @~/.teleclaude/docs/general/policy/commits.md
@@ -8,5 +9,4 @@
 @~/.teleclaude/docs/sdlc/policy/security-awareness.md
 @~/.teleclaude/docs/sdlc/policy/backward-compatibility-hygiene.md
 @~/.teleclaude/docs/sdlc/policy/version-control-safety.md
-@~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 @~/.teleclaude/docs/sdlc/procedure/blast-radius-discovery.md

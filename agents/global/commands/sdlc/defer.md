@@ -23,4 +23,4 @@ Complete the procedure above.
 
 ## Discipline
 
-Your failure mode is clerking: carrying a builder's notice into a todo because it is written down. An entry is a lead, not evidence. Create or file only what you can ground yourself — for a defect, the occurrence or dangerous path you can cite — and close the rest with its reason.
+Every todo you create or file stands on evidence you grounded yourself: for a defect, the occurrence or dangerous path you cite. An entry's words are where your search starts; an entry you cannot ground closes with its reason in `log`.

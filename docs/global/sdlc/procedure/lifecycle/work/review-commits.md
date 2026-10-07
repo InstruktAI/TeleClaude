@@ -7,6 +7,7 @@ description: Review discrete commits already on main by SHA, without a worktree 
 ## Required reads
 
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/review.md
+- @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 
 ## Goal
 

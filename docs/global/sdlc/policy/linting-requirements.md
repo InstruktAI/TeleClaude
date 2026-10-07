@@ -29,7 +29,7 @@ visibility: 'public'
 
 - Only when required by a third-party limitation or transitional migration
 - Must include a concise comment explaining the reason and scope
-- Must include a follow-up todo for removal if temporary
+- When temporary, its removal is carried as work: within a build, a deferred task in `deferrals`; otherwise a todo the comment references
 - Standing exceptions and first-party path allowlists are project-owned policy. They never live in this generic contract.
 
 **CRITICAL**: Never commit with lint or type-check failures.

@@ -161,9 +161,10 @@ visibility: 'public'
 43. **No `dbg!()` or `println!()` in production code.** Use `tracing`
     macros for logging. `dbg!()` is allowed in development; pre-commit
     hook rejects it from committed code.
-44. **No `TODO`/`FIXME` comments without an issue link.** If something
-    must be deferred, write a real todo (`telec todo create`) and reference
-    the slug. Drive-by `// TODO: fix this later` comments accrete.
+44. **No `TODO`/`FIXME` comments without an issue link.** Deferred work lives
+    in the work that carries it: within a build, a deferred task in
+    `deferrals`; otherwise a todo, whose slug the `TODO` comment links.
+    Drive-by `// TODO: fix this later` comments accrete.
 
 ### Anti-patterns to refuse
 

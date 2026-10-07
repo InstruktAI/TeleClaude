@@ -84,19 +84,18 @@ with the governing contract.
    fix the code and do not update the snapshot. Concrete idioms and migration
    patterns live in `sdlc/procedure/snapshot-testing`.
 
-6. **Build the plan; relay what lies outside it.** Your tasks are your whole
-   concern. Delivering a task includes handling every reachable condition
-   (`sdlc/concept/defect-evidence`) of the behavior the task adds or changes,
-   and, where a party without reach to the asset can drive input into that
-   behavior, every control `sdlc/policy/security-awareness` requires there,
-   defense in depth included. Handling an unreachable condition is behavior no
-   task carries, and you never add it on your own judgment. A gap in behavior
-   the task does not add or change is outside your tasks. Record in
-   `deferrals`, in the entry shape
-   `sdlc/procedure/lifecycle/work/deferrals` defines, and then continue:
-   - a plan task that is truly out of scope, as a deferred task;
-   - a possible defect you notice outside your tasks, as an observation. You
-     relay it and nothing more (`sdlc/policy/todo-creation-discipline`).
+6. **Build the plan.** Your tasks are your whole concern. The conditions your
+   code handles are exactly the reachable conditions
+   (`sdlc/concept/defect-evidence`) of the behavior the task adds or changes:
+   for each one you handle, you can show what reaches it. Where a party without
+   reach to the asset can drive input into that behavior, delivering the task
+   also includes every control `sdlc/policy/security-awareness` requires there,
+   defense in depth included.
+   What lies outside your tasks goes into `deferrals`, in the entry shape
+   `sdlc/procedure/lifecycle/work/deferrals` defines, and the build continues:
+   - a plan task that is out of scope, as a deferred task;
+   - something you noticed along the way outside your tasks, as an
+     observation: what you saw, where, and how you came to see it.
 7. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
    you to build a classifier, scorer, judge, evaluator, or auto-fixer on
    free-text content, stop. Per `principle/intelligence-boundaries`, the

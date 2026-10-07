@@ -119,10 +119,9 @@ on an unreachable condition is an investigation lead.
 An observation missing any one of these is an **investigation lead**, not a
 finding: it cannot block, never enters remediation, requires no producer
 response, and cannot enlarge current work. Report it under its own heading in
-the review result. The review result is your relay channel
-(`sdlc/policy/todo-creation-discipline`): the session that dispatched the
-review decides what, if anything, follows, and you file nothing. A lead that
-silently becomes remediation is the failure this contract exists to prevent.
+the review result; the session that dispatched the review decides what follows
+from it. A lead that silently becomes remediation is the failure this contract
+exists to prevent.
 Absence of a specific prohibition is never a finding's basis when a principle
 covers the case; "the design feels wrong" is not a finding under any citation.
 

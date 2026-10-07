@@ -18,6 +18,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/sdlc/procedure/lifecycle/overview.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
+- @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 
 ## Goal
 

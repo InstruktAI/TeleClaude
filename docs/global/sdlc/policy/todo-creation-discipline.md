@@ -100,22 +100,21 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 The terms below are defined in `sdlc/concept/defect-evidence`.
 
-- **Workers relay; they never file.** A worker is a session executing one job
-  for a governing session it reports back to: a builder, reviewer, diagnosis
-  peer, fixer, or finalizer. A possible defect it notices while doing that job
-  is relayed as an observation — what it saw, where, and how it came to see
-  it — through the channel its own procedure names, or, where that names none,
-  in its final report to the governing session. The worker does not fix, defer,
-  or file the defect, and proposes no outcome. The session that receives the
-  relay decides it under this standard and otherwise lets it go. A build's
-  entries are decided by the deferral worker the work orchestrator dispatches:
-  deciding them, and creating or filing what this policy admits, is that
-  worker's job (`sdlc/procedure/lifecycle/work/deferrals`).
-- **Every other session files a defect claim on evidence.** A todo whose
-  premise is a defect, or a defense against one, cites an occurrence or a
-  dangerous path, and is filed by its kind: a defect through
-  `telec bugs report`, a defense as the work it is. A filer that can cite
-  neither files nothing.
+- **A worker's observation is decided by the session that governs it.** A
+  worker is a session executing one job for a governing session it reports back to: a
+  builder, reviewer, diagnosis peer, fixer, or finalizer. What it notices
+  outside that job reaches the governing session as an observation — what it
+  saw, where, and how it came to see it — through the channel its own
+  procedure names, or else in its final report. The governing session decides
+  each observation under this standard. A build's entries are decided by the
+  deferral worker the work orchestrator dispatches: deciding them, and
+  creating or filing what this policy admits, is that worker's job
+  (`sdlc/procedure/lifecycle/work/deferrals`).
+- **A filed defect claim carries its evidence.** A todo whose premise is a
+  defect, or a defense against one, cites an occurrence or a dangerous path,
+  and is filed by its kind: a defect through `telec bugs report`, a defense as
+  the work it is. A claim that can cite neither stays an observation with the
+  session that holds it.
 - **What a human asks for in their own words is authorized intent, not a defect
   claim.** It is filed by its content under the rest of this policy, and
   preparation recovers it from the creating session and never retires it for
@@ -327,8 +326,8 @@ own filing under this policy.
 - A todo created without the bounded check, in the wrong owning project, for
   plainly duplicate or amendable work, for in-context work, or for process work
   with no defensible intent or principled basis violates this policy.
-- A worker that files, or a filer that files a defect claim without cited
-  evidence, violates this policy; the coordinator catches it. Preparation
+- A filing by a session whose job carries no filing, or a defect claim filed
+  without cited evidence, violates this policy; the coordinator catches it. Preparation
   judges a filed claim only by the evidence it carries, never by who filed it.
 - A prepare claimant that derives from `input` before the entry audit, or
   continues preparation after receiving a flag and before reconciliation,

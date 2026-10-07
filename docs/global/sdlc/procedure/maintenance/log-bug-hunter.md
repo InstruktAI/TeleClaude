@@ -5,6 +5,10 @@ visibility: 'public'
 
 # Log Bug Hunter — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
+
 ## Goal
 
 Scan the current project's logs, reject warnings and errors attributable to congestion or
