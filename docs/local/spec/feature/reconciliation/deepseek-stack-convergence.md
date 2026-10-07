@@ -1,8 +1,9 @@
 ---
-description: The DeepSeek Harness runtime, its TUI and every installed plugin move together to the newest mutually compatible set, verified by exercising it and restored from a snapshot when verification fails — never by pinning, never by dropping a plugin.
+description: The DeepSeek Harness runtime, its TUI and every installed plugin move
+  together to the newest mutually compatible set, verified by exercising it and restored
+  from a snapshot when verification fails — never by pinning, never by dropping a
+  plugin.
 visibility: internal
-delivered_by:
-  - dsh-compatible-upgrade
 ---
 
 # DeepSeek Stack Convergence — Spec

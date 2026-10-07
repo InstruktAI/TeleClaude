@@ -124,8 +124,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **Consumers.** The full installer runs every part; post-commit maintenance
   reaches them through it. No other surface establishes an owner.
 
-<!-- planned:dsh-compatible-upgrade -->
-
 #### DeepSeek stack convergence
 
 - **State.** No durable state. A run owns a scratch area for its own length,
@@ -193,8 +191,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   run the same operation on demand through the repository's make surface.
   Post-commit maintenance reaches it through the full installer.
 
-<!-- /planned:dsh-compatible-upgrade -->
-
 <!-- planned:deepseek-launch-profile-convergence -->
 
 #### DeepSeek launch-profile creation
@@ -229,11 +225,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 
-<!-- planned:dsh-compatible-upgrade -->
-
 - **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
-
-<!-- /planned:dsh-compatible-upgrade -->
 
 ### Event subjects
 
