@@ -64,7 +64,9 @@ make surface, and installation reaches the runtime only through it.
   and every profile's manifest and lock state.
 - **Launch profile.** The profile TeleClaude launches every DeepSeek session
   with, which holds the TUI.
+
 <!-- planned:deepseek-launch-profile-convergence -->
+
 - **Launch profile creation.** When the harness has no launch profile, the
   adopted set also creates it, holding the TUI and every required plugin. The
   TUI then counts among the packages that must fit, so a candidate without a
@@ -75,7 +77,9 @@ make surface, and installation reaches the runtime only through it.
   report of a run that keeps it says the launch profile was created. A launch
   profile that already exists is converged like every other profile and is
   never recreated or reset, and no other profile is ever created.
+
 <!-- /planned:deepseek-launch-profile-convergence -->
+
 - **Verification gate.** An adopted set is kept only when, run from a
   throwaway working directory, every profile starts with no startup diagnostic
   and a composed configuration; the launch profile reaches its ready composer
@@ -227,6 +231,7 @@ And the set is verified, and restored on failure, like any adopted set
 ```
 
 <!-- planned:deepseek-launch-profile-convergence -->
+
 #### UC-DSC15: A missing launch profile is created within the adopted set
 
 ```gherkin
@@ -289,6 +294,7 @@ When the DeepSeek stack convergence runs
 Then the launch profile is not recreated, reset or replaced
 And it changes only as the convergence changes every existing profile
 ```
+
 <!-- /planned:deepseek-launch-profile-convergence -->
 
 ## Known caveats
@@ -299,10 +305,13 @@ And it changes only as the convergence changes every existing profile
 - The gate's turns run against the live DeepSeek account and need usable
   authentication; when they cannot run, the gate fails and the snapshot is
   restored.
+
 <!-- planned:deepseek-launch-profile-convergence -->
+
 - A launch profile the convergence creates carries the vendor's defaults for
   the TUI and its plugins. TeleClaude passes its own model choice with every
   launch; the operator's own preferences for the profile are theirs to add.
+
 <!-- /planned:deepseek-launch-profile-convergence -->
 
 ## See Also
