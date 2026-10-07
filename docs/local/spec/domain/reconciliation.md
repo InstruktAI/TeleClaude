@@ -145,10 +145,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   stays or the snapshot is restored. Every range is judged by the package
   registry's own resolution of that range against published versions, so the
   strict prerelease rule is the registry's and is never restated. Each profile
-  records the adopted version of every registry package exactly, so a later
-  install of the profile reproduces the verified set; the record holds nothing
-  back, because every run chooses again from what is published. Its published
-  result names the outcome; each package's previous and
+  records the adopted version of every registry package exactly, and every run
+  chooses again from what is published. Its published result names the outcome; each package's previous and
   adopted version; each blocking package with its requirement and the version
   that fails it; the failed step or check; and, for a rollback that cannot
   complete, every part that still differs and where the snapshot is kept.

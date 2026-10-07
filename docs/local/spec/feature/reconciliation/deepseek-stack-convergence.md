@@ -66,8 +66,7 @@ make surface, and installation reaches the runtime only through it.
   and a composed configuration; the launch profile reaches its ready composer
   without the first-run guide; and, in the launch profile, a prompt completes a
   turn without a turn error and a turn completes while a hook returns
-  additional context. The launch-profile checks apply once that profile
-  exists; on a machine without it, the gate verifies every profile it has.
+  additional context.
 - **In use.** A DeepSeek runtime process is running, or another convergence is
   in progress. Convergence changes nothing while the stack is in use.
 - **Outcome.** Exactly one of: upgraded, unchanged, rolled back, or rollback
