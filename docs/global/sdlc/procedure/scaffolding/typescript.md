@@ -33,10 +33,11 @@ the files.
    `npm create` / `create-next-app` incantation for the chosen flavor, aimed at
    the project folder `telec config project create` made (target `.`) rather
    than a new directory. A generator that refuses a folder already holding
-   files, as `create-next-app` refuses one holding `teleclaude.yml`, runs in a
-   temporary sibling folder with its own git setup turned off; its output, dot
-   files included, then moves into the project folder, which keeps its
-   repository and `teleclaude.yml`. Never deploy scaffold files from a blessed
+   files it doesn't recognise runs in a temporary sibling folder with its own
+   git setup turned off; its output, dot files included, then moves into the
+   project folder, which keeps its repository and `teleclaude.yml`.
+   `create-next-app` is one such generator: it accepts only a fixed list of
+   pre-existing files, and `teleclaude.yml` is not on it (see See Also). Never deploy scaffold files from a blessed
    folder — a baked scaffold is a stale cache of the generator.
 
 <!-- /planned-change:personal-assistant-project-creation -->
@@ -72,3 +73,9 @@ the files.
 
 - ~/.teleclaude/docs/sdlc/concept/delivery-portfolio.md
 - ~/.teleclaude/docs/sdlc/policy/ci-pipeline-conventions.md
+
+<!-- planned:personal-assistant-project-creation -->
+
+- https://github.com/vercel/next.js/blob/v16.4.0/packages/create-next-app/helpers/is-folder-empty.ts — the pre-existing files `create-next-app` accepts in its target folder (v16.4.0); re-check against the version in use.
+
+<!-- /planned:personal-assistant-project-creation -->

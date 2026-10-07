@@ -521,11 +521,13 @@ supplies.
   company it names (its `--slug`, otherwise its normalized name), a project init at
   the project of the checkout it initializes. The same init without the flag stays
   a platform-scope act.
-- Creating or adopting a project is judged at the home it lands in: the caller's
-  own person scope, the company scope of the company home it is in or that
-  `--company` names, or platform scope outside every home. Its person band admits
-  every role but customer, so a registered person without a platform role still
-  creates and adopts in their own home.
+- Creating a project is judged at the home it lands in: the caller's own person
+  scope, the company scope `--company` names, or platform scope for `--path`.
+  Adopting a project is judged at the caller's own person scope wherever the
+  folder is, so any registered person adopts a folder they can reach; which
+  folders a session can reach is not decided here. Both bands admit every role
+  but customer, so a registered person without a platform role creates in their
+  own home and adopts.
 
 <!-- /planned-change:personal-assistant-project-creation -->
 

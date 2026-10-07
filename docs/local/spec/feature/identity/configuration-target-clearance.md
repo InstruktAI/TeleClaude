@@ -81,9 +81,10 @@ a refused read returns no configuration.
 | company              | list                                                                                    | platform administrator                          |
 | company              | get, patch                                                                              | `admin` effective role for that company         |
 | company              | init                                                                                    | none beyond the verb band                       |
-| project              | list, get; init of a registered project; adopt outside every home                       | none beyond the verb band                       |
-| project              | create in the caller's own home; adopt inside the caller's own home                     | the person                                      |
-| project              | create with `--company`; adopt inside a company's home                                  | membership of that company, any role            |
+| project              | list, get; init of a registered project                                                 | none beyond the verb band                       |
+| project              | adopt, anywhere                                                                         | a registered person                             |
+| project              | create in the caller's own home                                                         | the person                                      |
+| project              | create with `--company`                                                                 | membership of that company, any role            |
 | project              | create with `--path`                                                                    | platform administrator                          |
 | project              | patch                                                                                   | `admin` effective role for that project         |
 | company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
