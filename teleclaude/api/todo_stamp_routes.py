@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_routes import _SlugStatusResponse, _validate_slug_for_update
 from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
-from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp
+from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp, stamp_follow_through
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.git import GitCommandError
 
@@ -35,6 +35,7 @@ def _human_gate_caller_stamp_id(identity: CallerIdentity) -> str:
 async def todo_stamp(
     slug: Annotated[str, Body()],
     stamp_type: Annotated[str, Body()],
+    background_tasks: BackgroundTasks,
     cwd: Annotated[str | None, Body()] = None,
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
@@ -47,6 +48,9 @@ async def todo_stamp(
     identity, never the body: a worker session stamps under its session id, a
     human terminal under its human principal. Running here rather than in the
     bare CLI is what gives the authority gate an initialized session DB.
+
+    A stamp's follow-through (a kickback returns the todo to preparation) is
+    scheduled on ``background_tasks``, so it runs only after this response is sent.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
@@ -73,6 +77,9 @@ async def todo_stamp(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (StateMutationError, ValueError, GitCommandError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    follow_through = stamp_follow_through(stamp_type, slug=slug, cwd=cwd, caller_session_id=caller_id)
+    if follow_through is not None:
+        background_tasks.add_task(follow_through)
     if is_human_gate_stamp(stamp_type):
         await notify_runner_of_gate_approval(cwd, slug, acting_session_id=identity.session_id)
     return _SlugStatusResponse(status="ok", slug=slug)

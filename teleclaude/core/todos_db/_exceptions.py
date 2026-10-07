@@ -229,3 +229,54 @@ class ClaimConflict(OperationFailure):
         if self.holder:
             return f"ClaimConflict: {self.slug} is already driven by session {self.holder}"
         return f"ClaimConflict: {self.slug} is already driven"
+
+
+_LANE_CROSSING_SUMMARY_TEMPLATE = (
+    "LaneCrossingRefused: {slug} is held in the {held_lane} lane and cannot be entered from the "
+    "{requested_lane} machine; {sanctioned_path}"
+)
+
+
+class LaneCrossingRefusedErrorPayload(OperationErrorPayload):
+    """Structured lane-crossing refusal payload."""
+
+    slug: str
+    held_lane: str
+    requested_lane: str
+    sanctioned_path: str
+
+
+class LaneCrossingRefused(OperationFailure):
+    """Lifecycle entry refused because the caller holds the slug in the other SDLC lane.
+
+    A session that holds a todo in the prepare lane is never adopted into the work
+    lane, and the reverse. The refusal reads the object (who holds the slug, in which
+    lane) and names its door: ``sanctioned_path`` states how the todo changes hands
+    through the lifecycle runner instead.
+    """
+
+    error_kind = "lane_crossing_refused"
+
+    def __init__(self, *, slug: str, held_lane: str, requested_lane: str, sanctioned_path: str) -> None:
+        self.slug = slug
+        self.held_lane = held_lane
+        self.requested_lane = requested_lane
+        self.sanctioned_path = sanctioned_path
+        super().__init__(slug)
+
+    def to_error_payload(self) -> LaneCrossingRefusedErrorPayload:
+        return {
+            "kind": self.error_kind,
+            "slug": self.slug,
+            "held_lane": self.held_lane,
+            "requested_lane": self.requested_lane,
+            "sanctioned_path": self.sanctioned_path,
+        }
+
+    def summary(self) -> str:
+        return _LANE_CROSSING_SUMMARY_TEMPLATE.format(
+            slug=self.slug,
+            held_lane=self.held_lane,
+            requested_lane=self.requested_lane,
+            sanctioned_path=self.sanctioned_path,
+        )

@@ -152,23 +152,6 @@ async def find_live_reviewer_for_slug(
     return None
 
 
-async def find_live_root_next_prepare_session_for_slug(db: Db, slug: str) -> str | None:
-    """Return the newest live root ``/prepare`` session for ``slug``."""
-    return await find_live_prepare_worker_for_slug(db, slug, SlashCommand.PREPARE.value)
-
-
-async def find_live_root_prepare_lifecycle_sessions_for_slug(db: Db, slug: str) -> list[str]:
-    """Return live root prepare-lifecycle session ids for ``slug`` with exact slug-boundary matching."""
-    sessions = await db.list_sessions(include_closed=False)
-    return [
-        session.session_id
-        for session in sessions
-        if session.subdir is None
-        and session.working_slug == slug
-        and _matches_command(session.command, PREPARE_LIFECYCLE_COMMANDS)
-    ]
-
-
 def _same_project_root(session_project_path: str | None, project_root: Path) -> bool:
     """Return whether a session's stored project path resolves to ``project_root``.
 

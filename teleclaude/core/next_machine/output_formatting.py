@@ -40,8 +40,7 @@ __all__ = [
     "format_tool_call",
     "format_uncommitted_changes",
     "format_work_entry_drift_bounce",
-    "format_work_entry_kickback_handoff",
-    "format_work_entry_substantive_handoff",
+    "format_work_returned_to_preparation",
     "format_worker_redispatch",
 ]
 
@@ -100,13 +99,10 @@ _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
 )
 _PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
-_WORK_ENTRY_SUBSTANTIVE_DRIFT_TEMPLATE = (
-    "WORK_ENTRY_SUBSTANTIVE_DRIFT: {slug} has substantive prepare-artifact drift. "
-    "Worktree setup was not started.\n\n{loader}"
-)
-_WORK_ENTRY_KICKBACK_TEMPLATE = (
-    "WORK_ENTRY_KICKBACK: {slug} was kicked back to plan drafting. Its worktree, "
-    "local and remote branch, workspace, build commits, and live sessions remain intact.\n\n{loader}"
+_WORK_RETURNED_TO_PREPARATION_TEMPLATE = (
+    "WORK_RETURNED_TO_PREPARATION: {slug} ({reason}). The claim is released and the platform is ending this work "
+    "lane's sessions, this one included. The lifecycle runner dispatches a fresh prepare orchestrator; the "
+    "worktree, local and remote branch, workspace, and build commits remain. Nothing further is owed."
 )
 
 
@@ -429,30 +425,12 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
     return result
 
 
-def format_prepared(
-    slug: str,
-    session_ids_to_end: list[str] | None = None,
-    *,
-    resume_work: bool = False,
-) -> str:
+def format_prepared(slug: str) -> str:
     """Format the PREPARED terminal message for the prepare state machine."""
-
-    cleanup_lines = list(f"telec sessions end {sid}" for sid in session_ids_to_end or [])
-    if not resume_work:
-        cleanup_lines.append("telec sessions end")
-    cleanup = "\n".join(cleanup_lines)
-    cleanup_block = f"CLEANUP: {cleanup}\n\n"
-
-    if resume_work:
-        terminal_note = (
-            f"BUILD RESUME REQUIRED: {slug} retains durable build residue. "
-            f"After ending the other prepare-lifecycle sessions above, call `telec todo work {slug}` "
-            "in this same session."
-        )
-    else:
-        terminal_note = format_terminal_claim_handoff(slug)
-
-    return f"PREPARED: {slug} is ready for work.\n\n{cleanup_block}\n\n{terminal_note}"
+    return (
+        f"PREPARED: {slug} is ready for work.\n\nCLEANUP: telec sessions end\n\n\n\n"
+        f"{format_terminal_claim_handoff(slug)}"
+    )
 
 
 def format_terminal_claim_handoff(slug: str) -> str:
@@ -515,18 +493,9 @@ def format_work_entry_drift_bounce(
     return format_tool_call(request)
 
 
-def format_work_entry_substantive_handoff(slug: str) -> str:
-    """Reference the prepare entry command for substantive work-entry drift."""
-    return _WORK_ENTRY_SUBSTANTIVE_DRIFT_TEMPLATE.format(
-        slug=slug, loader=format_command_loader_message(SlashCommand.PREPARE.value, slug)
-    )
-
-
-def format_work_entry_kickback_handoff(slug: str) -> str:
-    """Reference the prepare entry command for a work-entry kickback."""
-    return _WORK_ENTRY_KICKBACK_TEMPLATE.format(
-        slug=slug, loader=format_command_loader_message(SlashCommand.PREPARE.value, slug)
-    )
+def format_work_returned_to_preparation(slug: str, reason: str) -> str:
+    """State that work entry returned the todo to preparation through the lifecycle runner."""
+    return _WORK_RETURNED_TO_PREPARATION_TEMPLATE.format(slug=slug, reason=reason)
 
 
 def format_finalize_handoff_complete(slug: str) -> str:

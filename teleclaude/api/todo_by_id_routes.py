@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
@@ -333,6 +333,7 @@ async def todo_release_by_id(
 async def todo_stamp_by_id(
     todo_id: str,
     stamp_type: Annotated[str, Body()],
+    background_tasks: BackgroundTasks,
     cwd: Annotated[str | None, Body()] = None,
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
@@ -350,6 +351,7 @@ async def todo_stamp_by_id(
             value=value,
             phase=phase,
             identity=identity,
+            background_tasks=background_tasks,
         ),
     )
 

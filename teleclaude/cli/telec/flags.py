@@ -380,7 +380,12 @@ FLAG_STAMP_BUILD_COMPLETE = Flag(
 )
 FLAG_STAMP_FINALIZE_READY = Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff", arity=SWITCH)
 FLAG_STAMP_KICKBACK = Flag(
-    "--kickback", desc="Work-orchestrator-only: send an unbuildable todo back to plan drafting", arity=SWITCH
+    "--kickback",
+    desc=(
+        "Work-orchestrator-only: send an unbuildable todo back to plan drafting; "
+        "the platform then releases the claim and ends this work lane"
+    ),
+    arity=SWITCH,
 )
 FLAG_STAMP_REASON = Flag(
     "--reason",
