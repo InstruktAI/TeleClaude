@@ -7,12 +7,32 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.operation_caller_identity import get_caller_session_id
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import RemoveRefusedLiveWork
 
 logger = get_logger(__name__)
 
 _CALLER_BINDING_RELEASED_EVENT = "todo removal released caller binding"
+
+
+async def _release_caller_binding_once_removed(
+    db: Db, todos_db: TodosDb, slug: str, caller_session_id: str | None
+) -> None:
+    """Unbind the caller from ``slug`` once the slug no longer resolves to a live todo.
+
+    Keyed on the committed todo state rather than on the removal call returning,
+    so cleanup that fails or is cancelled after the tombstone lands still frees
+    the caller, while a refused removal leaves the binding intact.
+    """
+    if caller_session_id is None:
+        return
+    caller = await db.get_session(caller_session_id)
+    if caller is None or caller.working_slug != slug:
+        return
+    if await todos_db.read_state(slug) is not None:
+        return
+    await db.update_session(caller_session_id, working_slug=None)
+    logger.info(_CALLER_BINDING_RELEASED_EVENT, slug=slug, session_id=caller_session_id)
 
 
 async def execute_todo_remove(
@@ -82,21 +102,19 @@ async def execute_todo_remove(
             operation_ids=operation_ids,
         )
 
-    removed = await todos_db.soft_remove_from_todo(
-        slug,
-        cwd=cwd,
-        removal_context={
-            "force": force,
-            "operation_id": current_operation_id,
-            "caller_session_id": caller_session_id,
-        },
-    )
+    try:
+        removed = await todos_db.soft_remove_from_todo(
+            slug,
+            cwd=cwd,
+            removal_context={
+                "force": force,
+                "operation_id": current_operation_id,
+                "caller_session_id": caller_session_id,
+            },
+        )
+    finally:
+        await _release_caller_binding_once_removed(db, todos_db, slug, caller_session_id)
     if not removed:
         raise LookupError(f"no live todo found for remove: {slug}")
-    if caller_session_id is not None:
-        caller = await db.get_session(caller_session_id)
-        if caller is not None and caller.working_slug == slug:
-            await db.update_session(caller_session_id, working_slug=None)
-            logger.info(_CALLER_BINDING_RELEASED_EVENT, slug=slug, session_id=caller_session_id)
     logger.info("Removed todo %s", slug)
     return f"removed {slug}"
