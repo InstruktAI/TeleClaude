@@ -312,7 +312,6 @@ Then the name is that command's canonical domain-qualified value
 And no script carries a bare command token
 ```
 
-<!-- planned:kickback-hands-off-to-runner -->
 #### UC-WPS28: The prepare machine refuses a session that holds the slug in the work lane
 
 ```gherkin
@@ -322,7 +321,6 @@ Then the prepare machine refuses without adopting W into the prepare lane, and W
 And no preparation artifact is written on W's behalf
 And the refusal names the sanctioned path: a kickback stamp or a substantive work-entry drift verdict returns the Todo to preparation, and the lifecycle runner dispatches a fresh prepare orchestrator
 ```
-<!-- /planned:kickback-hands-off-to-runner -->
 
 ### Auto-continue
 
@@ -384,19 +382,6 @@ And it does not emit a fresh `/sdlc/prepare` run for any child
 And the lifecycle runner handles child eligibility and dispatch from the event wake-up
 ```
 
-<!-- planned-change:kickback-hands-off-to-runner -->
-#### UC-WPS19: PREPARED with an in-flight build directs resume instead of self-end
-
-```gherkin
-Given a Todo reaches PREPARED after its implementation-plan was re-derived while a build was in flight
-And the Todo's worktree with build commits still exists
-When the machine derives PREPARED
-Then the terminal output directs the driving orchestrator to re-enter the work machine for this slug instead of ending itself
-And the self-end instruction is omitted from the emitted cleanup
-And other live prepare-lane sessions for the slug are still ended, and the live builder session is not among them
-And the direction derives from the Todo's durable build residue, not from the session's memory of how it arrived
-```
-<!-- change:kickback-hands-off-to-runner -->
 #### UC-WPS19: PREPARED with an in-flight build ends its orchestrator like any other
 
 ```gherkin
@@ -408,25 +393,16 @@ And the driving orchestrator no longer holds the Todo's lifecycle claim
 And the terminal output never directs the orchestrator into the work machine
 And the lifecycle runner dispatches a fresh work orchestrator under the kind's work-lane autostart policy, which continues the existing build against the changed plan
 ```
-<!-- /planned-change:kickback-hands-off-to-runner -->
 
 #### UC-WPS27: PREPARED releases the driving session's lifecycle claim
 
 ```gherkin
 Given a Todo whose lifecycle claim is held by the prepare orchestrator session P
-<!-- planned-change:kickback-hands-off-to-runner -->
-And the Todo carries no in-flight build to resume
-<!-- change:kickback-hands-off-to-runner -->
-<!-- /planned-change:kickback-hands-off-to-runner -->
 When P calls "telec todo prepare my-feature" and the machine derives PREPARED
 Then P no longer holds the lifecycle claim on my-feature
 And the lifecycle runner may take my-feature up for work while P remains open
 And the terminal script states that P no longer holds the claim on my-feature
 And no claim held by a different live session is changed
-<!-- planned-change:kickback-hands-off-to-runner -->
-But when the Todo carries an in-flight build to resume, P keeps its claim and is directed to re-enter the work machine
-<!-- change:kickback-hands-off-to-runner -->
-<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 ### Explicit slug required
@@ -454,19 +430,11 @@ And no roadmap row is created for "unknown-prepare"
 #### UC-WPS20: Terminal prepare cleanup is caller-scoped and precedes departure
 
 ```gherkin
-<!-- planned-change:kickback-hands-off-to-runner -->
-Given a Todo reaches PREPARED with no in-flight build to resume
-<!-- change:kickback-hands-off-to-runner -->
 Given a Todo reaches PREPARED
-<!-- /planned-change:kickback-hands-off-to-runner -->
 When the prepare machine emits its terminal execution script
 Then the script closes every live direct child of the prepare orchestrator through the caller-scoped bulk session-end operation
 And only after that operation succeeds does the script direct the orchestrator to end itself
 And the script contains neither remembered child identifiers nor a manual child-listing loop
-<!-- planned-change:kickback-hands-off-to-runner -->
-And PREPARED paths that resume an in-flight build emit no bulk child cleanup and do not end the orchestrator
-<!-- change:kickback-hands-off-to-runner -->
-<!-- /planned-change:kickback-hands-off-to-runner -->
 ```
 
 ### Cross-context references

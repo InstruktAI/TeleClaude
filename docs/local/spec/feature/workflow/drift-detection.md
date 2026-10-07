@@ -40,23 +40,6 @@ which it was made** — when a later change exceeds that anchor, the verdict
 expires and the artifact re-enters `pending` automatically. There is no
 silent acceptance of new drift behind a stale verdict.
 
-<!-- planned-change:kickback-hands-off-to-runner -->
-The feature integrates with the existing prepare lifecycle without adding
-a new phase: drift is derived inside the existing `BLOCKED` branch and
-cleared by the existing `--drift-reviewed` stamp surface. It also
-participates at the work-entry boundary: `telec todo work` calls the same
-shared derivation function before its `prepared → build_started` handoff. The
-work state machine owns the work-entry continuation — on a `pending` collapsed
-status it dispatches the `sdlc/drift-analyze` worker and the orchestrator
-re-enters `telec todo work {slug}`; on the re-entered `substantive` status it
-promotes the claim-holder in place to `prepare-orchestrator` and hands that
-session off to drive `/sdlc/prepare {slug}`; on `cosmetic` (valid anchor) it
-proceeds. The work orchestrator never calls `telec todo prepare`. Autonomous
-continuation needs no human gate on either verdict: the promoted session
-re-derives and self-ends through the prepare terminal, and work resumes only
-under the lifecycle runner's autostart toggle. See
-`@spec/feature/workflow/work-state-machine` for the continuation contract.
-<!-- change:kickback-hands-off-to-runner -->
 The feature integrates with the existing prepare lifecycle without adding
 a new phase: drift is derived inside the existing `BLOCKED` branch and
 cleared by the existing `--drift-reviewed` stamp surface. It also
@@ -73,7 +56,6 @@ continuation needs no human gate on either verdict: the fresh prepare
 orchestrator re-derives and self-ends through the prepare terminal, and work
 resumes only under the lifecycle runner's autostart toggle. See
 `@spec/feature/workflow/work-state-machine` for the continuation contract.
-<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ## Canonical fields
 
@@ -291,19 +273,11 @@ order in work entry becomes:
 4. **Call the shared drift derivation against repo-root state, NOT against
    any worktree** (drift derivation compares against `origin/main` HEAD and
    persisted provenance; no worktree is required).
-<!-- planned-change:kickback-hands-off-to-runner -->
-5. If a collapsed drift status is `pending`, dispatch the
-   `sdlc/drift-analyze` worker and have the orchestrator re-enter on
-   `telec todo work`; if it is `substantive`, promote the claim-holder in
-   place and hand that session off to drive `/sdlc/prepare {slug}`. **No
-   worktree created. No state mutated.**
-<!-- change:kickback-hands-off-to-runner -->
 5. If a collapsed drift status is `pending`, dispatch the
    `sdlc/drift-analyze` worker and have the orchestrator re-enter on
    `telec todo work`; if it is `substantive`, release the claim, end the
    slug's work-lane sessions, and leave the Todo to the lifecycle runner,
    which dispatches a fresh `/sdlc/prepare {slug}`. **No worktree created.**
-<!-- /planned-change:kickback-hands-off-to-runner -->
 6. Only when every artifact's collapsed drift status is `fresh` or
    `cosmetic` (with a valid anchor): proceed with worktree preparation,
    the origin/main merge, the `prepared → build_started` handoff, and
@@ -321,16 +295,6 @@ Detail of the call itself:
   imports. Both the prepare BLOCKED branch and the work entry path call
   it with the same evidence-loading rules so there is one source of
   truth for drift status.
-<!-- planned-change:kickback-hands-off-to-runner -->
-- When the shared derivation reports a tracked artifact's collapsed
-  status as `pending` or `substantive`, work does NOT advance
-  `lifecycle_phase` and does NOT create or touch the worktree. On `pending`
-  it dispatches the `sdlc/drift-analyze` worker and the orchestrator
-  re-enters `telec todo work {slug}`; on `substantive` it promotes the
-  claim-holder in place to `prepare-orchestrator` and hands that session off
-  to drive `/sdlc/prepare {slug}`. The work orchestrator never calls
-  `telec todo prepare`.
-<!-- change:kickback-hands-off-to-runner -->
 - When the shared derivation reports a tracked artifact's collapsed
   status as `pending` or `substantive`, work does NOT advance
   `lifecycle_phase` and does NOT create or touch the worktree. On `pending`
@@ -339,7 +303,6 @@ Detail of the call itself:
   releases the claim, the platform ends the slug's work-lane sessions, and
   the lifecycle runner dispatches a fresh prepare orchestrator. The work
   orchestrator never calls `telec todo prepare`.
-<!-- /planned-change:kickback-hands-off-to-runner -->
 - When every tracked artifact's collapsed status is `fresh` or `cosmetic`
   (with a valid evidence anchor), work proceeds with the existing
   `prepared → build_started` handoff, worktree creation, and builder
@@ -356,15 +319,6 @@ For bug-kind Todos, the work-entry drift surface is the approved
 the plan's upstream diagnosis digest. Work entry must not bounce directly on
 `input` or `diagnosis` drift.
 
-<!-- planned-change:kickback-hands-off-to-runner -->
-Continuation across the work-entry boundary is the existing
-orchestrator-script contract. A `pending` status is resolved inside the work
-lane: the work machine dispatches the analyzer and re-derives drift when the
-orchestrator re-enters `telec todo work {slug}`, then either proceeds (cosmetic
-anchor now valid) or, on a substantive verdict, hands the claim-holder in
-place into the prepare lane, which re-derives the affected artifacts through
-the prepare chain and its own BLOCKED-branch drift analysis.
-<!-- change:kickback-hands-off-to-runner -->
 Continuation across the work-entry boundary is the existing
 orchestrator-script contract plus the lifecycle runner. A `pending` status is
 resolved inside the work lane: the work machine dispatches the analyzer and
@@ -376,7 +330,6 @@ dispatches a fresh prepare orchestrator, which re-derives the affected
 artifacts through the prepare chain and its own BLOCKED-branch drift analysis.
 At PREPARED that orchestrator ends, and the lifecycle runner dispatches a fresh
 work orchestrator under the kind's work-lane autostart policy.
-<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ### Re-derivation contract
 
@@ -662,19 +615,11 @@ Scenario: work entry bounces on substantive drift, re-derivation re-converges
   And the analyzer stamps "--drift-reviewed architecture substantive '<reason>'"
   Then the architecture review verdict is cleared
   And the plan review verdict is cleared
-<!-- planned-change:kickback-hands-off-to-runner -->
-  And on re-entry the work machine hands the claim-holding session into the prepare lane in place
-<!-- change:kickback-hands-off-to-runner -->
   And on re-entry the work machine releases the claim and the platform ends the work orchestrator and every session it started
   And the lifecycle runner dispatches a fresh prepare orchestrator
-<!-- /planned-change:kickback-hands-off-to-runner -->
   And the prepare machine routes back to architecture_drafting
   And the existing prepare chain re-derives architecture and plan, re-reviews each, reaches PREPARED
-<!-- planned-change:kickback-hands-off-to-runner -->
-  And the PREPARED terminal releases the claim, and the lifecycle runner dispatches work under the kind's work-lane autostart policy
-<!-- change:kickback-hands-off-to-runner -->
   And the prepare orchestrator ends and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator under the kind's work-lane autostart policy
-<!-- /planned-change:kickback-hands-off-to-runner -->
   And work re-runs drift derivation, observes fresh status, and proceeds
   And no human gate fires in the substantive round-trip (intent-level PRD refinement is the only human-gated path and is orthogonal)
 ```

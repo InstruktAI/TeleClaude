@@ -292,14 +292,6 @@ delivered.
 
 ### 2. Call the state machine
 
-<!-- planned-change:kickback-hands-off-to-runner -->
-For `feature`, `change`, and `bug`, make the initial `telec todo prepare {slug}`
-call after the read-only entry assessment establishes settled, viable intent
-and before preparation writes. This call establishes the registered prepare
-role in the existing session, retaining its slug claim. Fresh prepare entry
-and a work-to-prepare transition follow this order; a session already in
-preparation advances at the existing phase boundaries.
-<!-- change:kickback-hands-off-to-runner -->
 For `feature`, `change`, and `bug`, make the initial `telec todo prepare {slug}`
 call after the read-only entry assessment establishes settled, viable intent
 and before preparation writes. This call establishes the registered prepare
@@ -308,7 +300,6 @@ follows this order; a session already in preparation advances at the existing
 phase boundaries. A session that holds the slug in the work lane is refused:
 work returns to preparation only through a fresh prepare orchestrator the
 lifecycle runner dispatches.
-<!-- /planned-change:kickback-hands-off-to-runner -->
 
 After successful entry, apply the input repairs and pending process-contract
 changes identified during preflight, then perform the preparation work.
@@ -412,15 +403,9 @@ Clear the relevant approval stamps and re-run the affected phases.
 ### 8. Terminal state
 
 When all required phases have approval stamps and grounding is fresh, the
-<!-- planned-change:kickback-hands-off-to-runner -->
-state machine derives `PREPARED`. Unless it directs this session to resume
-preserved build work, deriving `PREPARED` releases this session's claim on the
-todo, and the work lane takes the todo up from there. The returned terminal
-<!-- change:kickback-hands-off-to-runner -->
 state machine derives `PREPARED`. Deriving `PREPARED` releases this session's
 claim on the todo, whether or not the todo carries an in-flight build, and the
 work lane takes the todo up from there. The returned terminal
-<!-- /planned-change:kickback-hands-off-to-runner -->
 script ends the prepare lifecycle's child sessions — Step 2's "execute the
 script verbatim" rule applies here too. Report `PREPARED` to the human, then
 assess departure per `general/principle/session-lifecycle`; staying for an

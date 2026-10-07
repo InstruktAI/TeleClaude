@@ -221,20 +221,6 @@ On that grounded direction the orchestrator runs
 stamp appends the reason to `input` (creating `input` when the todo has none) and
 invalidates the implementation-plan, so the phase derives back to `plan_drafting`.
 
-<!-- planned-change:kickback-hands-off-to-runner -->
-The orchestrator then re-enters `telec todo work [slug]`. The work machine hands the
-kickback-invalidated todo into the prepare lane in this same session — the same
-non-terminal bounce a substantive work-entry drift produces. Nothing is torn down:
-the worktree with its build commits, the local and remote branch, the workspace
-directory, and the slug's live sessions all remain. The orchestrator adopts the
-prepare role in place, drives the plan re-derivation (the planner reads the kickback
-block in `input` as authoritative re-derivation context), and when prepare reaches
-PREPARED its terminal detects the in-flight build and directs the orchestrator back
-into `telec todo work [slug]`. The work machine then re-enters the preserved build
-and hands the builder machine-derived reconcile instructions — the diff between the
-plan version the build started against and the re-approved plan — so the builder
-reverts what the amendment invalidates, keeps what still serves, and continues.
-<!-- change:kickback-hands-off-to-runner -->
 The stamp ends this orchestrator's part. Once the reason is durable, the
 platform releases the todo's lifecycle claim and ends the slug's work-lane
 sessions — every session this orchestrator started, then the orchestrator
@@ -249,7 +235,6 @@ under the existing build and hands the builder machine-derived reconcile
 instructions — the diff between the plan version the build started against and
 the re-approved plan — so the builder reverts what the amendment invalidates,
 keeps what still serves, and continues.
-<!-- /planned-change:kickback-hands-off-to-runner -->
 
 ## Outputs
 
