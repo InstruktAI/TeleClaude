@@ -54,10 +54,11 @@ Publication is one of those steps and keeps its own contract
   refuse or skip a step.
 - **Plumbing.** Every project's steps include converging that project's own
   plumbing, whatever else its declaration carries.
-- **Disruptive steps.** Nothing a run performs restarts or reloads a running
-  service. Restarting the daemon and reloading the terminal interface are never
-  performed by a run, and installation deploys no service definition during a
-  run and loads, unloads or restarts no service. After its steps, the run
+- **Disruptive steps.** Nothing a run performs stops, restarts or reloads a
+  running service. Restarting the daemon and reloading the terminal interface
+  are never performed by a run, and installation deploys no service definition
+  during a run and stops, restarts or reloads no running service; it may still
+  start a service that is not running. After its steps, the run
   reports each such change that is owed, with the command that performs it. A
   restart or reload is owed when a process it refreshes started from an earlier
   commit than the one the run converged, and the changes between the two owe that

@@ -178,8 +178,9 @@ the action's `on_demand` disposition:
   it cannot tell. The run names the action's command beside its reasons.
 
 An on-demand run tells each command it runs that the run is on demand. A command
-told so changes no running host service: it deploys no service definition and
-loads, unloads or restarts no service. In every other respect a command behaves
+told so changes no running host service: it deploys no service definition, and
+stops, restarts or reloads no running service; it may still start a service that
+is not running. In every other respect a command behaves
 as it does at the commit boundary and reads the canonical checkout as it stands;
 only publication reads committed state alone, under its own contract.
 
