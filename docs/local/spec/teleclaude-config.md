@@ -11,7 +11,7 @@ The Teleclaude Config surface defines how TeleClaude configuration is initialize
 
 1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
 2. Daemon runtime `config.yml` loaded by `teleclaude.config`
-These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
+   These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
 
 ### One filename, four tiers
 
@@ -25,21 +25,21 @@ authoritative model definitions.
 
 <!-- planned-change:retire-event-domains -->
 
-| File              | Location                       | Model          | Owns                                                                       |
-| ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
-| **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
-| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
-| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks` |
-| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
+| File                  | Location                                        | Model           | Owns                                                                                                                            |
+| --------------------- | ----------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`                  | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                                                      |
+| **Project config**    | `<project-root>/teleclaude.yml`                 | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml`    | `PersonConfig`  | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks`                                       |
+| **Company config**    | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`)            |
 
 <!-- change:retire-event-domains -->
 
-| File              | Location                       | Model          | Owns                                                      |
-| ----------------- | ------------------------------ | -------------- | --------------------------------------------------------- |
-| **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests` |
-| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
-| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks` |
-| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
+| File                  | Location                                        | Model           | Owns                                                                                                                            |
+| --------------------- | ----------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`                  | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`                                                                       |
+| **Project config**    | `<project-root>/teleclaude.yml`                 | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml`    | `PersonConfig`  | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks`                                       |
+| **Company config**    | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`)            |
 
 <!-- /planned-change:retire-event-domains -->
 
@@ -205,6 +205,7 @@ closed on unknown, ambiguous, or disagreeing claims, and is never a load-time
 grant; the contract is `local/projects/teleclaude/spec/feature/identity/person-context-binding`.
 
 <!-- planned-change:personal-assistant-project-creation -->
+
 `ProjectConfig` alternatively carries an optional `person` key —
 `person: string` — a kebab-case, validated person slug declaring a person as
 the project's owner. `company` and `person` are mutually exclusive: a project
@@ -214,6 +215,7 @@ company or person that no registry knows refuses composition with a clear
 result naming the unresolved owner; no partial owner state reaches consumers.
 The contract is `local/projects/teleclaude/spec/feature/config/project-ownership`.
 <!-- change:personal-assistant-project-creation -->
+
 `ProjectConfig` alternatively carries an optional `person` key —
 `person: string` — a kebab-case, validated person slug declaring a person as
 the project's owner. `company` and `person` are mutually exclusive: a project
@@ -246,6 +248,7 @@ present in the daemon environment.
 Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.
 
 <!-- planned-change:retire-event-domains -->
+
 ```yaml
 people: list[PersonEntry] # REJECTED at project level
 env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
@@ -255,7 +258,9 @@ event_domains:
   domains: mapping[string, DomainConfig]
 jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
 ```
+
 <!-- change:retire-event-domains -->
+
 ```yaml
 people: list[PersonEntry] # REJECTED at project level
 env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
@@ -263,6 +268,7 @@ subscriptions: list[SubscriptionEntry]
 interests: list[string]
 jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
 ```
+
 <!-- /planned-change:retire-event-domains -->
 
 There is no `company_profile` key on the global overlay. Company configuration is
@@ -310,6 +316,8 @@ The home name takes precedence for session placement; without it, the global
 person name remains the display name, falling back to the slug. The home's
 description is shown when present.
 
+<!-- planned-change:human-alerts-agent-only -->
+
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
@@ -317,21 +325,31 @@ creds:
   whatsapp: { phone_number }
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
-<!-- planned-change:human-alerts-agent-only -->
 settings:
   output_visibility:
     system_messages: null | off | mobile | full | both
     tool_calls: null | off | mobile | full | both
 ```
+
 <!-- change:human-alerts-agent-only -->
+
+```yaml
+creds:
+  telegram: { user_name, user_id, chat_id }
+  discord: { user_id, nick, avatar_url, voice_bot_token } # voice_bot_token is ${DISCORD_TOKEN} in the owner-only person .env and must authenticate the same bot the Discord adapter runs; the person's live private channel comes from Discord voice state and is not config
+  whatsapp: { phone_number }
+subscriptions: list[SubscriptionEntry]
+interests: list[string]
 settings:
   output_visibility:
     system_messages: null | off | mobile | full | both
     tool_calls: null | off | mobile | full | both
   admin_push: false
 ```
+
 <!-- /planned-change:human-alerts-agent-only -->
 <!-- planned:human-alerts-agent-only -->
+
 `settings.admin_push` (boolean, default `false`) decides whether a platform
 administrator receives the platform's admin notifications on their configured
 direct-message channels. It has no effect for a person who is not a platform
@@ -369,9 +387,7 @@ Telegram/Discord redemption read and write the ephemeral invitations store
 instead of scanning per-person overlays. See
 `docs/local/spec/feature/config/schema-driven-config-tui.md`.
 
-
 Person-bound service secrets live in `~/.teleclaude/people/{slug}/.env`, beside but separate from the typed person overlay. The `.env` file is an opaque secret store, not a `PersonConfig` field: person YAML contains no secret inventory or values. The canonical person slug selects the folder; each file is owner-only `0600` and is read or mutated only through the config bounded context's person-secret store. Secret status exposed to the config TUI contains names and requirement provenance but never values, including while a secret is being replaced. Keep performs no write; replace and clear are atomic targeted mutations that preserve every unrelated key and line in the same file.
-
 
 Typed config keys are part of the interactive config surface. The config wizard
 must render machine config, global overlay, project overlay, per-person overlay,
@@ -393,7 +409,6 @@ the MCP registry schema authored in the MCP context's source (`teleclaude/mcp/`)
 metadata only: it does not create environment requirements or change a daemon
 lease fingerprint.
 
-
 A TeleClaude project's own `teleclaude-mcp.jsonc` and optional
 `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP
 servers using the identical wrapper shape and schema. Project declarations are
@@ -409,10 +424,7 @@ into generated agent entrypoints while remaining fully served and listed by the
 runtime `telec mcp list` surface; `hidden` affects neither startup, credential
 lookup, nor lease fingerprints.
 
-
-
 `credentialScope` selects the credential owner — the machine, or the calling person; its allowed values and default live in the MCP registry schema. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
-
 
 Registry authors omit default-valued properties; the runtime model and the
 registry schema provide the defaults. The registry schema is published with the
@@ -421,7 +433,6 @@ configuration schemas
 committed registry file references it relatively through its root's
 machine-local schema link, so JSON Schema aware editors validate and
 autocomplete it without network access and without a machine-local path.
-
 
 The effective TeleClaude MCP registry is resolved per invocation scope by one
 config-owned resolver. For machine-wide scope it is the nested merge of the
@@ -436,8 +447,6 @@ project local, later layers taking precedence — and compatibility inputs are
 never read from a project root. The installer and daemon never mutate any
 input file.
 
-
-
 Environment values in the registry are placeholders, not secrets. Any command,
 args, headers, URL, or env value containing `$VAR` or `${VAR}` markers creates a
 runtime environment requirement. For global scope the daemon resolves those
@@ -448,7 +457,6 @@ remote request construction boundary. Literal `env` values without placeholders
 stay literal and do not trigger secret lookup. A missing identity, person, safe
 secret file, or non-empty required key fails before lease startup without
 cross-scope fallback.
-
 
 Managed MCP servers use TeleClaude's lazy runtime exclusively. They are exposed
 to agents through `telec mcp` and `/mcp` routes; native agent MCP configs are
@@ -523,6 +531,7 @@ environment_variables:
 ```
 
 <!-- planned:startable-unattended-install -->
+
 Installation inputs are not configuration values. `make install` reads them once
 and persists nothing under their names:
 
@@ -534,6 +543,7 @@ and persists nothing under their names:
   the installation.
 
 <!-- /planned:startable-unattended-install -->
+
 `teleclaude.runtime.config` is the one-shot owner for the controlled path env
 surface. It reads `TELECLAUDE_HOME` once at module import and freezes it into
 `RuntimeConfig`. Runtime code reads that value through `get_runtime_config()`
@@ -763,7 +773,6 @@ to the inclusive range from zero through `session_max_pending`. The high
 watermark's omitted-value derivation subtracts the literal value eight and is
 independent of a configured critical reserve.
 
-
 Discord provider IDs are not config. `config.yml` carries only the desired setup
 inputs a machine declares — `computer.name`, `computer.is_master`,
 `discord.enabled`, and `discord.guild_id` (the operator's own guild identifier,
@@ -774,7 +783,6 @@ reflection records in the runtime database, and the daemon never writes them bac
 to `config.yml`. Project forum bindings, launcher threads, and launcher starter
 messages are read from and written to that reflection state; see
 `local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
-
 
 ### Maintenance
 
