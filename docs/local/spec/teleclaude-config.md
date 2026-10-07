@@ -24,20 +24,24 @@ explicitly rejects global-only keys (`people`, `ops`, `creds`,
 authoritative model definitions.
 
 <!-- planned-change:retire-event-domains -->
+
 | File              | Location                       | Model          | Owns                                                                       |
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
 | **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
+| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks` |
+| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
+
 <!-- change:retire-event-domains -->
+
 | File              | Location                       | Model          | Owns                                                      |
 | ----------------- | ------------------------------ | -------------- | --------------------------------------------------------- |
 | **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests` |
-<!-- /planned-change:retire-event-domains -->
-
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
-
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks` |
-
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
+
+<!-- /planned-change:retire-event-domains -->
 
 #### Tier declaration and editor schemas
 

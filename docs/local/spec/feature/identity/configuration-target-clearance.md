@@ -50,6 +50,8 @@ a refused read returns no configuration.
 
 ### Standing
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 | Target               | Operation                                                                               | Standing required                               |
 | -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | computer, global     | list, get                                                                               | none beyond the verb band                       |
@@ -61,17 +63,33 @@ a refused read returns no configuration.
 | company              | list                                                                                    | platform administrator                          |
 | company              | get, patch                                                                              | `admin` effective role for that company         |
 | company              | init                                                                                    | none beyond the verb band                       |
-<!-- planned-change:personal-assistant-project-creation -->
 | project              | list, get; init of the caller's checkout                                                | none beyond the verb band                       |
+| project              | patch                                                                                   | `admin` effective role for that project         |
+| company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
+| project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
+
 <!-- change:personal-assistant-project-creation -->
+
+| Target               | Operation                                                                               | Standing required                               |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| computer, global     | list, get                                                                               | none beyond the verb band                       |
+| computer, global     | init, patch                                                                             | platform administrator                          |
+| person, own instance | get; patch of settings                                                                  | the person                                      |
+| person, any instance | get; patch of settings                                                                  | platform administrator                          |
+| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
+| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
+| company              | list                                                                                    | platform administrator                          |
+| company              | get, patch                                                                              | `admin` effective role for that company         |
+| company              | init                                                                                    | none beyond the verb band                       |
 | project              | list, get; init re-converging a registered project                                      | none beyond the verb band                       |
 | project              | init adopting an existing project outside every home                                    | none beyond the verb band                       |
 | project              | init adopting a new or existing project inside a person's or company's home             | `admin` effective role for that home            |
 | project              | init creating a new project outside every home                                          | platform administrator                          |
-<!-- /planned-change:personal-assistant-project-creation -->
 | project              | patch                                                                                   | `admin` effective role for that project         |
 | company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
 | project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
+
+<!-- /planned-change:personal-assistant-project-creation -->
 
 ### Use cases
 
