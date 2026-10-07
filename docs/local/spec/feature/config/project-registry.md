@@ -60,10 +60,11 @@ Recording is idempotent, so adopting an already-recorded folder changes
 nothing. Initializing a project records nothing: it converges a project already
 recorded.
 
-A project inside a person's or a company's home lives directly in that home's
-`projects/` folder, and is its own repository there; the global home's
-repository never holds a project. Creating or adopting a project anywhere else
-inside a home is refused.
+A project created inside a person's or a company's home lands directly in that
+home's `projects/` folder. Adoption keeps a project where it already is,
+anywhere the caller can reach, inside a home or not. Either way a project inside
+a home is its own repository: the global home's repository never holds a
+project.
 <!-- /planned-change:personal-assistant-project-creation -->
 
 The recorded path is always the durable main checkout. A project may be adopted
@@ -222,13 +223,13 @@ And the registry lists that folder under its own identity, owned by that person
 And the global home is not listed as a project
 ```
 
-#### UC-CFG-REG11: A project inside a home lives in its projects area
+#### UC-CFG-REG11: Adoption inside a home keeps the project where it is
 
 ```gherkin
-Given a folder inside a person's or a company's home, outside that home's projects area
-When an operator or agent creates or adopts a project there
-Then the request is refused before anything is written
-And the refusal names the home's projects area
+Given a folder holding work inside a person's home, outside that home's projects area
+When that person adopts it
+Then the project is registered at that folder, owned by that person
+And no file is moved
 ```
 
 #### UC-CFG-REG12: Initializing an unregistered folder records nothing

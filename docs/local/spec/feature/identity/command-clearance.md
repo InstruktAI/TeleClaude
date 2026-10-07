@@ -506,21 +506,26 @@ supplies.
   Machine and global configuration, and the listing, creation and management of
   people and companies, are judged at platform scope.
 
+<!-- planned-change:personal-assistant-project-creation -->
+
 - Initializing a company or a project with `--help-desk` is judged at the home
   whose help desk it enables, under the administrator band: a company init at the
   company it names (its `--slug`, otherwise its normalized name), a project init at
+  the project of the checkout it initializes. The same init without the flag stays
+  a platform-scope act.
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-the project of the checkout it initializes. The same init without the flag stays
-a platform-scope act.
 <!-- change:personal-assistant-project-creation -->
 
-the project of the checkout it initializes. The same init without the flag stays
-a platform-scope act, and so does project adoption.
-
-- A project creation is judged at the home it creates in: the caller's own
-  person scope, the company `--company` names, or platform scope for `--path`.
+- Initializing a company or a project with `--help-desk` is judged at the home
+  whose help desk it enables, under the administrator band: a company init at the
+  company it names (its `--slug`, otherwise its normalized name), a project init at
+  the project of the checkout it initializes. The same init without the flag stays
+  a platform-scope act.
+- Creating or adopting a project is judged at the home it lands in: the caller's
+  own person scope, the company scope of the company home it is in or that
+  `--company` names, or platform scope outside every home. Its person band admits
+  every role but customer, so a registered person without a platform role still
+  creates and adopts in their own home.
 
 <!-- /planned-change:personal-assistant-project-creation -->
 

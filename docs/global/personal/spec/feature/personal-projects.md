@@ -74,8 +74,8 @@ Then the owner is that person
 #### UC-PPROJ6: A destination outside the person's home follows the platform's creation rules
 
 ```gherkin
-Given a person whose platform role is member
-And they tell their assistant to put a new build somewhere outside their own home
+Given a person who is not a platform administrator
+And they tell their assistant to put a new build in a folder outside every home
 When the assistant tries to create the project there
 Then no project is created
 And the person is told the destination is not one they can create projects in

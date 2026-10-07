@@ -32,8 +32,12 @@ the files.
 1. **Scaffold with the framework's own generator, always** — the current
    `npm create` / `create-next-app` incantation for the chosen flavor, aimed at
    the project folder `telec config project create` made (target `.`) rather
-   than a new directory. Never deploy scaffold files from a blessed folder — a
-   baked scaffold is a stale cache of the generator.
+   than a new directory. A generator that refuses a folder already holding
+   files, as `create-next-app` refuses one holding `teleclaude.yml`, runs in a
+   temporary sibling folder with its own git setup turned off; its output, dot
+   files included, then moves into the project folder, which keeps its
+   repository and `teleclaude.yml`. Never deploy scaffold files from a blessed
+   folder — a baked scaffold is a stale cache of the generator.
 
 <!-- /planned-change:personal-assistant-project-creation -->
 

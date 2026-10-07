@@ -31,21 +31,16 @@ from its first moment and belongs to them
 1. **Take it up as project work.** A request to build, automate, or make
    something is this procedure's work even when the person never says
    "project". Where it goes is settled below; never ask them.
-2. **Shape it with the platform's new-build intake.** Load
+2. **Build it with the platform's new-build intake.** Load
    `sdlc/procedure/greenfield-intake` with its closure, together with the
-   `sdlc` bundle it presumes, and run it with the person. They answer only what
-   that intake marks as theirs; there is no separate assistant conversation.
-3. **Create it.** Run `telec config project create <name>`, where `<name>` is
-   the project's short kebab-case name. It makes an empty project with its own
-   repository in the person's own projects area, owned by them, and registers
-   it. For a company the person belongs to, add `--company <slug>`. Never pick a
+   `sdlc` bundle it presumes, and run it with the person end to end. They
+   answer only what that intake marks as theirs; there is no separate assistant
+   conversation. The intake's own step creates the project with
+   `telec config project create <name>`, scaffolds it and converges it. In the
+   person's session that lands in their own projects area, owned by them; add
+   `--company <slug>` only when they ask for a company project. Never pick a
    folder yourself.
-4. **Scaffold it** inside that project folder as the intake's flavor directs.
-5. **Converge it.** From the project folder, run `telec config project init`,
-   which detects its capabilities from what was built and sets up its
-   TeleClaude plumbing. This is the step the intake's scaffolding ends with; run
-   it once.
-6. **Hand it over.** Tell the person where the project is. Building it out is
+3. **Hand it over.** Tell the person where the project is. Building it out is
    ordinary project work in that project from here.
 
 ## Outputs

@@ -37,11 +37,11 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ### 0. Check placement and owner
 
-Before any later step writes, the pipeline checks where the project sits. Inside
-a person's or a company's home, a project lives directly in that home's
-`projects/` folder; anywhere else inside a home is refused. Inside a home the
-project declares that home's owner — `create` and `adopt` record it — and a
-declaration naming any other owner, or none, is refused. Outside every home the
+Before any later step writes, the pipeline checks where the project sits. A
+project `create` makes inside a home lands directly in that home's `projects/`
+folder; `adopt` keeps a project wherever it already is. Inside a home the project
+declares that home's owner — `create` and `adopt` record it — and a declaration
+naming any other owner, or none, is refused. Outside every home the
 project keeps the owner it declares, or none; a project `create` makes there has
 none.
 
@@ -184,8 +184,8 @@ Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
 ### 9. Watcher ownership
 
-`telec config project init` does **not** install watchers. It registers the project root in
-`~/.teleclaude/projects.yaml`. Machine-global setup is installed by `make install`,
+The pipeline does **not** install watchers. `create` and `adopt` register the
+project root in `~/.teleclaude/projects.yaml`. Machine-global setup is installed by `make install`,
 and service startup/install is owned by `make start`; the global watcher reads this
 manifest to decide which projects to watch and sync surgically.
 
