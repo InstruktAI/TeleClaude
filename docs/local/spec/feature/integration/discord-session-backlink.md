@@ -20,19 +20,11 @@ backlinks.
 Session enumeration carries a listed session's own address, so an agent holds
 that address at the moment it has identified the session it cares about.
 
-<!-- planned-change:human-alerts-agent-only -->
 Person-addressed delivery (`telec message`) renders it when the
 request carries an originating session; any surface that later renders a
 session backlink on Discord (session-output presentation, owner
 notifications, operational action cards) constructs it through this same
 capability rather than building URLs independently.
-<!-- change:human-alerts-agent-only -->
-Person-addressed delivery (`telec message`) renders it when the
-request carries an originating session; any surface that later renders a
-session backlink on Discord (session-output presentation, owner
-notifications) constructs it through this same capability rather than
-building URLs independently.
-<!-- /planned-change:human-alerts-agent-only -->
 
 ## Canonical fields
 

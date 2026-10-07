@@ -32,6 +32,27 @@ And the body is followed by the registered matching close
 And every human push adapter receives that same rendered envelope rather than a private template
 ```
 
+<!-- planned:human-alerts-agent-only -->
+#### UC-OAC2: An occurrence yields one card, from the computer where it happened
+
+```gherkin
+Given an operational occurrence on one computer requires a current action from a human
+When every computer in the fleet receives its event
+Then only the computer the occurrence happened on records it and delivers its card
+And no other computer records it or delivers a card for it
+```
+
+#### UC-OAC3: Admin action cards reach only administrators who turned them on
+
+```gherkin
+Given an operational occurrence requires a current action and addresses no one
+When its card is delivered to the platform administrators
+Then each administrator who turned admin push on receives it on their configured channels
+And an administrator who has not turned it on receives no card
+And admin push is off for an administrator until they turn it on
+```
+<!-- /planned:human-alerts-agent-only -->
+
 ### Cross-context references
 
 - **integration** owns push-adapter delivery of the rendered action card.

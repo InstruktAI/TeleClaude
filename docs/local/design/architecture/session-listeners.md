@@ -84,7 +84,6 @@ audience is empty.
   bounds a runtime that violated that guarantee to one notice plus a
   diagnostic, and claims no power to retract a notification already delivered.
 
-
 - **Distress follows the agent-status transition.** Every entry into `blocked`
   or `stalled` produces one notification of the matching kind for that turn,
   whether the runtime reported it, a watchdog inferred it, or input delivery
@@ -93,7 +92,6 @@ audience is empty.
   gate, never the terminal-outcome slot, so the turn's own end or
   runtime-reported failure still notifies when it arrives. A `no_start` stall
   happens before any turn and is gated once per start.
-
 
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither reads, delivers to, nor removes a
@@ -110,18 +108,11 @@ audience is empty.
   reported undeliverable — distress goes to that channel instead. One-shot rows
   are not in the audience and so never suppress the fallback, and the channel
   is delivered to at most once per distress event.
-<!-- planned-change:human-alerts-agent-only -->
 - **The fallback is the session's own output lane, not the platform push
   pipeline.** It is the surface that already carries this session's ordinary
   output. It is not the notification projector's action gate, which addresses
   the admin audience, debounces on a trailing window, and fires on an incident
   fingerprint.
-<!-- change:human-alerts-agent-only -->
-- **The fallback is the session's own output lane, not the event pipeline.** It
-  is the surface that already carries this session's ordinary output. The event
-  pipeline records notifications and pushes nothing to a human
-  (`local/projects/teleclaude/design/architecture/notification-delivery`).
-<!-- /planned-change:human-alerts-agent-only -->
 - **A turn's account is decided at normalization, not at delivery.** Every
   mapped runtime emits exactly one terminal signal per turn — a failed turn
   produces the failure signal and no turn-end signal — so the signal that
@@ -241,9 +232,9 @@ An inferred stall renders the turn-failure kind with the daemon's evidence:
 A blocked transition raised by input delivery renders the blocked kind with the
 daemon's evidence:
 
-| Blocked cause         | Message Format                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| no composer           | `Session {id} [on {computer}] "{title}" shows a screen other than its composer while input waits. Pane: {last pane lines}` |
+| Blocked cause | Message Format                                                                                                             |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| no composer   | `Session {id} [on {computer}] "{title}" shows a screen other than its composer while input waits. Pane: {last pane lines}` |
 
 Every kind names the target session and states which of the three it is, so a
 caller can decide its next move without first tailing the target. The computer

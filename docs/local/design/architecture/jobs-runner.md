@@ -36,16 +36,9 @@ notification shape:
   A script job closes synchronously in the same tick; an agent job closes on a later tick
   when its structured outcome report arrives.
 - A run that stays open past its expected window (`timeout`) is marked **stalled**.
-<!-- planned-change:human-alerts-agent-only -->
 - On every close or stall the runner emits a `job.run.*` event; an actionable outcome
   (failure or stall) notifies a human through the notification cartridge, a clean run is
   silent. "Dispatched" never means "succeeded."
-<!-- change:human-alerts-agent-only -->
-- On every close or stall the runner emits a `job.run.*` event; an actionable outcome
-  (failure or stall) is recorded as a notification in-app and in-log, where the log bug
-  hunter picks it up, and no outcome pushes a message to a human. "Dispatched" never
-  means "succeeded."
-<!-- /planned-change:human-alerts-agent-only -->
 
 ### Architecture
 
@@ -109,14 +102,8 @@ is down.
 #### Outcome reporting and notification
 
 Outcomes ride the platform's existing event substrate. The runner emits a `job.run.*`
-<!-- planned-change:human-alerts-agent-only -->
 event on close or stall through `EventProducer`; the notification cartridge projects an
 actionable event (failure or stall) to admins and stays silent for a clean run. The agent
-<!-- change:human-alerts-agent-only -->
-event on close or stall through `EventProducer`; the notification cartridge records an
-actionable event (failure or stall) as a notification in-app and in-log and interrupts no
-human (`local/projects/teleclaude/design/architecture/notification-delivery`). The agent
-<!-- /planned-change:human-alerts-agent-only -->
 never emits events — it reports only through `telec jobs report`, and the runner owns the
 translation to events. When event emission cannot be delivered, the runner persists a
 durable pending-emission record — the full payload keyed by the run's project, job identity,
@@ -157,11 +144,7 @@ and the walk continues.
 
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
-<!-- planned-change:human-alerts-agent-only -->
 - `job.run.*` events on close/stall, projected to a human when actionable
-<!-- change:human-alerts-agent-only -->
-- `job.run.*` events on close/stall; a failure or stall is also recorded as a notification in-app and in-log, and no outcome is pushed to a human
-<!-- /planned-change:human-alerts-agent-only -->
 - Run reports under `JOBS_DIR`, keyed by project and declared job name (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
 
@@ -175,11 +158,7 @@ and the walk continues.
 - A run is opened at dispatch and closed only by a real outcome — dispatch never marks success.
 - A job with an open run is not re-dispatched until its run closes or stalls.
 - Both job classes produce the same `JobResult` outcome and `job.run.*` event shape.
-<!-- planned-change:human-alerts-agent-only -->
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
-<!-- change:human-alerts-agent-only -->
-- No run outcome pushes a message to a human; an actionable outcome (failure or stall) is recorded as a notification in-app and in-log.
-<!-- /planned-change:human-alerts-agent-only -->
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
 - A job has one identity, the `name` its declaration carries. Dispatch, run state, the run directory, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
 
@@ -354,11 +333,7 @@ keep separate notification lifecycles.
 - **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
 - **Script job exceeds `timeout`**: The daemon-thread join records a failed `JobResult` and the runner aborts the rest of the pass so no later job runs concurrently; the hung job is hard-reaped when the runner process exits, freeing the pidlock, and the deferred jobs run on the next trigger.
 - **A job cannot start**: An agent session-creation failure — including an agent preference list with no eligible candidate — records a failed outcome carrying the dispatch refusal reason and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
-<!-- planned-change:human-alerts-agent-only -->
 - **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, notifies a human.
-<!-- change:human-alerts-agent-only -->
-- **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, which is recorded as a notification and pushed to no human.
-<!-- /planned-change:human-alerts-agent-only -->
 - **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
 - **Daemon unavailable during an agent job**: The agent spawns without MCP tools and still reports its outcome to the filesystem; the run closes normally.

@@ -59,18 +59,11 @@ neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
 reads in full (`local/projects/teleclaude/spec/feature/context/doc-selection-policy`). A
 person's private local documentation is readable only by that person and the
-<!-- planned-change:human-alerts-agent-only -->
 system principal, platform administrators included (same contract). A
 notification addressed to one person reaches only that person, through their own
 channel, and appears on no shared surface, for platform reach too
 (`local/projects/teleclaude/design/architecture/notification-delivery`); reach governs broadcast
 notifications.
-<!-- change:human-alerts-agent-only -->
-system principal, platform administrators included (same contract). A
-notification addressed to one person appears on no shared surface, for platform
-reach too (`local/projects/teleclaude/design/architecture/notification-delivery`);
-reach governs broadcast notifications.
-<!-- /planned-change:human-alerts-agent-only -->
 
 ## Canonical fields
 
@@ -115,7 +108,6 @@ When the person lists sessions, history, projects, or notifications
 Then only records about their own person home are shown
 ```
 
-<!-- planned-change:human-alerts-agent-only -->
 #### UC-DV4: Every data surface applies the same reach
 
 ```gherkin
@@ -135,27 +127,6 @@ Examples:
   | the project listing and the todos shown per project      |
   | memory observations: search, listing, and timeline       |
 ```
-<!-- change:human-alerts-agent-only -->
-#### UC-DV4: Every data surface applies the same reach
-
-```gherkin
-Given two principals with different reach
-When each views the same platform data through any surface that shows it
-Then each sees exactly the records their reach admits, the same set on every surface
-And documentation published as public and notifications addressed to one person follow their own audience instead
-
-Examples:
-  | surface                                                  |
-  | the session listing, including closed and by-id listings |
-  | live session updates in the TUI and web console          |
-  | conversation history search and detail                   |
-  | operation status                                         |
-  | documentation, read in full only for reached tiers       |
-  | notifications, as their list is served                   |
-  | the project listing and the todos shown per project      |
-  | memory observations: search, listing, and timeline       |
-```
-<!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV5: A page is filled with visible records only
 
@@ -212,7 +183,6 @@ Then it receives the snippets their author published as public
 And it receives none of that tier's other snippets
 ```
 
-<!-- planned-change:human-alerts-agent-only -->
 #### UC-DV11: An addressed notification stays with its recipient
 
 ```gherkin
@@ -221,15 +191,6 @@ When any other principal, a platform administrator included, views the shared no
 Then that notification is not shown to them
 And the addressed person receives it through their own channel
 ```
-<!-- change:human-alerts-agent-only -->
-#### UC-DV11: An addressed notification stays with its recipient
-
-```gherkin
-Given a notification addressed to one person
-When any other principal, a platform administrator included, views the shared notification list in the TUI or web console
-Then that notification is not shown to them
-```
-<!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV12: A principal's own work stays visible outside its reach
 

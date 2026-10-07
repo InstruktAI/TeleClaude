@@ -50,15 +50,33 @@ action is delivered once and only a material escalation can interrupt again.
   that principal is the intended audience for the push. An actionable
   notification that addresses no one has the admin set as its audience.
 
+<!-- planned:human-alerts-agent-only -->
+- The computer the event originated on, as the event states it.
+- Each platform administrator's admin-push setting, off until that
+  administrator turns it on.
+<!-- /planned:human-alerts-agent-only -->
+
 **Outputs:**
 
+<!-- planned-change:human-alerts-agent-only -->
 - A push delivered to each configured interrupting surface — Telegram, Discord,
   and WhatsApp admin DMs, and the WebSocket app-client push — **only** for events
   that pass the gate.
+<!-- change:human-alerts-agent-only -->
+- A push delivered to the Telegram, Discord, and WhatsApp DMs of each platform
+  administrator who turned admin push on, and to the WebSocket app-client push —
+  **only** for events that originated on this computer and pass the gate.
+<!-- /planned-change:human-alerts-agent-only -->
 
+<!-- planned-change:human-alerts-agent-only -->
 - A notification row written for every projected event regardless of the gate, so
   routine events remain queryable in-app and in-log; the gate suppresses the
   interruption, not the record.
+<!-- change:human-alerts-agent-only -->
+- A notification row written for every projected event that originated on this
+  computer, regardless of the gate, so routine events remain queryable in-app and
+  in-log; the gate suppresses the interruption, not the record.
+<!-- /planned-change:human-alerts-agent-only -->
 
 - For an actionable notification addressed to a principal, a single push
   delivered to that principal's resolved channel instead of the admin fan-out.
@@ -87,6 +105,19 @@ action is delivered once and only a material escalation can interrupt again.
   human-action delivery intent.
 - **Recovery remains record-only.** Resolution updates the durable incident and
   in-app state but does not send a positive external push.
+
+<!-- planned:human-alerts-agent-only -->
+- **A computer handles only the events it emitted.** Every computer reads the
+  shared event stream, and each one projects and pushes only the events whose
+  origin names it. An event from another computer writes no notification row
+  here and sends no push from here, so each event yields one record and at most
+  one push across the fleet, on the computer where it happened.
+- **Admin push is opt-in per administrator.** The admin fan-out reaches the
+  external DMs only of platform administrators who turned their admin-push
+  setting on, and the setting stays off until they do. It governs the admin
+  fan-out alone: a notification addressed to a principal, the WebSocket app
+  push, and the notification row do not depend on it.
+<!-- /planned:human-alerts-agent-only -->
 
 - **Every push surface honours the same gate.** The interrupting-DM adapters and
   the WebSocket app push apply one shared decision; no surface forwards
@@ -153,6 +184,7 @@ action is delivered once and only a material escalation can interrupt again.
 
 ## Primary flows
 
+<!-- planned-change:human-alerts-agent-only -->
 ```mermaid
 flowchart TD
     E[Event on pipeline] --> C[Classification cartridge<br/>annotates actionable + treatment]
@@ -162,6 +194,19 @@ flowchart TD
     G -- no --> X[No push — record remains<br/>in-app and in-log]
     G -- yes --> D[Action card to configured surface:<br/>Telegram / Discord / WhatsApp / WebSocket]
 ```
+<!-- change:human-alerts-agent-only -->
+```mermaid
+flowchart TD
+    E[Event on pipeline] --> O{Originated on<br/>this computer?}
+    O -- no --> N[Nothing here:<br/>no row, no push]
+    O -- yes --> C[Classification cartridge<br/>annotates actionable + treatment]
+    C --> P[Notification-projector cartridge<br/>creates/updates row]
+    P --> R[Notification row<br/>visible in-app and in-log]
+    P --> G{Gate:<br/>human action now AND<br/>new action fingerprint?}
+    G -- no --> X[No push — record remains<br/>in-app and in-log]
+    G -- yes --> D[Action card to opted-in admin DMs<br/>Telegram / Discord / WhatsApp, and WebSocket]
+```
+<!-- /planned-change:human-alerts-agent-only -->
 
 The projector carries one structured delivery intent to the shared gate. The
 intent includes audience, human-facing summary, concrete action, original
@@ -190,6 +235,7 @@ not rendered as the message body.
 When a projected change that passes the gate carries an addressed recipient, the
 push forks from the broadcast path to a single targeted delivery:
 
+<!-- planned-change:human-alerts-agent-only -->
 ```mermaid
 flowchart TD
     P[Gate passed:<br/>new concrete human action] --> A{Addressed to<br/>a principal?}
@@ -198,6 +244,16 @@ flowchart TD
     S -- resolved --> D[Deliver one action card to that channel]
     S -- unresolvable --> W[Write row, log warning, no push]
 ```
+<!-- change:human-alerts-agent-only -->
+```mermaid
+flowchart TD
+    P[Gate passed:<br/>new concrete human action] --> A{Addressed to<br/>a principal?}
+    A -- no --> F[Admin action delivery:<br/>DMs of opted-in admins + WebSocket]
+    A -- yes --> S[Resolve principal to channel<br/>preferred channel + credential]
+    S -- resolved --> D[Deliver one action card to that channel]
+    S -- unresolvable --> W[Write row, log warning, no push]
+```
+<!-- /planned-change:human-alerts-agent-only -->
 
 ## Failure modes
 
@@ -216,6 +272,14 @@ flowchart TD
 - **Gating the notification row instead of the push** hides routine events from
   the in-app list and log, losing the record the operator relies on for
   diagnosis. The gate belongs on the push, not on the projection.
+
+<!-- planned:human-alerts-agent-only -->
+- **Every computer handling every event** delivers each push once per computer,
+  late from a computer that was asleep, and keeps a copy of each notification on
+  every computer whose seen and resolved state drifts from the others.
+- **Admin push on by default** interrupts every administrator with every action
+  card before anyone has chosen to receive them.
+<!-- /planned:human-alerts-agent-only -->
 
 - **Falling back to the admin fan-out on an unresolvable recipient** re-admits
   the leak the addressing exists to prevent: a per-person notification meant for
