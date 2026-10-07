@@ -468,6 +468,8 @@ And origin/main is unchanged
 - `workflow` — delivery bookkeeping records the delivery commit; `workflow.todo.delivered` is emitted by the workflow context after push succeeds.
 - `operations` — `telec todo integrate` returns an operation receipt; the integrator runs inside the operation runner so failures surface through operation status.
 
+<!-- planned-change:consumer-framework -->
+
 - `workflow.lifecycle_runner` — observes workflow wake-up events only to
   re-evaluate prepare/work candidates and downstream dependencies. It does not
   spawn or inline the integrator for `finalize_ready`; the
@@ -475,6 +477,18 @@ And origin/main is unchanged
   `IntegrationTriggerCartridge` plus the integrator singleton lease. When
   `workflow.todo.delivered` fires, the runner may re-evaluate dependents whose
   work gates are now satisfied.
+
+<!-- change:consumer-framework -->
+
+- `workflow.lifecycle_runner` — observes workflow wake-up events only to
+  re-evaluate prepare/work candidates and downstream dependencies. It does not
+  spawn or inline the integrator for `finalize_ready`; the
+  `workflow.todo.phase_advanced` finalize-ready handoff remains owned by
+  the integration trigger consumer plus the integrator singleton lease. When
+  `workflow.todo.delivered` fires, the runner may re-evaluate dependents whose
+  work gates are now satisfied.
+
+<!-- /planned-change:consumer-framework -->
 
 ## Known caveats
 

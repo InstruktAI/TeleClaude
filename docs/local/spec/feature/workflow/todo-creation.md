@@ -270,6 +270,15 @@ And only that output names how to complete the filing
 And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
 ```
 
+#### UC-WTC35: A bug filing names the current contract it contradicts
+
+```gherkin
+Given an agent has faced the pre-filing decisions and files a bug
+When the filing names no contract, or one that resolves to no snippet in the owning project, or one a pending delivery still owns
+Then nothing is filed, and the agent is told which of these held — a filing with no contract is pointed to the change route for behavior no current contract states
+And when the named contract resolves to a current snippet in the owning project, the bug is filed with that contract recorded beside its symptom
+```
+
 #### UC-WTC28: Todo creation interrogates before creating
 
 ```gherkin
@@ -470,7 +479,17 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 ### Cross-context references
 
 - `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.
+
+<!-- planned-change:consumer-framework -->
+
 - `integration` — the lifecycle router cartridge consumes `workflow.todo.created` and dispatches cartridge-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
+
+<!-- change:consumer-framework -->
+
+- `integration` — the lifecycle router consumer consumes `workflow.todo.created` and dispatches lane-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
+
+<!-- /planned-change:consumer-framework -->
+
 - `agent_runtime` — the creative state machine driven by `telec todo design` spawns and supervises creative sessions through `agent_runtime`.
 
 ## Known caveats
