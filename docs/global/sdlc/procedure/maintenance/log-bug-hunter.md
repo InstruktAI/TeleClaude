@@ -157,9 +157,11 @@ Create the directory when needed. Each report carries:
 - **Summary:** project, scan start and end, complete or incomplete, and outcome.
 - **Findings:** each eligible error signal's observed evidence and disposition — filed bug
   slug, existing work slug, in-flight slug that owns the mechanism, suppression ID, exclusion
-  cause, a signal carried for recurrence after a repair landed, or outstanding filing. Warning
-  records do not appear as findings. A carried signal names the commit that repaired its path,
-  so the next run can file it without repeating this run's history query.
+  cause, a signal carried for recurrence after a repair landed, a signal carried for want of a
+  contract, or outstanding filing. Warning records do not appear as findings. A signal carried
+  for recurrence names the commit that repaired its path, so the next run can file it without
+  repeating this run's history query. A signal carried for want of a contract states the
+  operation and consequence its records show.
 - **Errors:** collection, deduplication, or filing failures; use "None" when absent.
 
 The report is the scan history consumed by the next run. The structured outcome
