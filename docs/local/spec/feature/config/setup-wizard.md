@@ -316,7 +316,7 @@ lands in one of the six surfaces below.
 
 | Wizard scope                                          | Persistence file                             | Typed surface                                      | Writer                                                                |
 | ----------------------------------------------------- | -------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
-| People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema                              | global-config writer (config bounded context)                         |
+| People, subscriptions, interests                      | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema                              | global-config writer (config bounded context)                         |
 | Per-person creds, subscriptions, interests, settings  | `~/.teleclaude/people/<slug>/teleclaude.yml` | per-person overlay schema                          | per-person-config writer (config bounded context)                     |
 | Per-person MCP service secrets                        | `~/.teleclaude/people/<slug>/.env`           | MCP registry-derived secret requirements (untyped) | person-secret writer (config bounded context)                         |
 | Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)    | project overlay schema                             | project-config writer (atomic — per `atomic-project-config-write.md`) |
