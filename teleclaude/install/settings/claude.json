@@ -1,13 +1,31 @@
 {
+  "alwaysThinkingEnabled": true,
+  "awaySummaryEnabled": false,
+  "cleanupPeriodDays": 99999,
+  "effortLevel": "xhigh",
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true
   },
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
-    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "0"
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "0",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "input=$(cat); iso=$(echo \"$input\" | jq -r \".tool_input.isolation // empty\"); if [ \"$iso\" = \"worktree\" ]; then root=$(git rev-parse --show-toplevel 2>/dev/null); if [ -n \"$root\" ] && [ -f \"$root/teleclaude.yml\" ]; then echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Worktree isolation for the Agent tool is prohibited in TeleClaude-managed repos (teleclaude.yml at repo root). Parallel subagents must work on disjoint files within the current worktree, not spawn additional git worktrees.\\\"}}\"; else echo \"{}\"; fi; else echo \"{}\"; fi",
+            "type": "command"
+          }
+        ],
+        "matcher": "Agent"
+      }
+    ]
+  },
+  "idleCompaction": false,
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
@@ -18,30 +36,13 @@
       }
     }
   },
-  "statusLine": {
-    "type": "command",
-    "command": "bunx -y ccstatusline@latest",
-    "padding": 0
-  },
-  "skipDangerousModePermissionPrompt": true,
-  "cleanupPeriodDays": 99999,
-  "alwaysThinkingEnabled": true,
-  "effortLevel": "xhigh",
-  "awaySummaryEnabled": false,
-  "tui": "fullscreen",
-  "teammateMode": "in-process",
   "promptSuggestionEnabled": false,
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "input=$(cat); iso=$(echo \"$input\" | jq -r \".tool_input.isolation // empty\"); if [ \"$iso\" = \"worktree\" ]; then root=$(git rev-parse --show-toplevel 2>/dev/null); if [ -n \"$root\" ] && [ -f \"$root/teleclaude.yml\" ]; then echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Worktree isolation for the Agent tool is prohibited in TeleClaude-managed repos (teleclaude.yml at repo root). Parallel subagents must work on disjoint files within the current worktree, not spawn additional git worktrees.\\\"}}\"; else echo \"{}\"; fi; else echo \"{}\"; fi"
-          }
-        ]
-      }
-    ]
-  }
+  "skipDangerousModePermissionPrompt": true,
+  "statusLine": {
+    "command": "bunx -y ccstatusline@latest",
+    "padding": 0,
+    "type": "command"
+  },
+  "teammateMode": "in-process",
+  "tui": "fullscreen"
 }
