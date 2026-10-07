@@ -84,7 +84,7 @@ tooling.
 
     <!-- planned:pending-marker-snippets-skip-formatting -->
 
-            - **Markers sit between whole Markdown blocks.** Place every marker so the snippet is valid Markdown with its markers present, after delivery, and after abandonment, and the formatter and checks treat it like any other file (`sdlc/policy/linting-requirements`). A marker never sits between the rows of a table: to add, change, or remove a row, wrap the whole table. Marker validation enforces the table rule (`general/spec/snippet-authoring-schema`).
+            - **Markers sit between whole Markdown blocks.** Place every marker so adding or resolving its lines changes no block around it, and the snippet is formatted and checked like any other file (`sdlc/policy/linting-requirements`). A marker between the rows of a table splits the table: to add, change, or remove a row, wrap the whole table.
 
     <!-- /planned:pending-marker-snippets-skip-formatting -->
 
