@@ -98,13 +98,21 @@ bindings are owned by `teleclaude/constants.py` (`CHECKPOINT_BASE_ACTIONS`,
 declaring a new action, rather than assuming a project overlay's own binding
 to an unfamiliar id is undeclared.
 
+<!-- planned-change:telec-sync-runs-maintenance -->
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, and `precedence`; it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
+<!-- change:telec-sync-runs-maintenance -->
+23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, `precedence`, and its on-demand disposition (Invariant 29); it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
+<!-- /planned-change:telec-sync-runs-maintenance -->
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
 
 Every checkpoint-registry action also carries its judgment owner: an ordinary session by default, or the standing integrator for each main-only judgment action a project lists in `checkpoint.integrator_judgment`. A listed id that names no main-only checkpoint-registry action is rejected when the project's configuration is validated. The file-based engine defers an integrator-owned action for every non-integrator session, on main and off it. The declaration governs session surfacing only: the checkout-scoped marker of Invariant 19 is recorded for every qualifying advancement whether or not a project declares it, so the standing integrator judges canonical-main maintenance in every project, and a project that declares nothing also keeps each judgment surfaced to its own sessions. A project whose post-activation log judgment belongs to the integrator alone (`local/projects/teleclaude/policy/test-moratorium`) declares it there.
 
+<!-- planned-change:telec-sync-runs-maintenance -->
 An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only` and `precedence`, beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
+<!-- change:telec-sync-runs-maintenance -->
+An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only`, `precedence`, and the optional on-demand `on_demand` disposition and `revision_probe` command (Invariant 29), beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
+<!-- /planned-change:telec-sync-runs-maintenance -->
 
 The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
 
@@ -152,6 +160,50 @@ candidates exist, the engine still produces a decision carrying the question.
 Locating write targets from shell syntax outside quotes and heredoc data, and
 matching a known dirty path there, is structural; the engine never derives a
 path from command text that is not already a known dirty path.
+
+<!-- planned:telec-sync-runs-maintenance -->
+### Invariant 29 — On-demand disposition
+
+`telec sync` performs a root's maintenance on demand through the same executor
+(`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`). An
+on-demand run has no activation range, so the registry itself tells it what to
+do with each maintenance action, through the action's `on_demand` disposition:
+
+- `bound`, the default: owed when a binding active in the root names the action,
+  and otherwise reported as not owed in that root. Capability gating stays on
+  the bindings (Invariant 22), so this reading inherits it.
+- `always`: owed in every root.
+- `deferred`: never performed on demand. The run reports the action as owed when
+  a process it refreshes started from an earlier commit than the converged tip,
+  and the changed paths between the two owe the action under the root's own
+  bindings, through the same scope matcher (Invariant 25). The action's
+  `revision_probe` command reports the commit each live process it refreshes
+  started from: one revision per line, no line when no such process runs, and a
+  non-zero exit when it cannot tell. With no probe, a probe that cannot tell, or
+  a reported commit that is not an ancestor of the tip, the run reports that it
+  cannot tell. A reported commit that already contains the tip owes nothing.
+
+An action also states whether its command reads only committed state. That is a
+claim about the command's own behavior, so only the platform base declares it,
+on publication, and an overlay that overrides that action by id does not inherit
+it. When the root's repository holds uncommitted changes, an on-demand run
+performs only those actions, and holds every other owed action.
+
+The platform base declares installation and publication `bound`, and converging
+the invoking root's own plumbing as `plumbing-convergence`, `always`, with no
+base binding. Commit-boundary maintenance in a project is therefore unchanged,
+and every on-demand run converges the root's plumbing. TeleClaude's overlay
+overrides `plumbing-convergence` by id with fleet convergence bound to its hook
+templates, and declares `restart` and `tui-reload` `deferred`, each with a probe
+that reads the commit the daemon and each live TUI started from.
+
+An on-demand run fills a command without a range. `{after_sha}` takes the
+converged tip, the `--before-sha {before_sha}` pair is omitted, and the
+`--home {home}` pair carries the invocation home's path within the repository.
+A commit-boundary activation omits the `--home {home}` pair. The publication
+action publishes a range's owed homes when it receives a range, and rebuilds the
+invocation home and the homes nested beneath it when it receives a home.
+<!-- /planned:telec-sync-runs-maintenance -->
 
 ## Primary flows
 

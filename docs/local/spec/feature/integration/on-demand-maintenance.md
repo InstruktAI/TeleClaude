@@ -23,8 +23,12 @@ caller see at which step a failure happens.
 The steps are every maintenance action the root's registry declares — the
 platform base merged with the root's own overlay, the same merged model the
 commit boundary reads. `telec sync` keeps no list of its own, so the fallback
-cannot drift from the automation. A manual run has no commit range, so every
-declared step is owed.
+cannot drift from the automation. A manual run has no commit range, so changed
+paths narrow nothing: a step is owed when the root's declaration can owe it at
+all. A step whose bindings the root never activates, such as installation in a
+root that does not subscribe code, is one the automation never performs there;
+the run reports it as not owed in that root, and neither performs nor fails it.
+Converging the root's own plumbing is owed in every root.
 
 Publication is one of those steps and keeps its own contract
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
@@ -36,24 +40,37 @@ Publication is one of those steps and keeps its own contract
   another branch, or from a directory holding no `teleclaude.yml`, it refuses
   before any step runs and names where to run it instead.
 - **Steps.** The owed steps run in the registry's declared order through the
-  commit-boundary executor, with the same per-step outcome records. Each step's
-  outcome is reported as it completes. A failed step never stops a later one. A
-  run in which any step failed exits non-zero.
+  commit-boundary executor, with the same structured attempt and outcome
+  records, marked as an on-demand run. Each step's outcome is reported as it
+  completes. A failed step never stops a later one. A run in which any step
+  failed or was held exits non-zero. The run leaves no queued obligation behind:
+  its caller holds the outcome, and running it again is its recovery.
+- **Uncommitted edits.** The step set is resolved from the root's committed
+  declaration. When the root's repository holds uncommitted changes, a step that
+  reads only committed state, such as publication, still runs, and every other
+  step is held: it is not performed, and the run reports it with the uncommitted
+  paths and, where known, the sessions holding them. Steps that run from the
+  checkout would otherwise consume those edits.
 - **Plumbing.** Every project's steps include converging that project's own
   plumbing, whatever else its declaration carries.
 - **Disruptive steps.** Restarting the daemon and reloading the terminal
   interface are never performed by a run. After its steps, the run reports each
-  of them that is owed. One is owed when the running process is older than the
-  code the run converged, and the report names the command that performs it. A
-  run that establishes nothing is owed adds nothing. A run that cannot establish
-  it says so.
+  of them that is owed. One is owed when a process it refreshes started from an
+  earlier commit than the one the run converged, and the changes between the two
+  owe that step under the root's own bindings. The report names the command that
+  performs it. A run that establishes nothing is owed adds nothing. A run that
+  cannot establish which commit a running process started from says so.
 - **Earlier failures.** A step that an earlier commit-boundary run recorded as
   failed is named after the run's own steps, with the replay that recovers it.
   That replay re-runs the recorded action for its original range. The run never
-  replaces or clears that record. Either the named recovery is one the reader
-  can perform, or the report names who can.
-- **Listing.** `telec sync --list` prints the steps a run would perform in that
-  root, and changes nothing.
+  replaces or clears that record. The report names the standing integrator as
+  the owner of that replay.
+- **Report order.** Step outcomes come first, then held steps, then earlier
+  failures, and owed disruptive steps last.
+- **Listing.** `telec sync --list` prints, in order, every step the root's
+  registry declares with what a run would do with it — perform it, hold it,
+  report it as not owed in that root, or report it as owed or not — and changes
+  nothing.
 - **Concurrency.** A run started while commit-boundary maintenance is still
   running never performs a step at the same time as that run, and leaves both
   runs' records accurate.
@@ -124,7 +141,7 @@ Given an earlier commit-boundary maintenance run recorded a step as failed
 When an agent runs telec sync in that root
 Then the run names that failed step and the command that replays it for its original range
 And the failed record remains for that replay
-And the agent can perform the named replay, or is told who can
+And the agent is told that the standing integrator owns that replay
 ```
 
 #### UC-ODM8: Listing changes nothing
@@ -150,8 +167,10 @@ And the agent is told to run it from the canonical checkout on main
 ```gherkin
 Given a root whose working tree holds uncommitted edits
 When an agent runs telec sync there
-Then every step acts on the committed main tip
+Then publication publishes the committed main tip
+And every step that would run from the working tree is held and reported with those uncommitted paths
 And no uncommitted edit appears in any step's output
+And telec sync exits non-zero
 ```
 
 #### UC-ODM11: A run during automatic maintenance does not collide with it
@@ -179,6 +198,16 @@ Given an agent unsure how to recover a root after maintenance did not run
 When the agent reads telec sync's help
 Then the help describes it as the manual fallback for commit-boundary maintenance
 And states that it performs the root's maintenance steps, leaves restarts and reloads undone, and names what is owed
+```
+
+#### UC-ODM14: A step the root can never owe is reported, not failed
+
+```gherkin
+Given a root that does not subscribe the capability whose bindings owe installation
+When an agent runs telec sync in that root's canonical checkout on main
+Then installation is not performed
+And the agent sees it reported as not owed in that root
+And it does not make telec sync exit non-zero
 ```
 
 ## See Also

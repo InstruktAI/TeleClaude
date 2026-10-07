@@ -39,6 +39,7 @@ Three entry points run the same routine:
   deployed documentation matches the installed code. It holds the same
   publication serialization, and the installer acts only on its result.
 <!-- /planned:startable-unattended-install -->
+<!-- planned-change:telec-sync-runs-maintenance -->
 - **`telec sync`** — an operator command that publishes the home at the
   invocation directory and every nested home beneath it in the committed tree:
   in the global home, its company and person homes. It runs only when the invocation directory itself holds a
@@ -46,6 +47,18 @@ Three entry points run the same routine:
   anywhere else it refuses and names that requirement. It is an agent command,
   reached by every agent role except the worker, and admits members and admins
   (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+<!-- change:telec-sync-runs-maintenance -->
+- **`telec sync`** — the on-demand maintenance run
+  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`),
+  whose publication step publishes the home at the invocation directory and
+  every nested home beneath it in the committed tree: in the global home, its
+  company and person homes. It runs only from the canonical checkout on its main
+  branch, and only when the invocation directory itself holds a
+  `teleclaude.yml`; it never resolves a home from a parent directory, and
+  anywhere else it refuses and names that requirement. It is an agent command,
+  reached by every agent role except the worker, and admits members and admins
+  (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+<!-- /planned-change:telec-sync-runs-maintenance -->
 
 Home vocabulary follows `local/projects/teleclaude/spec/domain/glossary`. Homes are
 discovered in the committed tree, never on disk, so a gitignored folder or a
@@ -176,7 +189,11 @@ And the replayed action completes without awaiting further recovery
 #### UC-SPO26: telec sync publishes the invocation home and its nested homes
 
 ```gherkin
+<!-- planned-change:telec-sync-runs-maintenance -->
 Given a member, an admin, or a non-worker agent in a directory that holds a teleclaude.yml
+<!-- change:telec-sync-runs-maintenance -->
+Given a member, an admin, or a non-worker agent in a directory of the canonical checkout on main that holds a teleclaude.yml
+<!-- /planned-change:telec-sync-runs-maintenance -->
 And the committed tree holds further homes beneath that directory
 When it invokes telec sync
 Then that home and every nested home in the committed tree are published from the committed main tip
