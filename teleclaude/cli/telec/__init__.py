@@ -231,7 +231,7 @@ def _session_action_target(node: CommandDef, args: list[str]) -> str | None:
     parsed = parse_command_args(node, args)
     if parsed.positionals:
         return parsed.positionals[0]
-    return parsed.value(F.FLAG_SESSION)
+    return parsed.value(F.FLAG_SESSION) if F.FLAG_SESSION in node.flags else None
 
 
 def _dispatch_handler(handler: Callable[[], None]) -> None:

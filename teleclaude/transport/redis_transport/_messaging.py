@@ -95,6 +95,7 @@ _RELAYED_READ_COMMANDS = frozenset(
         RelayRead.SESSION_PANE.value,
         RelayRead.OPERATION.value,
         RelayRead.SESSIONS.value,
+        RelayRead.SESSION_RECORD.value,
         HistoryRelayCommand.SEARCH.value,
         HistoryRelayCommand.SHOW.value,
     }

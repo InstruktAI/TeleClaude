@@ -68,6 +68,12 @@ INTEGRATOR_GITOP_ENV = "TELECLAUDE_INTEGRATOR_GITOP"
 RUNNER_NOT_DISPATCHED = "RUNNER_NOT_DISPATCHED"
 
 
+class SessionTarget(StrEnum):
+    """Names a session reference may take in place of a session id."""
+
+    SELF = "self"
+
+
 # System roles
 class SystemRole(StrEnum):
     """Closed vocabulary for roles a session can carry."""

@@ -145,6 +145,7 @@ _SELF_TARGET = "self"
 _UNAUTHORIZED_ROLE = "unauthorized"
 _SESSION_END_PATH = "sessions end"
 _SESSION_RESTART_PATH = "sessions restart"
+_SESSION_SHOW_PATH = "sessions show"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
 _DESK_COMMAND_REFUSAL_TEMPLATE = "permission denied — {command_path} is not available at a help desk"
 _PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
@@ -437,9 +438,12 @@ def cli_clearance(
     action = {
         _SESSION_END_PATH: SessionAct.END,
         _SESSION_RESTART_PATH: SessionAct.RESTART,
+        _SESSION_SHOW_PATH: SessionAct.SHOW,
     }.get(command_path)
     if action is not None:
-        action_session_target = identity.session_id if target_session_id == _SELF_TARGET else target_session_id
+        # Showing a session without naming one shows the caller's own.
+        names_self = target_session_id == _SELF_TARGET or (action is SessionAct.SHOW and target_session_id is None)
+        action_session_target = identity.session_id if names_self else target_session_id
         exception = session_act_exception(
             action,
             identity.session_id,
