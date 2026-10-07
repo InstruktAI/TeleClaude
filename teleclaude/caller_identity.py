@@ -57,6 +57,7 @@ class SessionAct(StrEnum):
 
     END = "end"
     RESTART = "restart"
+    SHOW = "show"
 
 
 class RelayedAct(StrEnum):
@@ -71,6 +72,7 @@ class RelayedAct(StrEnum):
     RESTART = "telec sessions restart"
     UNSUBSCRIBE = "telec sessions unsubscribe"
     LIST = "telec sessions list"
+    SHOW = "telec sessions show"
     OPERATIONS_GET = "telec operations get"
     HISTORY_SEARCH = "telec history search"
     HISTORY_SHOW = "telec history show"
@@ -668,7 +670,7 @@ def session_act_exception(
     caller_system_role: str | None,
     target_session_id: str | None,
 ) -> bool | None:
-    """Apply self-end and self-restart exceptions before the declared band."""
+    """Apply self-end, self-restart, and self-show exceptions before the declared band."""
     if caller_session_id is None or target_session_id != caller_session_id:
         if act is SessionAct.RESTART and caller_system_role == ROLE_WORKER:
             return False

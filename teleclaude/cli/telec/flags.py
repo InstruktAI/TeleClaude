@@ -72,6 +72,11 @@ FLAG_JSON_MACHINE_READABLE = Flag("--json", desc="Emit machine-readable JSON out
 FLAG_SESSIONS_LIST_ALL = Flag("--all", desc="Show all sessions", arity=SWITCH)
 FLAG_SESSIONS_LIST_CLOSED = Flag("--closed", desc="Include closed sessions", arity=SWITCH)
 FLAG_SESSIONS_LIST_JOB = Flag("--job", desc="Filter by job value", arity=VALUE)
+FLAG_SESSIONS_SHOW_FULL = Flag(
+    "--full",
+    desc="Show the complete stored record instead of the grouped detail",
+    arity=SWITCH,
+)
 
 FLAG_MESSAGE = Flag("--message", desc="Initial message to send", arity=VALUE)
 FLAG_DIRECT_START = Flag(

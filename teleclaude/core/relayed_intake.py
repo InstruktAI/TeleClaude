@@ -30,10 +30,11 @@ from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL
 from teleclaude.core import command_handlers
 from teleclaude.core.agent_status_projection import project_peer_agent_status
 from teleclaude.core.command_dispatch import execute_command_envelope
-from teleclaude.core.db import db
+from teleclaude.core.db import SessionRecordAbsent, SessionRecordFound, SessionRecordOutsideReach, db
 from teleclaude.core.models import JsonDict, JsonValue, RedisInboundMessage, SessionEntryPoint
 from teleclaude.core.models._types import json_int
 from teleclaude.core.operations import get_operations_service
+from teleclaude.core.session_inspection import OUTSIDE_REACH_DETAIL_TEMPLATE, inspect_local
 from teleclaude.core.session_listing import (
     SESSION_IDS_FIELD,
     SessionListingSelection,
@@ -110,6 +111,7 @@ class RelayRead(StrEnum):
     SESSION_PANE = "get_session_pane"
     OPERATION = "get_operation"
     SESSIONS = "list_sessions"
+    SESSION_RECORD = "get_session_record"
 
 
 class RelayedReadNotFound(LookupError):
@@ -172,6 +174,8 @@ def act_for_read(command: str | HistoryRelayCommand) -> RelayedAct | None:
             return RelayedAct.OPERATIONS_GET
         case RelayRead.SESSIONS:
             return RelayedAct.LIST
+        case RelayRead.SESSION_RECORD:
+            return RelayedAct.SHOW
         case _:
             return assert_never(read)
 
@@ -218,6 +222,11 @@ async def execute_relayed_read(
         if session is None:
             raise _read_not_found(_SESSION_KIND, session_id, computer)
         target = SessionOf(session.project_path)
+    if command == RelayRead.SESSION_RECORD.value and session_id:
+        # An absent id keeps the computer target; its read answers not-found below.
+        recorded_session = await db.get_session(session_id)
+        if recorded_session is not None:
+            target = SessionOf(recorded_session.project_path)
     _authorize(caller, act, target, resolver)
 
     if command == RelayRead.SESSION_MESSAGES.value:
@@ -283,6 +292,18 @@ async def execute_relayed_read(
             JsonValue,
             [session.to_peer_dict() for session in sessions],
         )
+
+    if command == RelayRead.SESSION_RECORD.value:
+        record_read = await inspect_local(caller, session_id)
+        match record_read:
+            case SessionRecordFound(values=values):
+                return values
+            case SessionRecordOutsideReach():
+                raise PermissionError(OUTSIDE_REACH_DETAIL_TEMPLATE.format(session_id=session_id, computer=computer))
+            case SessionRecordAbsent():
+                raise _read_not_found(_SESSION_KIND, session_id, computer)
+            case _:
+                assert_never(record_read)
 
     if command == HistoryRelayCommand.SEARCH.value:
         reach = await _history_reach(caller)

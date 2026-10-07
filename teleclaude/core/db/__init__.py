@@ -38,7 +38,13 @@ from ._output_generations import DbOutputGenerationsMixin, DiscordSendIntent, Ou
 from ._process_lifecycle import DbProcessLifecycleMixin
 from ._reminders import DbRemindersMixin
 from ._rows import HookOutboxRow, InboundQueueRow, OperationRow
-from ._session_listing import DbSessionListingMixin
+from ._session_listing import (
+    DbSessionListingMixin,
+    SessionRecordAbsent,
+    SessionRecordFound,
+    SessionRecordOutsideReach,
+    SessionRecordRead,
+)
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
 from ._sync import (
@@ -123,6 +129,10 @@ __all__ = [
     "OperationRow",
     "OutputGeneration",
     "SessionIdentityError",
+    "SessionRecordAbsent",
+    "SessionRecordFound",
+    "SessionRecordOutsideReach",
+    "SessionRecordRead",
     "TurnAuthoredPartInput",
     "TurnAuthoredPartRecord",
     "TurnReceiptEnvelopeInput",

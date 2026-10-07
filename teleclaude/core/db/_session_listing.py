@@ -1,6 +1,7 @@
 """Listing selection and recorded-subject backfill queries."""
 
 from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import or_, text, update
@@ -9,13 +10,35 @@ from sqlmodel import select
 from teleclaude.identity_reach import Reach
 
 from .. import db_models
-from ..models import Session
+from ..models import JsonDict, Session
+from ..models._types import to_json_dict
 from ._base import DbBase
 
 _PROJECT_SUBJECT_PATTERN = "project:%"
 _SESSION_SUBJECT_COLUMN = "sessions.config_subject"
 _SESSION_SUBJECT_OWNER_COLUMN = "sessions.subject_owner"
 _SESSION_PRINCIPAL_COLUMN = "sessions.principal"
+_JSON_SERIALIZATION_MODE = "json"
+
+
+@dataclass(frozen=True)
+class SessionRecordFound:
+    """The session's stored values, read under the caller's reach."""
+
+    values: JsonDict
+
+
+@dataclass(frozen=True)
+class SessionRecordOutsideReach:
+    """The session exists but the caller's reach does not admit it."""
+
+
+@dataclass(frozen=True)
+class SessionRecordAbsent:
+    """No session carries the id."""
+
+
+type SessionRecordRead = SessionRecordFound | SessionRecordOutsideReach | SessionRecordAbsent
 
 
 class DbSessionListingMixin(DbBase):
@@ -49,6 +72,27 @@ class DbSessionListingMixin(DbBase):
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             return [self._to_core_session(row) for row in result.all()]
+
+    async def read_session_record_for_reach(self, reach: Reach, session_id: str) -> SessionRecordRead:
+        """Read one stored session row under the same reach predicate listing applies."""
+        reach_clause, reach_parameters = reach.sql_predicate(
+            subject_col=_SESSION_SUBJECT_COLUMN,
+            owner_col=_SESSION_SUBJECT_OWNER_COLUMN,
+            principal_col=_SESSION_PRINCIPAL_COLUMN,
+        )
+        reached_stmt = (
+            select(db_models.Session)
+            .where(text(reach_clause).bindparams(**reach_parameters))
+            .where(db_models.Session.session_id == session_id)
+        )
+        existence_stmt = select(db_models.Session.session_id).where(db_models.Session.session_id == session_id)
+
+        async with self._session() as db_session:
+            reached = (await db_session.exec(reached_stmt)).first()
+            if reached is not None:
+                return SessionRecordFound(to_json_dict(reached.model_dump(mode=_JSON_SERIALIZATION_MODE)))
+            exists = (await db_session.exec(existence_stmt)).first() is not None
+        return SessionRecordOutsideReach() if exists else SessionRecordAbsent()
 
     async def list_unattributed_session_locations(self) -> list[tuple[str | None, str | None]]:
         """Return distinct project path and subdirectory pairs without a subject."""

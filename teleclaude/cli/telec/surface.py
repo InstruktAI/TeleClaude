@@ -129,6 +129,33 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
+            "show": CommandDef(
+                desc="Show one session's stored record (default: your own session)",
+                args="[<session_id>|self] [--computer <host>] [--full]",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_COMPUTER,
+                    F.FLAG_SESSIONS_SHOW_FULL,
+                ],
+                notes=[
+                    "Default output groups the record as identity, origin, role, state, and wiring.",
+                    "--full shows the complete stored record, decoded, without the last-output text, the "
+                    "accepted-input fingerprint, the help-desk relay exchange, and the agent-status counter.",
+                    "A session is shown only when you could list it; `telec sessions list` shows what you can reach.",
+                    "For what a session said, use `telec sessions tail <session_id>` or `telec history show`.",
+                    "For the roster and a session's children, use `telec sessions list`.",
+                ],
+                examples=[
+                    "telec sessions show",
+                    "telec sessions show <session_id>",
+                    "telec sessions show <session_id> --full --computer <host>",
+                ],
+                auth=CommandAuth(
+                    system=_AGENT_REACH,
+                    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+                    scope=CommandScope.TARGET_SESSION,
+                ),
+            ),
             "coordinate": CommandDef(
                 desc="Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)",
                 flags=[F.FLAG_HELP],
@@ -1823,6 +1850,7 @@ HISTORY_SEARCH = CLI_SURFACE["history"].subcommands["search"]
 HISTORY_SHOW = CLI_SURFACE["history"].subcommands["show"]
 
 SESSIONS_LIST = CLI_SURFACE["sessions"].subcommands["list"]
+SESSIONS_SHOW = CLI_SURFACE["sessions"].subcommands["show"]
 SESSIONS_START = CLI_SURFACE["sessions"].subcommands["start"]
 SESSIONS_SEND = CLI_SURFACE["sessions"].subcommands["send"]
 SESSIONS_TAIL = CLI_SURFACE["sessions"].subcommands["tail"]

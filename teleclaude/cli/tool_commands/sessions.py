@@ -25,11 +25,13 @@ from teleclaude.cli.telec.surface import (
     SESSIONS_RESULT,
     SESSIONS_RUN,
     SESSIONS_RUN_PA,
+    SESSIONS_SHOW,
     SESSIONS_START,
     SESSIONS_TAIL,
     SESSIONS_UNSUBSCRIBE,
 )
 from teleclaude.cli.tool_client import ToolAPIError, print_json, tool_api_call, tool_api_request
+from teleclaude.constants import SessionTarget
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
 
@@ -44,6 +46,12 @@ _SESSIONS_RUN_PA_ENDPOINT: Final[str] = "/sessions/run-pa"
 _SESSIONS_RUN_PA_BRIEF_FIELD: Final[str] = "brief"
 _SESSIONS_RUN_PA_ARGUMENT_ERROR: Final[str] = "Error: provide at most one brief."
 _POST_METHOD = "POST"
+_GET_METHOD: Final[str] = "GET"
+_SESSIONS_SHOW_ENDPOINT_TEMPLATE: Final[str] = "/sessions/{target}"
+_SESSIONS_SHOW_FULL_PARAM: Final[str] = "full"
+_SESSIONS_SHOW_COMPUTER_PARAM: Final[str] = "computer"
+_QUERY_TRUE: Final[str] = "true"
+_UNEXPECTED_ARGUMENT_ERROR_TEMPLATE: Final[str] = "Error: unexpected argument: {argument}"
 _BULK_END_TIMEOUT_S = 30.0
 _BULK_END_POLL_INTERVAL_S = 0.25
 _SESSION_END_DUPLICATE_TARGET_ERROR = "Error: do not specify more than one session_id"
@@ -60,6 +68,7 @@ def handle_sessions(args: list[str]) -> None:
 
     Subcommands:
       list        List sessions (default: spawned by current, --all for all)
+      show        Show one session's stored record ('self' or no id for own session)
       start       Start a new agent session
       send        Send a message to a session
       tail        Get recent messages from a session
@@ -82,6 +91,8 @@ def handle_sessions(args: list[str]) -> None:
 
     if sub == "list":
         handle_sessions_list(rest)
+    elif sub == "show":
+        handle_sessions_show(rest)
     elif sub == "start":
         handle_sessions_start(rest)
     elif sub == "send":
@@ -122,6 +133,7 @@ def _sessions_help() -> None:
 
 Subcommands:
   list         List sessions (default: spawned by current, --all for all)
+  show         Show one session's stored record ('self' or no id for own session)
   start        Start a new agent session
   send         Send a message to a running session
   tail         Get recent messages from a session
@@ -170,6 +182,39 @@ def handle_sessions_list(args: list[str]) -> None:
     if computer:
         params["computer"] = computer
     data = tool_api_call("GET", "/sessions", params=params)
+    print_json(data)
+
+
+def handle_sessions_show(args: list[str]) -> None:
+    """Show one session's stored record.
+
+    Usage: telec sessions show [<session_id>|self] [--computer <name>] [--full]
+
+    Without a session id, shows the record of the calling session.
+    Default output groups the record as identity, origin, role, state, and wiring.
+    With --full, shows the complete stored record, decoded.
+    A session is shown only when the caller could list it.
+    For what a session said, see `telec sessions tail` and `telec history show`;
+    for the roster and a session's children, see `telec sessions list`.
+
+    Examples:
+      telec sessions show
+      telec sessions show abc123
+      telec sessions show abc123 --full --computer remote-macbook
+    """
+    parsed = parse_command_args(SESSIONS_SHOW, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(_UNEXPECTED_ARGUMENT_ERROR_TEMPLATE.format(argument=positionals[1]), file=sys.stderr)
+        raise SystemExit(1)
+    target = positionals[0] if positionals else SessionTarget.SELF.value
+    params: dict[str, str] = {}
+    if parsed.has(F.FLAG_SESSIONS_SHOW_FULL):
+        params[_SESSIONS_SHOW_FULL_PARAM] = _QUERY_TRUE
+    computer = parsed.value(F.FLAG_COMPUTER)
+    if computer:
+        params[_SESSIONS_SHOW_COMPUTER_PARAM] = computer
+    data = tool_api_call(_GET_METHOD, _SESSIONS_SHOW_ENDPOINT_TEMPLATE.format(target=target), params=params)
     print_json(data)
 
 

@@ -36,6 +36,7 @@ from teleclaude.api import (
     projects_routes,
     readiness_routes,
     reminders_routes,
+    session_inspection_routes,
     sessions_actions_routes,
     sessions_routes,
     settings_routes,
@@ -163,6 +164,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         # --- Route modules ---
         sessions_routes.configure(client=client, cache=cache, reminder_service=reminder_service)
+        session_inspection_routes.configure(client=client, cache=cache)
         reminders_routes.configure(reminder_service)
         event_subscription_routes.configure(event_subscription_service)
         sessions_actions_routes.configure(client=client)
@@ -176,6 +178,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         mcp_routes.configure(runtime=self.mcp_runtimes)
         # chiptunes_routes are wired by the daemon after lifecycle start
         self.app.include_router(sessions_routes.router)
+        self.app.include_router(session_inspection_routes.router)
         self.app.include_router(sessions_actions_routes.router)
         self.app.include_router(computers_routes.router)
         self.app.include_router(projects_routes.router)
@@ -269,6 +272,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             logger.info("API server subscribed to cache notifications")
         # Propagate to cache-dependent route modules
         sessions_routes.configure(cache=value)
+        session_inspection_routes.configure(cache=value)
         computers_routes.configure(cache=value)
         projects_routes.configure(cache=value)
         tui_routes.configure(cache=value)
