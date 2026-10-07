@@ -230,14 +230,14 @@ And pending material owned by other slugs remains byte-identical
 
 <!-- change:pending-marker-snippets-skip-formatting -->
 
-#### UC-LMR14: Resolved snippets satisfy the project's own formatter
+#### UC-LMR14: Reconciled snippets satisfy the project's own formatter
 
 ```gherkin
-Given an active todo owns pending material whose resolved text does not match the project's formatter once its markers are removed
-When a lifecycle caller delivers or abandons that todo
+Given an active todo owns pending material whose reconciled text does not match the project's formatter
+When a lifecycle caller delivers, abandons, renames, splits, or reactivates that todo
 Then the reconciliation commit passes the project's commit gate
-And every snippet the reconciliation writes matches the project's formatter
-And the resolved wording is unchanged
+And every snippet the reconciliation writes matches the project's formatter, including a snippet that still carries another slug's pending material
+And the reconciled wording is unchanged
 And pending material owned by other slugs remains byte-identical
 ```
 
