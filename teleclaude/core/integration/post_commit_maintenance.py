@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from teleclaude.core.integration._maintenance_records import (
     remove_record,
     write_record,
 )
+from teleclaude.core.integration.maintenance_trigger import MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
 from teleclaude.hooks.integrator_judgment_marker import (
@@ -219,7 +221,7 @@ def start_drain_contender(project_root: Path) -> bool:
 
 def drain_maintenance(project_root: Path) -> bool:
     """Drain every pending activation while holding the single checkout lock."""
-    root = _eligible_main_root(project_root)
+    root = eligible_main_root(project_root)
     if root is None:
         return False
     with maintenance_drain_lock(root):
@@ -234,7 +236,7 @@ def main() -> int:
 
 def retry_failed_action(project_root: Path, after_sha: str, action_id: str) -> bool:
     """Reset one terminal failure and drain it under the shared lock."""
-    root = _eligible_main_root(project_root)
+    root = eligible_main_root(project_root)
     if root is None:
         return False
     with maintenance_drain_lock(root):
@@ -266,8 +268,8 @@ def maintenance_status(project_root: Path) -> MaintenanceStatus:
     )
 
 
-def _eligible_main_root(project_root: Path) -> Path | None:
-    """Require invocation from the canonical checkout's main branch."""
+def eligible_main_root(project_root: Path) -> Path | None:
+    """Require the canonical checkout's main branch; return its root, or ``None`` for any other location."""
     root = project_root.resolve()
     canonical_root = resolve_project_state_root(root)
     if root != canonical_root:
@@ -301,39 +303,13 @@ def _drain_locked(project_root: Path) -> None:
             break
         activation = min(actionable, key=lambda record: _activation_order(repository, record))
         activation_records = tuple(record for record in actionable if record.after_sha == activation.after_sha)
-        known_records = tuple(record for record in activation_records if record.action_id in model.maintenance)
-        unknown_records = tuple(record for record in activation_records if record not in known_records)
-        for record in unknown_records:
-            _finish_unknown_action(root, record)
-        action_ids = tuple(record.action_id for record in known_records)
-        for wave in _precedence_waves(action_ids, model.maintenance):
-            wave_records = tuple(record for record in known_records if record.action_id in wave)
-            commands: list[tuple[str, ...]] = []
-            for record in wave_records:
-                path = record_path(root, record.after_sha, record.action_id)
-                current = read_record(path)
-                if current.state is MaintenanceRecordState.RUNNING:
-                    logger.warning(
-                        _MAINTENANCE_ACTION_INTERRUPTED_EVENT,
-                        after_sha=current.after_sha,
-                        action_id=current.action_id,
-                    )
-                write_record(path, replace(current, state=MaintenanceRecordState.RUNNING))
-                logger.info(
-                    _MAINTENANCE_ACTION_STARTED_EVENT,
-                    before_sha=record.before_sha,
-                    after_sha=record.after_sha,
-                    action_id=record.action_id,
-                )
-                command = fill_activation_range(
-                    model.maintenance[record.action_id].command,
-                    _range_for(record),
-                    interpreter=sys.executable,
-                )
-                commands.append(command)
-            results = run_process_group_commands(commands, root)
-            for record, result in zip(wave_records, results, strict=True):
-                _finish_action(root, record, result)
+        known_records = {
+            record.action_id: record for record in activation_records if record.action_id in model.maintenance
+        }
+        for record in activation_records:
+            if record.action_id not in known_records:
+                _finish_unknown_action(root, record)
+        _run_activation(root, _range_for(activation), known_records, model.maintenance)
 
     ready_at = datetime.now(UTC).isoformat()
     mark_integrator_judgment_ready(root, lambda after_sha: activation_has_records(root, after_sha), ready_at)
@@ -344,6 +320,87 @@ def _drain_locked(project_root: Path) -> None:
         failed_action_count=sum(record.state is MaintenanceRecordState.FAILED for record in remaining),
         pending_action_count=sum(record.state is MaintenanceRecordState.PENDING for record in remaining),
     )
+
+
+def _run_activation(
+    root: Path,
+    activation_range: ActivationRange,
+    known_records: Mapping[str, MaintenanceActionRecord],
+    actions: Mapping[str, MaintenanceAction],
+) -> None:
+    """Run one activation's recorded actions, keeping each action's record current."""
+
+    def start_record(action_id: str) -> None:
+        path = record_path(root, activation_range.after_sha, action_id)
+        current = read_record(path)
+        if current.state is MaintenanceRecordState.RUNNING:
+            logger.warning(
+                _MAINTENANCE_ACTION_INTERRUPTED_EVENT,
+                after_sha=current.after_sha,
+                action_id=current.action_id,
+            )
+        write_record(path, replace(current, state=MaintenanceRecordState.RUNNING))
+
+    def settle_record(action_id: str, result: CommandResult, finished_at: str) -> None:
+        _settle_record(root, known_records[action_id], result, finished_at)
+
+    def fill(command: tuple[str, ...]) -> tuple[str, ...]:
+        return fill_activation_range(command, activation_range, interpreter=sys.executable)
+
+    run_maintenance_waves(
+        root,
+        activation_range,
+        MaintenanceTrigger.COMMIT_BOUNDARY,
+        tuple(known_records),
+        actions,
+        fill,
+        None,
+        start_record,
+        settle_record,
+    )
+
+
+def run_maintenance_waves(
+    root: Path,
+    activation_range: ActivationRange,
+    trigger: MaintenanceTrigger,
+    action_ids: tuple[str, ...],
+    actions: Mapping[str, MaintenanceAction],
+    fill: Callable[[tuple[str, ...]], tuple[str, ...]],
+    child_env: Mapping[str, str] | None,
+    on_started: Callable[[str], None],
+    on_finished: Callable[[str, CommandResult, str], None],
+) -> tuple[tuple[str, CommandResult], ...]:
+    """Run the actions in precedence waves and return each action's result in completion order.
+
+    Equal-precedence actions run concurrently, the next wave waits for every prior
+    terminal outcome, and a failure never cancels a later wave. Every start and finish
+    is logged with the ``trigger`` that caused it; ``on_started`` and ``on_finished``
+    let the caller keep whatever record it owns for the run.
+    """
+    completed: list[tuple[str, CommandResult]] = []
+    for wave in _precedence_waves(action_ids, actions):
+        commands: list[tuple[str, ...]] = []
+        for action_id in wave:
+            on_started(action_id)
+            logger.info(
+                _MAINTENANCE_ACTION_STARTED_EVENT,
+                before_sha=activation_range.before_sha,
+                after_sha=activation_range.after_sha,
+                action_id=action_id,
+                trigger=trigger,
+            )
+            commands.append(fill(actions[action_id].command))
+
+        def report(index: int, result: CommandResult, wave_ids: tuple[str, ...] = wave) -> None:
+            action_id = wave_ids[index]
+            finished_at = datetime.now(UTC).isoformat()
+            on_finished(action_id, result, finished_at)
+            _log_action_finished(activation_range, trigger, action_id, result, finished_at)
+            completed.append((action_id, result))
+
+        run_process_group_commands(commands, root, child_env, report)
+    return tuple(completed)
 
 
 def _activation_order(repository: Repo, record: MaintenanceActionRecord) -> tuple[int, str, str]:
@@ -357,10 +414,11 @@ def _range_for(record: MaintenanceActionRecord) -> ActivationRange:
     return ActivationRange(before_sha=record.before_sha, after_sha=record.after_sha)
 
 
-def _finish_action(project_root: Path, record: MaintenanceActionRecord, result: CommandResult) -> None:
+def _settle_record(
+    project_root: Path, record: MaintenanceActionRecord, result: CommandResult, finished_at: str
+) -> None:
     """Remove success or retain a terminal failure with its structured outcome."""
     path = record_path(project_root, record.after_sha, record.action_id)
-    finished_at = datetime.now(UTC).isoformat()
     if result.exit_code == 0:
         remove_record(path)
     else:
@@ -373,24 +431,38 @@ def _finish_action(project_root: Path, record: MaintenanceActionRecord, result: 
                 finished_at=finished_at,
             ),
         )
+
+
+def _log_action_finished(
+    activation_range: ActivationRange,
+    trigger: MaintenanceTrigger,
+    action_id: str,
+    result: CommandResult,
+    finished_at: str,
+) -> None:
+    """Record one action's terminal outcome for the run that performed it."""
     logger.info(
         _MAINTENANCE_ACTION_FINISHED_EVENT,
-        before_sha=record.before_sha,
-        after_sha=record.after_sha,
-        action_id=record.action_id,
+        before_sha=activation_range.before_sha,
+        after_sha=activation_range.after_sha,
+        action_id=action_id,
         exit_code=result.exit_code,
         outcome=MaintenanceRecordState.FAILED if result.exit_code else _SUCCESS_OUTCOME,
         finished_at=finished_at,
+        trigger=trigger,
     )
 
 
 def _finish_unknown_action(project_root: Path, record: MaintenanceActionRecord) -> None:
     """Keep an unresolvable persisted action visible as a terminal failure."""
-    _finish_action(project_root, record, CommandResult(_UNKNOWN_ACTION_EXIT_CODE))
+    result = CommandResult(_UNKNOWN_ACTION_EXIT_CODE)
+    finished_at = datetime.now(UTC).isoformat()
+    _settle_record(project_root, record, result, finished_at)
+    _log_action_finished(_range_for(record), MaintenanceTrigger.COMMIT_BOUNDARY, record.action_id, result, finished_at)
 
 
 def _precedence_waves(
-    action_ids: tuple[str, ...], actions: dict[str, MaintenanceAction]
+    action_ids: tuple[str, ...], actions: Mapping[str, MaintenanceAction]
 ) -> tuple[tuple[str, ...], ...]:
     """Group stable action ids by their declared precedence."""
     grouped: dict[int, list[str]] = {}

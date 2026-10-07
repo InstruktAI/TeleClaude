@@ -1434,11 +1434,13 @@ preflight_macos() {
 
 run_macos_setup_action() {
     local action="$1"
+    shift
     if [ "$OS" != "macos" ]; then
         return 0
     fi
 
     local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
+    cmd+=("$@")
     cmd+=("$action")
 
     "${cmd[@]}"
@@ -1460,7 +1462,13 @@ install_macos_tmux_server() {
         return 0
     fi
     print_header "Installing macOS tmux Server Service"
-    if run_macos_setup_action "install-tmux-server"; then
+    # An on-demand run (`telec sync`) marks its commands so (teleclaude/core/integration/maintenance_trigger.py);
+    # it deploys no changed service definition and reloads no running service.
+    local setup_flags=()
+    if [ "${TELECLAUDE_MAINTENANCE_TRIGGER:-}" = "on_demand" ]; then
+        setup_flags+=(--defer-changes)
+    fi
+    if run_macos_setup_action "install-tmux-server" ${setup_flags[@]+"${setup_flags[@]}"}; then
         print_success "tmux server service installed"
     else
         print_error "Failed to install tmux server service"

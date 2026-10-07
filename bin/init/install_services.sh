@@ -41,6 +41,15 @@ _tc_sudo() {
     return 1
 }
 
+# An on-demand run (`telec sync`) tells the commands it runs so through
+# TELECLAUDE_MAINTENANCE_TRIGGER (teleclaude/core/integration/maintenance_trigger.py).
+# On demand, installation deploys no service definition and reloads no running
+# service; it names each difference instead. `--check` (direct execution) asks
+# the same question without installing anything.
+defer_service_changes() {
+    [ "${TELECLAUDE_MAINTENANCE_TRIGGER:-}" = "on_demand" ] || [ "${TC_SERVICE_DEFINITION_CHECK:-false}" = true ]
+}
+
 # Project root: prefer a value the caller already resolved (PROJECT_ROOT),
 # then bin/install.sh's INSTALL_DIR, then this file's own location.
 if [ -n "${PROJECT_ROOT:-}" ]; then
@@ -196,6 +205,12 @@ deploy_service_definition() {
     fi
 
     if [ -f "$target_path" ] && cmp -s "$rendered_file" "$target_path"; then
+        return 1
+    fi
+
+    # A deferred run names the difference and reports "unchanged", so no caller reloads.
+    if defer_service_changes; then
+        printf 'service definition differs from what installation would deploy: %s\n' "$target_path"
         return 1
     fi
 
@@ -587,7 +602,27 @@ withdraw_docs_watch_systemd() {
     fi
 }
 
+# Names the legacy docs-watch unit when installation would withdraw it, and withdraws nothing.
+report_docs_watch_withdrawal_due() {
+    case "$PLATFORM" in
+        macos)
+            if [ -f "$(launchd_plist_path "$DOCS_WATCH_LABEL")" ] || launchctl print "$(launchd_domain)/$DOCS_WATCH_LABEL" >/dev/null 2>&1; then
+                printf 'legacy docs-watch launchd unit is due for withdrawal: %s\n' "$DOCS_WATCH_LABEL"
+            fi
+            ;;
+        linux)
+            if [ -f "$_DOCS_WATCH_SYSTEMD_PATH" ] || [ "$(systemctl show --system --property=LoadState --value "$_DOCS_WATCH_SYSTEMD_UNIT" 2>/dev/null)" = loaded ]; then
+                printf 'legacy docs-watch systemd unit is due for withdrawal: %s\n' "$_DOCS_WATCH_SYSTEMD_UNIT"
+            fi
+            ;;
+    esac
+}
+
 withdraw_docs_watch_service() {
+    if defer_service_changes; then
+        report_docs_watch_withdrawal_due
+        return 0
+    fi
     case "$PLATFORM" in
         macos)
             withdraw_docs_watch_launchd
@@ -617,5 +652,11 @@ install_service() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     set -euo pipefail
-    install_service
+    if [ "${1:-}" = "--check" ]; then
+        TC_SERVICE_DEFINITION_CHECK=true
+        install_service
+        withdraw_docs_watch_service
+    else
+        install_service
+    fi
 fi

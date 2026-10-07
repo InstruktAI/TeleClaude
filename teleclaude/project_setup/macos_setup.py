@@ -21,6 +21,11 @@ _TMUX_SERVER_LABEL = "ai.instrukt.tmux-server"
 _TMUX_SERVER_SWITCH = "--teleclaude-server"
 _INSTALLED_LAUNCHER_MESSAGE = "make install: installed {bundle_name} to {target_app}"
 _APPLICATIONS_DIRECTORY_NAME = "Applications"
+_TMUX_LAUNCHER_PATH_PARTS = ("TmuxLauncher.app", "Contents", "MacOS", "tmux-launcher")
+_LAUNCH_AGENTS_PATH_PARTS = ("Library", "LaunchAgents")
+_TMUX_SERVER_PLIST_FILENAME = f"{_TMUX_SERVER_LABEL}.plist"
+_TMUX_LAUNCHER_MISSING = "tmux launcher missing: {path}"
+_TMUX_SERVER_DRIFT_MESSAGE = "tmux server service definition differs from what installation would deploy: {plist_path}"
 
 
 class _TmuxServerPlist(TypedDict):
@@ -76,33 +81,58 @@ def _tmux_server_plist(tmux_wrapper: Path, teleclaude_home: Path) -> _TmuxServer
     }
 
 
-def install_tmux_server_service(
-    *,
-    home: Path | None = None,
-    teleclaude_home: Path | None = None,
-    launchctl: str = "/bin/launchctl",
-) -> None:
-    """Install the launchd-owned foreground tmux server on macOS."""
-    if not is_macos():
-        return
-
+def _tmux_server_definition(home: Path | None, teleclaude_home: Path | None) -> tuple[Path, bytes, bool]:
+    """Resolve the tmux server plist path, the rendered bytes, and whether they differ from what is deployed."""
     resolved_home = home or Path.home()
     resolved_teleclaude_home = teleclaude_home or TELECLAUDE_HOME
-    tmux_wrapper = resolved_home / "Applications" / "TmuxLauncher.app" / "Contents" / "MacOS" / "tmux-launcher"
+    tmux_wrapper = resolved_home.joinpath(_APPLICATIONS_DIRECTORY_NAME, *_TMUX_LAUNCHER_PATH_PARTS)
     if not tmux_wrapper.is_file():
-        raise FileNotFoundError(f"tmux launcher missing: {tmux_wrapper}")
-
-    resolved_teleclaude_home.mkdir(parents=True, exist_ok=True)
-    (resolved_teleclaude_home / "logs").mkdir(parents=True, exist_ok=True)
-    plist_dir = resolved_home / "Library" / "LaunchAgents"
-    plist_dir.mkdir(parents=True, exist_ok=True)
-    plist_path = plist_dir / f"{_TMUX_SERVER_LABEL}.plist"
+        raise FileNotFoundError(_TMUX_LAUNCHER_MISSING.format(path=tmux_wrapper))
+    plist_path = resolved_home.joinpath(*_LAUNCH_AGENTS_PATH_PARTS, _TMUX_SERVER_PLIST_FILENAME)
     plist_bytes = plistlib.dumps(
         _tmux_server_plist(tmux_wrapper, resolved_teleclaude_home),
         fmt=plistlib.FMT_XML,
         sort_keys=False,
     )
-    changed = not plist_path.exists() or plist_path.read_bytes() != plist_bytes
+    return plist_path, plist_bytes, not plist_path.exists() or plist_path.read_bytes() != plist_bytes
+
+
+def tmux_server_definition_drift(*, home: Path | None = None, teleclaude_home: Path | None = None) -> str | None:
+    """Describe how the deployed tmux server definition differs from the rendered one, or ``None`` when it does not.
+
+    Reads only; a non-macOS host has no such service and reports no drift.
+    """
+    if not is_macos():
+        return None
+    plist_path, _, changed = _tmux_server_definition(home, teleclaude_home)
+    return _TMUX_SERVER_DRIFT_MESSAGE.format(plist_path=plist_path) if changed else None
+
+
+def install_tmux_server_service(
+    *,
+    home: Path | None = None,
+    teleclaude_home: Path | None = None,
+    launchctl: str = "/bin/launchctl",
+    defer_changes: bool = False,
+) -> None:
+    """Install the launchd-owned foreground tmux server on macOS.
+
+    With ``defer_changes``, a definition that differs from the deployed one is not
+    written and the running server is not bootout'd or reloaded; the drift is
+    named instead. An unchanged definition still starts a server that is not running.
+    """
+    if not is_macos():
+        return
+
+    resolved_teleclaude_home = teleclaude_home or TELECLAUDE_HOME
+    plist_path, plist_bytes, changed = _tmux_server_definition(home, teleclaude_home)
+    if changed and defer_changes:
+        print(_TMUX_SERVER_DRIFT_MESSAGE.format(plist_path=plist_path))
+        return
+
+    resolved_teleclaude_home.mkdir(parents=True, exist_ok=True)
+    (resolved_teleclaude_home / "logs").mkdir(parents=True, exist_ok=True)
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
     if changed:
         temp_path = plist_path.with_suffix(".plist.tmp")
         temp_path.write_bytes(plist_bytes)

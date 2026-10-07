@@ -604,14 +604,28 @@ class CheckpointAction:
         return self.evidence if self.evidence else (self.run,)
 
 
+class OnDemandDisposition(StrEnum):
+    """What an on-demand run does with a maintenance action."""
+
+    RUN = "run"
+    DEFER = "defer"
+
+
 @dataclass(frozen=True)
 class MaintenanceAction:
-    """A deterministic action performed at the canonical-main boundary."""
+    """A deterministic action performed at the canonical-main boundary.
+
+    ``on_demand`` tells a manual run whether to perform the action or only report
+    whether it is owed; ``owed_probe`` is the command that answers that question
+    for a deferred action.
+    """
 
     id: str
     command: tuple[str, ...]
     main_only: bool = False
     precedence: int = 0
+    on_demand: OnDemandDisposition = OnDemandDisposition.RUN
+    owed_probe: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -683,7 +697,18 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 
 
 CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
-    "install": MaintenanceAction(id="install", command=("make", "install"), main_only=True, precedence=10),
+    "install": MaintenanceAction(
+        id="install",
+        command=("{interpreter}", "-m", "teleclaude.core.integration.install_action"),
+        main_only=True,
+        precedence=10,
+    ),
+    "plumbing-convergence": MaintenanceAction(
+        id="plumbing-convergence",
+        command=("{interpreter}", "-m", "teleclaude.project_setup.plumbing", "."),
+        main_only=True,
+        precedence=15,
+    ),
     "sync": MaintenanceAction(
         id="sync",
         command=(
@@ -694,6 +719,8 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
             "{after_sha}",
             "--before-sha",
             "{before_sha}",
+            "--home",
+            "{home}",
         ),
         main_only=True,
         precedence=55,

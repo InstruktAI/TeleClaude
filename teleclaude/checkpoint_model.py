@@ -15,7 +15,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import ALL_CAPABILITIES, Capabilities, capabilities_from_project_config
-from teleclaude.config.loader import load_declared_project_config
+from teleclaude.config.loader import load_declared_project_config, load_declared_project_config_from_content
 from teleclaude.config.schema import ProjectConfig
 from teleclaude.constants import (
     CHECKPOINT_BASE_ACTIONS,
@@ -33,7 +33,9 @@ from teleclaude.constants import (
     MaintenanceAction,
     _compile_glob,
 )
-from teleclaude.paths import is_platform_home
+from teleclaude.git import GitCommandError
+from teleclaude.git_tree import TreeSource, read_tree_path
+from teleclaude.paths import ConfigFileName, is_platform_home
 
 logger = get_logger(__name__)
 
@@ -42,17 +44,22 @@ _DEFAULT_PROJECT_SLUG = "project"
 _PROJECT_SLUG_PLACEHOLDER = "{slug}"
 _ACTIVATION_BEFORE_PLACEHOLDER = "{before_sha}"
 _ACTIVATION_AFTER_PLACEHOLDER = "{after_sha}"
+_HOME_PLACEHOLDER = "{home}"
 _INTERPRETER_PLACEHOLDER = "{interpreter}"
 _ACTIVATION_BEFORE_FLAG = "--before-sha"
+_HOME_FLAG = "--home"
 _EMPTY_COMMAND_ARGUMENT = ""
 _MAINTENANCE_ACTIONS_RESOLVED_EVENT = "checkpoint_maintenance_actions_resolved"
+_COMMITTED_DECLARATION_UNREADABLE_EVENT = "checkpoint_committed_declaration_unreadable"
 
 __all__ = [
     "ActivationRange",
     "base_checkpoint_model",
     "checkpoint_model_from_project_config",
     "fill_activation_range",
+    "fill_on_demand",
     "load_checkpoint_model",
+    "load_committed_checkpoint_model",
     "main_only_judgment_action_ids_for_files",
     "main_only_maintenance_action_ids_for_files",
     "merge_overlay",
@@ -71,9 +78,17 @@ class ActivationRange:
 
 
 def fill_activation_range(
-    command: tuple[str, ...], activation_range: ActivationRange, *, interpreter: str | None = None
+    command: tuple[str, ...],
+    activation_range: ActivationRange,
+    *,
+    interpreter: str | None = None,
+    home: str | None = None,
 ) -> tuple[str, ...]:
-    """Substitute the interpreter and recorded ids, omitting before for a root commit."""
+    """Substitute the interpreter and recorded ids.
+
+    A root commit omits the ``--before-sha`` pair. The ``--home`` pair appears only
+    when a ``home`` is given, so a commit-boundary activation, which has none, omits it.
+    """
     resolved: list[str] = []
     python = interpreter or sys.executable
     index = 0
@@ -89,12 +104,24 @@ def fill_activation_range(
                 resolved.extend((_ACTIVATION_BEFORE_FLAG, activation_range.before_sha))
             index += 2
             continue
+        if argument == _HOME_FLAG and next_argument == _HOME_PLACEHOLDER:
+            if home is not None:
+                resolved.extend((_HOME_FLAG, home))
+            index += 2
+            continue
         if argument == _ACTIVATION_AFTER_PLACEHOLDER:
             resolved.append(activation_range.after_sha)
         else:
             resolved.append(argument)
         index += 1
     return tuple(resolved)
+
+
+def fill_on_demand(command: tuple[str, ...], tip: str, home: str, *, interpreter: str | None = None) -> tuple[str, ...]:
+    """Fill a command for an on-demand run, which has a tip and an invocation home but no range."""
+    return fill_activation_range(
+        command, ActivationRange(before_sha=None, after_sha=tip), interpreter=interpreter, home=home
+    )
 
 
 def _glob_matches(path: str, pattern: str) -> bool:
@@ -174,14 +201,18 @@ def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
 
 
 def _fill_maintenance_slug(action: MaintenanceAction, project_slug: str) -> MaintenanceAction:
-    """Substitute the ``{slug}`` placeholder in maintenance command arguments."""
-    if not any(_PROJECT_SLUG_PLACEHOLDER in argument for argument in action.command):
+    """Substitute the ``{slug}`` placeholder in maintenance command and probe arguments."""
+    probe = action.owed_probe or ()
+    if not any(_PROJECT_SLUG_PLACEHOLDER in argument for argument in (*action.command, *probe)):
         return action
-    return MaintenanceAction(
-        id=action.id,
+    return replace(
+        action,
         command=tuple(argument.replace(_PROJECT_SLUG_PLACEHOLDER, project_slug) for argument in action.command),
-        main_only=action.main_only,
-        precedence=action.precedence,
+        owed_probe=(
+            tuple(argument.replace(_PROJECT_SLUG_PLACEHOLDER, project_slug) for argument in probe)
+            if action.owed_probe is not None
+            else None
+        ),
     )
 
 
@@ -256,6 +287,8 @@ def merge_overlay(
                     command=tuple(action_cfg.command),
                     main_only=action_cfg.main_only,
                     precedence=action_cfg.precedence,
+                    on_demand=action_cfg.on_demand,
+                    owed_probe=tuple(action_cfg.owed_probe) if action_cfg.owed_probe is not None else None,
                 ),
                 project_slug,
             )
@@ -309,7 +342,6 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
     visible because the home-specific maintenance binding depends on that result.
     """
     root = Path(project_path) if project_path else Path(_DEFAULT_PROJECT_PATH)
-    fallback_slug = root.name or _DEFAULT_PROJECT_SLUG
     try:
         config = load_declared_project_config(root)
     except Exception:
@@ -319,8 +351,37 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
             exc_info=True,
         )
         config = None
+    return _model_for_declaration(root, project_path, config)
+
+
+def load_committed_checkpoint_model(repository_root: Path, tip: str) -> CheckpointModel:
+    """Load the effective model from the root's declaration as committed at ``tip``.
+
+    The step set an on-demand run performs comes from what is committed, so an
+    uncommitted edit to the overlay cannot add or reorder steps. A root whose
+    declaration is absent from the tip, or unreadable there, degrades to the
+    base-only model, the same posture ``load_checkpoint_model`` takes.
+    """
+    root = repository_root.resolve()
+    marker = root / ConfigFileName.OVERLAY
+    try:
+        content = read_tree_path(TreeSource.recorded_commit(root, tip), ConfigFileName.OVERLAY.value)
+        config = load_declared_project_config_from_content(marker, content)
+    except (GitCommandError, ValueError):
+        logger.warning(
+            _COMMITTED_DECLARATION_UNREADABLE_EVENT,
+            project_path=str(root),
+            tip=tip,
+            exc_info=True,
+        )
+        config = None
+    return _model_for_declaration(root, str(root), config)
+
+
+def _model_for_declaration(root: Path, project_path: str, config: ProjectConfig | None) -> CheckpointModel:
+    """Build the effective model for a root from its resolved declaration, if any."""
     if config is None:
-        model = base_checkpoint_model(fallback_slug)
+        model = base_checkpoint_model(root.name or _DEFAULT_PROJECT_SLUG)
     else:
         model = checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
     if is_platform_home(root):
