@@ -308,9 +308,10 @@ And it changes only as the convergence changes every existing profile
 
 <!-- planned:deepseek-launch-profile-convergence -->
 
-- A launch profile the convergence creates carries the vendor's defaults for
-  the TUI and its plugins. TeleClaude passes its own model choice with every
-  launch; the operator's own preferences for the profile are theirs to add.
+- A launch profile the convergence creates holds only the packages the
+  adopted set adds; the convergence writes no settings into it. TeleClaude
+  passes its own model choice with every launch; the operator's own
+  preferences for the profile are theirs to add.
 
 <!-- /planned:deepseek-launch-profile-convergence -->
 
