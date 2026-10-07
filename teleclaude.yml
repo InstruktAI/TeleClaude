@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=.teleclaude/schemas/teleclaude-project.schema.json
+description: AI-powered multi-agent orchestration platform
 kind: project
 project_name: TeleClaude
 project_slug: teleclaude
@@ -201,7 +202,7 @@ jobs:
   - category: system
     name: log-bug-hunter
     when:
-      every: 1h
+      every: 6h
     job: sdlc/procedure/maintenance/log-bug-hunter
     agent:
       - codex
@@ -215,4 +216,3 @@ docs:
 agents:
   enabled: true
 schema_version: 13
-description: AI-powered multi-agent orchestration platform
