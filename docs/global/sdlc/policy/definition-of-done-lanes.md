@@ -647,7 +647,7 @@ body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/ad
 5. **Forward ADR reference** — the body references a _later_ ADR, a decision that
    did not exist when this one was recorded. A backward reference to an _earlier_
    ADR is fine; only the forward direction is the violation, and the sole forward
-   link is `supersedes` frontmatter on the newer ADR.
+   link is the older ADR's `## Status` supersession pointer.
 6. **Work reference in an ADR** — the body names a todo, slug, `delivered_by`,
    delivery, or anything TBD, or the `adr` snippet carries a `delivered_by`
    frontmatter field or a companion file. An ADR records a decision, not work.
