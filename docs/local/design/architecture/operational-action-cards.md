@@ -49,8 +49,15 @@ details out of the primary message.
 
 - **Current human action is required.** Severity and schema-level actionability
   alone never justify interruption.
+<!-- planned-change:human-alerts-agent-only -->
 - **One action revision, one interruption.** Repeated state does not repeatedly
   notify; a later card requires a material change to the requested action.
+<!-- change:human-alerts-agent-only -->
+- **One requested delivery, one card.** Each occurrence that asks for delivery
+  produces one card. Matching occurrences inside the delivery debounce window
+  coalesce into one; nothing is remembered across occurrences, so a later
+  occurrence produces a later card.
+<!-- /planned-change:human-alerts-agent-only -->
 <!-- planned-change:human-alerts-agent-only -->
 - **Human copy explains the situation.** Event types, notification row IDs,
   attempts, and persistence verbs remain metadata.
@@ -75,6 +82,7 @@ details out of the primary message.
 
 ## Primary flows
 
+<!-- planned-change:human-alerts-agent-only -->
 ```mermaid
 flowchart TD
     E[Operational occurrence] --> A{Concrete human action now?}
@@ -83,6 +91,14 @@ flowchart TD
     F -- no --> R
     F -- yes --> C[Render action card once]
 ```
+<!-- change:human-alerts-agent-only -->
+```mermaid
+flowchart TD
+    E[Operational occurrence] --> A{Concrete human action now?}
+    A -- no --> R[No card]
+    A -- yes --> C[Render action card once]
+```
+<!-- /planned-change:human-alerts-agent-only -->
 
 The text fallback is:
 

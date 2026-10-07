@@ -51,8 +51,9 @@ people it is for, which computer sends it, and what the platform keeps of it.
 
 - **A computer delivers only the events it emitted.** Every computer reads the
   shared event stream, and each one delivers only the events whose origin names it.
-  An event from another computer produces nothing there, so each event is delivered
-  at most once across the fleet, from the computer where it happened.
+  An event from another computer produces nothing there, and an event whose origin
+  is unknown is delivered by no computer, so each event is delivered at most once
+  across the fleet, from the computer where it happened.
 - **Delivery needs a human-action intent and an audience.** Event level and
   schema-level actionability classify an event; neither authorizes a push. An event
   without a human-action intent, or without anyone on this computer to receive it,
@@ -62,11 +63,12 @@ people it is for, which computer sends it, and what the platform keeps of it.
   until they do. It governs the administrator fan-out alone; a notification
   addressed to a principal does not depend on it.
 - **A notification is a delivery, not a record.** No notification row is written or
-  kept. The event stream gives delivery its at-least-once handling: an event is
-  acknowledged after the pipeline has handled it, an event left pending by a failed
-  process is reclaimed, and an event that keeps failing is dead-lettered. Pipeline
-  duplicate protection keeps the identities of handled events for a bounded period
-  so a redelivered event is not delivered twice.
+  kept. The event stream gives the pipeline pass its at-least-once handling: an
+  event is acknowledged after the pipeline has handled it, an event left pending by
+  a failed process is reclaimed, and an event that keeps failing is dead-lettered.
+  The push itself is best effort and sent at most once per event: a retried
+  pipeline pass does not send it again, and a provider failure is logged, not
+  retried.
 - **External push delivery is debounced on a trailing quiet window.** Delivery to
   the external channels is coalesced per `(recipient, event type, grouping
 identity)` over a trailing quiet window. A later matching delivery inside the
