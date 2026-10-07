@@ -163,7 +163,6 @@ Examples:
 
 <!-- /planned-change:sessions-show -->
 
-
 #### UC-DV3: A platform role below administrator reaches nothing by itself
 
 <!-- planned-change:human-alerts-agent-only -->
