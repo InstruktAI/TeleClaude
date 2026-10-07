@@ -8,9 +8,8 @@ visibility: 'public'
 ## Goal
 
 Document the TeleClaude-specific setup split: `telec config project init` owns project-local
-plumbing, while `make install` owns machine-global steps — the
-logging runtime the host reads logs with, plus macOS launcher installation and
-permission probing.
+plumbing, while `make install` owns machine-global steps, including macOS
+launcher installation and permission probing.
 
 ## Preconditions
 
@@ -122,45 +121,6 @@ re-adding it, since a row left in place keeps presenting as enabled.
 
 Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 
-### 4. Logging runtime wiring (`make install`)
-
-`make install` provisions the machine's logging runtime alongside the other
-machine-global tooling, before the macOS-specific steps.
-
-- **Surface a conflicting entrypoint owner.** Before ensuring the package, the step
-  reads the installed tool inventory to determine which package publishes the
-  `instrukt-ai-logs` entrypoint. When a package other than `instruktai-python-logger`
-  publishes it, the step warns loudly, naming that package and the remediation.
-  TeleClaude never removes it. A conflict also makes the ensure call below fail, because
-  the tool installer refuses to overwrite an entrypoint another package owns.
-- **Ensure present and current.** `uv tool install --upgrade instruktai-python-logger`
-  installs the package when it is absent and upgrades it to the latest release when it
-  is behind, in one idempotent call. The step uses no presence check and no version
-  comparison. The package carries no version constraint and is never pinned to
-  TeleClaude's lockfile; it tracks latest.
-- **Delegate the machine-level wiring.** `instrukt-ai-log-setup` is the logging
-  package's own idempotent entrypoint. It writes the rotation configuration, installs
-  the launchd agent or systemd timer, and reports the resolved log root and
-  `status: healthy` on an already-wired host. TeleClaude invokes it and echoes its
-  report rather than reimplementing that wiring.
-- **A declined act warns; an unmet obligation fails.** A detected conflict warns and the
-  install continues, and the ensure failure that follows it warns too. Every other
-  failure to install, upgrade, or wire the runtime fails the install with a non-zero
-  outcome naming the step.
-
-The step is skipped in CI mode and in the deps-only install a git worktree resolves to.
-
-Source: `bin/install.sh:install_log_runtime()`
-
-### 5. Configuration-schema publication (`make install`)
-
-`make install` publishes every configuration schema into the TeleClaude home
-before converging this checkout's plumbing. The act and its guarantees are
-`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`. The step is
-skipped in CI mode and in the deps-only install a git worktree resolves to.
-
-Source: `teleclaude/core/reconciliation/config_schemas.py`
-
 ### 6. Fresh-machine bootstrap (`make install`)
 
 `make install` leaves a fresh machine startable, owned and serving its published
@@ -190,10 +150,6 @@ boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
 - Launcher apps installed to `~/Applications/` by `make install` (macOS only).
 - Permission probe results reported to the user by `make install` (macOS only).
 
-- Logging runtime present, current, and wired by `make install`, with the resolved log
-  root and health status reported to the user.
-- Configuration schemas published into the TeleClaude home by `make install`.
-
 - A startable checkout, a registered first administrator and the checkout's
   committed documentation published into the home, from `make install`, with or
   without a person present.
@@ -203,9 +159,3 @@ boundary is in `local/projects/teleclaude/spec/domain/reconciliation`.
 - All steps are idempotent. Re-running `make install` repeats macOS launcher/probe setup safely.
 - Permission denials require manual System Settings changes; re-running `make install`
   after granting access will show a passing probe.
-
-- If the logging runtime step warns about a conflicting entrypoint owner, the install
-  still completes and the runtime is left unwired. Remove the package that owns
-  `instrukt-ai-logs` and re-run `make install`; the step is idempotent.
-- If the logging runtime step fails the install for any other reason, resolve the
-  reported cause — most often package-index reachability — and re-run `make install`.

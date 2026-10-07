@@ -64,9 +64,7 @@ defect discovered live.
 
 3. Launch shape: interactive TUI whose pane receives typed input, or one-shot
    taking the prompt as a launch argument (`prompt_at_launch`).
-4. Profile or workspace concept, if any — and **who owns creating one**. If the
-   vendor's plugin command auto-initializes a missing profile, the installer
-   must guard on existence rather than call it.
+4. Profile or workspace concept, if any.
 5. How a model is selected: a CLI flag, a config file, or a per-launch overlay.
    A harness with no model flag needs a generated patch (`model_via_launch_patch`).
 6. Sandbox/permission posture for the `default` and `restricted` profiles.

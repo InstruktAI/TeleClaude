@@ -46,8 +46,7 @@ target through the project's remote.
 - **Transfer:** only the parts of the todo state that differ are sent, so a
   repeated transfer of a large todo state moves little data. Both computers'
   todo state may be in use while it runs. The transfer tool is provisioned on
-  every computer by the installer
-  (`local/projects/teleclaude/spec/feature/reconciliation/sqlite-sync-tool-provisioning`).
+  every computer by the installer.
 - **Verification:** after the copy, the target checks its copy's integrity and
   reports the result.
 - **Outcome report:** one outcome per project and target — transferred,
