@@ -40,16 +40,17 @@ agent messages them directly with `telec message`.
 **Outputs:**
 
 - A notification row written or updated for every projected event — the record.
-- The in-app notification list for TUI and web-console clients, and its live
-  feed to connected clients, carrying the notifications the viewer's reach
-  admits.
-- No external push from the event pipeline, to any person or channel.
+- The in-app notification list for TUI and web-console clients, served when a
+  client asks for it and carrying the notifications the viewer's reach admits.
+- No push from the event pipeline: nothing reaches an external channel, and
+  nothing is sent live to a connected client.
 
 ## Invariants
 
 - **Nothing in the event pipeline interrupts a human.** No event type, level,
-  actionability classification, or occurrence-level action authorizes a push to
-  an external channel. Technical recovery is agent-owned; it travels to
+  actionability classification, or occurrence-level action authorizes a push,
+  whether to an external channel or live to a connected client; the record is
+  read when someone asks for it. Technical recovery is agent-owned; it travels to
   evidence and peers, never to the human (`general/policy/human-contract`).
 - **A human hears from an agent, not from an event.** An agent that needs a
   human's product-owner input reaches them through `telec message`, the
@@ -66,14 +67,12 @@ agent messages them directly with `telec message`.
   carry the same `entity` value never update the same row.
 - **The in-app list follows the viewer's reach.** The notification row records
   the subject of the event it projects and that subject's owner. The list a TUI
-  or web-console client receives, and every live update to it, carry only the
-  broadcast notifications whose subject the viewing principal's reach admits
+  or web-console client receives carries only the broadcast notifications whose subject the viewing principal's reach admits
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`); a
   platform administrator and the system principal receive every broadcast
   notification.
 - **An addressed row stays off the shared console.** A row that records a
-  recipient keeps that recipient, and the shared notification list and its live
-  feed exclude it.
+  recipient keeps that recipient, and the shared notification list excludes it.
 
 ## Primary flows
 
@@ -82,7 +81,7 @@ flowchart TD
     E[Event on pipeline] --> C[Classification cartridge<br/>annotates actionable + treatment]
     C --> P[Notification-projector cartridge<br/>creates/updates row]
     P --> R[Notification row<br/>record in-app and in-log]
-    R --> L[In-app list and live feed<br/>filtered by viewer reach]
+    R --> L[In-app list on request<br/>filtered by viewer reach]
     E -. logged .-> H[Log bug hunter<br/>files and routes anomalies]
     A[Agent needing product-owner input] --> M[telec message] --> U[Human]
 ```
@@ -95,8 +94,11 @@ flowchart TD
 - **Using an event as a channel to a human** reintroduces the interruption this
   design removes under another name. An agent with something for a human uses
   `telec message`; it does not emit an event and rely on delivery.
+- **Streaming the record live** turns it back into a push: every row change
+  lands in front of whoever has the console open, which is the interruption
+  this design removes.
 - **Gating the notification row instead of withholding the push** hides
   anomalies from the in-app list and the log, losing the record intelligence
   and operators diagnose from.
-- **Leaking an addressed row through the shared console** — the live feed or
-  the unfiltered list — shows a per-person notification to every operator.
+- **Leaking an addressed row through the shared console** — the unfiltered
+  list — shows a per-person notification to every operator.
