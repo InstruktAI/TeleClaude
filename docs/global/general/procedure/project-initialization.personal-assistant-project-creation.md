@@ -204,7 +204,7 @@ Source: `teleclaude/project_manifest.py:register_root()`
 - `project_slug` persisted in `teleclaude.yml` and, for `create` and `adopt`, the
   project root registered in `~/.teleclaude/projects.yaml`.
 - For a project inside a home, that home's owner declared in `teleclaude.yml`.
-- For `init` only: event domains seeded in global config (if not already populated).
+- For `init` only, and only for a caller whose platform role is member or administrator: event domains seeded in global config (if not already populated).
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
 
