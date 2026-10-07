@@ -118,6 +118,6 @@ trusted. A misnamed event is a visible, repairable configuration mistake.
 
 ## Status
 
-Superseded in part by ADR-0114: a relayed event's source is the ingress
-computer, its home is the declaring home, and its subject is the declared
-source that received it. The rest of the decision stands.
+Superseded in part by ADR-0114: the declaring home a relayed event concerns is
+its `home`, and its `subject` names the one thing the event is about. The rest
+of the decision stands.
