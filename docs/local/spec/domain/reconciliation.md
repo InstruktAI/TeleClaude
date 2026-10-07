@@ -195,6 +195,30 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 <!-- /planned:dsh-compatible-upgrade -->
 
+<!-- planned:deepseek-launch-profile-convergence -->
+
+#### DeepSeek launch-profile creation
+
+- **Decision boundary (core).** Whether the launch profile exists is part of
+  the stack the convergence operation reads, under the name the DeepSeek agent
+  definition gives it. When no profile of that name exists, the TUI joins the
+  packages that must fit every candidate, and the adopted set plans the launch
+  profile with the TUI and every required plugin. A planned creation is a change
+  on its own, so a stack whose runtime and packages are already the newest that
+  fit still adopts the set that creates it. Profiles that exist, the launch
+  profile among them, are planned exactly as before; no other profile is ever
+  planned into existence.
+- **Infrastructure.** The launch profile is created by adding its planned
+  packages through that profile's plugin manager, which initializes a profile
+  that does not exist. The operation writes no profile file of its own.
+- **Snapshot and restore.** The snapshot records which profiles existed. A
+  restore removes a profile the run created; a created profile that cannot be
+  removed is one of the differences a rollback-incomplete outcome names.
+- **Published result.** The result of a run that keeps a created launch
+  profile names that profile as created.
+
+<!-- /planned:deepseek-launch-profile-convergence -->
+
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
