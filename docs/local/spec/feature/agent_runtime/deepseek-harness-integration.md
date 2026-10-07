@@ -162,6 +162,10 @@ agent session's author identity.
 
 ### Boundaries
 
+- Managed DeepSeek launches apply the canonical agent definition's
+  `launch_environment` on fresh starts, resumes, restarts, handoffs, and pane
+  recovery. They open directly in the chat composer, bypassing the single-line
+  Launchpad input, so first-message delivery preserves multiline prompts.
 - A launched deepseek session reaches the TUI idle prompt, never the TUI's
   first-run guide: agent-CLI configuration records the guide as complete in the
   TUI's per-machine data directory and leaves a record that already marks it

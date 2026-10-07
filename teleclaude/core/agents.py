@@ -9,6 +9,8 @@ config-dependent accessors a leaf registry module cannot own itself.
 
 from __future__ import annotations
 
+import shlex
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_registry import AGENT_REGISTRY as AGENT_REGISTRY
@@ -120,6 +122,8 @@ def render_mode_flags(agent: str, mode: str, model: str | None = None) -> str:
 
 
 _COMMAND_PART_SEPARATOR = " "
+_ENVIRONMENT_COMMAND = "env"
+_ENVIRONMENT_ASSIGNMENT_SEPARATOR = "="
 
 
 def get_agent_command(
@@ -170,6 +174,12 @@ def get_agent_command(
     """
     agent_cfg = _get_agent_config(agent)
     base_cmd = _COMMAND_PART_SEPARATOR.join((agent_cfg.get_command(profile), launch_flags)).strip()
+    launch_environment = AGENT_REGISTRY[AgentName.from_str(agent)].launch_environment
+    if launch_environment:
+        assignments = (
+            name + _ENVIRONMENT_ASSIGNMENT_SEPARATOR + shlex.quote(value) for name, value in launch_environment
+        )
+        base_cmd = _COMMAND_PART_SEPARATOR.join((_ENVIRONMENT_COMMAND, *assignments, base_cmd))
 
     if native_session_id:
         # Include model flag when resuming with explicit session ID (unless omitted)

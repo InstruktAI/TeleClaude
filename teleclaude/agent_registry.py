@@ -252,6 +252,7 @@ class AgentDefinition:
     credential_check: CredentialCheck
     one_shot: OneShotSupport
     desk_confinement: DeskConfinement
+    launch_environment: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -642,6 +643,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             # into a spec table with no entry for it.
             one_shot=OneShotSupport.UNSUPPORTED,
             desk_confinement=DeskConfinement.NONE,
+            launch_environment=(("DSH_TUI_NO_LAUNCHPAD", "1"),),
         ),
     }
 
