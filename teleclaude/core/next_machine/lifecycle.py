@@ -801,8 +801,14 @@ def adopt_prepare_handoff_phase(
     report_digests: Mapping[str, str],
     artifact_write_timestamps: Mapping[str, str],
     prepared_session_id: str | None = None,
+    prepared_withheld: Callable[[], bool] | None = None,
 ) -> LifecyclePhase:
-    """Choose the prepare pointer from existing authoritative state and artifacts."""
+    """Choose the prepare pointer from existing authoritative state and artifacts.
+
+    ``prepared_withheld`` is consulted only when the derivation would move the
+    stored phase into ``PREPARED``. When it answers True the transition does not
+    happen: the current phase is returned and no ``PREPARED`` provenance is stamped.
+    """
     if model.kind == KIND_TASK:
         target = _task_phase(model, artifact_presence=artifact_presence)
     elif model.kind in FAST_TRACK_PREPARED_KINDS:
@@ -834,6 +840,8 @@ def adopt_prepare_handoff_phase(
             artifact_write_timestamps=artifact_write_timestamps,
         )
     if target is LifecyclePhase.PREPARED and model.lifecycle_phase is not LifecyclePhase.PREPARED:
+        if prepared_withheld is not None and prepared_withheld():
+            return model.lifecycle_phase
         completing_session_id = prepared_session_id or get_session_id()
         if not completing_session_id:
             raise ValueError(_PREPARED_SESSION_ID_REQUIRED_ERROR)

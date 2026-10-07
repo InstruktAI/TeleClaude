@@ -8,13 +8,22 @@ from __future__ import annotations
 import shlex
 from typing import TYPE_CHECKING
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import (
+    COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE,
+    COMMIT_REVIEW_DISCARD_PLACEHOLDER,
+    COMMIT_REVIEW_INTENT_TEST,
+    WORKTREE_DIR,
+    SlashCommand,
+)
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
 from teleclaude.core.session_startup_message import compose_command_loader
 from teleclaude.types.lifecycle import DriftClass
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from teleclaude.core.next_machine.commit_review_stamps import OutstandingCommit
     from teleclaude.core.next_machine.lifecycle import DriftResult
 
 __all__ = [
@@ -34,6 +43,7 @@ __all__ = [
     "format_pending_classes_for_dispatch",
     "format_plan_reconcile_note",
     "format_prepared",
+    "format_prepared_withheld",
     "format_procedure_load",
     "format_stash_debt",
     "format_terminal_claim_handoff",
@@ -430,6 +440,43 @@ def format_prepared(slug: str) -> str:
     return (
         f"PREPARED: {slug} is ready for work.\n\nCLEANUP: telec sessions end\n\n\n\n"
         f"{format_terminal_claim_handoff(slug)}"
+    )
+
+
+_PREPARED_WITHHELD_BLOCKER_UNSTAMPED = "{sha}: no commit-review stamp"
+_PREPARED_WITHHELD_BLOCKER_STAMPED = "{sha}: stamped {verdict}; an approve stamp must cover it"
+_PREPARED_WITHHELD_CONTEXT = (
+    "PREPARED is withheld: commits this session authored on main while holding the claim "
+    "on {slug} lack an approve stamp."
+)
+_PREPARED_WITHHELD_INSTRUCTION = (
+    "{intent_test}\n"
+    "- A commit that owes review: reuse the commit reviewer you already have open, or start one with "
+    "`telec sessions run --command {review_command} --args '<sha1,sha2,...>'`, and wait for its stamped verdict.\n"
+    "- A commit that owes none: `{discard_command}`.\n"
+    "Then call `telec todo prepare {slug}` again."
+)
+
+
+def format_prepared_withheld(slug: str, outstanding: Sequence[OutstandingCommit]) -> str:
+    """Format the non-terminal script returned while claim-period commits lack an approve stamp."""
+    blockers = [
+        _PREPARED_WITHHELD_BLOCKER_STAMPED.format(sha=commit.sha, verdict=commit.verdict.value)
+        if commit.verdict is not None
+        else _PREPARED_WITHHELD_BLOCKER_UNSTAMPED.format(sha=commit.sha)
+        for commit in outstanding
+    ]
+    instruction = _PREPARED_WITHHELD_INSTRUCTION.format(
+        intent_test=COMMIT_REVIEW_INTENT_TEST,
+        review_command=SlashCommand.REVIEW_COMMITS.value,
+        discard_command=COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE.format(sha=COMMIT_REVIEW_DISCARD_PLACEHOLDER),
+        slug=slug,
+    )
+    return format_blocker_resolution(
+        slug,
+        instruction,
+        blockers=blockers,
+        context=_PREPARED_WITHHELD_CONTEXT.format(slug=slug),
     )
 
 

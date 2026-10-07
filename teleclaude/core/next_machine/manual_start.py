@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -18,6 +19,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, WORK_LANE_JOB_ROLES, DriverLaunchClass, SlashCommand
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
+from teleclaude.core.next_machine.git_ops import get_ref_commit
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
@@ -54,6 +56,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
 )
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
@@ -64,9 +67,15 @@ from teleclaude.core.todos_db._exceptions import (
     ReviewerIdentityUnresolved,
 )
 from teleclaude.types.lifecycle import LifecyclePhase
-from teleclaude.types.todos import TodoState
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import Event, PrepareClaimDetail, TodoEventKind, TodoState
 
 logger = get_logger(__name__)
+
+_MAIN_REF = "main"
+_ERR_CLAIM_BOUNDARY_UNRESOLVED = (
+    "cannot record the prepare claim on {slug}: {ref} does not resolve, so the claim period has no boundary"
+)
 
 __all__ = [
     "DriverStartGuardResult",
@@ -432,6 +441,48 @@ async def _refuse_lane_crossing(
     )
 
 
+async def _record_prepare_claim(
+    todos_db: TodosDb,
+    slug: str,
+    caller_session_id: str,
+    project_root: Path,
+    *,
+    continuing_claim_is_recorded: bool,
+) -> None:
+    """Append the claim-entry event that bounds the caller's prepare claim period.
+
+    The event carries main's HEAD at entry: commits after it are the claim
+    period's, whatever second git stamped them in. A claim's start is the first
+    prepare call that confirms it. With
+    ``continuing_claim_is_recorded`` the call continues a live claim and records
+    nothing when the todo's latest claim-entry event already names the caller;
+    otherwise the call begins a new claim and always records. A claim whose
+    boundary cannot be resolved is refused rather than recorded unbounded.
+    """
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        return
+    writer = StateWriter(raw_state)
+    latest_claimant = next(
+        (event.actor for event in reversed(writer.state.events) if event.kind == TodoEventKind.PREPARE_CLAIM), None
+    )
+    if continuing_claim_is_recorded and latest_claimant == caller_session_id:
+        return
+    main_head = get_ref_commit(str(project_root), _MAIN_REF)
+    if not main_head:
+        raise RuntimeError(_ERR_CLAIM_BOUNDARY_UNRESOLVED.format(slug=slug, ref=_MAIN_REF))
+    details: dict[str, StateValue] = {PrepareClaimDetail.MAIN_HEAD: main_head}
+    writer.state.events.append(
+        Event(
+            at=datetime.now(UTC).isoformat(),
+            actor=caller_session_id,
+            kind=TodoEventKind.PREPARE_CLAIM,
+            details=details,
+        )
+    )
+    await writer.commit(todos_db, slug)
+
+
 async def adopt_manual_lifecycle_session(
     project_path: str | Path,
     slug: str,
@@ -492,6 +543,10 @@ async def adopt_manual_lifecycle_session(
         active_session = await runtime_db.get_session(caller_session_id)
         if active_session is not None:
             await _reflect_claim_on_caller_session(runtime_db, active_session, slug, lane)
+        if lane is RunnerLane.PREPARE:
+            await _record_prepare_claim(
+                todos_db, slug, caller_session_id, project_root, continuing_claim_is_recorded=True
+            )
         return ManualLifecycleSessionResult(
             slug=slug,
             lane=lane,
@@ -554,6 +609,8 @@ async def adopt_manual_lifecycle_session(
             reason=RunnerSkipReason.MISSING_STATE,
         )
     await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
+    if lane is RunnerLane.PREPARE:
+        await _record_prepare_claim(todos_db, slug, caller_session_id, project_root, continuing_claim_is_recorded=False)
     return ManualLifecycleSessionResult(
         slug=slug,
         lane=lane,

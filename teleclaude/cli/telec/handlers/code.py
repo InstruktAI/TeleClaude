@@ -35,6 +35,7 @@ from teleclaude.cli.telec.handlers._code_maintenance import handle_code_maintena
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
 from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
+from teleclaude.cli.telec.handlers._code_stamp import handle_code_stamp
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT, CODE_OWNERS
 from teleclaude.commit_identity import (
@@ -101,6 +102,7 @@ class CodeSubcommand(StrEnum):
     COMMIT = "commit"
     ADD = "add"
     OWNERS = "owners"
+    STAMP = "stamp"
     BLUEPRINT = "blueprint"
     POST_COMMIT = "post-commit"
     POST_MERGE = "post-merge"
@@ -116,7 +118,9 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.MAINTENANCE,
     }
 )
-_COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.ADD, CodeSubcommand.OWNERS})
+_COMMIT_SUBCOMMANDS = frozenset(
+    {CodeSubcommand.COMMIT, CodeSubcommand.ADD, CodeSubcommand.OWNERS, CodeSubcommand.STAMP}
+)
 
 
 def handle_code(args: list[str]) -> None:
@@ -164,6 +168,8 @@ def handle_code(args: list[str]) -> None:
         handle_code_add(rest)
     elif sub is CodeSubcommand.OWNERS:
         handle_code_owners(rest)
+    elif sub is CodeSubcommand.STAMP:
+        handle_code_stamp(rest)
     elif sub is CodeSubcommand.BLUEPRINT:
         from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
 

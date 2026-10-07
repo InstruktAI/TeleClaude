@@ -1726,6 +1726,27 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
             ),
+            "stamp": CommandDef(
+                desc="Record a commit-review outcome on commits that landed on main",
+                args="<sha>[,<sha>...] --verdict approve|request_changes [--reason <text>]",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_CODE_STAMP_VERDICT,
+                    F.FLAG_CODE_STAMP_REASON,
+                ],
+                notes=[
+                    "A commit reviewer stamps its verdict on exactly the SHAs it reviewed. The author stamps approve with a reason on a review candidate that owes no review; discarding is not reviewing.",
+                    "The stamp lands in the review state of the todo whose lifecycle claim the stamping session, or the session that started it, holds; with no claim in that chain it lands on no todo.",
+                    "The record names the stamping session and the reason, so a discard stays distinguishable from a reviewer's verdict. A later stamp on a SHA supersedes the earlier one.",
+                    "A stamp covering a session's commits discharges that session's post-commit review prompt, whether the reviewer or the author gave it.",
+                    "Every SHA must be a commit reachable from main; otherwise nothing is recorded.",
+                ],
+                examples=[
+                    "telec code stamp 1a2b3c4,5d6e7f8 --verdict approve",
+                    "telec code stamp 1a2b3c4 --verdict approve --reason 'removes a retired section'",
+                ],
+                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+            ),
             "pre-commit": CommandDef(
                 desc="Run the thin pre-commit backstop",
                 flags=[F.FLAG_HELP],
@@ -1881,6 +1902,7 @@ CODE_FORMAT = CLI_SURFACE["code"].subcommands["format"]
 CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
 CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
 CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
+CODE_STAMP = CLI_SURFACE["code"].subcommands["stamp"]
 CODE_MAINTENANCE_STATUS = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["status"]
 CODE_MAINTENANCE_DRAIN = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["drain"]
 CODE_MAINTENANCE_RETRY = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["retry"]

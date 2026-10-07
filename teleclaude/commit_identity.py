@@ -22,7 +22,8 @@ _COMMIT_TRAILER = "🤖 Generated with [TeleClaude](https://github.com/InstruktA
 _LINE_SEP = "\n"
 _PARAGRAPH_SEP = _LINE_SEP * 2
 _BLANK_LINE = ""
-_SESSION_LINE_TEMPLATE = "Session: {session_id}"
+SESSION_TRAILER_KEY = "Session"
+_SESSION_LINE_TEMPLATE = SESSION_TRAILER_KEY + ": {session_id}"
 _HUMAN_INVOLVED_LINE_TEMPLATE = "Human-Involved: {label}"
 _HUMAN_INVOLVED_LABELS: MappingProxyType[bool, str] = MappingProxyType({True: "true", False: "false"})
 

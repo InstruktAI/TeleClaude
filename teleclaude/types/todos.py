@@ -200,6 +200,34 @@ class HoldAuditState(BaseModel):
     reason: str = ""
 
 
+class TodoEventKind(StrEnum):
+    """Closed vocabulary of ``Event.kind`` values the lifecycle reads back."""
+
+    COMMIT_REVIEW_STAMP = "commit_review_stamp"
+    PREPARE_CLAIM = "prepare_claim"
+
+
+class CommitReviewVerdict(StrEnum):
+    """Outcome a commit-review stamp records on a commit SHA."""
+
+    APPROVE = "approve"
+    REQUEST_CHANGES = "request_changes"
+
+
+class CommitReviewDetail(StrEnum):
+    """Keys of a commit-review stamp event's ``details`` payload."""
+
+    SHA = "sha"
+    VERDICT = "verdict"
+    REASON = "reason"
+
+
+class PrepareClaimDetail(StrEnum):
+    """Keys of a prepare-claim event's ``details`` payload."""
+
+    MAIN_HEAD = "main_head"
+
+
 class Event(BaseModel):
     """Audit log entry for a state transition or stamp side-effect."""
 

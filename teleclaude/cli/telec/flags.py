@@ -572,3 +572,13 @@ FLAG_COMMIT_ONLY = Flag(
     arity=GREEDY,
 )
 FLAG_HUMAN_INVOLVED_COMMIT = FLAG_HUMAN_INVOLVED
+FLAG_CODE_STAMP_VERDICT = Flag(
+    "--verdict",
+    desc="Outcome recorded on each commit: approve | request_changes",
+    arity=VALUE,
+)
+FLAG_CODE_STAMP_REASON = Flag(
+    "--reason",
+    desc="Why the stamp was given; the author's discard of a candidate that owes no review names it here",
+    arity=VALUE,
+)

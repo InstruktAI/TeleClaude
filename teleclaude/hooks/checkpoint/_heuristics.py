@@ -7,7 +7,13 @@ and blast-radius and companion observations.
 from instrukt_ai_logging import get_logger
 
 from teleclaude.checkpoint_model import load_checkpoint_model, scopes_for_action, triggered_action_ids
-from teleclaude.constants import CheckpointAction, CheckpointModel
+from teleclaude.constants import (
+    COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE,
+    COMMIT_REVIEW_DISCARD_PLACEHOLDER,
+    COMMIT_REVIEW_INTENT_TEST,
+    CheckpointAction,
+    CheckpointModel,
+)
 from teleclaude.hooks.checkpoint._directives import _surface_run
 from teleclaude.hooks.checkpoint._evidence import (
     _check_blast_radius,
@@ -36,9 +42,10 @@ __all__ = ["_post_commit_review_instruction", "run_heuristics"]
 logger = get_logger("teleclaude.hooks.checkpoint")  # Preserve the package's record identity.
 
 _POST_COMMIT_REVIEW_INSTRUCTION = (
-    "A session-authored main-branch code commit is eligible for post-commit review. "
-    "Dispatch the commit(s) to independent review yourself and wait for REVIEW COMPLETE "
-    "before reporting completion. A REQUEST CHANGES verdict remains with this session "
+    "Your main-branch commit(s) from this turn are review candidates; you decide for each whether "
+    f"independent review is owed. {COMMIT_REVIEW_INTENT_TEST} Dispatch a commit that owes review to an independent "
+    "reviewer yourself and wait for its stamped verdict before reporting completion. Discard a commit "
+    f"that owes none with `{COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE.format(sha=COMMIT_REVIEW_DISCARD_PLACEHOLDER)}`. A REQUEST CHANGES verdict remains with this session "
     "for evidence-based rejection or in-scope remediation and re-review. What you and the "
     "reviewer cannot resolve, you hold: go idle with it and route it nowhere "
     "(general/principle/autonomy)."

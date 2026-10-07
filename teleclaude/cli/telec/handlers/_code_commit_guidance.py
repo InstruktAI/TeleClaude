@@ -11,7 +11,13 @@ from pathlib import Path
 from sqlalchemy.exc import OperationalError
 
 from teleclaude import agent_artifacts
-from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
+from teleclaude.constants import (
+    CHECKPOINT_BASE_AGENTS_BINDING,
+    COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE,
+    COMMIT_REVIEW_DISCARD_PLACEHOLDER,
+    COMMIT_REVIEW_INTENT_TEST,
+    SlashCommand,
+)
 from teleclaude.core.db import get_db
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
@@ -29,15 +35,15 @@ _GIT_STAT_FLAG = "--stat"
 _GIT_PATHSPEC_SEPARATOR = "--"
 _SCOPE_DIFFSTAT_LINE_SEPARATOR = "\n"
 _AGENT_ARTIFACT_LANE_MIXED = (
-    "a mix of authored agent artifacts (required doc-hygiene review) and incorporated skill packages (no review)"
+    "a mix of authored agent artifacts (doc-hygiene review candidate) and incorporated skill packages (no review)"
 )
-_AGENT_ARTIFACT_LANE_AUTHORED = "authored agent artifacts, required: dispatch an independent doc-hygiene review"
+_AGENT_ARTIFACT_LANE_AUTHORED = "authored agent artifacts, a doc-hygiene review candidate"
 _AGENT_ARTIFACT_LANE_INCORPORATED = (
     "only incorporated skill package bodies — no independent review; covered by the pre-adoption security gate"
 )
 _AGENT_ARTIFACT_LANE_NONE = "none — the pending scope touches no agent-artifact source"
 _REVIEW_VERDICT_GUIDANCE = (
-    "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
+    "   Wait for the reviewer's stamped verdict before reporting done. REQUEST CHANGES remains with\n"
     "   you for evidence-based rejection or in-scope remediation and re-review. What\n"
     "   you and the reviewer cannot resolve, you hold: go idle with it and route it\n"
     "   nowhere (general/principle/autonomy).\n"
@@ -50,13 +56,13 @@ _UNCLASSIFIED_ARTIFACT_LANE_TEMPLATE = (
 _ARTIFACT_PATH_LIST_SEPARATOR = ", "
 _COMMIT_REVIEW_REUSE_GUIDANCE = (
     "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
-    "   gets its own reviewer (--mode fast for doc-hygiene, --mode slow for code review):\n"
+    "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
 )
 _COMMIT_REVIEW_START_GUIDANCE = (
-    "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode slow for code review):\n"
+    "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
 )
 _COMMIT_REVIEW_DISPATCH_TEMPLATE = (
-    "     telec sessions run --command {command} --args '<sha1,sha2,...>' --mode <fast|slow>\n"
+    "     telec sessions run --command {command} --args '<sha1,sha2,...>' --mode <fast|med>\n"
 )
 
 __all__ = [
@@ -202,11 +208,12 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
             command=SlashCommand.REVIEW_COMMITS.value
         )
     scope_diffstat = _resolved_scope_diffstat(project_root, context_root)
+    discard_command = COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE.format(sha=COMMIT_REVIEW_DISCARD_PLACEHOLDER)
     print(
         "COMMIT GATE ACTIVE — CONTINUE NOW\n"
         "\n"
         "This output is not informational. Follow it until one terminal state:\n"
-        "- a commit is created and required review routing is completed or started as instructed; or\n"
+        "- a commit is created and its review routing is decided, then completed or started as instructed; or\n"
         "- a concrete blocker is reached.\n"
         "\n"
         f"{scope_diffstat}\n"
@@ -226,19 +233,24 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         "\n"
         "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
         "\n"
-        "3. After committing, route the review by what the diff touched:\n"
+        "3. After committing, the commit is a review candidate. What the diff touched names the\n"
+        "   candidate; you decide whether review is owed:\n"
         "   Remediation only — the diff just applies an open review's findings and adds no\n"
         "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
         "       not offer a fresh review. Its APPROVE is terminal.\n"
         f"   Any path matched by neither documentation ({documentation_patterns}) nor agent artifacts\n"
         f"       ({agent_artifact_patterns}) ->\n"
-        "       dispatch independent code review automatically.\n"
-        f"   Documentation snippets ({DOC_LAYER_PATTERN}) -> required: dispatch an independent\n"
-        "       doc-hygiene review (you may not review your own).\n"
+        "       code review candidate (--mode med).\n"
+        f"   Documentation snippets ({DOC_LAYER_PATTERN}) -> doc-hygiene review candidate\n"
+        "       (--mode fast; you may not review your own).\n"
         f"   Agent artifacts ({agent_artifact_patterns}) -> the pending scope carries\n"
         f"       {agent_artifact_lane}.\n"
         f"   Standalone descriptive prose ({standalone_prose_patterns}) outside {DOC_LAYER_PATTERN} -> no\n"
         "       independent review; directive text follows the functional-code review path.\n"
+        "\n"
+        f"   {COMMIT_REVIEW_INTENT_TEST}\n"
+        "   A commit that owes review goes to an independent reviewer you dispatch.\n"
+        f"   A commit that owes none is discarded with: {discard_command}\n"
         "\n"
         f"{review_dispatch}"
         f"{_REVIEW_VERDICT_GUIDANCE}",

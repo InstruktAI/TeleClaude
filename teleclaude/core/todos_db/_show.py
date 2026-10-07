@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
 from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
+from teleclaude.core.next_machine.commit_review_stamps import current_outcomes
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.core.todos_db._models import Todo, TodoStateModel
@@ -255,13 +256,22 @@ def _derive_approvals_block(state_model: TodoState) -> dict[str, StateValue]:
 
 
 def _derive_reviews_block(state_model: TodoState) -> dict[str, StateValue]:
-    """Project prepare and build review verdict state."""
+    """Project prepare and build review verdict state, and each commit's current review outcome."""
     return {
         "prd_review": state_model.prd_review.model_dump(),
         "requirements_review": state_model.requirements_review.model_dump(),
         "architecture_review": state_model.architecture_review.model_dump(),
         "plan_review": state_model.plan_review.model_dump(),
         "build_review": state_model.build_review.model_dump(),
+        "commit_reviews": {
+            sha: {
+                "verdict": outcome.verdict.value,
+                "stamped_by": outcome.stamped_by,
+                "stamped_at": outcome.stamped_at,
+                "reason": outcome.reason,
+            }
+            for sha, outcome in current_outcomes(state_model.events).items()
+        },
     }
 
 

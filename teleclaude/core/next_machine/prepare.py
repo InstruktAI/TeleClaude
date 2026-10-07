@@ -23,6 +23,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
+from teleclaude.core.next_machine.commit_review_stamps import OutstandingCommit, outstanding_claim_period_commits
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     adopt_prepare_handoff_phase,
@@ -34,6 +35,7 @@ from teleclaude.core.next_machine.output_formatting import (
     PREPARE_SLUG_REQUIRED_MESSAGE,
     format_blocker_resolution,
     format_error,
+    format_prepared_withheld,
     format_procedure_load,
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
@@ -46,6 +48,7 @@ from teleclaude.core.next_machine.provenance import (
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
+from teleclaude.session_identity import get_session_id
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.state_value import StateValue
 
@@ -62,6 +65,7 @@ from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
 
+_PREPARED_WITHHELD_LOG = "prepared_withheld"
 _TASK_PREPARER_HAT = "Task preparer"
 _TASK_PREPARER_EXPECTED = "a durable task-plan and a human authorization request"
 _TASK_RUNNING_ERROR_CODE = "TASK_RUNNING"
@@ -165,8 +169,23 @@ async def _adopt_prepare_phase(
     raw_state: dict[str, StateValue],
     *,
     repo_root: str,
-) -> dict[str, StateValue]:
+) -> tuple[dict[str, StateValue], list[OutstandingCommit]]:
+    """Adopt the derived prepare phase and report the commits that withhold ``PREPARED``.
+
+    The second element lists the calling session's claim-period commits on main
+    that lack an ``approve`` stamp; it is non-empty only when the derivation would
+    have entered ``PREPARED`` and was held back, so the stored phase is unchanged.
+    """
     writer = StateWriter(raw_state)
+    outstanding: list[OutstandingCommit] = []
+
+    def prepared_withheld() -> bool:
+        session_id = get_session_id()
+        if not session_id:
+            return False
+        outstanding.extend(outstanding_claim_period_commits(repo_root, session_id, writer.state.events))
+        return bool(outstanding)
+
     await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer, repo_root=repo_root)
     artifact_metadata = {metadata["name"]: metadata for metadata in await todos_db.artifact_metadata(slug)}
     artifact_names = dict(_ADOPTION_ARTIFACTS)
@@ -200,6 +219,7 @@ async def _adopt_prepare_phase(
         repo_root=repo_root,
         report_digests=report_digests,
         artifact_write_timestamps=artifact_write_timestamps,
+        prepared_withheld=prepared_withheld,
     )
     for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
         if artifacts.target_artifact_key is None:
@@ -232,8 +252,8 @@ async def _adopt_prepare_phase(
     payload = writer.to_dict()
     if payload != raw_state:
         payload = await writer.commit(todos_db, slug)
-        return payload
-    return raw_state
+        return payload, outstanding
+    return raw_state, outstanding
 
 
 async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
@@ -291,7 +311,14 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if state is None:
             raise RuntimeError(f"Contract violation: no state record for slug {resolved_slug!r}")
 
-        state = await _adopt_prepare_phase(todos_db, resolved_slug, state, repo_root=cwd)
+        state, outstanding = await _adopt_prepare_phase(todos_db, resolved_slug, state, repo_root=cwd)
+        if outstanding:
+            logger.info(
+                _PREPARED_WITHHELD_LOG,
+                slug=resolved_slug,
+                pending_shas=[commit.sha for commit in outstanding],
+            )
+            return format_prepared_withheld(resolved_slug, outstanding)
         writer = StateWriter(state)
         lifecycle = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_prepare({resolved_slug})")
         if lifecycle is LifecyclePhase.TASK_PLAN_DRAFTING:

@@ -646,6 +646,19 @@ CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # recognized by its target session, not by text (see the checkpoint evidence).
 CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = [SlashCommand.REVIEW_COMMITS.value]
 
+# Review-routing text shared by every surface that routes a commit on main to
+# review (the commit card, the checkpoint's post-commit prompt, the prepare
+# machine's PREPARED hold). The authoring session decides per commit; the
+# surfaces only name candidates and carry this test.
+COMMIT_REVIEW_INTENT_TEST = (
+    "Decide by what each commit set out to do: a commit through which you wrote new or changed code "
+    "or documentation content owes an independent reviewer; a commit through which you wrote neither "
+    "(a removal, a merge of work already reviewed where it was written, a validation or other "
+    "mechanical repair) owes none."
+)
+COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE = "telec code stamp {sha} --verdict approve --reason <text>"
+COMMIT_REVIEW_DISCARD_PLACEHOLDER = "<sha>"
+
 # Universal base judgment actions (the verbs). TeleClaude owns this registry; every
 # onboarded project inherits it and references these ids in its own bindings or
 # extends it with project-specific actions. `log-check` carries the {slug}

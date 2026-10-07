@@ -48,6 +48,7 @@ from teleclaude.api.auth import (
     carried_caller_session_id,
     principal_for_carried_caller,
 )
+from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.event_subscription_routes import router as event_subscription_router
 from teleclaude.api.ingress_listener import WebhookIngressListener
@@ -198,6 +199,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(todo_by_id_router)
         self.app.include_router(todo_artifact_router)
         self.app.include_router(todo_stamp_router)
+        self.app.include_router(commit_review_stamp_router)
 
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
