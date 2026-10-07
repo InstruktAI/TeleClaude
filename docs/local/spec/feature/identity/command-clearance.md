@@ -519,15 +519,16 @@ supplies.
 - Initializing a company or a project with `--help-desk` is judged at the home
   whose help desk it enables, under the administrator band: a company init at the
   company it names (its `--slug`, otherwise its normalized name), a project init at
-  the project of the checkout it initializes. The same init without the flag stays
-  a platform-scope act.
+  the project of the checkout it initializes. The same project init without the
+  flag is judged like adoption.
 - Creating a project is judged at the home it lands in: the caller's own person
   scope, the company scope `--company` names, or platform scope for `--path`.
-  Adopting a project is judged at the caller's own person scope wherever the
-  folder is, so any registered person adopts a folder they can reach; which
-  folders a session can reach is not decided here. Both bands admit every role
+  Adopting a project, and initializing one without `--help-desk`, is judged at
+  the caller's own person scope wherever the folder is, so any registered person
+  adopts a folder they can reach and converges a project they created; which
+  folders a session can reach is not decided here. These bands admit every role
   but customer, so a registered person without a platform role creates in their
-  own home and adopts.
+  own home, adopts, and converges.
 
 <!-- /planned-change:personal-assistant-project-creation -->
 
