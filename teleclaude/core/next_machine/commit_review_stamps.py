@@ -63,6 +63,7 @@ _LOG_STAMP_APPLIED = "commit_review_stamp"
 _LOG_STAMP_NO_STATE = "commit_review_stamp_no_state"
 _FIELD_SEP = "\x1f"
 _RECORD_SEP = "\x1e"
+_RECORD_LINE_ENDINGS = "\r\n"
 _TRAILER_VALUE_SEP = ","
 _LOG_FORMAT = "--format=%H%x1f%(trailers:key={key},valueonly,unfold,separator=%x2c)%x1e"
 
@@ -295,7 +296,7 @@ def _commit_sessions(project_root: str, shas: tuple[str, ...]) -> frozenset[str]
 def _parse_log_records(stdout: str) -> list[tuple[str, frozenset[str]]]:
     records: list[tuple[str, frozenset[str]]] = []
     for record in stdout.split(_RECORD_SEP):
-        text = record.strip()
+        text = record.strip(_RECORD_LINE_ENDINGS)
         if not text:
             continue
         commit_sha, trailer_values = text.split(_FIELD_SEP)
