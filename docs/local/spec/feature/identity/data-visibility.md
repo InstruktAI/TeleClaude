@@ -122,6 +122,8 @@ And records whose subject the showing computer does not know are included
 
 #### UC-DV2: Everyone else sees exactly the subjects their reach admits
 
+<!-- planned-change:sessions-show -->
+
 ```gherkin
 Given a person who is not a platform administrator
 When the person, or an agent session rooted at them, lists or receives platform data
@@ -138,6 +140,29 @@ Examples:
   | none                                    | nobody at this level                                 |
   | the platform's shared documentation     | every company administrator                          |
 ```
+
+<!-- change:sessions-show -->
+
+```gherkin
+Given a person who is not a platform administrator
+When the person, or an agent session rooted at them, lists or receives platform data
+Then a record is shown only when their reach admits it: its subject is one they reach, or it is their own work
+And no record outside that reach is shown or counted
+And no record outside that reach is distinguishable from an absent one, apart from documentation its author published as public and a session the caller names by its id to inspect, which is refused as outside the caller's reach (`local/projects/teleclaude/spec/feature/agent_runtime/session-inspection`)
+
+Examples:
+  | record's subject                        | shown to                                             |
+  | a company                               | every person on that company's roster                |
+  | a person                                | that person                                          |
+  | a project owned by a company            | that company's administrators and assigned members   |
+  | a project owned by a person             | that person                                          |
+  | a project with no owner                 | nobody at this level                                 |
+  | none                                    | nobody at this level                                 |
+  | the platform's shared documentation     | every company administrator                          |
+```
+
+<!-- /planned-change:sessions-show -->
+
 
 #### UC-DV3: A platform role below administrator reaches nothing by itself
 

@@ -127,6 +127,21 @@ And an operation there for a session in a project owned by another company is an
 And an operation the person's command started there is returned to them, recognised by the principal that command carried
 ```
 
+<!-- planned:sessions-show -->
+
+#### UC-XCA9: Another computer answers an inspection of its own session
+
+```gherkin
+Given a person holding no platform role and the admin role in one company
+When the person inspects a session naming the computer that holds it
+Then that computer admits the inspection by the same person band and reach as a listing there
+And it returns the session's record when the person's reach there admits the session
+And it refuses a session there outside the person's reach as outside that reach
+And it answers an id that matches no session there as not found
+```
+
+<!-- /planned:sessions-show -->
+
 ## Known caveats
 
 - A command the daemon forwards on its own account — adapter delivery, direct-conversation bundles, closing a session another computer runs, peer synchronization — carries the daemon's system principal and keeps the trust the daemon relay already extends between computers; this contract decides which facts authorize a caller's command, not which computers trust each other.

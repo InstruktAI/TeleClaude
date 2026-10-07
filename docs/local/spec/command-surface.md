@@ -34,6 +34,15 @@ visibility: 'public'
   and the session pane read endpoint. The default transcript query is unchanged;
   the session-transcript-retrieval feature spec owns the observation contract.
 
+<!-- planned:sessions-show -->
+
+- `telec sessions show [<session-id>|self] [--computer <host>] [--full]` reads one
+  session's stored record — grouped diagnostic detail by default, the complete
+  record with `--full` — under the same reach as `telec sessions list`
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-inspection`).
+
+<!-- /planned:sessions-show -->
+
 - MCP CLI mappings:
   - `telec mcp list [--exclude <slug> ...]` lists configured MCP servers without starting them.
   - `telec mcp list-tools <slug>` initializes or reuses the daemon-owned lease for one server and prints its tool catalog.
