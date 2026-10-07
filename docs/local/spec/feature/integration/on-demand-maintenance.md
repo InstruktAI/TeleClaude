@@ -24,11 +24,10 @@ The steps are every maintenance action the root's registry declares — the
 platform base merged with the root's own overlay, the same merged model the
 commit boundary reads. `telec sync` keeps no list of its own, so the fallback
 cannot drift from the automation. A manual run has no commit range, so changed
-paths narrow nothing: a step is owed when the root's declaration can owe it at
-all. A step whose bindings the root never activates, such as installation in a
-root that does not subscribe code, is one the automation never performs there;
-the run reports it as not owed in that root, and neither performs nor fails it.
-Converging the root's own plumbing is owed in every root.
+paths narrow nothing: every declared step is owed, including converging the
+root's own plumbing. A step with nothing to act on in a root completes and says
+so; installation in a root that declares nothing to install reports exactly
+that, and does not fail.
 
 Publication is one of those steps and keeps its own contract
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
@@ -68,9 +67,8 @@ Publication is one of those steps and keeps its own contract
 - **Report order.** Step outcomes come first, then held steps, then earlier
   failures, and owed disruptive steps last.
 - **Listing.** `telec sync --list` prints, in order, every step the root's
-  registry declares with what a run would do with it — perform it, hold it,
-  report it as not owed in that root, or report it as owed or not — and changes
-  nothing.
+  registry declares with what a run would do with it — perform it, hold it, or
+  only report whether it is owed — and changes nothing.
 - **Concurrency.** A run started while commit-boundary maintenance is still
   running never performs a step at the same time as that run, and leaves both
   runs' records accurate.
@@ -200,13 +198,13 @@ Then the help describes it as the manual fallback for commit-boundary maintenanc
 And states that it performs the root's maintenance steps, leaves restarts and reloads undone, and names what is owed
 ```
 
-#### UC-ODM14: A step the root can never owe is reported, not failed
+#### UC-ODM14: A step with nothing to act on completes without failing
 
 ```gherkin
-Given a root that does not subscribe the capability whose bindings owe installation
+Given a root that declares nothing to install and does not subscribe code
 When an agent runs telec sync in that root's canonical checkout on main
-Then installation is not performed
-And the agent sees it reported as not owed in that root
+Then the installation step runs and reports that there is nothing to install
+And it completes successfully
 And it does not make telec sync exit non-zero
 ```
 

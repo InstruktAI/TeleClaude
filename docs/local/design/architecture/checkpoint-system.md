@@ -166,14 +166,12 @@ path from command text that is not already a known dirty path.
 
 `telec sync` performs a root's maintenance on demand through the same executor
 (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`). An
-on-demand run has no activation range, so the registry itself tells it what to
-do with each maintenance action, through the action's `on_demand` disposition:
+on-demand run has no activation range, so every declared maintenance action is
+owed, and the registry itself tells the run what to do with each one, through
+the action's `on_demand` disposition:
 
-- `bound`, the default: owed when a binding active in the root names the action,
-  and otherwise reported as not owed in that root. Capability gating stays on
-  the bindings (Invariant 22), so this reading inherits it.
-- `always`: owed in every root.
-- `deferred`: never performed on demand. The run reports the action as owed when
+- `run`, the default: performed.
+- `defer`: never performed on demand. The run reports the action as owed when
   a process it refreshes started from an earlier commit than the converged tip,
   and the changed paths between the two owe the action under the root's own
   bindings, through the same scope matcher (Invariant 25). The action's
@@ -189,13 +187,21 @@ on publication, and an overlay that overrides that action by id does not inherit
 it. When the root's repository holds uncommitted changes, an on-demand run
 performs only those actions, and holds every other owed action.
 
-The platform base declares installation and publication `bound`, and converging
-the invoking root's own plumbing as `plumbing-convergence`, `always`, with no
-base binding. Commit-boundary maintenance in a project is therefore unchanged,
-and every on-demand run converges the root's plumbing. TeleClaude's overlay
-overrides `plumbing-convergence` by id with fleet convergence bound to its hook
-templates, and declares `restart` and `tui-reload` `deferred`, each with a probe
-that reads the commit the daemon and each live TUI started from.
+An action whose command finds nothing to act on in a root completes and says
+so rather than failing. The platform base's installation runs the root's
+`make install` when the root declares an install target. Without one it reports
+nothing to install and succeeds, unless the root subscribes `code`, whose
+toolchain contract requires that target, and where its absence stays a failure.
+Commit-boundary installation, bound only under `code`, therefore behaves as
+before.
+
+The platform base also declares converging the invoking root's own plumbing as
+`plumbing-convergence`, with no base binding. Commit-boundary maintenance in a
+project is therefore unchanged, and every on-demand run converges the root's
+plumbing. TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
+convergence bound to its hook templates, and declares `restart` and
+`tui-reload` `defer`, each with a probe that reads the commit the daemon and
+each live TUI started from.
 
 An on-demand run fills a command without a range. `{after_sha}` takes the
 converged tip, the `--before-sha {before_sha}` pair is omitted, and the
