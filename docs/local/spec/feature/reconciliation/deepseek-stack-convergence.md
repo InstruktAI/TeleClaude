@@ -34,15 +34,20 @@ make surface, and installation reaches the runtime only through it.
 - **Candidate runtime.** Any published runtime release no older than the
   installed one, whatever release channel publishes it. The installed runtime
   is always a candidate, so staying put is always available.
-- **Fit.** A package fits a candidate runtime when every compatibility
-  requirement it declares holds: requirements on the runtime's own packages are
-  judged against the candidate's version exactly as the runtime judges them at
-  startup, and requirements on libraries the runtime bundles are judged against
-  the versions the candidate brings.
+- **Fit.** A package version fits a candidate runtime when every compatibility
+  requirement it declares holds under strict semantic-version matching:
+  requirements on the runtime's own packages against the candidate's version,
+  and requirements on libraries the runtime bundles against the versions the
+  candidate brings. A prerelease satisfies a requirement only where that
+  requirement names a prerelease of the same major, minor and patch version.
+  Every fitting set therefore also passes the runtime's own startup check,
+  which admits prereleases more broadly.
 - **Adopted set.** The newest candidate runtime for which every package in
-  every profile has a fitting published version, together with the newest
-  fitting version of each. A candidate that leaves any installed package with
-  no fitting version is rejected, never adopted by dropping that package.
+  every profile fits: a registry package through some published version, a
+  local-checkout plugin through the manifest it already has. The set carries
+  the newest fitting published version of each registry package. A candidate
+  that leaves any installed package without a fit is rejected, never adopted by
+  dropping that package.
 - **Plugin reference.** Every profile that holds a given registry plugin
   references it through the same registry requirement. A plugin from a local
   checkout keeps its local reference.
@@ -62,17 +67,17 @@ make surface, and installation reaches the runtime only through it.
 
 ```gherkin
 Given a runtime release newer than the installed one exists
-And every package installed in every profile has a published version that fits it
+And every package installed in every profile fits it
 When an operator runs the DeepSeek stack convergence
 Then the runtime moves to the newest such release
-And each profile's TUI and plugins move to their newest versions that fit it
+And each profile's TUI and registry plugins move to their newest published versions that fit it
 And the operator's report lists each package's previous and adopted version
 ```
 
 #### UC-DSC2: A runtime release that would cost a plugin is passed over
 
 ```gherkin
-Given the newest candidate runtime leaves an installed plugin with no fitting published version
+Given the newest candidate runtime leaves an installed plugin without a fit
 And an older candidate, still newer than the installed runtime, keeps every installed package fitting
 When an operator runs the DeepSeek stack convergence
 Then the runtime moves to that older candidate
@@ -151,6 +156,17 @@ When an operator runs the installer
 Then the runtime is installed or moved only through the DeepSeek stack convergence
 And after the installer finishes every profile still holds the set convergence left in place
 And an unchanged or rolled-back outcome is shown to the operator without failing the rest of the installation
+```
+
+#### UC-DSC11: An unpublished local plugin is judged by its own manifest
+
+```gherkin
+Given a profile holds a plugin installed from a local checkout that has no published version
+And its manifest's compatibility requirements hold for a newer candidate runtime
+And every other installed package fits that candidate
+When an operator runs the DeepSeek stack convergence
+Then the runtime moves to that candidate
+And the local plugin stays installed through its local reference
 ```
 
 ## Known caveats
