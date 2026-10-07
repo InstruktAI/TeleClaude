@@ -84,7 +84,11 @@ its producer receives when its delivery is exhausted. A startup message that
 reaches the observation waits for the same window and fails its submission when
 it lapses. A pane-readiness wait sees the same screen: a surface with no
 composer that has stopped changing for the readiness quiet window counts as
-that observation, and the readiness wait keeps its own limit. The first
+that observation, and the readiness wait keeps its own limit. Queued text that
+meets such a readiness limit waits like any other queued text; a headless
+adoption whose readiness wait ends on such a screen keeps its pane and stays
+initializing, so the woken agent can see and clear the screen and the waiting
+text reaches the agent through that session once a composer appears. The first
 observation that finds no composer while the
 session is not already `blocked` with reason `needs_input` puts it there, which
 wakes its watchers once with a capture of the pane so an agent can clear or
