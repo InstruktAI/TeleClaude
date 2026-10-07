@@ -27,10 +27,10 @@ Person-specific snippets state the person's facts, choices, and extensions;
 shared rules are cited from their owners
 (`general/policy/referencing-doc-snippets`).
 
-A person's knowledge is authored in the local half of their documentation
-(`docs/local/`), which is private to them (`general/policy/artifact-scope`).
-Material reaches the published half (`docs/global/`) only when the person
-explicitly discloses it (`general/policy/human-contract`).
+A person's knowledge is authored in the local half of their documentation,
+which is private to them (`general/policy/artifact-scope`). Material reaches
+the published half only when the person explicitly discloses it
+(`general/policy/human-contract`).
 
 ### Personal contents
 
