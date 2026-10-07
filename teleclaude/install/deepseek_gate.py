@@ -23,6 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 
@@ -54,6 +55,7 @@ _NOT_COPIED = frozenset(
 _MANIFEST_FILE = "package.json"
 _PROFILE_FIELD = "dsh"
 _PROFILE_SECTION = "profile"
+_PROFILES_PROTOCOL_FIELD: Final = "profiles"
 _BUNDLES_FIELD = "bundles"
 
 _PROMPT_CONTEXT_FILE = "prompt-context.json"
@@ -608,7 +610,7 @@ def _gate_environment(paths: _GatePaths) -> dict[str, str]:
 
 def _launch_arguments() -> tuple[str, ...]:
     """The launch arguments of the DeepSeek agent definition."""
-    profiles = AGENT_REGISTRY[AgentName.DEEPSEEK].protocol["profiles"]
+    profiles = AGENT_REGISTRY[AgentName.DEEPSEEK].protocol[_PROFILES_PROTOCOL_FIELD]
     return tuple(shlex.split(profiles[LaunchProfile.DEFAULT]))
 
 

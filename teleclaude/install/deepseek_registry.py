@@ -83,6 +83,7 @@ _UNEXPECTED_JSON_TEMPLATE = "{what} is {kind}, expected {expected}"
 _EXPECTED_OBJECT = "an object"
 _EXPECTED_STRING = "a string"
 _EXPECTED_QUERY_RESULT = "a version string or a list of them"
+_LOG_STAGE_START = "Staging candidate runtime"
 
 
 @dataclass(frozen=True)
@@ -214,7 +215,7 @@ class RegistryCompatibilityView:
 
     def _stage(self, candidate: str) -> Path:
         prefix = self._scratch_directory / _STAGE_DIRECTORY / candidate
-        logger.info("Staging candidate runtime", version=candidate, prefix=str(prefix))
+        logger.info(_LOG_STAGE_START, version=candidate, prefix=str(prefix))
         result = run_npm(
             (
                 _NPM_INSTALL,

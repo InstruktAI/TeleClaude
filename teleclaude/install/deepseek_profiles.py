@@ -48,6 +48,7 @@ from teleclaude.install.deepseek_registry import (
 logger = get_logger(__name__)
 
 _DSH_HOME_VARIABLE = "DSH_HOME"
+_UNSET_HOME = ""
 _DEFAULT_HOME_DIRECTORY = ".dsh"
 _PROFILES_DIRECTORY = "profiles"
 _MANIFEST_FILE = "package.json"
@@ -90,7 +91,7 @@ _LOG_RESTORE_STEP = "DeepSeek stack restore step failed"
 
 def harness_home() -> Path:
     """The vendor's harness home: ``$DSH_HOME`` when set and not blank, else ``~/.dsh``."""
-    configured = os.environ.get(_DSH_HOME_VARIABLE, "")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    configured = os.environ.get(_DSH_HOME_VARIABLE, _UNSET_HOME)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if configured.strip():
         return Path(configured)
     return Path.home() / _DEFAULT_HOME_DIRECTORY

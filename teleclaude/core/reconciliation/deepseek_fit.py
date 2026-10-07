@@ -19,14 +19,26 @@ _RUNTIME_FAMILY_PREFIX = "@deepseek-ai/dsh-"
 _WORKSPACE_RANGE_PREFIX = "workspace:"
 _REGISTRY_REFERENCE_TEMPLATE = "{name}@{version}"
 
+
+class _SemVerPart(StrEnum):
+    """Named capture groups used to order a semantic version."""
+
+    MAJOR = "major"
+    MINOR = "minor"
+    PATCH = "patch"
+    PRERELEASE = "prerelease"
+
+
 _SEMVER_PATTERN = re.compile(
-    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)"
-    r"(?:-(?P<prerelease>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+    rf"^(?P<{_SemVerPart.MAJOR}>0|[1-9]\d*)\.(?P<{_SemVerPart.MINOR}>0|[1-9]\d*)"
+    rf"\.(?P<{_SemVerPart.PATCH}>0|[1-9]\d*)"
+    rf"(?:-(?P<{_SemVerPart.PRERELEASE}>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 _PRERELEASE_SEPARATOR = "."
 _NUMERIC_IDENTIFIER_PATTERN = re.compile(r"^(0|[1-9]\d*)$")
 _INVALID_VERSION_TEMPLATE = "Not a semantic version: {version!r}"
+_EMPTY_IDENTIFIER_TEXT = ""
 
 
 class DeepSeekStackError(RuntimeError):
@@ -177,14 +189,14 @@ def version_precedence(version: str) -> _Precedence:
     match = _SEMVER_PATTERN.match(version)
     if match is None:
         raise DeepSeekStackError(_INVALID_VERSION_TEMPLATE.format(version=version))
-    prerelease = match.group("prerelease")
+    prerelease = match.group(_SemVerPart.PRERELEASE)
     identifiers = (
         () if prerelease is None else tuple(_identifier_key(part) for part in prerelease.split(_PRERELEASE_SEPARATOR))
     )
     return (
-        int(match.group("major")),
-        int(match.group("minor")),
-        int(match.group("patch")),
+        int(match.group(_SemVerPart.MAJOR)),
+        int(match.group(_SemVerPart.MINOR)),
+        int(match.group(_SemVerPart.PATCH)),
         int(prerelease is None),
         identifiers,
     )
@@ -192,7 +204,7 @@ def version_precedence(version: str) -> _Precedence:
 
 def _identifier_key(identifier: str) -> tuple[int, int, str]:
     if _NUMERIC_IDENTIFIER_PATTERN.match(identifier):
-        return (0, int(identifier), "")
+        return (0, int(identifier), _EMPTY_IDENTIFIER_TEXT)
     return (1, 0, identifier)
 
 
