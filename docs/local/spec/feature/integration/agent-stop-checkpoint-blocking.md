@@ -42,9 +42,16 @@ the sealed `telec code commit` path and triggers only the post-commit
 review gate. The review gate defers while the working tree still carries an
 uncommitted change owing a commit, so the marker persists across those turns
 rather than being consumed; it surfaces once on a turn with no pending commit
+<!-- planned-change:commit-review-stamp -->
 and is consumed then, or is consumed when the review is dispatched. A
 force-fire that has nothing left to surface — no changed files, no required
 actions, no observations, and no commit action — produces no checkpoint.
+<!-- change:commit-review-stamp -->
+and is consumed then, or is consumed when the review is dispatched or when a
+commit-review stamp covers this session's commits. A force-fire that has
+nothing left to surface — no changed files, no required actions, no
+observations, and no commit action — produces no checkpoint.
+<!-- /planned-change:commit-review-stamp -->
 An **integrator-maintenance marker** carries canonical-main activations whose
 deterministic maintenance was recorded and whose live-runtime log judgment
 remains. It is keyed to the canonical checkout rather than to a session, so a
@@ -157,8 +164,14 @@ And the committed pathspec included code (not a doc-only commit)
 And the session-scoped authored-main-commit marker is present
 When the heuristic engine evaluates the turn window
 Then the result includes the post-commit review-gate surfacing action
+<!-- planned-change:commit-review-stamp -->
 And that action instructs the authoring session to dispatch the commit(s) to independent review automatically
 And waits for REVIEW COMPLETE before reporting completion
+<!-- change:commit-review-stamp -->
+And that action names the commit(s) as review candidates and states that the authoring session decides whether each owes independent review
+And directs a commit that owes review to an independent reviewer the session dispatches automatically, waiting for its verdict before reporting completion
+And directs a commit that owes none to the author's discard, `telec code stamp <sha> --verdict approve --reason <text>`
+<!-- /planned-change:commit-review-stamp -->
 And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `general/policy/commits`
 And the authored-main-commit marker is consumed
 (The authored-main-commit marker triggers only the review gate; owed maintenance is recorded and started at the commit boundary — see `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.)
