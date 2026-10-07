@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Protocol
 
 RUNTIME_PACKAGE = "@deepseek-ai/dsh"
+TUI_PACKAGE = "@deepseek-harness-tui/dsh-tui"
 RUNTIME_ENGINE = "dsh"
 LOCAL_REFERENCE_PREFIX = "file:"
 _RUNTIME_FAMILY_PREFIX = "@deepseek-ai/dsh-"
@@ -86,11 +87,17 @@ class RequiredPlugin:
 
 @dataclass(frozen=True)
 class Stack:
-    """The installed runtime, its profiles and the plugins the installation requires."""
+    """The installed runtime, its profiles and the plugins the installation requires.
+
+    ``absent_launch_profile`` names the launch profile when no directory exists at its profile path, and is
+    ``None`` when the launch profile exists. A directory without a manifest is not a profile in ``profiles``,
+    yet it exists, so the launch profile is not absent there.
+    """
 
     runtime_version: str | None
     profiles: tuple[ProfileStack, ...]
     required: tuple[RequiredPlugin, ...]
+    absent_launch_profile: str | None
 
 
 @dataclass(frozen=True)
@@ -152,6 +159,7 @@ class Adoption:
     previous_runtime_version: str | None
     versions: Mapping[str, str]
     profiles: Mapping[str, tuple[PlannedPackage, ...]]
+    created_profiles: tuple[str, ...]
     advisories: tuple[Advisory, ...]
     rejected: tuple[Blocker, ...]
 
@@ -235,6 +243,7 @@ def select_adoption(stack: Stack, view: CompatibilityView) -> Adoption | tuple[B
                 previous_runtime_version=stack.runtime_version,
                 versions=fit.versions,
                 profiles=_planned_profiles(stack, fit.versions, runtime_moves=candidate != stack.runtime_version),
+                created_profiles=_created_profiles(stack),
                 advisories=_advisories(view, candidate, fit),
                 rejected=tuple(passed_over),
             )
@@ -313,6 +322,8 @@ def _registry_names(stack: Stack) -> tuple[str, ...]:
         if package.source is PackageSource.REGISTRY
     }
     names.update(plugin.name for plugin in stack.required if plugin.source is PackageSource.REGISTRY)
+    if stack.absent_launch_profile is not None:
+        names.add(TUI_PACKAGE)
     return tuple(sorted(names))
 
 
@@ -397,27 +408,45 @@ def _planned_profiles(
             and package.name in moving
             and _differs_from_adopted(package, versions[package.name])
         ]
-        for plugin in stack.required:
-            if plugin.name in held:
-                continue
-            if plugin.source is PackageSource.LOCAL_CHECKOUT and plugin.reference is not None:
-                additions.append(PlannedPackage(plugin.name, plugin.reference, None, None, None))
-            else:
-                additions.append(
-                    PlannedPackage(
-                        plugin.name,
-                        registry_reference(plugin.name, versions[plugin.name]),
-                        None,
-                        None,
-                        versions[plugin.name],
-                    )
-                )
+        additions.extend(
+            _planned_required_plugin(plugin, versions) for plugin in stack.required if plugin.name not in held
+        )
         planned[profile.name] = tuple(additions)
+    if stack.absent_launch_profile is not None:
+        planned[stack.absent_launch_profile] = _planned_launch_profile(stack, versions)
     return planned
 
 
+def _planned_launch_profile(stack: Stack, versions: Mapping[str, str]) -> tuple[PlannedPackage, ...]:
+    """What a launch profile that does not exist yet is asked to hold: the TUI and every required plugin."""
+    return (
+        PlannedPackage(
+            TUI_PACKAGE, registry_reference(TUI_PACKAGE, versions[TUI_PACKAGE]), None, None, versions[TUI_PACKAGE]
+        ),
+        *(_planned_required_plugin(plugin, versions) for plugin in stack.required),
+    )
+
+
+def _planned_required_plugin(plugin: RequiredPlugin, versions: Mapping[str, str]) -> PlannedPackage:
+    if plugin.source is PackageSource.LOCAL_CHECKOUT and plugin.reference is not None:
+        return PlannedPackage(plugin.name, plugin.reference, None, None, None)
+    return PlannedPackage(
+        plugin.name,
+        registry_reference(plugin.name, versions[plugin.name]),
+        None,
+        None,
+        versions[plugin.name],
+    )
+
+
+def _created_profiles(stack: Stack) -> tuple[str, ...]:
+    """The profiles the run creates: only the launch profile, and only when it does not exist."""
+    return () if stack.absent_launch_profile is None else (stack.absent_launch_profile,)
+
+
 def _moving_packages(stack: Stack, versions: Mapping[str, str]) -> frozenset[str]:
-    """Registry packages the run writes in at least one profile: a different version, or a required plugin to add."""
+    """Registry packages the run writes in at least one profile: a different version, a required plugin to add,
+    or the TUI a created launch profile receives."""
     moving: set[str] = set()
     for profile in stack.profiles:
         held = {package.name for package in profile.packages}
@@ -427,6 +456,8 @@ def _moving_packages(stack: Stack, versions: Mapping[str, str]) -> frozenset[str
             if package.source is PackageSource.REGISTRY and package.installed_version != versions[package.name]
         )
         moving.update(plugin.name for plugin in stack.required if plugin.name not in held)
+    if stack.absent_launch_profile is not None:
+        moving.add(TUI_PACKAGE)
     return frozenset(moving)
 
 

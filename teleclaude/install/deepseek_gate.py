@@ -29,7 +29,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_registry import AGENT_REGISTRY, AgentName, LaunchProfile
 from teleclaude.core.agent_readiness import PromptDeliveryState, classify_prompt_delivery
-from teleclaude.core.reconciliation.deepseek_fit import DeepSeekStackError, ProfileStack, Stack
+from teleclaude.core.reconciliation.deepseek_fit import TUI_PACKAGE, DeepSeekStackError, ProfileStack, Stack
 from teleclaude.core.reconciliation.deepseek_stack import GateCheck, GateVerdict
 from teleclaude.core.tmux_bridge import PaneCursor, PaneObservation
 from teleclaude.install.deepseek_profiles import DSH_PROFILE_FLAG, PROFILES_DIRECTORY, dsh_executable, harness_home
@@ -185,7 +185,7 @@ class AppKind(StrEnum):
 _BUNDLE_APP_KINDS: Mapping[str, AppKind] = {
     "@deepseek-ai/dsh-web-app": AppKind.WEB,
     "@deepseek-ai/dsh-headless": AppKind.HEADLESS,
-    "@deepseek-harness-tui/dsh-tui": AppKind.TUI,
+    TUI_PACKAGE: AppKind.TUI,
 }
 
 
@@ -244,7 +244,7 @@ class DeepSeekGate:
         return GateVerdict(True, None, None)
 
     def _run_checks(self, stack: Stack) -> None:
-        launch_profile = _launch_profile_name()
+        launch_profile = launch_profile_name()
         names = tuple(profile.name for profile in stack.profiles)
         for name in names:
             self._check_composed_config(name)
@@ -611,7 +611,7 @@ def _launch_arguments() -> tuple[str, ...]:
     return tuple(shlex.split(profiles[LaunchProfile.DEFAULT]))
 
 
-def _launch_profile_name() -> str:
+def launch_profile_name() -> str:
     """The profile the launch arguments boot."""
     arguments = _launch_arguments()
     name = _profile_in(arguments)

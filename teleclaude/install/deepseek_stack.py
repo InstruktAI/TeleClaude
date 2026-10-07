@@ -30,7 +30,7 @@ from teleclaude.core.reconciliation.deepseek_stack import (
     UnchangedReason,
     converge_deepseek_stack,
 )
-from teleclaude.install.deepseek_gate import DeepSeekGate
+from teleclaude.install.deepseek_gate import DeepSeekGate, launch_profile_name
 from teleclaude.install.deepseek_profiles import DeepSeekProfileEffects, harness_home
 from teleclaude.install.deepseek_registry import RegistryCompatibilityView
 
@@ -65,6 +65,7 @@ _UNCHANGED_REASON_LINES: Mapping[UnchangedReason, str] = {
     UnchangedReason.NO_FITTING_SET: "No newer set fits, or the newest set that fits is already installed.",
     UnchangedReason.RUN_IN_PROGRESS: "Another run is in progress.",
 }
+_CREATED_PROFILE_TEMPLATE = "  created profile: {profile}"
 _CHANGE_TEMPLATE = "  {subject}: {name} {previous} -> {adopted}"
 _RUNTIME_SUBJECT = "runtime"
 _ABSENT = "none"
@@ -96,8 +97,8 @@ class _ConvergenceEffects:
     def acquire_run(self) -> AbstractContextManager[bool]:
         return self._profiles.acquire_run()
 
-    def read_stack(self, required: Sequence[RequiredPlugin]) -> Stack:
-        return self._profiles.read_stack(required)
+    def read_stack(self, required: Sequence[RequiredPlugin], launch_profile: str) -> Stack:
+        return self._profiles.read_stack(required, launch_profile)
 
     def compatibility_view(self) -> CompatibilityView:
         return self._registry
@@ -137,7 +138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     scratch = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX))
     keep_scratch = False
     try:
-        result = converge_deepseek_stack(_ConvergenceEffects(scratch), required_plugins())
+        result = converge_deepseek_stack(_ConvergenceEffects(scratch), required_plugins(), launch_profile_name())
         keep_scratch = result.retained_snapshot is not None
     except DeepSeekStackError as error:
         print(_OPERATION_ERROR_TEMPLATE.format(error=error))
@@ -153,6 +154,8 @@ def _present(result: ConvergenceResult) -> None:
     print(_OUTCOME_LINES[result.outcome])
     if result.unchanged_reason is not None:
         print(_UNCHANGED_REASON_LINES[result.unchanged_reason])
+    for profile in result.created_profiles:
+        print(_CREATED_PROFILE_TEMPLATE.format(profile=profile))
     for change in result.changes:
         print(
             _CHANGE_TEMPLATE.format(

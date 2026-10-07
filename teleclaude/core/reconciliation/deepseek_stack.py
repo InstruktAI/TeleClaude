@@ -84,10 +84,14 @@ class GateVerdict:
 
 @dataclass(frozen=True)
 class SnapshotRef:
-    """A taken snapshot: where it is kept and the runtime version it recorded."""
+    """A taken snapshot: where it is kept, the runtime version it recorded and the profiles that did not exist.
+
+    ``absent_profiles`` are the profiles the run may create; a restore removes any of them that now exists.
+    """
 
     location: str
     runtime_version: str | None
+    absent_profiles: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -116,6 +120,7 @@ class ConvergenceResult:
     outcome: StackOutcome
     unchanged_reason: UnchangedReason | None
     changes: tuple[PackageChange, ...]
+    created_profiles: tuple[str, ...]
     blockers: tuple[Blocker, ...]
     advisories: tuple[Advisory, ...]
     failed_step: ConvergenceStep | None
@@ -129,14 +134,14 @@ class DeepSeekStackEffects(Protocol):
     """The reads and writes the convergence decision drives; none of them decides anything.
 
     Every effect reports its own failure as ``DeepSeekStackError``; ``restore`` instead
-    returns each part it could not restore.
+    returns each part it could not restore, a profile created after the snapshot that it could not remove included.
     """
 
     def acquire_run(self) -> AbstractContextManager[bool]:
         """Hold the run lock for the harness home; yields ``False`` when another run holds it."""
         ...
 
-    def read_stack(self, required: Sequence[RequiredPlugin]) -> Stack: ...
+    def read_stack(self, required: Sequence[RequiredPlugin], launch_profile: str) -> Stack: ...
 
     def compatibility_view(self) -> CompatibilityView: ...
 
@@ -153,12 +158,17 @@ class DeepSeekStackEffects(Protocol):
     def run_gate(self, stack: Stack) -> GateVerdict: ...
 
 
-def converge_deepseek_stack(effects: DeepSeekStackEffects, required: Sequence[RequiredPlugin]) -> ConvergenceResult:
-    """Move the stack to the newest set where everything fits, verified, or leave it as it was."""
+def converge_deepseek_stack(
+    effects: DeepSeekStackEffects, required: Sequence[RequiredPlugin], launch_profile: str
+) -> ConvergenceResult:
+    """Move the stack to the newest set where everything fits, verified, or leave it as it was.
+
+    ``launch_profile`` is the profile every DeepSeek session boots; the adopted set creates it when it does not exist.
+    """
     with effects.acquire_run() as acquired:
         if not acquired:
             return _logged(_unchanged(UnchangedReason.RUN_IN_PROGRESS))
-        stack = effects.read_stack(required)
+        stack = effects.read_stack(required, launch_profile)
         selection = select_adoption(stack, effects.compatibility_view())
         if isinstance(selection, tuple):
             logger.info(_LOG_SELECTED, selected=None, blockers=len(selection))
@@ -168,12 +178,13 @@ def converge_deepseek_stack(effects: DeepSeekStackEffects, required: Sequence[Re
             return _logged(
                 _unchanged(UnchangedReason.NO_FITTING_SET, blockers=selection.rejected, advisories=selection.advisories)
             )
-        return _logged(_apply_and_verify(effects, required, stack, selection))
+        return _logged(_apply_and_verify(effects, required, launch_profile, stack, selection))
 
 
 def _apply_and_verify(
     effects: DeepSeekStackEffects,
     required: Sequence[RequiredPlugin],
+    launch_profile: str,
     stack: Stack,
     adoption: Adoption,
 ) -> ConvergenceResult:
@@ -181,7 +192,7 @@ def _apply_and_verify(
     try:
         failure = _apply(effects, adoption)
         if failure is None:
-            failure = _verify(effects, required)
+            failure = _verify(effects, required, launch_profile)
     except BaseException as error:
         # An unplanned error or an interrupt after the first change must not leave the machine between two sets.
         differences = effects.restore(snapshot)
@@ -192,6 +203,7 @@ def _apply_and_verify(
         return ConvergenceResult(
             StackOutcome.ROLLBACK_INCOMPLETE,
             None,
+            (),
             (),
             adoption.rejected,
             adoption.advisories,
@@ -207,6 +219,7 @@ def _apply_and_verify(
             StackOutcome.UPGRADED,
             None,
             _changes(adoption),
+            adoption.created_profiles,
             adoption.rejected,
             adoption.advisories,
             None,
@@ -227,6 +240,7 @@ def _apply_and_verify(
     return ConvergenceResult(
         StackOutcome.ROLLBACK_INCOMPLETE if differences else StackOutcome.ROLLED_BACK,
         None,
+        (),
         (),
         adoption.rejected,
         adoption.advisories,
@@ -263,10 +277,10 @@ def _apply(effects: DeepSeekStackEffects, adoption: Adoption) -> _Failure | None
     return None
 
 
-def _verify(effects: DeepSeekStackEffects, required: Sequence[RequiredPlugin]) -> _Failure | None:
+def _verify(effects: DeepSeekStackEffects, required: Sequence[RequiredPlugin], launch_profile: str) -> _Failure | None:
     """Run the verification gate against the stack as it now stands."""
     try:
-        verdict = effects.run_gate(effects.read_stack(required))
+        verdict = effects.run_gate(effects.read_stack(required, launch_profile))
     except DeepSeekStackError as error:
         return _Failure(ConvergenceStep.GATE, None, str(error))
     if verdict.passed:
@@ -293,7 +307,7 @@ def _unchanged(
     blockers: tuple[Blocker, ...] = (),
     advisories: tuple[Advisory, ...] = (),
 ) -> ConvergenceResult:
-    return ConvergenceResult(StackOutcome.UNCHANGED, reason, (), blockers, advisories, None, None, None, (), None)
+    return ConvergenceResult(StackOutcome.UNCHANGED, reason, (), (), blockers, advisories, None, None, None, (), None)
 
 
 def _logged(result: ConvergenceResult) -> ConvergenceResult:
@@ -302,6 +316,7 @@ def _logged(result: ConvergenceResult) -> ConvergenceResult:
         outcome=result.outcome,
         reason=result.unchanged_reason,
         changes=len(result.changes),
+        created=len(result.created_profiles),
         blockers=len(result.blockers),
         advisories=len(result.advisories),
         differences=len(result.differences),

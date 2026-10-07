@@ -81,6 +81,7 @@ _RUNTIME_INSTALL_FAILURE_TEMPLATE = "Installing {spec} globally failed: {detail}
 _RUNTIME_UNINSTALL_FAILURE_TEMPLATE = "Removing {name} globally failed: {detail}"
 _SNAPSHOT_FAILURE_TEMPLATE = "Cannot snapshot profile {profile}: {error}"
 _FILE_DIFFERS_TEMPLATE = "{file} differs from the snapshot"
+_CREATED_PROFILE_REMAINS_DETAIL = "the profile created by the run could not be removed"
 _RUNTIME_DIFFERS_TEMPLATE = "installed version {installed} differs from the snapshot's {recorded}"
 _RUNTIME_ABSENT_LABEL = "none"
 _ARGUMENT_SEPARATOR = " "
@@ -122,12 +123,16 @@ class DeepSeekProfileEffects:
         finally:
             os.close(descriptor)
 
-    def read_stack(self, required: Sequence[RequiredPlugin]) -> Stack:
-        """The installed runtime version and every profile's packages as their manifests declare them."""
-        return Stack(_installed_runtime_version(), _read_profiles(), tuple(required))
+    def read_stack(self, required: Sequence[RequiredPlugin], launch_profile: str) -> Stack:
+        """The installed runtime version and every profile's packages as their manifests declare them.
+
+        The launch profile is absent only when nothing exists at its profile path.
+        """
+        absent = None if os.path.lexists(_profile_directory(launch_profile)) else launch_profile
+        return Stack(_installed_runtime_version(), _read_profiles(), tuple(required), absent)
 
     def take_snapshot(self, stack: Stack) -> SnapshotRef:
-        """Copy every profile directory as found and record the installed runtime version."""
+        """Copy every profile directory as found and record the installed runtime version and the absent profiles."""
         snapshot = self._scratch_directory / _SNAPSHOT_DIRECTORY
         for profile in stack.profiles:
             try:
@@ -140,7 +145,8 @@ class DeepSeekProfileEffects:
                 raise DeepSeekStackError(
                     _SNAPSHOT_FAILURE_TEMPLATE.format(profile=profile.name, error=error)
                 ) from error
-        return SnapshotRef(str(snapshot), stack.runtime_version)
+        absent = () if stack.absent_launch_profile is None else (stack.absent_launch_profile,)
+        return SnapshotRef(str(snapshot), stack.runtime_version, absent)
 
     def install_runtime(self, version: str) -> None:
         """Install the exact runtime version globally."""
@@ -175,8 +181,13 @@ class DeepSeekProfileEffects:
             )
 
     def restore(self, snapshot: SnapshotRef) -> tuple[StackDifference, ...]:
-        """Put the runtime and every profile directory back as snapshotted; return what still differs."""
-        differences = [*self._restore_runtime(snapshot), *self._restore_profiles(snapshot)]
+        """Put the runtime and every profile directory back as snapshotted, remove each profile the snapshot
+        recorded as absent, and return what still differs."""
+        differences = [
+            *self._restore_runtime(snapshot),
+            *self._remove_created_profiles(snapshot),
+            *self._restore_profiles(snapshot),
+        ]
         return tuple(differences)
 
     def release_snapshot(self, snapshot: SnapshotRef) -> None:
@@ -197,6 +208,24 @@ class DeepSeekProfileEffects:
             installed=installed or _RUNTIME_ABSENT_LABEL, recorded=snapshot.runtime_version or _RUNTIME_ABSENT_LABEL
         )
         return [StackDifference(ConvergenceStep.RUNTIME_RESTORE, RUNTIME_PACKAGE, detail)]
+
+    def _remove_created_profiles(self, snapshot: SnapshotRef) -> list[StackDifference]:
+        """Remove each profile that did not exist at the snapshot and exists now; no other directory is touched."""
+        differences: list[StackDifference] = []
+        for name in snapshot.absent_profiles:
+            target = _profile_directory(name)
+            try:
+                if os.path.lexists(target):
+                    shutil.rmtree(target)
+            except (OSError, shutil.Error) as error:
+                logger.error(_LOG_RESTORE_STEP, step=ConvergenceStep.PROFILE_RESTORE, profile=name, error=str(error))
+                differences.append(StackDifference(ConvergenceStep.PROFILE_RESTORE, name, str(error)))
+                continue
+            if os.path.lexists(target):
+                differences.append(
+                    StackDifference(ConvergenceStep.PROFILE_RESTORE, name, _CREATED_PROFILE_REMAINS_DETAIL)
+                )
+        return differences
 
     def _restore_profiles(self, snapshot: SnapshotRef) -> list[StackDifference]:
         differences: list[StackDifference] = []
