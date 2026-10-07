@@ -78,9 +78,11 @@ auto-initialization:
 Error: dsh: profile "<name>" does not exist; create it with 'dsh plugin --profile <name> add <package>'
 ```
 
-`dsh plugin --profile <name> …` does initialize a missing profile directory,
-from the shipped template of that name or the default bundle list. Profile
-names are therefore operator-chosen.
+`dsh plugin --profile <name> …` initializes a missing profile directory from
+the shipped template of that name or the default bundle list, except for the
+reserved `desktop` profile: a plugin command on `desktop` fails until the
+Desktop application has initialized that profile itself. Other profile names
+are operator-chosen.
 
 ### Plugin management
 
