@@ -332,7 +332,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     ),
                 },
                 "mode_chains": {
-                    "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5-5[1m]' --effort low"}],
+                    "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5-5[1m]' --effort medium"}],
                     "med": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5-5[1m]' --effort high"}],
                     "slow": [
                         # disabled as too expensive and reserved for manual invocation:
@@ -578,7 +578,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                             "model": "v4-flash",
                             "patch": (
                                 '{"agent-default-model": {"provider": "deepseek-official",'
-                                ' "model": "deepseek-v4-flash"}}'
+                                ' "model": "deepseek-v4-flash", "reasoningEffort": "low"}}'
                             ),
                         }
                     ],
