@@ -24,6 +24,23 @@ if ! declare -F log_error >/dev/null; then
     }
 fi
 
+_tc_sudo() {
+    local step="$1"
+    shift
+    if [ "${NON_INTERACTIVE:-false}" = true ] || [ ! -t 0 ]; then
+        if sudo -n "$@"; then
+            return 0
+        fi
+        log_error "$step needs sudo access that works without a prompt; run install from an authorized terminal or provide non-interactive sudo access."
+        return 1
+    fi
+    if sudo "$@"; then
+        return 0
+    fi
+    log_error "$step failed."
+    return 1
+}
+
 # Project root: prefer a value the caller already resolved (PROJECT_ROOT),
 # then bin/install.sh's INSTALL_DIR, then this file's own location.
 if [ -n "${PROJECT_ROOT:-}" ]; then
@@ -127,7 +144,7 @@ wait_for_launchd_docs_watch_unloaded() {
 
 systemd_docs_watch_state() {
     local load_state
-    if ! load_state="$(sudo systemctl show --system --property=LoadState --value "$_DOCS_WATCH_SYSTEMD_UNIT" 2>&1)"; then
+    if ! load_state="$(_tc_sudo "query the docs-watch systemd unit" systemctl show --system --property=LoadState --value "$_DOCS_WATCH_SYSTEMD_UNIT" 2>&1)"; then
         log_error "docs-watch: cannot query $_DOCS_WATCH_SYSTEMD_UNIT in the system manager: $load_state; resolve the query failure and rerun make install."
         return 1
     fi
@@ -188,7 +205,7 @@ deploy_service_definition() {
     # `return 0` and be reported as a successful "changed" deploy while the
     # target keeps its stale content. Check the write explicitly instead.
     if [ "$use_sudo" = "--sudo" ]; then
-        if ! sudo cp "$rendered_file" "$target_path"; then
+        if ! _tc_sudo "deploy service definition to $target_path" cp "$rendered_file" "$target_path"; then
             return 2
         fi
     else
@@ -303,21 +320,22 @@ EOF
     fi
 
     log_info "Deployed systemd daemon definition(s)"
-    sudo systemctl daemon-reload
+    _tc_sudo "reload systemd after deploying the daemon service" systemctl daemon-reload
 
     if $service_deployed; then
-        if sudo systemctl is-active --quiet "$service_name"; then
-            sudo systemctl restart "$service_name"
+        # A unit-state query needs no privilege, and a nonzero answer means inactive.
+        if systemctl is-active --quiet "$service_name"; then
+            _tc_sudo "restart $service_name" systemctl restart "$service_name"
         else
-            sudo systemctl enable "$service_name"
+            _tc_sudo "enable $service_name" systemctl enable "$service_name"
         fi
     fi
 
     if $path_deployed; then
-        if sudo systemctl is-active --quiet "${service_name}-config.path"; then
-            sudo systemctl restart "${service_name}-config.path"
+        if systemctl is-active --quiet "${service_name}-config.path"; then
+            _tc_sudo "restart ${service_name}-config.path" systemctl restart "${service_name}-config.path"
         else
-            sudo systemctl enable "${service_name}-config.path"
+            _tc_sudo "enable ${service_name}-config.path" systemctl enable "${service_name}-config.path"
         fi
     fi
 }
@@ -370,12 +388,12 @@ install_systemd_cron_service() {
     fi
 
     log_info "Deployed cron systemd service/timer"
-    sudo systemctl daemon-reload
+    _tc_sudo "reload systemd after deploying the cron service" systemctl daemon-reload
 
-    if sudo systemctl is-active --quiet "${service_name}.timer"; then
-        sudo systemctl restart "${service_name}.timer"
+    if systemctl is-active --quiet "${service_name}.timer"; then
+        _tc_sudo "restart ${service_name}.timer" systemctl restart "${service_name}.timer"
     else
-        sudo systemctl enable "${service_name}.timer"
+        _tc_sudo "enable ${service_name}.timer" systemctl enable "${service_name}.timer"
     fi
 }
 
@@ -533,12 +551,12 @@ withdraw_docs_watch_systemd() {
     log_info "docs-watch system manager answer before installation reconciliation: $state_before ($_DOCS_WATCH_SYSTEMD_UNIT)"
 
     if [ "$state_before" = "loaded" ]; then
-        if ! sudo systemctl --system disable --now "$_DOCS_WATCH_SYSTEMD_UNIT"; then
+        if ! _tc_sudo "stop and disable the docs-watch systemd unit" systemctl --system disable --now "$_DOCS_WATCH_SYSTEMD_UNIT"; then
             log_error "docs-watch: systemd refused to stop and disable $_DOCS_WATCH_SYSTEMD_UNIT; resolve the manager refusal and rerun make install."
             return 1
         fi
     fi
-    if [ "$definition_present" = true ] && ! sudo rm -f "$_DOCS_WATCH_SYSTEMD_PATH"; then
+    if [ "$definition_present" = true ] && ! _tc_sudo "remove the docs-watch systemd definition" rm -f "$_DOCS_WATCH_SYSTEMD_PATH"; then
         log_error "docs-watch: could not remove the systemd definition for $_DOCS_WATCH_SYSTEMD_UNIT; resolve the file error and rerun make install."
         return 1
     fi
@@ -547,7 +565,7 @@ withdraw_docs_watch_systemd() {
         return 1
     fi
     if [ "$definition_present" = true ] || [ "$state_before" = "loaded" ]; then
-        if ! sudo systemctl --system daemon-reload; then
+        if ! _tc_sudo "reload systemd after removing the docs-watch unit" systemctl --system daemon-reload; then
             log_error "docs-watch: systemd daemon-reload failed after removing $_DOCS_WATCH_SYSTEMD_UNIT; resolve the manager error and rerun make install."
             return 1
         fi

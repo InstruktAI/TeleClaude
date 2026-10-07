@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -691,5 +691,10 @@ def person_entry_for_email(email: str) -> PersonEntry | None:
 
 def person_entries_for_email(email: str) -> list[PersonEntry]:
     """Return every valid roster entry matching an email, preserving roster order."""
+    return entries_for_email(load_people_roster(), email)
+
+
+def entries_for_email(entries: Sequence[PersonEntry], email: str) -> list[PersonEntry]:
+    """Return supplied roster entries matching an email, preserving roster order."""
     normalized = email.strip().lower()
-    return [entry for entry in load_people_roster() if entry.email.lower() == normalized]
+    return [entry for entry in entries if entry.email.strip().lower() == normalized]

@@ -160,10 +160,18 @@ def mutate_environment_value(path: Path, name: str, value: str | None, *, creati
         transaction.replace_text("".join(rewritten), creation_mode=creation_mode)
 
 
-def write_environment_values(path: Path, values: Mapping[str, str], *, creation_mode: int | None = None) -> None:
-    """Atomically apply named values to one environment file."""
+def write_environment_values(
+    path: Path,
+    values: Mapping[str, str],
+    *,
+    creation_mode: int | None = None,
+    only_if_missing: bool = False,
+) -> bool:
+    """Atomically apply named values, optionally leaving an existing file untouched."""
     _validate_environment_values(values)
     with file_transaction(path) as transaction:
+        if only_if_missing and path.exists():
+            return False
         lines = transaction.read_text().splitlines(keepends=True)
         remaining = dict(values)
         rewritten: list[str] = []
@@ -177,6 +185,7 @@ def write_environment_values(path: Path, values: Mapping[str, str], *, creation_
             rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
         rewritten.extend(_assignment_line(name, value) for name, value in remaining.items())
         transaction.replace_text("".join(rewritten), creation_mode=creation_mode)
+    return True
 
 
 def reconcile_environment_values(path: Path, values: Mapping[str, str], removals: frozenset[str]) -> None:
