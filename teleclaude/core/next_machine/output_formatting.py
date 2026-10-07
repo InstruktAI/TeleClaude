@@ -84,8 +84,8 @@ TERMINAL_DEPARTURE_DIRECTIVE = (
     "under `general/principle/session-lifecycle` against every "
     "current obligation of this session; an unfinished human conversation remains a live obligation "
     "and may keep your session open without holding a todo's lifecycle claim. "
-    "When that departure condition holds, emit a brief farewell, then run "
-    "`telec reminders set session-departure` as your final action. Nothing follows the reminder arm."
+    "When no obligation remains, run DEPART.\n\n"
+    "DEPART: telec reminders set session-departure"
 )
 _HANDOFF_CLAIM_STATEMENT = (
     "CLAIM RELEASED: This session holds no lifecycle claim on {slug}. The next owner may take it up "
