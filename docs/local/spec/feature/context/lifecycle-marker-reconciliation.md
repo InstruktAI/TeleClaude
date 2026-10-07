@@ -234,7 +234,6 @@ And pending material owned by other slugs remains byte-identical
 
 ```gherkin
 Given every snippet holding a todo's pending material matches the project's formatter as committed
-And reconciling that material leaves text that does not match the formatter
 When a lifecycle caller delivers, abandons, renames, or splits the active todo, or reactivates it from removal
 Then the reconciliation commit passes the project's commit gate
 And every snippet the reconciliation writes matches the project's formatter, including a snippet that still carries another slug's pending material
