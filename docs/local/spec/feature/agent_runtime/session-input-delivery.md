@@ -87,8 +87,8 @@ composer that has stopped changing for the readiness quiet window counts as
 that observation, and the readiness wait keeps its own limit. Queued text that
 meets such a readiness limit waits like any other queued text; a headless
 adoption whose readiness wait ends on such a screen keeps its pane and stays
-initializing, so the woken agent can see and clear the screen and the waiting
-text reaches the agent through that session once a composer appears. The first
+initializing, and the waiting text reaches the agent through that session once
+a composer appears. The first
 observation that finds no composer while the
 session is not already `blocked` with reason `needs_input` puts it there, which
 wakes its watchers once with a capture of the pane so an agent can clear or
@@ -295,6 +295,7 @@ And no turn is created until the owning human chooses to submit the composed inp
 
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 
+<!-- planned-change:no-composer-wakes-parent -->
 ```
 Given a message arrives for a session whose lifecycle status is headless
 And that session records a resumable agent and a native transcript chain
@@ -304,6 +305,20 @@ And a resumed agent that never reaches its prompt within the readiness budget fa
 And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
 And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
 ```
+<!-- change:no-composer-wakes-parent -->
+```
+Given a message arrives for a session whose lifecycle status is headless
+And that session records a resumable agent and a native transcript chain
+When the delivery path recreates the host pane and resumes that agent into it
+Then the payload is submitted only once the resumed agent's prompt is live
+And a resumed agent that never reaches its prompt within the readiness budget, while its pane never settles on a screen with no composer, fails the delivery instead of submitting the payload into a pane no agent is reading
+And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
+And a resumed agent whose pane has settled on a screen with no composer when the readiness budget ends keeps its pane and stays initializing
+And its payload waits as held text without consuming a delivery attempt, reaching the agent once a composer appears
+And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
+```
+<!-- /planned-change:no-composer-wakes-parent -->
+
 
 #### UC-SID3: A send that names the owning remote computer is routed there
 
