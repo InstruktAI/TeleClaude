@@ -335,7 +335,7 @@ And the same request naming a company, or a path inside a home, is refused befor
 #### UC-KAC19: Project init names what replaced it
 
 ```gherkin
-Given a person or agent in any folder, registered as a project or not
+Given a person at the command line in any folder, registered as a project or not
 When they run init for a project
 Then nothing is created, adopted, registered or converged
 And they see one line naming create, adopt and telec sync
