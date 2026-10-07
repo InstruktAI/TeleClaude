@@ -311,7 +311,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             startup_signal=AgentStartupSignal.NATIVE,
             discord=DiscordAuthorPresentation(
                 alias="Claude",
-                avatar_url="https://avatars.githubusercontent.com/u/209825114?v=4",
+                avatar_url="https://avatars.githubusercontent.com/u/81847?v=4",
             ),
             git_identity="claude[bot] <209825114+claude[bot]@users.noreply.github.com>",
             protocol={
@@ -388,7 +388,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             startup_signal=AgentStartupSignal.PANE,
             discord=DiscordAuthorPresentation(
                 alias="Codex",
-                avatar_url="https://avatars.githubusercontent.com/u/199175422?v=4",
+                avatar_url="https://avatars.githubusercontent.com/u/267193182?v=4",
             ),
             git_identity=(
                 "chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"
