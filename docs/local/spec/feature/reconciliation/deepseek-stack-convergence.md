@@ -99,7 +99,7 @@ And every plugin installed before the run is still installed in every profile th
 #### UC-DSC3: With no consistent newer set the machine stays put and says why
 
 ```gherkin
-Given no candidate runtime newer than the installed one keeps every installed package and every required plugin fitting
+Given no candidate runtime, the installed one included, keeps every installed package and every required plugin fitting, or the newest set that fits is already installed
 When an operator runs the DeepSeek stack convergence
 Then the runtime, every profile manifest and every profile's lock state are unchanged
 And the operator's report names each blocking package, the requirement it declares, and the version that fails it
@@ -196,6 +196,17 @@ Given a DeepSeek session is running, or another convergence is in progress
 When an operator or the installer runs the DeepSeek stack convergence
 Then the runtime, every profile manifest and every profile's lock state are unchanged
 And the operator's report states the outcome as unchanged because the stack was in use
+```
+
+#### UC-DSC14: Newer plugin releases are adopted on the installed runtime
+
+```gherkin
+Given the installed runtime is the newest candidate for which every package and required plugin fits
+And a newer published version of the TUI or of an installed plugin fits it
+When an operator runs the DeepSeek stack convergence
+Then the runtime stays at the installed release
+And each profile moves to the newest fitting version of that package
+And the set is verified, and restored on failure, like any adopted set
 ```
 
 ## Known caveats
