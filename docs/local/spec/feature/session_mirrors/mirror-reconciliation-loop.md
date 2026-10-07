@@ -15,10 +15,13 @@ Mirror creation through the event-driven path can miss transcripts —
 service restarts, hook drops, or fresh installs all leave gaps. A
 background worker fills those gaps. The worker is started by the
 session_mirrors service on boot and ticks every five minutes (300
-seconds). Each pass discovers all transcript files under the per-agent
-session roots, drops every transcript the per-runtime subagent rule or
-the per-runtime headless rule recognizes, asks the mirror store for each
-remaining transcript's last known state, and rebuilds the mirror when the
+seconds). Each pass loads the mirror store's last known state once and
+enumerates transcript files under the per-agent session roots. A known
+mirror with current derivation rules whose write timestamp covers the file's
+mtime is counted as unchanged before its transcript is opened for admission
+classification. New, changed, and derivation-stale candidates pass through
+the per-runtime subagent and headless exclusion rules before generation.
+The worker rebuilds the mirror when the
 transcript file is newer than the stored record (or when no record exists
 yet). Tombstones for known-empty transcripts short-circuit the rebuild
 (see `empty-transcript-tombstone`).
@@ -55,7 +58,7 @@ And reads each known transcript's last known source_identity, updated_at, and de
 For each discovered candidate:
   When the existing mirror's updated_at is greater than or equal to the candidate file's mtime
     And the existing mirror's derivation_version equals the current derivation version
-  Then the candidate is counted as skipped_unchanged and skipped
+  Then the candidate is counted as skipped_unchanged and skipped without opening the transcript
   When the existing mirror's derivation_version is older than the current derivation version
   Then the candidate is re-derived regardless of mtime so the row converges to the current derivation rules
 ```

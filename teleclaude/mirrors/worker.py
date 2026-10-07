@@ -25,7 +25,7 @@ from ..utils.transcript_discovery import (
     in_session_root,
 )
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
-from ._reconciliation_state import get_mirror_state_by_transcript, get_stale_mirrors
+from ._reconciliation_state import MirrorTranscriptState, get_mirror_state_by_transcript, get_stale_mirrors
 from .derivation import DERIVATION_VERSION
 from .generator import MirrorGenerationOutcome, MirrorWriteTrigger, generate_mirror_sync
 from .session_context import get_session_context
@@ -87,6 +87,17 @@ class MirrorWorker:
     def _candidate_file_state(candidate: TranscriptCandidate) -> tuple[int, str]:
         stat = candidate.path.stat()
         return stat.st_size, str(stat.st_mtime_ns)
+
+    def _is_unchanged_mirror(
+        self,
+        candidate: TranscriptCandidate,
+        state: dict[str, MirrorTranscriptState],
+    ) -> bool:
+        mtime_dt = datetime.fromtimestamp(candidate.mtime or candidate.path.stat().st_mtime, tz=UTC)
+        existing = state.get(str(candidate.path))
+        parsed_updated = self._parse_updated_at(existing.updated_at if existing else None)
+        version_current = existing is not None and existing.derivation_version >= DERIVATION_VERSION
+        return parsed_updated is not None and parsed_updated >= mtime_dt and version_current
 
     def _should_skip_tombstoned_transcript(
         self,
@@ -151,7 +162,15 @@ class MirrorWorker:
             derivation_version=DERIVATION_VERSION,
         )
         state = get_mirror_state_by_transcript(self.db_path)
-        transcripts = _discover_transcripts()
+
+        def known_unchanged(candidate: TranscriptCandidate) -> bool:
+            try:
+                return self._is_unchanged_mirror(candidate, state)
+            except ValueError:
+                # Invalid stored timestamps are handled by the per-candidate error lane.
+                return False
+
+        transcripts = _discover_transcripts(known_unchanged=known_unchanged)
         result = ReconcileResult(
             discovered=len(transcripts),
             regenerated=0,
@@ -166,11 +185,7 @@ class MirrorWorker:
         for candidate in transcripts:
             transcript_path = str(candidate.path)
             try:
-                mtime_dt = datetime.fromtimestamp(candidate.mtime or candidate.path.stat().st_mtime, tz=UTC)
-                existing = state.get(transcript_path)
-                parsed_updated = self._parse_updated_at(existing.updated_at if existing else None)
-                version_current = existing is not None and existing.derivation_version >= DERIVATION_VERSION
-                if parsed_updated is not None and parsed_updated >= mtime_dt and version_current:
+                if self._is_unchanged_mirror(candidate, state):
                     result.skipped_unchanged += 1
                     continue
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -235,8 +235,12 @@ def _is_admitted_transcript(path: Path, agent: AgentName) -> bool:
     return not is_subagent and not is_headless
 
 
-def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[TranscriptCandidate]:
-    """Find transcript files for one or more agents, newest first."""
+def discover_transcripts(
+    agents: Sequence[AgentName] | None = None,
+    *,
+    known_unchanged: Callable[[TranscriptCandidate], bool] | None = None,
+) -> list[TranscriptCandidate]:
+    """Find admitted transcripts, reusing caller-confirmed unchanged admission."""
     candidates: list[TranscriptCandidate] = []
     for agent in agents or AgentName:
         root = _session_root(agent)
@@ -245,7 +249,7 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
         if root.exists():
             pattern = str(AGENT_PROTOCOL[agent.value]["session_pattern"])
             for path in root.glob(pattern):
-                if path.is_file() and _is_admitted_transcript(path, agent):
+                if path.is_file():
                     candidates.append(TranscriptCandidate(path=path, agent=agent, mtime=path.stat().st_mtime))
 
         # If agent is GEMINI, also search legacy fallback paths
@@ -255,9 +259,15 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
                 # Perform shallow, highly optimized globs to avoid blocking event loop recursive walks
                 for pattern in ("*/chats/session-*.json", "session-*.json"):
                     for path in legacy_root.glob(pattern):
-                        if path.is_file() and _is_admitted_transcript(path, agent):
+                        if path.is_file():
                             candidates.append(TranscriptCandidate(path=path, agent=agent, mtime=path.stat().st_mtime))
 
+    candidates = [
+        candidate
+        for candidate in candidates
+        if (known_unchanged is not None and known_unchanged(candidate))
+        or _is_admitted_transcript(candidate.path, candidate.agent)
+    ]
     candidates.sort(key=lambda c: c.mtime, reverse=True)
     return candidates
 
