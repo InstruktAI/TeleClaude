@@ -13,12 +13,14 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 ### Decide before creating
 
-- **Create only a valid todo.** Creation materializes intent into the lifecycle;
-  it is not a place to park a conversation that is still forming. The intended
-  outcome and every known contract that Prepare will consume have converged,
-  and no pending authoring, review, or commit is still expected to change them.
-  Otherwise create nothing and let the current session retain the conversation
-  until it is valid. Neither icebox nor hold makes unfinished intent valid.
+- **A todo enters the lifecycle valid; the icebox parks ideas at any stage.** A
+  todo is valid when its intended outcome and every known contract that Prepare
+  will consume have converged, and no pending authoring, review, or commit is
+  still expected to change them. Creating a todo without `--icebox` enters it
+  into the lifecycle, so it is valid at creation. An idea still forming is
+  created with `--icebox`, and is made valid before it is unfrozen, because
+  unfreezing enters it into the lifecycle. Hold is a brake on valid work
+  awaiting an external gate.
 - **Run the bounded creation check before every `telec todo create`.** Read
   `telec todo list`, which lists the live work — the todos a new one could
   overlap with. For each plausible match, read its `input`; if whether it has

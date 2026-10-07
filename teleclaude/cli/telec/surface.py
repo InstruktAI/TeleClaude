@@ -647,18 +647,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--human-involved requires a non-empty reason and resolves the record from observed recency: "
                     "a stale declaration records false and the todo is still created. The reason is never "
                     "stored; omission records false and does not affect later actions.",
-                    "Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, "
-                    "affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT "
-                    "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "
-                    "in particular never instruct authoring an ADR or which snippets to write. Per "
+                    "Content IS the input artifact — the author's INTENT: WHAT and WHY in operator language, "
+                    "affected surfaces, acceptance shape, brownfield grounding. HOW and doc routing are "
+                    "preparation's to derive. Per "
                     "sdlc/policy/preparation-artifact-quality (Input artifact quality): HOW is "
                     "the prepare phase's hypothesis to verify, doc routing is not the input's "
                     "(general/policy/documentation-discipline), and an ADR is governed "
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
                     "deliberate exception: its content is a complete implementation-plan, not an input.)",
-                    "Use --icebox for valid future work. Hidden --hold is an exceptional brake for valid work "
-                    "awaiting an external gate; neither surface makes unfinished intent valid. "
+                    "Use --icebox for ideas and future work at any stage; an iced todo enters the lifecycle when "
+                    "unfrozen, once valid. Hidden --hold is an exceptional brake for valid work awaiting an "
+                    "external gate. "
                     "--group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder "
                     "via the existing derivation; the first grouped child strips the parent's todo_state "
                     "while preserving all its artifacts as frozen evidence, and is refused once the parent's "
@@ -668,8 +668,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "is rewritten to that child and committed as part of the same transition.",
                     "The filer always supplies --kind, choosing one of the four lifecycle entry points.",
                     "--plan is valid with --kind change or --kind task.",
-                    "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
-                    "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
+                    "Settled, bounded work is executed in context (sdlc/policy/todo-creation-discipline).",
                     "Process changes are agent-owned (sdlc/policy/process-change-authority): file them on the "
                     "ordinary path; only a consequence on the closed list of general/policy/human-contract waits "
                     "for the human.",
@@ -952,14 +951,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "filed where the code does not live cannot be fixed there and gets re-filed later, "
                     "carrying stale conclusions with it. A symptom that stops once the side project's own "
                     "configuration matches a TeleClaude default (a .gitignore entry, a blessed template line) "
-                    "is the side project's to fix: fix it there and file nothing. When you cannot tell which "
+                    "is the side project's to fix, there. When you cannot tell which "
                     "project owns it, ask.",
                     "The filing surface interrogates for duplication up front (todo list, in-flight bug lanes, "
                     "suppressions); diagnose remains the deeper same-defect dedup that can still retire a twin "
                     "the up-front check missed.",
-                    "Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
-                    "Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' "
-                    "is a fix wearing a symptom's clothes). A bug whose cause is a process defect may correct that "
+                    "Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix.",
+                    "A report names the observed wrong behavior; what is missing and how to fix it are "
+                    "preparation's to derive. A bug whose cause is a process defect may correct that "
                     "defect within its symptom and causal scope (sdlc/policy/process-change-authority).",
                     "Require the observed symptom plus its trigger context verbatim in the description or --body: "
                     "what happened, what was expected, and what preceded it. A report with no trigger context is "

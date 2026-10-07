@@ -1,10 +1,8 @@
 """Shared pre-creation validity prompt for todo entry surfaces."""
 
 CREATION_VALIDITY_GATE_ITEM = (
-    "- Validity — create only work whose intent and known contract have converged. If either is still forming,\n"
-    "   create nothing; hold and icebox do not make it valid.\n\n"
-    "- Direct execution — if the settled work belongs in-context, execute it with the authority already held\n"
-    "   and create no lifecycle record.\n\n"
+    "- Validity — have the intent and known contract converged? Work entering the lifecycle arrives valid.\n\n"
+    "- Direct execution — if the settled work belongs in-context, execute it with the authority already held.\n\n"
     "Authority: sdlc/policy/todo-creation-discipline.\n"
 )
 PENDING_DOCS_GATE_ITEM = (
@@ -26,9 +24,11 @@ def render_todo_creation_gate(approval_flag: str) -> str:
         "Nothing was created. Face these before this work enters the lifecycle\n"
         "(sdlc/policy/todo-creation-discipline governs every one):\n\n"
         f"{CREATION_VALIDITY_GATE_ITEM}\n"
+        "- Icebox - an idea still forming? Park it with --icebox; it enters the\n"
+        "   lifecycle when unfrozen, once valid.\n\n"
         "- Doc-only - documentation, ADRs, README, agent artifacts? After the\n"
         "   applicable authoring gate opens, execute it in-context per\n"
-        "   general/policy/documentation-discipline; create no todo, whatever its size.\n\n"
+        "   general/policy/documentation-discipline, whatever its size.\n\n"
         "- Existing home - already covered, or a small addition to a todo that\n"
         "   has not started build? Amend it instead of creating a sibling:\n"
         "     telec todo list\n"
