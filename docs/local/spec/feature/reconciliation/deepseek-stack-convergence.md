@@ -33,9 +33,10 @@ make surface, and installation reaches the runtime only through it.
   to the stack and is judged from its own manifest.
 - **Required plugins.** The plugins TeleClaude's installation requires every
   profile to hold: its own hook plugin, from the local checkout of its plugins
-  repository, and the checkpoint plugin, from the registry. A profile missing
-  one gains it only as part of an adopted set, fitted like every installed
-  package.
+  repository, and the checkpoint plugin, from the registry. They constrain the
+  adopted set on every machine, including one where no profile holds them yet.
+  A profile missing one gains it only as part of an adopted set, fitted like
+  every installed package.
 - **Candidate runtime.** Any published runtime release no older than the
   installed one, whatever release channel publishes it. The installed runtime
   is always a candidate, so staying put is always available.
