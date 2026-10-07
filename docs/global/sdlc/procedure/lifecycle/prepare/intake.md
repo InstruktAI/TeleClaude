@@ -399,11 +399,14 @@ and the reviewer stamps the digest-bound `prd_review` verdict.
   review.
 - **`approve`** — present the reviewed PRD, its authorized-horizon sentence,
   and genuine human-owned decisions. The human approves or refines product
-  intent. A human refinement rewrites the PRD and therefore re-runs review
-  before it returns for approval.
+  intent. A human refinement rewrites the PRD and therefore re-runs review.
+  When an earlier human approval carries to the reviewed revision
+  (`sdlc/procedure/lifecycle/prepare/overview`, step 4), nothing is
+  presented: the claimant records the carry and stamps `prd_approved`.
 
 An agent may shape a draft but never reviews or approves its own output. The
-human remains the sole authority for `prd_approved`.
+human remains the sole authority for the intent `prd_approved` records; a
+carried approval records no intent the human has not already decided.
 
 When the human owner supplies an exact literal correction and explicitly
 directs approval under the policy exception, the active prepare claimant writes

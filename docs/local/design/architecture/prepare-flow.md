@@ -45,7 +45,7 @@ The confirmed plan is the handoff input to the work phase.
 **No human in the conversation:**
 
 - Intake's only authorized basis is the `input` artifact. A basis too sparse to write a PRD from stops the flow against `@input`; nothing supplies the missing intent.
-- A PRD authored without the human cannot be stamped `prd_approved` — that gate is the human's.
+- A PRD the human has never approved cannot be stamped `prd_approved` — the first approval is the human's. A later revision that adds no intent the human has not already decided carries that approval, and the prepare claimant stamps it after `prd_review` approves the revision.
 - Downstream phases do not begin until the human approves that PRD.
 
 **Refinement:**

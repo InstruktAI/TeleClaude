@@ -29,7 +29,7 @@ And the machine does NOT dispatch a separate worker for drafting
 Given a Todo at lifecycle_phase=prd_drafting with a freshly written prd Artifact
 When the orchestrator calls "telec todo prepare my-feature" again
 Then the machine derives the next lifecycle_phase as prd_human_approval
-And returns an instruction to read the prd to a real human and run "telec todo stamp my-feature --prd-approved"
+And returns an instruction to present the prd to a real human, or to carry an earlier human approval when the revision adds no intent the human has not already decided, and run "telec todo stamp my-feature --prd-approved"
 And refuses to advance until that approval Stamp is recorded
 ```
 

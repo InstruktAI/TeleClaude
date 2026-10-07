@@ -71,6 +71,21 @@ _REUSE_MESSAGE_TEMPLATE = (
     "approve|needs_work --phase {phase}. Drift analyzers: stamp "
     "drift_reviewed for each re-assessed artifact."
 )
+_APPROVAL_PROCEDURE_ID = "sdlc/procedure/lifecycle/prepare/overview"
+_APPROVAL_INSTRUCTION_TEMPLATE = (
+    "1. Read the artifact:\n"
+    "   telec todo artifacts read {slug} {artifact}\n\n"
+    "2. If the human approved an earlier version and every change since carries that approval "
+    "({procedure_id}, step 4), record the carried digest and each change's ground in the todo log; "
+    "do not ask the human. Otherwise present the artifact to the real human and wait for confirmation.\n\n"
+    "3. When the approval carries or the human confirms, stamp:\n"
+    "   telec todo stamp {slug} {stamp_flag}\n\n"
+    "4. Call `telec todo prepare {slug}` to advance the lifecycle."
+)
+_APPROVAL_CONTEXT = (
+    "A first approval comes from the real human; a later revision that adds no intent the human has not "
+    "already decided carries it."
+)
 
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
@@ -333,16 +348,10 @@ def _approval_instruction(
     stamp_flag: str,
 ) -> tuple[bool, str]:
     _ = phase, state, cwd
-    instruction = (
-        f"1. Read the artifact:\n"
-        f"   telec todo artifacts read {slug} {artifact}\n\n"
-        f"2. Present the artifact to the real human and wait for confirmation.\n\n"
-        f"3. When the human confirms, stamp:\n"
-        f"   telec todo stamp {slug} {stamp_flag}\n\n"
-        f"4. Call `telec todo prepare {slug}` to advance the lifecycle."
+    instruction = _APPROVAL_INSTRUCTION_TEMPLATE.format(
+        slug=slug, artifact=artifact, stamp_flag=stamp_flag, procedure_id=_APPROVAL_PROCEDURE_ID
     )
-    context = "A real human must approve the artifact before this stamp is valid."
-    return False, format_blocker_resolution(slug, instruction, context=context)
+    return False, format_blocker_resolution(slug, instruction, context=_APPROVAL_CONTEXT)
 
 
 def _blocker_resolution(

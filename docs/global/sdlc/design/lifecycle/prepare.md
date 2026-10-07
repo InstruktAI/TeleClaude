@@ -54,8 +54,9 @@ human, who is the sole authority on intent.
   tails it, and reads its findings and verdict on the next state-machine
   advance.
 - The PRD is the only human approval gate. The human reviews the PRD and
-  stamps `prd_approved`. Architecture and plan advance on
-  reviewer verdict alone.
+  stamps `prd_approved`; a later revision that adds no intent the human has
+  not already decided carries that approval (prepare overview procedure, step
+  4). Architecture and plan advance on reviewer verdict alone.
 - The architecture phase may be skipped when it doesn't earn its place.
   During intake, the BA stamps `architecture_skipped` with
   reason when the work doesn't warrant the phase. Plan and PRD are
@@ -146,8 +147,8 @@ PREPARED terminal requires fresh grounding.
   snippet, pushing the PO into a test author's grammar.
 - A procedure drifts into orchestrator-shaped action (dispatching workers
   for sub-phases) instead of doing the phase work itself.
-- A PRD written with no human in the conversation is auto-stamped
-  `prd_approved` without the human's review.
+- A PRD the human has never approved is auto-stamped `prd_approved`
+  without the human's review.
 - Reviewer findings cannot be addressed by the active procedure, and the
   chain grinds rather than surfacing the blocker.
 - Drift is detected but the affected phase isn't re-derived, leaving

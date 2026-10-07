@@ -82,7 +82,7 @@ the planner.
 ## Preconditions
 
 - `prd` exists, its current digest has an approved `prd_review` verdict, and
-  the real human stamped `prd_approved`.
+  `prd_approved` is current for that digest.
 
 - Slug is active (not icebox, not delivered).
 - The codebase is in a state the architecture can ground against. If staleness

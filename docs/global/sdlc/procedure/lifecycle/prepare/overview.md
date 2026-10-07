@@ -346,12 +346,34 @@ approval.
 
 Present only the reviewed PRD, its stated horizon, and genuine human-owned
 decisions. On confirm, stamp `prd_approved`. On refinement, capture the delta,
-rewrite the PRD, and let the machine invalidate and rerun `prd_review` before
-presenting it again.
+rewrite the PRD, and let the machine invalidate and rerun `prd_review`; the
+rewritten PRD returns to the human only when the approval does not carry.
 
-An agent can draft and review but never stamps `prd_approved` without the
-human's direct approval of that PRD in the live conversation. No signal about
-how the session started supplies, withholds, or propagates that approval.
+The human approves intent, not a digest. Once the human has approved a PRD, a
+later revision returns to them only when it carries intent they have not
+already decided. Every other revision carries their approval: after
+`prd_review` approves the revised digest, the prepare claimant stamps
+`prd_approved` without asking. A revision carries the approval when each of its
+changes is one of these:
+
+- a decision the human gave in the live conversation, applied as given;
+- removal or narrowing of scope the `input` does not carry;
+- a correction of reasoning, evidence, wording, or mechanism that leaves every
+  outcome and success criterion as the human approved it.
+
+A revision that adds or widens an outcome, changes a success criterion beyond
+the human's own direction, or raises a new decision in the human's closed lane
+(`general/policy/human-contract`) returns to the human, and so does one whose
+classification remains uncertain. A carried approval never skips
+`prd_review`. Before stamping, the claimant records in the todo `log` the
+approved digest it carries forward and the ground for each change. The human
+is not asked to confirm a carried approval and receives no separate notice of
+it.
+
+A PRD the human has never approved is never stamped `prd_approved` by an
+agent: the first approval is the human's, given directly in the live
+conversation, and no signal about how the session started supplies,
+withholds, or propagates it.
 
 ### 5. Skip phases that don't earn their place
 
