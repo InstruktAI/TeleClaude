@@ -12,6 +12,8 @@ from teleclaude.core.todos_db._exceptions import RemoveRefusedLiveWork
 
 logger = get_logger(__name__)
 
+_CALLER_BINDING_RELEASED_EVENT = "todo removal released caller binding"
+
 
 async def execute_todo_remove(
     db: Db,
@@ -91,5 +93,10 @@ async def execute_todo_remove(
     )
     if not removed:
         raise LookupError(f"no live todo found for remove: {slug}")
+    if caller_session_id is not None:
+        caller = await db.get_session(caller_session_id)
+        if caller is not None and caller.working_slug == slug:
+            await db.update_session(caller_session_id, working_slug=None)
+            logger.info(_CALLER_BINDING_RELEASED_EVENT, slug=slug, session_id=caller_session_id)
     logger.info("Removed todo %s", slug)
     return f"removed {slug}"

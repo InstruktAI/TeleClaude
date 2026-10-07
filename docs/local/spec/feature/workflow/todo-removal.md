@@ -17,7 +17,7 @@ visibility: 'public'
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
-Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
+Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded. A caller whose session is bound to the removed slug is released from that binding by the removal, so it can go on to drive another Todo. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
 
 A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. Reactivation restores the exact captured documentation material as pending before the Todo returns to its pre-removal status; an unsafe restoration faults without reporting success. After the retention window elapses, routine maintenance verifies that abandonment is complete, clears the retained restoration material, and hard-purges the removed entry by durable identity. Retained state and artifact history cascade to deletion only after that sequence succeeds.
 
@@ -182,6 +182,16 @@ Given a Todo whose claim names a session that is no longer live
 When the operator runs "telec todo remove <slug>"
 Then the removal proceeds without requiring the override flag
 And the durable removed entry records the claim value that was released
+```
+
+#### UC-TR-RELEASES-REMOVER-BINDING: Removing its own Todo frees the claimant to drive another
+
+```gherkin
+Given an agent session bound to the Todo "feature-x" as its driver
+When that session runs "telec todo remove feature-x" and the removal succeeds
+Then the session is no longer bound to "feature-x"
+And a later "telec todo prepare" for another Todo from that session is not refused for a conflicting binding
+But a removal that is refused leaves the session's binding unchanged
 ```
 
 #### UC-TR-REMOVED-SLUG-WRITE-REFUSED: An artifact write to a removed slug names the recoverable state
