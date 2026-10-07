@@ -38,8 +38,8 @@ And every human push adapter receives that same rendered envelope rather than a 
 ```gherkin
 Given an operational occurrence on one computer requires a current action from a human
 When every computer in the fleet receives its event
-Then only the computer the occurrence happened on records it and delivers its card
-And no other computer records it or delivers a card for it
+Then only the computer the occurrence happened on delivers its card
+And no other computer delivers a card for it
 ```
 
 #### UC-OAC3: Admin action cards reach only administrators who turned them on

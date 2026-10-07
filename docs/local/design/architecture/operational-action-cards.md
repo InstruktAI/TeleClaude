@@ -36,7 +36,11 @@ details out of the primary message.
   concrete `Action:` line in its body.
 - No external action card for routine success, automatically handled failure,
   repeated same-state activity, or recovery.
+<!-- planned-change:human-alerts-agent-only -->
 - Complete provenance in the notification record and delivery metadata.
+<!-- change:human-alerts-agent-only -->
+- Complete provenance in the delivery metadata.
+<!-- /planned-change:human-alerts-agent-only -->
 - A native Discord jump-link backlink to the originating session's Discord
   thread or channel, appended on the Discord surface only, when the occurrence
   names a resolvable originating session.
@@ -47,8 +51,13 @@ details out of the primary message.
   alone never justify interruption.
 - **One action revision, one interruption.** Repeated state does not repeatedly
   notify; a later card requires a material change to the requested action.
+<!-- planned-change:human-alerts-agent-only -->
 - **Human copy explains the situation.** Event types, notification row IDs,
   attempts, and persistence verbs remain metadata.
+<!-- change:human-alerts-agent-only -->
+- **Human copy explains the situation.** Event types, event identities,
+  attempts, and persistence verbs remain metadata.
+<!-- /planned-change:human-alerts-agent-only -->
 - **Presentation may vary, meaning may not.** Native cards and text fallbacks
   render the same structured action envelope. Text fallback uses the shared
   bracket codec's registered human-action family rather than a private
