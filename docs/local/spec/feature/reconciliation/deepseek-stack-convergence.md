@@ -40,14 +40,17 @@ make surface, and installation reaches the runtime only through it.
 - **Candidate runtime.** Any published runtime release no older than the
   installed one, whatever release channel publishes it. The installed runtime
   is always a candidate, so staying put is always available.
-- **Fit.** A package version fits a candidate runtime when every compatibility
-  requirement it declares holds under strict semantic-version matching:
-  requirements on the runtime's own packages against the candidate's version,
-  and requirements on libraries the runtime bundles against the versions the
-  candidate brings. A prerelease satisfies a requirement only where that
-  requirement names a prerelease of the same major, minor and patch version.
-  Every fitting set therefore also passes the runtime's own startup check,
-  which admits prereleases more broadly.
+- **Fit.** A package version fits a candidate runtime when every requirement
+  it declares on the runtime — on the runtime's own packages, as peer
+  requirements or as its declared runtime engine — holds for the candidate's
+  version under strict semantic-version matching. A prerelease satisfies a
+  requirement only where that requirement names a prerelease of the same
+  major, minor and patch version. Every fitting set therefore also passes the
+  runtime's own startup check, which admits prereleases more broadly.
+- **Library advisory.** A requirement a package declares on a library the
+  runtime bundles is judged against the version the candidate brings and
+  reported when it does not hold, but it does not decide fit; the
+  verification gate decides whether such a set works.
 - **Adopted set.** The newest candidate runtime for which every package in
   every profile, and every required plugin, fits: a registry package through
   some published version, a local-checkout plugin through the manifest it
@@ -70,8 +73,9 @@ make surface, and installation reaches the runtime only through it.
 - **In use.** A DeepSeek runtime process is running, or another convergence is
   in progress. Convergence changes nothing while the stack is in use.
 - **Outcome.** Exactly one of: upgraded, unchanged, rolled back, or rollback
-  incomplete. The report names the outcome and the evidence behind it; an
-  unchanged outcome names whether no newer set fits or the stack was in use.
+  incomplete. The report names the outcome and the evidence behind it,
+  including every library advisory of the adopted set; an unchanged outcome
+  names whether no newer set fits or the stack was in use.
 
 ### Use cases
 
