@@ -127,11 +127,15 @@ def resolve_context_root(start: Path) -> ContextRoot | None:
 def load_declared_config_kind(path: Path) -> ConfigKind:
     """Read a root's declared configuration tier from its in-memory migrated view."""
     payload: object = yaml.safe_load(path.read_text(encoding=_UTF8)) or {}
-    return _load_declared_config_kind(path, payload)
+    return declared_config_kind(path, payload)
 
 
-def _load_declared_config_kind(path: Path, payload: object) -> ConfigKind:
-    """Resolve a declaration kind from parsed content using the normal migration semantics."""
+def declared_config_kind(path: Path, payload: object) -> ConfigKind:
+    """Resolve a declaration kind from parsed content using the normal migration semantics.
+
+    ``path`` names the declaration's location for subject resolution; the content may
+    come from anywhere, such as a committed tree.
+    """
     if not isinstance(payload, Mapping):
         raise ValueError(_INVALID_DECLARATION.format(path=path))
     subject = resolve_read_subject(path, payload)
@@ -254,7 +258,7 @@ def _read_tree_home(root: Path, marker_relative_path: str, source: TreeSource) -
     marker_path = (source.repository_root / root / _CONFIG_FILE_NAME).resolve()
     try:
         payload: object = yaml.safe_load(read_tree_path(source, marker_relative_path).decode(_UTF8)) or {}
-        return ResolvedTreeHome(root=root, kind=_load_declared_config_kind(marker_path, payload), error=None)
+        return ResolvedTreeHome(root=root, kind=declared_config_kind(marker_path, payload), error=None)
     except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError) as exc:
         return UnreadableTreeHome(root=root, kind=None, error=exc)
 

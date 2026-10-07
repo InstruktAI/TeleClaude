@@ -66,10 +66,12 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
+from teleclaude.api_models_health import HealthDTO
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
 from teleclaude.channels.api_routes import router as channels_router
+from teleclaude.checkout_head import read_checkout_head
 from teleclaude.config import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
 from teleclaude.constants import API_SOCKET_PATH
@@ -97,6 +99,7 @@ from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
 from teleclaude.mcp.runtime import McpRuntimePool
 from teleclaude.memory.api_routes import router as memory_router
+from teleclaude.paths import REPO_ROOT
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
@@ -137,6 +140,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         refresh_local_projects: Callable[[ProjectRefreshTrigger], Awaitable[None]] | None = None,
     ) -> None:
         self.client = client
+        self._start_commit = read_checkout_head(REPO_ROOT)
         self._cache: DaemonCache | None = None  # Initialize private variable
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
@@ -503,10 +507,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 self._inflight_requests.pop(req_id, None)
                 reset_caller_session_id(caller_token)
 
-        @self.app.get("/health")
-        async def health() -> dict[str, str]:  # pyright: ignore
-            """Health check endpoint."""
-            return {"status": "ok"}
+        @self.app.get("/health", response_model_exclude_none=True)
+        async def health() -> HealthDTO:  # pyright: ignore
+            """Health check endpoint, carrying the commit the daemon's code stood on at its start."""
+            return HealthDTO(start_commit=self._start_commit)
 
         @self.app.get("/auth/whoami")
         async def auth_whoami(  # pyright: ignore

@@ -6,7 +6,7 @@ import fcntl
 import json
 import os
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from enum import StrEnum
@@ -135,12 +135,21 @@ def remove_record(path: Path) -> None:
 
 
 @contextmanager
-def maintenance_drain_lock(project_root: str | Path) -> Iterator[None]:
-    """Hold the stable OS lock that serializes all drain state transitions."""
+def maintenance_drain_lock(project_root: str | Path, on_contention: Callable[[], None] | None = None) -> Iterator[None]:
+    """Hold the stable OS lock that serializes all drain state transitions.
+
+    A holder already in place makes the caller wait; ``on_contention`` is called once
+    before it does, so the caller can say so.
+    """
     lock_path = maintenance_directory(project_root) / _DRAIN_LOCK_FILENAME
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if on_contention is not None:
+                on_contention()
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             yield
         finally:

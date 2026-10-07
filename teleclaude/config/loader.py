@@ -19,7 +19,7 @@ from teleclaude.config._environment import (
     write_environment_values,
 )
 from teleclaude.config._yaml import round_trip_yaml
-from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
+from teleclaude.config.context_root import declared_config_kind, load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
 from teleclaude.config.migrations import (
@@ -52,6 +52,7 @@ _PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save targ
 _UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
 _UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
 _UTF8 = "utf-8"
+_CONTENT_READ_FAILURE = "Failed to read config content for {path}: {error}"
 _KIND_FIELD = "kind"
 _SCHEMA_VERSION_FIELD = "schema_version"
 _PROJECT_SAVE_REGISTRY_ERROR = "Project configuration saves require a registered project root"
@@ -180,6 +181,11 @@ def load_config[T: BaseModel](
         logger.error("Failed to read config file %s: %s", path, e)
         raise ValueError(f"Failed to read config file {path}: {e}") from e
 
+    return _validated_model(path, raw, model_class, kind)
+
+
+def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T], kind: ConfigKind) -> T:
+    """Validate one already-read declaration through the shared read pipeline."""
     if not isinstance(raw, Mapping):
         return model_class.model_validate(raw)
     raw = upcast_for_read(path, raw)
@@ -244,6 +250,23 @@ def load_declared_project_config(root: Path) -> ProjectConfig | None:
     if load_declared_config_kind(marker) is not ConfigKind.PROJECT:
         return None
     return load_project_config(marker)
+
+
+def load_declared_project_config_from_content(path: Path, content: bytes) -> ProjectConfig | None:
+    """Load the project configuration from declaration bytes read elsewhere, such as a committed tree.
+
+    ``path`` is the declaration's live location, which identifies its registry subject
+    and sibling environment file; ``content`` is what is validated. Returns `None`
+    when the content declares a tier other than project, with the same contract as
+    `load_declared_project_config`.
+    """
+    try:
+        raw: object = yaml.safe_load(content.decode(_UTF8)) or {}
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ValueError(_CONTENT_READ_FAILURE.format(path=path, error=exc)) from exc
+    if declared_config_kind(path, raw) is not ConfigKind.PROJECT:
+        return None
+    return _validated_model(path, raw, ProjectConfig, ConfigKind.PROJECT)
 
 
 def save_project_config(path: Path, config: ProjectConfig) -> None:

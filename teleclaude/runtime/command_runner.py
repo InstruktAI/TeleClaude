@@ -7,7 +7,7 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -83,9 +83,16 @@ def run_process_group_command(
 
 
 def run_process_group_commands(
-    commands: Sequence[Sequence[str]], cwd: Path, child_env: Mapping[str, str] | None = None
+    commands: Sequence[Sequence[str]],
+    cwd: Path,
+    child_env: Mapping[str, str] | None = None,
+    on_result: Callable[[int, CommandResult], None] | None = None,
 ) -> tuple[CommandResult, ...]:
-    """Run argument vectors concurrently and reap every process group on exit."""
+    """Run argument vectors concurrently and reap every process group on exit.
+
+    ``on_result`` is called with a command's index and result as soon as that command
+    ends, so a caller can report each outcome while the others still run.
+    """
     processes: list[subprocess.Popen[bytes] | None] = []
     results: list[CommandResult | None] = []
     previous: dict[int, Any] = {}
@@ -112,7 +119,10 @@ def run_process_group_commands(
                     )
                 except OSError:
                     processes.append(None)
-                    results.append(CommandResult(_COMMAND_START_FAILURE_EXIT_CODE))
+                    start_failure = CommandResult(_COMMAND_START_FAILURE_EXIT_CODE)
+                    results.append(start_failure)
+                    if on_result is not None:
+                        on_result(len(results) - 1, start_failure)
                     continue
                 processes.append(process)
                 results.append(None)
@@ -125,7 +135,10 @@ def run_process_group_commands(
                     if exit_code is None:
                         continue
                     _kill_process_group(process)
-                    results[index] = CommandResult(exit_code)
+                    finished = CommandResult(exit_code)
+                    results[index] = finished
+                    if on_result is not None:
+                        on_result(index, finished)
                 if any(result is None for result in results):
                     time.sleep(_PROCESS_POLL_INTERVAL_SECONDS)
         except _SignalReceived as received:

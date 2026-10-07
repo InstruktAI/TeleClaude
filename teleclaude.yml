@@ -37,9 +37,31 @@ checkpoint:
     restart:
       main_only: true
       precedence: 100
+      on_demand: defer
+      owed_probe:
+        - '{interpreter}'
+        - -m
+        - teleclaude.core.integration.deferred_probes
+        - restart
+        - --tip
+        - '{after_sha}'
       command:
         - make
         - restart
+    # Deploying the service definitions installation renders is deferred on
+    # demand, so a manual run reports it instead; no scope binds it, so the
+    # commit boundary never runs it.
+    service-deploy:
+      main_only: true
+      precedence: 110
+      on_demand: defer
+      owed_probe:
+        - '{interpreter}'
+        - -m
+        - teleclaude.install.service_drift
+      command:
+        - make
+        - install
     deps:
       main_only: true
       precedence: 20
@@ -82,6 +104,14 @@ checkpoint:
     tui-reload:
       main_only: true
       precedence: 40
+      on_demand: defer
+      owed_probe:
+        - '{interpreter}'
+        - -m
+        - teleclaude.core.integration.deferred_probes
+        - tui-reload
+        - --tip
+        - '{after_sha}'
       command:
         - '{interpreter}'
         - -m

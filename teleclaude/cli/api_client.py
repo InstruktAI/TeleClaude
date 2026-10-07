@@ -35,6 +35,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_session_actions_models import AgentRestartResponseDTO
 from teleclaude.caller_identity import CarriedIdentity
+from teleclaude.cli.api_client_health import TelecHealthAPI
 from teleclaude.cli.api_client_identity import TelecIdentityAPI
 from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
@@ -995,5 +996,5 @@ class _TelecRuntimeAPI:
         return resp.json()
 
 
-class TelecAPIClient(_TelecConnectionClient, _TelecSessionAPI, _TelecRuntimeAPI, TelecIdentityAPI):
+class TelecAPIClient(_TelecConnectionClient, _TelecSessionAPI, _TelecRuntimeAPI, TelecIdentityAPI, TelecHealthAPI):
     """Public telec API client."""

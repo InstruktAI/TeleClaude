@@ -13,6 +13,10 @@ from teleclaude.project_setup.macos_setup import (
     run_permissions_probe,
 )
 
+_DEFER_CHANGES_FLAG = "--defer-changes"
+_STORE_TRUE_ACTION = "store_true"
+_DEFER_CHANGES_HELP = "Deploy no changed service definition and reload no running service; name each drift instead"
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="macOS setup helpers for TeleClaude init flows")
@@ -21,6 +25,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path.cwd(),
         help="Project root containing bin/*.app launchers",
+    )
+    parser.add_argument(
+        _DEFER_CHANGES_FLAG,
+        action=_STORE_TRUE_ACTION,
+        help=_DEFER_CHANGES_HELP,
     )
     parser.add_argument(
         "action",
@@ -51,7 +60,7 @@ def main() -> int:
             return 1
 
     if args.action in ("install-tmux-server", "run-all"):
-        install_tmux_server_service()
+        install_tmux_server_service(defer_changes=args.defer_changes)
 
     if args.action in ("permissions-probe", "run-all"):
         if not run_permissions_probe(project_root):

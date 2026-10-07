@@ -582,3 +582,4 @@ FLAG_CODE_STAMP_REASON = Flag(
     desc="Why the stamp was given; the author's discard of a candidate that owes no review names it here",
     arity=VALUE,
 )
+FLAG_SYNC_LIST = Flag("--list", desc="Show the steps a run would perform and run nothing", arity=SWITCH)

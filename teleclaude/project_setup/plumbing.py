@@ -303,7 +303,7 @@ def main() -> None:
         return
     if len(sys.argv) != 2:
         raise SystemExit(_ROOT_ARGUMENT_REQUIRED)
-    result = converge_plumbing(Path(sys.argv[1]))
+    result = converge_plumbing(Path(sys.argv[1]).resolve())
     for hook_name, outcome in result.hook_results.items():
         print(_HOOK_RESULT.format(hook_name=hook_name, outcome=outcome))
     if result.filter_disposition is not None:
