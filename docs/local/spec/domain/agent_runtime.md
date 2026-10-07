@@ -152,6 +152,8 @@ TeleClaudeNext repository.
   validate a selection and to list memberships; this context never re-derives
   membership.
 
+<!-- planned-change:retire-session-event-subscriptions -->
+
 - **Owns (event subscriptions):** an agent session's standing requests to be
   woken by platform stream events
   (`local/projects/teleclaude/spec/feature/agent_runtime/event-subscriptions`).
@@ -196,6 +198,9 @@ TeleClaudeNext repository.
   carries; and `identity`'s published reach record test, resolved per
   principal and held until a declaration it reads changes. This context
   restates neither the reach rule nor a type's declaration.
+
+<!-- change:retire-session-event-subscriptions -->
+<!-- /planned-change:retire-session-event-subscriptions -->
 
 <!-- planned-change:event-envelope -->
 

@@ -174,6 +174,8 @@ contracts and never creates shared ownership.
 
 <!-- /planned-change:event-envelope -->
 
+<!-- planned-change:retire-session-event-subscriptions -->
+
 - `agent_runtime` matches platform stream events against the event
   subscriptions its own sessions hold, on the computer that hosts each session,
   through its own stream consumer, and wakes them through control delivery. The
@@ -188,6 +190,16 @@ contracts and never creates shared ownership.
   `presentation`'s hosting surfaces. Existing placement outside
   these relationships is not precedent; the owning context and published contract
   remain authoritative.
+
+<!-- change:retire-session-event-subscriptions -->
+
+The daemon, handler, adapter, database, and background-worker labels are layers
+or hosting mechanisms, not additional contexts. The TUI and the CLI are
+`presentation`'s hosting surfaces. Existing placement outside
+these relationships is not precedent; the owning context and published contract
+remain authoritative.
+
+<!-- /planned-change:retire-session-event-subscriptions -->
 
 ## See Also
 

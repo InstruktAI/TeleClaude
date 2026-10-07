@@ -27,6 +27,8 @@ An event states none only when it concerns no registered home, so a consumer
 reading none can rely on that. An event that does not know its subject states
 unknown instead, and never passes as one about no home.
 
+<!-- planned-change:retire-session-event-subscriptions -->
+
 Both are facts about the event, never about its consumers. A producer does not
 decide, assume, or check who will receive an event, and emission refuses nothing
 on the strength of these facts. Platform automation has no home of its own; its
@@ -34,6 +36,17 @@ events carry no session origin, and their subject is the home of what the
 automation acted on. Who may receive an event is decided on the receiving side
 from its subject (`local/projects/teleclaude/spec/feature/agent_runtime/event-subscriptions` is
 one such consumer); this contract only guarantees the facts are there.
+
+<!-- change:retire-session-event-subscriptions -->
+
+Both are facts about the event, never about its consumers. A producer does not
+decide, assume, or check who will receive an event, and emission refuses nothing
+on the strength of these facts. Platform automation has no home of its own; its
+events carry no session origin, and their subject is the home of what the
+automation acted on. Who may receive an event is decided on the receiving side
+from its subject; this contract only guarantees the facts are there.
+
+<!-- /planned-change:retire-session-event-subscriptions -->
 
 Every event type in the catalog declares its subject assignment — what its
 events are about and the home kinds that subject can take, or none for a type
@@ -178,4 +191,10 @@ And the event states neither no subject nor a guessed home
 - docs/local/spec/domain/event-catalog.md — the catalog owns envelope shape and discovery metadata; producing contexts own event meaning.
 - docs/local/spec/feature/identity/organizational-membership.md — what a project's declared owner means.
 - docs/local/spec/feature/reconciliation/fleet-cross-version-interop.md — additive evolution of shared shapes across a mixed-version fleet.
+
+<!-- planned-change:retire-session-event-subscriptions -->
+
 - docs/local/spec/feature/agent_runtime/event-subscriptions.md — a consumer that decides receipt from the subject.
+
+<!-- change:retire-session-event-subscriptions -->
+<!-- /planned-change:retire-session-event-subscriptions -->
