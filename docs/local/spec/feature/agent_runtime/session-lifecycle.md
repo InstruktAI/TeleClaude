@@ -243,7 +243,6 @@ Then the session's agent status becomes `stalled` with reason `no_start`
 And a later normalized agent event sets the status that event maps to
 ```
 
-<!-- planned:no-composer-wakes-parent -->
 #### UC-SL51: Input waiting on a screen other than the composer makes the session blocked
 
 ```
@@ -255,7 +254,6 @@ And no native runtime signal is required for that transition
 And the transition records no runtime activity
 And the next normalized agent event sets the status that event maps to
 ```
-<!-- /planned:no-composer-wakes-parent -->
 
 #### UC-SL44: Listings carry the agent status with its reason and since
 

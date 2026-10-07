@@ -71,7 +71,6 @@ authorize Enter on an occupied composer or an interaction with a menu. Genuine
 runtime suggestion chrome is not authored input; its styling must not erase
 ordinary colored human text during occupancy observation.
 
-<!-- planned:no-composer-wakes-parent -->
 When that observation identifies no composer because the agent shows another
 screen, nothing is pasted, typed, or submitted into that screen, whatever the
 input's authority, and the input reaches the agent only once a later
@@ -98,7 +97,6 @@ later observations of the same screen change neither the status nor the
 watchers.
 A pane that cannot be captured is a delivery failure, not a screen without a
 composer.
-<!-- /planned:no-composer-wakes-parent -->
 
 Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
@@ -114,18 +112,6 @@ producer or the session's recorded entry point, never the text. Platform
 commands that a channel's own handlers or command-input recognition resolve
 before delivery keep their contracts unchanged.
 
-<!-- planned-change:no-composer-wakes-parent -->
-Conversation text is delivered only into an empty composer and never joins a
-human draft. While the composer holds input, conversation text waits in
-accepted order. It is retried on the delivery cadence without consuming its
-delivery-attempt budget, for no longer than the delivery-retry window measured
-from its acceptance, so no submission of a human draft carries relayed text.
-A message that has been held is never submitted after that window lapses: it
-ends undelivered when the window lapses, the session's conversation channels
-receive a notice that it did not reach the agent because the agent's input was
-occupied, and the composer's content is left untouched. A startup message held
-past the same window fails its submission.
-<!-- change:no-composer-wakes-parent -->
 Conversation text is delivered only into an empty composer and never joins a
 human draft. While the composer holds input, or while no composer can be
 identified because the agent shows another screen, conversation text waits in
@@ -138,7 +124,6 @@ receive a notice that it did not reach the agent because the agent's input was
 occupied, and the composer's content and any screen shown in its place are
 left untouched. A startup message held past the same window fails its
 submission.
-<!-- /planned-change:no-composer-wakes-parent -->
 
 When conversation text is submitted to an agent's empty composer and its first
 character after any leading whitespace and leading invisible format characters
@@ -224,16 +209,6 @@ And the upstream send-message path logs the failure and raises a server-side err
 And no retry or backoff is applied at this layer
 ```
 
-<!-- planned-change:no-composer-wakes-parent -->
-```
-Given the target session has an active agent
-When prompt-state user-turn delivery cannot identify the active composer as empty or occupied
-Or the selected host-pane paste or paste-and-submit primitive fails
-Then the prompt-state delivery routine returns failure
-And the upstream send-message path logs the failure and raises a server-side error to the caller
-And the message is not marked delivered by queue workers
-```
-<!-- change:no-composer-wakes-parent -->
 ```
 Given the target session has an active agent
 When the host pane cannot be captured for the pre-delivery observation
@@ -242,7 +217,6 @@ Then the prompt-state delivery routine returns failure
 And the upstream send-message path logs the failure and raises a server-side error to the caller
 And the message is not marked delivered by queue workers
 ```
-<!-- /planned-change:no-composer-wakes-parent -->
 
 #### Direct-link conflict (work-mode send blocked)
 
@@ -295,17 +269,6 @@ And no turn is created until the owning human chooses to submit the composed inp
 
 #### UC-SID2 — Input for an adopted headless session waits for the resumed agent
 
-<!-- planned-change:no-composer-wakes-parent -->
-```
-Given a message arrives for a session whose lifecycle status is headless
-And that session records a resumable agent and a native transcript chain
-When the delivery path recreates the host pane and resumes that agent into it
-Then the payload is submitted only once the resumed agent's prompt is live
-And a resumed agent that never reaches its prompt within the readiness budget fails the delivery instead of submitting the payload into a pane no agent is reading
-And that failed delivery is reported through the ordinary delivery-failure path rather than recorded as delivered
-And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
-```
-<!-- change:no-composer-wakes-parent -->
 ```
 Given a message arrives for a session whose lifecycle status is headless
 And that session records a resumable agent and a native transcript chain
@@ -317,8 +280,6 @@ And a resumed agent whose pane has settled on a screen with no composer when the
 And its payload waits as held text without consuming a delivery attempt, reaching the agent once a composer appears
 And a further message for that session is held until the adoption resolves, instead of reaching the pane before the resumed agent's prompt is live
 ```
-<!-- /planned-change:no-composer-wakes-parent -->
-
 
 #### UC-SID3: A send that names the owning remote computer is routed there
 
@@ -389,15 +350,6 @@ And every downstream consumer treats the turn as owner-authored: it is never cla
 
 #### UC-SID11: A non-composer interactive screen cannot receive platform input
 
-<!-- planned-change:no-composer-wakes-parent -->
-```gherkin
-Given the owning human is viewing a running agent session that shows an interactive screen other than its editable composer
-And that screen includes a marker also used by the agent's composer
-When asynchronous platform-authored text is ready for delivery
-Then the interactive screen remains unchanged and unsubmitted
-And delivery waits until the agent-specific complete composer can be identified
-```
-<!-- change:no-composer-wakes-parent -->
 ```gherkin
 Given a running agent session shows an interactive screen other than its editable composer
 And that screen may include a marker also used by the agent's composer
@@ -413,7 +365,6 @@ When the screen is not cleared within the delivery-retry window
 Then the text ends undelivered with the terminal notice its delivery path already gives
 And the screen remains unchanged and unsubmitted
 ```
-<!-- /planned-change:no-composer-wakes-parent -->
 
 #### UC-SID13: A complete empty Codex composer accepts platform input
 
