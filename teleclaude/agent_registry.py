@@ -293,6 +293,9 @@ def _mount_flags(restricted_mount_dirs: tuple[str, ...], style: str) -> str:
     return ",".join(restricted_mount_dirs)
 
 
+_DEEPSEEK_LAUNCH_ENVIRONMENT: tuple[tuple[str, str], ...] = (("DSH_TUI_NO_LAUNCHPAD", "1"),)
+
+
 def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName, AgentDefinition]:
     """Assemble the immutable per-agent records from the platform's fixed facts."""
     claude_mount = _mount_flags(restricted_mount_dirs, "space")
@@ -643,7 +646,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             # into a spec table with no entry for it.
             one_shot=OneShotSupport.UNSUPPORTED,
             desk_confinement=DeskConfinement.NONE,
-            launch_environment=(("DSH_TUI_NO_LAUNCHPAD", "1"),),
+            launch_environment=_DEEPSEEK_LAUNCH_ENVIRONMENT,
         ),
     }
 
