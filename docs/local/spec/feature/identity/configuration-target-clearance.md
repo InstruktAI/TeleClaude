@@ -82,6 +82,7 @@ a refused read returns no configuration.
 | company              | get, patch                                                                              | `admin` effective role for that company         |
 | company              | init                                                                                    | none beyond the verb band                       |
 | project              | list, get; init of a registered project                                                 | none beyond the verb band                       |
+| project              | the global event-domain seeding that init performs                                      | platform role member or administrator           |
 | project              | adopt, anywhere                                                                         | a registered person                             |
 | project              | create in the caller's own home                                                         | the person                                      |
 | project              | create with `--company`                                                                 | membership of that company, any role            |
@@ -91,6 +92,13 @@ a refused read returns no configuration.
 | project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
 
 <!-- /planned-change:personal-assistant-project-creation -->
+
+<!-- planned:personal-assistant-project-creation -->
+
+A project init by a caller without the standing for global event-domain seeding
+still converges the project: it skips that step instead of being refused.
+
+<!-- /planned:personal-assistant-project-creation -->
 
 ### Use cases
 
