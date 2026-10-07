@@ -64,6 +64,18 @@ make surface, and installation reaches the runtime only through it.
   and every profile's manifest and lock state.
 - **Launch profile.** The profile TeleClaude launches every DeepSeek session
   with, which holds the TUI.
+<!-- planned:deepseek-launch-profile-convergence -->
+- **Launch profile creation.** When the harness has no launch profile, the
+  adopted set also creates it, holding the TUI and every required plugin. The
+  TUI then counts among the packages that must fit, so a candidate without a
+  fitting TUI version is rejected like any other. Creating the launch profile
+  is a change in its own right: a run whose runtime and packages are already
+  the newest that fit still adopts the set that creates it. A run that
+  restores its snapshot also removes the launch profile it created, and the
+  report of a run that keeps it says the launch profile was created. A launch
+  profile that already exists is converged like every other profile and is
+  never recreated or reset, and no other profile is ever created.
+<!-- /planned:deepseek-launch-profile-convergence -->
 - **Verification gate.** An adopted set is kept only when, run from a
   throwaway working directory, every profile starts with no startup diagnostic
   and a composed configuration; the launch profile reaches its ready composer
@@ -214,6 +226,71 @@ And each profile moves to the newest fitting version of that package
 And the set is verified, and restored on failure, like any adopted set
 ```
 
+<!-- planned:deepseek-launch-profile-convergence -->
+#### UC-DSC15: A missing launch profile is created within the adopted set
+
+```gherkin
+Given the launch profile does not exist
+And a candidate runtime exists at which the TUI, every required plugin and every installed package fit
+When an operator or the installer runs the DeepSeek stack convergence
+Then the launch profile holds the TUI and every required plugin, at their fitting versions or through their local references
+And the verification gate's checks have passed in it
+And no other profile is created
+And the operator's report states the outcome as upgraded and says the launch profile was created
+```
+
+#### UC-DSC16: A machine that has never run DeepSeek becomes startable through installation
+
+```gherkin
+Given DeepSeek is enabled as an agent runtime
+And the machine has neither the DeepSeek runtime nor its launch profile
+And the operator's DeepSeek account credentials are usable
+And a candidate runtime exists at which the TUI and every required plugin fit
+When an operator runs the installer
+And the set that creates the launch profile passes the verification gate
+Then the runtime is installed and the launch profile created through the DeepSeek stack convergence
+And TeleClaude can start a DeepSeek session in the launch profile with no manual setup
+```
+
+#### UC-DSC17: The launch profile is created even when nothing else would move
+
+```gherkin
+Given the launch profile does not exist
+And the installed runtime and every installed package are already the newest that fit
+When an operator runs the DeepSeek stack convergence
+Then the runtime stays at the installed release
+And the launch profile is created within an adopted set, verified and restored on failure like any other
+```
+
+#### UC-DSC18: A creation that does not survive leaves no launch profile behind
+
+```gherkin
+Given the launch profile does not exist
+When the DeepSeek stack convergence finds no candidate at which the TUI and every required plugin fit, or applying or verifying the set that creates the launch profile fails and the restore completes
+Then no launch profile exists after the run
+And the runtime and every other profile are as they were before the run
+And the operator's report names the blocking package, or the failed step or check
+```
+
+#### UC-DSC20: A created launch profile that cannot be removed is reported
+
+```gherkin
+Given the DeepSeek stack convergence created the launch profile and is restoring its snapshot
+When removing the created launch profile fails
+Then the operator's report states the outcome as rollback incomplete
+And names the launch profile among the parts of the stack that differ from the snapshot
+```
+
+#### UC-DSC19: An existing launch profile is never recreated or reset
+
+```gherkin
+Given the launch profile exists
+When the DeepSeek stack convergence runs
+Then the launch profile is not recreated, reset or replaced
+And it changes only as the convergence changes every existing profile
+```
+<!-- /planned:deepseek-launch-profile-convergence -->
+
 ## Known caveats
 
 - Declared compatibility is necessary but not sufficient: a plugin can satisfy
@@ -222,6 +299,11 @@ And the set is verified, and restored on failure, like any adopted set
 - The gate's turns run against the live DeepSeek account and need usable
   authentication; when they cannot run, the gate fails and the snapshot is
   restored.
+<!-- planned:deepseek-launch-profile-convergence -->
+- A launch profile the convergence creates carries the vendor's defaults for
+  the TUI and its plugins. TeleClaude passes its own model choice with every
+  launch; the operator's own preferences for the profile are theirs to add.
+<!-- /planned:deepseek-launch-profile-convergence -->
 
 ## See Also
 
