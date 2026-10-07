@@ -59,11 +59,18 @@ neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
 reads in full (`local/projects/teleclaude/spec/feature/context/doc-selection-policy`). A
 person's private local documentation is readable only by that person and the
+<!-- planned-change:human-alerts-agent-only -->
 system principal, platform administrators included (same contract). A
 notification addressed to one person reaches only that person, through their own
 channel, and appears on no shared surface, for platform reach too
 (`local/projects/teleclaude/design/architecture/notification-delivery`); reach governs broadcast
 notifications.
+<!-- change:human-alerts-agent-only -->
+system principal, platform administrators included (same contract). A
+notification addressed to one person appears on no shared surface, for platform
+reach too (`local/projects/teleclaude/design/architecture/notification-delivery`);
+reach governs broadcast notifications.
+<!-- /planned-change:human-alerts-agent-only -->
 
 ## Canonical fields
 
@@ -183,6 +190,7 @@ Then it receives the snippets their author published as public
 And it receives none of that tier's other snippets
 ```
 
+<!-- planned-change:human-alerts-agent-only -->
 #### UC-DV11: An addressed notification stays with its recipient
 
 ```gherkin
@@ -191,6 +199,15 @@ When any other principal, a platform administrator included, views the shared no
 Then that notification is not shown to them
 And the addressed person receives it through their own channel
 ```
+<!-- change:human-alerts-agent-only -->
+#### UC-DV11: An addressed notification stays with its recipient
+
+```gherkin
+Given a notification addressed to one person
+When any other principal, a platform administrator included, views the shared notification list or receives live notification pushes in the TUI or web console
+Then that notification is not shown to them
+```
+<!-- /planned-change:human-alerts-agent-only -->
 
 #### UC-DV12: A principal's own work stays visible outside its reach
 

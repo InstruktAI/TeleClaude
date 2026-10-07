@@ -153,11 +153,9 @@ And returns normally (other runtime errors propagate)
   (`local/projects/teleclaude/spec/feature/integration/person-addressed-messaging`)
   resolves the recipient and channel and calls these capabilities; recipient
   routing and per-channel formatting live there, not here.
-- The v2 domain spec consolidates these provider sends behind a
-  channel-cascade dispatcher (see `docs/local/spec/domain/integration.md`
-  Outbox Entry cascade and the dispatcher worker). v1 has no cascade
-  fallback at the send-capability layer — each helper is direct send
-  only; cascade is the caller's responsibility (if any).
+- Each helper is direct send only; there is no cascade fallback at the
+  send-capability layer, and any fallback across channels is the caller's
+  responsibility.
 - Inbound counterpart (WhatsApp) is
   `whatsapp-inbound-conversation-routing` and the WhatsApp inbound
   normalizer; these outbound helpers share no code with inbound paths.
@@ -167,8 +165,7 @@ And returns normally (other runtime errors propagate)
 - **Direct send, no outbox.** These capabilities do NOT go through the
   webhook outbox or any retry queue. A server error from Telegram is
   reported to the caller; retry policy (if any) lives in the calling
-  layer above. In v2 these become per-channel attempts inside
-  the outbox cascade.
+  layer above.
 
 - **Discord DM forbidden (no shared guild).** Discord's API requires
   the bot and recipient to share at least one guild before a DM channel
