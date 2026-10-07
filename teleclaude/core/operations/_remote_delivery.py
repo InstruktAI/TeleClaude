@@ -15,6 +15,9 @@ from teleclaude.core.models import MessageMetadata
 logger = get_logger(__name__)
 
 _WIRE_ABSENT = "-"
+_OPERATION_OUTCOME_COMMAND = (
+    "/operation_outcome {operation_id} {computer} {caller} {kind} {outcome} {slug} {occurred_at}"
+)
 
 
 async def forward_outcome_to_caller_computer(
@@ -35,8 +38,15 @@ async def forward_outcome_to_caller_computer(
     try:
         await client.send_request(
             operation.caller_computer,
-            f"/operation_outcome {operation.operation_id} {config.computer.name} "
-            f"{operation.caller_session_id} {operation.kind} {outcome} {slug_arg} {occurred_arg}",
+            _OPERATION_OUTCOME_COMMAND.format(
+                operation_id=operation.operation_id,
+                computer=config.computer.name,
+                caller=operation.caller_session_id,
+                kind=operation.kind,
+                outcome=outcome,
+                slug=slug_arg,
+                occurred_at=occurred_arg,
+            ),
             MessageMetadata(),
             principal=SYSTEM_DAEMON_PRINCIPAL,
         )

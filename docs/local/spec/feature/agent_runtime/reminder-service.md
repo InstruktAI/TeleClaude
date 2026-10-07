@@ -348,9 +348,9 @@ Then the protected reminder is removed with the session
 Given an agent session owns a live reminder
 When an occurrence fires
 Then the delivered reminder entry states its occurrence number since the current arming
-And it states the elapsed time since that arming
+And it states the moment of that arming, the moment it fired, and for a time-scheduled reminder the deadline that fired
 When the reminder is atomically replaced and later fires
-Then the occurrence number and elapsed time are measured from the replacement
+Then the occurrence number counts from the replacement and the stated arming moment is the replacement's
 ```
 
 #### UC-RMS27: A newer firing supersedes an undelivered one

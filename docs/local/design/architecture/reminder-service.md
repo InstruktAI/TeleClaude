@@ -79,8 +79,9 @@ The current aggregate generation also carries a monotonically increasing firing
 count. Claiming a previously unclaimed occurrence increments that count in the
 same transaction that appends the firing entry, and the entry snapshots the
 resulting firing number. Retrying the claimed occurrence reuses that number.
-Same-slug replacement starts a new generation with a zero count, so both the
-ordinal and elapsed-since-armed presentation restart at the replacement.
+Same-slug replacement starts a new generation with a zero count and a new
+armed moment, so both the ordinal and the stated armed moment restart at the
+replacement.
 
 An append-only typed reminder-entry record carries each material transition:
 armed, replaced, cancelled, and firing. It stores the aggregate identity,
