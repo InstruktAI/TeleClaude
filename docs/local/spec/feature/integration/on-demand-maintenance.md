@@ -56,8 +56,9 @@ Publication is one of those steps and keeps its own contract
   plumbing, whatever else its declaration carries.
 - **Disruptive steps.** Nothing a run performs stops, restarts or reloads a
   running service. Restarting the daemon and reloading the terminal interface
-  are never performed by a run, and installation deploys no service definition
-  during a run and stops, restarts or reloads no running service; it may still
+  are never performed by a run. During a run, installation stops, restarts or
+  reloads no running service: where applying a changed service definition would
+  reload a running service, it leaves that definition undeployed. It may still
   start a service that is not running. After its steps, the run
   reports each such change that is owed, with the command that performs it. A
   restart or reload is owed when a process it refreshes started from an earlier
@@ -219,9 +220,10 @@ And it does not make telec sync exit non-zero
 #### UC-ODM15: Installation leaves running services alone
 
 ```gherkin
-Given the service definitions installation would deploy differ from the deployed ones
+Given a running service whose definition installation would change
 When an agent runs telec sync in that root's canonical checkout on main
-Then installation runs without deploying a service definition or restarting any service
+Then installation runs without restarting or reloading that service
+And leaves the changed definition undeployed
 And the run ends by stating that deploying the changed service definitions is owed and names the command that performs it
 ```
 
