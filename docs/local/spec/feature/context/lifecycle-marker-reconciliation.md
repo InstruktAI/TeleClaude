@@ -233,8 +233,9 @@ And pending material owned by other slugs remains byte-identical
 #### UC-LMR14: Reconciled snippets satisfy the project's own formatter
 
 ```gherkin
-Given an active todo owns pending material whose reconciled text does not match the project's formatter
-When a lifecycle caller delivers, abandons, renames, splits, or reactivates that todo
+Given every snippet holding a todo's pending material matches the project's formatter as committed
+And reconciling that material leaves text that does not match the formatter
+When a lifecycle caller delivers, abandons, renames, or splits the active todo, or reactivates it from removal
 Then the reconciliation commit passes the project's commit gate
 And every snippet the reconciliation writes matches the project's formatter, including a snippet that still carries another slug's pending material
 And the reconciled wording is unchanged
