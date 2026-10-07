@@ -12,7 +12,6 @@ visibility: 'public'
 - @~/.teleclaude/docs/sdlc/principle/module-depth.md
 - @~/.teleclaude/docs/sdlc/policy/substrate-anchoring.md
 - @~/.teleclaude/docs/sdlc/policy/preparation-artifact-quality.md
-- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Goal
 

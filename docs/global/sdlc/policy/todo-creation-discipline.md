@@ -8,7 +8,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 @~/.teleclaude/docs/general/policy/documentation-discipline.md
 @~/.teleclaude/docs/general/policy/human-contract.md
-@~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 
 ## Rules
 

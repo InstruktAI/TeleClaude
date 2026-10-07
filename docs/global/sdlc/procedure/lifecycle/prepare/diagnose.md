@@ -11,7 +11,6 @@ visibility: public
 - @~/.teleclaude/docs/sdlc/procedure/debugging.md
 - @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md
-- @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 - @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
 
 ## Goal
