@@ -148,7 +148,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   records the adopted version of every registry package exactly, and every run
   chooses again from what is published. Its published result names the outcome; each package's previous and
   adopted version; each blocking package with its requirement and the version
-  that fails it; the failed step or check; and, for a rollback that cannot
+  that fails it; each library advisory of the adopted set; the failed step or check; and, for a rollback that cannot
   complete, every part that still differs and where the snapshot is kept.
 - **Infrastructure.** Registry queries, the global runtime installation, each
   profile's plugin manager, the profile copies and every launch the gate makes
