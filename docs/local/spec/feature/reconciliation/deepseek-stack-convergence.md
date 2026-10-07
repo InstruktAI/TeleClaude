@@ -221,3 +221,7 @@ And the set is verified, and restored on failure, like any adopted set
 - The gate's turns run against the live DeepSeek account and need usable
   authentication; when they cannot run, the gate fails and the snapshot is
   restored.
+
+## See Also
+
+- docs/local/adr/0112-deepseek-fit-judges-runtime-requirements-only.md — why fit judges only runtime requirements and library requirements are advisories.
