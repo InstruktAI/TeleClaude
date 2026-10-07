@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
@@ -84,7 +85,8 @@ _UNEXPECTED_JSON_TEMPLATE = "{what} is {kind}, expected {expected}"
 _EXPECTED_OBJECT = "an object"
 _EXPECTED_STRING = "a string"
 _EXPECTED_QUERY_RESULT = "a version string or a list of them"
-_LOG_STAGE_START = "Staging candidate runtime"
+_LOG_STAGE_COMPLETE = "DeepSeek candidate runtime staged"
+_MILLISECONDS_PER_SECOND = 1_000
 
 
 @dataclass(frozen=True)
@@ -216,7 +218,7 @@ class RegistryCompatibilityView:
 
     def _stage(self, candidate: str) -> Path:
         prefix = self._scratch_directory / _STAGE_DIRECTORY / candidate
-        logger.info(_LOG_STAGE_START, version=candidate, prefix=str(prefix))
+        started_at = time.monotonic()
         result = run_npm(
             (
                 NPM_INSTALL_COMMAND,
@@ -229,6 +231,12 @@ class RegistryCompatibilityView:
         )
         if result.returncode != 0:
             raise DeepSeekStackError(_STAGE_FAILURE_TEMPLATE.format(version=candidate, detail=result.detail))
+        logger.debug(
+            _LOG_STAGE_COMPLETE,
+            version=candidate,
+            prefix=str(prefix),
+            duration_ms=(time.monotonic() - started_at) * _MILLISECONDS_PER_SECOND,
+        )
         return prefix / NODE_MODULES_DIRECTORY / RUNTIME_PACKAGE
 
     def _satisfying_versions(self, name: str, requirement_range: str) -> frozenset[str]:
