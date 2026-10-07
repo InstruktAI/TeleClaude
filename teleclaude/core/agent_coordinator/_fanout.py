@@ -3,6 +3,7 @@
 import base64
 import json
 import random
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Literal, cast
 from uuid import uuid4
 
@@ -40,8 +41,11 @@ if TYPE_CHECKING:
     from teleclaude.core.events import AgentStopPayload
 
 logger = get_logger(__name__)
-_DISTRESS_COMMAND = "/distress_notification {session_id} {computer} {caller} {kind} {title} {occurrence}"
-_STOP_NOTIFICATION_COMMAND = "/stop_notification {session_id} {computer} {caller} {title} {occurrence} {variant}"
+_DISTRESS_COMMAND = "/distress_notification {session_id} {computer} {caller} {kind} {title} {occurrence} {occurred_at}"
+_STOP_NOTIFICATION_COMMAND = (
+    "/stop_notification {session_id} {computer} {caller} {title} {occurrence} {variant} {occurred_at}"
+)
+_WIRE_ABSENT = "-"
 _ATTENTION_METADATA_KEY: Final[Literal["attention_observation"]] = "attention_observation"
 _ATTENTION_PROVIDER_KEY = "provider"
 _ATTENTION_NATIVE_EVENT_KEY = "native_event"
@@ -52,6 +56,11 @@ _DISTRESS_OUTCOME_SUBSCRIBER_DELIVERY = "subscriber_delivery"
 _DISTRESS_OUTCOME_HUMAN_FALLBACK = "human_fallback"
 _DISTRESS_OUTCOME_NO_FALLBACK = "no_fallback"
 _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED = "blocked_already_observed_this_turn"
+
+
+def _wire_moment(value: datetime | None) -> str:
+    """Encode an occurrence moment as one whitespace-free transport argument."""
+    return value.astimezone(UTC).isoformat() if value is not None else _WIRE_ABSENT
 
 
 def _attention_observation_metadata(
@@ -148,6 +157,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         variant: StopNotificationVariant,
         source_computer: str | None = None,
         title_override: str | None = None,
+        occurred_at: datetime | None,
     ) -> None:
         """Notify local listeners via tmux injection (once per turn).
 
@@ -173,6 +183,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             computer,
             title=display_title,
             variant=variant,
+            occurred_at=occurred_at,
         )
 
     async def _notify_session_distress(
@@ -227,6 +238,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         title = session.title if session else None
         computer = source_computer or LOCAL_COMPUTER
         occurrence_key = observation.ingress_id if observation and observation.ingress_id else uuid4().hex
+        # A native observation carries the moment it was observed; an inferred
+        # stall or delivery block occurs at the moment it is inferred.
+        occurred_at = observation.observed_at if observation is not None else datetime.now(UTC)
         reached = await notify_distress(
             target_session_id,
             computer,
@@ -236,6 +250,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             inferred_stall_evidence=inferred_stall_evidence,
             delivery_block_evidence=delivery_block_evidence,
             occurrence_key=occurrence_key,
+            occurred_at=occurred_at,
         )
         remote_reached = await self._forward_distress_to_initiator(
             session,
@@ -246,6 +261,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             inferred_stall_evidence=inferred_stall_evidence,
             delivery_block_evidence=delivery_block_evidence,
             occurrence_key=occurrence_key,
+            occurred_at=occurred_at,
         )
         fallback_delivered = False
         fallback_eligible = (
@@ -294,6 +310,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         inferred_stall_evidence: InferredStallEvidence | None,
         delivery_block_evidence: DeliveryBlockEvidence | None,
         occurrence_key: str,
+        occurred_at: datetime | None,
     ) -> bool:
         """Forward distress and count a remote subscriber only when delivery succeeds."""
         if session is None:
@@ -321,6 +338,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                     kind=notification_kind,
                     title=encoded_title,
                     occurrence=occurrence_key,
+                    occurred_at=_wire_moment(occurred_at),
                 ),
                 metadata,
                 principal=SYSTEM_DAEMON_PRINCIPAL,
@@ -340,7 +358,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         )
         return result
 
-    async def _forward_stop_to_initiator(self, session_id: str, variant: StopNotificationVariant) -> None:
+    async def _forward_stop_to_initiator(
+        self, session_id: str, variant: StopNotificationVariant, *, occurred_at: datetime | None
+    ) -> None:
         """Forward stop event to a remote initiator via Redis.
 
         The initiator's session id travels on the wire alongside its
@@ -387,6 +407,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                     title=title_b64,
                     occurrence=occurrence_key,
                     variant=variant.value,
+                    occurred_at=_wire_moment(occurred_at),
                 ),
                 metadata=MessageMetadata(),
                 principal=SYSTEM_DAEMON_PRINCIPAL,

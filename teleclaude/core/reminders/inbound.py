@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from datetime import datetime
 from typing import TypedDict
 
 from teleclaude.core.control_delivery import SupersessionKey, handoff_control_payload
-from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, semantic_envelope
+from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, envelope_moment, semantic_envelope
 
 from .models import ReminderEntry, ReminderRecurrence, ReminderSubmissionPath, ReminderSubmissionResult
 from .observability import observe_envelope_composed
@@ -30,7 +32,31 @@ class ReminderInboundPayload(TypedDict):
     next_fire_at: str | None
 
 
-async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResult:
+_INTERVAL_SECONDS_TEMPLATE = "{seconds}s"
+
+
+def _firing_fields(entry: ReminderEntry, due_at: datetime | None) -> Mapping[EnvelopeField, str]:
+    """State the firing's schedule so the receiver can judge its own lag.
+
+    `due_at` is the deadline that fired and `occurred_at` the moment it fired;
+    a recurring firing adds its interval and next deadline.
+    """
+    fields = {
+        EnvelopeField.SLUG: entry.slug,
+        EnvelopeField.OCCURRENCE_KEY: entry.occurrence_key,
+        EnvelopeField.ARMED_AT: envelope_moment(entry.armed_at),
+        EnvelopeField.OCCURRED_AT: envelope_moment(entry.occurred_at),
+    }
+    if due_at is not None:
+        fields[EnvelopeField.DUE_AT] = envelope_moment(due_at)
+    if entry.schedule.interval_seconds is not None:
+        fields[EnvelopeField.INTERVAL] = _INTERVAL_SECONDS_TEMPLATE.format(seconds=int(entry.schedule.interval_seconds))
+    if entry.schedule.next_fire_at is not None:
+        fields[EnvelopeField.NEXT_FIRE_AT] = envelope_moment(entry.schedule.next_fire_at)
+    return fields
+
+
+async def submit_reminder_entry(entry: ReminderEntry, due_at: datetime | None) -> ReminderSubmissionResult:
     """Submit a firing entry through the durable queue's acceptance boundary.
 
     A recurring firing declares supersession by slug, so an earlier
@@ -69,7 +95,7 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
         source_key=entry.occurrence_key,
         envelope=semantic_envelope(
             EnvelopeName.REMINDER,
-            fields={EnvelopeField.SLUG: entry.slug, EnvelopeField.OCCURRENCE_KEY: entry.occurrence_key},
+            fields=_firing_fields(entry, due_at),
             body=composition.body,
         ),
         supersedes=supersedes,

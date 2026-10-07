@@ -858,11 +858,14 @@ class AgentCoordinator(
 
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
+        # The hook receiver stamps the moment the agent's stop hook fired.
+        stopped_at = parse_iso_datetime(payload.raw.get(_RECEIVED_AT_FIELD))
         await self._notify_session_listener(
             session_id,
             variant=notification_variant,
             source_computer=source_computer,
             title_override=title,
+            occurred_at=stopped_at,
         )
 
         if output_version is not None:
@@ -871,7 +874,7 @@ class AgentCoordinator(
                 logger.info(_SESSION_OBSERVED_STOP_SENT_EVENT, session_id=session_id, observer=publication.observer)
 
         if not (source_computer and source_computer != config.computer.name):
-            await self._forward_stop_to_initiator(session_id, notification_variant)
+            await self._forward_stop_to_initiator(session_id, notification_variant, occurred_at=stopped_at)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
         """Handle normalized tool-call start or completion events.

@@ -12,6 +12,7 @@ import asyncio
 import base64
 import binascii
 import json
+from datetime import datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
@@ -125,6 +126,17 @@ _INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE: JsonDict = {
     "status": "error",
     "error": _INVALID_STOP_NOTIFICATION_VARIANT_ERROR,
 }
+_STOP_NOTIFICATION_OCCURRED_AT_INDEX = 6
+_DISTRESS_NOTIFICATION_OCCURRED_AT_INDEX = 6
+_OPERATION_OUTCOME_OCCURRED_AT_INDEX = 6
+_WIRE_ABSENT = "-"
+
+
+def _wire_moment_arg(args: list[str], index: int) -> datetime | None:
+    """Read an optional occurrence moment: absent from an older sender, `-` from one that knew none."""
+    if len(args) <= index or args[index] == _WIRE_ABSENT:
+        return None
+    return parse_iso_datetime(args[index])
 
 
 def _decode_redis_text(data: dict[bytes, bytes], key: bytes) -> str | None:
@@ -510,6 +522,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 title=resolved_title,
                 occurrence_key=occurrence_key,
                 variant=notification_variant,
+                occurred_at=_wire_moment_arg(args, _STOP_NOTIFICATION_OCCURRED_AT_INDEX),
             )
             return {"status": "success", "data": None}
 
@@ -538,6 +551,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 _attention_observation_from_metadata(origin_metadata),
                 _inferred_stall_evidence_from_metadata(origin_metadata),
                 _delivery_block_evidence_from_metadata(origin_metadata),
+                occurred_at=_wire_moment_arg(args, _DISTRESS_NOTIFICATION_OCCURRED_AT_INDEX),
             )
             return {"status": "success", "data": {"delivered": delivered}}
 
@@ -553,6 +567,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 kind,
                 outcome,
                 slug,
+                occurred_at=_wire_moment_arg(args, _OPERATION_OUTCOME_OCCURRED_AT_INDEX),
             )
             return {"status": "success", "data": {"delivered": delivered}}
 

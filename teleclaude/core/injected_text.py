@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import assert_never
 
 from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
+from teleclaude.core.dates import format_utc_datetime
 
 
 class TranscriptEntryKind(StrEnum):
@@ -143,9 +144,13 @@ class EnvelopeClosure(StrEnum):
 class EnvelopeField(StrEnum):
     """Structured values consumed by the closed envelope vocabulary."""
 
+    ARMED_AT = "armed_at"
     AUTHOR_TOKEN = "author_token"
     CATEGORY = "category"
     COMPUTER = "computer"
+    DUE_AT = "due_at"
+    INTERVAL = "interval"
+    NEXT_FIRE_AT = "next_fire_at"
     OCCURRED_AT = "occurred_at"
     OCCURRENCE_KEY = "occurrence_key"
     ROLE = "role"
@@ -459,6 +464,18 @@ class InjectedTextEnvelope:
         if not self.body:
             return (opening_prefix, opening_prefix)
         return (opening_prefix, opening_prefix + len(self.body))
+
+
+def envelope_moment(value: datetime) -> str:
+    """Render one moment for a control-envelope field: UTC, second precision."""
+    return format_utc_datetime(value)
+
+
+def occurrence_fields(occurred_at: datetime | None) -> Mapping[EnvelopeField, str]:
+    """Return the occurrence field for a control envelope, or none when the moment is unknown."""
+    if occurred_at is None:
+        return _EMPTY_ENVELOPE_FIELDS
+    return MappingProxyType({EnvelopeField.OCCURRED_AT: envelope_moment(occurred_at)})
 
 
 def semantic_envelope(

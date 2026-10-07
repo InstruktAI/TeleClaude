@@ -158,6 +158,27 @@ structured header fields, and body. Exactly two codecs render that model:
 Both codecs read the same registry entry. Neither declares a label, kind, or
 closure rule of its own, and no third surface introduces another grammar.
 
+### Occurrence moments on control envelopes
+
+A control envelope that wakes an agent to act on a past event states that
+event's moments as envelope fields, so the receiver judges its own lag; the
+platform never states a lag. The XML codec renders the fields as attributes;
+bracket headers stay as the table shows. Moments are UTC to the second, and
+they survive relay as the human-facing envelope's occurrence does
+(`local/projects/teleclaude/design/architecture/human-message-envelope`).
+
+- A turn-ending, attention, or operation-outcome notification carries
+  `occurred_at`: the moment the agent's stop hook fired, the attention was
+  observed or an inferred stall or delivery block was inferred, or the
+  operation reached its terminal state.
+- A reminder firing carries `armed_at`, `due_at` (the deadline that fired), and
+  `occurred_at` (the moment it fired); a recurring firing adds `interval` and
+  `next_fire_at`.
+- A moment the producer does not know is omitted, never replaced by the
+  delivery moment. A forwarded notification carries the source computer's
+  moment across the transport.
+- Other control envelopes carry no moment.
+
 ### Reminder envelopes
 
 `[Reminder <slug> ...]` is a reminder-kind transcript header and the matching

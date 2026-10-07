@@ -32,12 +32,7 @@ _SATISFIED_MANUAL_CANCEL_INTENT = (
     "`telec reminders cancel {slug}`, then author no message — no summary, no status, no confirmation — and end "
     f"the turn with exactly `{NOOP_SENTINEL}` and no other text."
 )
-_FIRING_HISTORY = "Occurrence {firing_number}; armed {elapsed} ago."
-_HOUR_SECONDS = 3600
-_MINUTE_SECONDS = 60
-_HOUR_PART = "{value}h"
-_MINUTE_PART = "{value}m"
-_SECOND_PART = "{value}s"
+_FIRING_HISTORY = "Occurrence {firing_number}."
 
 
 @dataclass(frozen=True)
@@ -51,19 +46,6 @@ class ReminderEnvelopeComposition:
 
 def _canonical(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
-
-
-def _format_elapsed_duration(seconds: int) -> str:
-    hours, remainder = divmod(seconds, _HOUR_SECONDS)
-    minutes, remaining_seconds = divmod(remainder, _MINUTE_SECONDS)
-    parts: list[str] = []
-    if hours:
-        parts.append(_HOUR_PART.format(value=hours))
-    if minutes:
-        parts.append(_MINUTE_PART.format(value=minutes))
-    if remaining_seconds or not parts:
-        parts.append(_SECOND_PART.format(value=remaining_seconds))
-    return " ".join(parts)
 
 
 def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
@@ -88,12 +70,7 @@ def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
     )
     body_lines = [entry.intent]
     if entry.transition is ReminderTransition.FIRING:
-        body_lines.append(
-            _FIRING_HISTORY.format(
-                firing_number=entry.firing_number,
-                elapsed=_format_elapsed_duration(entry.elapsed_since_armed_seconds),
-            )
-        )
+        body_lines.append(_FIRING_HISTORY.format(firing_number=entry.firing_number))
         body_lines.append(_STALE_INTENT)
         if entry.schedule.recurrence is ReminderRecurrence.ONE_SHOT:
             body_lines.append(_SATISFIED_ONE_SHOT_INTENT)

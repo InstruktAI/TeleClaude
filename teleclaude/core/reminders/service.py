@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-ReminderSubmitter = Callable[[ReminderEntry], Awaitable[ReminderSubmissionResult]]
+ReminderSubmitter = Callable[[ReminderEntry, datetime | None], Awaitable[ReminderSubmissionResult]]
 
 _SCHEDULER_FAILURE_EVENT = "reminder_scheduler_iteration_failed"
 _SUBMITTER_REQUIRED = "reminder firing requires an input submitter"
@@ -275,7 +275,7 @@ class ReminderService:
             self._wake.set()
             observe_transition(entry)
             try:
-                submission = await self._submitter(entry)
+                submission = await self._submitter(entry, reminder.schedule.next_fire_at)
             except Exception:
                 self._wake.set()
                 raise

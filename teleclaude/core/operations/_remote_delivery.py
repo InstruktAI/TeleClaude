@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
@@ -12,8 +14,12 @@ from teleclaude.core.models import MessageMetadata
 
 logger = get_logger(__name__)
 
+_WIRE_ABSENT = "-"
 
-async def forward_outcome_to_caller_computer(operation: Operation, *, outcome: str) -> bool:
+
+async def forward_outcome_to_caller_computer(
+    operation: Operation, *, outcome: str, occurred_at: datetime | None
+) -> bool:
     """Forward the outcome notification to the computer the caller's session lives on.
 
     The owning computer (this one) keeps the row; only the address crosses
@@ -24,12 +30,13 @@ async def forward_outcome_to_caller_computer(operation: Operation, *, outcome: s
     assert operation.caller_session_id is not None
     assert operation.caller_computer is not None
     client = get_command_service().client
-    slug_arg = operation.slug or "-"
+    slug_arg = operation.slug or _WIRE_ABSENT
+    occurred_arg = occurred_at.astimezone(UTC).isoformat() if occurred_at is not None else _WIRE_ABSENT
     try:
         await client.send_request(
             operation.caller_computer,
             f"/operation_outcome {operation.operation_id} {config.computer.name} "
-            f"{operation.caller_session_id} {operation.kind} {outcome} {slug_arg}",
+            f"{operation.caller_session_id} {operation.kind} {outcome} {slug_arg} {occurred_arg}",
             MessageMetadata(),
             principal=SYSTEM_DAEMON_PRINCIPAL,
         )

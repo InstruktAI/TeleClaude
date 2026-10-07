@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
-from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
+from teleclaude.core.injected_text import EnvelopeName, occurrence_fields, semantic_envelope
 
 logger = get_logger(__name__)
 
@@ -19,6 +21,8 @@ async def deliver_remote_operation_outcome(
     kind: str,
     outcome: str,
     slug: str | None = None,
+    *,
+    occurred_at: datetime | None,
 ) -> bool:
     """Deliver an operation's outcome address to its recorded caller on this computer.
 
@@ -46,7 +50,7 @@ async def deliver_remote_operation_outcome(
             session_id=caller_session_id,
             body=body,
             source_key=f"operation:{operation_id}",
-            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=body),
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, fields=occurrence_fields(occurred_at), body=body),
         )
     except SessionMessageRejectedError as exc:
         logger.warning(

@@ -21,13 +21,11 @@ from teleclaude.caller_identity import CliCaller
 from teleclaude.config import config
 from teleclaude.constants import RUNNER_NOT_DISPATCHED
 from teleclaude.core.command_dispatch import invoke_command_handler
-from teleclaude.core.control_delivery import handoff_control_payload
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import OperationFailedContext, OperationSucceededContext
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
-from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.models._types import JsonDict
 from teleclaude.core.next_machine.create import next_create
@@ -49,7 +47,11 @@ from teleclaude.core.operation_caller_identity import reset_caller_session_id, s
 from teleclaude.core.operation_follow_through import follow_through_scope
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.operations._command_outcome import command_result_outcome
-from teleclaude.core.operations._delivery import DeliveryOutcome, DeliveryReason, deliver_recovered_operations
+from teleclaude.core.operations._delivery import (
+    DeliveryOutcome,
+    deliver_operation_outcome,
+    deliver_recovered_operations,
+)
 from teleclaude.core.operations._kinds import (
     _COMMAND_TYPE_TO_OPERATION_KIND,
     _OUTCOME_EVENTS,
@@ -66,7 +68,6 @@ from teleclaude.core.operations._kinds import (
     OPERATION_KIND_TODO_WORK,
 )
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
-from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
     todo_operation_context,
@@ -181,7 +182,9 @@ class OperationsService:
         )
         for operation in staled:
             self._emit_outcome_event(operation.kind, operation.operation_id, error=operation.error_text)
-            await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE)
+            await self._deliver_outcome(
+                operation, outcome=DeliveryOutcome.STALE, occurred_at=parse_iso_datetime(operation.completed_at)
+            )
 
     async def submit_todo_work(
         self,
@@ -645,28 +648,30 @@ class OperationsService:
             async with pin_operation_todo_identity(operation), follow_through_scope() as follow_throughs:
                 result = await coro_factory(operation)
             await self._flush_latest_progress(operation_id, latest_progress)
+            completed_at = datetime.now(UTC)
             await self._db.complete_operation(
                 operation_id,
                 result,
-                datetime.now(UTC).isoformat(),
+                completed_at.isoformat(),
             )
             self._emit_outcome_event(kind, operation_id)
-            await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED)
+            await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED, occurred_at=completed_at)
             for follow_through in follow_throughs:
                 self._task_registry.spawn(
                     follow_through(), name=_FOLLOW_THROUGH_TASK_NAME_TEMPLATE.format(operation_id=operation_id)
                 )
         except asyncio.CancelledError:
             error_text = "operation cancelled before completion"
+            cancelled_at = datetime.now(UTC)
             await self._db.fail_operation(
                 operation_id,
                 error_text,
-                datetime.now(UTC).isoformat(),
+                cancelled_at.isoformat(),
                 state="stale",
             )
             if operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
-                await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE)
+                await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE, occurred_at=cancelled_at)
             raise
         except Exception as exc:
             error_text = f"{type(exc).__name__}: {exc}"
@@ -674,15 +679,16 @@ class OperationsService:
             if isinstance(exc, OperationFailure):
                 error_text = exc.summary()
                 error_payload_json = json.dumps(exc.to_error_payload(), sort_keys=True)
+            failed_at = datetime.now(UTC)
             await self._db.fail_operation(
                 operation_id,
                 error_text,
-                datetime.now(UTC).isoformat(),
+                failed_at.isoformat(),
                 error_payload_json=error_payload_json,
             )
             if operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
-                await self._deliver_outcome(operation, outcome=DeliveryOutcome.FAILED)
+                await self._deliver_outcome(operation, outcome=DeliveryOutcome.FAILED, occurred_at=failed_at)
             logger.exception(
                 "Background operation failed",
                 operation_id=operation_id,
@@ -902,63 +908,10 @@ class OperationsService:
                 visibility=EventVisibility.CLUSTER,
             )
 
-    async def _deliver_outcome(self, operation: Operation, *, outcome: DeliveryOutcome) -> None:
-        """Deliver an address — never the result or error — to the operation's recorded caller.
-
-        A row with no recorded caller emits its event (already done by the
-        caller) and delivers nothing. Delivery is not retried: the row already
-        holds the outcome, so a retry buys nothing and risks a duplicate wake.
-        """
-        if not operation.caller_session_id:
-            logger.info(
-                "operation_delivery_decision",
-                operation_id=operation.operation_id,
-                kind=operation.kind,
-                outcome=outcome,
-                reason=DeliveryReason.NO_CALLER,
-            )
-            return
-
-        if operation.caller_computer and operation.caller_computer != config.computer.name:
-            delivered = await forward_outcome_to_caller_computer(operation, outcome=outcome)
-            logger.info(
-                "operation_delivery_decision",
-                operation_id=operation.operation_id,
-                kind=operation.kind,
-                outcome=outcome,
-                reason=DeliveryReason.DELIVERED if delivered else DeliveryReason.CALLER_UNREACHABLE,
-            )
-            return
-
-        body = f"Operation {operation.operation_id} ({operation.kind}) {outcome}"
-        if operation.slug:
-            body += f" for {operation.slug}"
-        body += f" on {config.computer.name}. Run `telec operations get {operation.operation_id}` to read the result."
-
-        try:
-            await handoff_control_payload(
-                session_id=operation.caller_session_id,
-                body=body,
-                source_key=f"operation:{operation.operation_id}",
-                envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=body),
-            )
-        except SessionMessageRejectedError:
-            logger.info(
-                "operation_delivery_decision",
-                operation_id=operation.operation_id,
-                kind=operation.kind,
-                outcome=outcome,
-                reason=DeliveryReason.CALLER_UNREACHABLE,
-            )
-            return
-
-        logger.info(
-            "operation_delivery_decision",
-            operation_id=operation.operation_id,
-            kind=operation.kind,
-            outcome=outcome,
-            reason=DeliveryReason.DELIVERED,
-        )
+    async def _deliver_outcome(
+        self, operation: Operation, *, outcome: DeliveryOutcome, occurred_at: datetime | None
+    ) -> None:
+        await deliver_operation_outcome(operation, outcome=outcome, occurred_at=occurred_at)
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
         payload: SerializedOperation = {

@@ -184,6 +184,11 @@ handed off; a duplicate result means that same occurrence was already handed
 off. Either result lets the reminder service consume a one-shot or advance a
 recurring schedule.
 
+The firing envelope states the occurrence's schedule — armed, due, fired, and
+for a recurring reminder its interval and next deadline — so the receiving agent
+judges its own lag (`local/projects/teleclaude/spec/message-headers`). The due
+deadline comes from the scheduler at the moment it fires the occurrence.
+
 Claim, in-turn injection, idle wake, retry, staleness expiry, and ordering are
 owned by the control-delivery surface. Nothing after the handoff is observed or
 redefined by this service.

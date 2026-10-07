@@ -26,7 +26,7 @@ from teleclaude.core.db import db
 from teleclaude.core.db_models import ConversationLinkMode
 from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
-from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
+from teleclaude.core.injected_text import EnvelopeName, occurrence_fields, semantic_envelope
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_status import AgentStatusReason, is_session_terminal
 
@@ -389,7 +389,12 @@ async def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
 
 
 async def _notify_listeners(
-    target_session_id: str, message: str, *, occurrence_key: str, notification_kind: NotificationKind
+    target_session_id: str,
+    message: str,
+    *,
+    occurrence_key: str,
+    notification_kind: NotificationKind,
+    occurred_at: datetime | None,
 ) -> set[str]:
     """Internal: notify all listeners with a pre-built message.
 
@@ -439,7 +444,9 @@ async def _notify_listeners(
                 session_id=listener.caller_session_id,
                 body=message,
                 source_key=f"listener:{target_session_id}:{listener.caller_session_id}:{occurrence_key}",
-                envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
+                envelope=semantic_envelope(
+                    EnvelopeName.NOTIFICATION, fields=occurrence_fields(occurred_at), body=message
+                ),
             )
             logger.info("Notified caller %s", listener.caller_session_id)
             reached.add(listener.caller_session_id)
@@ -577,6 +584,7 @@ async def notify_stop(
     title: str | None = None,
     *,
     variant: StopNotificationVariant,
+    occurred_at: datetime | None,
 ) -> set[str]:
     """Notify listeners that a session finished its turn.
 
@@ -590,7 +598,11 @@ async def notify_stop(
     """
     message = _stop_notification_message(target_session_id, computer, title, variant)
     return await _notify_listeners(
-        target_session_id, message, occurrence_key=uuid4().hex, notification_kind=NotificationKind.TURN_END
+        target_session_id,
+        message,
+        occurrence_key=uuid4().hex,
+        notification_kind=NotificationKind.TURN_END,
+        occurred_at=occurred_at,
     )
 
 
@@ -604,6 +616,7 @@ async def notify_distress(
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
     occurrence_key: str | None = None,
+    occurred_at: datetime | None,
 ) -> set[str]:
     """Notify persistent listeners of one attention occurrence."""
     message = _parent_attention_message(
@@ -620,6 +633,7 @@ async def notify_distress(
         message,
         occurrence_key=occurrence_key or uuid4().hex,
         notification_kind=notification_kind,
+        occurred_at=occurred_at,
     )
     return reached
 
@@ -664,6 +678,7 @@ async def deliver_remote_stop_notification(
     occurrence_key: str | None = None,
     *,
     variant: StopNotificationVariant,
+    occurred_at: datetime | None,
 ) -> bool:
     """Deliver a forwarded stop notification directly to its initiator.
 
@@ -687,7 +702,7 @@ async def deliver_remote_stop_notification(
             session_id=caller_session_id,
             body=message,
             source_key=f"listener:{target_session_id}:{caller_session_id}:{source_occurrence_key}",
-            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, fields=occurrence_fields(occurred_at), body=message),
         )
     except SessionMessageRejectedError as exc:
         logger.warning(
@@ -710,6 +725,8 @@ async def deliver_remote_distress_notification(
     observation: AgentAttentionObservation | None = None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
+    *,
+    occurred_at: datetime | None,
 ) -> bool:
     """Deliver a forwarded distress notification directly to the remote caller."""
     caller = await db.get_session(caller_session_id)
@@ -729,7 +746,7 @@ async def deliver_remote_distress_notification(
             session_id=caller_session_id,
             body=message,
             source_key=f"listener:{target_session_id}:{caller_session_id}:{occurrence_key or uuid4().hex}",
-            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, fields=occurrence_fields(occurred_at), body=message),
         )
     except SessionMessageRejectedError:
         return False
