@@ -13,8 +13,10 @@ Incident alerts tell platform administrators about problems on the platform.
 They read the states platform events report under the platform lifecycle
 convention (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`):
 an event belongs to a lifecycle family, the last segment of its type names a
-state the event catalog declares failing or ok, and its subject is the thing
-whose state it is. A recurring job is therefore one thing across all its runs.
+state the event catalog declares failing or ok, and the thing whose state it
+reports is its subject within its home, so a failure and its recovery name the
+same subject and home. A recurring job is therefore one thing across all its
+runs, and same-named things under different homes are different things.
 Every family that can report a failing state also reports an ok state. An event
 that reports no state is never told.
 
