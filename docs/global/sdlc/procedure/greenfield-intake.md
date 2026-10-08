@@ -99,9 +99,11 @@ every production default ships silently from the applicable baseline.
    plumbing and detects its capabilities from what was built.
    <!-- change:retire-project-init -->
 
-   For sites, follow `sdlc/procedure/setup-visual-regression`. End by running
-   `telec config project adopt` in the project, which converges its TeleClaude
-   plumbing and detects its capabilities from what was built.
+   For sites, follow `sdlc/procedure/setup-visual-regression`.
+
+   Whatever the flavor, end by running `telec config project adopt` in the
+   project, which converges its TeleClaude plumbing and detects its capabilities
+   from what was built.
    <!-- /planned-change:retire-project-init -->
 
 ## Outputs
