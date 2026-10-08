@@ -60,7 +60,8 @@ the commit boundary, whenever an advancement of a canonical checkout's main
 branch changes what a root's convergence produces:
 
 - a project commit changing the project's declaration while that declaration
-  enables a help desk converges that project;
+  enables a help desk converges that project, and the project's publication
+  then follows it;
 - a platform-home commit changing the global declaration or a person or
   company declaration converges the platform home, and the platform home's
   publication then follows it;
@@ -331,12 +332,10 @@ And no tracked file is written and no commit is produced
 
 ## Known caveats
 
-- A help desk master that fleet convergence re-renders in another project gets
-  its entrypoint rebuilt at that project's next publication, as every project
-  entrypoint is rebuilt against changed Mother documentation
+- A help desk master that fleet convergence re-renders has its entrypoint
+  rebuilt by the TeleClaude publication that follows the convergence, in every
+  registered project and in the platform home alike
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
-  The TeleClaude checkout's own desk and every platform-home entrypoint are
-  rebuilt by the publication that follows the convergence.
 - A changed hook template reaches a machine's registered roots when that change
   reaches the machine's canonical checkout, so installed plumbing lags only
   between a template change and its arrival there; a machine that has not

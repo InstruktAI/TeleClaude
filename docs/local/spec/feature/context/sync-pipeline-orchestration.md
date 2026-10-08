@@ -117,6 +117,15 @@ when the home already records that commit.
 A Mother publication also refreshes the home entrypoints that inline the
 Mother's documentation.
 
+<!-- planned:help-desks-as-deployment-output -->
+
+It also refreshes, in every registered project, the entrypoint beside each
+master that project's repository ignores, compiled from that project's last
+published generation together with the ignored master as it stands on disk; the
+project's published generation does not advance.
+
+<!-- /planned:help-desks-as-deployment-output -->
+
 <!-- planned-change:help-desks-as-deployment-output -->
 
 There is no working-tree entrypoint and no bypass.
@@ -459,10 +468,10 @@ And every other home's deployed output is unchanged
   deployed tree is the previous commit's.
 
 - An ignored master changes without a commit in its own repository, so a
-  change to one owes that repository no publication. A master re-rendered in
-  another repository's maintenance is compiled into its entrypoint at that
-  repository's next publication or `telec sync`; the home entrypoints follow
-  the Mother's publication, which refreshes them.
+  change to one owes that repository no publication. A master that fleet
+  convergence re-renders in another repository, or in the platform home, is
+  compiled into its entrypoint by the Mother's publication that follows the
+  convergence, which refreshes those entrypoints.
 
 - Project bootstrap converges declarations, filters, and hooks but publishes no
   working-tree source. The first canonical commit activates the project's

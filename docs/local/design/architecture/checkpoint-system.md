@@ -198,7 +198,7 @@ as `plumbing-convergence`
 (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 One base binding carries it beside the capability bindings: while a project's
 committed declaration enables a help desk, a change to that declaration owes
-`plumbing-convergence`. In the platform home, a change to the global
+`plumbing-convergence` and then publication. In the platform home, a change to the global
 declaration or to a person or company declaration owes `plumbing-convergence`
 and then publication; the platform home's publication binding covers its tier
 documentation and no master path. Every on-demand run converges the root.
