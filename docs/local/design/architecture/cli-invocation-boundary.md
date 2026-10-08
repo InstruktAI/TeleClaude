@@ -96,6 +96,24 @@ design owns only the path that connects them.
 
 ## Primary flows
 
+<!-- planned:isolate-todo-command-dependencies -->
+
+### Todo command selection
+
+The todo router selects its existing enum-bound named handler before loading
+local reads, list/show rendering, stamping or transfer dependencies. Command-local
+loading uses the bounded project exception
+(`local/projects/teleclaude/policy/python-linting`). Shared helpers carry only the
+dependencies every caller of that helper needs.
+
+API-only todo actions carry the invocation directory through the lightweight
+invocation-path owner. Local workflow actions load the context/project resolver
+when they need the project store. List, show and artifact reads keep their local
+read behavior; remove/update and other daemon actions keep their request and
+receipt behavior. Leaf selection changes neither the single clearance gate nor
+the directory the selected action receives.
+<!-- /planned:isolate-todo-command-dependencies -->
+
 ### Invocation
 
 ```mermaid
@@ -136,6 +154,17 @@ one, whose code is delivered code; that behavior is verified after delivery
 (`local/projects/teleclaude/policy/test-moratorium`).
 
 ## Failure modes
+
+<!-- planned-change:isolate-todo-command-dependencies -->
+
+The shared todo router eagerly loads local-read and list/show/stamp modules and
+the typed context/project resolver before selecting a todo subcommand. A fresh
+API-only invocation therefore loads workflow, configuration and rendering
+dependencies it does not use; a local read also loads a sibling's API client.
+This is a limit of the current command-dependency boundary, not evidence that
+all CLI delay is import execution time.
+<!-- change:isolate-todo-command-dependencies -->
+<!-- /planned-change:isolate-todo-command-dependencies -->
 
 | Condition                                              | Effect                                                                                                                               |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
