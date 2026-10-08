@@ -33,6 +33,11 @@ restart, then check the logs` is directive. One string reaching a human and an
   or marks it pending. Pending state and its clearing on delivery are
   `sdlc/principle/documentation-first-development`; the carriers
   are `general/procedure/doc-snippet-authoring`.
+- **A limit found is recorded with its contract.** A limit of a current contract
+  that investigation or review uncovers is recorded by the session that found it,
+  in the owning snippet: a spec's `Known caveats`, or a design's `Failure modes`
+  when it is how the system fails. Their content is
+  `general/spec/snippet-authoring-schema`.
 
 ### Doc-driven delivery
 
@@ -86,6 +91,10 @@ is that disposition's rule layer.
 Reader identity cannot classify a surface that one string serves to both humans
 and agents; what the words do can be read from the string itself, so every
 reviewer resolves the same case the same way.
+
+A limit known only to the session that found it is rediscovered by every later
+reader, often only after relying on the capability. Recorded with its contract,
+it is in front of the reader at the moment of relying on it.
 
 A decision the human makes with one agent reaches every other agent through the
 document that agent writes. Handed on as a message instead, it arrives without

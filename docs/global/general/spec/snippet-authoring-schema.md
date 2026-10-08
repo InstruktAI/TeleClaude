@@ -112,6 +112,15 @@ wanted from it (`general/policy/agent-facing-text`). An anchor another
 procedure could carry equally is not a Discipline, and its measure is
 specificity, never length.
 
+`Known caveats` states the limits of a spec's current contract that a reader
+would otherwise assume away: what the surface deliberately does not do or
+support, what it does not recover from, and a capability built without a
+consumer in what ships alongside it. Each caveat is current behavior, true
+until a change to code or shipped configuration moves it. What a capability may
+later be for is intent and lives in a todo; behavior a delivery will add is
+pending material. How a designed system fails belongs in a design snippet's
+`Failure modes`.
+
 Supporting material stays subordinate to the required section that owns it:
 
 - `### Examples` and `### Pre-completion checklist` belong inside `## Steps`.
