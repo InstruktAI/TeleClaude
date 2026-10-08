@@ -3,6 +3,7 @@
 All functions are stateless and use config imported from teleclaude.config.
 """
 
+from teleclaude.core.tmux_bridge._input_effect import InputEffectHook, input_effect_scope
 from teleclaude.core.tmux_bridge._keys import (
     paste_text_existing_tmux,
     pid_is_alive,
@@ -67,6 +68,7 @@ __all__ = [
     "SUBPROCESS_TIMEOUT_DEFAULT",
     "SUBPROCESS_TIMEOUT_LONG",
     "SUBPROCESS_TIMEOUT_QUICK",
+    "InputEffectHook",
     "PaneCursor",
     "PaneObservation",
     "PaneSnapshot",
@@ -85,6 +87,7 @@ __all__ = [
     "get_session_pane_id",
     "get_session_tmpdir",
     "get_session_tmpdir_base",
+    "input_effect_scope",
     "is_pane_dead",
     "is_process_running",
     "kill_session",

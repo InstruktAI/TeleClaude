@@ -426,6 +426,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
         native_log_file=cmd.native_log_file,
         origin_metadata=creation_metadata,
+        startup_intent=None if cmd.headless else launch,
         emit_session_started=False,
     )
 

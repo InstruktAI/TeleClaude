@@ -524,6 +524,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
             init_voice_handler=init_voice_handler,
+            recover_session_startups=self._recover_session_startups,
             event_platform_init=self._start_event_platform_prepare,
             event_consumer_start=self._start_event_consumers,
             api_restart_max=API_RESTART_MAX,

@@ -21,9 +21,11 @@ from teleclaude.core.session_listeners import (
     INFERRED_STALL_EVIDENCE_METADATA_KEY,
     INFERRED_STALL_PANE_TAIL_FIELD,
     INFERRED_STALL_REASON_FIELD,
+    STARTUP_DELIVERY_UNCERTAIN_EVIDENCE_METADATA_KEY,
     DeliveryBlockEvidence,
     InferredStallEvidence,
     NotificationKind,
+    StartupDeliveryUncertainEvidence,
     StopNotificationVariant,
     notify_distress,
     notify_distress_human_fallback,
@@ -67,6 +69,7 @@ def _attention_observation_metadata(
     observation: AgentAttentionObservation | None,
     inferred_stall_evidence: InferredStallEvidence | None,
     delivery_block_evidence: DeliveryBlockEvidence | None,
+    startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None,
 ) -> SessionOriginMetadata:
     """Serialize native or daemon-observed evidence for the remote parent path."""
     metadata: SessionOriginMetadata = cast(SessionOriginMetadata, {})
@@ -87,6 +90,8 @@ def _attention_observation_metadata(
         metadata[DELIVERY_BLOCK_EVIDENCE_METADATA_KEY] = {
             DELIVERY_BLOCK_PANE_TAIL_FIELD: delivery_block_evidence.pane_tail,
         }
+    if startup_delivery_uncertain_evidence is not None:
+        metadata[STARTUP_DELIVERY_UNCERTAIN_EVIDENCE_METADATA_KEY] = {}
     return metadata
 
 
@@ -194,15 +199,22 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         observation: AgentAttentionObservation | None = None,
         inferred_stall_evidence: InferredStallEvidence | None = None,
         delivery_block_evidence: DeliveryBlockEvidence | None = None,
+        startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
+        occurrence_key: str | None = None,
     ) -> bool:
         """Notify parents while retaining terminal and fallback slot semantics.
 
         Delivery-observed block evidence is a native-style blocked occurrence:
         it claims the blocked slot and follows the blocked fallback rules. Only
-        an inferred stall claims its own slot.
+        an inferred stall claims its own slot. An uncertain startup delivery
+        claims none, so the target's later turn notifications are unaffected,
+        and its caller-supplied occurrence key makes a retried report reuse the
+        payload already recorded for a watcher.
         """
         blocked_claimed = True
-        if inferred_stall_evidence is None:
+        if startup_delivery_uncertain_evidence is not None:
+            pass
+        elif inferred_stall_evidence is None:
             record = (
                 TurnNotificationRecord.BLOCKED
                 if notification_kind is NotificationKind.BLOCKED
@@ -237,7 +249,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         session = await db.get_session(target_session_id)
         title = session.title if session else None
         computer = source_computer or LOCAL_COMPUTER
-        occurrence_key = observation.ingress_id if observation and observation.ingress_id else uuid4().hex
+        occurrence_key = occurrence_key or (
+            observation.ingress_id if observation and observation.ingress_id else uuid4().hex
+        )
         # A native observation carries the moment it was observed; an inferred
         # stall or delivery block occurs at the moment it is inferred.
         occurred_at = observation.observed_at if observation is not None else datetime.now(UTC)
@@ -249,6 +263,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             observation=observation,
             inferred_stall_evidence=inferred_stall_evidence,
             delivery_block_evidence=delivery_block_evidence,
+            startup_delivery_uncertain_evidence=startup_delivery_uncertain_evidence,
             occurrence_key=occurrence_key,
             occurred_at=occurred_at,
         )
@@ -260,6 +275,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             observation=observation,
             inferred_stall_evidence=inferred_stall_evidence,
             delivery_block_evidence=delivery_block_evidence,
+            startup_delivery_uncertain_evidence=startup_delivery_uncertain_evidence,
             occurrence_key=occurrence_key,
             occurred_at=occurred_at,
         )
@@ -276,6 +292,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                 title,
                 inferred_stall_evidence,
                 delivery_block_evidence,
+                startup_delivery_uncertain_evidence,
             )
         delivered = bool(reached or remote_reached or fallback_delivered)
         outcome = (
@@ -309,6 +326,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         observation: AgentAttentionObservation | None,
         inferred_stall_evidence: InferredStallEvidence | None,
         delivery_block_evidence: DeliveryBlockEvidence | None,
+        startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None,
         occurrence_key: str,
         occurred_at: datetime | None,
     ) -> bool:
@@ -326,7 +344,10 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         try:
             metadata = MessageMetadata(
                 origin_metadata=_attention_observation_metadata(
-                    observation, inferred_stall_evidence, delivery_block_evidence
+                    observation,
+                    inferred_stall_evidence,
+                    delivery_block_evidence,
+                    startup_delivery_uncertain_evidence,
                 )
             )
             request_id = await self.client.send_request(

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Coroutine
+from collections.abc import Collection, Coroutine
+from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -46,9 +48,22 @@ from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
+from teleclaude.core.session_startup import (
+    BOOTSTRAP_OWNED_STATES,
+    StartupHandover,
+    StartupHandoverState,
+    StartupMarkRefusedError,
+    StartupRecovery,
+    bootstrap_task_label,
+    launch_dispatch_target,
+    launch_is_owed,
+    recovery_for,
+)
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
+from teleclaude.core.tmux_bridge import input_effect_scope
+from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.envelope_facts import subject_for_session_config
@@ -67,6 +82,12 @@ logger = get_logger(__name__)
 
 AGENT_PROMPT_READY_TIMEOUT_S = config.daemon.agent_prompt_ready_timeout_s
 _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
+_STARTUP_HANDOVER_OUTCOME_EVENT = "session_startup_handover_outcome"
+_STARTUP_RECOVERY_DECISION_EVENT = "session_startup_recovery_decision"
+_STARTUP_RECOVERY_FAILED_EVENT = "session_startup_recovery_failed"
+_STARTUP_REPORT_UNDELIVERED_EVENT = "session_startup_report_undelivered"
+_LAUNCH_STATUS_KEY = "status"
+_LAUNCH_STATUS_SUCCESS = "success"
 
 
 class _AgentStartupDeliveryOpportunityOutcome(StrEnum):
@@ -79,6 +100,15 @@ class _AgentStartupDeliveryOpportunityReason(StrEnum):
     """Closed reasons for a fresh startup delivery opportunity."""
 
     POST_LAUNCH_MESSAGE = "post_launch_message"
+
+
+@dataclass(frozen=True)
+class _StartupRun:
+    """The startup handover a running bootstrap advances and the pane its input lands in."""
+
+    session_id: str
+    pane_name: str
+    state: StartupHandoverState
 
 
 class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
@@ -239,10 +269,67 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         """Central handler for AGENT_EVENT."""
         await self.agent_coordinator.handle_event(context)
 
+    async def _take_startup_mark(
+        self,
+        session_id: str,
+        *,
+        expected: Collection[StartupHandoverState],
+        target: StartupHandoverState,
+    ) -> None:
+        """Record startup progress; refuse the input effect it guards when it cannot be recorded."""
+        if not await db.advance_startup_handover(session_id, expected=expected, target=target):
+            raise StartupMarkRefusedError(session_id, target)
+
+    def _launch_mark_scope(
+        self,
+        startup: _StartupRun | None,
+        intent: SessionLaunchIntent,
+        *,
+        message_follows_launch: bool = False,
+    ) -> AbstractContextManager[None]:
+        """Mark the launch attempt at the launcher command's first input into the child's pane."""
+        if startup is None:
+            return nullcontext()
+        target = launch_dispatch_target(intent, message_follows_launch=message_follows_launch)
+
+        async def _mark() -> None:
+            await self._take_startup_mark(startup.session_id, expected=(StartupHandoverState.ACCEPTED,), target=target)
+
+        return input_effect_scope(startup.pane_name, _mark)
+
+    def _submission_mark_scope(self, startup: _StartupRun | None) -> AbstractContextManager[None]:
+        """Mark the submission at the initial message's first input into the child's pane."""
+        if startup is None:
+            return nullcontext()
+
+        async def _mark() -> None:
+            await self._take_startup_mark(
+                startup.session_id,
+                expected=(StartupHandoverState.AGENT_LAUNCHED,),
+                target=StartupHandoverState.SUBMITTING,
+            )
+
+        return input_effect_scope(startup.pane_name, _mark)
+
+    async def _finish_startup(self, startup: _StartupRun | None, outcome: StartupHandoverState) -> None:
+        """End the startup handover in `outcome` unless it already ended."""
+        if startup is None:
+            return
+        recorded = await db.advance_startup_handover(
+            startup.session_id, expected=BOOTSTRAP_OWNED_STATES, target=outcome
+        )
+        logger.info(
+            _STARTUP_HANDOVER_OUTCOME_EVENT,
+            session_id=startup.session_id,
+            outcome=outcome.value,
+            recorded=recorded,
+        )
+
     async def _execute_launch_intent(
         self,
         session_id: str,
         launch_intent: SessionLaunchIntent | None,
+        startup: _StartupRun | None = None,
     ) -> dict[str, str]:
         """Execute a typed post-session launch intent and return status/message."""
         if launch_intent is None or launch_intent.kind == SessionLaunchKind.EMPTY:
@@ -251,26 +338,28 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         if launch_intent.kind == SessionLaunchKind.AGENT:
             if not launch_intent.agent:
                 return {"status": "error", "message": "agent launch intent missing agent"}
-            await self.command_service.start_agent(
-                StartAgentCommand(
-                    session_id=session_id,
-                    agent_name=launch_intent.agent,
-                    thinking_mode=launch_intent.thinking_mode or "slow",
-                    resolved_model_flags=launch_intent.resolved_model_flags,
+            with self._launch_mark_scope(startup, launch_intent):
+                await self.command_service.start_agent(
+                    StartAgentCommand(
+                        session_id=session_id,
+                        agent_name=launch_intent.agent,
+                        thinking_mode=launch_intent.thinking_mode or "slow",
+                        resolved_model_flags=launch_intent.resolved_model_flags,
+                    )
                 )
-            )
             return {"status": "success"}
 
         if launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
             if not launch_intent.agent:
                 return {"status": "error", "message": "agent_resume launch intent missing agent"}
-            await self.command_service.resume_agent(
-                ResumeAgentCommand(
-                    session_id=session_id,
-                    agent_name=launch_intent.agent,
-                    native_session_id=launch_intent.native_session_id,
+            with self._launch_mark_scope(startup, launch_intent):
+                await self.command_service.resume_agent(
+                    ResumeAgentCommand(
+                        session_id=session_id,
+                        agent_name=launch_intent.agent,
+                        native_session_id=launch_intent.native_session_id,
+                    )
                 )
-            )
             return {"status": "success"}
 
         if launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
@@ -282,6 +371,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 thinking_mode=launch_intent.thinking_mode or "slow",
                 message=launch_intent.message,
                 launch_intent=launch_intent,
+                startup=startup,
             )
 
         return {"status": "error", "message": f"Unsupported launch intent: {launch_intent.kind.value}"}
@@ -297,6 +387,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.warning("Session %s missing during bootstrap", session_id)
             return
 
+        handover = await db.get_startup_handover(session_id)
         voice = await db.get_voice(session_id)
         env_vars = build_agent_session_environment(
             project_path=session.project_path,
@@ -304,6 +395,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         )
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         tmux_name = session.tmux_session_name or session_cleanup.host_pane_name(session_id)
+        startup = (
+            _StartupRun(session_id=session_id, pane_name=tmux_name, state=handover.state)
+            if handover is not None
+            else None
+        )
 
         success = await ensure_tmux_with_identity(
             session,
@@ -334,6 +430,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     "reason": "ensure_tmux_with_identity returned False",
                 },
             )
+            await self._finish_startup(startup, StartupHandoverState.FAILED)
             return
 
         session.tmux_session_name = tmux_name
@@ -346,7 +443,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         launch_result: dict[str, str] | None = None
         if launch_intent and launch_intent.kind != SessionLaunchKind.EMPTY:
             try:
-                launch_result = await self._execute_launch_intent(session_id, launch_intent)
+                launch_result = await self._execute_launch_intent(session_id, launch_intent, startup)
             except Exception:
                 logger.error(
                     "Bootstrap launch intent failed for session %s",
@@ -360,6 +457,63 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             launch_intent.kind.value if launch_intent else SessionLaunchKind.EMPTY.value,
             launch_result.get("status") if launch_result else "n/a",
         )
+        launch_failed = launch_result is not None and launch_result.get(_LAUNCH_STATUS_KEY) != _LAUNCH_STATUS_SUCCESS
+        await self._finish_startup(
+            startup, StartupHandoverState.FAILED if launch_failed else StartupHandoverState.HANDED_OVER
+        )
+
+    async def _recover_session_startups(self) -> None:
+        """Take up the session startups a previous run left unfinished.
+
+        A startup whose first input has not begun resumes in the background, so the
+        boot never waits for an agent; one interrupted while submitting is reported
+        as uncertain and never submitted again. Closing and closed sessions are
+        outside the query. A fault in one startup is logged and leaves the others
+        and the boot unaffected.
+        """
+        for handover in await db.list_unfinished_startup_handovers():
+            try:
+                await self._recover_session_startup(handover)
+            except Exception:
+                logger.error(_STARTUP_RECOVERY_FAILED_EVENT, session_id=handover.session_id, exc_info=True)
+
+    async def _recover_session_startup(self, handover: StartupHandover) -> None:
+        """Apply the recovery decision for one unfinished startup."""
+        session_id = handover.session_id
+        decision = recovery_for(handover.state)
+        logger.info(
+            _STARTUP_RECOVERY_DECISION_EVENT,
+            session_id=session_id,
+            state=handover.state.value,
+            decision=decision.value,
+        )
+        if decision is StartupRecovery.RESUME:
+            self._queue_background_task(
+                self._bootstrap_session_resources(session_id, handover.intent),
+                bootstrap_task_label(session_id),
+            )
+            return
+        if decision is StartupRecovery.REPORT_INTERRUPTED_SUBMISSION:
+            await db.advance_startup_handover(
+                session_id,
+                expected=(StartupHandoverState.SUBMITTING,),
+                target=StartupHandoverState.REPORTING_UNCERTAIN,
+            )
+        # The report stays owed (REPORTING_UNCERTAIN) until an audience has accepted it.
+        if not await self.agent_coordinator.notify_startup_delivery_uncertain(session_id):
+            logger.warning(_STARTUP_REPORT_UNDELIVERED_EVENT, session_id=session_id)
+            return
+        recorded = await db.advance_startup_handover(
+            session_id,
+            expected=(StartupHandoverState.REPORTING_UNCERTAIN,),
+            target=StartupHandoverState.DELIVERY_UNCERTAIN,
+        )
+        logger.info(
+            _STARTUP_HANDOVER_OUTCOME_EVENT,
+            session_id=session_id,
+            outcome=StartupHandoverState.DELIVERY_UNCERTAIN.value,
+            recorded=recorded,
+        )
 
     async def _handle_agent_then_message(
         self,
@@ -369,6 +523,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         thinking_mode: str,
         message: str,
         launch_intent: SessionLaunchIntent,
+        startup: _StartupRun | None = None,
     ) -> dict[str, str]:
         authority = authority_for_entry_point(launch_intent.entry_point)
         if authority is InjectedInputAuthority.CONVERSATION:
@@ -380,6 +535,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     message=message,
                     launch_intent=launch_intent,
                     authority=authority,
+                    startup=startup,
                 )
         return await self._handle_agent_then_message_under_owner(
             session_id,
@@ -388,6 +544,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             message=message,
             launch_intent=launch_intent,
             authority=authority,
+            startup=startup,
         )
 
     async def _handle_agent_then_message_under_owner(
@@ -399,8 +556,14 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         message: str,
         launch_intent: SessionLaunchIntent,
         authority: InjectedInputAuthority,
+        startup: _StartupRun | None = None,
     ) -> dict[str, str]:
-        """Start an agent and deliver its startup message through its configured input path."""
+        """Start an agent and deliver its startup message through its configured input path.
+
+        A startup whose agent was already launched (a resumed bootstrap) skips the
+        launch and its accepted-input metadata, keeping the pane and the agent
+        process in it, and goes on to the readiness wait and the submission.
+        """
         start_time = time.time()
         logger.debug("agent_then_message: started for session=%s", session_id)
         if not message:
@@ -411,13 +574,15 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         )
         startup_text = construct_delivered_text(message, authority, AgentName.from_str(agent_name))
         start_args = [startup_text] if starts_with_prompt else []
+        launch_owed = startup is None or launch_is_owed(startup.state)
 
-        await db.update_session(
-            session_id,
-            last_message_sent=message[:200],
-            **visible_input_update(message, visible_source_text=launch_intent.command_input_source_text),
-            last_message_sent_at=datetime.now(UTC).isoformat(),
-        )
+        if launch_owed:
+            await db.update_session(
+                session_id,
+                last_message_sent=message[:200],
+                **visible_input_update(message, visible_source_text=launch_intent.command_input_source_text),
+                last_message_sent_at=datetime.now(UTC).isoformat(),
+            )
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
 
@@ -435,16 +600,18 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
         try:
             t0 = time.time()
-            await self.command_service.start_agent(
-                StartAgentCommand(
-                    session_id=session_id,
-                    agent_name=agent_name,
-                    thinking_mode=thinking_mode,
-                    args=start_args,
-                    resolved_model_flags=launch_intent.resolved_model_flags,
-                    visible_input_source_text=launch_intent.command_input_source_text,
-                )
-            )
+            if launch_owed:
+                with self._launch_mark_scope(startup, launch_intent, message_follows_launch=not starts_with_prompt):
+                    await self.command_service.start_agent(
+                        StartAgentCommand(
+                            session_id=session_id,
+                            agent_name=agent_name,
+                            thinking_mode=thinking_mode,
+                            args=start_args,
+                            resolved_model_flags=launch_intent.resolved_model_flags,
+                            visible_input_source_text=launch_intent.command_input_source_text,
+                        )
+                    )
             if not starts_with_prompt:
                 logger.info(
                     _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT,
@@ -458,6 +625,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             session = await db.get_session(session_id)
             if not session:
                 return {"status": "error", "message": "Session not found after creation"}
+            if session.runtime_start_observed and not ready_future.done():
+                # The runtime's start boundary was recorded before this wait began (a
+                # bootstrap resumed after the start signal arrived). Reading the
+                # record writes no start evidence.
+                ready_future.set_result(None)
 
             logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
@@ -492,21 +664,26 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             return {"status": "success", "message": "Message supplied with agent start"}
 
         logger.debug("agent_then_message: delivering startup message to session=%s", session_id)
-        delivery_result = await deliver_startup_message(
-            session=session,
-            agent_name=agent_name,
-            message=message,
-            authority=authority,
-            ready_future=ready_future,
-            quiet_s=AGENT_START_STABILIZE_QUIET_S,
-            timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
-            delivery_mode=AgentStartupDeliveryMode.FRESH_START,
-        )
+        with self._submission_mark_scope(startup):
+            delivery_result = await deliver_startup_message(
+                session=session,
+                agent_name=agent_name,
+                message=message,
+                authority=authority,
+                ready_future=ready_future,
+                quiet_s=AGENT_START_STABILIZE_QUIET_S,
+                timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+                delivery_mode=AgentStartupDeliveryMode.FRESH_START,
+            )
         if not delivery_result.succeeded:
             return {"status": "error", "message": "Failed to submit message into agent prompt"}
 
         await db.update_last_activity(session_id)
         await self._poll_and_send_output(session_id, session.tmux_session_name)
+        if delivery_result.outcome is not UserTurnDeliveryOutcome.SUBMITTED:
+            # Text appended to an occupied composer was never submitted, so the
+            # handover is not finished.
+            return {"status": "error", "message": "Startup message left unsubmitted in an occupied composer"}
 
         logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
         return {"status": "success", "message": "Message submitted after agent start"}

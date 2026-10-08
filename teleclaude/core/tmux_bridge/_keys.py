@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 
+from ._input_effect import before_input_effect
 from ._session import ensure_tmux_session
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout, wait_with_timeout
 
@@ -360,6 +361,7 @@ async def _paste_text_tmux(
 
     paste_succeeded = False
     try:
+        await before_input_effect(session_name)
         paste_cmd = [
             config.computer.tmux_binary,
             "paste-buffer",

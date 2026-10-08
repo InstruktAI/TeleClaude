@@ -141,6 +141,18 @@ class PendingMessageDeletion(SQLModel, table=True):
     created_at: datetime | None = None
 
 
+class SessionStartupHandover(SQLModel, table=True):
+    """session_startup_handovers table."""
+
+    __tablename__ = "session_startup_handovers"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    launch_intent_json: str
+    state: str
+    updated_at: str
+
+
 class SystemSetting(SQLModel, table=True):
     """system_settings table."""
 

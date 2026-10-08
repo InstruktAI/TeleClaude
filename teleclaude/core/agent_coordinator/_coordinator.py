@@ -52,8 +52,14 @@ from teleclaude.core.session_lifecycle import (
     LifecycleTransitionReason,
     transition_session,
 )
-from teleclaude.core.session_listeners import DeliveryBlockEvidence, NotificationKind, StopNotificationVariant
+from teleclaude.core.session_listeners import (
+    DeliveryBlockEvidence,
+    NotificationKind,
+    StartupDeliveryUncertainEvidence,
+    StopNotificationVariant,
+)
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
+from teleclaude.core.session_startup import uncertain_delivery_occurrence_key
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.session_transcript import session_transcript
@@ -436,6 +442,25 @@ class AgentCoordinator(
             NotificationKind.BLOCKED,
             source_computer=config.computer.name,
             delivery_block_evidence=DeliveryBlockEvidence(pane_tail=context.pane_tail),
+        )
+
+    async def notify_startup_delivery_uncertain(self, session_id: str) -> bool:
+        """Report to the session's watchers that its first startup input may not have arrived.
+
+        The service was replaced while that input was being submitted, so it is
+        neither confirmed nor submitted again. The occurrence key is derived from
+        the session, so a report retried after a further replacement reuses the
+        payload already recorded for each watcher.
+
+        Returns whether any audience accepted the notice: a watcher, the
+        initiating session on another computer, or the human-facing fallback.
+        """
+        return await self._notify_session_distress(
+            session_id,
+            NotificationKind.BLOCKED,
+            source_computer=config.computer.name,
+            startup_delivery_uncertain_evidence=StartupDeliveryUncertainEvidence(),
+            occurrence_key=uncertain_delivery_occurrence_key(session_id),
         )
 
     async def handle_session_start(self, context: AgentEventContext) -> None:

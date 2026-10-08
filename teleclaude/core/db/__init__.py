@@ -47,6 +47,7 @@ from ._session_listing import (
 )
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
+from ._startup_handovers import DbStartupHandoversMixin
 from ._sync import (
     SessionIdentityError,
     delete_process_spawn_registry_entry_sync,
@@ -83,6 +84,7 @@ class Db(
     DbSettingsMixin,
     DbVoiceTranscriptionsMixin,
     DbSessionListingMixin,
+    DbStartupHandoversMixin,
     DbSessionsMixin,
     DbBase,
 ):
