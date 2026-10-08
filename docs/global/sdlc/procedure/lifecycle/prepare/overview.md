@@ -263,19 +263,25 @@ If the recorded kind does not match the intent, reclassify it with `telec todo
 update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
 force an intent through the wrong lane to preserve an already chosen kind.
 
-A `bug` keeps its lane when its report states the current contract the
-behavior breaks and how it breaks it. Open that contract and confirm it states
-the behavior the report expected. A report that proves no contract break is not
-a bug, and is one of two things (`sdlc/policy/todo-creation-discipline`):
+A `bug` keeps its lane when a current contract states the behavior its report
+expected. Open the contract the report states and confirm it says that. A
+report that states none, about behavior a current contract plainly states, has
+a repairable omission: add that contract to `input` and keep the lane. A report
+filed against the wrong owner is corrected in place under Step 0a. Whether the
+evidence shows the claimed behavior is diagnose triage's judgment
+(`sdlc/procedure/lifecycle/prepare/diagnose`), not this step's.
 
-- **An invalid bug report** — the behavior is what its contract permits, the
-  failure belongs to another owner, or the evidence does not show the behavior
-  claimed. Reject it: record the reason in the todo's `log`, then
-  `telec todo remove {slug}`. An invalid report is never reclassified to keep
-  it alive.
-- **A change request** — the report asks for behavior no current contract
-  states and names the outcome it wants. Reclassify it to `change` before
+When no current contract states the expected behavior, the report is not a bug,
+and is one of two things (`sdlc/policy/todo-creation-discipline`):
+
+- **A change request** — the report names an outcome someone wants, or carries
+  a human's request in their own words, which is authorized intent and is never
+  retired for lacking a contract break. Reclassify it to `change` before
   calling `telec todo prepare {slug}`.
+- **An invalid bug report** — an agent-originated report of behavior its
+  contract permits, asking for no outcome anyone wants. Reject it: record the
+  reason in the todo's `log`, then `telec todo remove {slug}`. An invalid report
+  is never reclassified to keep it alive.
 
 ### 1c. Settled change
 
