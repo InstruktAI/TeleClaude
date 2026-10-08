@@ -68,6 +68,7 @@ def docs_lease(
                     logger.info("docs_lease_waiting", operation=operation, holder=holder)
                 waited_seconds = time.monotonic() - requested_at
                 if waited_seconds >= timeout_seconds:
+                    holder = _read_holder(descriptor)
                     logger.warning(
                         "docs_lease_timeout",
                         operation=operation,
