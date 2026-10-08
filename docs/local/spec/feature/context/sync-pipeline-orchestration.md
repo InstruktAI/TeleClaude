@@ -119,10 +119,11 @@ Mother's documentation.
 
 <!-- planned:help-desks-as-deployment-output -->
 
-It also refreshes, in every registered project, the entrypoint beside each
-master that project's repository ignores, compiled from that project's last
-published generation together with the ignored master as it stands on disk; the
-project's published generation does not advance.
+It also refreshes, in every registered project other than the one it is
+publishing, the entrypoint beside each master that project's repository ignores,
+compiled from that project's last published generation together with the ignored
+master as it stands on disk; the project's published generation does not
+advance.
 
 <!-- /planned:help-desks-as-deployment-output -->
 
@@ -154,8 +155,9 @@ master set (`local/projects/teleclaude/spec/feature/context/agents-master-inflat
 alike:
 
 - A master its repository tracks is read from the committed source.
-- A master its repository ignores is read from the canonical checkout's disk. It
-  is deployment output rendered from TeleClaude's committed templates and has no
+- A master its repository ignores is read from the canonical checkout's disk,
+  whatever an earlier generation of that repository held at its path. It is
+  deployment output rendered from TeleClaude's committed templates and has no
   committed version
   (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 - A master its repository neither tracks nor ignores is work in progress and is
