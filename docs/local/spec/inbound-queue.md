@@ -228,7 +228,16 @@ Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass
 
 - **Session closed**: `expire_session(session_id)` cancels the worker and bulk-expires pending messages.
 - **Daemon startup**: `startup()` scans for pending messages and spawns workers for non-empty sessions.
+
+<!-- planned-change:drain-accepted-work-before-restart -->
+
 - **Daemon shutdown**: `shutdown()` cancels all workers. Messages remain in DB for next startup.
+
+<!-- change:drain-accepted-work-before-restart -->
+
+- **Daemon shutdown**: once the daemon is draining, workers claim no further messages. A message already claimed keeps its delivery owner until its paste, submission and delivered status settle (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`); then the workers stop. Unclaimed messages remain in DB for next startup.
+
+<!-- /planned-change:drain-accepted-work-before-restart -->
 
 ### Cleanup
 
@@ -242,6 +251,12 @@ cleanup periodically.
 ### Adapter Contract
 
 Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic or mutate session origin fields directly; they pass origin metadata into the queue and core records accepted state at the successful enqueue boundary, before adapter-visible side effects.
+
+<!-- planned:drain-accepted-work-before-restart -->
+
+While the daemon is draining, new input is refused with a retryable shutdown refusal before accepted state is recorded. The adapter answers that refusal through its own reply path or leaves the input unconsumed at its provider; it never drops the input silently (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
+
+<!-- /planned:drain-accepted-work-before-restart -->
 
 ## See Also
 
