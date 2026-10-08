@@ -483,12 +483,16 @@ And the refusal states the reuse command that addresses the holder instead
 And the refusal does not depend on the requested SHAs, which differ every remediation round
 ```
 
+#### UC-DSD5: A commit reviewer held by one driver or project admits another driver or project
+
 ```
 Given a live "review-commits" session for project P opened by initiator session I
 And a create request launching "review-commits" from a different initiator, or for a different project
 When the create-door dedup check runs
 Then the request is allowed, because independent drivers and separate projects review independent series
 ```
+
+#### UC-DSD6: A closed commit reviewer holds nothing
 
 ```
 Given every "review-commits" session for project P and initiator I is closed
@@ -499,6 +503,8 @@ Then the request is allowed, because a closed reviewer holds nothing and the nex
 
 <!-- planned:terminal-commit-review-dedup -->
 
+#### UC-DSD7: A second commit reviewer for the same terminal human, project, and mode is refused
+
 ```
 Given a live "review-commits" session for project P at mode M, started from a terminal authenticated as human H with no caller session
 And a create request launching "review-commits" for project P at mode M from a terminal authenticated as H with no caller session
@@ -508,6 +514,8 @@ And no second reviewer session is created
 And the refusal states the reuse command that addresses the holder instead
 ```
 
+#### UC-DSD8: A commit reviewer held by a terminal human admits every other subject
+
 ```
 Given a live "review-commits" session for project P at mode M, started from a terminal authenticated as human H
 And a create request launching "review-commits" for project P at mode M from a terminal authenticated as a different human, or from a session whose human is H, or for a different project or mode
@@ -515,12 +523,16 @@ When the create-door dedup check runs
 Then the request is allowed, because each of those is a different review subject
 ```
 
+#### UC-DSD9: A commit reviewer a session opened never holds its human's terminal subject
+
 ```
 Given a live "review-commits" session for project P at mode M, opened by initiator session I whose human is H
 And a create request launching "review-commits" for project P at mode M from a terminal authenticated as H with no caller session
 When the create-door dedup check runs
 Then the request is allowed, because a reviewer a session opened never holds its human's terminal subject
 ```
+
+#### UC-DSD10: A commit-review caller with no session and no authenticated human is refused
 
 ```
 Given a create request launching "review-commits" whose caller carries neither a session nor an authenticated human
