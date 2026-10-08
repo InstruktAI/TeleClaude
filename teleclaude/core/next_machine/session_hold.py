@@ -14,8 +14,12 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.events.envelope import EventLevel
-from teleclaude.events.envelope_facts import subject_for_project_path, subject_for_session_config
-from teleclaude.events.producer import emit_event
+from teleclaude.events.envelope_facts import home_for_project_path, home_for_session_config
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import SessionRef, TodoRef
+from teleclaude.events.schemas.sdlc import TodoUpdated, TodoUpdatedData
+from teleclaude.events.schemas.system import SessionEnded, SessionEndedData
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.project_root import is_project_checkout, resolve_project_root
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
@@ -88,38 +92,32 @@ def _workflow_project_path(session_project_path: str | None) -> tuple[str | None
 
 
 async def emit_todo_updated(*, slug: str, project_root: str, source: str) -> None:
-    subject = subject_for_project_path(project_root)
     try:
-        await emit_event(
-            event="workflow.todo.updated",
-            source=source,
-            level=EventLevel.WORKFLOW,
-            domain="sdlc",
-            subject=subject,
-            payload={
-                "slug": slug,
-                "project_path": project_root,
-                "updated_at": datetime.now(UTC).isoformat(),
-            },
+        await publish_event(
+            TodoUpdated(
+                subject=TodoRef(slug),
+                home=home_for_project_path(project_root),
+                data=TodoUpdatedData(slug=slug, project_path=project_root, updated_at=datetime.now(UTC).isoformat()),
+            ),
+            LegacyFacts(producer=source, level=EventLevel.WORKFLOW, domain="sdlc"),
         )
     except RuntimeError:
-        logger.info("workflow.todo.updated not emitted: event producer unavailable", slug=slug)
+        logger.info("sdlc.todo.updated not emitted: event producer unavailable", slug=slug)
 
 
 async def _emit_session_ended(*, session_id: str, project_path: str, config_subject: str | None) -> None:
-    subject = subject_for_session_config(config_subject)
     try:
-        await emit_event(
-            event="agent_runtime.session.ended",
-            source="agent_runtime",
-            level=EventLevel.WORKFLOW,
-            domain="agent_runtime",
-            subject=subject,
-            payload={
-                "session_id": session_id,
-                "project_path": project_path,
-                "ended_at": datetime.now(UTC).isoformat(),
-            },
+        await publish_event(
+            SessionEnded(
+                subject=SessionRef(session_id),
+                home=home_for_session_config(config_subject),
+                data=SessionEndedData(
+                    session_id=session_id,
+                    project_path=project_path,
+                    ended_at=datetime.now(UTC).isoformat(),
+                ),
+            ),
+            LegacyFacts(producer="agent_runtime", level=EventLevel.WORKFLOW, domain="agent_runtime"),
         )
     except RuntimeError:
         logger.info("agent_runtime.session.ended not emitted: event producer unavailable", session_id=session_id)

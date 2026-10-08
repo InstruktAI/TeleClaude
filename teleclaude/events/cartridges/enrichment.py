@@ -8,8 +8,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import JsonDict
 from teleclaude.events.db import EventDB
-from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.wire import StreamEvent
 
 logger = get_logger(__name__)
 
@@ -23,18 +23,18 @@ class EnrichmentCartridge:
         """Return cartridge name."""
         return self.name
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
-        """Attach entity enrichment data to the event payload when available."""
-        if event.entity is None:
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
+        """Attach entity enrichment data to the event data when available."""
+        if event.legacy.entity is None:
             return event
 
-        enrichment = await self._enrich(event.entity, context.db)
+        enrichment = await self._enrich(event.legacy.entity, context.db)
         if enrichment is None:
             return event
 
-        updated_payload = dict(event.payload)
-        updated_payload["_enrichment"] = enrichment
-        return event.model_copy(update={"payload": updated_payload})
+        updated_data = dict(event.data)
+        updated_data["_enrichment"] = enrichment
+        return event.model_copy(update={"data": updated_data})
 
     async def _enrich(self, entity_uri: str, db: EventDB) -> JsonDict | None:
         """Route an entity URI to the relevant enrichment helper."""
@@ -58,7 +58,7 @@ class EnrichmentCartridge:
     async def _enrich_todo(self, _entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
         """Derive todo-oriented enrichment from recent planning and build events."""
         failure_count = await db.count_events_by_entity(
-            entity_uri, "domain.sdlc.build.completed", payload_filter={"success": False}
+            entity_uri, "sdlc.build.completed", payload_filter={"success": False}
         )
         phase_payload = await db.get_latest_event_payload(entity_uri, "todo_activated")
 
@@ -73,8 +73,8 @@ class EnrichmentCartridge:
     async def _enrich_worker(self, _entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
         """Derive worker health enrichment from recent crash events."""
         since_24h = datetime.now(UTC) - timedelta(hours=24)
-        crash_count = await db.count_events_by_entity(entity_uri, "system.worker.crashed", since=since_24h)
-        last_crash_payload = await db.get_latest_event_payload(entity_uri, "system.worker.crashed")
+        crash_count = await db.count_events_by_entity(entity_uri, "teleclaude.system.worker.crashed", since=since_24h)
+        last_crash_payload = await db.get_latest_event_payload(entity_uri, "teleclaude.system.worker.crashed")
 
         if crash_count == 0:
             return None

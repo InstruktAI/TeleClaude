@@ -8,14 +8,18 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
+from teleclaude.events.references import SignalItemRef
+from teleclaude.events.schemas.signal import SignalIngestReceived, SignalIngestReceivedData
 from teleclaude.events.signal.ai import SignalAIClient
 from teleclaude.events.signal.db import SignalDB
 from teleclaude.events.signal.fetch import fetch_url, parse_rss_feed
 from teleclaude.events.signal.sources import SignalSourceConfig, SourceType, load_sources
+from teleclaude.events.wire import LegacyFacts
 
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
+    from teleclaude.events.wire import StreamEvent
 
 logger = get_logger(__name__)
 
@@ -38,10 +42,10 @@ class SignalIngestCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
         """Pull new signals from sources when the scheduler trigger fires."""
         # Only acts on the scheduler trigger; all other events pass through unchanged.
-        if event.event != "signal.pull.triggered":
+        if event.type != "signal.pull.triggered":
             return event
         await self.pull(context)
         return None
@@ -104,26 +108,30 @@ class SignalIngestCartridge:
                     # Already inserted by a concurrent call (race); skip
                     return
 
-                envelope = EventEnvelope(
-                    event="signal.ingest.received",
-                    source=source_id,
-                    level=EventLevel.OPERATIONAL,
-                    domain="signal",
-                    visibility=EventVisibility.LOCAL,
-                    subject=EventSubjectMarker.NONE,
-                    description=summary,
-                    idempotency_key=ikey,
-                    payload={
-                        "source_id": source_id,
-                        "item_url": item.get("url", ""),
-                        "raw_title": item.get("title", ""),
-                        "tags": tags,
-                        "published_at": item.get("published", ""),
-                        "fetched_at": fetched_at,
-                    },
-                )
                 if context.emit:
-                    await context.emit(envelope)
+                    await context.emit(
+                        SignalIngestReceived(
+                            id=occurrence_id(ikey),
+                            subject=SignalItemRef(str(row_id)),
+                            home=EventHomeMarker.NONE,
+                            data=SignalIngestReceivedData(
+                                source_id=source_id,
+                                item_url=item.get("url", ""),
+                                raw_title=item.get("title", ""),
+                                tags=tags,
+                                published_at=item.get("published", ""),
+                                fetched_at=fetched_at,
+                            ),
+                        ),
+                        LegacyFacts(
+                            producer=source_id,
+                            level=EventLevel.OPERATIONAL,
+                            domain="signal",
+                            visibility=EventVisibility.LOCAL,
+                            description=summary,
+                            idempotency_key=ikey,
+                        ),
+                    )
                 count += 1
 
             tasks = [enrich_and_emit(ikey, item) for ikey, item in new_items]

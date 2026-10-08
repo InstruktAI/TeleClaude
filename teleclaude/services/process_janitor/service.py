@@ -9,13 +9,17 @@ import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.core.db import Db
-from teleclaude.events.envelope import EventLevel, EventSubjectMarker, EventVisibility
-from teleclaude.events.producer import emit_event
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import ComputerRef
+from teleclaude.events.schemas.system import ProcessReaped, ProcessReapedData
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.paths import CHIPTUNES_SOCKET_PATH
 
 from .guard import NeverKillGuard
@@ -33,7 +37,8 @@ from .registry import CHIPTUNES_WORKER_OWNER
 
 logger = get_logger(__name__)
 
-PROCESS_REAPED_EVENT = "system.process.reaped"
+_REAP_EVENT_DESCRIPTION = "Process janitor reaped a matched process"
+_REAP_PRODUCER = "process-janitor"
 
 
 @dataclass(frozen=True)
@@ -177,29 +182,31 @@ class ProcessJanitorService:
 
     async def _emit_reap_event(self, match: ProcessMatch, *, observe_only: bool, now: datetime) -> None:
         bucket = int(now.timestamp() // self._settings.reap_revalidation_seconds)
-        idempotency_key = f"{PROCESS_REAPED_EVENT}:{match.pid}:{match.policy.signature_id}:{bucket}"
-        payload: dict[str, Any] = {  # guard: loose-dict - reap event payload serialized to the event bus
-            "pid": match.pid,
-            "signature_id": match.policy.signature_id,
-            "signature_name": match.policy.name,
-            "reason": MatchReason.WOULD_REAP.value if observe_only else match.reason.value,
-            "observe_only": observe_only,
-        }
-        if match.owner is not None:
-            payload["owner"] = match.owner
-        if match.lease_expires_at is not None:
-            payload["lease_expires_at"] = match.lease_expires_at
-        await emit_event(
-            PROCESS_REAPED_EVENT,
-            source="process-janitor",
-            level=EventLevel.OPERATIONAL,
-            domain="system",
-            subject=EventSubjectMarker.NONE,
-            description="Process janitor reaped a matched process",
-            payload=payload,
-            visibility=EventVisibility.LOCAL,
-            entity=str(match.pid),
-            idempotency_key=idempotency_key,
+        idempotency_key = f"{ProcessReaped.type_name()}:{match.pid}:{match.policy.signature_id}:{bucket}"
+        await publish_event(
+            ProcessReaped(
+                id=occurrence_id(idempotency_key),
+                subject=ComputerRef(config.computer.name),
+                home=EventHomeMarker.NONE,
+                data=ProcessReapedData(
+                    pid=match.pid,
+                    signature_id=match.policy.signature_id,
+                    signature_name=match.policy.name,
+                    reason=MatchReason.WOULD_REAP.value if observe_only else match.reason.value,
+                    observe_only=observe_only,
+                    owner=match.owner,
+                    lease_expires_at=match.lease_expires_at,
+                ),
+            ),
+            LegacyFacts(
+                producer=_REAP_PRODUCER,
+                level=EventLevel.OPERATIONAL,
+                domain="system",
+                visibility=EventVisibility.LOCAL,
+                entity=str(match.pid),
+                description=_REAP_EVENT_DESCRIPTION,
+                idempotency_key=idempotency_key,
+            ),
         )
 
 

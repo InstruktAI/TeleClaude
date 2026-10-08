@@ -17,7 +17,7 @@ from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core import db_models
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
-from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker
+from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.types import ObservationInput, ObservationResult
 
@@ -48,20 +48,20 @@ def resolve_observation_project_scope(
 
     project_path = Path(project)
     if not (project_path.is_absolute() or project_path.exists()):
-        return EventSubjectMarker.UNKNOWN.value, EventSubjectOwnerMarker.UNRESOLVED.value
+        return EventHomeMarker.UNKNOWN.value, EventHomeOwnerMarker.UNRESOLVED.value
     try:
         subject = resolve_config_subject(project_path)
     except SubjectResolutionError as exc:
         logger.warning(_MEMORY_SUBJECT_RESOLUTION_FAILED, path=str(exc.declaration_path), error=str(exc))
-        return EventSubjectMarker.UNKNOWN.value, EventSubjectOwnerMarker.UNRESOLVED.value
+        return EventHomeMarker.UNKNOWN.value, EventHomeOwnerMarker.UNRESOLVED.value
     if subject is None:
-        return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
+        return EventHomeMarker.NONE.value, EventHomeOwnerMarker.NONE.value
     if subject.kind is ConfigSubjectKind.PROJECT:
         project_ownership = index.for_path(project_path)
         if project_ownership is None:
-            return subject.to_token(), EventSubjectOwnerMarker.UNRESOLVED.value
+            return subject.to_token(), EventHomeOwnerMarker.UNRESOLVED.value
         return _project_scope_tokens(project_ownership)
-    return subject.to_token(), EventSubjectOwnerMarker.NONE.value
+    return subject.to_token(), EventHomeOwnerMarker.NONE.value
 
 
 def _project_scope_tokens(ownership: ProjectOwnership) -> tuple[str, str]:
@@ -69,7 +69,7 @@ def _project_scope_tokens(ownership: ProjectOwnership) -> tuple[str, str]:
     subject = SubjectRef(ConfigSubjectKind.PROJECT, ownership.project_slug).to_token()
     owner_identity = ownership.owner_identity()
     if owner_identity is None:
-        owner = EventSubjectOwnerMarker.OWNERLESS.value
+        owner = EventHomeOwnerMarker.OWNERLESS.value
     else:
         owner_kind, owner_slug = owner_identity
         owner = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()
@@ -79,9 +79,9 @@ def _project_scope_tokens(ownership: ProjectOwnership) -> tuple[str, str]:
 def _observation_visibility(inp: ObservationInput) -> tuple[str, str, str]:
     """Use supplied provenance facts and leave every omitted fact unknown."""
     return (
-        inp.subject if inp.subject is not None else EventSubjectMarker.UNKNOWN.value,
-        inp.subject_owner if inp.subject_owner is not None else EventSubjectOwnerMarker.UNRESOLVED.value,
-        inp.principal if inp.principal is not None else EventSubjectMarker.UNKNOWN.value,
+        inp.subject if inp.subject is not None else EventHomeMarker.UNKNOWN.value,
+        inp.subject_owner if inp.subject_owner is not None else EventHomeOwnerMarker.UNRESOLVED.value,
+        inp.principal if inp.principal is not None else EventHomeMarker.UNKNOWN.value,
     )
 
 
@@ -176,8 +176,8 @@ class MemoryStore:
             for observation_id, project, identity_key in rows:
                 if identity_key is not None:
                     # Legacy identity-scoped rows lack a principal; the opaque key cannot supply it.
-                    subject = EventSubjectMarker.UNKNOWN.value
-                    subject_owner = EventSubjectOwnerMarker.UNRESOLVED.value
+                    subject = EventHomeMarker.UNKNOWN.value
+                    subject_owner = EventHomeOwnerMarker.UNRESOLVED.value
                 else:
                     subject, subject_owner = resolve_observation_project_scope(str(project), ownership_index)
                 async with db._session() as session:
@@ -186,7 +186,7 @@ class MemoryStore:
                             id=int(observation_id),
                             subject=subject,
                             subject_owner=subject_owner,
-                            principal=EventSubjectMarker.UNKNOWN.value,
+                            principal=EventHomeMarker.UNKNOWN.value,
                         )
                     )
                     await session.commit()

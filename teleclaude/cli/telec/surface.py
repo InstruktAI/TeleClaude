@@ -1112,13 +1112,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Event catalog and platform commands",
         subcommands={
             EventCommand.LIST.value: CommandDef(
-                desc="List event schemas: type, level, domain, visibility, description, actionable",
+                desc="List declared event types: name, version, what they are about, description",
                 args="[--domain <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_EVENTS_DOMAIN],
                 auth=CommandAuth(system=frozenset(), human=_HR_MEMBER_CONTRIB_NEWCOMER, caller_independent=True),
             ),
             EventCommand.SCHEMA.value: CommandDef(
-                desc="Show one event type's metadata, subject assignment, and declared payload fields",
+                desc="Show one event type's declaration: subject, home, related kinds, state, and data fields",
                 args="<event>",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=frozenset(), human=_HR_MEMBER_CONTRIB_NEWCOMER, caller_independent=True),

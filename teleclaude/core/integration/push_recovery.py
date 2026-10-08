@@ -29,7 +29,7 @@ from teleclaude.core.integration.git_ops import (
     _integration_worktree_path,
     _run_git,
 )
-from teleclaude.core.integration.lifecycle_events import _emit_lifecycle_event, _workflow_subject_for_path
+from teleclaude.core.integration.lifecycle_events import _emit_lifecycle_event, _workflow_home_for_path
 from teleclaude.core.integration.park import (
     _UNGROUNDABLE_CONTENT_GATE_PARK_REASON,
     _format_content_gate_conflict_or_invariant_error,
@@ -98,7 +98,7 @@ def _repush_and_reclassify(
         _emit_lifecycle_event(
             "integration.push.succeeded",
             {"slug": key.slug, "commit_sha": local_head},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return _RepushOutcome((True, ""), "", wt)  # loop into PUSH_SUCCEEDED
@@ -113,7 +113,7 @@ def _repush_and_reclassify(
         _emit_lifecycle_event(
             "integration.push.succeeded",
             {"slug": key.slug, "commit_sha": local_head or "unknown"},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return _RepushOutcome((True, ""), "", wt)  # loop into PUSH_SUCCEEDED
@@ -122,7 +122,7 @@ def _repush_and_reclassify(
     _emit_lifecycle_event(
         "integration.push.rejected",
         {"slug": key.slug, "rejection_reason": rejection},
-        _workflow_subject_for_path(cwd),
+        _workflow_home_for_path(cwd),
     )
 
     if _is_content_gate_rejection(rejection):
@@ -132,7 +132,7 @@ def _repush_and_reclassify(
         _emit_lifecycle_event(
             "integration.candidate.blocked",
             {"slug": key.slug, "branch": key.branch, "sha": key.sha, "reason": rejection},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info("%s slug=%s phase=CONTENT_GATE_BLOCKED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return _RepushOutcome(
@@ -222,7 +222,7 @@ def _step_content_gate_blocked(
             checkpoint_path=checkpoint_path,
             key=key,
             reason=_UNGROUNDABLE_CONTENT_GATE_PARK_REASON,
-            subject=_workflow_subject_for_path(cwd),
+            home=_workflow_home_for_path(cwd),
         )
 
     if abandon:
@@ -238,7 +238,7 @@ def _step_content_gate_blocked(
             checkpoint_path=checkpoint_path,
             key=key,
             reason=_UNGROUNDABLE_CONTENT_GATE_PARK_REASON,
-            subject=_workflow_subject_for_path(cwd),
+            home=_workflow_home_for_path(cwd),
         )
 
     outcome = _repush_and_reclassify(checkpoint=checkpoint, checkpoint_path=checkpoint_path, cwd=cwd, key=key)

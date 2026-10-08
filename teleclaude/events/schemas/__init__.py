@@ -1,29 +1,27 @@
-"""Event schemas — built-in event type definitions."""
+"""Event declarations — the typed classes producers construct, grouped by the context that authors their values."""
 
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from teleclaude.events.catalog import EventCatalog
+from teleclaude.events.catalog import DeclaredEvent
+
+_DECLARATION_MODULES = (
+    "teleclaude.events.schemas.system",
+    "teleclaude.events.schemas.jobs",
+    "teleclaude.events.schemas.sdlc",
+    "teleclaude.events.schemas.node",
+    "teleclaude.events.schemas.deployment",
+    "teleclaude.events.schemas.content",
+    "teleclaude.events.schemas.notification",
+    "teleclaude.events.schemas.schema",
+    "teleclaude.events.schemas.signal",
+)
 
 
-def register_all(catalog: EventCatalog) -> None:
-    """Register every built-in schema group into the provided catalog."""
-    registrars = (
-        ("teleclaude.events.schemas.system", "register_system"),
-        ("teleclaude.events.schemas.jobs", "register_jobs"),
-        ("teleclaude.events.schemas.sdlc", "register_sdlc"),
-        ("teleclaude.events.schemas.marketing", "register_marketing"),
-        ("teleclaude.events.schemas.creative_production", "register_creative_production"),
-        ("teleclaude.events.schemas.node", "register_node"),
-        ("teleclaude.events.schemas.deployment", "register_deployment"),
-        ("teleclaude.events.schemas.content", "register_content"),
-        ("teleclaude.events.schemas.notification", "register_notification"),
-        ("teleclaude.events.schemas.schema", "register_schema"),
-        ("teleclaude.events.schemas.signal", "register_signal"),
-    )
-    for module_name, function_name in registrars:
-        registrar = getattr(import_module(module_name), function_name)
-        registrar(catalog)
+def declared_events() -> tuple[DeclaredEvent, ...]:
+    """Return every built-in declaration, in module order."""
+    declared: tuple[DeclaredEvent, ...] = ()
+    for module_name in _DECLARATION_MODULES:
+        declared += import_module(module_name).DECLARED
+    return declared

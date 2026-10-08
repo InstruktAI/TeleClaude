@@ -43,7 +43,6 @@ from teleclaude.core.next_machine.kinds import (
     KIND_ENTRY_PHASE,
     canonical_kind,
 )
-from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance, sync_artifact_provenance_sync_subset
 from teleclaude.core.next_machine.review_evidence import (
     BUILD_REVIEW_PHASE,
@@ -53,7 +52,6 @@ from teleclaude.core.next_machine.review_evidence import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.events.envelope_facts import subject_for_project_path
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
@@ -92,26 +90,18 @@ def _artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
         conn.close()
 
 
-def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: bool) -> None:
-    """Refresh artifact digest in state and optionally mark it as produced."""
+def _sync_artifact_state(cwd: str, slug: str, artifact_name: str) -> None:
+    """Refresh artifact digest in state."""
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     db = get_todos_db_sync(cwd)
-    digest = _sync_artifact_provenance_subset_from_db(cwd, slug, artifact_name, writer, db=db)
+    _sync_artifact_provenance_subset_from_db(cwd, slug, artifact_name, writer, db=db)
     writer.commit_sync(db, slug)
-
-    if produced:
-        subject = subject_for_project_path(cwd)
-        _emit_prepare_event(
-            "domain.sdlc.prepare.artifact_produced",
-            {"slug": slug, "artifact": artifact_name, "digest": digest},
-            subject,
-        )
 
 
 def sync_artifact_digest(cwd: str, slug: str, artifact_name: str) -> None:
     """Refresh the stored digest for an artifact without stamping completion."""
-    _sync_artifact_state(cwd, slug, artifact_name, produced=False)
+    _sync_artifact_state(cwd, slug, artifact_name)
 
 
 def _sync_artifact_provenance_subset_from_db(
@@ -368,36 +358,6 @@ def is_bug_todo(cwd: str, slug: str) -> bool:
     return state.get("kind") == KIND_BUG
 
 
-# Artifact keys that can be stamped after worker output is verified.
-_PREPARE_ARTIFACT_NAMES = {
-    STATE_KEY_PRD: ARTIFACT_PRD,
-    STATE_KEY_REQUIREMENTS: ARTIFACT_REQUIREMENTS,
-    STATE_KEY_ARCHITECTURE: ARTIFACT_ARCHITECTURE,
-    STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
-}
-
-
-def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
-    """Stamp a file-backed prepare artifact as produced via the typed state.
-
-    Records both digest and produced_at and binds upstream digests so the
-    satisfaction walk can detect upstream changes.
-
-    Args:
-        cwd: Project root directory (not worktree)
-        slug: Work item slug
-        artifact_key: Artifact state key (e.g. architecture)
-
-    Returns:
-        Updated state dict
-    """
-    if artifact_key not in _PREPARE_ARTIFACT_NAMES:
-        raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_NAMES)}")
-    artifact_name = _PREPARE_ARTIFACT_NAMES[artifact_key]
-    _sync_artifact_state(cwd, slug, artifact_name, produced=True)
-    return read_phase_state(cwd, slug)
-
-
 __all__ = [
     "_BUILD_VERDICT_PHASE",
     "_BUILD_VERDICT_VALUES",
@@ -408,7 +368,6 @@ __all__ = [
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",
-    "stamp_artifact",
     "stamp_finalize_ready",
     "sync_artifact_digest",
     "write_breakdown_state",

@@ -11,21 +11,21 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     project_path_from_event_payload,
     run_lifecycle_runner,
 )
-from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.wire import StreamEvent
 from teleclaude.project_root import is_project_checkout
 
 logger = get_logger(__name__)
 
 _TRIGGER_EVENTS = {
-    "scheduler.tick.minute",
-    "workflow.todo.created",
-    "workflow.todo.delivered",
-    "workflow.todo.phase_advanced",
-    "workflow.todo.updated",
-    "workflow.roadmap.entry_moved",
-    "config.effective.updated",
-    "agent_runtime.session.ended",
+    "teleclaude.scheduler.tick.minute",
+    "sdlc.todo.created",
+    "sdlc.todo.delivered",
+    "sdlc.todo.phase_advanced",
+    "sdlc.todo.updated",
+    "sdlc.roadmap.entry_moved",
+    "teleclaude.config.effective.updated",
+    "teleclaude.agent_runtime.session.ended",
 }
 
 
@@ -38,22 +38,22 @@ class LifecycleRouterCartridge:
         """Return cartridge name."""
         return self.name
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
         """Wake the lifecycle runner on domain-bound trigger events; pass others through."""
-        if event.event not in _TRIGGER_EVENTS:
+        if event.type not in _TRIGGER_EVENTS:
             return event
-        origin = event.originating_computer
+        origin = event.source
         if origin and origin != config.computer.name:
             return event
 
-        if event.event == "workflow.todo.created":
-            slug_raw = event.payload.get("slug")
+        if event.type == "sdlc.todo.created":
+            slug_raw = event.data.get("slug")
             slug = slug_raw if isinstance(slug_raw, str) else ""
-            pickup_requested = event.payload.get("pickup_requested", True)
+            pickup_requested = event.data.get("pickup_requested", True)
             if not pickup_requested:
-                logger.info("workflow.todo.created skipped: pickup_requested=False", slug=slug)
+                logger.info("sdlc.todo.created skipped: pickup_requested=False", slug=slug)
                 return event
-        if event.event == "scheduler.tick.minute":
+        if event.type == "teleclaude.scheduler.tick.minute":
             _ = context
             client = TelecAPIClient(daemon_credential=True)
             await client.connect()
@@ -71,18 +71,18 @@ class LifecycleRouterCartridge:
                     continue
                 await run_lifecycle_runner(
                     project.path,
-                    trigger=event.event,
+                    trigger=event.type,
                     client_factory=default_session_runner,
                 )
             return event
-        project_path = project_path_from_event_payload(event.payload)
+        project_path = project_path_from_event_payload(event.data)
         if not project_path:
-            logger.warning("workflow runner wake-up skipped: missing project identity", event=event.event)
+            logger.warning("workflow runner wake-up skipped: missing project identity", event=event.type)
             return event
         _ = context
         await run_lifecycle_runner(
             project_path,
-            trigger=event.event,
+            trigger=event.type,
             client_factory=default_session_runner,
         )
         return event

@@ -64,7 +64,7 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
-from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker, EventVisibility
 from teleclaude.project_root import is_project_checkout
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
@@ -358,7 +358,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
                     owner_kind, owner_slug = owner_identity
                     subject_owner = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()
                 else:
-                    subject_owner = EventSubjectOwnerMarker.OWNERLESS.value
+                    subject_owner = EventHomeOwnerMarker.OWNERLESS.value
     except SubjectResolutionError as error:
         # A malformed user declaration must not refuse session creation; no subject keeps visibility at platform scope.
         logger.warning(
@@ -550,7 +550,7 @@ async def list_projects() -> list[ProjectInfo]:
             subject=(
                 SubjectRef(ConfigSubjectKind(entry.kind.value), entry.identity).to_token()
                 if entry.identity is not None
-                else EventSubjectMarker.UNKNOWN.value
+                else EventHomeMarker.UNKNOWN.value
             ),
             owner=entry.owner,
         )

@@ -52,10 +52,12 @@ from teleclaude.events.cartridges.trust import TrustConfig
 from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer
 from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
-from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
-from teleclaude.events.envelope import EventHomeRef, EventSubject, EventSubjectMarker
+from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
+from teleclaude.events.references import ComputerRef
+from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData
+from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks import procedure_activation
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
@@ -200,20 +202,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     def _configure_event_producer(self, redis_client: object) -> EventProducer:
         """Build and register the event producer."""
 
-        async def _session_home(session_id: str) -> EventSubject:
-            db = await get_db()
-            session = await db.get_session(session_id)
-            if session is None:
-                return EventSubjectMarker.UNKNOWN
-            if session.config_subject is None:
-                return EventSubjectMarker.NONE
-            return EventHomeRef.from_token(session.config_subject)
-
-        resolver = EnvelopeFactResolver(
-            session_id=lambda: None,
-            session_home=_session_home,
-            ownership_index=load_project_ownership_index,
-        )
+        resolver = EnvelopeFactResolver(session_id=lambda: None, ownership_index=load_project_ownership_index)
         event_producer = EventProducer(redis_client=redis_client, fact_resolver=resolver)
         configure_producer(event_producer)
         logger.info("EventProducer configured")
@@ -376,6 +365,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         event_processor = EventProcessor(
             redis_client=redis_client,
             pipeline=pipeline,
+            codec=PLATFORM_ENTRY_CODEC,
             group=f"{EVENT_PROCESSOR_GROUP}-{computer_label}",
             consumer_name=f"{computer_label}-{os.getpid()}",
             idle_threshold_ms=reliability.idle_threshold_ms,
@@ -401,6 +391,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         processor = EventProcessor(
             redis_client=redis_client,
             pipeline=RelayDeliveryPipeline(dispatcher),
+            codec=PLATFORM_ENTRY_CODEC,
             group=_RELAY_DELIVERY_GROUP_PREFIX + computer_label,
             consumer_name=computer_label + _RELAY_DELIVERY_CONSUMER_SUFFIX + str(os.getpid()),
             idle_threshold_ms=reliability.idle_threshold_ms,
@@ -431,18 +422,20 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     ) -> None:
         """Emit the daemon-restarted infrastructure event."""
         await event_producer.emit(
-            EventsEnvelope(
-                event="system.daemon.restarted",
-                source="daemon",
+            DaemonRestarted(
+                subject=ComputerRef(computer_label),
+                home=EventHomeMarker.NONE,
+                data=DaemonRestartedData(computer=computer_label, pid=os.getpid()),
+            ),
+            LegacyFacts(
+                producer="daemon",
                 level=EventLevel.INFRASTRUCTURE,
                 domain="system",
                 visibility=EventVisibility.CLUSTER,
-                subject=EventSubjectMarker.NONE,
                 description=f"Daemon restarted on {computer_label}",
-                payload={"computer": computer_label, "pid": os.getpid()},
-            )
+            ),
         )
-        logger.info("Event 'system.daemon.restarted' emitted")
+        logger.info("Event 'teleclaude.system.daemon.restarted' emitted")
 
     def _start_task_schedule_clock(self, event_producer: EventProducer) -> None:
         """Start the workflow schedule minute clock."""

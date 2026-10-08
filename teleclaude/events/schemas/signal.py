@@ -1,88 +1,49 @@
-"""Signal taxonomy event schemas."""
+"""Signal pipeline event declarations: the item, cluster or synthesis the act produced is the subject."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pydantic import JsonValue
 
-from teleclaude.events.catalog import (
-    EventSchema,
-    NotificationLifecycle,
-    PayloadField,
-    PayloadValueKind,
-    SubjectAssignment,
-)
-from teleclaude.events.envelope import EventLevel, EventVisibility
-
-if TYPE_CHECKING:
-    from teleclaude.events.catalog import EventCatalog
+from teleclaude.events.catalog import DeclaredEvent, EventData, PlatformEvent
+from teleclaude.events.references import SignalClusterRef, SignalItemRef, SignalSynthesisRef
 
 
-_SUBJECT_ASSIGNMENT_PLATFORM = SubjectAssignment(
-    kinds=[], about="the platform or event stream activity represented by this event"
-)
-_PAYLOAD_FIELDS_SIGNAL_CLUSTER_FORMED: list[PayloadField] = [
-    PayloadField(name="cluster_id", kind=PayloadValueKind.INTEGER, nullable=False),
-    PayloadField(name="is_burst", kind=PayloadValueKind.BOOLEAN, nullable=False),
-    PayloadField(name="is_novel", kind=PayloadValueKind.BOOLEAN, nullable=False),
-    PayloadField(name="member_count", kind=PayloadValueKind.INTEGER, nullable=False),
-    PayloadField(name="summary", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="tags", kind=PayloadValueKind.ARRAY, nullable=False),
-]
-_PAYLOAD_FIELDS_SIGNAL_INGEST_RECEIVED: list[PayloadField] = [
-    PayloadField(name="fetched_at", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="item_url", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="published_at", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="raw_title", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="source_id", kind=PayloadValueKind.STRING, nullable=False),
-    PayloadField(name="tags", kind=PayloadValueKind.ARRAY, nullable=False),
-]
-_PAYLOAD_FIELDS_SIGNAL_SYNTHESIS_READY: list[PayloadField] = [
-    PayloadField(name="cluster_id", kind=PayloadValueKind.INTEGER, nullable=False),
-    PayloadField(name="synthesis", kind=PayloadValueKind.OBJECT, nullable=False),
-]
+class SignalIngestReceivedData(EventData):
+    fetched_at: str
+    item_url: str
+    published_at: str
+    raw_title: str
+    source_id: str
+    tags: list[str]
 
 
-def register_signal(catalog: EventCatalog) -> None:
-    """Register signal-pipeline event schemas."""
-    catalog.register(
-        EventSchema(
-            event_type="signal.ingest.received",
-            description="A single feed item was ingested and normalised.",
-            subject_assignment=_SUBJECT_ASSIGNMENT_PLATFORM,
-            payload_fields=_PAYLOAD_FIELDS_SIGNAL_INGEST_RECEIVED,
-            default_level=EventLevel.OPERATIONAL,
-            domain="signal",
-            default_visibility=EventVisibility.LOCAL,
-            lifecycle=None,
-            actionable=False,
-        )
-    )
-    catalog.register(
-        EventSchema(
-            event_type="signal.cluster.formed",
-            description="A group of related ingested signals formed a cluster.",
-            subject_assignment=_SUBJECT_ASSIGNMENT_PLATFORM,
-            payload_fields=_PAYLOAD_FIELDS_SIGNAL_CLUSTER_FORMED,
-            default_level=EventLevel.OPERATIONAL,
-            domain="signal",
-            default_visibility=EventVisibility.LOCAL,
-            lifecycle=None,
-            actionable=False,
-        )
-    )
-    catalog.register(
-        EventSchema(
-            event_type="signal.synthesis.ready",
-            description="A cluster has been synthesised into a structured artifact.",
-            subject_assignment=_SUBJECT_ASSIGNMENT_PLATFORM,
-            payload_fields=_PAYLOAD_FIELDS_SIGNAL_SYNTHESIS_READY,
-            default_level=EventLevel.WORKFLOW,
-            domain="signal",
-            default_visibility=EventVisibility.LOCAL,
-            lifecycle=NotificationLifecycle(
-                creates=True,
-                meaningful_fields=["synthesis"],
-            ),
-            actionable=True,
-        )
-    )
+class SignalClusterFormedData(EventData):
+    cluster_id: int
+    is_burst: bool
+    is_novel: bool
+    member_count: int
+    summary: str
+    tags: list[str]
+
+
+class SignalSynthesisReadyData(EventData):
+    cluster_id: int
+    synthesis: dict[str, JsonValue]
+
+
+class SignalIngestReceived(PlatformEvent[SignalItemRef, SignalIngestReceivedData]):
+    NAME = "teleclaude.signal.ingest.received"
+    DESCRIPTION = "A single feed item was ingested and normalised."
+
+
+class SignalClusterFormed(PlatformEvent[SignalClusterRef, SignalClusterFormedData]):
+    NAME = "teleclaude.signal.cluster.formed"
+    DESCRIPTION = "A group of related ingested signals formed a cluster."
+
+
+class SignalSynthesisReady(PlatformEvent[SignalSynthesisRef, SignalSynthesisReadyData]):
+    NAME = "teleclaude.signal.synthesis.ready"
+    DESCRIPTION = "A cluster has been synthesised into a structured artifact."
+
+
+DECLARED: tuple[DeclaredEvent, ...] = (SignalIngestReceived, SignalClusterFormed, SignalSynthesisReady)

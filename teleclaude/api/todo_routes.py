@@ -77,8 +77,11 @@ from teleclaude.core.project_state import resolve_project_state_root as resolve_
 from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused, get_todos_db
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
-from teleclaude.events.envelope_facts import subject_for_project_path
-from teleclaude.events.producer import emit_event
+from teleclaude.events.envelope_facts import home_for_project_path
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import TodoRef
+from teleclaude.events.schemas.sdlc import TodoCreated, TodoCreatedData
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
@@ -698,26 +701,25 @@ async def todo_content_create(
 
         lifecycle_phase = state.get("lifecycle_phase")
         event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
-        event_subject = subject_for_project_path(effective_cwd)
-        await emit_event(
-            event="workflow.todo.created",
-            source="api.todo.create",
-            level=EventLevel.WORKFLOW,
-            domain="sdlc",
-            subject=event_subject,
-            payload={
-                "slug": slug,
-                "kind": map_v1_kind_to_canonical(request.kind),
-                "creation_mode": "pickup" if pickup_requested else "silent",
-                "pickup_requested": pickup_requested,
-                "lifecycle_phase": event_lifecycle_phase,
-                "created_at": datetime.now(UTC).isoformat(),
-                "project_path": effective_cwd,
-                "lineage": lineage.encode(),
-                "entry_point": entry_point.value if entry_point is not None else None,
-                "human_involved": human_involved,
-                "context": creation_context,
-            },
+        await publish_event(
+            TodoCreated(
+                subject=TodoRef(slug),
+                home=home_for_project_path(effective_cwd),
+                data=TodoCreatedData(
+                    slug=slug,
+                    kind=map_v1_kind_to_canonical(request.kind),
+                    creation_mode="pickup" if pickup_requested else "silent",
+                    pickup_requested=pickup_requested,
+                    lifecycle_phase=event_lifecycle_phase,
+                    created_at=datetime.now(UTC).isoformat(),
+                    project_path=effective_cwd,
+                    lineage=lineage.encode(),
+                    entry_point=entry_point.value if entry_point is not None else None,
+                    human_involved=human_involved,
+                    context=creation_context,
+                ),
+            ),
+            LegacyFacts(producer="api.todo.create", level=EventLevel.WORKFLOW, domain="sdlc"),
         )
 
         logger.info(

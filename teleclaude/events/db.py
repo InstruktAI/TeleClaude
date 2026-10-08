@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
@@ -13,14 +15,13 @@ import aiosqlite
 
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
-from teleclaude.events.catalog import build_default_catalog
+from teleclaude.events.db_migrations import migrate_forward
 from teleclaude.events.envelope import (
-    EventEnvelope,
-    EventSubjectMarker,
-    EventSubjectOwnerMarker,
-    subject_owner_token,
-    subject_token,
+    home_owner_token,
+    home_token,
 )
+from teleclaude.events.notification_rules import NOTIFICATION_RULES
+from teleclaude.events.wire import PLATFORM_STREAM_VERSION, StreamEvent
 from teleclaude.identity_reach import Reach
 from teleclaude.paths import EVENTS_DB_PATH
 
@@ -56,8 +57,8 @@ class NotificationRow(TypedDict):
     last_delivered_action_revision: str | None
     occurred_at: str | None
     event_id: str | None
-    subject: str
-    subject_owner: str
+    home: str
+    home_owner: str
 
 
 class QuarantinedEventRow(TypedDict):
@@ -120,8 +121,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     last_delivered_action_revision TEXT,
     occurred_at TEXT,
     event_id TEXT,
-    subject TEXT,
-    subject_owner TEXT,
+    home TEXT,
+    home_owner TEXT,
     UNIQUE(idempotency_key)
 );
 """
@@ -142,26 +143,44 @@ _CREATE_CORRELATION_TABLE = """
 CREATE TABLE IF NOT EXISTS correlation_windows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    entity TEXT,
+    home TEXT NOT NULL,
+    subject TEXT,
     window_start TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 1
 );
 """
-_CORRELATION_TABLE_INFO_SQL = "PRAGMA table_info(correlation_windows)"
-_CORRELATION_SUBJECT_COLUMN = "subject"
-_ADD_CORRELATION_SUBJECT_SQL = "ALTER TABLE correlation_windows ADD COLUMN subject TEXT"
-_MIGRATE_CORRELATION_SUBJECT_SQL = "UPDATE correlation_windows SET subject = ? WHERE subject IS NULL"
+_CREATE_EPISODE_TABLE = """
+CREATE TABLE IF NOT EXISTS correlation_episodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    detection TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    home TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    failing_types TEXT NOT NULL DEFAULT '[]',
+    UNIQUE(detection, subject, home)
+);
+"""
 _INSERT_CORRELATION_WINDOW_SQL = (
-    "INSERT INTO correlation_windows (event_type, subject, entity, window_start, count) VALUES (?, ?, ?, ?, 1)"
+    "INSERT INTO correlation_windows (event_type, home, subject, window_start, count) VALUES (?, ?, ?, ?, 1)"
 )
-_SELECT_CORRELATION_COUNT_BY_EVENT_SQL = (
+_SELECT_CORRELATION_COUNT_SQL = (
     "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND window_start >= ?"
 )
-_SELECT_CORRELATION_COUNT_BY_SUBJECT_SQL = (
-    "SELECT COALESCE(SUM(count), 0) FROM correlation_windows "
-    "WHERE event_type = ? AND subject = ? AND entity = ? AND window_start >= ?"
+_CORRELATION_HOME_FILTER_SQL = " AND home = ?"
+_CORRELATION_SUBJECT_FILTER_SQL = " AND subject = ?"
+_INSERT_EPISODE_SQL = (
+    "INSERT OR IGNORE INTO correlation_episodes (detection, subject, home, started_at, failing_types) "
+    "VALUES (?, ?, ?, ?, ?)"
 )
+_SELECT_EPISODES_SQL = (
+    "SELECT id, detection, subject, home, started_at, failing_types FROM correlation_episodes ORDER BY id"
+)
+_SELECT_EPISODE_SQL = (
+    "SELECT id, detection, subject, home, started_at, failing_types FROM correlation_episodes "
+    "WHERE detection = ? AND subject = ? AND home = ?"
+)
+_UPDATE_EPISODE_FAILING_TYPES_SQL = "UPDATE correlation_episodes SET failing_types = ? WHERE id = ?"
+_DELETE_EPISODE_SQL = "DELETE FROM correlation_episodes WHERE id = ?"
 
 _RETIRED_DOCS_WATCHER_EVENT_TYPE = "system.docs_watcher.sync_failed"
 _RESOLVED_AGENT_STATUS = "resolved"
@@ -170,35 +189,29 @@ _RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS = (
     "WHERE event_type = ? AND (agent_status <> ? OR resolved_at IS NULL)"
 )
 _NOTIFICATION_COLUMNS_SQL = "PRAGMA table_info(notifications)"
-_NOTIFICATION_SUBJECT_COLUMN = "subject"
-_NOTIFICATION_SUBJECT_OWNER_COLUMN = "subject_owner"
-_ADD_NOTIFICATION_SUBJECT_SQL = "ALTER TABLE notifications ADD COLUMN subject TEXT"
-_ADD_NOTIFICATION_SUBJECT_OWNER_SQL = "ALTER TABLE notifications ADD COLUMN subject_owner TEXT"
-_BACKFILL_NOTIFICATION_SUBJECT_SQL = "UPDATE notifications SET subject = ? WHERE subject IS NULL"
-_BACKFILL_NOTIFICATION_SUBJECT_OWNER_SQL = "UPDATE notifications SET subject_owner = ? WHERE subject_owner IS NULL"
 _NOTIFICATION_SELECT_TEMPLATE = (
     "SELECT * FROM notifications {where_clause} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
 )
-_NOTIFICATION_SUBJECT_COLUMN_SQL = "notifications.subject"
-_NOTIFICATION_SUBJECT_OWNER_COLUMN_SQL = "notifications.subject_owner"
+_NOTIFICATION_HOME_COLUMN_SQL = "notifications.home"
+_NOTIFICATION_HOME_OWNER_COLUMN_SQL = "notifications.home_owner"
 _NOTIFICATION_LIMIT_PARAM = "limit"
 _NOTIFICATION_OFFSET_PARAM = "offset"
 _INSERT_NOTIFICATION_SQL = """
 INSERT INTO notifications
   (event_type, version, source, level, domain, visibility, entity, description,
    payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient, family,
-   occurred_at, event_id, subject, subject_owner)
+   occurred_at, event_id, home, home_owner)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?, ?, ?, ?, ?, ?)
 """
 _UPSERT_NOTIFICATION_FIELDS_SQL = (
-    "UPDATE notifications SET description = ?, payload = ?, subject = ?, subject_owner = ?, updated_at = ? WHERE id = ?"
+    "UPDATE notifications SET description = ?, payload = ?, home = ?, home_owner = ?, updated_at = ? WHERE id = ?"
 )
 _UPDATE_NOTIFICATION_RESET_HUMAN_STATUS_SQL = (
-    "UPDATE notifications SET description = ?, payload = ?, subject = ?, subject_owner = ?, "
+    "UPDATE notifications SET description = ?, payload = ?, home = ?, home_owner = ?, "
     "human_status = 'unseen', updated_at = ? WHERE id = ?"
 )
 _UPDATE_NOTIFICATION_FIELDS_SQL = (
-    "UPDATE notifications SET description = ?, payload = ?, subject = ?, subject_owner = ?, updated_at = ? WHERE id = ?"
+    "UPDATE notifications SET description = ?, payload = ?, home = ?, home_owner = ?, updated_at = ? WHERE id = ?"
 )
 
 # Forward migration of stored notifications to the renamed `sdlc` domain; the
@@ -217,8 +230,8 @@ _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_visibility ON notifications (visibility);",
     "CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_quarantined_reviewed ON quarantined_events (reviewed, received_at DESC);",
-    "CREATE INDEX IF NOT EXISTS idx_correlation_windows ON correlation_windows (event_type, entity, window_start);",
-    "CREATE INDEX IF NOT EXISTS idx_correlation_windows_subject ON correlation_windows (event_type, subject, entity, window_start);",
+    "CREATE INDEX IF NOT EXISTS idx_correlation_windows_home ON correlation_windows (event_type, home, window_start);",
+    "CREATE INDEX IF NOT EXISTS idx_correlation_windows_home_subject ON correlation_windows (event_type, home, subject, window_start);",
 ]
 
 
@@ -232,14 +245,46 @@ def _row_to_dict(row: aiosqlite.Row) -> NotificationRow:
     return dict(row)  # type: ignore[return-value]
 
 
-def _subject_token(envelope: EventEnvelope) -> str:
-    """Persist the typed envelope subject without re-deriving it from payload."""
-    return subject_token(envelope.subject)
+def _home_token(event: StreamEvent) -> str:
+    """Persist the typed event home without re-deriving it from data."""
+    return home_token(event.home)
 
 
-def _subject_owner_token(envelope: EventEnvelope) -> str:
-    """Persist the typed envelope owner without re-deriving it from payload."""
-    return subject_owner_token(envelope.subject_owner)
+def _home_owner_token(event: StreamEvent) -> str:
+    """Persist the typed event home owner without re-deriving it from data."""
+    return home_owner_token(event.home_owner)
+
+
+class EpisodeDetection(StrEnum):
+    """The correlation detections whose episodes are kept open until they are reported over."""
+
+    BURST = "burst"
+    FAILURE_CASCADE = "failure_cascade"
+    ENTITY_DEGRADATION = "entity_degradation"
+
+
+@dataclass(frozen=True)
+class CorrelationEpisode:
+    """One open correlation episode: what was detected, about which subject and home, and since when."""
+
+    id: int
+    detection: EpisodeDetection
+    subject: str
+    home: str
+    started_at: datetime
+    failing_types: tuple[str, ...]
+
+
+def _episode_from_row(row: aiosqlite.Row) -> CorrelationEpisode:
+    """Convert a stored episode row into its typed record."""
+    return CorrelationEpisode(
+        id=row[0],
+        detection=EpisodeDetection(row[1]),
+        subject=row[2],
+        home=row[3],
+        started_at=datetime.fromisoformat(row[4]),
+        failing_types=tuple(json.loads(row[5])),
+    )
 
 
 def _signal_db_class() -> type[SignalDB]:
@@ -268,28 +313,12 @@ class EventDB:
         await self._conn.execute(_CREATE_TABLE)
         await self._conn.execute(_CREATE_QUARANTINED_TABLE)
         await self._conn.execute(_CREATE_CORRELATION_TABLE)
-        correlation_info_cursor = await self._conn.execute(_CORRELATION_TABLE_INFO_SQL)
-        existing_correlation_columns = {row[1] for row in await correlation_info_cursor.fetchall()}
-        if _CORRELATION_SUBJECT_COLUMN not in existing_correlation_columns:
-            await self._conn.execute(_ADD_CORRELATION_SUBJECT_SQL)
-        await self._conn.execute(_MIGRATE_CORRELATION_SUBJECT_SQL, (EventSubjectMarker.UNKNOWN.value,))
+        await self._conn.execute(_CREATE_EPISODE_TABLE)
         # Forward migration: a pre-recipient `notifications` table predates this column.
         table_info_cursor = await self._conn.execute(_NOTIFICATION_COLUMNS_SQL)
         existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
         if "recipient" not in existing_columns:
             await self._conn.execute("ALTER TABLE notifications ADD COLUMN recipient TEXT")
-        if _NOTIFICATION_SUBJECT_COLUMN not in existing_columns:
-            await self._conn.execute(_ADD_NOTIFICATION_SUBJECT_SQL)
-        if _NOTIFICATION_SUBJECT_OWNER_COLUMN not in existing_columns:
-            await self._conn.execute(_ADD_NOTIFICATION_SUBJECT_OWNER_SQL)
-        await self._conn.execute(
-            _BACKFILL_NOTIFICATION_SUBJECT_SQL,
-            (EventSubjectMarker.UNKNOWN.value,),
-        )
-        await self._conn.execute(
-            _BACKFILL_NOTIFICATION_SUBJECT_OWNER_SQL,
-            (EventSubjectOwnerMarker.UNRESOLVED.value,),
-        )
         for column_name in ("family", "last_delivered_action_revision", "occurred_at", "event_id"):
             if column_name not in existing_columns:
                 await self._conn.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} TEXT")
@@ -299,6 +328,7 @@ class EventDB:
                 _RENAME_DOMAIN_SQL_TEMPLATE.format(column=column_name),
                 (_RENAMED_DOMAIN_FROM, _RENAMED_DOMAIN_TO, _RENAMED_DOMAIN_FROM),
             )
+        await migrate_forward(self._conn)
         # Preserve retired event rows as history while closing their notification projections.
         resolved_at = _now_iso()
         await self._conn.execute(
@@ -312,9 +342,9 @@ class EventDB:
             ),
         )
         family_by_event = {
-            schema.event_type: schema.lifecycle.family.value
-            for schema in build_default_catalog().list_all()
-            if schema.lifecycle and schema.lifecycle.family
+            event_type: rule.lifecycle.family.value
+            for event_type, rule in NOTIFICATION_RULES.items()
+            if rule.lifecycle and rule.lifecycle.family
         }
         for event_type, family in family_by_event.items():
             await self._conn.execute(
@@ -353,31 +383,31 @@ class EventDB:
         return self._conn
 
     async def insert_notification(
-        self, envelope: EventEnvelope, recipient: str | None = None, family: str | None = None
+        self, event: StreamEvent, recipient: str | None = None, family: str | None = None
     ) -> int:
         """Insert a new notification projection row and return its database id."""
         now = _now_iso()
         cursor = await self._db().execute(
             _INSERT_NOTIFICATION_SQL,
             (
-                envelope.event,
-                envelope.version,
-                envelope.source,
-                int(envelope.level),
-                envelope.domain,
-                envelope.visibility.value,
-                envelope.entity,
-                envelope.description,
-                json.dumps(envelope.payload),
-                envelope.idempotency_key,
+                event.type,
+                PLATFORM_STREAM_VERSION,
+                event.legacy.producer,
+                int(event.legacy.level),
+                event.legacy.domain,
+                event.legacy.visibility.value,
+                event.legacy.entity,
+                event.legacy.description,
+                json.dumps(event.data),
+                event.legacy.idempotency_key,
                 now,
                 now,
                 recipient,
                 family,
-                envelope.timestamp.isoformat(),
-                envelope.event_id,
-                _subject_token(envelope),
-                _subject_owner_token(envelope),
+                event.time.isoformat(),
+                event.id,
+                _home_token(event),
+                _home_owner_token(event),
             ),
         )
         await self._db().commit()
@@ -411,8 +441,8 @@ class EventDB:
         """
         conditions: list[str] = ["recipient IS NULL"]
         reach_clause, reach_params = reach.sql_predicate(
-            subject_col=_NOTIFICATION_SUBJECT_COLUMN_SQL,
-            owner_col=_NOTIFICATION_SUBJECT_OWNER_COLUMN_SQL,
+            subject_col=_NOTIFICATION_HOME_COLUMN_SQL,
+            owner_col=_NOTIFICATION_HOME_OWNER_COLUMN_SQL,
             principal_col=None,
         )
         conditions.append(reach_clause)
@@ -448,14 +478,14 @@ class EventDB:
         return cursor.rowcount > 0
 
     async def upsert_by_idempotency_key(
-        self, envelope: EventEnvelope, recipient: str | None = None, family: str | None = None
+        self, event: StreamEvent, recipient: str | None = None, family: str | None = None
     ) -> tuple[int, bool]:
         """Insert or update notification. Returns (notification_id, was_created)."""
         now = _now_iso()
-        if envelope.idempotency_key:
+        if event.legacy.idempotency_key:
             cursor = await self._db().execute(
                 "SELECT id FROM notifications WHERE idempotency_key = ?",
-                (envelope.idempotency_key,),
+                (event.legacy.idempotency_key,),
             )
             existing = await cursor.fetchone()
             if existing:
@@ -463,10 +493,10 @@ class EventDB:
                 await self._db().execute(
                     _UPSERT_NOTIFICATION_FIELDS_SQL,
                     (
-                        envelope.description,
-                        json.dumps(envelope.payload),
-                        _subject_token(envelope),
-                        _subject_owner_token(envelope),
+                        event.legacy.description,
+                        json.dumps(event.data),
+                        _home_token(event),
+                        _home_owner_token(event),
                         now,
                         notification_id,
                     ),
@@ -474,7 +504,7 @@ class EventDB:
                 await self._db().commit()
                 return notification_id, False
 
-        notification_id = await self.insert_notification(envelope, recipient, family)
+        notification_id = await self.insert_notification(event, recipient, family)
         return notification_id, True
 
     async def find_active_incident(
@@ -505,8 +535,8 @@ class EventDB:
         notification_id: int,
         description: str,
         payload: JsonDict,
-        subject: str,
-        subject_owner: str,
+        home: str,
+        home_owner: str,
         reset_human_status: bool = False,
     ) -> bool:
         """Update the projected description and payload for an existing notification."""
@@ -514,19 +544,19 @@ class EventDB:
         if reset_human_status:
             cursor = await self._db().execute(
                 _UPDATE_NOTIFICATION_RESET_HUMAN_STATUS_SQL,
-                (description, json.dumps(payload), subject, subject_owner, now, notification_id),
+                (description, json.dumps(payload), home, home_owner, now, notification_id),
             )
         else:
             cursor = await self._db().execute(
                 _UPDATE_NOTIFICATION_FIELDS_SQL,
-                (description, json.dumps(payload), subject, subject_owner, now, notification_id),
+                (description, json.dumps(payload), home, home_owner, now, notification_id),
             )
         await self._db().commit()
         return cursor.rowcount > 0
 
     # --- Quarantine methods ---
 
-    async def quarantine_event(self, envelope: EventEnvelope, flags: list[str]) -> int:
+    async def quarantine_event(self, event: StreamEvent, flags: list[str]) -> int:
         """Persist an event in the quarantine table and return its row id."""
         cursor = await self._db().execute(
             """
@@ -534,10 +564,10 @@ class EventDB:
             VALUES (?, ?, ?, ?, ?, 0)
             """,
             (
-                envelope.event,
-                envelope.source,
-                envelope.timestamp.isoformat(),
-                envelope.model_dump_json(),
+                event.type,
+                event.legacy.producer,
+                event.time.isoformat(),
+                event.model_dump_json(),
                 json.dumps(flags),
             ),
         )
@@ -617,36 +647,68 @@ class EventDB:
 
     # --- Correlation window methods ---
 
-    async def increment_correlation_window(
-        self, event_type: str, subject: str, entity: str | None, ts: datetime
-    ) -> None:
+    async def increment_correlation_window(self, event_type: str, home: str, subject: str | None, ts: datetime) -> None:
         """Insert one correlation-window bucket entry for an event occurrence."""
         await self._db().execute(
             _INSERT_CORRELATION_WINDOW_SQL,
-            (event_type, subject, entity, ts.isoformat()),
+            (event_type, home, subject, ts.isoformat()),
         )
         await self._db().commit()
 
     async def get_correlation_count(
         self,
         event_type: str,
-        subject: str,
-        entity: str | None,
         since: datetime,
+        *,
+        home: str | None = None,
+        subject: str | None = None,
     ) -> int:
-        """Return the total correlation count for an event since the given time."""
-        if entity is None:
-            cursor = await self._db().execute(
-                _SELECT_CORRELATION_COUNT_BY_EVENT_SQL,
-                (event_type, since.isoformat()),
-            )
-        else:
-            cursor = await self._db().execute(
-                _SELECT_CORRELATION_COUNT_BY_SUBJECT_SQL,
-                (event_type, subject, entity, since.isoformat()),
-            )
+        """Return the total correlation count for a type since the given time, narrowed to a home and a subject."""
+        sql = _SELECT_CORRELATION_COUNT_SQL
+        params: list[str] = [event_type, since.isoformat()]
+        if home is not None:
+            sql += _CORRELATION_HOME_FILTER_SQL
+            params.append(home)
+        if subject is not None:
+            sql += _CORRELATION_SUBJECT_FILTER_SQL
+            params.append(subject)
+        cursor = await self._db().execute(sql, params)
         row = await cursor.fetchone()
         return int(row[0]) if row else 0
+
+    # --- Correlation episode methods ---
+
+    async def open_episode(
+        self, detection: EpisodeDetection, subject: str, home: str, started_at: datetime, failing_types: list[str]
+    ) -> bool:
+        """Open the episode for a detection, subject and home; return whether it was newly opened."""
+        cursor = await self._db().execute(
+            _INSERT_EPISODE_SQL,
+            (detection.value, subject, home, started_at.isoformat(), json.dumps(failing_types)),
+        )
+        await self._db().commit()
+        return cursor.rowcount > 0
+
+    async def get_episode(self, detection: EpisodeDetection, subject: str, home: str) -> CorrelationEpisode | None:
+        """Return the open episode for a detection, subject and home, if one is open."""
+        cursor = await self._db().execute(_SELECT_EPISODE_SQL, (detection.value, subject, home))
+        row = await cursor.fetchone()
+        return _episode_from_row(row) if row else None
+
+    async def list_open_episodes(self) -> list[CorrelationEpisode]:
+        """Return every open episode, oldest first."""
+        cursor = await self._db().execute(_SELECT_EPISODES_SQL)
+        return [_episode_from_row(row) for row in await cursor.fetchall()]
+
+    async def set_episode_failing_types(self, episode_id: int, failing_types: list[str]) -> None:
+        """Record the failing types that put a degradation episode over its threshold."""
+        await self._db().execute(_UPDATE_EPISODE_FAILING_TYPES_SQL, (json.dumps(failing_types), episode_id))
+        await self._db().commit()
+
+    async def close_episode(self, episode_id: int) -> None:
+        """Close an open episode."""
+        await self._db().execute(_DELETE_EPISODE_SQL, (episode_id,))
+        await self._db().commit()
 
     async def prune_correlation_windows(self, older_than: datetime) -> None:
         """Delete correlation-window rows older than the given timestamp."""

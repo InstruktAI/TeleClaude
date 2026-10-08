@@ -10,7 +10,7 @@ from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.db import db
 from teleclaude.core.session_utils import resolve_working_dir
-from teleclaude.events.envelope import EventSubjectOwnerMarker
+from teleclaude.events.envelope import EventHomeOwnerMarker
 
 logger = get_logger(__name__)
 
@@ -80,9 +80,9 @@ async def backfill_session_subject_owners() -> None:
         rows = await db.list_sessions_without_subject_owner()
         ownership_index = load_project_ownership_index()
         rows_updated = 0
-        for session_id, subject_token in rows:
+        for session_id, home_token in rows:
             try:
-                subject = SubjectRef.from_token(subject_token)
+                subject = SubjectRef.from_token(home_token)
             except ValueError:
                 continue
             if subject.kind is not ConfigSubjectKind.PROJECT or subject.instance is None:
@@ -91,7 +91,7 @@ async def backfill_session_subject_owners() -> None:
             if ownership is None:
                 continue
             owner_identity = ownership.owner_identity()
-            owner_token = EventSubjectOwnerMarker.OWNERLESS.value
+            owner_token = EventHomeOwnerMarker.OWNERLESS.value
             if owner_identity is not None:
                 owner_kind, owner_slug = owner_identity
                 owner_token = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()

@@ -61,7 +61,7 @@ from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.unclaim import ClaimReleaseOutcome, unclaim_todo_for_caller
-from teleclaude.events.envelope_facts import subject_for_project_path
+from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
@@ -749,7 +749,7 @@ async def _work_step_review_approved(
         )
 
     session_id = get_session_id() or ""
-    subject = subject_for_project_path(cwd)
+    home = home_for_project_path(cwd)
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     round_raw = build_review.get("round", 0)
@@ -759,7 +759,7 @@ async def _work_step_review_approved(
             slug=slug,
             reviewer_session_id=session_id,
             review_round=max(review_round, 1),
-            subject=subject,
+            home=home,
         )
     except Exception:
         logger.warning("Failed to emit review.approved event for %s", slug, exc_info=True)

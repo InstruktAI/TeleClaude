@@ -62,12 +62,18 @@ from teleclaude.core.events import (
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
+from teleclaude.core.internal_event_envelope import InternalEventEnvelope
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.events.processor import EventProcessor
+from teleclaude.events.wire import EntryCodec
 
 logger = get_logger(__name__)
 
 INTERNAL_EVENT_STREAM = "teleclaude:internal-events"
+_INTERNAL_ENTRY_CODEC = EntryCodec(
+    decode=lambda entry, _entry_id: InternalEventEnvelope.from_stream_dict(entry),
+    event_id=lambda envelope: envelope.event_id,
+)
 INTERNAL_EVENT_NAMESPACE_PREFIX = "internal."
 _INTERNAL_CONSUMER_GROUP_PREFIX = "event-bus:"
 _INTERNAL_EVENT_SOURCE = "event-bus"
@@ -85,7 +91,7 @@ TypedEventHandler = Callable[[EventNameT, EventContextT], Awaitable[object]]
 SessionStatusEventHandler = Callable[[str, SessionStatusContext], Awaitable[object]]
 SessionUpdatedEventHandler = Callable[[str, SessionUpdatedContext], Awaitable[object]]
 ContextBuilder = Callable[[Mapping[str, JsonValue]], EventContext]
-SubscriberProcess = Callable[[EventEnvelope], Awaitable[EventEnvelope | None]]
+SubscriberProcess = Callable[[InternalEventEnvelope], Awaitable[InternalEventEnvelope | None]]
 
 
 class DispatchEnvelope(TypedDict, total=False):
@@ -140,12 +146,12 @@ class _InternalEventPipeline:
     def __init__(self, bus: EventBus) -> None:
         self._bus = bus
 
-    async def execute(self, event: EventEnvelope, /) -> EventEnvelope | None:
+    async def execute(self, event: InternalEventEnvelope, /) -> InternalEventEnvelope | None:
         """Deliver an internal event through the bus subscriber fan-out."""
         return await self._bus.deliver(event)
 
 
-def decode_internal_event_envelope(envelope: EventEnvelope) -> tuple[str, EventContext]:
+def decode_internal_event_envelope(envelope: InternalEventEnvelope) -> tuple[str, EventContext]:
     """Decode an internal EventBus envelope into the original event and context."""
     if not envelope.event.startswith(INTERNAL_EVENT_NAMESPACE_PREFIX):
         raise ValueError(f"EventBus cannot decode non-internal event: {envelope.event}")
@@ -425,14 +431,11 @@ class EventBus:
         event: str,
         context: EventContext,
         visibility: EventVisibility,
-    ) -> EventEnvelope:
+    ) -> InternalEventEnvelope:
         """Build the envelope shared across local and Redis dispatch legs."""
-        return EventEnvelope(
+        return InternalEventEnvelope(
             event=self._wire_event_name(event),
             source=f"{_INTERNAL_EVENT_SOURCE}:{self._role}",
-            level=EventLevel.WORKFLOW,
-            domain="internal",
-            subject=EventSubjectMarker.NONE,
             visibility=visibility,
             payload=self._context_payload(context),
             idempotency_key=str(uuid.uuid4()),
@@ -492,13 +495,14 @@ class EventBus:
         processor = EventProcessor(
             self._redis,
             _InternalEventPipeline(self),
+            codec=_INTERNAL_ENTRY_CODEC,
             stream=INTERNAL_EVENT_STREAM,
             group=self._consumer_group(),
             consumer_name=self._consumer_name(),
         )
         await processor.start(shutdown_event)
 
-    async def deliver(self, envelope: EventEnvelope) -> EventEnvelope | None:
+    async def deliver(self, envelope: InternalEventEnvelope) -> InternalEventEnvelope | None:
         """Run matching local subscribers under the EventProcessor ACK boundary."""
         processes = self._subscriber_processes()
         if not processes:
@@ -509,7 +513,7 @@ class EventBus:
         # sibling is not cancelled by a fast failure; the first failure in
         # subscriber order is then re-raised and the EventProcessor retries.
         outcomes = await asyncio.gather(*(process(envelope) for process in processes), return_exceptions=True)
-        result: EventEnvelope | None = None
+        result: InternalEventEnvelope | None = None
         for outcome in outcomes:
             if isinstance(outcome, BaseException):
                 raise outcome
@@ -523,7 +527,7 @@ class EventBus:
             self._successful_handlers.pop(envelope.idempotency_key, None)
         return result
 
-    async def _publish_envelope(self, envelope: EventEnvelope) -> str:
+    async def _publish_envelope(self, envelope: InternalEventEnvelope) -> str:
         """Publish a pre-built envelope to the internal event stream.
 
         Envelope is built once at emit time so both the local and Redis legs
@@ -564,7 +568,7 @@ class EventBus:
         ]
 
     def _subscriber_process(self, subscribed_event: str, handler: EventHandler) -> SubscriberProcess:
-        async def _process(envelope: EventEnvelope) -> EventEnvelope | None:
+        async def _process(envelope: InternalEventEnvelope) -> InternalEventEnvelope | None:
             event_name, context = decode_internal_event_envelope(envelope)
             if event_name != subscribed_event:
                 return envelope

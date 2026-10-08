@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from instrukt_ai_logging import get_logger
 
 from teleclaude.events.catalog import EventCatalog
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.wire import StreamEvent
 
 if TYPE_CHECKING:
     from teleclaude.events.cartridges.correlation import CorrelationConfig
@@ -51,7 +51,7 @@ class Cartridge(Protocol):
 
     name: str
 
-    async def process(self, event: EventEnvelope, context: PipelineContext, /) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, context: PipelineContext, /) -> StreamEvent | None:
         """Transform an event or return `None` to stop processing."""
 
     def describe(self) -> str:
@@ -81,9 +81,9 @@ class Pipeline:
         """Append a cartridge to the end of the processing chain."""
         self._cartridges.append(cartridge)
 
-    async def execute(self, event: EventEnvelope, /) -> EventEnvelope | None:
+    async def execute(self, event: StreamEvent, /) -> StreamEvent | None:
         """Run an event through the system pipeline."""
-        current: EventEnvelope | None = event
+        current: StreamEvent | None = event
         for cartridge in self._cartridges:
             if current is None:
                 return None

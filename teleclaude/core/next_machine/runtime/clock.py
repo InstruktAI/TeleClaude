@@ -9,11 +9,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.events import EventLevel, EventProducer, EventVisibility
-from teleclaude.events.envelope import EventEnvelope, EventSubjectMarker
+from teleclaude.events.envelope import EventHomeMarker, occurrence_id
+from teleclaude.events.references import ComputerRef
+from teleclaude.events.schemas.sdlc import SchedulerTickData, SchedulerTickMinute
+from teleclaude.events.wire import LegacyFacts
 
 logger = get_logger(__name__)
 
-SCHEDULER_TICK_MINUTE = "scheduler.tick.minute"
+_SCHEDULER_TICK_KEY = "scheduler.tick.minute"
 
 
 def next_minute_delay(now: datetime | None = None) -> float:
@@ -40,20 +43,21 @@ class TaskScheduleClock:
             except TimeoutError:
                 pass
             ticked_at = datetime.now(UTC).replace(second=0, microsecond=0)
+            tick_key = f"{_SCHEDULER_TICK_KEY}:{config.computer.name}:{ticked_at.isoformat()}"
             await self._producer.emit(
-                EventEnvelope(
-                    event=SCHEDULER_TICK_MINUTE,
-                    source="daemon",
+                SchedulerTickMinute(
+                    id=occurrence_id(tick_key),
+                    subject=ComputerRef(config.computer.name),
+                    home=EventHomeMarker.NONE,
+                    data=SchedulerTickData(computer=config.computer.name, ticked_at=ticked_at.isoformat()),
+                ),
+                LegacyFacts(
+                    producer="daemon",
                     level=EventLevel.WORKFLOW,
                     domain="sdlc",
-                    subject=EventSubjectMarker.NONE,
                     visibility=EventVisibility.CLUSTER,
                     description="Lifecycle scheduler minute tick",
-                    payload={
-                        "computer": config.computer.name,
-                        "ticked_at": ticked_at.isoformat(),
-                    },
-                    idempotency_key=f"{SCHEDULER_TICK_MINUTE}:{config.computer.name}:{ticked_at.isoformat()}",
-                )
+                    idempotency_key=tick_key,
+                ),
             )
             logger.debug("scheduler minute tick emitted", ticked_at=ticked_at.isoformat())

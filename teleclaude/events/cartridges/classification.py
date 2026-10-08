@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.notification_rules import rule_for
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.wire import StreamEvent
 
 
 class ClassificationCartridge:
@@ -15,20 +16,20 @@ class ClassificationCartridge:
         """Return cartridge name."""
         return self.name
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
-        """Annotate the event payload with its classification outcome."""
-        schema = context.catalog.get(event.event)
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
+        """Annotate the event data with its classification outcome."""
+        rule = rule_for(event.type)
 
-        if schema is None:
+        if rule is None:
             treatment = "signal-only"
             actionable = False
         else:
-            treatment = "notification-worthy" if schema.lifecycle is not None else "signal-only"
-            actionable = schema.actionable
+            treatment = "notification-worthy" if rule.lifecycle is not None else "signal-only"
+            actionable = rule.actionable
 
-        updated_payload = dict(event.payload)
-        updated_payload["_classification"] = {"treatment": treatment, "actionable": actionable}
-        return event.model_copy(update={"payload": updated_payload})
+        updated_data = dict(event.data)
+        updated_data["_classification"] = {"treatment": treatment, "actionable": actionable}
+        return event.model_copy(update={"data": updated_data})
 
     def identifier(self) -> str:
         """Return the stable cartridge identifier."""

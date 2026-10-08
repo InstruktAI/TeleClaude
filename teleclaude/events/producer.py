@@ -1,16 +1,27 @@
-"""Event producer - emit events to the Redis Stream."""
+"""Event producer — the emission boundary that publishes typed events to the platform stream."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel, ConfigDict
 
 from teleclaude.config import config
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
-from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, complete_envelope_facts
+from teleclaude.core.models import JsonDict
+from teleclaude.core.operation_caller_identity import get_caller_session_id
+from teleclaude.events.catalog import PlatformEvent
+from teleclaude.events.envelope import (
+    EventHome,
+    ReceivedEvent,
+)
+from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, home_owner_of
+from teleclaude.events.references import EventRef, InboundSourceRef, SessionRef
+from teleclaude.events.wire import LegacyFacts, StreamEvent, encode
 from teleclaude.transport.redis_client import create_redis_client
 
 logger = get_logger(__name__)
@@ -22,8 +33,25 @@ logger = get_logger(__name__)
 _PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
 
 
+class RelayedEvent(BaseModel):
+    """An event relayed from an external system through a declared inbound source.
+
+    Its type and data are the source's own, not a platform catalog declaration:
+    the inbound endpoint translates the request into this one event shape and
+    states the declared source as the subject and the declaring home as the home.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    type: str
+    subject: InboundSourceRef
+    home: EventHome
+    data: JsonDict
+    time: datetime | None = None
+
+
 class EventProducer:
-    """Publish event envelopes to the configured Redis stream."""
+    """Publish events to the configured Redis stream."""
 
     def __init__(
         self,
@@ -37,25 +65,66 @@ class EventProducer:
         self._stream = stream
         self._maxlen = maxlen
 
-    async def emit(self, envelope: EventEnvelope) -> str:
-        """Serialize and append an event envelope to the Redis stream."""
-        await complete_envelope_facts(envelope, self._fact_resolver)
-        if envelope.originating_computer is None:
-            envelope.originating_computer = config.computer.name
-        data = envelope.to_stream_dict()
+    async def emit(self, event: PlatformEvent[Any, Any] | RelayedEvent, legacy: LegacyFacts, /) -> str:
+        """Complete the event with the boundary's facts, serialize it, and append it to the stream.
+
+        The boundary adds the source, the time, the caller session and the project owner, and an
+        id when the producer states none. It refuses, alters and narrows nothing on the strength
+        of the facts the producer stated.
+        """
+        received = self._received_event(event)
+        return await self._append(received.type, encode(received, legacy), received.subject)
+
+    def _received_event(self, event: PlatformEvent[Any, Any] | RelayedEvent) -> ReceivedEvent:
+        """Add the facts only the boundary knows: source, time, caller session, project owner, and an id."""
+        resolver = self._fact_resolver
+        session_id = get_caller_session_id() or resolver.session_id()
+        if isinstance(event, RelayedEvent):
+            return ReceivedEvent(
+                id=str(uuid4()),
+                type=event.type,
+                source=config.computer.name,
+                subject=event.subject.to_ref(),
+                time=event.time or datetime.now(UTC),
+                data=event.data,
+                home=event.home,
+                home_owner=home_owner_of(event.home, resolver),
+            )
+        related = [reference.to_ref() for reference in event.related]
+        session = SessionRef(session_id).to_ref() if session_id else None
+        if session is not None and session not in related:
+            related.append(session)
+        return ReceivedEvent(
+            id=event.id or str(uuid4()),
+            type=event.type_name(),
+            source=config.computer.name,
+            subject=event.subject.to_ref(),
+            time=datetime.now(UTC),
+            data=event.data.model_dump(mode="json"),
+            home=event.home,
+            home_owner=home_owner_of(event.home, resolver),
+            related=tuple(related),
+            causationid=event.causationid,
+        )
+
+    def stage(self, event: PlatformEvent[Any, Any] | RelayedEvent, legacy: LegacyFacts) -> StreamEvent:
+        """Complete an event as the stream would deliver it, without publishing it."""
+        return StreamEvent.model_validate({**dict(self._received_event(event)), "legacy": legacy})
+
+    async def _append(self, event_type: str, entry: dict[str, str], subject: EventRef | None = None) -> str:
         logger.info(
-            "EventProducer.emit: event=%s entity=%s stream=%s",
-            envelope.event,
-            envelope.entity or "",
+            "EventProducer.emit: event=%s subject=%s stream=%s",
+            event_type,
+            subject.to_token() if subject is not None else "",
             self._stream,
         )
         try:
-            entry_id = await self._redis.xadd(self._stream, data, maxlen=self._maxlen)
+            entry_id = await self._redis.xadd(self._stream, entry, maxlen=self._maxlen)
         except Exception:
-            logger.exception("EventProducer.emit xadd FAILED: event=%s", envelope.event)
+            logger.exception("EventProducer.emit xadd FAILED: event=%s", event_type)
             raise
         result = entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
-        logger.info("EventProducer.emit OK: event=%s entry_id=%s", envelope.event, result)
+        logger.info("EventProducer.emit OK: event=%s entry_id=%s", event_type, result)
         return result
 
     def stream_name(self) -> str:
@@ -68,7 +137,7 @@ class EventProducer:
 
 
 def configure_producer(producer: EventProducer) -> None:
-    """Install the process-wide producer used by `emit_event`."""
+    """Install the process-wide producer used by `publish_event`."""
     _PRODUCER_STATE["producer"] = producer
 
 
@@ -93,7 +162,7 @@ def ensure_event_producer() -> EventProducer:
     not own the daemon's transport. Idempotent: returns the existing producer
     when one is already registered. Daemon code paths must not call this — the
     daemon's startup is the sole authoritative `configure_producer` site, and
-    `emit_event` failing fast on its absence is how startup regressions surface.
+    `publish_event` failing fast on its absence is how startup regressions surface.
     """
     producer = _PRODUCER_STATE["producer"]
     if producer is not None:
@@ -113,34 +182,20 @@ async def loop_local_producer() -> AsyncIterator[EventProducer]:
         await producer.aclose()
 
 
-async def emit_event(
-    event: str,
-    source: str,
-    level: EventLevel,
+def _configured_producer(event_name: str) -> EventProducer:
+    producer = _PRODUCER_STATE["producer"]
+    if producer is None:
+        logger.error("event emitted but EventProducer not configured: event=%s", event_name)
+        raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
+    return producer
+
+
+async def publish_event(
+    event: PlatformEvent[Any, Any],
+    legacy: LegacyFacts,
     *,
     producer: EventProducer | None = None,
-    **kwargs: Any,
 ) -> str:
-    """Build an envelope from explicit fields and publish via the configured producer."""
-    if producer is None:
-        producer = _PRODUCER_STATE["producer"]
-        if producer is None:
-            logger.error("emit_event called but EventProducer not configured: event=%s", event)
-            raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
-    domain = str(kwargs.pop("domain", ""))
-    description = str(kwargs.pop("description", ""))
-    payload = kwargs.pop("payload", None)
-    visibility = kwargs.pop("visibility", EventVisibility.LOCAL)
-    entity = kwargs.pop("entity", None)
-    envelope = EventEnvelope(
-        event=event,
-        source=source,
-        level=level,
-        domain=domain,
-        description=description,
-        payload=payload or {},
-        visibility=visibility,
-        entity=entity,
-        **kwargs,
-    )
-    return await producer.emit(envelope)
+    """Publish a typed event through the configured producer."""
+    target = producer if producer is not None else _configured_producer(event.type_name())
+    return await target.emit(event, legacy)

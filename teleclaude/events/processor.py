@@ -10,23 +10,28 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel
 
 from teleclaude.config import config
 from teleclaude.core.models import HumanActionIntent
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility
 from teleclaude.events.pipeline import failing_stage_from_exception
-from teleclaude.events.producer import emit_event
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import StreamEntryRef
+from teleclaude.events.schemas.system import DeadLetteredData, EventDeadLettered
+from teleclaude.events.wire import EntryCodec, LegacyFacts
 
 logger = get_logger(__name__)
 
 STREAM_NAME = "teleclaude:events"
 CONSUMER_GROUP = "event-processor"
+_STREAM_ENTRY_IDENTITY = "{stream}/{entry_id}"
 
 
-class StreamEntryPipeline(Protocol):
-    """Execute one envelope read from the event stream."""
+class StreamEntryPipeline[DecodedT](Protocol):
+    """Execute one decoded entry read from an event stream."""
 
-    async def execute(self, envelope: EventEnvelope, /) -> object: ...
+    async def execute(self, event: DecodedT, /) -> object: ...
 
 
 @dataclass
@@ -46,14 +51,15 @@ class _AttemptState:
     failing_stage: str | None = None
 
 
-class EventProcessor:
-    """Consume events from the Redis stream and drive the system pipeline."""
+class EventProcessor[DecodedT: BaseModel]:
+    """Consume entries from a Redis stream, decode each with the stream's codec, and drive its pipeline."""
 
     def __init__(
         self,
         redis_client: Any,
-        pipeline: StreamEntryPipeline,
+        pipeline: StreamEntryPipeline[DecodedT],
         *,
+        codec: EntryCodec[DecodedT],
         idle_threshold_ms: int | None = None,
         max_attempts: int | None = None,
         sweep_interval_ms: int | None = None,
@@ -67,6 +73,7 @@ class EventProcessor:
             raise TypeError(f"Unsupported EventProcessor options: {unexpected}")
         self._redis = redis_client
         self._pipeline = pipeline
+        self._codec = codec
         self._stream = options.get("stream") or STREAM_NAME
         self._group = options.get("group") or CONSUMER_GROUP
         self._consumer = options.get("consumer_name") or f"processor-{os.getpid()}"
@@ -219,22 +226,22 @@ class EventProcessor:
         for stream, messages in entries:
             for raw_entry_id, data in messages:
                 entry_id = self._decode(raw_entry_id)
-                envelope: EventEnvelope | None = None
+                decoded: DecodedT | None = None
                 try:
-                    envelope = EventEnvelope.from_stream_dict(data)
-                    await self._pipeline.execute(envelope)
+                    decoded = self._codec.decode(data, entry_id)
+                    await self._pipeline.execute(decoded)
                     try:
                         await self._redis.xack(self._stream, self._group, entry_id)
                     except Exception:
                         logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
                 except Exception as exc:
-                    if envelope is None:
+                    if decoded is None:
                         logger.exception("EventProcessor failed to deserialize entry", entry_id=entry_id)
                         continue
                     await self._handle_processing_failure(
                         stream=self._decode(stream),
                         entry_id=entry_id,
-                        envelope=envelope,
+                        decoded=decoded,
                         exc=exc,
                     )
 
@@ -243,7 +250,7 @@ class EventProcessor:
         *,
         stream: str,
         entry_id: str,
-        envelope: EventEnvelope,
+        decoded: DecodedT,
         exc: Exception,
     ) -> None:
         """Track a failed attempt and transition to DLQ when the ceiling is reached."""
@@ -263,7 +270,7 @@ class EventProcessor:
         record = self._build_dead_letter_record(
             stream=stream,
             entry_id=entry_id,
-            envelope=envelope,
+            decoded=decoded,
             exc=exc,
             state=state,
         )
@@ -275,7 +282,7 @@ class EventProcessor:
             return
 
         try:
-            await self._emit_dead_letter_signal(record)
+            await self._emit_dead_letter_signal(record, self._codec.event_id(decoded))
         except Exception:
             logger.exception("EventProcessor failed to emit dead-letter signal", entry_id=entry_id)
             return
@@ -317,12 +324,12 @@ class EventProcessor:
         *,
         stream: str,
         entry_id: str,
-        envelope: EventEnvelope,
+        decoded: DecodedT,
         exc: Exception,
         state: _AttemptState,
     ) -> dict[str, str]:
         failing_stage = state.failing_stage or ""
-        original_envelope = json.dumps(envelope.model_dump(mode="json"), sort_keys=True)
+        original_envelope = json.dumps(decoded.model_dump(mode="json"), sort_keys=True)
         return {
             "original_envelope": original_envelope,
             "original_stream": stream or self._stream,
@@ -337,28 +344,37 @@ class EventProcessor:
             "dlq_destination": self._dlq_destination,
         }
 
-    async def _emit_dead_letter_signal(self, record: dict[str, str]) -> None:
+    async def _emit_dead_letter_signal(self, record: dict[str, str], failed_event_id: str) -> None:
         """Emit the in-band dead-letter growth signal before acknowledging."""
-        await emit_event(
-            "system.event.dead_lettered",
-            source="event-processor",
-            level=EventLevel.OPERATIONAL,
-            domain="system",
-            visibility=EventVisibility.CLUSTER,
-            subject=EventSubjectMarker.NONE,
-            human_action=HumanActionIntent(
-                topic="Dead-letter queue requires attention",
-                summary="An event exhausted its retries.",
-                action="Inspect the dead-letter destination",
+        await publish_event(
+            EventDeadLettered(
+                subject=StreamEntryRef(
+                    _STREAM_ENTRY_IDENTITY.format(
+                        stream=record["original_stream"], entry_id=record["original_entry_id"]
+                    )
+                ),
+                home=EventHomeMarker.NONE,
+                data=DeadLetteredData(
+                    original_entry_id=record["original_entry_id"],
+                    original_stream=record["original_stream"],
+                    attempt_count=record["attempt_count"],
+                    failing_stage=record["failing_stage"],
+                    consumer_id=record["consumer_id"],
+                    dlq_destination=record["dlq_destination"],
+                ),
+                causationid=failed_event_id,
             ),
-            payload={
-                "original_entry_id": record["original_entry_id"],
-                "original_stream": record["original_stream"],
-                "attempt_count": record["attempt_count"],
-                "failing_stage": record["failing_stage"],
-                "consumer_id": record["consumer_id"],
-                "dlq_destination": record["dlq_destination"],
-            },
+            LegacyFacts(
+                producer="event-processor",
+                level=EventLevel.OPERATIONAL,
+                domain="system",
+                visibility=EventVisibility.CLUSTER,
+                human_action=HumanActionIntent(
+                    topic="Dead-letter queue requires attention",
+                    summary="An event exhausted its retries.",
+                    action="Inspect the dead-letter destination",
+                ),
+            ),
         )
 
     async def _read_pending_info(self) -> dict[str, _PendingEntryInfo]:

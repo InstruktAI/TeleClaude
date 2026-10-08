@@ -6,10 +6,11 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from jobs.base import JobResult
 from teleclaude.cron_status import JobRunStatus as JobRunStatus
+from teleclaude.events.renames import current_type_name
 from teleclaude.paths import CRON_STATE_PATH
 
 _JOB_KEY_SEPARATOR = ":"
@@ -36,6 +37,7 @@ class PendingEmissionDict(TypedDict):
     message: str
     items: int
     actionable: bool
+    run_started_at: NotRequired[str]
 
 
 class CronStateDict(TypedDict):
@@ -58,6 +60,7 @@ class PendingEmission:
     message: str
     items: int
     actionable: bool
+    run_started_at: str
 
     def to_dict(self) -> PendingEmissionDict:
         """Serialize pending emission to a dictionary."""
@@ -69,19 +72,28 @@ class PendingEmission:
             "message": self.message,
             "items": self.items,
             "actionable": self.actionable,
+            "run_started_at": self.run_started_at,
         }
 
     @classmethod
     def from_dict(cls, data: PendingEmissionDict) -> PendingEmission:
-        """Deserialize a pending emission from a dictionary."""
+        """Deserialize a pending emission, bringing one stored before the platform renames forward.
+
+        The stored type name is read through the platform rename table, and an emission
+        stored without its run start takes it from the idempotency key, which is
+        ``<job name>:<run start>``.
+        """
+        job_name = str(data["job_name"])
+        idempotency_key = str(data["idempotency_key"])
         return cls(
-            idempotency_key=str(data["idempotency_key"]),
-            event_type=str(data["event_type"]),
-            job_name=str(data["job_name"]),
+            idempotency_key=idempotency_key,
+            event_type=current_type_name(str(data["event_type"])),
+            job_name=job_name,
             status=_parse_status(str(data["status"])),
             message=str(data["message"]),
             items=int(data["items"]),
             actionable=bool(data["actionable"]),
+            run_started_at=data.get("run_started_at") or idempotency_key.removeprefix(job_name + _JOB_KEY_SEPARATOR),
         )
 
 

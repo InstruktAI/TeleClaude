@@ -67,8 +67,11 @@ from teleclaude.core.session_startup_message import compose_command_loader, reso
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.envelope_facts import subject_for_session_config
-from teleclaude.events.producer import emit_event
+from teleclaude.events.envelope_facts import home_for_session_config
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import SessionRef
+from teleclaude.events.schemas.system import SessionRestartFailed, SessionRestartFailedData
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.paths import session_tmp_dir
 from teleclaude.types.commands import (
     HandoffAgentCommand,
@@ -130,7 +133,7 @@ class _AgentRestartReadinessOpportunityReason(StrEnum):
 
 
 class RestartFailurePhase(StrEnum):
-    """Closed vocabulary of the restart-failure exits that emit `agent_runtime.restart.failed`."""
+    """Closed vocabulary of the restart-failure exits that emit `teleclaude.agent_runtime.session.restart_failed`."""
 
     STOP_TIMEOUT = "stop_timeout"
     AGENT_DISABLED = "agent_disabled"
@@ -139,26 +142,30 @@ class RestartFailurePhase(StrEnum):
 
 async def _emit_restart_failed(session: Session, *, reason: str, phase: RestartFailurePhase) -> None:
     """Emit the typed restart-failure event so the delivery-edge debounce coalesces operator notifications."""
-    await emit_event(
-        "agent_runtime.restart.failed",
-        source="agent_restart",
-        level=EventLevel.OPERATIONAL,
-        domain="agent_runtime",
-        visibility=EventVisibility.LOCAL,
-        subject=subject_for_session_config(session.config_subject),
-        human_action=HumanActionIntent(
-            topic="Agent restart failed",
-            summary="The session was kept alive for inspection.",
-            action="Inspect it and restart manually",
-            origin_session_id=session.session_id,
+    await publish_event(
+        SessionRestartFailed(
+            subject=SessionRef(session.session_id),
+            home=home_for_session_config(session.config_subject),
+            data=SessionRestartFailedData(
+                session_id=session.session_id,
+                restart_group=session.session_id,
+                reason=reason,
+                phase=phase.value,
+                computer=config.computer.name,
+            ),
         ),
-        payload={
-            "session_id": session.session_id,
-            "restart_group": session.session_id,
-            "reason": reason,
-            "phase": phase.value,
-            "computer": config.computer.name,
-        },
+        LegacyFacts(
+            producer="agent_restart",
+            level=EventLevel.OPERATIONAL,
+            domain="agent_runtime",
+            visibility=EventVisibility.LOCAL,
+            human_action=HumanActionIntent(
+                topic="Agent restart failed",
+                summary="The session was kept alive for inspection.",
+                action="Inspect it and restart manually",
+                origin_session_id=session.session_id,
+            ),
+        ),
     )
 
 

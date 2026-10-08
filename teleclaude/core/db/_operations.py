@@ -12,7 +12,7 @@ from sqlmodel import select
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_roster import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.events.envelope import EventSubjectMarker, EventSubjectOwnerMarker
+from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker
 
 from .. import db_models
 
@@ -33,23 +33,23 @@ def _operation_subject_facts(
 ) -> tuple[str, str]:
     """Resolve the subject and project owner recorded by one operation path."""
     if working_folder is None:
-        return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
+        return EventHomeMarker.NONE.value, EventHomeOwnerMarker.NONE.value
     path = Path(working_folder)
     try:
         subject = resolve_config_subject(path)
     except SubjectResolutionError:
-        return EventSubjectMarker.UNKNOWN.value, EventSubjectOwnerMarker.UNRESOLVED.value
+        return EventHomeMarker.UNKNOWN.value, EventHomeOwnerMarker.UNRESOLVED.value
     if subject is None:
-        return EventSubjectMarker.NONE.value, EventSubjectOwnerMarker.NONE.value
+        return EventHomeMarker.NONE.value, EventHomeOwnerMarker.NONE.value
     if subject.kind is not ConfigSubjectKind.PROJECT:
-        return subject.to_token(), EventSubjectOwnerMarker.NONE.value
+        return subject.to_token(), EventHomeOwnerMarker.NONE.value
 
     ownership = (ownership_index or load_project_ownership_index()).for_path(path)
     if ownership is None:
-        return subject.to_token(), EventSubjectOwnerMarker.UNRESOLVED.value
+        return subject.to_token(), EventHomeOwnerMarker.UNRESOLVED.value
     owner_identity = ownership.owner_identity()
     if owner_identity is None:
-        owner = EventSubjectOwnerMarker.OWNERLESS.value
+        owner = EventHomeOwnerMarker.OWNERLESS.value
     else:
         owner_kind, owner_slug = owner_identity
         owner = SubjectRef(ConfigSubjectKind(owner_kind.value), owner_slug).to_token()

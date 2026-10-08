@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
+from teleclaude.events.references import SignalClusterRef
+from teleclaude.events.schemas.signal import SignalClusterFormed, SignalClusterFormedData
 from teleclaude.events.signal.ai import SignalAIClient
 from teleclaude.events.signal.clustering import (
     ClusteringConfig,
@@ -18,9 +20,11 @@ from teleclaude.events.signal.clustering import (
     refine_by_embeddings,
 )
 from teleclaude.events.signal.db import SignalDB, SignalItemPayload
+from teleclaude.events.wire import LegacyFacts
 
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
+    from teleclaude.events.wire import StreamEvent
 
 logger = get_logger(__name__)
 
@@ -39,16 +43,16 @@ class SignalClusterCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
         """Trigger a clustering pass when a new signal is ingested."""
-        if event.event != "signal.ingest.received":
+        if event.type != "teleclaude.signal.ingest.received":
             return event
         # Run a clustering pass after each ingested item (the pass is idempotent).
-        await self.cluster_pass(context)
+        await self.cluster_pass(context, event.id)
         return event
 
-    async def cluster_pass(self, context: PipelineContext) -> int:
-        """Explicit cluster pass — returns count of clusters formed."""
+    async def cluster_pass(self, context: PipelineContext, caused_by: str | None = None) -> int:
+        """Explicit cluster pass — returns count of clusters formed; each cluster names the event that caused the pass."""
         window_start = datetime.now(UTC) - timedelta(seconds=self._config.window_seconds)
         items = await self._signal_db.get_unclustered_items(since=window_start)
 
@@ -115,26 +119,32 @@ class SignalClusterCartridge:
 
             await self._signal_db.assign_items_to_cluster(member_ids, cluster_id)
 
-            envelope = EventEnvelope(
-                event="signal.cluster.formed",
-                source="signal-cluster",
-                level=EventLevel.OPERATIONAL,
-                domain="signal",
-                visibility=EventVisibility.LOCAL,
-                subject=EventSubjectMarker.NONE,
-                description=summary,
-                idempotency_key=f"signal.cluster.formed:{cluster_key}",
-                payload={
-                    "cluster_id": cluster_id,
-                    "member_count": len(group),
-                    "tags": unique_tags,
-                    "is_burst": is_burst,
-                    "is_novel": is_novel,
-                    "summary": summary,
-                },
-            )
             if context.emit:
-                await context.emit(envelope)
+                cluster_key_identity = f"signal.cluster.formed:{cluster_key}"
+                await context.emit(
+                    SignalClusterFormed(
+                        id=occurrence_id(cluster_key_identity),
+                        subject=SignalClusterRef(str(cluster_id)),
+                        home=EventHomeMarker.NONE,
+                        data=SignalClusterFormedData(
+                            cluster_id=cluster_id,
+                            member_count=len(group),
+                            tags=unique_tags,
+                            is_burst=is_burst,
+                            is_novel=is_novel,
+                            summary=summary,
+                        ),
+                        causationid=caused_by,
+                    ),
+                    LegacyFacts(
+                        producer="signal-cluster",
+                        level=EventLevel.OPERATIONAL,
+                        domain="signal",
+                        visibility=EventVisibility.LOCAL,
+                        description=summary,
+                        idempotency_key=cluster_key_identity,
+                    ),
+                )
             clusters_formed += 1
 
         return clusters_formed

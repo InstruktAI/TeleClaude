@@ -1,6 +1,6 @@
 """Bridge between orchestration lifecycle and the event platform.
 
-Provides typed emission helpers that construct EventEnvelopes and emit
+Provides typed emission helpers that construct typed events and publish
 them through the configured EventProducer. Also provides the integrator
 session spawn helper used by the integration trigger cartridge.
 """
@@ -19,15 +19,30 @@ from teleclaude.core.db import db
 from teleclaude.core.integration.checkpoint import ParkedCandidate
 from teleclaude.core.models import (
     AgentDispatchMode,
-    HumanActionIntent,
     SessionEntryPoint,
     SessionLaunchIntent,
     SessionLaunchKind,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.events.envelope import EventLevel, EventSubject, EventVisibility
-from teleclaude.events.producer import emit_event
-from teleclaude.events.schemas.sdlc import IntegrationEventType
+from teleclaude.events.envelope import EventHome, EventLevel, EventVisibility
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import SessionRef, TodoRef
+from teleclaude.events.schemas.sdlc import (
+    CandidateBlockedData,
+    CandidateDeliveredData,
+    CandidateParkedData,
+    DrainCompletedData,
+    IntegrationCandidateBlocked,
+    IntegrationCandidateDelivered,
+    IntegrationCandidateParked,
+    IntegrationDrainCompleted,
+    IntegrationStarted,
+    IntegrationStartedData,
+    ParkedCandidateData,
+    ReviewApproved,
+    ReviewApprovedData,
+)
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.session_identity import get_session_id
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -50,92 +65,28 @@ async def emit_review_approved(
     reviewer_session_id: str,
     review_round: int,
     *,
-    subject: EventSubject,
+    home: EventHome,
     approved_at: str | None = None,
 ) -> str:
     """Emit review.approved when a build review verdict stamps as approve."""
     ts = approved_at or datetime.now(UTC).isoformat()
-    return await emit_event(
-        event="domain.sdlc.review.approved",
-        source=f"orchestrator/{(get_session_id() or 'unknown')}",
-        level=EventLevel.WORKFLOW,
-        domain="sdlc",
-        subject=subject,
-        description=f"Review approved for {slug} (round {review_round})",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "review_round": review_round,
-            "reviewer_session_id": reviewer_session_id,
-            "approved_at": ts,
-        },
-    )
-
-
-async def emit_deployment_completed(
-    slug: str,
-    branch: str,
-    sha: str,
-    merge_commit: str,
-    *,
-    subject: EventSubject,
-    integrated_at: str | None = None,
-) -> str:
-    """Emit deployment.completed after successful integration to main."""
-    ts = integrated_at or datetime.now(UTC).isoformat()
-    return await emit_event(
-        event="domain.sdlc.deployment.completed",
-        source=f"integrator/{(get_session_id() or 'unknown')}",
-        level=EventLevel.WORKFLOW,
-        domain="sdlc",
-        subject=subject,
-        description=f"Deployment completed for {slug} (merge {merge_commit[:8]})",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "branch": branch,
-            "sha": sha,
-            "merge_commit": merge_commit,
-            "integrated_at": ts,
-        },
-    )
-
-
-async def emit_deployment_failed(
-    slug: str,
-    branch: str,
-    sha: str,
-    *,
-    subject: EventSubject,
-    conflict_evidence: list[str] | None = None,
-    diagnostics: list[str] | None = None,
-    next_action: str = "",
-    blocked_at: str | None = None,
-) -> str:
-    """Emit deployment.failed when integration is blocked."""
-    ts = blocked_at or datetime.now(UTC).isoformat()
-    return await emit_event(
-        event="domain.sdlc.deployment.failed",
-        source=f"integrator/{(get_session_id() or 'unknown')}",
-        level=EventLevel.BUSINESS,
-        domain="sdlc",
-        subject=subject,
-        description=f"Deployment failed for {slug} ({branch}@{sha[:8]})",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "branch": branch,
-            "sha": sha,
-            "conflict_evidence": conflict_evidence or [],
-            "diagnostics": diagnostics or [],
-            "next_action": next_action,
-            "blocked_at": ts,
-        },
-        visibility=EventVisibility.LOCAL,
-        human_action=HumanActionIntent(
-            topic="Integration is blocked",
-            summary=f"Deployment failed for {slug}.",
-            action=next_action or "Investigate the integration failure",
+    return await publish_event(
+        ReviewApproved(
+            subject=TodoRef(slug),
+            home=home,
+            data=ReviewApprovedData(
+                slug=slug,
+                review_round=review_round,
+                reviewer_session_id=reviewer_session_id,
+                approved_at=ts,
+            ),
+        ),
+        LegacyFacts(
+            producer=f"orchestrator/{(get_session_id() or 'unknown')}",
+            level=EventLevel.WORKFLOW,
+            domain=_SDLC_DOMAIN,
+            entity=slug,
+            description=f"Review approved for {slug} (round {review_round})",
         ),
     )
 
@@ -150,22 +101,22 @@ async def emit_integration_started(
     session_id: str,
     queue_depth: int,
     *,
-    subject: EventSubject,
+    home: EventHome,
 ) -> str:
     """Emit integration.started when the state machine begins processing a candidate."""
-    return await emit_event(
-        event=IntegrationEventType.STARTED,
-        source=f"integrator/{session_id or (get_session_id() or 'unknown')}",
-        level=EventLevel.WORKFLOW,
-        domain="sdlc",
-        subject=subject,
-        description=f"Integration started for {slug} (queue depth: {queue_depth})",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "session_id": session_id,
-            "queue_depth": queue_depth,
-        },
+    return await publish_event(
+        IntegrationStarted(
+            subject=TodoRef(slug),
+            home=home,
+            data=IntegrationStartedData(slug=slug, session_id=session_id, queue_depth=queue_depth),
+        ),
+        LegacyFacts(
+            producer=_INTEGRATOR_SOURCE.format(session_id=session_id or (get_session_id() or _UNKNOWN_SESSION)),
+            level=EventLevel.WORKFLOW,
+            domain=_SDLC_DOMAIN,
+            entity=slug,
+            description=f"Integration started for {slug} (queue depth: {queue_depth})",
+        ),
     )
 
 
@@ -174,25 +125,29 @@ async def emit_integration_candidate_delivered(
     branch: str,
     merge_commit_sha: str,
     *,
-    subject: EventSubject,
+    home: EventHome,
     integrated_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.delivered after a candidate is fully integrated."""
     ts = integrated_at or datetime.now(UTC).isoformat()
-    return await emit_event(
-        event=IntegrationEventType.CANDIDATE_DELIVERED,
-        source=f"integrator/{(get_session_id() or 'unknown')}",
-        level=EventLevel.WORKFLOW,
-        domain="sdlc",
-        subject=subject,
-        description=f"Candidate delivered: {slug} ({branch} \u2192 main, merge {merge_commit_sha[:8]})",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "branch": branch,
-            "merge_commit_sha": merge_commit_sha,
-            "integrated_at": ts,
-        },
+    return await publish_event(
+        IntegrationCandidateDelivered(
+            subject=TodoRef(slug),
+            home=home,
+            data=CandidateDeliveredData(
+                slug=slug,
+                branch=branch,
+                merge_commit_sha=merge_commit_sha,
+                integrated_at=ts,
+            ),
+        ),
+        LegacyFacts(
+            producer=_INTEGRATOR_SOURCE.format(session_id=get_session_id() or _UNKNOWN_SESSION),
+            level=EventLevel.WORKFLOW,
+            domain=_SDLC_DOMAIN,
+            entity=slug,
+            description=f"Candidate delivered: {slug} ({branch} \u2192 main, merge {merge_commit_sha[:8]})",
+        ),
     )
 
 
@@ -201,28 +156,26 @@ async def emit_integration_candidate_blocked(
     branch: str,
     sha: str,
     *,
-    subject: EventSubject,
+    home: EventHome,
     reason: str = "",
     blocked_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.blocked when a candidate cannot be integrated."""
     ts = blocked_at or datetime.now(UTC).isoformat()
-    return await emit_event(
-        event=IntegrationEventType.CANDIDATE_BLOCKED,
-        source=f"integrator/{(get_session_id() or 'unknown')}",
-        level=EventLevel.BUSINESS,
-        domain="sdlc",
-        subject=subject,
-        description=f"Integration blocked for {slug} ({branch}@{sha[:8]}): {reason or 'unknown reason'}",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "branch": branch,
-            "sha": sha,
-            "reason": reason,
-            "blocked_at": ts,
-        },
-        visibility=EventVisibility.LOCAL,
+    return await publish_event(
+        IntegrationCandidateBlocked(
+            subject=TodoRef(slug),
+            home=home,
+            data=CandidateBlockedData(slug=slug, branch=branch, sha=sha, reason=reason, blocked_at=ts),
+        ),
+        LegacyFacts(
+            producer=_INTEGRATOR_SOURCE.format(session_id=get_session_id() or _UNKNOWN_SESSION),
+            level=EventLevel.BUSINESS,
+            domain=_SDLC_DOMAIN,
+            visibility=EventVisibility.LOCAL,
+            entity=slug,
+            description=f"Integration blocked for {slug} ({branch}@{sha[:8]}): {reason or 'unknown reason'}",
+        ),
     )
 
 
@@ -232,33 +185,26 @@ async def emit_integration_candidate_parked(
     sha: str,
     reason: str,
     *,
-    subject: EventSubject,
+    home: EventHome,
     parked_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.parked when a candidate is set aside."""
     ts = parked_at or datetime.now(UTC).isoformat()
     session_id = get_session_id() or _UNKNOWN_SESSION
-    return await emit_event(
-        event=IntegrationEventType.CANDIDATE_PARKED,
-        source=_INTEGRATOR_SOURCE.format(session_id=session_id),
-        level=EventLevel.BUSINESS,
-        domain=_SDLC_DOMAIN,
-        subject=subject,
-        description=_CANDIDATE_PARKED_DESCRIPTION.format(
-            slug=slug,
-            branch=branch,
-            sha=sha[:8],
-            reason=reason,
+    return await publish_event(
+        IntegrationCandidateParked(
+            subject=TodoRef(slug),
+            home=home,
+            data=CandidateParkedData(slug=slug, branch=branch, sha=sha, reason=reason, parked_at=ts),
         ),
-        entity=slug,
-        payload={
-            "slug": slug,
-            "branch": branch,
-            "sha": sha,
-            "reason": reason,
-            "parked_at": ts,
-        },
-        visibility=EventVisibility.LOCAL,
+        LegacyFacts(
+            producer=_INTEGRATOR_SOURCE.format(session_id=session_id),
+            level=EventLevel.BUSINESS,
+            domain=_SDLC_DOMAIN,
+            visibility=EventVisibility.LOCAL,
+            entity=slug,
+            description=_CANDIDATE_PARKED_DESCRIPTION.format(slug=slug, branch=branch, sha=sha[:8], reason=reason),
+        ),
     )
 
 
@@ -267,30 +213,31 @@ async def emit_integration_drain_completed(
     delivered_count: int,
     parked: list[ParkedCandidate],
     *,
-    subject: EventSubject,
+    home: EventHome,
     completed_at: str | None = None,
 ) -> str:
     """Emit integration.drain.completed with the drain's complete outcome."""
     ts = completed_at or datetime.now(UTC).isoformat()
     source_session_id = session_id or (get_session_id() or _UNKNOWN_SESSION)
-    return await emit_event(
-        event=IntegrationEventType.DRAIN_COMPLETED,
-        source=_INTEGRATOR_SOURCE.format(session_id=source_session_id),
-        level=EventLevel.BUSINESS,
-        domain=_SDLC_DOMAIN,
-        subject=subject,
-        description=_DRAIN_COMPLETED_DESCRIPTION.format(
-            delivered_count=delivered_count,
-            parked_count=len(parked),
+    return await publish_event(
+        IntegrationDrainCompleted(
+            subject=SessionRef(source_session_id),
+            home=home,
+            data=DrainCompletedData(
+                session_id=source_session_id,
+                delivered_count=delivered_count,
+                parked=[ParkedCandidateData(**candidate) for candidate in parked],
+                completed_at=ts,
+            ),
         ),
-        entity=source_session_id,
-        payload={
-            "session_id": source_session_id,
-            "delivered_count": delivered_count,
-            "parked": [dict(candidate) for candidate in parked],
-            "completed_at": ts,
-        },
-        visibility=EventVisibility.LOCAL,
+        LegacyFacts(
+            producer=_INTEGRATOR_SOURCE.format(session_id=source_session_id),
+            level=EventLevel.BUSINESS,
+            domain=_SDLC_DOMAIN,
+            visibility=EventVisibility.LOCAL,
+            entity=source_session_id,
+            description=_DRAIN_COMPLETED_DESCRIPTION.format(delivered_count=delivered_count, parked_count=len(parked)),
+        ),
     )
 
 

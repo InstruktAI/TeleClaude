@@ -60,6 +60,8 @@ _REFRESH_COMPUTER_FIELD = "computer"
 _REFRESH_PROJECT_PATH_FIELD = "project_path"
 _REFRESH_SUBJECT_FIELD = "subject"
 _REFRESH_OWNER_FIELD = "owner"
+_NOTIFICATION_HOME_FIELD = "home"
+_NOTIFICATION_HOME_OWNER_FIELD = "home_owner"
 _REFRESH_PROJECTS_UPDATED_EVENT = "projects_updated"
 _REFRESH_COMPUTER_UPDATED_EVENT = "computer_updated"
 _REFRESH_PUSH_EVENT = "refresh"
@@ -897,8 +899,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         break
                     try:
                         visible = reach_cache.get().admits(
-                            row.get(_REFRESH_SUBJECT_FIELD),
-                            row.get(_REFRESH_OWNER_FIELD),
+                            row.get(_NOTIFICATION_HOME_FIELD),
+                            row.get(_NOTIFICATION_HOME_OWNER_FIELD),
                             None,
                         )
                     except ReachResolutionError as exc:

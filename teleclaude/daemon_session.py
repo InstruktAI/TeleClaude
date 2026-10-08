@@ -66,8 +66,11 @@ from teleclaude.core.tmux_bridge import input_effect_scope
 from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.envelope_facts import subject_for_session_config
-from teleclaude.events.producer import emit_event
+from teleclaude.events.envelope_facts import home_for_session_config
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import SessionRef
+from teleclaude.events.schemas.system import SessionBootstrapFailed, SessionBootstrapFailedData
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
 
@@ -409,26 +412,30 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         )
         if not success:
             logger.error("Bootstrap failed for %s — session left in initializing state", session_id)
-            await emit_event(
-                event="system.session.bootstrap_failed",
-                source="daemon",
-                level=EventLevel.OPERATIONAL,
-                domain="system",
-                visibility=EventVisibility.CLUSTER,
-                subject=subject_for_session_config(session.config_subject),
-                human_action=HumanActionIntent(
-                    topic="Session bootstrap failed",
-                    summary="The session is stranded in initializing.",
-                    action="Inspect and re-create or clean up",
-                    origin_session_id=session_id,
+            await publish_event(
+                SessionBootstrapFailed(
+                    subject=SessionRef(session_id),
+                    home=home_for_session_config(session.config_subject),
+                    data=SessionBootstrapFailedData(
+                        session_id=session_id,
+                        project_path=session.project_path,
+                        reason="ensure_tmux_with_identity returned False",
+                    ),
                 ),
-                entity=session_id,
-                description=f"Session {session_id} bootstrap failed — stranded in initializing",
-                payload={
-                    "session_id": session_id,
-                    "project_path": session.project_path,
-                    "reason": "ensure_tmux_with_identity returned False",
-                },
+                LegacyFacts(
+                    producer="daemon",
+                    level=EventLevel.OPERATIONAL,
+                    domain="system",
+                    visibility=EventVisibility.CLUSTER,
+                    human_action=HumanActionIntent(
+                        topic="Session bootstrap failed",
+                        summary="The session is stranded in initializing.",
+                        action="Inspect and re-create or clean up",
+                        origin_session_id=session_id,
+                    ),
+                    entity=session_id,
+                    description=f"Session {session_id} bootstrap failed — stranded in initializing",
+                ),
             )
             await self._finish_startup(startup, StartupHandoverState.FAILED)
             return

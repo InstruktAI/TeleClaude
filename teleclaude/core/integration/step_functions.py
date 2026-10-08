@@ -69,7 +69,7 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.lifecycle_events import (
     _EVENT_INTEGRATION_DRAIN_COMPLETED,
     _emit_lifecycle_event,
-    _workflow_subject_for_path,
+    _workflow_home_for_path,
 )
 from teleclaude.core.integration.park import (
     _TEXTUAL_CONFLICT_PARK_REASON,
@@ -217,7 +217,7 @@ def _step_idle(
                     "parked": checkpoint.parked,
                     "completed_at": _now_iso(),
                 },
-                _workflow_subject_for_path(cwd),
+                _workflow_home_for_path(cwd),
             )
         return False, _format_queue_empty(
             checkpoint.items_processed,
@@ -253,12 +253,12 @@ def _step_idle(
     _emit_lifecycle_event(
         "integration.started",
         {"slug": key.slug, "session_id": session_id, "queue_depth": len(candidates)},
-        _workflow_subject_for_path(cwd),
+        _workflow_home_for_path(cwd),
     )
     _emit_lifecycle_event(
         "integration.candidate.dequeued",
         {"slug": key.slug, "branch": key.branch, "sha": key.sha},
-        _workflow_subject_for_path(cwd),
+        _workflow_home_for_path(cwd),
     )
 
     # Go straight to merge — worktree isolation + push rejection handle concurrency
@@ -295,7 +295,7 @@ def _do_merge(
         _emit_lifecycle_event(
             "integration.candidate.already_merged",
             {"slug": key.slug, "branch": key.branch, "sha": key.sha},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
         _write_checkpoint(checkpoint_path, checkpoint)
@@ -326,7 +326,7 @@ def _do_merge(
         _emit_lifecycle_event(
             "integration.candidate.already_merged",
             {"slug": key.slug, "branch": key.branch, "sha": key.sha},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         # Clean up SQUASH_MSG left by git (worktree-aware path)
         gd = _git_dir(wt)
@@ -368,7 +368,7 @@ def _do_merge(
         _emit_lifecycle_event(
             "integration.merge.succeeded",
             {"slug": key.slug, "branch": key.branch},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info("%s slug=%s phase=MERGE_CLEAN", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
@@ -392,7 +392,7 @@ def _do_merge(
         _emit_lifecycle_event(
             "integration.merge.conflicted",
             {"slug": key.slug, "branch": key.branch, "conflicted_files": conflicted_files},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info(
             "%s slug=%s phase=MERGE_CONFLICTED files=%d", _NEXT_INTEGRATE_PHASE_LOG, key.slug, len(conflicted_files)
@@ -433,7 +433,7 @@ def _step_awaiting_commit(
         _emit_lifecycle_event(
             "integration.candidate.committed",
             {"slug": key.slug, "commit_sha": head_sha},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info("%s slug=%s phase=COMMITTED commit=%s", _NEXT_INTEGRATE_PHASE_LOG, key.slug, head_sha)
         return True, ""  # loop into COMMITTED
@@ -474,7 +474,7 @@ def _step_awaiting_commit(
                     checkpoint_path=checkpoint_path,
                     key=key,
                     reason=_TEXTUAL_CONFLICT_PARK_REASON,
-                    subject=_workflow_subject_for_path(cwd),
+                    home=_workflow_home_for_path(cwd),
                 )
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
@@ -568,7 +568,7 @@ def _step_delivery_bookkeeping(
         _emit_lifecycle_event(
             "integration.push.succeeded",
             {"slug": key.slug, "commit_sha": head_sha or "unknown"},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return True, ""  # loop into PUSH_SUCCEEDED
@@ -577,7 +577,7 @@ def _step_delivery_bookkeeping(
         _emit_lifecycle_event(
             "integration.push.rejected",
             {"slug": key.slug, "rejection_reason": rejection},
-            _workflow_subject_for_path(cwd),
+            _workflow_home_for_path(cwd),
         )
 
         if _is_content_gate_rejection(rejection):
@@ -592,7 +592,7 @@ def _step_delivery_bookkeeping(
             _emit_lifecycle_event(
                 "integration.candidate.blocked",
                 {"slug": key.slug, "branch": key.branch, "sha": key.sha, "reason": rejection},
-                _workflow_subject_for_path(cwd),
+                _workflow_home_for_path(cwd),
             )
             logger.info("%s slug=%s phase=CONTENT_GATE_BLOCKED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
             return False, _format_content_gate_conflict_or_invariant_error(
@@ -867,7 +867,7 @@ def _run_final_content_gate(
             _FINAL_GATE_FIELD_OUTCOME: result.outcome.value,
             _FINAL_GATE_FIELD_REASON: result.reason,
         },
-        _workflow_subject_for_path(project_root),
+        _workflow_home_for_path(project_root),
     )
     return result
 
@@ -920,7 +920,7 @@ def _do_cleanup(
     _emit_lifecycle_event(
         "integration.candidate.delivered",
         {"slug": key.slug, "branch": key.branch, "merge_commit_sha": merge_commit},
-        _workflow_subject_for_path(cwd),
+        _workflow_home_for_path(cwd),
     )
 
     checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value

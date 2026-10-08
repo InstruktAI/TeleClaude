@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -55,15 +55,17 @@ from teleclaude.cron.state import (
     project_slug_for_job_key,
 )
 from teleclaude.events.envelope import (
-    EventEnvelope,
     EventHomeKind,
+    EventHomeMarker,
     EventHomeRef,
     EventLevel,
-    EventSubjectMarker,
     EventVisibility,
+    occurrence_id,
 )
 from teleclaude.events.producer import ensure_event_producer
-from teleclaude.events.schemas.jobs import JobRunEventType
+from teleclaude.events.references import JobRef
+from teleclaude.events.schemas.jobs import JobRunData, JobRunEventType, JobRunFailed, JobRunStalled, JobRunSucceeded
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_root import resolve_project_root
 from teleclaude.runtime.config import require_own_checkout
@@ -507,6 +509,7 @@ def _pending_emission_for_result(
         message=result.message,
         items=result.items_processed,
         actionable=not result.success,
+        run_started_at=run_started_at.isoformat(),
     )
 
 
@@ -519,6 +522,7 @@ def _pending_emission_for_stall(job_name: str, *, run_started_at: datetime, mess
         message=message,
         items=0,
         actionable=True,
+        run_started_at=run_started_at.isoformat(),
     )
 
 
@@ -557,7 +561,17 @@ def _event_level_for_status(status: JobRunStatus) -> EventLevel:
     return EventLevel.OPERATIONAL
 
 
-def _envelope_for_pending_emission(emission: PendingEmission) -> EventEnvelope:
+_JOB_RUN_EVENTS: Final[Mapping[JobRunEventType, type[JobRunSucceeded | JobRunFailed | JobRunStalled]]] = {
+    JobRunEventType.SUCCEEDED: JobRunSucceeded,
+    JobRunEventType.FAILED: JobRunFailed,
+    JobRunEventType.STALLED: JobRunStalled,
+}
+
+
+def _event_for_pending_emission(
+    emission: PendingEmission,
+) -> tuple[JobRunSucceeded | JobRunFailed | JobRunStalled, LegacyFacts]:
+    """Build the job-run outcome a pending emission reports: about the job, with the run start as data."""
     human_action = None
     if emission.status in (JobRunStatus.FAILED, JobRunStatus.STALLED):
         human_action = HumanActionIntent(
@@ -566,28 +580,32 @@ def _envelope_for_pending_emission(emission: PendingEmission) -> EventEnvelope:
             action="Investigate the job",
         )
     project_slug = project_slug_for_job_key(emission.job_name)
-    subject = (
-        EventHomeRef(EventHomeKind.PROJECT, project_slug) if project_slug is not None else EventSubjectMarker.UNKNOWN
+    home = EventHomeRef(EventHomeKind.PROJECT, project_slug) if project_slug is not None else EventHomeMarker.UNKNOWN
+    event_class = _JOB_RUN_EVENTS[JobRunEventType(emission.event_type)]
+    event = event_class(
+        id=occurrence_id(emission.idempotency_key, emission.event_type),
+        subject=JobRef(emission.job_name),
+        home=home,
+        data=JobRunData(
+            job_name=emission.job_name,
+            status=emission.status.value,
+            message=emission.message,
+            items=emission.items,
+            run_started_at=emission.run_started_at,
+        ),
     )
-    return EventEnvelope(
-        event=emission.event_type,
-        source="cron.runner",
+    legacy = LegacyFacts(
+        producer="cron.runner",
         level=_event_level_for_status(emission.status),
         domain="jobs",
-        subject=subject,
         description=emission.message,
         visibility=EventVisibility.CLUSTER,
         entity=emission.job_name,
         idempotency_key=emission.idempotency_key,
         human_action=human_action,
-        payload={
-            "job_name": emission.job_name,
-            "status": emission.status.value,
-            "message": emission.message,
-            "items": emission.items,
-            "actionable": emission.actionable,
-        },
+        payload_extras={"actionable": emission.actionable},
     )
+    return event, legacy
 
 
 def _drain_pending_emissions(state: CronState) -> None:
@@ -599,7 +617,7 @@ def _drain_pending_emissions(state: CronState) -> None:
     async def _drain() -> list[str]:
         published: list[str] = []
         for emission in pending:
-            await producer.emit(_envelope_for_pending_emission(emission))
+            await producer.emit(*_event_for_pending_emission(emission))
             published.append(emission.idempotency_key)
         return published
 

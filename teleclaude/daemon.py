@@ -24,6 +24,7 @@ _IMPORT_TIMINGS: list[tuple[str, float, float]] = []
 logger = get_logger("teleclaude.daemon")
 
 # The conversation upkeep task: its asyncio name, failure label, attribute and stop message.
+_MACHINE_CONFIGURATION = "machine"
 _CONVERSATION_UPKEEP_TASK_NAME = "conversation-upkeep"
 _CONVERSATION_UPKEEP_LABEL = "conversation_upkeep"
 _CONVERSATION_UPKEEP_ATTR = "conversation_upkeep_task"
@@ -218,13 +219,20 @@ _record_import_timing("teleclaude.daemon_session", _t)
 
 _t = time.perf_counter()
 from teleclaude.events import EventDB
-from teleclaude.events.envelope import (
-    EventLevel,
-    EventSubjectMarker,
-    EventVisibility,
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility
+from teleclaude.events.envelope_facts import home_for_project_path as _workflow_event_home
+from teleclaude.events.producer import publish_event
+from teleclaude.events.references import ConfigurationRef, TodoRef
+from teleclaude.events.schemas.sdlc import (
+    TodoDelivered,
+    TodoDeliveredData,
+    TodoFinalizeReady,
+    TodoFinalizeReadyData,
+    TodoPhaseAdvanced,
+    TodoPhaseAdvancedData,
 )
-from teleclaude.events.envelope_facts import subject_for_project_path as _workflow_event_subject
-from teleclaude.events.producer import emit_event
+from teleclaude.events.schemas.system import EffectiveConfigUpdated, EffectiveConfigUpdatedData
+from teleclaude.events.wire import LegacyFacts
 
 _record_import_timing("teleclaude.events", _t)
 
@@ -635,58 +643,70 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 finalize_state = finalize if isinstance(finalize, dict) else {}
                 sha = str(finalize_state.get("sha", ""))
                 branch = str(finalize_state.get("branch", slug))
-                await emit_event(
-                    event="domain.sdlc.planning.todo_finalize_ready",
-                    source="workflow",
-                    level=EventLevel.WORKFLOW,
-                    domain="sdlc",
-                    visibility=EventVisibility.LOCAL,
-                    entity=slug,
-                    subject=_workflow_event_subject(project_root),
-                    description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
-                    payload={
-                        "slug": slug,
-                        "branch": branch,
-                        "sha": sha,
-                        "project_path": project_root,
-                        "worker_session_id": str(finalize_state.get("worker_session_id", "")),
-                        "ready_at": str(finalize_state.get("ready_at", "")),
-                    },
+                await publish_event(
+                    TodoFinalizeReady(
+                        subject=TodoRef(slug),
+                        home=_workflow_event_home(project_root),
+                        data=TodoFinalizeReadyData(
+                            slug=slug,
+                            branch=branch,
+                            sha=sha,
+                            project_path=project_root,
+                            worker_session_id=str(finalize_state.get("worker_session_id", "")),
+                            ready_at=str(finalize_state.get("ready_at", "")),
+                        ),
+                    ),
+                    LegacyFacts(
+                        producer="workflow",
+                        level=EventLevel.WORKFLOW,
+                        domain="sdlc",
+                        visibility=EventVisibility.LOCAL,
+                        entity=slug,
+                        description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
+                    ),
                 )
 
             async def _emit_phase_advanced(slug: str, prior_phase: str, new_phase: str) -> None:
-                await emit_event(
-                    event="workflow.todo.phase_advanced",
-                    source="workflow",
-                    level=EventLevel.WORKFLOW,
-                    domain="sdlc",
-                    entity=slug,
-                    subject=_workflow_event_subject(project_root),
-                    description=f"Lifecycle phase advanced for {slug}: {prior_phase} -> {new_phase}",
-                    payload={
-                        "slug": slug,
-                        "prior_lifecycle_phase": prior_phase,
-                        "lifecycle_phase": new_phase,
-                        "project_path": project_root,
-                    },
+                await publish_event(
+                    TodoPhaseAdvanced(
+                        subject=TodoRef(slug),
+                        home=_workflow_event_home(project_root),
+                        data=TodoPhaseAdvancedData(
+                            slug=slug,
+                            prior_lifecycle_phase=prior_phase,
+                            lifecycle_phase=new_phase,
+                            project_path=project_root,
+                        ),
+                    ),
+                    LegacyFacts(
+                        producer="workflow",
+                        level=EventLevel.WORKFLOW,
+                        domain="sdlc",
+                        entity=slug,
+                        description=f"Lifecycle phase advanced for {slug}: {prior_phase} -> {new_phase}",
+                    ),
                 )
 
             async def _emit_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
-                await emit_event(
-                    event="workflow.todo.delivered",
-                    source="workflow",
-                    level=EventLevel.WORKFLOW,
-                    domain="sdlc",
-                    visibility=EventVisibility.LOCAL,
-                    entity=slug,
-                    subject=_workflow_event_subject(project_root),
-                    description=f"Delivered {slug}",
-                    payload={
-                        "slug": slug,
-                        "project_path": project_root,
-                        "delivery_commit": delivery_commit,
-                        "delivered_at": delivered_at,
-                    },
+                await publish_event(
+                    TodoDelivered(
+                        subject=TodoRef(slug),
+                        home=_workflow_event_home(project_root),
+                        data=TodoDeliveredData(
+                            slug=slug,
+                            project_path=project_root,
+                            delivery_commit=delivery_commit,
+                            delivered_at=delivered_at,
+                        ),
+                    ),
+                    LegacyFacts(
+                        producer="workflow",
+                        level=EventLevel.WORKFLOW,
+                        domain="sdlc",
+                        visibility=EventVisibility.LOCAL,
+                        entity=slug,
+                        description=f"Delivered {slug}",
+                    ),
                 )
 
             def _on_mutation(event_hint: str = "todo_updated", event_data: object | None = None) -> None:
@@ -1212,20 +1232,20 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if not changed:
             return
         try:
-            await emit_event(
-                event="config.effective.updated",
-                source="daemon.config_watcher",
-                level=EventLevel.WORKFLOW,
-                domain="config",
-                subject=EventSubjectMarker.NONE,
-                payload={
-                    "project_path": str(WORKING_DIR),
-                    "changed_sections": sorted(changed),
-                    "updated_at": datetime.now(UTC).isoformat(),
-                },
+            await publish_event(
+                EffectiveConfigUpdated(
+                    subject=ConfigurationRef(_MACHINE_CONFIGURATION),
+                    home=EventHomeMarker.NONE,
+                    data=EffectiveConfigUpdatedData(
+                        project_path=str(WORKING_DIR),
+                        changed_sections=sorted(changed),
+                        updated_at=datetime.now(UTC).isoformat(),
+                    ),
+                ),
+                LegacyFacts(producer="daemon.config_watcher", level=EventLevel.WORKFLOW, domain="config"),
             )
         except RuntimeError:
-            logger.info("config.effective.updated not emitted: event producer unavailable")
+            logger.info("teleclaude.config.effective.updated not emitted: event producer unavailable")
         if "tts" in changed:
             self.tts_manager.reload()
         if "chiptunes" in changed:

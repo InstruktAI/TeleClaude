@@ -11,16 +11,18 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import db as core_db
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
-from teleclaude.events.envelope import EventEnvelope, subject_owner_token, subject_token
+from teleclaude.events.envelope import home_owner_token, home_token
+from teleclaude.events.notification_rules import rule_for
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.wire import StreamEvent
 
 logger = get_logger(__name__)
 _MISSING_GROUP_VALUE_LOG = "notification occurrence rejected: missing group value"
 
 
-def _notification_subject_facts(event: EventEnvelope) -> tuple[str, str]:
-    """Project the envelope's typed subject and owner markers without payload inference."""
-    return subject_token(event.subject), subject_owner_token(event.subject_owner)
+def _notification_home_facts(event: StreamEvent) -> tuple[str, str]:
+    """Project the event's typed home and owner markers without payload inference."""
+    return home_token(event.home), home_owner_token(event.home_owner)
 
 
 @dataclass(frozen=True)
@@ -52,28 +54,28 @@ class NotificationProjectorCartridge:
         """Return cartridge name."""
         return self.name
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
         """Create, update, or resolve notifications based on event lifecycle metadata."""
         # Fast-path: if _classification is present and treatment is signal-only, skip notification logic
-        classification = event.payload.get("_classification")
+        classification = event.data.get("_classification")
         if isinstance(classification, dict) and classification.get("treatment") == "signal-only":
             return event
 
-        schema = context.catalog.get(event.event)
-        if schema is None or schema.lifecycle is None:
+        rule = rule_for(event.type)
+        if rule is None or rule.lifecycle is None:
             return event
 
-        lc = schema.lifecycle
+        lc = rule.lifecycle
         notification_id: int | None = None
         was_created = False
         is_meaningful = False
-        recipient_raw = event.payload.get("recipient")
+        recipient_raw = event.data.get("recipient")
         recipient = str(recipient_raw) if recipient_raw else None
         family = lc.family.value if lc.family else None
-        subject, subject_owner = _notification_subject_facts(event)
+        home, home_owner = _notification_home_facts(event)
 
         if lc.group_key and not _group_value(event, lc.group_key):
-            logger.error(_MISSING_GROUP_VALUE_LOG, event_type=event.event, group_key=lc.group_key)
+            logger.error(_MISSING_GROUP_VALUE_LOG, event_type=event.type, group_key=lc.group_key)
             return event
 
         if lc.creates and lc.updates and lc.group_key:
@@ -85,10 +87,10 @@ class NotificationProjectorCartridge:
                 is_meaningful = _meaningful_value_changed(event, existing["payload"], lc.meaningful_fields)
                 await context.db.update_notification_fields(
                     notification_id,
-                    event.description,
-                    event.payload,
-                    subject,
-                    subject_owner,
+                    event.legacy.description,
+                    event.data,
+                    home,
+                    home_owner,
                     reset_human_status=is_meaningful,
                 )
             else:
@@ -108,10 +110,10 @@ class NotificationProjectorCartridge:
                 is_meaningful = _meaningful_value_changed(event, existing["payload"], lc.meaningful_fields)
                 await context.db.update_notification_fields(
                     notification_id,
-                    event.description,
-                    event.payload,
-                    subject,
-                    subject_owner,
+                    event.legacy.description,
+                    event.data,
+                    home,
+                    home_owner,
                     reset_human_status=is_meaningful,
                 )
             else:
@@ -125,7 +127,7 @@ class NotificationProjectorCartridge:
             existing = await context.db.find_active_incident(family, lc.group_key, group_val, recipient)
             if existing:
                 notification_id = existing["id"]
-                await context.db.resolve_notification(notification_id, event.payload)
+                await context.db.resolve_notification(notification_id, event.data)
 
         if notification_id is not None:
             group_identity = str(notification_id)
@@ -133,7 +135,7 @@ class NotificationProjectorCartridge:
                 group_val = _group_value(event, lc.group_key)
                 if group_val:
                     group_identity = group_val
-            intent = event.human_action
+            intent = event.legacy.human_action
             if intent is None:
                 return event
             row = await context.db.get_notification(notification_id)
@@ -145,17 +147,17 @@ class NotificationProjectorCartridge:
                 context,
                 PushNotificationChange(
                     notification_id=notification_id,
-                    event_type=event.event,
-                    level=int(event.level),
+                    event_type=event.type,
+                    level=int(event.legacy.level),
                     was_created=was_created,
                     is_meaningful=is_meaningful,
-                    actionable=schema.actionable,
+                    actionable=rule.actionable,
                     group_identity=group_identity,
-                    delivery_debounce_s=schema.delivery_debounce_s,
+                    delivery_debounce_s=rule.delivery_debounce_s,
                     recipient=recipient,
                     human_action=intent,
-                    event_id=event.event_id,
-                    occurred_at=event.timestamp.isoformat(),
+                    event_id=event.id,
+                    occurred_at=event.time.isoformat(),
                     discord_backlink_url=backlink_url,
                     discord_backlink_miss_reason=backlink_miss_reason,
                 ),
@@ -183,17 +185,17 @@ async def _invoke_push_callbacks(context: PipelineContext, change: PushNotificat
             )
 
 
-def _group_value(event: EventEnvelope, group_key: str) -> str:
-    """Return the required non-empty payload value used as an incident key."""
-    value = event.payload.get(group_key)
+def _group_value(event: StreamEvent, group_key: str) -> str:
+    """Return the required non-empty data value used as an incident key."""
+    value = event.data.get(group_key)
     return str(value).strip() if value is not None else ""
 
 
-def _meaningful_value_changed(event: EventEnvelope, stored_payload: str, meaningful_fields: list[str]) -> bool:
+def _meaningful_value_changed(event: StreamEvent, stored_payload: str, meaningful_fields: list[str]) -> bool:
     """Return whether a declared meaningful field differs from its stored value."""
     existing_payload = json.loads(stored_payload)
     return any(
-        field_name in event.payload and event.payload[field_name] != existing_payload.get(field_name)
+        field_name in event.data and event.data[field_name] != existing_payload.get(field_name)
         for field_name in meaningful_fields
     )
 

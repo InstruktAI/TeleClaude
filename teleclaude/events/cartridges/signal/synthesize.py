@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
+from teleclaude.events.references import SignalSynthesisRef
+from teleclaude.events.schemas.signal import SignalSynthesisReady, SignalSynthesisReadyData
 from teleclaude.events.signal.ai import SignalAIClient
 from teleclaude.events.signal.db import SignalDB
 from teleclaude.events.signal.fetch import fetch_full_content
+from teleclaude.events.wire import LegacyFacts, StreamEvent
 
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
@@ -50,17 +53,17 @@ class SignalSynthesizeCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
         """Synthesize cluster items into a digest summary."""
-        if event.event != "signal.cluster.formed":
+        if event.type != "teleclaude.signal.cluster.formed":
             return event
 
-        cluster_id = event.payload.get("cluster_id")
-        if cluster_id is None:
+        cluster_id = event.data.get("cluster_id")
+        if not isinstance(cluster_id, int):
             logger.warning("signal.cluster.formed event missing cluster_id; passing through")
             return event
 
-        members = await self._signal_db.get_cluster_members(int(cluster_id), limit=self._config.max_items_per_cluster)
+        members = await self._signal_db.get_cluster_members(cluster_id, limit=self._config.max_items_per_cluster)
         if not members:
             logger.warning("Cluster %s has no members; skipping synthesis", cluster_id)
             return event
@@ -93,20 +96,27 @@ class SignalSynthesizeCartridge:
             logger.error("Synthesis failed for cluster %s: %s", cluster_id, e, exc_info=True)
             return event
         artifact_dict = artifact.model_dump()
-        await self._signal_db.insert_synthesis(int(cluster_id), artifact_dict)
+        await self._signal_db.insert_synthesis(cluster_id, artifact_dict)
 
-        description = artifact.summary[:200]
-        return EventEnvelope(
-            event="signal.synthesis.ready",
-            source="signal-synthesize",
-            level=EventLevel.WORKFLOW,
-            domain="signal",
-            visibility=EventVisibility.LOCAL,
-            subject=EventSubjectMarker.NONE,
-            description=description,
-            idempotency_key=f"signal.synthesis.ready:{cluster_id}",
-            payload={
-                "cluster_id": cluster_id,
-                "synthesis": artifact_dict,
-            },
+        if context.producer is None:
+            logger.warning("signal synthesis: no producer configured, cannot publish the synthesis event")
+            return event
+        synthesis_key = f"signal.synthesis.ready:{cluster_id}"
+        await context.producer.emit(
+            SignalSynthesisReady(
+                id=occurrence_id(synthesis_key),
+                subject=SignalSynthesisRef(str(cluster_id)),
+                home=EventHomeMarker.NONE,
+                data=SignalSynthesisReadyData(cluster_id=cluster_id, synthesis=artifact_dict),
+                causationid=event.id,
+            ),
+            LegacyFacts(
+                producer="signal-synthesize",
+                level=EventLevel.WORKFLOW,
+                domain="signal",
+                visibility=EventVisibility.LOCAL,
+                description=artifact.summary[:200],
+                idempotency_key=synthesis_key,
+            ),
         )
+        return event

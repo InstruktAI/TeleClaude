@@ -22,7 +22,7 @@ from teleclaude.core.integration.checkpoint import (
 )
 from teleclaude.core.integration.formatters import _format_content_gate_conflict, _format_error
 from teleclaude.core.integration.lifecycle_events import _EVENT_INTEGRATION_CANDIDATE_PARKED, _emit_lifecycle_event
-from teleclaude.events.envelope import EventSubject
+from teleclaude.events.envelope import EventHome
 
 logger = get_logger(__name__)
 
@@ -36,7 +36,7 @@ def _park_candidate(
     checkpoint_path: Path,
     key: CandidateKey,
     reason: str,
-    subject: EventSubject,
+    home: EventHome,
 ) -> tuple[bool, str]:
     """Park a candidate for the current drain and reset to IDLE for the next dequeue.
 
@@ -55,7 +55,7 @@ def _park_candidate(
     )
     checkpoint.parked.append(parked)
     checkpoint.items_blocked += 1
-    _emit_lifecycle_event(_EVENT_INTEGRATION_CANDIDATE_PARKED, dict(parked), subject)
+    _emit_lifecycle_event(_EVENT_INTEGRATION_CANDIDATE_PARKED, dict(parked), home)
     _reset_candidate(checkpoint)
     _write_checkpoint(checkpoint_path, checkpoint)
     return True, ""

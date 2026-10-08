@@ -4,8 +4,8 @@ Three fixed route groups serve every home. The path names the declaring home, an
 the home's own configuration, read when the request arrives, opens or closes the
 endpoint. A request is verified under that home's secret over the raw body before
 it is parsed, translated into one or more ``<domain>.<name>`` events, and emitted
-on the platform event stream with the ingress as origin and the declaring home as
-subject. Delivery to this computer's handlers and to every other computer's is the
+on the platform event stream with the ingress as origin, the declared inbound source
+as subject and the declaring home as home. Delivery to this computer's handlers and to every other computer's is the
 stream consumers' work (``teleclaude.hooks.relay_delivery``); the request path
 dispatches nothing itself.
 """
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from http import HTTPMethod
-from typing import Final
+from typing import Final, cast
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from instrukt_ai_logging import get_logger
@@ -33,16 +33,18 @@ from teleclaude.config.inbound_sources import (
 )
 from teleclaude.config.schema import ProjectInboundSources, WhatsAppInboundSource
 from teleclaude.config_subjects import ConfigSubjectKind
+from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import (
-    EventEnvelope,
+    EventHome,
     EventHomeKind,
+    EventHomeMarker,
     EventHomeRef,
     EventLevel,
-    EventSubject,
-    EventSubjectMarker,
     EventVisibility,
 )
-from teleclaude.events.producer import EventProducer
+from teleclaude.events.producer import EventProducer, RelayedEvent
+from teleclaude.events.references import InboundSourceRef
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.hooks.delivery import compute_signature
 from teleclaude.hooks.normalizers.github import github_event_type
 from teleclaude.hooks.normalizers.whatsapp import whatsapp_message_type, whatsapp_messages
@@ -58,6 +60,8 @@ _INBOUND_WEBHOOK_RELAY_FAILED = "inbound_webhook_relay_failed"
 _INBOUND_DECLARATION_UNREADABLE = "inbound_declaration_unreadable"
 _ROUTE_TAG = "hooks-inbound"
 _HOME_DESCRIPTION = "{kind}/{slug}"
+_SOURCE_IDENTITY = "{protocol}:{home}"
+_GLOBAL_SOURCE_HOME = "global"
 _NO_HOME = "-"
 _WHATSAPP_ROUTE = INBOUND_PATH_PREFIX + "/whatsapp"
 _GITHUB_ROUTE = INBOUND_PATH_PREFIX + "/github/project/{slug}"
@@ -120,13 +124,13 @@ class _InvalidBody(Exception):
 
 @dataclass(frozen=True)
 class _Endpoint:
-    """One resolved endpoint: who declared it, how its requests are signed, and whom its events are about."""
+    """One resolved endpoint: who declared it, how its requests are signed, and the home its events belong to."""
 
     protocol: RelayProtocol
     home: str
     secret: str
     signature_header: str
-    subject: EventSubject
+    declaring_home: EventHome
 
 
 @dataclass(frozen=True)
@@ -238,7 +242,7 @@ async def _resolve_native(kind: str, slug: str) -> _Endpoint:
         home=home,
         secret=sources.native.secret,
         signature_header=_NATIVE_SIGNATURE_HEADER,
-        subject=EventHomeRef(home_kind, slug),
+        declaring_home=EventHomeRef(home_kind, slug),
     )
 
 
@@ -255,7 +259,7 @@ async def _resolve_github(slug: str) -> _Endpoint:
         home=home,
         secret=sources.github.secret,
         signature_header=_HUB_SIGNATURE_HEADER,
-        subject=EventHomeRef(EventHomeKind.PROJECT, slug),
+        declaring_home=EventHomeRef(EventHomeKind.PROJECT, slug),
     )
 
 
@@ -276,7 +280,7 @@ async def _resolve_whatsapp() -> _Endpoint:
         home=_NO_HOME,
         secret=source.secret,
         signature_header=_HUB_SIGNATURE_HEADER,
-        subject=EventSubjectMarker.NONE,
+        declaring_home=EventHomeMarker.NONE,
     )
 
 
@@ -302,19 +306,27 @@ class InboundRelay:
         return dict(_ACCEPTED_BODY)
 
     async def _emit(self, endpoint: _Endpoint, event: _RelayedEvent) -> None:
-        envelope = EventEnvelope(
-            event=event.name,
-            source=endpoint.protocol.value,
+        relayed = RelayedEvent(
+            type=event.name,
+            subject=InboundSourceRef(
+                _SOURCE_IDENTITY.format(
+                    protocol=endpoint.protocol.value,
+                    home=_GLOBAL_SOURCE_HOME if endpoint.home == _NO_HOME else endpoint.home,
+                )
+            ),
+            home=endpoint.declaring_home,
+            data=cast(JsonDict, event.payload),
+            time=datetime.now(UTC),
+        )
+        legacy = LegacyFacts(
+            producer=endpoint.protocol.value,
             level=EventLevel.BUSINESS,
             domain=event.domain,
             visibility=EventVisibility.CLUSTER,
-            subject=endpoint.subject,
-            payload=event.payload,
-            timestamp=datetime.now(UTC),
         )
-        hook_event = relayed_hook_event(envelope)
+        hook_event = relayed_hook_event(self._producer.stage(relayed, legacy))
         try:
-            await self._producer.emit(envelope)
+            await self._producer.emit(relayed, legacy)
         except Exception as error:
             logger.error(
                 _INBOUND_WEBHOOK_RELAY_FAILED,

@@ -488,7 +488,7 @@ FLAG_JOB_ERROR = Flag("--error", desc="Error detail; repeat for multiple errors"
 # events / mcp
 # =============================================================================
 
-FLAG_EVENTS_DOMAIN = Flag("--domain", desc="Filter by domain", arity=VALUE)
+FLAG_EVENTS_DOMAIN = Flag("--domain", desc="Filter by owner: the first segment of the type name", arity=VALUE)
 
 FLAG_MCP_EXCLUDE = Flag("--exclude", desc="Server slug to omit; repeat for specialized procedures", arity=REPEATED)
 FLAG_MCP_JSON = Flag("--json", desc="Print raw JSON response", arity=SWITCH)

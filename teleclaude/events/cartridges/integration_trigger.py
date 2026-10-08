@@ -1,6 +1,6 @@
 """Integration trigger cartridge — spawns integrator on todo_finalize_ready.
 
-Stateless: reacts to ``planning.todo_finalize_ready`` (emitted by the
+Stateless: reacts to ``sdlc.planning.todo_finalize_ready`` (emitted by the
 finalize-ready stamp) by ensuring the singleton integrator session exists.
 The integrator's own state machine scans worktree state to find candidates
 — no in-memory event accumulation needed here.
@@ -15,12 +15,12 @@ from typing import Any
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.wire import StreamEvent
 
 logger = get_logger(__name__)
 
-_SPAWN_EVENT = "domain.sdlc.planning.todo_finalize_ready"
+_SPAWN_EVENT = "sdlc.planning.todo_finalize_ready"
 
 IntegratorSpawnCallback = Callable[[str, str, str, str, str], Coroutine[Any, Any, Any] | None]
 
@@ -46,15 +46,15 @@ class IntegrationTriggerCartridge:
         self._spawn_callback = spawn_callback
         self._spawned_event_keys: set[tuple[str, str, str]] = set()
 
-    async def process(self, event: EventEnvelope, _context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: StreamEvent, _context: PipelineContext) -> StreamEvent | None:
         """On todo_finalize_ready, spawn the integrator. All other events pass through."""
-        if event.event != _SPAWN_EVENT:
+        if event.type != _SPAWN_EVENT:
             return event
-        origin = event.originating_computer
+        origin = event.source
         if origin and origin != config.computer.name:
             return event
 
-        payload = event.payload
+        payload = event.data
         slug = str(payload.get("slug", ""))
         branch = str(payload.get("branch", ""))
         sha = str(payload.get("sha", ""))
@@ -62,7 +62,7 @@ class IntegrationTriggerCartridge:
 
         logger.info(
             "Integration trigger processing %s (slug=%s, branch=%s, sha=%s)",
-            event.event,
+            event.type,
             slug,
             branch,
             sha[:8] if sha else "",

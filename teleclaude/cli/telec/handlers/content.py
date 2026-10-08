@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
@@ -15,9 +14,12 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CONTENT_DUMP
 from teleclaude.config import config
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
-from teleclaude.events.envelope import EventLevel, EventSubjectMarker
-from teleclaude.events.envelope_facts import cli_envelope_fact_resolver
-from teleclaude.events.producer import emit_event, loop_local_producer
+from teleclaude.events.envelope import EventHomeMarker, EventLevel
+from teleclaude.events.envelope_facts import cli_envelope_fact_resolver, cli_session_home
+from teleclaude.events.producer import loop_local_producer, publish_event
+from teleclaude.events.references import CapturedItemRef
+from teleclaude.events.schemas.content import ContentDumped, ContentDumpedData
+from teleclaude.events.wire import LegacyFacts
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.slug import normalize_slug
 
@@ -26,20 +28,11 @@ __all__ = [
     "_handle_content_dump",
 ]
 
-_CONTENT_DUMPED_EVENT = "content.dumped"
 _CONTENT_DUMP_SOURCE = "telec-cli"
 _CONTENT_DOMAIN = "content"
 _CONTENT_DUMPED_DESCRIPTION = "Content dumped: {path}"
 _EMIT_FAILED_LOG_EVENT = "content_dump_event_emit_failed"
 _REDIS_UNCONFIGURED_REASON = "redis_url_not_configured"
-
-
-class _ContentDumpPayload(TypedDict):
-    """Payload published with the `content.dumped` event."""
-
-    inbox_path: str
-    author: str
-    tags: list[str]
 
 
 def _handle_content(args: list[str]) -> None:
@@ -111,37 +104,37 @@ def _emit_content_dump_event(
     project_root: Path, entry_dir: Path, resolved_author: str, resolved_tags: list[str]
 ) -> None:
     relative_path = entry_dir.relative_to(project_root)
-    payload = _ContentDumpPayload(
-        inbox_path=str(relative_path),
-        author=resolved_author,
-        tags=resolved_tags,
-    )
+    inbox_path = str(relative_path)
     _log = get_logger(__name__)
 
     # The inbox entry is already durably written by the time this runs, and the
     # command's documented contract makes notification delivery optional — so an
     # unavailable notification service is logged rather than failed.
     if not config.redis.url:
-        _log.warning(_EMIT_FAILED_LOG_EVENT, inbox_path=payload["inbox_path"], error=_REDIS_UNCONFIGURED_REASON)
+        _log.warning(_EMIT_FAILED_LOG_EVENT, inbox_path=inbox_path, error=_REDIS_UNCONFIGURED_REASON)
         return
 
     async def emit() -> None:
         resolver = cli_envelope_fact_resolver()
         session_id = resolver.session_id()
-        session_subject = await resolver.session_home(session_id) if session_id else EventSubjectMarker.NONE
+        session_home = await cli_session_home(session_id) if session_id else EventHomeMarker.NONE
         async with loop_local_producer() as producer:
-            await emit_event(
-                _CONTENT_DUMPED_EVENT,
-                source=_CONTENT_DUMP_SOURCE,
-                level=EventLevel.WORKFLOW,
+            await publish_event(
+                ContentDumped(
+                    subject=CapturedItemRef(inbox_path),
+                    home=session_home,
+                    data=ContentDumpedData(inbox_path=inbox_path, author=resolved_author, tags=resolved_tags),
+                ),
+                LegacyFacts(
+                    producer=_CONTENT_DUMP_SOURCE,
+                    level=EventLevel.WORKFLOW,
+                    domain=_CONTENT_DOMAIN,
+                    description=_CONTENT_DUMPED_DESCRIPTION.format(path=relative_path),
+                ),
                 producer=producer,
-                domain=_CONTENT_DOMAIN,
-                subject=session_subject,
-                description=_CONTENT_DUMPED_DESCRIPTION.format(path=relative_path),
-                payload=payload,
             )
 
     try:
         asyncio.run(emit())
     except (RedisError, OSError, TimeoutError) as exc:
-        _log.warning(_EMIT_FAILED_LOG_EVENT, inbox_path=payload["inbox_path"], error=repr(exc))
+        _log.warning(_EMIT_FAILED_LOG_EVENT, inbox_path=inbox_path, error=repr(exc))
