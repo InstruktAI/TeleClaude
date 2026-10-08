@@ -104,12 +104,29 @@ implementation remain the current appliance contract.
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
+
+<!-- planned-change:procedure-activation-gated-on-company -->
+
 - **Does not own (procedure activation):** whether a standing agent exists,
   starting or waking it, or the identity it runs under. The activation
   handler's first act submits the activation to `agent_runtime` as a command
   addressed to its own computer with a durable operation receipt, so the
   operation exists before any fallible step; a submission that itself fails is
   emitted as a platform error event. It takes no further decision.
+
+<!-- change:procedure-activation-gated-on-company -->
+
+- **Does not own (procedure activation):** whether a standing agent exists,
+  starting or waking it, or the identity it runs under. For each match, the
+  activation consumer's first act submits the activation to `agent_runtime` as
+  a command addressed to its own computer with a durable operation receipt, so
+  the operation exists before any fallible step; a submission that itself fails
+  fails the consumer's handling of the event, which the consumer runtime
+  retries and, when it keeps failing, parks and announces. It takes no further
+  decision.
+
+<!-- /planned-change:procedure-activation-gated-on-company -->
+
 - **Owns (conversation entry, adapter side):** recognising an entry identifier
   in what a person sent — however the adapter carries it — and handing it to the
   core; on a per-computer adapter, keeping its lookup of a person's latest
