@@ -73,6 +73,8 @@ a refused read returns no configuration.
 
 ### Standing
 
+<!-- planned-change:config-clearance-drops-field-gates -->
+
 | Target               | Operation                                                                               | Standing required                               |
 | -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | computer, global     | list, get                                                                               | none beyond the verb band                       |
@@ -92,6 +94,30 @@ a refused read returns no configuration.
 | project              | patch                                                                                   | `admin` effective role for that project         |
 | company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
 | project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
+
+<!-- change:config-clearance-drops-field-gates -->
+
+| Target               | Operation                                                         | Standing required                                   |
+| -------------------- | ----------------------------------------------------------------- | --------------------------------------------------- |
+| computer, global     | list, get                                                         | none beyond the verb band                           |
+| computer, global     | init, patch                                                       | platform administrator                              |
+| person, own instance | get, patch                                                        | the person                                          |
+| person, any instance | get, patch                                                        | platform administrator                              |
+| person               | init; removal; invitation; voice-bot credential binding; list     | platform administrator                              |
+| person               | patch of organizational memberships                               | refused for every caller — read-only projection     |
+| company              | list                                                              | platform administrator                              |
+| company              | get, patch                                                        | `admin` effective role for that company             |
+| company              | init                                                              | none beyond the verb band                           |
+| project              | list, get; init of a registered project                           | none beyond the verb band                           |
+| project              | adopt, anywhere                                                   | a registered person                                 |
+| project              | create in the caller's own home                                   | the person                                          |
+| project              | create with `--company`                                           | membership of that company, any role                |
+| project              | create with `--path`                                              | platform administrator                              |
+| project              | patch                                                             | `member` or `admin` effective role for that project |
+| company              | help-desk links                                                   | `admin` effective role for that company             |
+| project              | init of the caller's checkout with `--help-desk`; help-desk links | `admin` effective role for that project             |
+
+<!-- /planned-change:config-clearance-drops-field-gates -->
 
 ### Use cases
 
