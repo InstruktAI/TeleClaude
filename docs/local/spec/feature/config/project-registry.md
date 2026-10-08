@@ -236,7 +236,7 @@ And the refusal names project creation and project adoption
 
 <!-- change:retire-project-init -->
 
-#### UC-CFG-REG12: Initializing an unregistered folder records nothing
+#### UC-CFG-REG12:
 
 <!-- /planned-change:retire-project-init -->
 

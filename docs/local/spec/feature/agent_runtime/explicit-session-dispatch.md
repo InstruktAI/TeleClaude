@@ -45,7 +45,7 @@ And no analysis or assessment session is started
 
 <!-- change:retire-project-init -->
 
-#### UC-ESD2: Reinitializing a project starts no agent
+#### UC-ESD2:
 
 <!-- /planned-change:retire-project-init -->
 
