@@ -123,11 +123,14 @@ scratch_*.txt
 
 # Helpdesk generated files (should NEVER happen but must never be tracked)
 helpdesk/
-!helpdesk/AGENTS.master.md
+
+# reports
+reports/
 
 # Ephemeral content dumps (telec content dump); keep folder structure only
-publications/inbox/*
-!publications/inbox/.gitkeep
+publications/*
+!publications/README.md
+
 scratchpad/
 
 .enjoy/
