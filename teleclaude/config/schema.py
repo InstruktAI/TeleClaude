@@ -12,7 +12,12 @@ from pydantic import ConfigDict, Field, ModelWrapValidatorHandler, field_validat
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.closed_model import SENSITIVE, ClosedModel
-from teleclaude.config.field_constraints import append_constraint_rules, declared_constraints, refuse_violations
+from teleclaude.config.field_constraints import (
+    Requires,
+    append_constraint_rules,
+    declared_constraints,
+    refuse_violations,
+)
 from teleclaude.config.tiers import Tier
 from teleclaude.config_roster import CompanyMember as CompanyMember
 from teleclaude.config_roster import CompanyRole as CompanyRole
@@ -633,6 +638,12 @@ class HelpDeskConfig(ClosedModel):
     enabled: bool = False
 
 
+class ProjectHelpDeskConfig(ClosedModel):
+    """Whether a project keeps a help desk; its folder launches a confined agent, so the project subscribes `agents`."""
+
+    enabled: Annotated[bool, Requires("agents.enabled", True)] = False
+
+
 class TierDocument(ClosedModel):
     """The closed base of the tier documents, enforcing and publishing declared field constraints.
 
@@ -684,7 +695,7 @@ class ProjectConfig(TierDocument):
     code: CapabilityConfig = CapabilityConfig()
     docs: CapabilityConfig = CapabilityConfig()
     agents: CapabilityConfig = CapabilityConfig()
-    help_desk: HelpDeskConfig = HelpDeskConfig()
+    help_desk: ProjectHelpDeskConfig = ProjectHelpDeskConfig()
 
     @field_validator("jobs")
     @classmethod

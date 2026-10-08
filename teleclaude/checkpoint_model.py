@@ -23,7 +23,9 @@ from teleclaude.constants import (
     CHECKPOINT_BASE_CODE_BINDING,
     CHECKPOINT_BASE_DOCS_BINDING,
     CHECKPOINT_BASE_MAINTENANCE,
+    CHECKPOINT_HOME_DECLARATION_BINDING,
     CHECKPOINT_HOME_PUBLICATION_BINDING,
+    CHECKPOINT_PROJECT_DESK_BINDING,
     LOG_CHECK_ACTION_ID,
     CheckpointAction,
     CheckpointBinding,
@@ -216,8 +218,17 @@ def _fill_maintenance_slug(action: MaintenanceAction, project_slug: str) -> Main
     )
 
 
-def base_checkpoint_model(project_slug: str, capabilities: Capabilities = ALL_CAPABILITIES) -> CheckpointModel:
-    """The platform-universal base with ``{slug}`` filled, no overlay merged."""
+def base_checkpoint_model(
+    project_slug: str,
+    capabilities: Capabilities = ALL_CAPABILITIES,
+    *,
+    help_desk: bool = False,
+) -> CheckpointModel:
+    """The platform-universal base with ``{slug}`` filled, no overlay merged.
+
+    A project whose declaration enables a help desk also binds its declaration to
+    convergence and the publication that follows it.
+    """
     actions = {action_id: _fill_slug(action, project_slug) for action_id, action in CHECKPOINT_BASE_ACTIONS.items()}
     maintenance = {
         action_id: _fill_maintenance_slug(action, project_slug)
@@ -229,6 +240,7 @@ def base_checkpoint_model(project_slug: str, capabilities: Capabilities = ALL_CA
             (CHECKPOINT_BASE_DOCS_BINDING, capabilities.docs),
             (CHECKPOINT_BASE_AGENTS_BINDING, capabilities.agents),
             (CHECKPOINT_BASE_CODE_BINDING, capabilities.code),
+            (CHECKPOINT_PROJECT_DESK_BINDING, help_desk),
         )
         if enabled
     )
@@ -390,13 +402,18 @@ def _model_for_declaration(root: Path, project_path: str, config: ProjectConfig 
 
 
 def _append_home_publication_binding(model: CheckpointModel) -> CheckpointModel:
-    """Attach the platform-home publication trigger (tier docs and home masters) once."""
-    if CHECKPOINT_HOME_PUBLICATION_BINDING in model.bindings:
+    """Attach the platform-home triggers (tier docs publication, declaration convergence) once each."""
+    attached = tuple(
+        binding
+        for binding in (CHECKPOINT_HOME_PUBLICATION_BINDING, CHECKPOINT_HOME_DECLARATION_BINDING)
+        if binding not in model.bindings
+    )
+    if not attached:
         return model
     return CheckpointModel(
         actions=model.actions,
         maintenance=model.maintenance,
-        bindings=(*model.bindings, CHECKPOINT_HOME_PUBLICATION_BINDING),
+        bindings=(*model.bindings, *attached),
     )
 
 
@@ -412,7 +429,7 @@ def checkpoint_model_from_project_config(
         return base_checkpoint_model(fallback_slug, capabilities)
     project_slug = config.project_slug or fallback_slug
     return merge_overlay(
-        base_checkpoint_model(project_slug, capabilities),
+        base_checkpoint_model(project_slug, capabilities, help_desk=config.help_desk.enabled),
         config.checkpoint,
         project_slug,
         capabilities,

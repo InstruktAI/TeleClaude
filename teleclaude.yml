@@ -191,6 +191,15 @@ checkpoint:
         - plumbing-convergence
     - scope:
         include:
+          - templates/help-desk-*/**
+          - templates/home-platform/**
+          - templates/home-person/**
+          - templates/home-company/**
+      actions:
+        - plumbing-convergence
+        - sync
+    - scope:
+        include:
           - teleclaude/cli/tui/**
       actions:
         - tui-reload

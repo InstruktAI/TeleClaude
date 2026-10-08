@@ -432,10 +432,10 @@ def _record_home_owner(project_root: Path, home: HomeOwner | None) -> None:
 
 
 def _converge_project_plumbing(project_root: Path) -> None:
-    """Converge a registered root's hooks and filters; the one deferred plumbing import of project setup."""
-    from teleclaude.project_setup.plumbing import converge_plumbing  # noqa: PLC0415 - avoids entrypoint preload.
+    """Converge a registered root's plumbing and declared deployment output; the one deferred plumbing import of project setup."""
+    from teleclaude.project_setup.plumbing import converge_root  # noqa: PLC0415 - avoids entrypoint preload.
 
-    converge_plumbing(project_root)
+    converge_root(project_root)
 
 
 def _converge_registered_project(
