@@ -36,7 +36,7 @@ catalog (`local/projects/teleclaude/spec/domain/event-catalog`).
 ```gherkin
 Given an agent wants to know what a listed event type carries
 When it views that event type's schema
-Then it sees the type's name, version and description, what its events are about and the kind of their subject, the kinds their origin can take, every data field with its value kind and nullability, and the kinds of thing their related references name
+Then it sees the type's name, version and description, what its events are about and the kind of their subject, the kinds their origin can take or that their acts happen in no registered project, person or company, every data field with its value kind and nullability, and the kinds of thing their related references name
 And for a platform type that reports a state, it sees the type's family and whether the state is failing or ok
 And it sees no notification rule, action, audience or routing scope
 ```

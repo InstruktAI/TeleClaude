@@ -198,7 +198,7 @@ And this holds when the receiving computer does not know the named origin or the
 ```gherkin
 Given an event type is declared as the type its producers construct
 When an agent reads that type in the event catalog
-Then it sees the type's name, what its events are about and their subject kind, the origin kinds their origin can take, the data fields they carry with each field's value kind, and the kinds of thing their related references name
+Then it sees the type's name, what its events are about and their subject kind, the origin kinds their origin can take or that their acts happen in no registered project, person or company, the data fields they carry with each field's value kind, and the kinds of thing their related references name
 And for a platform type that reports a state, it sees the type's family and whether the state is failing or ok
 And every event a producer emits of that type carries attributes and data consistent with that declaration
 ```
