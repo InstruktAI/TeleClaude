@@ -51,14 +51,9 @@ class ContractRegistry:
 
     def __init__(self) -> None:
         self._cache: dict[str, Contract] = {}
-        self._derived_owners: dict[str, frozenset[str]] = {}
 
     async def load_from_db(self) -> None:
-        """Load all active contracts from DB into cache, preserving any derived subset.
-
-        Derived contracts are never persisted, so a DB reload would otherwise
-        drop them until their owner's next pre-match refresh.
-        """
+        """Load all active contracts from DB into cache."""
         rows = await db.list_webhook_contracts(active_only=True)
         new_cache: dict[str, Contract] = {}
         for row in rows:
@@ -67,32 +62,8 @@ class ContractRegistry:
                 new_cache[contract.id] = contract
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 logger.error("Failed to load contract %s: %s", row.id, exc, exc_info=True)
-        for contract_ids in self._derived_owners.values():
-            for contract_id in contract_ids:
-                derived_contract = self._cache.get(contract_id)
-                if derived_contract is not None:
-                    new_cache[contract_id] = derived_contract
         self._cache = new_cache
         logger.info("Loaded %d active contracts from DB", len(self._cache))
-
-    def replace_derived(self, owner: str, contracts: list[Contract]) -> None:
-        """Atomically swap one owner's derived contracts in the cache, with no DB call.
-
-        Derived contracts are memory-only: restoring one from the DB before its
-        handler is registered would let it match without a handler, so they
-        never reach persistence and never expire. Swapping by owner lets an
-        edit, removal, or addition to the deriving source take effect for
-        exactly that owner's contracts, leaving every other owner's untouched.
-        """
-        for contract in contracts:
-            if contract.source != "derived":
-                raise ValueError(f"replace_derived requires source='derived' contracts: {contract.id}")
-        for stale_id in self._derived_owners.get(owner, frozenset()):
-            self._cache.pop(stale_id, None)
-        for contract in contracts:
-            self._cache[contract.id] = contract
-        self._derived_owners[owner] = frozenset(contract.id for contract in contracts)
-        logger.info("Replaced derived contracts for %s: %d contract(s)", owner, len(contracts))
 
     async def register(self, contract: Contract) -> None:
         """Register or update a contract (DB + cache)."""

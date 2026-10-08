@@ -8,26 +8,20 @@ declaration added, changed or removed takes effect on the next call.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import yaml
 
 from teleclaude.config.loader import (
-    find_company_config_path,
     load_company_config,
     load_global_config,
     load_person_config,
     load_project_config,
 )
+from teleclaude.config.registered_homes import registered_home_folder
 from teleclaude.config.schema import NativeInboundSources, WhatsAppInboundSource
 from teleclaude.config_subjects import ConfigSubjectKind
-from teleclaude.paths import PEOPLE_DIR, ConfigFileName
-from teleclaude.project_manifest import load_registered_roots
-from teleclaude.slug import derive_project_slug, validate_slug
+from teleclaude.paths import ConfigFileName
+from teleclaude.slug import validate_slug
 
-_UTF8 = "utf-8"
-_PROJECT_SLUG_FIELD = "project_slug"
-_PROJECT_NAME_FIELD = "project_name"
 _GLOBAL_HOME = "global"
 _HOME_DESCRIPTION = "{kind}/{slug}"
 _LOAD_ERROR = "Cannot read the inbound sources declared by {home}: {cause}"
@@ -70,39 +64,12 @@ def declared_whatsapp_source() -> WhatsAppInboundSource | None:
 
 
 def _read_declared_sources(kind: ConfigSubjectKind, slug: str) -> NativeInboundSources | None:
+    folder = registered_home_folder(kind, slug)
+    if folder is None:
+        return None
+    declaration = folder / ConfigFileName.OVERLAY
     if kind is ConfigSubjectKind.COMPANY:
-        company_path = find_company_config_path(slug)
-        return None if company_path is None else load_company_config(company_path).hooks.inbound
+        return load_company_config(declaration).hooks.inbound
     if kind is ConfigSubjectKind.PERSON:
-        person_path = PEOPLE_DIR / slug / ConfigFileName.OVERLAY
-        if not person_path.is_file():
-            return None
-        return load_person_config(person_path, registered_slug=slug).hooks.inbound
-    if kind is ConfigSubjectKind.PROJECT:
-        project_path = _registered_project_declaration(slug)
-        return None if project_path is None else load_project_config(project_path).hooks.inbound
-    return None
-
-
-def _registered_project_declaration(slug: str) -> Path | None:
-    """Find the registered project root whose identity is ``slug``.
-
-    A root's identity comes from its raw declaration, so a project whose
-    configuration fails to load is still identified, and its failure surfaces
-    from the load that follows.
-    """
-    for root in load_registered_roots():
-        if root.is_present and _raw_project_identity(root.path) == slug:
-            return root.path / ConfigFileName.OVERLAY
-    return None
-
-
-def _raw_project_identity(root: Path) -> str | None:
-    declaration = root / ConfigFileName.OVERLAY
-    try:
-        document: object = yaml.safe_load(declaration.read_text(encoding=_UTF8))
-    except (OSError, UnicodeError, yaml.YAMLError):
-        return derive_project_slug(None, None, root)
-    if not isinstance(document, dict):
-        return derive_project_slug(None, None, root)
-    return derive_project_slug(document.get(_PROJECT_SLUG_FIELD), document.get(_PROJECT_NAME_FIELD), root)
+        return load_person_config(declaration, registered_slug=slug).hooks.inbound
+    return load_project_config(declaration).hooks.inbound

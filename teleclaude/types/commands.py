@@ -11,6 +11,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
+from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.discord_thread_claims import (
     DiscordThreadClaimAction,
     DiscordThreadClaimKind,
@@ -756,17 +757,17 @@ class HandoffAgentCommand(InternalCommand):
 
 @dataclass(kw_only=True)
 class ActivateProcedureCommand(InternalCommand):
-    """Intent to wake or start a procedure's standing agent for a company."""
+    """Intent to wake or start a procedure's standing agent for the activation home named by a token."""
 
     procedure_id: str
-    company: str
+    home: str
     event_json: str
 
     def __init__(
         self,
         *,
         procedure_id: str,
-        company: str,
+        home: str,
         event_json: str,
         request_id: str | None = None,
     ):
@@ -778,11 +779,11 @@ class ActivateProcedureCommand(InternalCommand):
             failure_event="agent_runtime.procedure_activation.failed",
         )
         self.procedure_id = procedure_id
-        self.company = company
+        self.home = ActivationHome.from_token(home).to_token()
         self.event_json = event_json
 
     def to_payload(self) -> dict[str, object]:
-        return {"session_id": "", "args": [self.procedure_id, self.company]}
+        return {"session_id": "", "args": [self.procedure_id, self.home]}
 
 
 @dataclass(kw_only=True)

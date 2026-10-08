@@ -21,6 +21,7 @@ from teleclaude.core.integration.trigger_consumer import build_integration_trigg
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.organization import platform_admin_people
+from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -59,7 +60,6 @@ from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
-from teleclaude.hooks import procedure_activation
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.config import load_hooks_config
@@ -385,6 +385,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         return [
             self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
+            build_procedure_activation_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
         ]
 
@@ -668,7 +669,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         # Load config-driven contracts. Contracts load regardless of API server availability.
         await load_hooks_config(project_config.hooks.model_dump(), contract_registry)
-        procedure_activation.install(contract_registry, handler_registry, dispatcher)
         self._start_relay_delivery_consumer(dispatcher)
         self._install_inbound_routes()
 

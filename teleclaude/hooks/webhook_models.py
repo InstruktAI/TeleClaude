@@ -83,7 +83,7 @@ class ContractMetadata:
     active: bool = True
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     expires_at: str | None = None  # ISO 8601 UTC; None = never expires
-    source: str = "api"  # "config", "api", "programmatic", "derived"
+    source: str = "api"  # "config", "api", "programmatic"
 
 
 @dataclass(init=False)
