@@ -7,8 +7,6 @@ visibility: 'public'
 
 ## Goal
 
-<!-- planned-change:retire-project-init -->
-
 Set a project up for TeleClaude. Three commands share this pipeline:
 
 - `telec config project create <name>` makes a new, empty project and runs it.
@@ -20,20 +18,6 @@ Set a project up for TeleClaude. Three commands share this pipeline:
 - `telec config project init` re-runs it for a project already registered, to
   converge it. It creates and adopts nothing.
 
-<!-- change:retire-project-init -->
-
-Set a project up for TeleClaude. Two commands share this pipeline:
-
-- `telec config project create <name>` makes a new, empty project and runs it.
-  The project lands in the caller's own home's `projects/<name>`, in a company's
-  `projects/<name>` with `--company <slug>`, or, for a platform administrator,
-  at a folder outside every home with `--path <dir>`.
-- `telec config project adopt` runs it for the folder the caller stands in,
-  registering existing work where it already is. Running it again in a project
-  already registered converges that project.
-
-<!-- /planned-change:retire-project-init -->
-
 Machine-global agent infrastructure is installed by the TeleClaude checkout's
 `make install`.
 
@@ -43,21 +27,11 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ## Preconditions
 
-<!-- planned-change:retire-project-init -->
-
 - For `create`: the name is a valid slug that no project on this computer holds.
 - For `adopt`: the folder holds the project's work.
 - For `init`: the folder is a registered project. For any other folder `init`
   refuses and names `create` and `adopt`.
 - `telec` CLI is available and the daemon is running.
-
-<!-- change:retire-project-init -->
-
-- For `create`: the name is a valid slug that no project on this computer holds.
-- For `adopt`: the folder holds the project's work.
-- `telec` CLI is available and the daemon is running.
-
-<!-- /planned-change:retire-project-init -->
 
 ## Steps
 
@@ -93,15 +67,8 @@ The resolved subscriptions are then projected as markers under the repository's
 common git directory, where the installed shell plumbing reads them by existence
 check.
 
-<!-- planned-change:retire-project-init -->
-
 A project `create` makes is empty, so it declares no capability block yet. The
 first `init` after its content is scaffolded infers them from what was built.
-<!-- change:retire-project-init -->
-
-A project `create` makes is empty, so it declares no capability block yet.
-Adopting it after its content is scaffolded infers them from what was built.
-<!-- /planned-change:retire-project-init -->
 
 This step runs before any capability-gated step below, so a project receives only the
 plumbing it subscribes to. Everything downstream reads the declaration; nothing
@@ -116,12 +83,7 @@ For a project subscribing `docs`, creates the local baseline manifests under
 `docs/local/` from the platform's documentation template when they are absent.
 An existing manifest is never changed: it is the project's own curation.
 
-<!-- planned-change:retire-project-init -->
-
 ### 2c. Enable and scaffold the help desk (`--help-desk` only)
-
-<!-- change:retire-project-init -->
-<!-- /planned-change:retire-project-init -->
 
 <!-- planned-change:help-desks-as-deployment-output -->
 
@@ -212,8 +174,6 @@ idempotently. The registered path is always that canonical checkout: invoked
 from a linked worktree, initialization resolves back to the owning checkout, so
 an ephemeral worktree path never enters the registry.
 
-<!-- planned-change:retire-project-init -->
-
 Creation and adoption are the only writers of the project registry, whether
 `telec config project create`, `telec config project adopt`, or the daemon's
 add-project request invokes them; `init` records nothing. A folder whose
@@ -223,18 +183,6 @@ or company tier is recorded without these steps. Publication must not mutate
 `~/.teleclaude/projects.yaml`. Once registered, the project is visible to
 `ProjectCatalogService` and every consumer that iterates projects (resolution of
 `local/projects/<slug>/…` documentation identities, job orchestration, etc.).
-<!-- change:retire-project-init -->
-
-Creation and adoption are the only writers of the project registry, whether
-`telec config project create`, `telec config project adopt`, or the daemon's
-add-project request invokes them. A folder whose
-identity another registry entry already holds is refused before any step
-writes, and a folder declaring the person
-or company tier is recorded without these steps. Publication must not mutate
-`~/.teleclaude/projects.yaml`. Once registered, the project is visible to
-`ProjectCatalogService` and every consumer that iterates projects (resolution of
-`local/projects/<slug>/…` documentation identities, job orchestration, etc.).
-<!-- /planned-change:retire-project-init -->
 
 Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
 and `teleclaude/project_manifest.py:register_root()`
@@ -250,8 +198,6 @@ Source: `teleclaude/project_manifest.py:register_root()`
 
 ## Outputs
 
-<!-- planned-change:retire-project-init -->
-
 - Capability subscriptions declared in `teleclaude.yml` and projected as markers under
   the repository's common git directory.
 - Git filters, `.gitattributes`, and code hooks configured for the capabilities the
@@ -264,34 +210,10 @@ Source: `teleclaude/project_manifest.py:register_root()`
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
 
-<!-- change:retire-project-init -->
-
-- Capability subscriptions declared in `teleclaude.yml` and projected as markers under
-  the repository's common git directory.
-- Git filters, `.gitattributes`, and code hooks configured for the capabilities the
-  project subscribes to — a project subscribing neither `code` nor `docs` receives none
-  of them.
-
-- `project_slug` persisted in `teleclaude.yml` and, for `create` and `adopt`, the
-  project root registered in `~/.teleclaude/projects.yaml`.
-- For a project inside a home, that home's owner declared in `teleclaude.yml`.
-- The local baseline manifests, when the project subscribes `docs` and they were absent.
-
-<!-- /planned-change:retire-project-init -->
-
 ## Recovery
-
-<!-- planned-change:retire-project-init -->
 
 - `telec config project init` is idempotent. Re-running it is safe and will skip already-configured steps.
 - A refused `create` names its cause: a taken or invalid name, a path inside a home, or `--path` combined with `--company`. Nothing has been written.
-
-<!-- change:retire-project-init -->
-
-- `telec config project adopt` is idempotent. Re-running it is safe and will skip already-configured steps.
-- A refused `create` names its cause: a taken or invalid name, a path inside a home, or `--path` combined with `--company`. Nothing has been written.
-
-<!-- /planned-change:retire-project-init -->
 
 ## See Also
 

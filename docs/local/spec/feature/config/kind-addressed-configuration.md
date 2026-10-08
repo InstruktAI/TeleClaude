@@ -338,6 +338,8 @@ And after the company home next converges it holds a help-desk folder whose mast
 And that master requires none of the company's local documentation
 ```
 
+<!-- planned-change:retire-project-init -->
+
 #### UC-KAC15: A project help desk is scaffolded in the project's repository
 
 ```gherkin
@@ -348,6 +350,12 @@ And the project's help-desk folder holds the rendering of the project help-desk 
 And the master there requires none of the project's local documentation
 And no file outside the project's declaration and its help-desk folder is written for the help desk
 ```
+
+<!-- change:retire-project-init -->
+
+#### UC-KAC15:
+
+<!-- /planned-change:retire-project-init -->
 
 #### UC-KAC16: Enabling a help desk requires administrator authority
 
