@@ -22,9 +22,15 @@ A pattern is written relative to its category: in the `teleclaude` category,
 `job.*` selects every type under `teleclaude.job`, and `*` selects every
 platform type. Patterns follow the platform's one type-pattern grammar and
 matcher (`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`).
+A `teleclaude` pattern ends in `.*` or is `*`: platform events form lifecycle
+families whose last segment names a state
+(`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`), so a
+pattern always selects whole families and every state of a lifecycle it selects.
+A domain category accepts every pattern the grammar allows.
 
 An event matches a person's interests when its type falls in a category that is
-switched on and one of that category's patterns matches it. A category that is
+switched on and any of that category's patterns matches it; patterns that
+overlap or repeat one another are valid and change nothing. A category that is
 switched off matches nothing and keeps its patterns as written, so switching it
 on again restores them.
 
@@ -42,9 +48,11 @@ Configuration that predates notification interests converges to them like any
 new field (`local/projects/teleclaude/spec/feature/config/document-migration`);
 values already present are never overwritten.
 
-Validation reports an interest it cannot use — a category that is neither
-`teleclaude` nor a published domain, or a pattern the matcher refuses — and
-leaves the configuration exactly as written. An interest it reports selects
+Validation fails on an interest it cannot use — a category that is neither
+`teleclaude` nor a published domain, a pattern the matcher refuses, or a
+`teleclaude` pattern that does not end in `.*` — naming the interest and the
+reason, and leaves the configuration exactly as written. Nothing else is
+reported: an interest that changes nothing about what anyone hears is valid. An interest it reports selects
 nothing; the person's other interests keep working.
 
 ## Canonical fields
@@ -110,7 +118,7 @@ And only the person, or an agent acting on the person's request, changes them
 Scenario Outline: An unusable interest is reported, not repaired
   Given a person's interests contain <unusable interest>
   When an operator validates the configuration
-  Then validation reports that interest with the reason it cannot be used
+  Then validation fails, naming that interest and the reason it cannot be used
   And the person's configuration is left exactly as written
   And the person's other interests still select the events they match
 
@@ -118,4 +126,15 @@ Scenario Outline: An unusable interest is reported, not repaired
     | unusable interest                                        |
     | a category that is neither teleclaude nor a published domain |
     | a pattern the type-pattern matcher refuses               |
+    | a teleclaude pattern naming a single type, such as "job.run.failed" |
+```
+
+#### UC-NI7: Overlapping patterns are valid and change nothing
+
+```gherkin
+Given a person whose "erp" interests hold the patterns "invoice.paid" and "invoice.*"
+When an operator validates the configuration
+Then validation reports nothing about them
+When an event of type "erp.invoice.paid" occurs
+Then it matches the person's interests once, exactly as it would with "invoice.*" alone
 ```

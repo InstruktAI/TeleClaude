@@ -10,27 +10,24 @@ delivered_by:
 ## What it is
 
 Incident alerts tell platform administrators about problems on the platform.
-They read the events the platform itself emits
-(`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`). An event
-either reports that a thing failed, reports that a thing works, or reports
-neither; an event that reports neither is never told.
+They read the states platform events report under the platform lifecycle
+convention (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`):
+an event belongs to a lifecycle family, the last segment of its type names a
+state the event catalog declares failing or ok, and its subject is the thing
+whose state it is. A recurring job is therefore one thing across all its runs.
+Every family that can report a failing state also reports an ok state. An event
+that reports no state is never told.
 
-The thing is what the event is about, its subject, with one exception: a
-recurring job is one thing across all its runs.
-
-A thing whose working again the platform reports is broken from its first
-reported failure until an event reports that it works:
+A thing is broken from its first reported failing state until an event reports
+it ok:
 
 - the first failure of a thing that is not broken tells, and the thing is
   broken from then on;
 - a further failure of a broken thing tells nothing;
-- an event reporting that a broken thing works tells once that it works again
+- an event reporting that a broken thing is ok tells once that it works again
   and how long it was broken, and the thing is no longer broken;
-- an event reporting that a thing works tells nothing when the thing is not
+- an event reporting that a thing is ok tells nothing when the thing is not
   broken.
-
-A failure of a kind the platform never reports recovering from is told each
-time it occurs, and nothing is kept about it.
 
 An alert is told to each platform administrator whose notification interests
 select the event's type
@@ -88,11 +85,11 @@ When an event reports that the thing works
 Then the administrator receives no message about that thing
 ```
 
-#### UC-IA5: An event that reports no failure and no recovery tells nothing
+#### UC-IA5: An event that reports no state tells nothing
 
 ```gherkin
 Given a platform administrator whose notification interests select every platform event
-When a platform event occurs that reports neither that a thing failed nor that it works
+When a platform event occurs that reports no failing or ok state of a thing
 Then the administrator receives no message about it
 ```
 
@@ -132,15 +129,6 @@ And a further event reports that the same thing failed
 Then the administrator receives no further message about that thing
 When an event later reports that the thing works
 Then the administrator receives one message that the thing works again, with how long it was broken
-```
-
-#### UC-IA10: A failure with no reported recovery is told each time
-
-```gherkin
-Given a platform administrator whose notification interests select the platform's failure detections
-And a kind of failure for which the platform never reports that the thing works again
-When that failure occurs twice for the same thing
-Then the administrator receives one message for each occurrence
 ```
 
 #### UC-IA11: A recurring job is one thing across its runs
