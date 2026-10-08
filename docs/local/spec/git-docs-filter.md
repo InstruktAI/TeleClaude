@@ -20,7 +20,7 @@ Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` 
 - **Smudge command**: `sed "s|@~/.teleclaude|@$HOME/.teleclaude|g"`
 - **Clean command**: `sed "s|@$HOME/.teleclaude|@~/.teleclaude|g"`
 - **Required**: `true` (git will refuse to checkout if filter is missing)
-- **Setup**: `make install` configures the filter for the mother project (TeleClaude core); `telec config project init` configures it for downstream AI-managed projects. Both write the filter into local git config.
+- **Setup**: `make install` configures the filter for the mother project (TeleClaude core); `telec config project adopt` configures it for downstream AI-managed projects. Both write the filter into local git config.
 
 ## Allowed values
 
@@ -30,6 +30,16 @@ Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` 
 
 ## Known caveats
 
-- If the filter is not configured locally (missing `telec config project init`), commits may capture absolute paths and a pre-commit hook will reject them.
+<!-- planned-change:retire-project-init -->
+
+- If the filter is not configured locally (a project never adopted with `telec config project adopt`), commits may capture absolute paths and a pre-commit hook will reject them.
 - If the local home path changes, re-run `telec config project init` to reconfigure the filter.
 - The filter lives in local git config, not in `.gitconfig` — each clone needs initialization.
+
+<!-- change:retire-project-init -->
+
+- If the filter is not configured locally (a project never adopted with `telec config project adopt`), commits may capture absolute paths and a pre-commit hook will reject them.
+- If the local home path changes, run `telec sync` in the project to reconfigure the filter.
+- The filter lives in local git config, not in `.gitconfig` — each clone needs initialization.
+
+<!-- /planned-change:retire-project-init -->

@@ -17,7 +17,7 @@ frontmatter based on the target agent. For Claude targets, `hooks` is left
 intact; for Codex and Gemini targets, the key is stripped before frontmatter
 is emitted. This is a STATIC artifact transform owned by the context bounded
 context — it is distinct from the live agent CLI hook installation that
-plumbs runtime hooks into each agent's settings file at project init/setup
+plumbs runtime hooks into each agent's settings file at project setup
 time (owned by agent_runtime).
 
 The two concepts share the word "hooks" but live in different parts of the
@@ -77,7 +77,7 @@ Scenario: Runtime hook installation is independent of the artifact transform
 - **agent_runtime** — Owns the runtime hook plumbing for live agent CLIs. The
   context bounded context only owns the per-agent artifact frontmatter
   transform; the actual installation of runtime hooks into each agent CLI's
-  configuration files happens at project init/setup time under the
+  configuration files happens at project setup time under the
   agent_runtime context.
 
 ## Known caveats

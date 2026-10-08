@@ -281,7 +281,7 @@ And no todo store is resolved, opened, or created for the non-checkout entry
 
 ```
 Given the daemon is running with TUI clients connected
-When an operator adopts a folder with `telec config project init` or edits the project registry by hand
+When an operator adopts a folder with `telec config project adopt` or edits the project registry by hand
 Then within seconds every connected client receives a project list that reflects the change
 And the daemon did not restart
 ```

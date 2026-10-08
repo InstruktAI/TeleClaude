@@ -26,6 +26,8 @@ project.
 
 ## Steps
 
+<!-- planned-change:retire-project-init -->
+
 1. The assessment session reads the codebase and infers the project's
    checkpoint maintenance: the source roots that constitute the `code` scope
    (onto which the base `test` / `log-check` actions attach), and the
@@ -73,13 +75,64 @@ project.
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
 
+<!-- change:retire-project-init -->
+
+1. The assessment session reads the codebase and infers the project's
+   checkpoint maintenance: the source roots that constitute the `code` scope
+   (onto which the base `test` / `log-check` actions attach), and the
+   project's own runtime actions (build, restart, reload) named by make-contract
+   convention (`make install` / `make test` / `make lint` work by convention).
+2. Before declaring any inferred action, or an action id an existing binding
+   already names, check it against the platform's base registries
+   (`local/projects/teleclaude/design/architecture/checkpoint-system`'s base checkpoint and
+   maintenance ids; `general/principle/grounding`). An id that already
+   resolves there is reused as-is. For each action still needing a
+   project-level declaration, the assessor decides which registry declares it,
+   by one test:
+   can the mechanism that performs the action establish its own outcome? A deterministic
+   command — installing, restarting, reconciling dependencies, reloading — can, and is
+   written into the maintenance registry as `command`, `main_only` and `precedence`, with no
+   `run` and no `evidence`. An action whose substance is a judgment an
+   agent makes and acts on cannot, and is written into the checkpoint registry as `run`, the
+   `evidence` substrings that prove it ran (defaulting to `run`), `main_only`,
+   `precedence`, and `evidence_must_follow_last_mutation` where ordering matters. An action
+   id belongs to exactly one of the two registries; declaring the same id in both is
+   rejected when the declaration is validated. The assessor then binds path scopes to action
+   ids, referencing base action ids where they apply and declaring project actions
+   otherwise; a binding names an id without regard to which registry declares it.
+
+   Every maintenance action also carries its on-demand disposition
+   (`local/projects/teleclaude/design/architecture/checkpoint-system`, Invariant 29).
+   An action that disrupts a live process — restarting a service, reloading an
+   interface — is written with `on_demand: defer`, plus an `owed_probe` when
+   the project can tell whether that disruption is owed. Every other action
+   keeps the default.
+
+3. The assessor writes the result into `ProjectConfig.checkpoint` via
+   `telec config project patch --revision <rev> [--yaml <patch> | --from-file
+<path>]` — never a direct edit of `teleclaude.yml`. The file's mutation is
+   owned exclusively by the sealed config writer (`local/projects/teleclaude/spec/domain/config`:
+   read-lock, validate the complete candidate, atomic replace); a direct edit
+   bypasses both and only appears to converge when a later
+   `telec config project adopt` happens to re-canonicalize the file. The merged
+   base ⊕ overlay then drives the runtime structurally; the language flavoring
+   lives only in this authoring step.
+4. **Projection.** When the platform publishes a new project-declarable
+   checkpoint paradigm — a new base action id, a new conventional kind, or a new
+   declarable field — a new assessment session re-maps the paradigm
+   onto each project's overlay. Re-assessment is idempotent: it converges the
+   overlay to current truth and surfaces any conflict with a hand-authored
+   deviation for human resolution rather than silently overwriting it.
+
+<!-- /planned-change:retire-project-init -->
+
 ### Step 5 — Capability projection
 
 Assessment also writes the project's three capability toggles
 (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`) inferred from repo
 shape: a make contract or language trees → `code`; snippet frontmatter under
 `docs/` → `docs`; authored artifacts under `agents/` → `agents`, never `.agents/`. The initial
-toggles are written by `telec config project init` before any
+toggles are written by `telec config project adopt` before any
 capability-gated plumbing runs; this step refines them. Task tracking carries no
 toggle — the manifest's existence is that subscription.
 

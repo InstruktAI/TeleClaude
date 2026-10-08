@@ -45,15 +45,31 @@ the root from the same resolution. No command derives a worktree or project root
 the raw invocation directory, from the repository root of the code that happens to run,
 or from the daemon's own working directory.
 
+<!-- planned-change:retire-project-init -->
+
 ```mermaid
 flowchart LR
     Dir[invocation directory] --> R[scope resolution]
     R --> W[worktree root<br/>the change]
     R --> P[project root<br/>the invocation's project, exists once]
     W --> Wc[code lint / format / test / add<br/>code commit: commit and gate<br/>code pre-commit<br/>telec code capability switches]
-    P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project init, code maintenance]
+    P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt and init,<br/>code maintenance]
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>channels, operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
+
+<!-- change:retire-project-init -->
+
+```mermaid
+flowchart LR
+    Dir[invocation directory] --> R[scope resolution]
+    R --> W[worktree root<br/>the change]
+    R --> P[project root<br/>the invocation's project, exists once]
+    W --> Wc[code lint / format / test / add<br/>code commit: commit and gate<br/>code pre-commit<br/>telec code capability switches]
+    P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, code maintenance]
+    S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>channels, operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
+```
+
+<!-- /planned-change:retire-project-init -->
 
 ## Invariants
 
@@ -107,6 +123,22 @@ flowchart LR
 
 ### Commands that act on the project root
 
+<!-- planned-change:retire-project-init -->
+
+| Command                                                                                 | Shared state it acts on                                                                              |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `telec todo …`, including artifacts and stamps                                          | The one todo store; a worktree is a todo's sandbox and holds no copy                                 |
+| `telec docs …` in a project context                                                     | The doc layer and its generated index, authored and built only on the project root                   |
+| `telec bugs …`, including the suppression ledger                                        | The project's bug lane and the ledger the log bug hunter reads                                       |
+| `telec jobs report`                                                                     | The project's job records                                                                            |
+| `telec content dump`                                                                    | The project's publications inbox                                                                     |
+| `telec mcp …`                                                                           | The project's registry overlay, on top of the machine-wide registry                                  |
+| `telec config project adopt`, `telec config project init`                               | The checkout they adopt or converge: registration and plumbing are done once, at the owning checkout |
+| `telec code maintenance …`                                                              | The project's maintenance records; a worktree invocation drains nothing                              |
+| `telec` (the TUI) creating a todo or bug where nothing under the cursor names a project | The project it was started from, forwarded to the daemon                                             |
+
+<!-- change:retire-project-init -->
+
 | Command                                                                                 | Shared state it acts on                                                                 |
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `telec todo …`, including artifacts and stamps                                          | The one todo store; a worktree is a todo's sandbox and holds no copy                    |
@@ -115,9 +147,11 @@ flowchart LR
 | `telec jobs report`                                                                     | The project's job records                                                               |
 | `telec content dump`                                                                    | The project's publications inbox                                                        |
 | `telec mcp …`                                                                           | The project's registry overlay, on top of the machine-wide registry                     |
-| `telec config project init`                                                             | The checkout it adopts: registration and plumbing are done once, at the owning checkout |
+| `telec config project adopt`                                                            | The checkout it adopts: registration and plumbing are done once, at the owning checkout |
 | `telec code maintenance …`                                                              | The project's maintenance records; a worktree invocation drains nothing                 |
 | `telec` (the TUI) creating a todo or bug where nothing under the cursor names a project | The project it was started from, forwarded to the daemon                                |
+
+<!-- /planned-change:retire-project-init -->
 
 ### Commands that act on daemon and live-home state
 
@@ -154,7 +188,7 @@ project-root refusal under Failure modes does not apply to them there.
 | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | A command that acts on the project root runs where no project checkout holds the invocation directory | It refuses, naming the directory; it never falls back to the invocation directory                                                            |
 | `telec docs` runs where no declaration governs the invocation directory                               | It reads the caller's default read set with no landed home — their person tier, their companies, and global — plus any home the caller names |
-| `telec config project init` runs where no repository holds the invocation directory                   | It adopts the invocation directory, initializing it as the repository                                                                        |
+| `telec config project adopt` runs where no repository holds the invocation directory                  | It adopts the invocation directory, initializing it as the repository                                                                        |
 | The scope resolution cannot be completed                                                              | The command exits non-zero naming the directory and the unresolved root; no command substitutes a root of its own                            |
 | A worktree-root command runs on the canonical checkout                                                | It acts on the canonical checkout, which is its own worktree root                                                                            |
 | A command on daemon and live-home state runs anywhere                                                 | It acts as it does from any other directory; the invocation directory selects nothing                                                        |

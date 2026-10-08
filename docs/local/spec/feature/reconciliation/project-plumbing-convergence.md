@@ -270,7 +270,7 @@ And the project's hooks and docs filter driver still converge
 
 ```gherkin
 Given a folder with no git repository and no TeleClaude configuration
-When an operator adopts it with `telec config project init`
+When an operator adopts it with `telec config project adopt`
 Then the operator's `git status` in that folder lists neither the project's TeleClaude state directory nor the configuration lock file
 And the same holds for a project that subscribes neither code nor docs
 ```

@@ -298,19 +298,6 @@ Then an ownerless project exists at that path, registered under its name
 And the same request naming a company, or a path inside a home, is refused before anything is written
 ```
 
-<!-- planned:retire-project-init -->
-
-#### UC-KAC19: Project init names what replaced it
-
-```gherkin
-Given a person at the command line in any folder, registered as a project or not
-When they run init for a project
-Then nothing is created, adopted, registered or converged
-And they see one line naming create, adopt and telec sync
-```
-
-<!-- /planned:retire-project-init -->
-
 ## Known caveats
 
 - `computer` has a different filename and runtime loader from the overlays.

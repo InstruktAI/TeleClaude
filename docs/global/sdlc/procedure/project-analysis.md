@@ -26,6 +26,8 @@ reflect concrete findings from the analyzed repository, not generic templates.
 
 ## Preconditions
 
+<!-- planned-change:retire-project-init -->
+
 - The project has source files (not an empty repository).
 - `telec config project init` plumbing (hooks, sync, project registration) has already completed; the operator started this session with `telec sessions run --command /projects-analyze --path <project-root>`.
 - The required reads above provide the output contract (`init-scaffolding`),
@@ -33,6 +35,18 @@ reflect concrete findings from the analyzed repository, not generic templates.
   pulls in the value contract, schema, and referencing rules), and the
   agent-artifact governance (for the AGENTS.master.md decision in Step 15).
 - The session runs inside the project root with full filesystem read access.
+
+<!-- change:retire-project-init -->
+
+- The project has source files (not an empty repository).
+- The project is adopted (`telec config project adopt`), so its plumbing and registration are complete; the operator started this session with `telec sessions run --command /projects-analyze --path <project-root>`.
+- The required reads above provide the output contract (`init-scaffolding`),
+  the snippet-authoring discipline (`doc-snippet-authoring`, which transitively
+  pulls in the value contract, schema, and referencing rules), and the
+  agent-artifact governance (for the AGENTS.master.md decision in Step 15).
+- The session runs inside the project root with full filesystem read access.
+
+<!-- /planned-change:retire-project-init -->
 
 ## Steps
 

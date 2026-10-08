@@ -137,7 +137,7 @@ Derivation rules:
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole
-  exception is explicit adoption: `telec config project init` creates
+  exception is explicit adoption: `telec config project adopt` creates
   the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
   that turns a plain repository into a target. Carrying no manifest and carrying
   a broken one are different states: the first is simply not a target, while the

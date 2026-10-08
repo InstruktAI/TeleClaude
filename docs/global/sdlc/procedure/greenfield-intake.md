@@ -92,9 +92,17 @@ every production default ships silently from the applicable baseline.
      `sdlc/procedure/scaffolding/typescript-platforms/vite`, or
      `sdlc/procedure/scaffolding/typescript-platforms/hono`.
 
+   <!-- planned-change:retire-project-init -->
+
    For sites, follow `sdlc/procedure/setup-visual-regression`. End by running
    `telec config project init` in the project, which converges its TeleClaude
    plumbing and detects its capabilities from what was built.
+   <!-- change:retire-project-init -->
+
+   For sites, follow `sdlc/procedure/setup-visual-regression`. End by running
+   `telec config project adopt` in the project, which converges its TeleClaude
+   plumbing and detects its capabilities from what was built.
+   <!-- /planned-change:retire-project-init -->
 
 ## Outputs
 

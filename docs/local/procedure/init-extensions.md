@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Goal
 
-Document the TeleClaude-specific setup split: `telec config project init` owns project-local
+Document the TeleClaude-specific setup split: `telec config project adopt` owns project-local
 plumbing, while `make install` owns machine-global steps, including macOS
 launcher installation and permission probing.
 
@@ -20,7 +20,7 @@ launcher installation and permission probing.
 
 ### 1a. Project remote provisioning — an agent procedure, not an init step
 
-`telec config project init` does **not** provision a git remote. It establishes the
+`telec config project adopt` does **not** provision a git remote. It establishes the
 local repository and the canonical `project_slug` only; there is no
 `ensure_remote` code step branching on `gh`-availability, authentication, or TTY.
 
@@ -36,7 +36,7 @@ remote setup never gates project setup.
 
 ### 1b. Project initialization installs plumbing but does not publish
 
-`telec config project init` materializes the declaration and converges the project's
+`telec config project adopt` materializes the declaration and converges the project's
 filters and hooks. It does not publish documentation or agent artifacts from
 the setup working tree. The first canonical commit activates those sources
 through commit maintenance, and `telec sync` from the project's home directory
