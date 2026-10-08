@@ -400,7 +400,10 @@ teleclaude/hooks/
 - **Contract sweep race.** If an event matches a contract that expires mid-dispatch,
   the event is still delivered (the match happened before expiry). This is
   acceptable: TTL is approximate, not transactional.
-- **Daemon restart.** Contracts reload from DB. In-flight `webhook_outbox` rows
-  with `status=pending` are picked up by the new delivery worker. No events lost
-  for external targets. Internal handler events that were in-flight are lost
-  (they were in-process, not persisted).
+- **Daemon restart.** Contracts reload from DB. Unclaimed `webhook_outbox` rows
+  with `status=pending` are picked up by the new delivery worker. Internal
+  handler events that were in-flight are lost (they were in-process, not
+  persisted).
+- **Delivery worker stops mid-delivery.** A row the worker had claimed stays
+  claimed: no lock expiry releases it, so it is neither delivered, retried, nor
+  dead-lettered.

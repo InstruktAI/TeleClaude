@@ -152,6 +152,9 @@ And every computer's hook dispatcher receives the normalized push event once
 - The `deployment-github` contract matches every relayed GitHub push or
   release, whichever project declared the source. Declaring a GitHub
   source for any project therefore reaches the deployment handler.
+- The hook event rebuilt on each computer names the repository, not the
+  project that declared the source, so no contract can select GitHub
+  events by project.
 - The zen/hook_id ping passthrough is the only event-type-specific
   property branch in this normalizer; every other GitHub event uses the
   same {repo, sender, action, ref} property shape.

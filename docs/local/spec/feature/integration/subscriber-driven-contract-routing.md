@@ -207,6 +207,13 @@ And "loaded N active contracts" is logged at info level
   section is empty in every shipped `teleclaude.yml`. The pattern's
   value is forward-looking — v2 will use it as the subscriber model so
   domains decouple from event routing.
+- Configuration contracts are read from the platform project's own
+  `teleclaude.yml` only. Another project's `hooks.subscriptions` passes
+  schema validation and registers nothing.
+- A handler target names a handler the integration service registered in
+  its own process at startup. Configuration selects one and cannot add
+  one, so a URL is the only target a configuring home can point somewhere
+  new.
 - The matcher's required-presence semantics on a criterion with no
   match and no pattern translate to "the property must exist with a
   non-null value" — this required-presence-only mode is a less obvious
