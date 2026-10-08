@@ -38,12 +38,27 @@ contracts and never creates shared ownership.
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
 
+<!-- planned-change:consumer-framework -->
+
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — its type, source, subject, home, related
   references, and causation — the kinds of thing a reference can name, the
   vocabulary of states a platform event reports, and the event type
   declarations the catalog is generated from. It owns no event's meaning and no
   consumer's reaction.
+
+<!-- change:consumer-framework -->
+
+- `event-catalog`: the platform event stream's envelope shape, the facts every
+  event states about itself — its type, source, subject, home, related
+  references, and causation — the kinds of thing a reference can name, the
+  vocabulary of states a platform event reports, the event type declarations
+  the catalog is generated from, the one type-pattern matcher, and the consumer
+  runtime: each consumer's progress through the stream, duplicate protection,
+  retry, and dead letter. It owns no other context's event meaning and no other
+  context's reaction.
+
+<!-- /planned-change:consumer-framework -->
 
 ### Boundary contracts
 
