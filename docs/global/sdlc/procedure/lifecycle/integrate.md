@@ -1,8 +1,6 @@
 ---
 description: 'Integration phase. Drive the integration state machine, handle squash commits, conflicts, push rejections, and lease contention.'
 visibility: 'public'
-subscriptions:
-  - domain.sdlc.planning.todo_finalize_ready
 ---
 
 # Integration — Procedure
