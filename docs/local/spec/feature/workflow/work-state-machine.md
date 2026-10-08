@@ -168,7 +168,7 @@ When the orchestrator calls "telec todo work my-feature"
 Then the machine dispatches the sdlc/finalize worker
 And when the finalizer Stamps finalize_ready with a sha matching worktree HEAD, branch ref, and remote ref
 Then the machine advances to lifecycle_phase=finalize_ready through the state-write boundary
-And the phase-transition chokepoint emits the phase-advanced event (with phase=finalize_ready in its data)
+And the phase-transition chokepoint emits the todo's finalize-ready event
 And worker-session cleanup happens inside the finalize_ready step
 And the machine emits "telec reminders set session-departure" for the work orchestrator
 And the machine does NOT instruct the orchestrator to call "telec todo work my-feature" again
@@ -354,11 +354,11 @@ And the refusal names the sanctioned path: P completes its prepare lifecycle, wh
 
 <!-- planned-change:consumer-framework -->
 
-- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits the phase-advanced event (with `phase=finalize_ready` in its data). `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
+- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits the todo's finalize-ready event. `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 
 <!-- change:consumer-framework -->
 
-- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits the phase-advanced event (with `phase=finalize_ready` in its data). The event's id is derived from `(slug, sha, worker_session_id)`, so the consumer framework hands the integration trigger consumer each logical transition once before it spawns the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
+- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the workflow phase-transition chokepoint emits the todo's finalize-ready event. That event's id is derived from `(slug, sha, worker_session_id)`, so the consumer framework hands the integration trigger consumer each logical transition once before it spawns the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 
 <!-- /planned-change:consumer-framework -->
 
