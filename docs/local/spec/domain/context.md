@@ -95,22 +95,24 @@ any location.
 - **Also owns:** a procedure's activation declaration — whether agents start it
   by selecting it through an activation trigger, the platform starts it when
   events it subscribes to arrive, or it is supporting knowledge started by
-  neither — and, for a subscribed procedure, the one subject kind it answers:
-  company, person, project, or platform. It owns the validation that a
-  procedure declares at most one mode, that a subscribed procedure declares
-  exactly one subject kind, that it declares subscriptions only where it is
-  published in the global tier, a company's tier, or a person's tier, and that a company-tier procedure answers company events and
-  a person-tier procedure answers person events; and the catalogue consequence:
-  a triggered procedure is offered as self-service work, while a subscribed
+  neither — and, for a subscribed procedure, its event type patterns and the one
+  home kind it answers: company, person, project, or platform. It owns the
+  validation that a procedure declares at most one mode, that each subscription
+  is a type pattern `event-catalog`'s matcher accepts, that a subscribed
+  procedure declares exactly one home kind, that it declares subscriptions only
+  where it is published in the global tier, a company's tier, or a person's
+  tier, and that a company-tier procedure answers company events and a
+  person-tier procedure answers person events; and the catalogue consequence: a
+  triggered procedure is offered as self-service work, while a subscribed
   procedure is presented as a configured responsibility and is never offered as
   work an agent may start.
-- **Also publishes:** each published procedure's declared event subscriptions,
-  the subject kind it answers, and the tier it is published at, as part of the
-  publication index. A procedure published at global tier subscribes for every
-  subject of its declared kind; one published in a company's tier subscribes for
-  that company only, and one published in a person's tier for that person only.
-  A tier entry whose company or person cannot be read is refused rather than
-  published with global reach. `integration` consumes this answer and never
+- **Also publishes:** each published procedure's declared subscription
+  patterns, the home kind it answers, and the tier it is published at, as part
+  of the publication index. A procedure published at global tier subscribes for
+  every home of its declared kind; one published in a company's tier subscribes
+  for that company only, and one published in a person's tier for that person
+  only. A tier entry whose company or person cannot be read is refused rather
+  than published with global reach. `integration` consumes this answer and never
   reads procedure metadata itself.
 
 <!-- /planned-change:procedure-activation-gated-on-company -->

@@ -77,29 +77,27 @@ implementation remain the current appliance contract.
 <!-- change:procedure-activation-gated-on-company -->
 
 - **Owns (procedure subscription routing):** reading each published procedure
-  subscription, with the subject kind it answers and the tier it is published
-  in, from the publication index `context` publishes; and, for each platform
-  event that reaches this computer's event pipeline, acting only when this
-  computer is the event's origin and its subject is known, then matching the
-  event's type and subject against those subscriptions — a procedure answers
-  only events whose subject is of its declared kind, with a platform procedure
-  answering events whose subject is none, and a tier-published procedure only
-  its own company or person. Each match produces one activation: the procedure,
-  the event's subject, the event's context, and the platform's system principal
-  as its origin, identified by the event's own identity, the procedure, and the
-  subject so that routing the same event again finds the existing activation.
-  Routing reads the event's origin and subject as its producer stated them and
-  never constructs, replaces, or converts either; it adds no distribution and
-  coordinates no computers. A computer the event did not originate on, an event
-  naming no origin, and an event with an unknown subject produce no activation
-  and record no failure; the routing decision names why. Routing runs in the
-  event pipeline before notification deduplication, passes every event on
-  unchanged, and never stops the stages after it. The subscription set is held
-  in memory with the digest of the index it came from and re-read when the
-  published index changes, so an added, edited, or removed subscription takes
-  effect at the next event without a restart or a separate trigger. Editing a
-  procedure's subscriptions changes its event membership and never the
-  procedure-and-subject identity of its agent.
+  subscription — its type patterns, the home kind it answers, and the tier it is
+  published in — from the publication index `context` publishes; and running,
+  on each computer, one platform event consumer that is handed the events its
+  own computer emitted whose home is known, and matches each event's type and
+  home against those subscriptions with `event-catalog`'s type-pattern matcher.
+  A procedure answers only events whose home is of its declared kind, with a
+  platform procedure answering events whose home is none, and a tier-published
+  procedure only its own company or person. Each match produces one activation:
+  the procedure, the event's home, the event, and the platform's system
+  principal as its origin, identified by the event's id, the procedure, and the
+  home so that handling the same event again finds the existing activation.
+  Routing reads the event's source, subject, and home as its producer stated
+  them and never constructs, replaces, or converts any of them; it coordinates
+  no computers. An event another computer emitted and an event whose home is
+  unknown produce no activation and record no failure. A submission that fails
+  fails the consumer's handling of the event, which the consumer runtime retries
+  and parks. The subscription set is held in memory with the identity of the
+  index it came from and re-read when the published index changes, so an
+  added, edited, or removed subscription takes effect at the next event without
+  a restart or a separate trigger. Editing a procedure's subscriptions changes
+  its event membership and never the procedure-and-home identity of its agent.
 
 <!-- /planned-change:procedure-activation-gated-on-company -->
 

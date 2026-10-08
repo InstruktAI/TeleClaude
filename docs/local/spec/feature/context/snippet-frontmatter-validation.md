@@ -241,27 +241,45 @@ And the live snippet is still validated in full
 
 <!-- planned:procedure-activation-gated-on-company -->
 
-#### UC-SFV6: A subscribed procedure declares the one subject kind it answers
+#### UC-SFV6: A subscribed procedure declares the one home kind it answers
 
 ```gherkin
-Scenario Outline: The answered subject kind is validated against the subscription and the tier
+Scenario Outline: The answered home kind is validated against the subscription and the tier
   Given a procedure snippet published in <tier> <declaration>
   When snippet validation runs
   Then <outcome>
 
   Examples:
-    | tier                | declaration                                                   | outcome                                                                  |
-    | the global tier     | declares its events and answers company events               | no subject-kind finding is reported                                      |
-    | the global tier     | declares its events and answers person events                | no subject-kind finding is reported                                      |
-    | the global tier     | declares its events and answers project events               | no subject-kind finding is reported                                      |
-    | the global tier     | declares its events and answers platform events              | no subject-kind finding is reported                                      |
-    | a company's tier    | declares its events and answers company events               | no subject-kind finding is reported                                      |
-    | a person's tier     | declares its events and answers person events                | no subject-kind finding is reported                                      |
-    | the global tier     | declares its events and no subject kind                      | a subject-kind finding is reported for that file and the sync exits non-zero |
-    | the global tier     | declares a subject kind and no events                        | a subject-kind finding is reported for that file and the sync exits non-zero |
-    | the global tier     | declares its events and a subject kind outside the four      | a subject-kind finding is reported for that file and the sync exits non-zero |
-    | a company's tier    | declares its events and answers project events               | a subject-kind finding naming the tier is reported and the sync exits non-zero |
-    | a person's tier     | declares its events and answers company events               | a subject-kind finding naming the tier is reported and the sync exits non-zero |
+    | tier                | declaration                                                | outcome                                                                     |
+    | the global tier     | declares its events and answers company events            | no home-kind finding is reported                                            |
+    | the global tier     | declares its events and answers person events             | no home-kind finding is reported                                            |
+    | the global tier     | declares its events and answers project events            | no home-kind finding is reported                                            |
+    | the global tier     | declares its events and answers platform events           | no home-kind finding is reported                                            |
+    | a company's tier    | declares its events and answers company events            | no home-kind finding is reported                                            |
+    | a person's tier     | declares its events and answers person events             | no home-kind finding is reported                                            |
+    | the global tier     | declares its events and no home kind                      | a home-kind finding is reported for that file and the sync exits non-zero   |
+    | the global tier     | declares a home kind and no events                        | a home-kind finding is reported for that file and the sync exits non-zero   |
+    | the global tier     | declares its events and a home kind outside the four      | a home-kind finding is reported for that file and the sync exits non-zero   |
+    | a company's tier    | declares its events and answers project events            | a home-kind finding naming the tier is reported and the sync exits non-zero |
+    | a person's tier     | declares its events and answers company events            | a home-kind finding naming the tier is reported and the sync exits non-zero |
+```
+
+#### UC-SFV7: A subscription is a type pattern
+
+```gherkin
+Scenario Outline: Each declared subscription is checked against the type-pattern forms
+  Given a procedure snippet answering company events declares the subscription "<subscription>"
+  When snippet validation runs
+  Then <outcome>
+
+  Examples:
+    | subscription     | outcome                                                                                 |
+    | erp.invoice.paid | no subscription finding is reported                                                     |
+    | erp.invoice.*    | no subscription finding is reported                                                     |
+    | *                | no subscription finding is reported                                                     |
+    | erp.inv*         | a subscription finding naming the pattern is reported and the sync exits non-zero       |
+    | erp.*.paid       | a subscription finding naming the pattern is reported and the sync exits non-zero       |
+    | *.paid           | a subscription finding naming the pattern is reported and the sync exits non-zero       |
 ```
 
 <!-- /planned:procedure-activation-gated-on-company -->

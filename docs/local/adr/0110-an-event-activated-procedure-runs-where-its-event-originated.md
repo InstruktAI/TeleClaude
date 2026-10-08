@@ -69,3 +69,8 @@ another computer.
   election and failover machinery for a decision the event already carries.
 - **The producer addresses the executing consumer.** Rejected: ADR-0105 keeps
   producers from deciding anything about their consumers.
+
+## Status
+
+Superseded in part by ADR-0114: the event's `home`, not its `subject`, names the
+home a procedure runs in. The rest of the decision stands.
