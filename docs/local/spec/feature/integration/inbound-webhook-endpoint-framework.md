@@ -35,16 +35,6 @@ Only the ingress computer serves these endpoints.
 
 ### Endpoints
 
-<!-- planned-change:event-envelope -->
-
-| Path                                   | Opened by                                                        | Protocol | Relayed subject |
-| -------------------------------------- | ---------------------------------------------------------------- | -------- | --------------- |
-| `/hooks/inbound/<kind>/<slug>`         | a native source declared by that company, person or project home | native   | that home       |
-| `/hooks/inbound/github/project/<slug>` | a GitHub source declared by that project                         | GitHub   | that project    |
-| `/hooks/inbound/whatsapp`              | the WhatsApp source declared by the global configuration         | WhatsApp | none            |
-
-<!-- change:event-envelope -->
-
 | Path                                   | Opened by                                                        | Protocol | Relayed home |
 | -------------------------------------- | ---------------------------------------------------------------- | -------- | ------------ |
 | `/hooks/inbound/<kind>/<slug>`         | a native source declared by that company, person or project home | native   | that home    |
@@ -52,8 +42,6 @@ Only the ingress computer serves these endpoints.
 | `/hooks/inbound/whatsapp`              | the WhatsApp source declared by the global configuration         | WhatsApp | none         |
 
 Every relayed event's subject is the declared source that received it.
-
-<!-- /planned-change:event-envelope -->
 
 `<kind>` is one of the event envelope's home kinds and `<slug>` is that home's
 slug as registered on the ingress computer. A home declares at most one source
@@ -84,31 +72,10 @@ source in the global configuration.
   (`local/projects/teleclaude/spec/feature/integration/outbound-webhook-delivery`),
   computed over the raw body under the declaring home's secret.
 
-<!-- planned-change:event-envelope -->
-
-- The relayed event is named `<domain>.<name>` and carries `payload` as its
-  payload.
-
-<!-- change:event-envelope -->
-
 - The relayed event is named `<domain>.<name>` and carries `payload` as its
   data.
 
-<!-- /planned-change:event-envelope -->
-
 ### Provider requests
-
-<!-- planned-change:event-envelope -->
-
-- A GitHub delivery is verified with GitHub's signature over the raw body under
-  the project's secret. It is relayed as `github.<event>`, where `<event>` is
-  GitHub's event type for the delivery, with the delivery body as its payload.
-- A WhatsApp webhook is verified with Meta's signature over the raw body under
-  the global WhatsApp secret. Each message it carries is relayed as one event,
-  `whatsapp.message.<type>`, with that message as its payload. A webhook that
-  carries no message is accepted and relays nothing.
-
-<!-- change:event-envelope -->
 
 - A GitHub delivery is verified with GitHub's signature over the raw body under
   the project's secret. It is relayed as `github.<event>`, where `<event>` is
@@ -117,8 +84,6 @@ source in the global configuration.
   the global WhatsApp secret. Each message it carries is relayed as one event,
   `whatsapp.message.<type>`, with that message as its data. A webhook that
   carries no message is accepted and relays nothing.
-
-<!-- /planned-change:event-envelope -->
 
 ### Responses
 
@@ -182,17 +147,6 @@ And returns an accepted response
 
 #### UC-IF16: A home's own declaration opens its native endpoint
 
-<!-- planned-change:event-envelope -->
-
-```gherkin
-Given the company "acme" declares a native source in its own configuration, with its secret in its own .env
-When a producer posts a request signed with that secret to /hooks/inbound/company/acme
-Then the ingress accepts it
-And relays an event whose subject is the company "acme"
-```
-
-<!-- change:event-envelope -->
-
 ```gherkin
 Given the company "acme" declares a native source in its own configuration, with its secret in its own .env
 When a producer posts a request signed with that secret to /hooks/inbound/company/acme
@@ -200,8 +154,6 @@ Then the ingress accepts it
 And relays an event whose home is the company "acme"
 And whose subject is that company's native source
 ```
-
-<!-- /planned-change:event-envelope -->
 
 #### UC-IF17: A path no declaration opens has no endpoint
 
@@ -256,25 +208,12 @@ Then the ingress accepts it and relays the event
 
 #### UC-IF21: TeleClaude relays the native payload without interpreting it
 
-<!-- planned-change:event-envelope -->
-
-```gherkin
-Given a project declares a native source
-When its producer posts a signed request with domain "erp", name "invoice.overdue.reminded" and a payload object with any members
-Then the relayed event is named "erp.invoice.overdue.reminded"
-And its payload is exactly the payload the producer sent
-```
-
-<!-- change:event-envelope -->
-
 ```gherkin
 Given a project declares a native source
 When its producer posts a signed request with domain "erp", name "invoice.overdue.reminded" and a payload object with any members
 Then the relayed event is named "erp.invoice.overdue.reminded"
 And its data is exactly the payload the producer sent
 ```
-
-<!-- /planned-change:event-envelope -->
 
 #### UC-IF22: A malformed native event name is refused
 

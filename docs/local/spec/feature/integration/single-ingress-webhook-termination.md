@@ -1,6 +1,6 @@
 ---
 visibility: 'public'
-description: 'One ingress computer terminates every external request for the cluster behind a local reverse proxy, verifies its signature, and relays it unconditionally as an ordinary platform event named <domain>.<name> with the ingress as origin and the declaring home as subject, so every computer and every consumer receives external events exactly as it receives platform events.'
+description: 'One ingress computer terminates every external request for the cluster behind a local reverse proxy, verifies its signature, and relays it unconditionally as an ordinary platform event named <domain>.<name> whose source is the ingress, whose subject is the inbound source that received it and whose home is the home that declared that source, so every computer and every consumer receives external events exactly as it receives platform events.'
 ---
 
 # Single-Ingress Webhook Termination — Spec
@@ -20,9 +20,10 @@ role or whether it would itself act on the event. Every other computer reacts
 by consuming the platform event stream, without being publicly exposed.
 
 A relayed event has the shape of every other platform event. Its name is
-`<domain>.<name>`, its origin is the ingress computer, and its subject is the
-home that declared the source. A consumer subscribes to a relayed event exactly
-as it subscribes to a platform event, and never sees how the request arrived.
+`<domain>.<name>`, its source is the ingress computer, its subject is the
+inbound source that received it, and its home is the home that declared that
+source. A consumer subscribes to a relayed event exactly as it subscribes to a
+platform event, and never sees how the request arrived.
 
 **Business value:** only one machine needs to be exposed to the internet, and
 it can be any always-on computer. Every other machine, including ones behind
@@ -52,24 +53,25 @@ producers for every procedure and agent.
   of its own configuration or whether it would itself act. The ingress decides
   nothing about the reaction.
 - **Ordinary platform events.** A relayed event is published on the platform
-  event stream at cluster scope under the event envelope contract
+  event stream under the event envelope contract
   (`@docs/local/spec/feature/event-catalog/event-envelope.md`):
   - its name is the source's domain followed by the source's event name,
     `<domain>.<name>`, and the event name may itself contain dots, such as
     `erp.invoice.paid`;
-  - its origin is the ingress computer, with no emitting session and no origin
-    home, as for any event platform automation emits;
-  - its subject is the home that declared the source, or none for a source the
+  - its source is the ingress computer, and it references no session, as for
+    any event platform automation emits;
+  - its subject is the inbound source that received it, which declares the
+    protocol the ingress accepted it through: native, GitHub or WhatsApp. Two
+    relayed events with the same name, home and data received through
+    different sources remain distinguishable by it;
+  - its home is the home that declared the source, or none for a source the
     platform itself declares;
-  - its payload is what the producer sent;
-  - its source, the envelope's producer field, names the protocol the ingress
-    accepted it through: native, GitHub or WhatsApp. Two relayed events with
-    the same name, subject and payload remain distinguishable by it.
+  - its data is what the producer sent.
 - **No per-name registration.** Relayed event names are not entries in the event
   catalog. A domain's own documentation states which names it emits.
 - **Platform consumers read the stream.** Each computer delivers every relayed
   event from the stream to its own platform handlers, once per computer per
-  event, according to the protocol its source names: an event relayed from the
+  event, according to the protocol of the inbound source its subject names: an event relayed from the
   GitHub or WhatsApp endpoint as that provider's delivery, and an event relayed
   from a native endpoint as a native event, whatever its name.
   The ingress delivers to its own handlers the same way and does not also
@@ -134,9 +136,10 @@ Given a company home declares a native source
 And its producer sends a signed request with domain "erp", name "invoice.paid" and a payload
 When an agent consuming platform events on any computer receives the relayed event
 Then the event is named "erp.invoice.paid"
-And its origin names the ingress computer and no emitting session
-And its subject is that company
-And its payload is the one the producer sent
+And its source names the ingress computer and it references no session
+And its subject is that company's native source
+And its home is that company
+And its data is the one the producer sent
 ```
 
 #### UC-SIT-7: A consumer subscribes to an external event by its name
@@ -148,12 +151,12 @@ Then the consumer receives it exactly as it receives a platform event of a subsc
 And nothing about the inbound request is visible beyond the event itself
 ```
 
-#### UC-SIT-8: Identity headers on an inbound request do not become the event's origin
+#### UC-SIT-8: Identity headers on an inbound request reference no session
 
 ```gherkin
 Given a signed inbound request also carries headers that name a caller session
 When the ingress relays it
-Then the relayed event names no emitting session and no origin home
+Then the relayed event references no session
 ```
 
 #### UC-SIT-9: Every computer's platform handlers receive a relayed provider event once
@@ -170,8 +173,8 @@ And the ingress does not deliver it a second time from the request itself
 ```gherkin
 Given a company home declares a native source
 When its producer posts a signed request with domain "github" and name "push"
-Then the relayed event is named "github.push" and its subject is that company
-And its source names the native protocol
+Then the relayed event is named "github.push" and its home is that company
+And its subject is that company's native source
 And each computer delivers it as a native event carrying that company
 And no computer treats it as a GitHub delivery
 ```
@@ -182,8 +185,8 @@ And no computer treats it as a GitHub delivery
 Given the project "web" declares both a native source and a GitHub source
 When GitHub delivers a push to its GitHub endpoint
 And its native producer posts domain "github", name "push" and the same payload to its native endpoint
-Then the cluster receives two events named "github.push" about the project "web"
-And one names the GitHub protocol as its source and the other the native protocol
+Then the cluster receives two events named "github.push" whose home is the project "web"
+And one's subject is the project's GitHub source and the other's its native source
 And each computer delivers the first as a GitHub delivery and the second as a native event
 ```
 
@@ -191,7 +194,7 @@ And each computer delivers the first as a GitHub delivery and the second as a na
 
 - Owned by `integration` (`@docs/local/spec/domain/integration.md`); the
   inbound-boundary concern.
-- The relay target is the platform event stream at cluster scope, whose
+- The relay target is the platform event stream, whose
   envelope is owned by the event catalog
   (`@docs/local/spec/feature/event-catalog/event-envelope.md`). The reaction is
   owned by its consumers: procedures, the deployment handler
@@ -220,3 +223,4 @@ And each computer delivers the first as a GitHub delivery and the second as a na
 - docs/local/adr/0028-single-lan-bound-ingress.md
 - docs/local/adr/0055-proxy-fronted-ingress-reuse.md
 - docs/local/adr/0111-external-events-enter-as-ordinary-platform-events.md
+- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md

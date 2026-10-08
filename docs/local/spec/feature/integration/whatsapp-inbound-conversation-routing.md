@@ -172,18 +172,6 @@ And later messages from that number without an identifier reach it
 
 #### UC-WI12: A verified message reaches every computer once, about no home
 
-<!-- planned-change:event-envelope -->
-
-```gherkin
-Given the global configuration declares the WhatsApp source
-When Meta delivers a webhook carrying one text message, signed with the declared secret
-Then the cluster receives one platform event "whatsapp.message.text" whose subject is none
-And each computer's WhatsApp handler receives that message once
-And the person the message comes from is resolved by the handler from the phone number, not from the event's subject
-```
-
-<!-- change:event-envelope -->
-
 ```gherkin
 Given the global configuration declares the WhatsApp source
 When Meta delivers a webhook carrying one text message, signed with the declared secret
@@ -191,8 +179,6 @@ Then the cluster receives one platform event "whatsapp.message.text" whose home 
 And each computer's WhatsApp handler receives that message once
 And the person the message comes from is resolved by the handler from the phone number, not from the event's home
 ```
-
-<!-- /planned-change:event-envelope -->
 
 ### Cross-context references
 

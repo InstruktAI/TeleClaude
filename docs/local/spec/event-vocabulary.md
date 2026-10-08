@@ -96,65 +96,6 @@ hook-level event type so existing consumers that inspect `type`/`event_type` rem
 functional. Downstream adapters (`ucap-tui-adapter-alignment`)
 will migrate to consume `canonical_type` directly in later phases.
 
-<!-- planned-change:event-envelope -->
-
-### Core Event Taxonomy
-
-The platform registers the following root-level event families as built-in catalog entries.
-Each family uses a flat prefix pattern. The existing `system.*` and `domain.*` families
-coexist alongside the newer flat families — both patterns are valid.
-
-| Family         | Levels                      | Visibility | Description                                               |
-| -------------- | --------------------------- | ---------- | --------------------------------------------------------- |
-| `system`       | INFRASTRUCTURE, OPERATIONAL | CLUSTER    | Platform health and worker lifecycle                      |
-| `domain`       | WORKFLOW, BUSINESS          | LOCAL      | Domain-specific events (e.g. sdlc)                        |
-| `node`         | INFRASTRUCTURE, OPERATIONAL | CLUSTER    | Node presence and metadata updates                        |
-| `deployment`   | WORKFLOW, BUSINESS          | LOCAL      | Deployment lifecycle (start → complete → fail → rollback) |
-| `content`      | WORKFLOW, BUSINESS          | LOCAL      | Content capture, processing, publication                  |
-| `notification` | WORKFLOW, BUSINESS          | LOCAL      | Escalation and resolution meta-events                     |
-| `schema`       | OPERATIONAL                 | CLUSTER    | Schema change proposals and adoptions                     |
-
-| `job` | WORKFLOW, OPERATIONAL | CLUSTER | Scheduled job run outcomes (succeeded, failed, stalled) |
-
-### Event type registration
-
-All built-in event types are registered in `teleclaude.events/schemas/` and wired
-into `register_all()` in `teleclaude.events/schemas/__init__.py`. Domain-specific
-cartridges may register additional types in the same catalog.
-
-`system.event.dead_lettered` is the operator-visible signal for event processor
-dead-letter growth. Payload fields are `original_entry_id`, `original_stream`,
-`attempt_count`, `failing_stage`, `consumer_id`, and `dlq_destination`; the
-idempotency key is `original_entry_id`.
-
-### Prepare lifecycle events (sdlc domain)
-
-The `domain.sdlc.prepare.*` family covers every observable transition
-in the prepare state machine. All events carry `slug` as a payload field unless noted.
-
-| Event type                     | Level       | Description                                                  | Key payload fields           |
-| ------------------------------ | ----------- | ------------------------------------------------------------ | ---------------------------- |
-| `prepare.phase_skipped`        | WORKFLOW    | Prepare phase skipped via inheritance from parent todo       | `slug`, `phase`, `reason`    |
-| `prepare.input_consumed`       | WORKFLOW    | Input consumed by discovery, requirements production started | `slug`                       |
-| `prepare.artifact_produced`    | WORKFLOW    | Artifact written and lifecycle-tracked in state              | `slug`, `artifact`, `digest` |
-| `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact               | `slug`, `artifact`           |
-| `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched with a findings artifact         | `slug`, `findings_artifact`  |
-
-### Job run events (jobs family)
-
-The `job.run.*` family covers the close of a scheduled job run. The cron runner emits one
-event per run; both script and agent jobs use the same vocabulary.
-
-| Event type          | Level       | Description                                                      | Key payload fields                                 |
-| ------------------- | ----------- | ---------------------------------------------------------------- | -------------------------------------------------- |
-| `job.run.succeeded` | WORKFLOW    | A job run closed with a successful outcome (silent)              | `job_name`, `status`, `message`, `items_processed` |
-| `job.run.failed`    | OPERATIONAL | A job run closed with a failure (actionable)                     | `job_name`, `status`, `message`                    |
-| `job.run.stalled`   | OPERATIONAL | A run opened at dispatch never closed in its window (actionable) | `job_name`, `status`, `message`                    |
-
-The idempotency key is `job_name` + `run_started_at`.
-
-<!-- change:event-envelope -->
-
 ### Event type names
 
 Every platform event type name is dotted, and its first segment names the
@@ -173,8 +114,6 @@ vocabulary does not restate them.
 A `teleclaude` type that reports the state of a thing ends in a state segment
 under its lifecycle family, from the closed vocabulary the event catalog owns
 (`local/projects/teleclaude/spec/domain/event-catalog`).
-
-<!-- /planned-change:event-envelope -->
 
 ### Expansion Joint
 

@@ -38,28 +38,12 @@ contracts and never creates shared ownership.
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
 
-<!-- planned-change:event-envelope -->
-
-- `marketing` and `creative_production`: company business domains whose event
-  vocabulary the event platform's catalog hosts. Each owns its event
-  vocabulary's meaning and emission invariants; hosting confers none of that on
-  the event platform.
-
-- `event-catalog`: the platform event stream's envelope shape, the facts every
-  event states about itself — origin and subject — and each event type's
-  declared subject assignment and payload fields. It owns no event's meaning
-  and no consumer's reaction.
-
-<!-- change:event-envelope -->
-
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — its type, source, subject, home, related
   references, and causation — the kinds of thing a reference can name, the
   vocabulary of states a platform event reports, and the event type
   declarations the catalog is generated from. It owns no event's meaning and no
   consumer's reaction.
-
-<!-- /planned-change:event-envelope -->
 
 ### Boundary contracts
 
@@ -176,24 +160,6 @@ contracts and never creates shared ownership.
 
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
-<!-- planned-change:event-envelope -->
-
-- Every context that emits onto the platform event stream states each event's
-  subject — the registered home its act concerned, none when the event concerns
-  no registered home, or unknown when the event does not carry that home — and owns
-  that choice as part of its emission
-  invariant. `event-catalog` composes the rest of the envelope at emission from
-  the owners' published answers. From `identity`, it takes the caller session
-  resolved at the request boundary for the request that produced the event,
-  held for the request's whole duration. From `agent_runtime`, it takes that
-  session's recorded configuration subject as the origin home. From `config`,
-  it takes the registered-subject vocabulary and a project subject's declared
-  owner. It restates none of their rules, validates nothing, and decides no
-  audience. Consumers read origin and subject from the event, and receipt
-  decisions stay with the consuming contexts.
-
-<!-- change:event-envelope -->
-
 - Every context that emits onto the platform event stream states each event's
   subject — the one thing its act concerned — and its home — the registered home
   that thing belongs to, none when it belongs to no registered home, or unknown
@@ -206,8 +172,6 @@ contracts and never creates shared ownership.
   declared owner. It restates none of their rules, validates nothing, and
   decides no audience. Consumers read the event's attributes, and receipt
   decisions stay with the consuming contexts.
-
-<!-- /planned-change:event-envelope -->
 
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI and the CLI are
