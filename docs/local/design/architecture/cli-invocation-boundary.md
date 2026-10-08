@@ -96,8 +96,6 @@ design owns only the path that connects them.
 
 ## Primary flows
 
-<!-- planned:isolate-todo-command-dependencies -->
-
 ### Todo command selection
 
 The todo router selects its existing enum-bound named handler before loading
@@ -112,7 +110,6 @@ when they need the project store. List, show and artifact reads keep their local
 read behavior; remove/update and other daemon actions keep their request and
 receipt behavior. Leaf selection changes neither the single clearance gate nor
 the directory the selected action receives.
-<!-- /planned:isolate-todo-command-dependencies -->
 
 ### Invocation
 
@@ -155,24 +152,10 @@ one, whose code is delivered code; that behavior is verified after delivery
 
 ## Failure modes
 
-<!-- planned:isolate-todo-command-dependencies -->
-
 A command-local dependency is validated when its selected handler loads. An
 import failure faults the command when that dependency loads; a successful sibling or
 help invocation does not establish the deferred leaf's importability. Validation
 covers the selected branch-to-leaf load paths, not just the shared router.
-<!-- /planned:isolate-todo-command-dependencies -->
-
-<!-- planned-change:isolate-todo-command-dependencies -->
-
-The shared todo router eagerly loads local-read and list/show/stamp modules and
-the typed context/project resolver before selecting a todo subcommand. A fresh
-API-only invocation therefore loads workflow, configuration and rendering
-dependencies it does not use; a local read also loads a sibling's API client.
-This is a limit of the current command-dependency boundary, not evidence that
-all CLI delay is import execution time.
-<!-- change:isolate-todo-command-dependencies -->
-<!-- /planned-change:isolate-todo-command-dependencies -->
 
 | Condition                                              | Effect                                                                                                                               |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |

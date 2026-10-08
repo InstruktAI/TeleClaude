@@ -11,18 +11,6 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 
 ## Rules
 
-<!-- planned-change:isolate-todo-command-dependencies -->
-
-- Startup-boundary lazy imports are the only standing first-party exception to Python's module-top import rule.
-- The exception is limited to:
-  - `teleclaude/daemon.py`
-  - `teleclaude/daemon_event_platform.py`
-  - `teleclaude/core/adapter_client/_client.py`
-- Every local-import suppression in those files includes the same-line reason `startup boundary` and names the suppressed import-placement rule.
-- Existing local-import exceptions outside this allowlist are transitional debt and must not expand.
-
-<!-- change:isolate-todo-command-dependencies -->
-
 - Startup-boundary lazy imports remain limited to:
   - `teleclaude/daemon.py`
   - `teleclaude/daemon_event_platform.py`
@@ -42,8 +30,6 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 - Other first-party local-import exceptions remain transitional debt and do not
   expand. Linter configuration, type-checker exemptions and general suppression
   surfaces retain their existing scope.
-
-<!-- /planned-change:isolate-todo-command-dependencies -->
 
 - Test files do not carry `# guard: no-companion`. Temporary orphan-test exceptions live centrally in `[tool.test-mapping].orphan-exclude` and only shrink.
 
@@ -78,14 +64,11 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 
 ## Rationale
 
-<!-- planned:isolate-todo-command-dependencies -->
-
 A CLI router selects one action for one invocation. Loading every sibling's
 workflow and rendering dependencies before that selection charges an action for
 work it never performs. The bounded router exception makes the command's import
 owner coincide with its execution owner while keeping ordinary leaf modules and
 the rest of the Python source tree under the module-top rule.
-<!-- /planned:isolate-todo-command-dependencies -->
 
 These exceptions name TeleClaude modules and guardrail configuration, so they cannot be universal Python rules. Keeping them in project scope prevents adopting repositories from inheriting mothership paths or exception mechanics while retaining one explicit owner for the exceptions here.
 
@@ -114,19 +97,11 @@ an author with no stake in the result.
 
 ## Enforcement
 
-<!-- planned-change:isolate-todo-command-dependencies -->
-
-- Reviewers reject new first-party lazy-import locations and expansion of the transitional set.
-
-<!-- change:isolate-todo-command-dependencies -->
-
 - Reviewers apply the named startup and todo-command boundaries above and reject
   new locations, unrelated eager dependency loading, or expansion of the remaining
   transitional set. Independent deep review assesses any proposed widening of
   these standing exceptions before dependent work enters the lifecycle
   (`general/policy/agent-artifact-governance`).
-
-<!-- /planned-change:isolate-todo-command-dependencies -->
 
 - Python lint reports local imports outside the declared exception surface.
 - Guardrail review rejects test-local companion suppression and expansion of centralized orphan exclusions.
@@ -139,12 +114,4 @@ an author with no stake in the result.
 
 ## Exceptions
 
-<!-- planned-change:isolate-todo-command-dependencies -->
-
-- None beyond the explicit startup-boundary allowlist above.
-
-<!-- change:isolate-todo-command-dependencies -->
-
 - Only the explicitly named startup and todo-command boundaries above.
-
-<!-- /planned-change:isolate-todo-command-dependencies -->
