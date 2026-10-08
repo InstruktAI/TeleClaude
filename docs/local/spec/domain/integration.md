@@ -134,6 +134,26 @@ implementation remain the current appliance contract.
   escalation relay — the core's (`agent_runtime`); whether a home runs a desk
   (`config`); what a desk session may read (`context`).
 
+<!-- planned:platform-alerts -->
+
+- **Owns (telling people about events):** the consumers that tell people —
+  incident alerts today — and what each decides: which events it tells, to
+  which recipients within their reach, and when an open matter is closed; the
+  incident record of open matters per lifecycle family and thing; and composing
+  each message from the event's facts and its type's declaration
+  (`local/projects/teleclaude/design/architecture/notification-delivery`,
+  `local/projects/teleclaude/spec/feature/integration/incident-alerts`,
+  `local/projects/teleclaude/spec/feature/integration/notification-messages`).
+  Messages go out through person-addressed delivery; nothing about telling
+  people is stored or shown on a shared surface.
+- **Does not own (telling people about events):** a person's notification
+  interests or whether they select a type (`config`); the lifecycle state
+  vocabulary, the type-pattern matcher, or the consumer runtime
+  (`event-catalog`); who is a platform administrator or what a principal may
+  see (`identity`); what an event means (its producing context).
+
+<!-- /planned:platform-alerts -->
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

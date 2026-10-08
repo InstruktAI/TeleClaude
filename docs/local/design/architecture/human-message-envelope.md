@@ -18,14 +18,35 @@ surfaces apply their own renderer contracts.
 - The actual author or operation responsible for the message.
 - Stable source identity and session provenance where a session is involved.
 - Original occurrence time at full stored precision.
+
+<!-- planned-change:platform-alerts -->
+
 - Human-facing content or action summary.
+
+<!-- change:platform-alerts -->
+
+- Human-facing content, or the facts an event states.
+
+<!-- /planned-change:platform-alerts -->
+
 - Surface-independent presentation identity.
 
 **Outputs:**
 
 - Structured provenance retained independently of rendered text.
+
+<!-- planned-change:platform-alerts -->
+
 - A surface-specific rendering produced by the conversation-delivery or
   operational-action contract.
+
+<!-- change:platform-alerts -->
+
+- A surface-specific rendering produced by the conversation-delivery or
+  notification-messages contract.
+
+<!-- /planned-change:platform-alerts -->
+
 - Human-visible time only where it helps interpret the message; exact time
   remains available in structured state.
 
@@ -50,6 +71,8 @@ surfaces apply their own renderer contracts.
 
 ## Primary flows
 
+<!-- planned-change:platform-alerts -->
+
 ```mermaid
 flowchart LR
     S[Source turn or operation] --> E[Structured semantic envelope]
@@ -61,6 +84,20 @@ flowchart LR
 Conversation rendering answers who spoke and from where. Operational action
 rendering answers what requires human attention. Both consume the same shared
 provenance principles without sharing a universal output string.
+<!-- change:platform-alerts -->
+
+```mermaid
+flowchart LR
+    S[Source turn or event] --> E[Structured semantic envelope]
+    E --> C[Conversation renderer]
+    E --> N[Notification message renderer]
+    E --> L[Body-free structured observability]
+```
+
+Conversation rendering answers who spoke and from where. Notification rendering
+answers what happened, to which thing, on which computer and when. Both consume
+the same shared provenance principles without sharing a universal output string.
+<!-- /planned-change:platform-alerts -->
 
 ## Failure modes
 
@@ -71,10 +108,29 @@ provenance principles without sharing a universal output string.
   owner rather than its actual author.
 - Logging message bodies leaks conversation content without improving delivery
   diagnosis.
+
+<!-- planned-change:platform-alerts -->
+
 - Reusing one renderer across conversation and operational surfaces hides the
   question each surface must answer.
+
+<!-- change:platform-alerts -->
+
+- Reusing one renderer across conversation and notification surfaces hides the
+  question each surface must answer.
+
+<!-- /planned-change:platform-alerts -->
 
 ## See Also
 
 - docs/local/design/architecture/conversation-delivery.md
+
+<!-- planned-change:platform-alerts -->
+
 - docs/local/design/architecture/operational-action-cards.md
+
+<!-- change:platform-alerts -->
+
+- docs/local/design/architecture/notification-delivery.md
+
+<!-- /planned-change:platform-alerts -->

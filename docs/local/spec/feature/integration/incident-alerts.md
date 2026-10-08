@@ -17,6 +17,9 @@ state the event catalog declares failing or ok, and the thing whose state it
 reports is its subject within its home, so a failure and its recovery name the
 same subject and home. A recurring job is therefore one thing across all its
 runs, and same-named things under different homes are different things.
+A matter is one lifecycle family's state of one thing: two families that report
+on the same subject are two matters, and one family's recovery never closes the
+other's failure.
 Every family that can report a failing state also reports an ok state. An event
 that reports no state is never told.
 
@@ -39,7 +42,7 @@ happened tells it, so each administrator hears each alert once across the
 fleet. Each alert is one message in the form every person-addressed
 notification takes (`local/projects/teleclaude/spec/feature/integration/notification-messages`).
 
-The only state incident alerts keep is, per computer, which things are broken
+The only state incident alerts keep is, per computer, which matters are open
 and since when; a thing that works again leaves nothing behind. No record of
 sent alerts is kept, and a restart of the platform neither tells an alert again
 nor loses the message that a broken thing works again.
