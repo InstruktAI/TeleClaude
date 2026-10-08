@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -39,6 +40,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Final-output progress receipts in this adapter's origin_metadata section.
+_FINAL_OUTPUT_VERSION_FIELD = "final_output_version"
+_FINAL_OUTPUT_CHUNKS_SENT_FIELD = "final_output_chunks_sent"
+_FINAL_OUTPUT_MESSAGE_ID_FIELD = "final_output_message_id"
 _SHUTDOWN_REFUSAL_NOTICE = "TeleClaude is restarting and did not accept this message. Please send it again shortly."
 
 
@@ -206,12 +211,45 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         _ = (started_at, last_output_changed_at, exit_code, render_markdown)
         if not is_final or delivery_ts is None:
             return None
-        metadata = output_metadata or MessageMetadata(content_format=ContentFormat.MARKDOWN)
-        message_ids = await self.deliver_message(session, output, metadata=metadata, multi_message=multi_message)
-        if not message_ids:
+        metadata = (
+            replace(output_metadata, content_format=ContentFormat.MARKDOWN)
+            if output_metadata is not None
+            else MessageMetadata(content_format=ContentFormat.MARKDOWN)
+        )
+        chunks, chunk_metadata = self._split_for_sending(output, metadata)
+        version = delivery_ts.isoformat()
+        sent, last_message_id = self._final_output_progress(session, version)
+        destination = resolve_destination(session, self.ADAPTER_KEY, metadata=chunk_metadata)
+        async with self._get_output_delivery_lock(session.session_id):
+            for index in range(sent, len(chunks)):
+                message_id = await self.send_message(
+                    destination, chunks[index], metadata=chunk_metadata, multi_message=multi_message
+                )
+                last_message_id = str(message_id) if message_id else last_message_id
+                await self._set_origin_field(
+                    session,
+                    final_output_version=version,
+                    final_output_chunks_sent=index + 1,
+                    final_output_message_id=last_message_id,
+                )
+        if not last_message_id:
             return None
         await self.set_last_delivered_at(session, delivery_ts)
-        return message_ids[-1]
+        return last_message_id
+
+    def _final_output_progress(self, session: Session, version: str) -> tuple[int, str | None]:
+        """Chunks already sent for this final-output version, and the last message id.
+
+        A retried final pass resumes after the chunks a failed attempt delivered.
+        """
+        if self._origin_field(session, _FINAL_OUTPUT_VERSION_FIELD) != version:
+            return 0, None
+        sent = self._origin_field(session, _FINAL_OUTPUT_CHUNKS_SENT_FIELD, 0)
+        message_id = self._origin_field(session, _FINAL_OUTPUT_MESSAGE_ID_FIELD)
+        return (
+            sent if isinstance(sent, int) else 0,
+            message_id if isinstance(message_id, str) else None,
+        )
 
     # === Output Message Management (Default Implementations) ===
 

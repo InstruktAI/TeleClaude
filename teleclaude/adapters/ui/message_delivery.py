@@ -161,6 +161,16 @@ class MessageDeliveryMixin:
         """Deliver one standalone message through format dispatch and private splitting."""
         return await self._send_split_message(session, text, metadata=metadata, multi_message=multi_message)
 
+    def _split_for_sending(
+        self,
+        text: str,
+        metadata: MessageMetadata | None,
+    ) -> tuple[list[str], MessageMetadata | None]:
+        """Format *text* for this platform and split it into the messages that carry it."""
+        converted_text, formatted_metadata = self._format_standalone_text(text, metadata)
+        prepared_text, prepared_metadata = self._prepare_overflow_message(converted_text, formatted_metadata)
+        return self._split_overflow_message(prepared_text), prepared_metadata
+
     async def _send_split_message(
         self,
         session: Session,
@@ -170,9 +180,7 @@ class MessageDeliveryMixin:
         multi_message: bool = False,
     ) -> list[str]:
         """Send a standalone UI message, overflowing into continuation messages when needed."""
-        converted_text, formatted_metadata = self._format_standalone_text(text, metadata)
-        prepared_text, prepared_metadata = self._prepare_overflow_message(converted_text, formatted_metadata)
-        chunks = self._split_overflow_message(prepared_text)
+        chunks, prepared_metadata = self._split_for_sending(text, metadata)
         destination = resolve_destination(session, self.ADAPTER_KEY, metadata=prepared_metadata)
         lock = self._get_output_delivery_lock(session.session_id)
         async with lock:

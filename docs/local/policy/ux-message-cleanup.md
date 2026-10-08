@@ -14,7 +14,7 @@ Track user input and feedback messages for automatic deletion to keep UiAdapter 
 - **User Input**: Text messages, voice transcriptions, file notifications sent by user → deleted on next input
 - **Feedback**: Confirmation messages ("✅ Sent to AI", "🎤 Transcribing...") → deleted on next feedback
 - **Turn Controls**: Replaceable controls such as Discord `Listen here` → deleted on next input and recreated after the next completed output
-- **Output**: AI response messages → NEVER deleted, edited in-place
+- **Output**: AI response messages → NEVER deleted; edited in place on an `EditableUiAdapter`, sent once per finished turn on any other `UiAdapter`
 - **Artifacts**: File uploads, result documents → NEVER deleted
 
 **Cleanup Triggers**:
@@ -75,4 +75,4 @@ Does NOT apply to:
 
 - **AI-to-AI sessions**: No feedback messages sent (listeners handle notifications instead)
 - **Persistent artifacts**: Files uploaded by AI, result documents, logs → never tracked for deletion
-- **Output messages**: Single persistent message per session, edited in-place → never deleted until session closes
+- **Output messages**: On an `EditableUiAdapter`, one tracked message per output generation, edited in place; on any other `UiAdapter`, each finished turn sent once, with continuation messages for overflow → never deleted until session closes
