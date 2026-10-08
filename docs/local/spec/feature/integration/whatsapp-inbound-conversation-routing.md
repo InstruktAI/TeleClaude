@@ -175,9 +175,9 @@ And later messages from that number without an identifier reach it
 ```gherkin
 Given the global configuration declares the WhatsApp source
 When Meta delivers a webhook carrying one text message, signed with the declared secret
-Then the cluster receives one platform event "whatsapp.message.text" whose home is none and whose subject is the WhatsApp source
+Then the cluster receives one platform event "whatsapp.message.text" whose origin is none and whose subject is the WhatsApp source
 And each computer's WhatsApp handler receives that message once
-And the person the message comes from is resolved by the handler from the phone number, not from the event's home
+And the person the message comes from is resolved by the handler from the phone number, not from the event's origin
 ```
 
 ### Cross-context references

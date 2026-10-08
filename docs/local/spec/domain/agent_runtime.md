@@ -151,26 +151,26 @@ TeleClaudeNext repository.
   validate a selection and to list memberships; this context never re-derives
   membership.
 
-### Event subjects and homes
+### Event subjects and origins
 
-Every platform event agent_runtime emits states as its subject and home what its
+Every platform event agent_runtime emits states as its subject and origin what its
 act concerned:
 
 - session lifecycle events (a session ended, a restart failed, a bootstrap
-  failed): the session, with its recorded configuration subject as home, or no
-  home when the session has none;
+  failed): the session, with its recorded configuration subject as origin, or no
+  origin when the session has none;
 - events a session's own tools emit about its work, such as captured content or
   a raised escalation: the captured item or the escalation, with that session's
-  recorded configuration subject as home and the session among the related
+  recorded configuration subject as origin and the session among the related
   references;
 - daemon and process-supervision events: the computer whose daemon or process
-  they concern, with no home.
+  they concern, with no origin.
 
 ## See Also
 
-- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 
-- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject, separately from its origin.
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

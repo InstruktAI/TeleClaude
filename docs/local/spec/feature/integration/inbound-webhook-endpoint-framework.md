@@ -35,15 +35,15 @@ Only the ingress computer serves these endpoints.
 
 ### Endpoints
 
-| Path                                   | Opened by                                                        | Protocol | Relayed home |
-| -------------------------------------- | ---------------------------------------------------------------- | -------- | ------------ |
-| `/hooks/inbound/<kind>/<slug>`         | a native source declared by that company, person or project home | native   | that home    |
-| `/hooks/inbound/github/project/<slug>` | a GitHub source declared by that project                         | GitHub   | that project |
-| `/hooks/inbound/whatsapp`              | the WhatsApp source declared by the global configuration         | WhatsApp | none         |
+| Path                                   | Opened by                                                        | Protocol | Relayed origin                  |
+| -------------------------------------- | ---------------------------------------------------------------- | -------- | ------------------------------- |
+| `/hooks/inbound/<kind>/<slug>`         | a native source declared by that company, person or project home | native   | that company, person or project |
+| `/hooks/inbound/github/project/<slug>` | a GitHub source declared by that project                         | GitHub   | that project                    |
+| `/hooks/inbound/whatsapp`              | the WhatsApp source declared by the global configuration         | WhatsApp | none                            |
 
 Every relayed event's subject is the declared source that received it.
 
-`<kind>` is one of the event envelope's home kinds and `<slug>` is that home's
+`<kind>` is one of the registered home kinds, company, person or project, and `<slug>` is that home's
 slug as registered on the ingress computer. A home declares at most one source
 per protocol, and only the protocols its tier admits: a native source in a
 company, person or project home; a GitHub source in a project; the WhatsApp
@@ -151,7 +151,7 @@ And returns an accepted response
 Given the company "acme" declares a native source in its own configuration, with its secret in its own .env
 When a producer posts a request signed with that secret to /hooks/inbound/company/acme
 Then the ingress accepts it
-And relays an event whose home is the company "acme"
+And relays an event whose origin is the company "acme"
 And whose subject is that company's native source
 ```
 

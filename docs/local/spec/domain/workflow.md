@@ -77,25 +77,25 @@ This placement follows `sdlc/policy/domain-ownership`:
 workflow records and publishes its facts once, while presentation consumers
 never reconstruct lifecycle or artifact policy.
 
-### Event subjects and homes
+### Event subjects and origins
 
-Every platform event workflow emits states as its subject and home what its act
+Every platform event workflow emits states as its subject and origin what its act
 concerned:
 
 - todo lifecycle, roadmap, preparation, build, review, integration, and delivery
   events: the todo or delivery they concern, with the project it belongs to as
-  home;
+  origin;
 - deployment events: the deployed project's deployment, one thing across all
-  its deployments, with the deployed project as home;
+  its deployments, with the deployed project as origin;
 - the schedule clock's minute tick: the computer whose clock ticked, with no
-  home.
+  origin.
 
 ## See Also
 
-- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 
-- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject, separately from its origin.
 - docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md — why the subject of an event that reports a state is the thing whose state it is.
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

@@ -20,7 +20,7 @@ The normalizer is the GitHub adapter of the ingress. A project receives
 GitHub deliveries by declaring a GitHub source in its own configuration
 (`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
 The ingress reads the event type from a verified delivery and relays it to
-the cluster as the platform event `github.<event>`, whose home is that
+the cluster as the platform event `github.<event>`, whose origin is that
 project, whose subject is the project's GitHub source, and whose data is the
 delivery body. Each computer turns the
 relayed event back into the hook event above, stamped with the relayed
@@ -113,7 +113,7 @@ And the deployment update flow runs (see deployment-version-fanout)
 Given the project "web" declares a GitHub source
 When GitHub delivers a push signed with that project's secret to /hooks/inbound/github/project/web
 Then the cluster receives the platform event "github.push"
-And its home is the project "web"
+And its origin is the project "web"
 And its subject is the project's GitHub source
 And its data is the delivery body
 And every computer's hook dispatcher receives the normalized push event once

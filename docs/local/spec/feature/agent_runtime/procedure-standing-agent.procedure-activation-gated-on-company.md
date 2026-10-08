@@ -32,7 +32,7 @@ because location never supplies one
 (`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
 
 A standing agent is started by an event, so it runs under the platform's system
-principal with the home the event's producer stated. The principal is
+principal with the origin the event's producer stated. The principal is
 therefore the same for every standing agent and is not part of its identity.
 
 A standing agent is a session, so it lives on one computer. Activations arrive
@@ -56,7 +56,7 @@ person's folder carries no human identity and acts as no person.
 ### Ubiquitous language
 
 **Activation home**
-: The one company, person, or project an activation concerns, as the event's home names it by kind and slug, or the platform for an event whose home is none.
+: The one company, person, or project an activation concerns, as the event's origin names it by kind and slug, or the platform for an event whose origin is none.
 
 **Home folder**
 : Where a standing agent works on the emitting computer — the company's home folder, the person's folder, the project's checkout, or the platform's own checkout.
@@ -262,7 +262,7 @@ And no second agent is started
 
 ## See Also
 
-- docs/local/adr/0110-an-event-activated-procedure-runs-where-its-event-originated.md — why the agent runs on the emitting computer in the event's home.
+- docs/local/adr/0110-an-event-activated-procedure-runs-where-its-event-originated.md — why the agent runs on the emitting computer in the home its event's origin names.
 - docs/local/spec/feature/agent_runtime/company-scoped-session-context.md — how a session's company and origin are established, carried, and published.
 - docs/local/spec/feature/agent_runtime/coordinator-role-acquisition.md — the other singleton in this context: human-directed, one per project instance, enforced at an acquisition door rather than by activation.
 - docs/local/spec/feature/agent_runtime/scheduled-agent-command-dispatch.md — the schedule-driven sibling, which creates a session per run rather than keeping one standing.

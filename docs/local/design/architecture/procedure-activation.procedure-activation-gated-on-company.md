@@ -1,5 +1,5 @@
 ---
-description: How a published procedure's event subscriptions select platform events by type pattern and by the kind of home the procedure answers, and how the computer that emitted a matching event starts or wakes that procedure's standing agent in the event's home through one generic command — an independent event consumer composed from existing event, dispatch, session, operation, and identity contracts.
+description: How a published procedure's event subscriptions select platform events by type pattern and by the kind of home the procedure answers, and how the computer that emitted a matching event starts or wakes that procedure's standing agent in the event's origin through one generic command — an independent event consumer composed from existing event, dispatch, session, operation, and identity contracts.
 visibility: internal
 ---
 
@@ -11,7 +11,7 @@ Connect a procedure's declared event subscriptions to the agent that answers
 them, without a per-scenario command and without a business workflow engine. A
 procedure declares which platform events concern it and which kind of home it
 answers. On the computer that emitted a matching event, the event starts that
-procedure's standing agent for the event's home, or wakes the one already
+procedure's standing agent for the home its event's origin names, or wakes the one already
 running.
 
 An event states its source computer, its subject — the one thing it is about —
@@ -26,14 +26,14 @@ the agent that receives it.
 This document owns only the relationship among the participating contexts. Each
 rule it relies on is stated by its owner:
 
-| Concern                                                                                      | Owner           | Contract                                                                                                                                                                                                   |
-| -------------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An event's source, subject, and home, the one type-pattern matcher, and the consumer runtime | `event-catalog` | `local/projects/teleclaude/spec/domain/event-catalog`, `local/projects/teleclaude/spec/feature/event-catalog/event-envelope`, `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`       |
-| The activation declaration, its validation, and the catalogue consequence                    | `context`       | `local/projects/teleclaude/spec/domain/context`, `local/projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`, `local/projects/teleclaude/spec/feature/context/agents-master-inflation` |
-| Whether a registered company, person, or project is present here, and its folder             | `config`        | `local/projects/teleclaude/spec/domain/config`                                                                                                                                                             |
-| Matching an event to subscriptions on the computer that emitted it and producing activations | `integration`   | `local/projects/teleclaude/spec/feature/integration/procedure-subscription-routing`                                                                                                                        |
-| The activation runner, the home an agent works in, and each session's company                | `agent_runtime` | `local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`, `local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`                                     |
-| Membership facts and the company context tools read inside a session                         | `identity`      | `local/projects/teleclaude/spec/domain/identity`, `local/projects/teleclaude/spec/feature/identity/whoami-resolution`                                                                                      |
+| Concern                                                                                       | Owner           | Contract                                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An event's source, origin and subject, the one type-pattern matcher, and the consumer runtime | `event-catalog` | `local/projects/teleclaude/spec/domain/event-catalog`, `local/projects/teleclaude/spec/feature/event-catalog/event-envelope`, `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`       |
+| The activation declaration, its validation, and the catalogue consequence                     | `context`       | `local/projects/teleclaude/spec/domain/context`, `local/projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`, `local/projects/teleclaude/spec/feature/context/agents-master-inflation` |
+| Whether a registered company, person, or project is present here, and its folder              | `config`        | `local/projects/teleclaude/spec/domain/config`                                                                                                                                                             |
+| Matching an event to subscriptions on the computer that emitted it and producing activations  | `integration`   | `local/projects/teleclaude/spec/feature/integration/procedure-subscription-routing`                                                                                                                        |
+| The activation runner, the home an agent works in, and each session's company                 | `agent_runtime` | `local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`, `local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`                                     |
+| Membership facts and the company context tools read inside a session                          | `identity`      | `local/projects/teleclaude/spec/domain/identity`, `local/projects/teleclaude/spec/feature/identity/whoami-resolution`                                                                                      |
 
 ## Inputs/Outputs
 
@@ -41,7 +41,7 @@ rule it relies on is stated by its owner:
 
 - Platform events from the platform event stream, handed to the procedure
   activation consumer on this computer, each carrying the source, subject, and
-  home its producer stated.
+  origin its producer stated.
 - Each published procedure's declared subscriptions as type patterns, the home
   kind it answers, and its publication tier, from the publication index.
 - Whether the event's company, person, or project is registered on this
@@ -68,9 +68,9 @@ rule it relies on is stated by its owner:
   refused where it is declared, so it is never published.
 - **A procedure answers one home kind.** It declares whether it answers company,
   person, project, or platform events, and it matches only events of a
-  subscribed type whose home is of that kind; a platform procedure matches
-  events whose home is none. A project's home is never converted to its owning
-  company or person, a company's home is never broadcast to its projects, and no
+  subscribed type whose origin is of that kind; a platform procedure matches
+  events whose origin is none. A project origin is never converted to its owning
+  company or person, a company origin is never broadcast to its projects, and no
   kind takes precedence over another.
 - **The publication tier bounds the reach.** A procedure published at global
   tier answers every home of its declared kind; one published in a company's
@@ -80,7 +80,7 @@ rule it relies on is stated by its owner:
   activates the procedures it matches. Every other computer that reads the event
   does nothing for it, whether or not it holds the same home (ADR-0110). Which
   computers an event reaches has no bearing on activation.
-- **Unknown is never acted on.** An event whose home is unknown activates no
+- **Unknown is never acted on.** An event whose origin is unknown activates no
   procedure of any kind, and is never read as a platform event.
 - **The home chooses where the agent works.** A company home runs in that
   company's home folder, a person home in that person's folder, a project home
@@ -176,11 +176,11 @@ sequenceDiagram
     participant Op as Durable operation
     participant AR as Activation runner (agent_runtime)
 
-    Prod->>Str: event with source, subject, and home
+    Prod->>Str: event with source, origin and subject
     Str->>Rt: event, read by every computer
-    Note over Rt: hand on only when the source is this computer, the home is known, and the id is not yet handled
+    Note over Rt: hand on only when the source is this computer, the origin is known, and the id is not yet handled
     Rt->>Act: event
-    Act->>Act: match published subscriptions by type pattern, home kind, and tier
+    Act->>Act: match published subscriptions by type pattern, origin kind, and tier
     Act->>Op: submit one activation per match, keyed by event, procedure, and home
     Act-->>Rt: handled (or failed, retried, then parked)
     Op->>AR: activate(procedure, home, event)
@@ -223,7 +223,7 @@ work is owned without being offered it.
 - **No standing agent can be started or reached** on the emitting computer —
   the activation's durable operation fails with its reason, readable as an
   operation outcome. Nothing retries on another agent's or computer's behalf.
-- **The event's home is absent on the emitting computer** — a company, person,
+- **The event's origin is not registered on the emitting computer** — a company, person,
   or project not registered there fails the activation's operation with the
   reason that its home is absent. No other home or computer takes it.
 - **Activation submission fails** — the consumer's handling of the event fails.
@@ -234,9 +234,9 @@ work is owned without being offered it.
 - **The event was emitted on another computer** — this computer's consumer is
   not handed it and opens no operation. This is the normal case on every
   computer but the emitting one.
-- **An event's home is unknown** — the consumer is not handed it; no procedure
+- **An event's origin is unknown** — the consumer is not handed it; no procedure
   is activated, whatever kind it answers.
-- **An event's home is of another kind than a procedure answers** — the
+- **An event's origin is of another kind than a procedure answers** — the
   procedure does not match it, and nothing converts the home into its kind.
 - **A tier-published procedure meets an event about another company or
   person** — it does not match; only global-tier procedures answer every home of

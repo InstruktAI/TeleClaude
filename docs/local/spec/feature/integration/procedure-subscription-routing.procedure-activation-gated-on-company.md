@@ -11,18 +11,18 @@ Procedure subscription routing is the step between a platform event and the
 agent that answers it. It runs as one consumer of the platform event stream on
 each computer (`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`),
 interested in every event type, in events its own computer emitted, and in
-events whose home is known. There it matches each event it is handed against
+events whose origin is known. There it matches each event it is handed against
 the published procedure subscriptions and hands each match to the runtime
 contract that owns standing agents, as one activation naming the procedure and
-the event's home. Routing decides nothing about whether an agent already
+the event's origin. Routing decides nothing about whether an agent already
 stands, and never starts or addresses a session itself.
 
-An event states its own source, subject, and home
+An event states its own source, origin and subject
 (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`).
 Routing reads them as stated and never constructs, replaces, or infers any of
 them. Every computer reads the same stream; a computer that did not emit an
 event does nothing with it, which is the normal case rather than a failure. An
-event whose home is unknown activates nothing anywhere.
+event whose origin is unknown activates nothing anywhere.
 
 A procedure subscribes with type patterns: an exact event type name, a prefix
 of whole name segments followed by `.*`, or `*`. A pattern matches an event's
@@ -33,8 +33,8 @@ event of the `erp` domain.
 
 Every subscribed procedure declares the one kind of home it answers: company,
 person, project, or platform. It matches an event of a subscribed type only
-when the event's home is of that kind, and a platform procedure matches events
-whose home is none. A home is never converted to another kind: a project's home
+when the event's origin is of that kind, and a platform procedure matches events
+whose origin is none. An origin is never converted to another kind: a project origin
 does not reach its owning company's or person's procedures, and a company's
 home does not reach its projects' procedures.
 
@@ -60,8 +60,8 @@ it and, when it keeps failing, parks and announces it.
 #### UC-PSR1: A matched event produces one activation naming the procedure and home
 
 ```gherkin
-Given a published procedure declares an event type as activating it and answers events whose home is a company
-And an event of that type whose home is a company is emitted on this computer
+Given a published procedure declares an event type as activating it and answers events whose origin is a company
+And an event of that type whose origin is a company is emitted on this computer
 When the event is matched against the published procedure subscriptions
 Then an agent inspecting the activation record sees exactly one activation naming that procedure and that company
 And that activation carries the event
@@ -73,8 +73,8 @@ And the agent sees no session started or addressed by the match itself
 ```gherkin
 Given a procedure declaring the events that activate it and the home kind it answers is published
 And no act beyond that publication has been performed
-When an event of a declared type and home kind is emitted on this computer
-Then an agent inspecting the activation record sees an activation for that procedure and the event's home
+When an event of a declared type and origin kind is emitted on this computer
+Then an agent inspecting the activation record sees an activation for that procedure and the event's origin
 ```
 
 #### UC-PSR3: An unmatched event produces no activation
@@ -91,7 +91,7 @@ And sees no failure recorded for the absence of a match
 
 ```gherkin
 Given two companies each publish in their own tier a procedure declaring the same event type and answering company events
-When an event of that type whose home is one of those companies is emitted on this computer
+When an event of that type whose origin is one of those companies is emitted on this computer
 Then an agent inspecting the activation record sees an activation for that company only
 And sees none for the other company
 ```
@@ -127,12 +127,12 @@ Scenario Outline: A computer that did not emit the event produces no activation
 ```gherkin
 Scenario Outline: An event activates the procedures that answer its home's kind
   Given a global-tier procedure declaring an event type answers <declared kind> events
-  And an event of that type is emitted on this computer whose home is <event home>
+  And an event of that type is emitted on this computer whose origin is <event origin>
   When the event is matched against the published procedure subscriptions
   Then an agent inspecting the activation record sees <outcome>
 
   Examples:
-    | declared kind | event home                        | outcome                                          |
+    | declared kind | event origin                        | outcome                                          |
     | company       | a company                         | one activation naming the procedure and company  |
     | person        | a person                          | one activation naming the procedure and person   |
     | project       | a project                         | one activation naming the procedure and project  |
@@ -143,11 +143,11 @@ Scenario Outline: An event activates the procedures that answer its home's kind
     | platform      | a project                         | no activation                                    |
 ```
 
-#### UC-PSR12: An event whose home is unknown activates nothing
+#### UC-PSR12: An event whose origin is unknown activates nothing
 
 ```gherkin
 Given a procedure is published that answers an event type for every home kind it may declare
-And an event of that type whose home is unknown is emitted on this computer
+And an event of that type whose origin is unknown is emitted on this computer
 When the event reaches this computer's procedure subscription routing
 Then an agent inspecting the activation record sees no activation for the event
 And sees no failure recorded for it
@@ -157,7 +157,7 @@ And sees no failure recorded for it
 
 ```gherkin
 Given a procedure published in a person's tier declares an event type and answers person events
-When events of that type are emitted on this computer, one whose home is that person and one whose home is another person
+When events of that type are emitted on this computer, one whose origin is that person and one whose origin is another person
 Then an agent inspecting the activation record sees an activation for that person
 And sees none for the other person
 ```
@@ -181,7 +181,7 @@ Scenario Outline: A repeat of one event reaches the existing activation
 
 ```gherkin
 Given a procedure answers an event type for a home
-When two distinct events of that type whose home is that home are emitted on this computer
+When two distinct events of that type with that origin are emitted on this computer
 Then an agent inspecting the activation record sees one activation for each event
 And the procedure's standing agent receives both events
 ```
@@ -191,7 +191,7 @@ And the procedure's standing agent receives both events
 ```gherkin
 Scenario Outline: A pattern matches whole name segments
   Given a global-tier procedure answering company events subscribes to "<pattern>"
-  When an event of type "<type>" whose home is a company is emitted on this computer
+  When an event of type "<type>" whose origin is a company is emitted on this computer
   Then an agent inspecting the activation record sees <outcome>
 
   Examples:
@@ -237,6 +237,6 @@ Scenario Outline: A pattern matches whole name segments
 - docs/local/adr/0110-an-event-activated-procedure-runs-where-its-event-originated.md — why only the emitting computer activates.
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why the home, not the subject, names whose an event is.
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md — why routing is an independent consumer.
-- docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why an unknown home is never read as none.
-- docs/local/spec/feature/event-catalog/event-envelope.md — the source, subject, and home every event carries.
+- docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why an unknown origin is never read as none.
+- docs/local/spec/feature/event-catalog/event-envelope.md — the source, origin and subject every event carries.
 - docs/local/spec/feature/event-catalog/event-consumers.md — the consumer runtime and the type-pattern matcher.

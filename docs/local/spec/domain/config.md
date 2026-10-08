@@ -202,26 +202,26 @@ it, so the next listing and every later live push read the changed declaration
 (`local/projects/teleclaude/spec/domain/identity`). A request-scoped consumer resolves
 reach per request and needs no notice.
 
-### Event subjects and homes
+### Event subjects and origins
 
-Every platform event config emits states as its subject and home what its act
+Every platform event config emits states as its subject and origin what its act
 concerned:
 
 - a job run's outcome: the job, one thing across all its runs, with the project
-  the run executes for as home. A globally published job is a separate job in
+  the run executes for as origin. A globally published job is a separate job in
   each subscribing project. Every job run executes for a registered project; an
   outcome recorded before runs were keyed by project, whose project cannot be
-  recovered from its record, states an unknown home.
+  recovered from its record, states an unknown origin.
 - an effective configuration change: the configuration that changed, with the
-  project whose configuration it is as home. A machine or global configuration
-  change has no home.
+  project whose configuration it is as origin. A machine or global configuration
+  change has no origin.
 
 ## See Also
 
-- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 
-- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject, separately from its origin.
 - docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md — why the subject of an event that reports a state is the thing whose state it is.
 
 - docs/local/spec/teleclaude-config.md

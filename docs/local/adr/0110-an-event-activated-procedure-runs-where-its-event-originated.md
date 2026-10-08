@@ -74,3 +74,5 @@ another computer.
 
 Superseded in part by ADR-0114: the event's `home`, not its `subject`, names the
 home a procedure runs in. The rest of the decision stands.
+
+Superseded in part by ADR-0118: the event's origin, which states no home, decides the activation; the consumer resolves the home a procedure runs in from that origin on the emitting computer.

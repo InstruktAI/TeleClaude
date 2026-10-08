@@ -80,17 +80,17 @@ implementation remain the current appliance contract.
   subscription — its type patterns, the home kind it answers, and the tier it is
   published in — from the publication index `context` publishes; and running,
   on each computer, one platform event consumer that is handed the events its
-  own computer emitted whose home is known, and matches each event's type and
-  home against those subscriptions with `event-catalog`'s type-pattern matcher.
-  A procedure answers only events whose home is of its declared kind, with a
-  platform procedure answering events whose home is none, and a tier-published
+  own computer emitted whose origin is known, and matches each event's type and
+  origin against those subscriptions with `event-catalog`'s type-pattern matcher.
+  A procedure answers only events whose origin is of its declared kind, with a
+  platform procedure answering events whose origin is none, and a tier-published
   procedure only its own company or person. Each match produces one activation:
-  the procedure, the event's home, the event, and the platform's system
+  the procedure, the event's origin, the event, and the platform's system
   principal as its origin, identified by the event's id, the procedure, and the
   home so that handling the same event again finds the existing activation.
-  Routing reads the event's source, subject, and home as its producer stated
+  Routing reads the event's source, origin and subject as its producer stated
   them and never constructs, replaces, or converts any of them; it coordinates
-  no computers. An event another computer emitted and an event whose home is
+  no computers. An event another computer emitted and an event whose origin is
   unknown produce no activation and record no failure. A submission that fails
   fails the consumer's handling of the event, which the consumer runtime retries
   and parks. The subscription set is held in memory with the identity of the

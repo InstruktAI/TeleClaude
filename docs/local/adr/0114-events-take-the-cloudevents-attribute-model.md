@@ -91,3 +91,7 @@ resource an event is about, within the context its source names.
 - **Keep the existing type names and add an owner attribute.** Rejected: a
   procedure subscribes to a type pattern, and a pattern like `erp.*` selects a
   whole domain only when the owner is the name's first segment.
+
+## Status
+
+Superseded in part by ADR-0118: the project, person or company an act happened in is the event's origin, stated with its emitting computer as its source; an event states no home, and the field named `home` carries the origin. The rest of the decision stands.

@@ -83,3 +83,7 @@ with bounded attempts and dead-letters what keeps failing.
   have to know their consumers, which ADR-0115 rules out.
 - **Selection by payload fields.** Rejected under ADR-0115: routing reads only
   event attributes.
+
+## Status
+
+Superseded in part by ADR-0118: a consumer's interest reads the event's origin kinds; an event states no home.

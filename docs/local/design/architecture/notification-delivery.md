@@ -126,9 +126,9 @@ action is delivered once and only a material escalation can interrupt again.
   the shared console.
 
 - **Broadcast notifications on the shared console follow the viewer's reach.**
-  The notification row records the home of the event it projects and that
-  home's owner. The notification list a TUI or web-console client receives
-  and every live push to it carry only the broadcast notifications whose home
+  The notification row records the origin of the event it projects and that
+  origin's owner. The notification list a TUI or web-console client receives
+  and every live push to it carry only the broadcast notifications whose origin
   the viewing principal's reach admits
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`); a platform
   administrator and the system principal receive every broadcast notification.

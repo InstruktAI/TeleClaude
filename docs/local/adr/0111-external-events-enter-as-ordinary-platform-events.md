@@ -121,3 +121,5 @@ trusted. A misnamed event is a visible, repairable configuration mistake.
 Superseded in part by ADR-0114: the declaring home a relayed event concerns is
 its `home`, and its `subject` names the one thing the event is about. The rest
 of the decision stands.
+
+Superseded in part by ADR-0118: the declaring project, person or company is the relayed event's origin; an event states no home.

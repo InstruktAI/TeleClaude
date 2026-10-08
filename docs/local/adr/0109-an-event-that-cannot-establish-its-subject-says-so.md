@@ -75,3 +75,5 @@ shape: an owner the emitting computer cannot read is unresolved, never no owner.
 Superseded in part by ADR-0114: the three values this decision gave the subject
 belong to the event's `home`, and `subject` names the one thing the event is
 about. The rest of the decision stands for the home.
+
+Superseded in part by ADR-0118: the three values belong to the event's origin; an event states no home.

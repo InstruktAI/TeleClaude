@@ -288,16 +288,16 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 <!-- /planned-change:help-desks-as-deployment-output -->
 
-### Event subjects and homes
+### Event subjects and origins
 
 Node presence events state the node as subject, and schema-governance events the
-schema proposal they concern; neither states a home.
+schema proposal they concern; neither states an origin.
 
 ## See Also
 
-- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered home its act concerned.
+- docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 
-- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+- docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject, separately from its origin.
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

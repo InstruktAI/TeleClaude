@@ -160,11 +160,11 @@ contracts and never creates shared ownership.
 - `context` publishes each procedure's declared subscription patterns, the home
   kind it answers, and its publication tier; `integration` runs one platform
   event consumer that, on the computer that emitted an event, matches the
-  event's type and home against them with `event-catalog`'s type-pattern
+  event's type and origin against them with `event-catalog`'s type-pattern
   matcher, and hands each resulting activation to `agent_runtime` as a command
   addressed to its own computer; it never starts, addresses, or inspects a
   session. `agent_runtime` owns the activation runner, asks `config` whether the
-  event's home is registered on that computer and where its folder is, and owns
+  project, person, or company the event's origin names is registered on that computer and where its home folder is, and owns
   each session's company, consuming `identity`'s membership resolution;
   `identity` resolves the company context a tool inside a session reads from
   the session record that session's id names and its own membership resolution,
@@ -176,14 +176,15 @@ contracts and never creates shared ownership.
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
 - Every context that emits onto the platform event stream states each event's
-  subject — the one thing its act concerned — and its home — the registered home
-  that thing belongs to, none when it belongs to no registered home, or unknown
-  when the event does not carry that home — and owns those choices as part of
-  its emission invariant. `event-catalog` composes the rest of the envelope at
+  subject — the one thing its act concerned — and its origin — the registered
+  project, person, or company the act happened in, none when it happened in none,
+  or unknown when the event does not carry it — and owns those choices as part of
+  its emission invariant. No event states a home: a consumer that works in one
+  resolves it from the origin on its own computer. `event-catalog` composes the rest of the envelope at
   emission from the owners' published answers. From `identity`, it takes the
   caller session resolved at the request boundary for the request that produced
   the event, held for the request's whole duration, and references that session.
-  From `config`, it takes the registered-subject vocabulary and a project home's
+  From `config`, it takes the registered-subject vocabulary and a project origin's
   declared owner. It restates none of their rules, validates nothing, and
   decides no audience. Consumers read the event's attributes, and receipt
   decisions stay with the consuming contexts.

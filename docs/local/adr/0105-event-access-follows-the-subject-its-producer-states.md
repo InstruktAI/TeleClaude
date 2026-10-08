@@ -91,3 +91,5 @@ the decision stands.
 Superseded in part by ADR-0114: the registered home an event concerns is its
 `home`, and its `subject` names the one thing the event is about. Access
 follows the home, and the emitting session is a related reference.
+
+Superseded in part by ADR-0118: that fact is the event's origin, not a home; access follows the origin, and an event states no home.
