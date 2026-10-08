@@ -18,6 +18,7 @@ from ruamel.yaml.error import YAMLError
 
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.field_constraints import FieldConstraintRefusal
 from teleclaude.config.migrations import _steps
 from teleclaude.config.migrations._chain import (
     CURRENT_VERSION,
@@ -65,6 +66,7 @@ class MigrationFailureReason(StrEnum):
     DESTINATION_CONFLICT = "destination_conflict"
     MIGRATION_ERROR = "migration_error"
     COMMIT_REFUSED = "commit_refused"
+    FIELD_CONSTRAINT_REFUSED = "field_constraint_refused"
 
 
 _NOT_A_MAPPING = MigrationFailureReason.NOT_A_MAPPING
@@ -74,6 +76,7 @@ _PARSE_ERROR = MigrationFailureReason.PARSE_ERROR
 _DESTINATION_CONFLICT = MigrationFailureReason.DESTINATION_CONFLICT
 _MIGRATION_ERROR = MigrationFailureReason.MIGRATION_ERROR
 _COMMIT_REFUSED = MigrationFailureReason.COMMIT_REFUSED
+_FIELD_CONSTRAINT_REFUSED = MigrationFailureReason.FIELD_CONSTRAINT_REFUSED
 _MIGRATION_SUBJECT = "chore(config): migrate {path} to configuration version {version}"
 _COMMIT_DOCUMENT_PATH = "{commit}:{path}"
 _TELEC_EXECUTABLE = "telec"
@@ -107,6 +110,7 @@ class MigrationRecord(TypedDict):
     outcome: MigrationOutcome
     reason: MigrationFailureReason | None
     commit: str | None
+    diagnostic: str | None
 
 
 class MigrationCommitRefused(RuntimeError):
@@ -219,6 +223,18 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
         except DocumentNewerThanInstallation:
             return _record(
                 key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NEWER_VERSION, None
+            )
+        except FieldConstraintRefusal as refusal:
+            return _record(
+                key,
+                subject,
+                from_version,
+                CURRENT_VERSION,
+                trigger,
+                MigrationOutcome.FAILED,
+                _FIELD_CONSTRAINT_REFUSED,
+                None,
+                diagnostic=str(refusal),
             )
         except (OSError, ValueError, TypeError):
             return _record(
@@ -460,8 +476,12 @@ def _record(
     outcome: MigrationOutcome,
     reason: MigrationFailureReason | None,
     commit: str | None,
+    diagnostic: str | None = None,
 ) -> MigrationRecord:
-    """Emit and return the privacy-safe per-document migration record."""
+    """Emit and return the privacy-safe per-document migration record.
+
+    ``diagnostic`` carries a refusal's schema-owned text, never document content.
+    """
     record: MigrationRecord = {
         "document_key": document_key,
         "subject_kind": subject.kind.value,
@@ -472,6 +492,7 @@ def _record(
         "outcome": outcome,
         "reason": reason,
         "commit": commit,
+        "diagnostic": diagnostic,
     }
     logger.info(_LOG_MIGRATION, **record)
     return record

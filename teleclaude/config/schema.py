@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, ModelWrapValidatorHandler, field_validator, model_validator
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.closed_model import SENSITIVE, ClosedModel
+from teleclaude.config.field_constraints import append_constraint_rules, declared_constraints, refuse_violations
 from teleclaude.config.tiers import Tier
 from teleclaude.config_roster import CompanyMember as CompanyMember
 from teleclaude.config_roster import CompanyRole as CompanyRole
@@ -631,7 +633,31 @@ class HelpDeskConfig(ClosedModel):
     enabled: bool = False
 
 
-class ProjectConfig(ClosedModel):
+class TierDocument(ClosedModel):
+    """The closed base of the tier documents, enforcing and publishing declared field constraints.
+
+    A relationship declared on a field is checked after the document validates, refused at the
+    requiring field with the declared message, and published as a conditional rule in the
+    document's JSON Schema. A declaration that cannot be expressed identically everywhere fails
+    when the document model is defined.
+    """
+
+    model_config = ConfigDict(json_schema_extra=append_constraint_rules)
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        declared_constraints(cls)
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _enforce_field_constraints(cls, data: object, handler: ModelWrapValidatorHandler[Self]) -> Self:
+        instance = handler(data)
+        refuse_violations(cls, instance)
+        return instance
+
+
+class ProjectConfig(TierDocument):
     """Project-level configuration: per-project ``teleclaude.yml`` overlay.
 
     This is the project-scoped overlay, not the machine runtime config — the
@@ -726,7 +752,7 @@ class ProjectConfig(ClosedModel):
         return data
 
 
-class GlobalConfig(ClosedModel):
+class GlobalConfig(TierDocument):
     """Global-level configuration: the cross-project overlay (people, interests, overlay roots).
 
     Like ``ProjectConfig``, this is an overlay, not the machine runtime config; the
@@ -780,7 +806,7 @@ class GlobalConfig(ClosedModel):
         return data
 
 
-class PersonConfig(ClosedModel):
+class PersonConfig(TierDocument):
     """Per-person configuration."""
 
     kind: Literal[ConfigKind.PERSON] = Field(json_schema_extra={"tier": Tier.INTERNAL})
@@ -826,7 +852,7 @@ class PersonConfig(ClosedModel):
         return data
 
 
-class CompanyConfig(ClosedModel):
+class CompanyConfig(TierDocument):
     """Company-tier configuration: per-company ``teleclaude.yml`` overlay.
 
     Folder-discovered under ``~/.teleclaude/companies/<slug>/`` (the
@@ -872,6 +898,15 @@ class CompanyConfig(ClosedModel):
         for person_slug in value:
             validate_slug(person_slug)
         return value
+
+
+TIER_DOCUMENT_MODELS: Final[Mapping[ConfigKind, type[TierDocument]]] = {
+    ConfigKind.GLOBAL: GlobalConfig,
+    ConfigKind.PROJECT: ProjectConfig,
+    ConfigKind.PERSON: PersonConfig,
+    ConfigKind.COMPANY: CompanyConfig,
+}
+"""The tier document model of each configuration kind."""
 
 
 @dataclass(frozen=True)

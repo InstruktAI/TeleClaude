@@ -57,7 +57,7 @@ def _walk_schema(
         path = (*prefix, name)
         tier = effective_tier(pydantic_field_tier(field_info), inherited_tier)
         annotation = field_info.annotation
-        nested = _nested_model(annotation)
+        nested = nested_model(annotation)
         if nested is not None:
             descriptors.extend(_walk_schema(nested, tier, path))
             continue
@@ -82,7 +82,7 @@ def _walk_schema(
     return descriptors
 
 
-def _nested_model(annotation: Any) -> type[ClosedModel] | None:
+def nested_model(annotation: Any) -> type[ClosedModel] | None:
     """Return an optional nested closed-model annotation, excluding containers."""
     candidates = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
     for candidate in candidates:
