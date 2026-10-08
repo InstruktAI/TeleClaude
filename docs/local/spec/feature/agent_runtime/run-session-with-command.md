@@ -444,6 +444,8 @@ Then the live-holder signal is authoritative and the request is refused — the 
 
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
+<!-- planned-change:terminal-commit-review-dedup -->
+
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes
 every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
 by the project, the driver that opened the review, and the thinking mode the review runs
@@ -452,6 +454,24 @@ read: doc-hygiene runs at `fast` over snippet conformance, code review at `slow`
 behavior. A mode-blind subject collapses them, so the cheap lane is refused as a duplicate
 of the expensive one and its work lands on the wrong reviewer. Two starts at the same mode
 remain one subject and still dedup.
+<!-- change:terminal-commit-review-dedup -->
+
+Commit review carries no todo slug — its subject is a commit series whose SHA set changes
+every remediation round — so slug-keyed dedup cannot reach it. Its subject is identified
+by the project, the driver that opened the review, and the thinking mode the review runs
+at. Mode belongs to that subject because the review lanes differ in cost and in what they
+read: doc-hygiene runs at `fast` over snippet conformance, code review at `slow` over
+behavior. A mode-blind subject collapses them, so the cheap lane is refused as a duplicate
+of the expensive one and its work lands on the wrong reviewer. Two starts at the same mode
+remain one subject and still dedup.
+
+The driver is the caller's session when the caller is a session, and the authenticated
+human when the caller is a terminal that carries no session. A session caller is keyed by
+its session even when it also carries a human, so a session and its human's terminal are
+two drivers. A caller that resolves to neither has no driver to key on and is refused: a
+reviewer started without a key can never be found as a holder, so every later start
+would be admitted beside it.
+<!-- /planned-change:terminal-commit-review-dedup -->
 
 ```
 Given a live "review-commits" session for project P opened by initiator session I
@@ -476,6 +496,40 @@ And a create request launching "review-commits" for project P from initiator I
 When the create-door dedup check runs
 Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
 ```
+
+<!-- planned:terminal-commit-review-dedup -->
+
+```
+Given a live "review-commits" session for project P at mode M, started from a terminal authenticated as human H with no caller session
+And a create request launching "review-commits" for project P at mode M from a terminal authenticated as H with no caller session
+When the create-door dedup check runs
+Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
+And no second reviewer session is created
+And the refusal states the reuse command that addresses the holder instead
+```
+
+```
+Given a live "review-commits" session for project P at mode M, started from a terminal authenticated as human H
+And a create request launching "review-commits" for project P at mode M from a terminal authenticated as a different human, or from a session whose human is H, or for a different project or mode
+When the create-door dedup check runs
+Then the request is allowed, because each of those is a different review subject
+```
+
+```
+Given a live "review-commits" session for project P at mode M, opened by initiator session I whose human is H
+And a create request launching "review-commits" for project P at mode M from a terminal authenticated as H with no caller session
+When the create-door dedup check runs
+Then the request is allowed, because a reviewer a session opened never holds its human's terminal subject
+```
+
+```
+Given a create request launching "review-commits" whose caller carries neither a session nor an authenticated human
+When the create-door dedup check runs
+Then the request is refused as having no resolvable caller identity, returned as HTTP 409 detail
+And no reviewer session is created
+```
+
+<!-- /planned:terminal-commit-review-dedup -->
 
 #### UC-DSD1: Held unclaimed lifecycle create requests are allowed but keep hold
 
