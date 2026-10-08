@@ -47,6 +47,7 @@ from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTran
 from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.shutdown_drain import ShutdownRefusal, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.tmux_io import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.todos_db import get_todos_db
@@ -86,6 +87,7 @@ PURGE_REASON_GIT_COMMAND_FAILURE = "git_command_failure"
 PURGE_REASON_LAYER_2_STAGED_SET_MISMATCH = "layer_2_staged_set_mismatch"
 PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE = "layer_3_post_commit_verification_failure"
 _RESTORE_TMUX_FAILURE_LOG = "Automatic tmux restoration reached terminal outcome"
+_TMUX_RESTORE_WORK = "tmux-restore"
 
 
 class _RestoreTmuxFailureReason(StrEnum):
@@ -530,9 +532,13 @@ class MaintenanceService:
 
             if session.tmux_session_name not in active_tmux_sessions:
                 if session.session_id not in self._restoring_sessions:
+                    try:
+                        restore_unit = get_shutdown_drain().begin_work(_TMUX_RESTORE_WORK)
+                    except ShutdownRefusal:
+                        continue
                     self._restoring_sessions.add(session.session_id)
                     self._task_registry.spawn(
-                        self._restore_tmux_session(session),
+                        restore_unit.carry(self._restore_tmux_session(session)),
                         name=f"restore-tmux-{session.session_id}",
                     )
                 continue

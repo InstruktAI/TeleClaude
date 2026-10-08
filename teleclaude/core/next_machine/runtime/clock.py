@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.events import EventLevel, EventProducer, EventVisibility
 from teleclaude.events.envelope import EventHomeMarker, occurrence_id
 from teleclaude.events.references import ComputerRef
@@ -42,6 +43,9 @@ class TaskScheduleClock:
                 break
             except TimeoutError:
                 pass
+            if not get_shutdown_drain().is_open:
+                # A tick refused downstream would burn the event processor's retries; emit none while draining.
+                continue
             ticked_at = datetime.now(UTC).replace(second=0, microsecond=0)
             tick_key = f"{_SCHEDULER_TICK_KEY}:{config.computer.name}:{ticked_at.isoformat()}"
             await self._producer.emit(

@@ -25,6 +25,7 @@ from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.models._types import JsonValue
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _TURN_BOUNDARY_DETECTED_EVENT = "ui_adapter_turn_boundary_detected"
+_SHUTDOWN_REFUSAL_NOTICE = "TeleClaude is restarting and did not accept this message. Please send it again shortly."
 
 
 class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
@@ -430,11 +432,26 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             if exc.reason is SessionMessageRejectionReason.ADMISSION_REFUSED:
                 await self.send_error_feedback(session.session_id, str(exc))
             raise
+        except ShutdownRefusal:
+            await self.answer_shutdown_refusal(session.session_id)
+            raise
 
         if message_id:
             await self.client.post_handle_command(session, message_id, metadata.origin)
 
         return result
+
+    async def answer_shutdown_refusal(self, session_id: str) -> None:
+        """Tell the sender their input was refused because the daemon is restarting, so they can resend it."""
+        await self.send_error_feedback(session_id, _SHUTDOWN_REFUSAL_NOTICE)
+
+    async def answer_refusal_of[T](self, session_id: str, work: Awaitable[T]) -> T | None:
+        """Await input work, answering a draining refusal to the sender instead of dropping the input."""
+        try:
+            return await work
+        except ShutdownRefusal:
+            await self.answer_shutdown_refusal(session_id)
+            return None
 
     async def dispatch_command(
         self,

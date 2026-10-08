@@ -75,6 +75,7 @@ from teleclaude.core.operations.todo_identity import (
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
+from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
@@ -109,6 +110,8 @@ TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 _FOLLOW_THROUGH_TASK_NAME_TEMPLATE = "operation-follow-through-{operation_id}"
+_OPERATION_WORK_TEMPLATE = "operation:{kind}"
+_FOLLOW_THROUGH_WORK = "operation-follow-through"
 
 
 def _operation_payload_abandon(operation: Operation) -> bool:
@@ -504,6 +507,7 @@ class OperationsService:
                     await self._ensure_operation_task(existing.operation_id, kind=kind)
                 return self._serialize_operation(existing)
 
+            unit = get_shutdown_drain().begin_work(_OPERATION_WORK_TEMPLATE.format(kind=kind))
             operation_id = str(uuid.uuid4())
             try:
                 created = await self._db.create_operation(
@@ -520,6 +524,7 @@ class OperationsService:
                     session_project_path=session_project_path,
                 )
             except IntegrityError:
+                unit.release()
                 if not client_request_id:
                     raise
                 existing = await self._db.get_operation_by_request(
@@ -532,8 +537,11 @@ class OperationsService:
                 if on_existing is not None:
                     on_existing(existing)
                 return self._serialize_operation(existing)
+            except BaseException:
+                unit.release()
+                raise
 
-            await self._ensure_operation_task(created.operation_id, kind=kind)
+            await self._ensure_operation_task(created.operation_id, kind=kind, unit=unit)
             return self._serialize_operation(created)
 
     async def get_operation_for_caller(
@@ -574,7 +582,19 @@ class OperationsService:
                 self._submit_locks[key] = lock
             return lock
 
-    async def _ensure_operation_task(self, operation_id: str, *, kind: str = OPERATION_KIND_TODO_WORK) -> None:
+    async def _ensure_operation_task(
+        self,
+        operation_id: str,
+        *,
+        kind: str = OPERATION_KIND_TODO_WORK,
+        unit: OwnedUnit | None = None,
+    ) -> None:
+        """Run the operation in a task that owns `unit` until its outcome is delivered.
+
+        A caller that already admitted new work hands over the unit it registered;
+        a row accepted earlier gets a unit registered here.
+        """
+        unit = unit or get_shutdown_drain().register(_OPERATION_WORK_TEMPLATE.format(kind=kind))
         factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
             OPERATION_KIND_TODO_WORK: self._run_todo_work,
             OPERATION_KIND_TASK_RUN: self._run_task_run,
@@ -592,14 +612,17 @@ class OperationsService:
         }
         factory = factories.get(kind)
         if factory is None:
+            unit.release()
             raise ValueError(f"unsupported operation kind: {kind}")
         operation_coro = self._run_operation(operation_id, kind, factory)
         async with self._live_guard:
             live = self._live_tasks.get(operation_id)
             if live is not None and not live.done():
+                operation_coro.close()
+                unit.release()
                 return
             task = self._task_registry.spawn(
-                operation_coro,
+                unit.carry(operation_coro),
                 name=f"operation-{operation_id}",
             )
             self._live_tasks[operation_id] = task
@@ -649,27 +672,29 @@ class OperationsService:
                 result = await coro_factory(operation)
             await self._flush_latest_progress(operation_id, latest_progress)
             completed_at = datetime.now(UTC)
-            await self._db.complete_operation(
+            if await self._db.complete_operation(
                 operation_id,
                 result,
                 completed_at.isoformat(),
-            )
-            self._emit_outcome_event(kind, operation_id)
-            await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED, occurred_at=completed_at)
+            ):
+                self._emit_outcome_event(kind, operation_id)
+                await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED, occurred_at=completed_at)
             for follow_through in follow_throughs:
+                follow_through_unit = get_shutdown_drain().register(_FOLLOW_THROUGH_WORK)
                 self._task_registry.spawn(
-                    follow_through(), name=_FOLLOW_THROUGH_TASK_NAME_TEMPLATE.format(operation_id=operation_id)
+                    follow_through_unit.carry(follow_through()),
+                    name=_FOLLOW_THROUGH_TASK_NAME_TEMPLATE.format(operation_id=operation_id),
                 )
         except asyncio.CancelledError:
             error_text = "operation cancelled before completion"
             cancelled_at = datetime.now(UTC)
-            await self._db.fail_operation(
+            transitioned = await self._db.fail_operation(
                 operation_id,
                 error_text,
                 cancelled_at.isoformat(),
                 state="stale",
             )
-            if operation is not None:
+            if transitioned and operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
                 await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE, occurred_at=cancelled_at)
             raise
@@ -680,13 +705,13 @@ class OperationsService:
                 error_text = exc.summary()
                 error_payload_json = json.dumps(exc.to_error_payload(), sort_keys=True)
             failed_at = datetime.now(UTC)
-            await self._db.fail_operation(
+            transitioned = await self._db.fail_operation(
                 operation_id,
                 error_text,
                 failed_at.isoformat(),
                 error_payload_json=error_payload_json,
             )
-            if operation is not None:
+            if transitioned and operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
                 await self._deliver_outcome(operation, outcome=DeliveryOutcome.FAILED, occurred_at=failed_at)
             logger.exception(

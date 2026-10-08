@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.shutdown_drain import get_shutdown_drain
+
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
@@ -49,6 +51,10 @@ class IngestScheduler:
 
             if shutdown_event.is_set():
                 break
+
+            if not get_shutdown_drain().is_open:
+                # Pulling inserts signal items before emitting events; pause before advancing that state.
+                continue
 
             try:
                 count = await self._pull(self._context)

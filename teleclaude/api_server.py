@@ -16,11 +16,12 @@ import time
 import traceback as _tb
 import uuid
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import uvicorn
-from fastapi import Depends, FastAPI, WebSocket
+from fastapi import Depends, FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
@@ -53,6 +54,7 @@ from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
+from teleclaude.api.shutdown_refusal import STATE_CHANGING_METHODS, shutdown_refusal_response
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
 from teleclaude.api.todo_by_id_routes import router as todo_by_id_router
 from teleclaude.api.todo_routes import router as todo_router
@@ -65,7 +67,7 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
-from teleclaude.api_models_health import HealthDTO
+from teleclaude.api_models_health import HealthDTO, PreparationObservationDTO
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
@@ -93,6 +95,7 @@ from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
 from teleclaude.hooks.api_routes import router as hooks_router
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
@@ -475,9 +478,20 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             )
             return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
+        @self.app.exception_handler(ShutdownRefusal)
+        async def _shutdown_refusal(request, exc):  # type: ignore[no-untyped-def]
+            """Service-level refusal of new work while draining: explicit and retryable."""
+            return shutdown_refusal_response(exc)
+
         @self.app.middleware("http")
         async def _track_requests(request, call_next):  # type: ignore[no-untyped-def]
-            """Track in-flight requests to detect stalls."""
+            """Admit requests while the daemon accepts work, and track in-flight requests to detect stalls."""
+            drain = get_shutdown_drain()
+            capability = request.headers.get(CONTINUATION_HEADER)
+            continuation = drain.resolve_continuation(capability) if capability else None
+            if not drain.is_open and request.method in STATE_CHANGING_METHODS and continuation is None:
+                refusal = ShutdownRefusal(f"{request.method} {request.url.path}", drain.phase)
+                return shutdown_refusal_response(refusal)
             self._request_seq += 1
             req_id = self._request_seq
             self._inflight_requests[req_id] = (request.url.path, time.monotonic())
@@ -499,15 +513,25 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             carries_caller = not request.url.path.startswith(INBOUND_PATH_PREFIX)
             caller_token = set_caller_session_id(carried_caller_session_id(request) if carries_caller else None)
             try:
-                return await call_next(request)
+                with continuation.bound() if continuation is not None else nullcontext():
+                    return await call_next(request)
             finally:
                 self._inflight_requests.pop(req_id, None)
                 reset_caller_session_id(caller_token)
 
         @self.app.get("/health", response_model_exclude_none=True)
-        async def health() -> HealthDTO:  # pyright: ignore
-            """Health check endpoint, carrying the commit the daemon's code stood on at its start."""
-            return HealthDTO(start_commit=self._start_commit)
+        async def health(request: Request) -> HealthDTO:  # pyright: ignore
+            """Health check endpoint, carrying the commit the daemon's code stood on at its start.
+
+            The preparation observation rides only on the local API socket: the TCP webhook
+            listener shares this app and has a bound port in its server address.
+            """
+            server = request.scope.get("server")
+            over_tcp = server is not None and server[1] is not None
+            preparation = (
+                None if over_tcp else PreparationObservationDTO.from_observation(get_shutdown_drain().observation())
+            )
+            return HealthDTO(start_commit=self._start_commit, preparation=preparation)
 
         @self.app.get("/auth/whoami")
         async def auth_whoami(  # pyright: ignore

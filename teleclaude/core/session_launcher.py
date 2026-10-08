@@ -17,9 +17,12 @@ from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.command_handlers import create_session as create_tmux_session
 from teleclaude.core.models import AgentDispatchMode, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.session_startup import bootstrap_task_label
+from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
+
+_SESSION_LAUNCH_WORK = "session-launch"
 
 QueueTask = Callable[[Coroutine[object, object, object], str], None]
 BootstrapSession = Callable[[str, SessionLaunchIntent | None], Coroutine[object, object, None]]
@@ -100,21 +103,29 @@ async def create_session(
     queue_background_task: QueueTask,
     bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
-    """Dispatch to the appropriate session creation intent."""
-    if cmd.headless:
-        return await create_empty_session(cmd, client)
+    """Dispatch to the appropriate session creation intent.
 
-    intent = cmd.launch_intent
-    if intent and intent.kind == SessionLaunchKind.AGENT:
-        return await create_agent_session(
+    New launches are admitted before the session row is written. The queued
+    bootstrap takes over ownership of the accepted launch from the queue.
+    """
+    request_unit = get_shutdown_drain().begin_work(_SESSION_LAUNCH_WORK)
+    try:
+        if cmd.headless:
+            return await create_empty_session(cmd, client)
+
+        intent = cmd.launch_intent
+        if intent and intent.kind == SessionLaunchKind.AGENT:
+            return await create_agent_session(
+                cmd,
+                client,
+                queue_background_task,
+                bootstrap_session,
+            )
+        return await _create_session_with_intent(
             cmd,
             client,
             queue_background_task,
             bootstrap_session,
         )
-    return await _create_session_with_intent(
-        cmd,
-        client,
-        queue_background_task,
-        bootstrap_session,
-    )
+    finally:
+        request_unit.release()

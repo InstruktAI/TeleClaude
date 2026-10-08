@@ -393,6 +393,17 @@ class DbHooksMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
+    async def defer_hook_outbox_row(self, row_id: int, next_attempt_at: str) -> None:
+        """Release a row's claim and make it due again later, leaving its attempt count untouched."""
+        stmt = (
+            update(db_models.HookOutbox)
+            .where(db_models.HookOutbox.id == row_id)
+            .values(next_attempt_at=next_attempt_at, locked_at=None)
+        )
+        async with self._outbox_session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def cleanup_hook_outbox(self, older_than_iso: str) -> int:
         """Delete expired hook outbox rows or rows whose session is no longer live."""
         live_stmt = select(db_models.Session.session_id).where(

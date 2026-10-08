@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+_NONTERMINAL_STATES = ("queued", "running")
 _OPERATION_SUBJECT_BACKFILL_SETTING = "operation_subject_backfill_complete"
 _OPERATION_SUBJECT_BACKFILL_COMPLETE = "true"
 _OPERATION_SUBJECT_BACKFILL_FAILED = "operation_subject_backfill_failed"
@@ -319,11 +321,14 @@ class DbOperationsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def complete_operation(self, operation_id: str, result_text: str, now_iso: str) -> None:
-        """Mark an operation as completed."""
+    async def complete_operation(self, operation_id: str, result_text: str, now_iso: str) -> bool:
+        """Mark a non-terminal operation as completed; report whether this call made the transition."""
         stmt = (
             update(db_models.Operation)
-            .where(db_models.Operation.operation_id == operation_id)
+            .where(
+                db_models.Operation.operation_id == operation_id,
+                db_models.Operation.state.in_(_NONTERMINAL_STATES),
+            )
             .values(
                 state="completed",
                 result_text=result_text,
@@ -335,8 +340,9 @@ class DbOperationsMixin:
             )
         )
         async with self._session() as db_session:
-            await db_session.exec(stmt)
+            result = await db_session.exec(stmt)
             await db_session.commit()
+            return (result.rowcount or 0) == 1
 
     async def fail_operation(
         self,
@@ -346,11 +352,14 @@ class DbOperationsMixin:
         *,
         state: str = "failed",
         error_payload_json: str | None = None,
-    ) -> None:
-        """Mark an operation as terminal failure."""
+    ) -> bool:
+        """Mark a non-terminal operation as terminal failure; report whether this call made the transition."""
         stmt = (
             update(db_models.Operation)
-            .where(db_models.Operation.operation_id == operation_id)
+            .where(
+                db_models.Operation.operation_id == operation_id,
+                db_models.Operation.state.in_(_NONTERMINAL_STATES),
+            )
             .values(
                 state=state,
                 error_text=error_text,
@@ -361,8 +370,9 @@ class DbOperationsMixin:
             )
         )
         async with self._session() as db_session:
-            await db_session.exec(stmt)
+            result = await db_session.exec(stmt)
             await db_session.commit()
+            return (result.rowcount or 0) == 1
 
     async def mark_nonterminal_operations_stale(self, *, error_text: str) -> list[db_models.Operation]:
         """Mark queued/running operations stale, typically after daemon restart.

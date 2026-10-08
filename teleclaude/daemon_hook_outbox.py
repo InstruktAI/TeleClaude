@@ -42,6 +42,7 @@ from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.transport.redis_transport import RedisTransport
@@ -933,6 +934,10 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             await db.delete_hook_outbox_row(row_id)
             self._hook_outbox_processed_count += 1
             self._record_hook_lag_sample(row)
+        except ShutdownRefusal as refusal:
+            # The runtime refused new work while draining: the event was not consumed, so it stays pending.
+            retry_at = datetime.now(UTC) + timedelta(seconds=refusal.retry_after_seconds)
+            await db.defer_hook_outbox_row(row_id, retry_at.isoformat())
         except Exception as exc:
             attempt = int(row.get("attempt_count", 0)) + 1
             error_str = str(exc)

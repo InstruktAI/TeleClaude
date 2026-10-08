@@ -25,6 +25,7 @@ logger = get_logger("teleclaude.daemon")
 
 # The conversation upkeep task: its asyncio name, failure label, attribute and stop message.
 _MACHINE_CONFIGURATION = "machine"
+_STOP_REASON = "stop"
 _CONVERSATION_UPKEEP_TASK_NAME = "conversation-upkeep"
 _CONVERSATION_UPKEEP_LABEL = "conversation_upkeep"
 _CONVERSATION_UPKEEP_ATTR = "conversation_upkeep_task"
@@ -192,7 +193,12 @@ from teleclaude.core.reminders.inbound import submit_reminder_entry
 _record_import_timing("teleclaude.core.reminders", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.shutdown_drain import get_shutdown_drain
+
+_record_import_timing("teleclaude.core.shutdown_drain", _t)
+
+_t = time.perf_counter()
+from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, TaskRegistry
 
 _record_import_timing("teleclaude.core.task_registry", _t)
 
@@ -373,6 +379,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Initialize task registry for tracking background tasks
         self.task_registry = TaskRegistry()
+        self.drain = get_shutdown_drain()
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient(task_registry=self.task_registry)
@@ -468,7 +475,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Note: Adapters are loaded in client.start(), not here
 
-        # Shutdown event for graceful termination
+        # Stop request: set when ordinary shutdown begins preparation. The shutdown event
+        # that ends the daemon's consumers and loops is set only after accepted work settles.
+        self.stop_requested = asyncio.Event()
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
         # Per-session outbox processing: one serial worker per session, parallel across sessions.
@@ -1047,9 +1056,23 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if self.chiptunes_manager.enabled:
             self.chiptunes_manager.reattach()
 
+    async def _settle_accepted_work(self) -> None:
+        """Close admission and wait, within the preparation window, for accepted work to settle.
+
+        Every completion dependency (hooks, readiness, storage, terminal ownership, outcome
+        delivery) keeps running meanwhile. An overrun is reported and leaves the unfinished
+        unit untouched; teardown then proceeds and abrupt-loss recovery owns what remains.
+        """
+        self.drain.begin_preparation(self._shutdown_reason or _STOP_REASON)
+        if not await self.drain.wait_settled():
+            logger.warning("Accepted work still unsettled at the end of the preparation window; tearing down")
+
     async def stop(self) -> None:
-        """Stop the daemon."""
+        """Stop the daemon: settle accepted work first, then tear down consumers, transports and storage."""
         logger.info("Stopping TeleClaude daemon...")
+        await self._settle_accepted_work()
+        self.drain.begin_stopping()
+        self.shutdown_event.set()
 
         # Stop sandbox container (before other tasks to release socket)
         await self._stop_sandbox_manager()
@@ -1131,7 +1154,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):
-            await self.task_registry.shutdown(timeout=5.0)
+            await self.task_registry.shutdown(timeout=TASK_REGISTRY_SHUTDOWN_TIMEOUT_S)
             logger.info("Task registry shutdown complete")
 
         await self.lifecycle.shutdown()
@@ -1203,17 +1226,33 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("Session outbox workers stopped (%d)", len(workers))
 
     def request_shutdown(self, reason: str) -> None:
-        """Request graceful shutdown and capture diagnostics."""
+        """Request graceful shutdown: close admission, then let the stop sequence drain and tear down."""
         self._shutdown_reason = reason
-        self.client.mark_shutting_down()
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            self.shutdown_event.set()
+            self._begin_stop(reason)
             return
 
-        loop.call_soon_threadsafe(self.shutdown_event.set)
-        loop.call_soon_threadsafe(self.monitoring_service.log_resource_snapshot, f"shutdown:{reason}")
+        loop.call_soon_threadsafe(self._begin_stop, reason)
+
+    def request_preparation(self, reason: str) -> None:
+        """Close admission and settle accepted work, then stay alive and closed until told to stop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.call_soon_threadsafe(self._begin_preparation_only, reason)
+
+    def _begin_preparation_only(self, reason: str) -> None:
+        self.drain.begin_preparation(reason)
+        self.drain.start_settling()
+
+    def _begin_stop(self, reason: str) -> None:
+        """Close admission to new business work and wake the main loop into the stop sequence."""
+        self.drain.begin_preparation(reason)
+        self.stop_requested.set()
+        self.monitoring_service.log_resource_snapshot(f"shutdown:{reason}")
 
     async def _on_projects_registry_changed(self) -> None:
         """Refresh the local project cache after an external registry edit."""
@@ -1557,7 +1596,14 @@ async def main() -> None:
         logger.info("Received %s signal...", sig_name)
         daemon.request_shutdown(sig_name)
 
-    # Register signal handlers
+    def preparation_signal_handler(signum: int, _frame: object) -> None:
+        """Handle the host's preparation request: drain accepted work without stopping."""
+        sig_name = signal.Signals(signum).name
+        logger.info("Received %s signal; preparing for shutdown", sig_name)
+        daemon.request_preparation(sig_name)
+
+    # Register signal handlers (preparation first, so support is never advertised without its signal)
+    signal.signal(signal.SIGUSR1, preparation_signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -1597,8 +1643,8 @@ async def main() -> None:
                 )
                 await asyncio.sleep(delay)
 
-        # Wait for shutdown signal
-        await daemon.shutdown_event.wait()
+        # Wait for a stop request; the stop sequence settles accepted work before teardown
+        await daemon.stop_requested.wait()
 
     except DaemonLockError as e:
         logger.error(str(e))

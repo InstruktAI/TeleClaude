@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
@@ -25,10 +26,15 @@ from teleclaude.core.injected_text import (
 )
 from teleclaude.core.models import MessageAuthor
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.shutdown_drain import get_shutdown_drain
 
 logger = get_logger(__name__)
 
 _INBOUND_DEDUP_EVENT = "inbound_dedup_skipped"
+_INBOUND_ENQUEUE_WORK = "inbound-enqueue"
+_INBOUND_DELIVERY_WORK = "inbound-delivery"
+_NO_WAIT_S = 0.0
+_CLAIM_LOST_PAUSE_S = 0.1
 _INBOUND_ACCEPTED_EVENT = "inbound_text_accepted"
 _INBOUND_DELIVERY_COMMITTED_EVENT = "inbound_text_delivery_committed"
 _SESSION_TEXT_DELIVERY_REQUESTED_EVENT = "session_text_delivery_requested"
@@ -163,6 +169,15 @@ def _hold_notice_is_required(row: InboundQueueRow) -> bool:
     return _row_authority(row) is InjectedInputAuthority.CONVERSATION and origin in _CONVERSATION_UI_ORIGINS
 
 
+@dataclass(frozen=True)
+class _ClaimStep:
+    """What one claim attempt yielded: a claimed row, a pause before the next attempt, or the end of the queue."""
+
+    row: InboundQueueRow | None = None
+    pause_s: float = 0.0
+    finished: bool = False
+
+
 class InboundQueueManager:
     """Manages per-session worker tasks that drain the inbound queue."""
 
@@ -210,7 +225,11 @@ class InboundQueueManager:
         resolved originating-session identity when the sender is itself
         another session (e.g. a plain ``telec sessions send``), so it is
         durable on the accepted row before any transcript binding exists.
+
+        Raises ``ShutdownRefusal`` while the daemon drains, before any accepted
+        state is recorded.
         """
+        get_shutdown_drain().check_admission(_INBOUND_ENQUEUE_WORK)
         logger.info(
             _SESSION_TEXT_DELIVERY_REQUESTED_EVENT,
             source_feature=source_feature.value,
@@ -358,152 +377,181 @@ class InboundQueueManager:
     async def _worker_loop(self, session_id: str) -> None:
         """FIFO drain loop for a single session. Self-terminates when queue is empty."""
         logger.debug(_WORKER_STARTING_EVENT, session_id=session_id)
+        drain = get_shutdown_drain()
         while True:
-            now = datetime.now(UTC)
-            now_iso = now.isoformat()
-            lock_cutoff = now - timedelta(seconds=_LOCK_TIMEOUT_S)
-            lock_cutoff_iso = lock_cutoff.isoformat()
-            notice_processed, notice_retry_delay = await self._process_pending_hold_notice(session_id, now, lock_cutoff)
-            if notice_processed:
-                continue
-
-            rows = await db.fetch_inbound_pending(
-                session_id=session_id,
-                limit=_FETCH_LIMIT,
-                now_iso=now_iso,
-                lock_cutoff_iso=lock_cutoff_iso,
-            )
-            if not rows:
-                if notice_retry_delay is not None:
-                    await asyncio.sleep(max(notice_retry_delay, 0.1))
-                    continue
+            if not drain.is_open:
+                # Unclaimed rows stay pending for the next process.
                 logger.debug(_WORKER_DONE_EVENT, session_id=session_id)
                 return
-
-            row = rows[0]
-            row_id = row["id"]
-
-            claimed = await db.claim_inbound(row_id, now_iso, lock_cutoff_iso)
-            if not claimed:
-                # Another worker claimed it — shouldn't happen (per-session) but be safe
-                logger.debug(_ROW_CLAIM_FAILED_EVENT, session_id=session_id, inbound_row_id=row_id)
-                await asyncio.sleep(0.1)
-                continue
-
-            if row["was_held"] and _held_message_seconds_remaining(row["created_at"], datetime.now(UTC)) <= 0:
-                await self._expire_held_message(row)
-                continue
-
+            # Registered with no await after the open check, so settlement cannot observe
+            # zero units between deciding to claim and owning the claim.
+            unit = drain.register(_INBOUND_DELIVERY_WORK)
             try:
-                await self._deliver_fn(row)
-                await db.mark_inbound_delivered(row_id, datetime.now(UTC).isoformat())
-                logger.info(
-                    _INBOUND_DELIVERY_COMMITTED_EVENT,
-                    outcome="delivered",
-                    inbound_row_id=row_id,
-                    target_session_id=session_id,
-                    occurrence_key=row["occurrence_key"],
-                    source_feature=row["source_feature"],
-                    text_kind=row["text_kind"],
-                )
-                logger.debug(_ROW_DELIVERED_EVENT, session_id=session_id, inbound_row_id=row_id)
-            except InboundMessageHeldError as exc:
-                backoff = _backoff_for_attempt(row["attempt_count"])
-                retry_at = datetime.now(UTC)
-                remaining = _held_message_seconds_remaining(row["created_at"], retry_at)
-                if remaining <= 0:
-                    await self._expire_held_message(row)
-                    continue
-                backoff = min(backoff, remaining)
-                await db.mark_inbound_held(
-                    row_id,
-                    now_iso=retry_at.isoformat(),
-                    backoff_seconds=backoff,
-                    reason=exc.reason,
-                )
-                logger.info(
-                    _ROW_DELIVERY_HELD_EVENT,
-                    session_id=session_id,
-                    inbound_row_id=row_id,
-                    backoff_seconds=backoff,
-                    reason=exc.reason.value,
-                )
-                remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
-                await asyncio.sleep(min(backoff, remaining))
-            except SessionMessageRejectedError as exc:
-                error_str = str(exc)
-                await db.mark_inbound_expired(
+                step = await self._claim_next_row(session_id)
+            except BaseException:
+                unit.release()
+                raise
+            if step.row is None:
+                unit.release()
+                if step.finished:
+                    logger.debug(_WORKER_DONE_EVENT, session_id=session_id)
+                    return
+                if step.pause_s > _NO_WAIT_S:
+                    await asyncio.sleep(step.pause_s)
+                continue
+            wait_s = await unit.carry(self._deliver_claimed_row(step.row, session_id))
+            if wait_s > _NO_WAIT_S:
+                await asyncio.sleep(wait_s)
+
+    async def _claim_next_row(self, session_id: str) -> _ClaimStep:
+        """Process a pending hold notice or claim the session's next row; the caller holds the claim's unit."""
+        now = datetime.now(UTC)
+        now_iso = now.isoformat()
+        lock_cutoff = now - timedelta(seconds=_LOCK_TIMEOUT_S)
+        lock_cutoff_iso = lock_cutoff.isoformat()
+        notice_processed, notice_retry_delay = await self._process_pending_hold_notice(session_id, now, lock_cutoff)
+        if notice_processed:
+            return _ClaimStep()
+
+        rows = await db.fetch_inbound_pending(
+            session_id=session_id,
+            limit=_FETCH_LIMIT,
+            now_iso=now_iso,
+            lock_cutoff_iso=lock_cutoff_iso,
+        )
+        if not rows:
+            if notice_retry_delay is not None:
+                return _ClaimStep(pause_s=max(notice_retry_delay, 0.1))
+            return _ClaimStep(finished=True)
+
+        row = rows[0]
+        claimed = await db.claim_inbound(row["id"], now_iso, lock_cutoff_iso)
+        if not claimed:
+            # Another worker claimed it — shouldn't happen (per-session) but be safe
+            logger.debug(_ROW_CLAIM_FAILED_EVENT, session_id=session_id, inbound_row_id=row["id"])
+            return _ClaimStep(pause_s=_CLAIM_LOST_PAUSE_S)
+        return _ClaimStep(row=row)
+
+    async def _deliver_claimed_row(self, row: InboundQueueRow, session_id: str) -> float:
+        """Deliver one claimed row and record its outcome; the caller holds the row's owned unit.
+
+        Returns the seconds the worker waits before its next row, spent after the unit has settled.
+        """
+        row_id = row["id"]
+        if row["was_held"] and _held_message_seconds_remaining(row["created_at"], datetime.now(UTC)) <= 0:
+            await self._expire_held_message(row)
+            return _NO_WAIT_S
+
+        try:
+            await self._deliver_fn(row)
+            await db.mark_inbound_delivered(row_id, datetime.now(UTC).isoformat())
+            logger.info(
+                _INBOUND_DELIVERY_COMMITTED_EVENT,
+                outcome="delivered",
+                inbound_row_id=row_id,
+                target_session_id=session_id,
+                occurrence_key=row["occurrence_key"],
+                source_feature=row["source_feature"],
+                text_kind=row["text_kind"],
+            )
+            logger.debug(_ROW_DELIVERED_EVENT, session_id=session_id, inbound_row_id=row_id)
+        except InboundMessageHeldError as exc:
+            backoff = _backoff_for_attempt(row["attempt_count"])
+            retry_at = datetime.now(UTC)
+            remaining = _held_message_seconds_remaining(row["created_at"], retry_at)
+            if remaining <= 0:
+                await self._expire_held_message(row)
+                return _NO_WAIT_S
+            backoff = min(backoff, remaining)
+            await db.mark_inbound_held(
+                row_id,
+                now_iso=retry_at.isoformat(),
+                backoff_seconds=backoff,
+                reason=exc.reason,
+            )
+            logger.info(
+                _ROW_DELIVERY_HELD_EVENT,
+                session_id=session_id,
+                inbound_row_id=row_id,
+                backoff_seconds=backoff,
+                reason=exc.reason.value,
+            )
+            remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
+            return min(backoff, remaining)
+        except SessionMessageRejectedError as exc:
+            error_str = str(exc)
+            await db.mark_inbound_expired(
+                row_id,
+                error=error_str,
+                now_iso=datetime.now(UTC).isoformat(),
+            )
+            logger.info(
+                _ROW_EXPIRED_EVENT,
+                session_id=session_id,
+                inbound_row_id=row_id,
+                error=error_str,
+            )
+            logger.info(
+                _INBOUND_DELIVERY_COMMITTED_EVENT,
+                outcome="failed",
+                reason="rejected",
+                inbound_row_id=row_id,
+                target_session_id=session_id,
+                occurrence_key=row["occurrence_key"],
+                source_feature=row["source_feature"],
+                text_kind=row["text_kind"],
+            )
+        except Exception as exc:
+            error_str = str(exc)
+            attempt = row["attempt_count"] + 1
+            if attempt >= _MAX_DELIVERY_ATTEMPTS:
+                await db.mark_inbound_retry_exhausted(
                     row_id,
                     error=error_str,
                     now_iso=datetime.now(UTC).isoformat(),
                 )
                 logger.info(
-                    _ROW_EXPIRED_EVENT,
-                    session_id=session_id,
-                    inbound_row_id=row_id,
-                    error=error_str,
-                )
-                logger.info(
                     _INBOUND_DELIVERY_COMMITTED_EVENT,
                     outcome="failed",
-                    reason="rejected",
+                    reason="retry_exhausted",
                     inbound_row_id=row_id,
                     target_session_id=session_id,
                     occurrence_key=row["occurrence_key"],
                     source_feature=row["source_feature"],
                     text_kind=row["text_kind"],
+                    attempts=attempt,
                 )
-            except Exception as exc:
-                error_str = str(exc)
-                attempt = row["attempt_count"] + 1
-                if attempt >= _MAX_DELIVERY_ATTEMPTS:
-                    await db.mark_inbound_retry_exhausted(
-                        row_id,
-                        error=error_str,
-                        now_iso=datetime.now(UTC).isoformat(),
-                    )
-                    logger.info(
-                        _INBOUND_DELIVERY_COMMITTED_EVENT,
-                        outcome="failed",
-                        reason="retry_exhausted",
-                        inbound_row_id=row_id,
-                        target_session_id=session_id,
-                        occurrence_key=row["occurrence_key"],
-                        source_feature=row["source_feature"],
-                        text_kind=row["text_kind"],
-                        attempts=attempt,
-                    )
-                    await self._notify_terminal_cause(row, DeliveryTerminalCause.RETRY_EXHAUSTED)
-                    continue
-                backoff = _backoff_for_attempt(row["attempt_count"])
-                retry_at: datetime | None = None
-                if row["was_held"]:
-                    retry_at = datetime.now(UTC)
-                    remaining = _held_message_seconds_remaining(row["created_at"], retry_at)
-                    if remaining <= 0:
-                        await self._expire_held_message(row)
-                        continue
-                    backoff = min(backoff, remaining)
-                logger.warning(
-                    _ROW_DELIVERY_FAILED_EVENT,
-                    session_id=session_id,
-                    inbound_row_id=row_id,
-                    attempt=attempt,
-                    backoff_seconds=backoff,
-                    error=error_str,
-                )
-                await db.mark_inbound_failed(
-                    row_id,
-                    error=error_str,
-                    now_iso=(retry_at or datetime.now(UTC)).isoformat(),
-                    backoff_seconds=backoff,
-                )
-                # Wait before next iteration to avoid tight retry loops
-                if row["was_held"]:
-                    remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
-                    await asyncio.sleep(min(backoff, remaining))
-                else:
-                    await asyncio.sleep(backoff)
+                await self._notify_terminal_cause(row, DeliveryTerminalCause.RETRY_EXHAUSTED)
+                return _NO_WAIT_S
+            backoff = _backoff_for_attempt(row["attempt_count"])
+            retry_at: datetime | None = None
+            if row["was_held"]:
+                retry_at = datetime.now(UTC)
+                remaining = _held_message_seconds_remaining(row["created_at"], retry_at)
+                if remaining <= 0:
+                    await self._expire_held_message(row)
+                    return _NO_WAIT_S
+                backoff = min(backoff, remaining)
+            logger.warning(
+                _ROW_DELIVERY_FAILED_EVENT,
+                session_id=session_id,
+                inbound_row_id=row_id,
+                attempt=attempt,
+                backoff_seconds=backoff,
+                error=error_str,
+            )
+            await db.mark_inbound_failed(
+                row_id,
+                error=error_str,
+                now_iso=(retry_at or datetime.now(UTC)).isoformat(),
+                backoff_seconds=backoff,
+            )
+            # Wait before next iteration to avoid tight retry loops
+            if row["was_held"]:
+                remaining = _held_message_seconds_remaining(row["created_at"], datetime.now(UTC))
+                return min(backoff, remaining)
+            return backoff
+        return _NO_WAIT_S
 
     async def _notify_terminal_cause(self, row: InboundQueueRow, cause: DeliveryTerminalCause) -> None:
         """Hand a row's terminal cause to the producer-notice callback, best-effort."""

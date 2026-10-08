@@ -25,6 +25,7 @@ from teleclaude.core.inbound import EntryGesture, TurnModality, resolve_binding_
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
 if TYPE_CHECKING:
@@ -39,6 +40,8 @@ if TYPE_CHECKING:
         _processed_voice_messages: set[str]
         _metadata: Callable[..., MessageMetadata]
         send_message: Callable[..., Awaitable[str | None]]
+        answer_shutdown_refusal: Callable[[str], Awaitable[None]]
+        answer_refusal_of: Callable[[str, Awaitable[None]], Awaitable[None]]
 
         async def _route_private_turn(
             self,
@@ -101,6 +104,7 @@ class ConversationInputReason(StrEnum):
     DUPLICATE = "duplicate"
     HANDLER_FAILED = "handler_failed"
     NO_ENDPOINT = "no_endpoint"
+    SHUTDOWN_REFUSED = "shutdown_refused"
     UNSUPPORTED_INPUT = "unsupported_input"
     UPLOAD_PATH_REFUSED = "upload_path_refused"
 
@@ -161,11 +165,12 @@ class ConversationInputDecision:
 
     def reject_for_error(self, error: Exception | asyncio.CancelledError) -> None:
         """Record failure before preserving the handler's propagation semantics."""
-        reason = (
-            ConversationInputReason.CANCELLED
-            if isinstance(error, asyncio.CancelledError)
-            else ConversationInputReason.HANDLER_FAILED
-        )
+        if isinstance(error, asyncio.CancelledError):
+            reason = ConversationInputReason.CANCELLED
+        elif isinstance(error, ShutdownRefusal):
+            reason = ConversationInputReason.SHUTDOWN_REFUSED
+        else:
+            reason = ConversationInputReason.HANDLER_FAILED
         self.reject(reason)
 
     def reject_if_unreported(self) -> None:
@@ -305,7 +310,7 @@ class InputHandlersMixin:
                 if registry is None:
                     raise RuntimeError(_NO_TASK_REGISTRY_ERROR)
                 registry.spawn(
-                    get_command_service().handle_voice(cmd),
+                    host.answer_refusal_of(session.session_id, get_command_service().handle_voice(cmd)),
                     name=_VOICE_TASK_TEMPLATE.format(message_id=message.message_id),
                 )
                 decision.accept()
@@ -413,6 +418,9 @@ class InputHandlersMixin:
                     )
                 )
                 decision.accept()
+            except ShutdownRefusal:
+                await host.answer_shutdown_refusal(session.session_id)
+                decision.reject(ConversationInputReason.SHUTDOWN_REFUSED)
             except (OSError, RuntimeError, TypeError, ValueError):
                 logger.error(_ATTACHMENT_INPUT_FAILED_EVENT, source_message_id=str(message.message_id))
 

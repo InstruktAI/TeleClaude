@@ -73,6 +73,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -223,7 +224,7 @@ async def _create_at(
     if is_local:
         try:
             created = await env.create_local(command)
-        except (AgentDispatchFailure, ValueError) as exc:
+        except (AgentDispatchFailure, ShutdownRefusal, ValueError) as exc:
             _log(ConversationDecision.ENTRY_REFUSED, turn, endpoint=endpoint.kind.value, error=str(exc))
             return None
         session_id = created.get(_CREATED_SESSION_ID_FIELD)

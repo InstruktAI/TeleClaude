@@ -23,6 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import command_handlers
+from teleclaude.core.command_dispatch import shutdown_refusal_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import LIVE_ROOTS
@@ -63,6 +64,7 @@ from teleclaude.core.session_listeners import (
     deliver_remote_stop_notification,
 )
 from teleclaude.core.session_status import AgentStatusReason
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.history.service import HistoryRelayCommand
 
@@ -480,6 +482,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 json.dumps({"status": "error", "error": f"Unsupported Redis string command: {parsed.command}"}),
             )
 
+        except ShutdownRefusal as draining:
+            # The cursor already advanced: answer explicitly so the sender sees a retryable refusal.
+            await self.send_response(message_id, json.dumps(shutdown_refusal_envelope(draining)))
         except _MESSAGE_EXCEPTIONS as e:
             logger.error("Failed to handle incoming message: %s", e, exc_info=True)
             # Send error response if possible

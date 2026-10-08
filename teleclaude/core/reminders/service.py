@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.shutdown_drain import get_shutdown_drain
+
 from .models import (
     PrescribedReminderSlug,
     Reminder,
@@ -48,6 +50,7 @@ _SUBMITTER_REQUIRED = "reminder firing requires an input submitter"
 _RESERVED_SLUG_ERROR = "reserved reminder slugs require their prescribed profile surface"
 _PROFILE_SLUG_ERROR = "prescribed reminder profile and slug must match"
 _RETRY_SECONDS = 1.0
+_REMINDER_FIRE_WORK = "reminder-fire"
 
 
 def _event_matches(reminder: Reminder, event: ReminderEvent) -> bool:
@@ -213,6 +216,10 @@ class ReminderService:
                     continue
 
     async def _run_scheduler_iteration(self, shutdown_event: asyncio.Event) -> None:
+        if not get_shutdown_drain().is_open:
+            # Occurrences are claimed only while the daemon admits new work; the durable rows stay due.
+            await self._wait_for_wake_or_shutdown(shutdown_event, timeout=None)
+            return
         now = datetime.now(UTC)
         claimed = await self._db.list_claimed_reminders()
         retry_before = now - timedelta(seconds=_RETRY_SECONDS)
@@ -260,6 +267,13 @@ class ReminderService:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _fire(self, reminder: Reminder, *, fired_at: datetime) -> ReminderEntry | None:
+        if self._submitter is None:
+            raise RuntimeError(_SUBMITTER_REQUIRED)
+        # The unit is registered with admission, so settlement cannot report drained mid-claim.
+        unit = get_shutdown_drain().begin_work(_REMINDER_FIRE_WORK)
+        return await unit.carry(self._claim_and_submit(reminder, fired_at=fired_at))
+
+    async def _claim_and_submit(self, reminder: Reminder, *, fired_at: datetime) -> ReminderEntry | None:
         if self._submitter is None:
             raise RuntimeError(_SUBMITTER_REQUIRED)
         async with self._mutation_lock:

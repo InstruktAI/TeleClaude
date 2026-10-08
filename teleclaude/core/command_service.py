@@ -7,9 +7,9 @@ This service wires required dependencies without using a generic dispatcher.
 from __future__ import annotations
 
 import functools
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, Concatenate, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -58,6 +58,8 @@ from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.procedure_activation_runner import activate as _activate_procedure
 from teleclaude.core.session_launcher import create_session
 from teleclaude.core.session_startup_message import resolve_slash_command
+from teleclaude.core.shutdown_drain import get_shutdown_drain
+from teleclaude.types.command_admission import COMMAND_ADMISSION, AdmissionClass
 from teleclaude.types.commands import (
     ActivateProcedureCommand,
     CloseSessionCommand,
@@ -67,6 +69,7 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     HandoffAgentCommand,
+    InternalCommand,
     KeysCommand,
     ProcedureActivationResult,
     ProcessMessageCommand,
@@ -177,6 +180,20 @@ def _content_format_from_request(raw_format: object) -> ContentFormat:
         return ContentFormat.MARKDOWN
 
 
+def _admitted[Command: InternalCommand, **Params, Result](
+    handler: Callable[Concatenate[CommandService, Command, Params], Coroutine[object, object, Result]],
+) -> Callable[Concatenate[CommandService, Command, Params], Coroutine[object, object, Result]]:
+    """Refuse a business-work command while the daemon drains, before its handler runs."""
+
+    @functools.wraps(handler)
+    async def admitted(self: CommandService, cmd: Command, /, *args: Params.args, **kwargs: Params.kwargs) -> Result:
+        if COMMAND_ADMISSION[cmd.command_type] is AdmissionClass.BUSINESS_WORK:
+            get_shutdown_drain().check_admission(cmd.command_type.value)
+        return await handler(self, cmd, *args, **kwargs)
+
+    return admitted
+
+
 class CommandService:
     """Explicit command executor with typed command methods."""
 
@@ -202,6 +219,7 @@ class CommandService:
             force=True,
         )
 
+    @_admitted
     async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:
         return await create_session(
             cmd,
@@ -210,18 +228,23 @@ class CommandService:
             self._bootstrap_session,  # type: ignore[arg-type]
         )
 
+    @_admitted
     async def process_message(self, cmd: ProcessMessageCommand) -> None:
         await process_message(cmd, self.client, self._start_polling)
 
+    @_admitted
     async def handle_voice(self, cmd: HandleVoiceCommand) -> None:
         await handle_voice(cmd, self.client, self._start_polling)
 
+    @_admitted
     async def handle_file(self, cmd: HandleFileCommand) -> None:
         await handle_file(cmd, self.client)
 
+    @_admitted
     async def keys(self, cmd: KeysCommand) -> None:
         await keys(cmd, self.client, self._start_polling)
 
+    @_admitted
     async def start_agent(self, cmd: StartAgentCommand) -> None:
         args = list(cmd.args)
         valid_modes = {mode.value for mode in ThinkingMode}
@@ -230,24 +253,31 @@ class CommandService:
         cmd.args = args
         await start_agent(cmd, self.client, self._execute_terminal_command)
 
+    @_admitted
     async def resume_agent(self, cmd: ResumeAgentCommand) -> None:
         await resume_agent(cmd, self.client, self._execute_terminal_command)
 
+    @_admitted
     async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None] | RestartAgentResult:
         return await agent_restart(cmd, self.client, self._execute_terminal_command)
 
+    @_admitted
     async def handoff_agent(self, cmd: HandoffAgentCommand) -> None:
         await handoff_agent(cmd, self.client, self._execute_terminal_command)
 
+    @_admitted
     async def activate_procedure(self, cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
         return await _activate_procedure(cmd)
 
+    @_admitted
     async def run_agent_command(self, cmd: RunAgentCommand) -> None:
         await run_agent_command(cmd, self.client, self._execute_terminal_command)
 
+    @_admitted
     async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:
         return await get_session_data(cmd)
 
+    @_admitted
     async def unsubscribe(self, cmd: UnsubscribeSessionCommand) -> UnsubscribeSessionPayload:
         assert cmd.caller_session_id is not None, _UNSUBSCRIBE_CALLER_SESSION_REQUIRED
         listener_removed = await unregister_listener(
@@ -264,9 +294,11 @@ class CommandService:
             "link_id": link_id,
         }
 
+    @_admitted
     async def close_session(self, cmd: CloseSessionCommand) -> None:
         await close_session(cmd, self.client)
 
+    @_admitted
     async def set_voice_focus(self, cmd: SetVoiceFocusCommand) -> dict[str, str | None]:
         """Durably override a person's voice focus, then notify local subscribers.
 
@@ -292,6 +324,7 @@ class CommandService:
             "set_at": record.set_at.isoformat(),
         }
 
+    @_admitted
     async def discord_thread_claim(
         self, cmd: DiscordThreadClaimCommand, *, source_computer: str
     ) -> dict[str, str | None]:
@@ -341,21 +374,26 @@ class CommandService:
             "lifecycle": result.lifecycle.value if result.lifecycle is not None else None,
         }
 
+    @_admitted
     async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:
         return await end_session(cmd, self.client)
 
+    @_admitted
     async def deliver_result(self, cmd: SystemCommand) -> object:
         """Deliver a formatted result to a session's user via the adapter."""
         return await self._dispatch_system_command(cmd)
 
+    @_admitted
     async def deliver_file(self, cmd: SystemCommand) -> object:
         """Deliver a file attachment to a session's user via the adapter."""
         return await self._dispatch_system_command(cmd)
 
+    @_admitted
     async def escalate_session(self, cmd: SystemCommand) -> object:
         """Escalate a help-desk session to the admins of the home that owns its desk."""
         return await self._dispatch_system_command(cmd)
 
+    @_admitted
     async def system_command(self, cmd: SystemCommand) -> object:
         """Route a SystemCommand to its handler based on cmd.command field."""
         return await self._dispatch_system_command(cmd)

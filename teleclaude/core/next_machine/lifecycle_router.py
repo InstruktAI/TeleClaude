@@ -16,6 +16,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     project_path_from_event_payload,
     run_lifecycle_runner,
 )
+from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.events.consumers import Consumer, Interest
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.events.schemas.sdlc import (
@@ -72,6 +73,10 @@ async def _wake_every_local_checkout(trigger: str) -> None:
 
 async def _route(event: ReceivedEvent) -> None:
     """Wake the lifecycle runner for the project an event concerns; the minute tick wakes every local checkout."""
+    if not get_shutdown_drain().is_open:
+        # Waking the runner starts new work; the next process's minute tick wakes it again.
+        logger.debug("lifecycle runner wake-up paused while draining", event=event.type)
+        return
     if event.type == _SCHEDULER_TICK:
         await _wake_every_local_checkout(event.type)
         return

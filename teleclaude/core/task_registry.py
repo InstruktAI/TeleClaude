@@ -16,13 +16,17 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
+TASK_REGISTRY_SHUTDOWN_TIMEOUT_S = 5.0
+
 
 class TaskRegistry:
     """Registry for tracking background asyncio tasks.
 
     Prevents memory leaks by tracking all spawned tasks and ensuring they are
-    properly cancelled during shutdown. Automatically removes completed tasks
-    from the registry.
+    cancelled at teardown. Automatically removes completed tasks from the
+    registry. Finite accepted work holds an owned unit from the shutdown drain
+    and has settled before `shutdown` runs; what `shutdown` cancels are the
+    indefinite workers and any unit that outlived the preparation window.
 
     Example:
         registry = TaskRegistry()
@@ -30,8 +34,8 @@ class TaskRegistry:
         # Spawn tracked task
         task = registry.spawn(some_coroutine(), name="background-worker")
 
-        # Graceful shutdown
-        await registry.shutdown(timeout=5.0)
+        # Teardown, after accepted work has settled
+        await registry.shutdown(timeout=TASK_REGISTRY_SHUTDOWN_TIMEOUT_S)
     """
 
     def __init__(self) -> None:
@@ -85,20 +89,17 @@ class TaskRegistry:
 
         return task
 
-    async def shutdown(self, timeout: float = 5.0) -> None:
+    async def shutdown(self, timeout: float = TASK_REGISTRY_SHUTDOWN_TIMEOUT_S) -> None:
         """
         Cancel all tracked tasks and wait for them to complete.
 
-        This is a graceful shutdown that:
+        Called at teardown, after accepted work has settled. This:
         1. Cancels all tracked tasks
         2. Waits up to `timeout` seconds for them to complete
         3. Logs any tasks that didn't complete in time
 
         Args:
             timeout: Maximum time to wait for tasks to complete (seconds)
-
-        Example:
-            await registry.shutdown(timeout=10.0)
         """
         if not self._tasks:
             logger.debug("No tasks to shutdown")

@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 
-from ._input_effect import before_input_effect
+from ._input_effect import before_input_effect, settle_begun_effect
 from ._session import ensure_tmux_session
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout, wait_with_timeout
 
@@ -271,49 +271,12 @@ async def _send_keys_tmux(
         )
         return False
 
-    pasted = await _paste_text_tmux(
+    return await _paste_text_tmux(
         session_name=session_name,
         text=text,
         timeout=timeout,
+        submit=True,
     )
-    if not pasted:
-        return False
-
-    # Submit via a DISCRETE send-keys C-m. paste-buffer -p emitted DECSET 2004
-    # markers (\x1b[200~ ... \x1b[201~) around the content. All three agent
-    # CLIs (codex, claude code, agy) enable bracketed-paste mode at startup
-    # and atomically buffer everything between the markers as a single 'paste'
-    # event. The next Enter KeyEvent is unambiguously discrete → submit.
-    #
-    # The short fixed sleep is a sub-second ordering safety margin so tmux
-    # finishes writing the close marker through the pty before the next
-    # subprocess writes \r. It is NOT a paste-detection heuristic, and does
-    # NOT need to scale with payload size — the close marker is the same
-    # regardless of how much content preceded it.
-    logger.debug(
-        "tmux paste pipeline: waiting before submit",
-        session=session_name,
-        submit_delay_s=_SUBMIT_GAP_S,
-    )
-    await asyncio.sleep(_SUBMIT_GAP_S)
-
-    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
-    result = await asyncio.create_subprocess_exec(
-        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
-    if result.returncode != 0:
-        logger.error(
-            "tmux send-keys submit returned nonzero exit",
-            session=session_name,
-            reason="nonzero_exit_submit",
-            returncode=result.returncode,
-            stderr=stderr.decode().strip(),
-        )
-        return False
-
-    logger.debug("tmux paste pipeline: submit ok", session=session_name)
-    return True
 
 
 async def _paste_text_tmux(
@@ -321,8 +284,14 @@ async def _paste_text_tmux(
     session_name: str,
     text: str,
     timeout: float = SUBPROCESS_TIMEOUT_QUICK,
+    submit: bool = False,
 ) -> bool:
-    """Paste text to tmux (session must already exist)."""
+    """Paste text to tmux (session must already exist), submitting it when `submit` is set.
+
+    Everything up to the pre-effect hook places no input and may be cancelled and
+    resumed. From the hook on, paste, buffer cleanup and submission are one unit
+    that runs to completion.
+    """
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
     # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
     # peer-bundle path routinely produces. load-buffer reads from stdin (no argv
@@ -359,9 +328,21 @@ async def _paste_text_tmux(
         return False
     logger.debug("tmux paste pipeline: load-buffer ok", session=session_name, buffer_name=buf_name)
 
-    paste_succeeded = False
     try:
         await before_input_effect(session_name)
+    except BaseException:
+        # The hook did not complete, so nothing was placed: only the buffer needs cleanup.
+        await _delete_paste_buffer(session_name, buf_name, timeout, paste_succeeded=False)
+        raise
+    return await settle_begun_effect(
+        _place_input(session_name=session_name, buf_name=buf_name, timeout=timeout, submit=submit)
+    )
+
+
+async def _place_input(*, session_name: str, buf_name: str, timeout: float, submit: bool) -> bool:
+    """Paste the loaded buffer, delete it, and optionally submit: the begun effect unit."""
+    paste_succeeded = False
+    try:
         paste_cmd = [
             config.computer.tmux_binary,
             "paste-buffer",
@@ -388,35 +369,84 @@ async def _paste_text_tmux(
         paste_succeeded = True
         logger.debug("tmux paste pipeline: paste-buffer ok", session=session_name, buffer_name=buf_name)
     finally:
-        # Always attempt cleanup. The buffer holds the user payload, so a failed
-        # delete leaves it in tmux memory until the server exits — we want this
-        # visible in logs. Don't mask an upstream paste failure: cleanup errors
-        # are logged but never override the operation result.
-        cleanup_cmd = [config.computer.tmux_binary, "delete-buffer", "-b", buf_name]
-        cleanup_proc = await asyncio.create_subprocess_exec(
-            *cleanup_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        try:
-            _, cleanup_stderr = await communicate_with_timeout(cleanup_proc, None, timeout, "tmux delete-buffer")
-            if cleanup_proc.returncode != 0:
-                logger.warning(
-                    "tmux delete-buffer returned nonzero exit",
-                    session=session_name,
-                    reason="nonzero_exit_delete_buffer",
-                    buffer_name=buf_name,
-                    returncode=cleanup_proc.returncode,
-                    stderr=cleanup_stderr.decode().strip(),
-                    paste_succeeded=paste_succeeded,
-                )
-        except SubprocessTimeoutError:
+        await _delete_paste_buffer(session_name, buf_name, timeout, paste_succeeded=paste_succeeded)
+
+    logger.debug("tmux paste pipeline: paste complete", session=session_name)
+    if not submit:
+        return True
+    return await _submit_pasted_input(session_name, timeout)
+
+
+async def _delete_paste_buffer(session_name: str, buf_name: str, timeout: float, *, paste_succeeded: bool) -> None:
+    """Delete the named tmux buffer.
+
+    The buffer holds the user payload, so a failed delete leaves it in tmux memory
+    until the server exits — we want this visible in logs. Cleanup errors are
+    logged and never override the operation result.
+    """
+    cleanup_cmd = [config.computer.tmux_binary, "delete-buffer", "-b", buf_name]
+    cleanup_proc = await asyncio.create_subprocess_exec(
+        *cleanup_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        _, cleanup_stderr = await communicate_with_timeout(cleanup_proc, None, timeout, "tmux delete-buffer")
+        if cleanup_proc.returncode != 0:
             logger.warning(
-                "tmux delete-buffer timed out",
+                "tmux delete-buffer returned nonzero exit",
                 session=session_name,
+                reason="nonzero_exit_delete_buffer",
                 buffer_name=buf_name,
+                returncode=cleanup_proc.returncode,
+                stderr=cleanup_stderr.decode().strip(),
                 paste_succeeded=paste_succeeded,
             )
+    except SubprocessTimeoutError:
+        logger.warning(
+            "tmux delete-buffer timed out",
+            session=session_name,
+            buffer_name=buf_name,
+            paste_succeeded=paste_succeeded,
+        )
 
-    logger.debug("tmux paste pipeline: paste complete", session=session_name, payload_bytes=payload_len)
+
+async def _submit_pasted_input(session_name: str, timeout: float) -> bool:
+    """Submit pasted input via a DISCRETE send-keys C-m.
+
+    paste-buffer -p emitted DECSET 2004 markers (\x1b[200~ ... \x1b[201~) around
+    the content. All three agent CLIs (codex, claude code, agy) enable
+    bracketed-paste mode at startup and atomically buffer everything between the
+    markers as a single 'paste' event. The next Enter KeyEvent is unambiguously
+    discrete → submit.
+
+    The short fixed sleep is a sub-second ordering safety margin so tmux finishes
+    writing the close marker through the pty before the next subprocess writes
+    \r. It is NOT a paste-detection heuristic, and does NOT need to scale with
+    payload size — the close marker is the same regardless of how much content
+    preceded it.
+    """
+    logger.debug(
+        "tmux paste pipeline: waiting before submit",
+        session=session_name,
+        submit_delay_s=_SUBMIT_GAP_S,
+    )
+    await asyncio.sleep(_SUBMIT_GAP_S)
+
+    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
+    result = await asyncio.create_subprocess_exec(
+        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
+    if result.returncode != 0:
+        logger.error(
+            "tmux send-keys submit returned nonzero exit",
+            session=session_name,
+            reason="nonzero_exit_submit",
+            returncode=result.returncode,
+            stderr=stderr.decode().strip(),
+        )
+        return False
+
+    logger.debug("tmux paste pipeline: submit ok", session=session_name)
     return True
 
 

@@ -27,6 +27,7 @@ from teleclaude.core.reconciliation import (
     INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
     decode_capability_set,
 )
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import (
     CommandType,
     CreateSessionCommand,
@@ -76,6 +77,8 @@ _ERROR_KIND_FIELD = "kind"
 _ERROR_DETAIL_FIELD = "detail"
 _NOT_FOUND_ERROR_KIND = "not_found"
 _REFUSED_ERROR_KIND = "refused_by_target"
+SHUTDOWN_REFUSAL_ERROR_KIND = "shutdown_refusal"
+_RETRY_AFTER_FIELD = "retry_after_seconds"
 _READ_TIMEOUT_DETAIL = "target did not answer before the read timed out"
 _PEER_REQUEST_DETAIL = "peer request failed"
 
@@ -92,7 +95,15 @@ class RemoteDispatchReason(StrEnum):
     UNREACHABLE = "unreachable"
     NOT_FOUND = "not_found"
     REFUSED_BY_TARGET = "refused_by_target"
+    PEER_DRAINING = "peer_draining"
     PEER_ERROR = "peer_error"
+
+
+_RELAY_ERROR_KIND_REASONS: dict[str, RemoteDispatchReason] = {
+    _NOT_FOUND_ERROR_KIND: RemoteDispatchReason.NOT_FOUND,
+    _REFUSED_ERROR_KIND: RemoteDispatchReason.REFUSED_BY_TARGET,
+    SHUTDOWN_REFUSAL_ERROR_KIND: RemoteDispatchReason.PEER_DRAINING,
+}
 
 
 class RemoteDispatchError(RuntimeError):
@@ -163,15 +174,8 @@ def parse_remote_dispatch_data(
     status = envelope.get("status")
     if status == "error":
         error = envelope.get("error")
-        if isinstance(error, dict) and error.get(_ERROR_KIND_FIELD) in {
-            _NOT_FOUND_ERROR_KIND,
-            _REFUSED_ERROR_KIND,
-        }:
-            relay_reason = (
-                RemoteDispatchReason.NOT_FOUND
-                if error.get(_ERROR_KIND_FIELD) == _NOT_FOUND_ERROR_KIND
-                else RemoteDispatchReason.REFUSED_BY_TARGET
-            )
+        if isinstance(error, dict) and error.get(_ERROR_KIND_FIELD) in _RELAY_ERROR_KIND_REASONS:
+            relay_reason = _RELAY_ERROR_KIND_REASONS[str(error.get(_ERROR_KIND_FIELD))]
             detail_raw = error.get(_ERROR_DETAIL_FIELD)
             detail = detail_raw if isinstance(detail_raw, str) else str(error)
             raise RelayFailure(computer=target_computer, command=command, reason=relay_reason, detail=detail)
@@ -353,12 +357,26 @@ async def run_local_command(command: InternalCommand, *, source_computer: str | 
     return await invoke_command_handler(command, source_computer=source_computer)
 
 
+def shutdown_refusal_envelope(refusal: ShutdownRefusal) -> JsonDict:
+    """The retryable reply that answers work this draining computer refused before accepting it."""
+    return {
+        "status": "error",
+        "error": {
+            _ERROR_KIND_FIELD: SHUTDOWN_REFUSAL_ERROR_KIND,
+            _ERROR_DETAIL_FIELD: str(refusal),
+            _RETRY_AFTER_FIELD: refusal.retry_after_seconds,
+        },
+    }
+
+
 async def execute_command_envelope(command: InternalCommand, *, source_computer: str | None = None) -> JsonDict:
     """Run a command and return the Redis request/response envelope."""
     try:
         if isinstance(command, DiscordThreadClaimCommand) and not source_computer:
             raise ValueError("shared Discord child claims require an authenticated transport source")
         data = await run_local_command(command, source_computer=source_computer)
+    except ShutdownRefusal as exc:
+        return shutdown_refusal_envelope(exc)
     except AgentDispatchFailure as exc:
         return {"status": "error", "error": {"kind": "agent_dispatch_failure", "reason": exc.reason.value}}
     except (OSError, RuntimeError, LookupError, ValueError, TypeError) as exc:

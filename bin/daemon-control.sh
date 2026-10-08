@@ -46,6 +46,14 @@ REDIS_READY_WAIT_SECONDS="${TELECLAUDE_DAEMON_REDIS_READY_WAIT_S:-15}"
 STOP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_WAIT_S:-25}"
 STOP_KILL_WAIT_SECONDS="${TELECLAUDE_DAEMON_STOP_KILL_WAIT_S:-5}"
 STARTUP_STREAM_PID=""
+# Host-side preparation of the running daemon before an ordinary stop or restart
+# (teleclaude.runtime.daemon_shutdown_control owns the observation, signalling and typed outcomes).
+DAEMON_CONTROL_PYTHON="$PROJECT_ROOT/.venv/bin/python"
+PREPARE_UNSUPPORTED_EXIT=10
+# Set to 1 (make restart LEGACY_ACTIVATION=1) to activate the preparation protocol on a
+# daemon that predates it. It reports observed quiescence only, never atomic draining.
+LEGACY_ACTIVATION="${LEGACY_ACTIVATION:-0}"
+PREPARED_PID=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -603,6 +611,77 @@ start_daemon() {
     return 1
 }
 
+# The pid the service manager runs for the daemon; empty when none is running.
+manager_daemon_pid() {
+    local pid
+    if [ "$PLATFORM" = "macos" ]; then
+        launchd_unit_pid "$SERVICE_LABEL"
+        return 0
+    fi
+    pid="$(systemd_main_pid)"
+    if [ -z "$pid" ] && [ -f "$PID_FILE" ]; then
+        pid="$(cat "$PID_FILE")"
+    fi
+    printf '%s\n' "$pid"
+}
+
+run_shutdown_control() {
+    local verb="$1"
+    local pid="$2"
+    PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.runtime.daemon_shutdown_control \
+        "$verb" --socket "$API_SOCKET" --manager-pid "$pid" --pid-file "$PID_FILE"
+}
+
+# Prepare the running daemon before any service-manager action.
+# Returns 0 and sets PREPARED_PID when that exact instance reported drained (or, with
+# LEGACY_ACTIVATION=1, when a positively identified legacy runtime is observed quiescent);
+# returns 2 when no daemon is running; returns 1, having reported why, when the
+# service-manager action must be withheld. Nothing is ever forcibly terminated here.
+prepare_daemon_for_shutdown() {
+    local pid
+    local output
+    local rc=0
+    PREPARED_PID=""
+
+    pid="$(manager_daemon_pid)"
+    if [ -z "$pid" ] || ! is_pid_alive "$pid"; then
+        return 2
+    fi
+    if [ ! -x "$DAEMON_CONTROL_PYTHON" ]; then
+        log_error "Cannot prepare the daemon: $DAEMON_CONTROL_PYTHON is missing (run 'make install')"
+        return 1
+    fi
+
+    log_info "Preparing daemon (pid $pid): closing admission and settling accepted work..."
+    output="$(run_shutdown_control prepare "$pid")" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        PREPARED_PID="$output"
+        log_info "Daemon instance $PREPARED_PID is drained"
+        return 0
+    fi
+
+    if [ "$rc" -ne "$PREPARE_UNSUPPORTED_EXIT" ]; then
+        log_error "Preparation incomplete; the service manager was not asked to act and nothing was terminated"
+        return 1
+    fi
+
+    if [ "$LEGACY_ACTIVATION" != "1" ]; then
+        log_error "The running daemon predates the preparation protocol. Its first activation is explicit: make restart LEGACY_ACTIVATION=1"
+        log_error "That path observes quiescence only: it neither closes admission nor proves effects have settled"
+        return 1
+    fi
+
+    rc=0
+    output="$(run_shutdown_control legacy "$pid")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        log_error "Legacy activation refused; the service manager was not asked to act and nothing was terminated"
+        return 1
+    fi
+    PREPARED_PID="$output"
+    log_warn "Legacy activation: durable work was observed quiescent; admission was not closed and effects are not proven settled"
+    return 0
+}
+
 # Stop daemon via service manager
 stop_daemon() {
     log_info "Stopping TeleClaude daemon..."
@@ -610,6 +689,13 @@ stop_daemon() {
     local label
     local pid
     local entry
+    local prepare_rc=0
+
+    prepare_daemon_for_shutdown || prepare_rc=$?
+    if [ "$prepare_rc" -eq 1 ]; then
+        log_error "Stop withheld: the daemon was left running"
+        return 1
+    fi
 
     if [ "$PLATFORM" = "macos" ]; then
         while IFS= read -r label; do
@@ -775,16 +861,23 @@ PY
 restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
-    OLD_PID=""
-    if [ "$PLATFORM" != "macos" ] && [ -f "$PID_FILE" ]; then
-        OLD_PID=$(cat "$PID_FILE")
-        if ps -p "$OLD_PID" > /dev/null 2>&1; then
-            log_info "Killing daemon process (PID: $OLD_PID)..."
-            kill "$OLD_PID" 2>/dev/null || true
+    local prepare_rc=0
+    prepare_daemon_for_shutdown || prepare_rc=$?
+    if [ "$prepare_rc" -eq 1 ]; then
+        log_error "Restart withheld: the daemon was left running"
+        return 1
+    fi
+
+    if [ "$prepare_rc" -eq 0 ]; then
+        log_info "Terminating prepared daemon (pid $PREPARED_PID)..."
+        kill -TERM "$PREPARED_PID" 2>/dev/null || true
+        if ! wait_for_daemon_death "$STOP_WAIT_SECONDS" "$SERVICE_LABEL:$PREPARED_PID"; then
+            log_error "Prepared daemon did not exit within ${STOP_WAIT_SECONDS}s; not forcing it ('make kill' is the explicit forced path)"
+            return 1
         fi
     fi
 
-    # Nothing may follow the service-manager restart; see daemon-availability.
+    # Nothing may follow the service-manager action; see daemon-availability.
     if [ "$PLATFORM" = "macos" ]; then
         local domain
         domain="$(launchd_domain)"
@@ -794,7 +887,13 @@ restart_daemon() {
         # Load-only: keep the periodic unit loaded without forcing an
         # off-schedule run (do not kickstart it).
         start_launchd_unit "$CRON_LABEL"
-        exec launchctl kickstart -k "$domain/$SERVICE_LABEL"
+        if ! is_service_loaded; then
+            start_launchd_unit "$SERVICE_LABEL"
+            return $?
+        fi
+        # Not forceful: the prepared instance has exited, so this adopts the KeepAlive
+        # relaunch or starts the unit; a daemon that is already running is left alone.
+        exec launchctl kickstart "$domain/$SERVICE_LABEL"
     else
         # Linux has no managed-set self-heal; install/heal the cron timer
         # idempotently before restart so a missing timer is restored.

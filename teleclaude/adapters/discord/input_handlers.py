@@ -46,6 +46,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.slug import normalize_slug
 from teleclaude.types.commands import (
@@ -358,7 +359,10 @@ class InputHandlersMixin:
             registry = getattr(self, "task_registry", None)
             if registry is None:
                 raise RuntimeError("Discord voice handling requires task_registry")
-            registry.spawn(get_command_service().handle_voice(cmd), name=f"voice-{message_id}")
+            registry.spawn(
+                self.answer_refusal_of(session.session_id, get_command_service().handle_voice(cmd)),  # type: ignore[attr-defined]
+                name=f"voice-{message_id}",
+            )
         except recoverable_errors as exc:
             error_msg = str(exc) if str(exc).strip() else "Unknown error"
             logger.error("Failed to process Discord voice message: %s", error_msg, exc_info=True)
@@ -384,6 +388,9 @@ class InputHandlersMixin:
         for index, attachment in enumerate(attachments):
             try:
                 await self._process_attachment(session, attachment, index, caption, sender_key)
+            except ShutdownRefusal:
+                await self.answer_shutdown_refusal(session.session_id)  # type: ignore[attr-defined]
+                return
             except recoverable_errors as exc:
                 filename = getattr(attachment, "filename", None) or f"file_{index}.dat"
                 error_msg = str(exc) if str(exc).strip() else "Unknown error"

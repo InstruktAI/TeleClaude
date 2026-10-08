@@ -78,6 +78,27 @@ class TmuxSnapshotMalformedError(Exception):
     """
 
 
+async def _settle_cancelled(process: Process, timeout: float, operation: str) -> None:
+    """Let a tmux subprocess whose waiter was cancelled finish instead of abandoning it.
+
+    A cancelled call may already be taking effect, and an abandoned child is neither
+    reaped nor observed. Closing stdin lets an input-reading command end; a command
+    that still does not exit within its timeout is killed.
+    """
+    if process.stdin is not None and not process.stdin.is_closing():
+        process.stdin.close()
+    try:
+        await asyncio.wait_for(asyncio.shield(process.wait()), timeout=timeout)
+    except TimeoutError:
+        logger.warning("%s still running after its waiter was cancelled; killing process %d", operation, process.pid)
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+    except asyncio.CancelledError:
+        pass
+
+
 async def wait_with_timeout(
     process: Process,
     timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,
@@ -99,6 +120,9 @@ async def wait_with_timeout(
     """
     try:
         await asyncio.wait_for(process.wait(), timeout=timeout)
+    except asyncio.CancelledError:
+        await _settle_cancelled(process, timeout, operation)
+        raise
     except TimeoutError:
         logger.warning(
             "%s timeout after %.1fs, killing process %d",
@@ -142,6 +166,9 @@ async def communicate_with_timeout(
     """
     try:
         return await asyncio.wait_for(process.communicate(input_data), timeout=timeout)
+    except asyncio.CancelledError:
+        await _settle_cancelled(process, timeout, operation)
+        raise
     except TimeoutError:
         logger.warning(
             "%s timeout after %.1fs, killing process %d",

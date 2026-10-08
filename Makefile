@@ -1,6 +1,7 @@
 .PHONY: help install launchers launchers-renew-authority deepseek-stack link format lint test clean dev start stop restart kill status cron-smoke
 
 CRON_SMOKE_SINCE ?= 15m
+LEGACY_ACTIVATION ?= 0
 
 # Default target
 help:
@@ -41,10 +42,10 @@ start:
 	@./bin/daemon-control.sh start
 
 stop:
-	@./bin/daemon-control.sh stop
+	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" ./bin/daemon-control.sh stop
 
 restart:
-	@./bin/daemon-control.sh restart
+	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" ./bin/daemon-control.sh restart
 
 kill:
 	@./bin/daemon-control.sh kill

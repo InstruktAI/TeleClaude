@@ -61,6 +61,7 @@ from teleclaude.core.session_startup import (
 )
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tmux_bridge import input_effect_scope
 from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
@@ -133,7 +134,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None: ...
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
-        """Create and track a background task."""
+        """Create and track a session bootstrap task that holds its accepted launch until the startup outcome.
+
+        The caller already admitted the launch (or is resuming a startup an earlier
+        process accepted), so the bootstrap registers the unit the drain waits for.
+        """
         if len(self._background_tasks) > 200:
             logger.warning(
                 "Background task cap reached (%d), skipping %s",
@@ -141,7 +146,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 label,
             )
             return
-        task = asyncio.create_task(coro, name=label)
+        task = asyncio.create_task(get_shutdown_drain().register(label).carry(coro), name=label)
         self._track_background_task(task, label)
 
     async def _handle_agent_event_direct(self, context: AgentEventContext) -> None:

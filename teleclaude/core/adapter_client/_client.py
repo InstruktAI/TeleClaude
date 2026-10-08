@@ -86,17 +86,12 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         self.cache: DaemonCache | None = None
         # Per-adapter startup outcome (disabled/misconfigured/error/ok), surfaced to the user.
         self.adapter_status: dict[str, AdapterStatusReport] = {}
-        self.is_shutting_down = False
         self.subscribe_session_events()
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
         self.agent_event_handler: Callable[[AgentEventContext], Awaitable[None]] | None = None
         self.agent_coordinator: AgentCoordinator | None = None
         # Per-session lock for channel provisioning (prevents concurrent ensure_channel races)
         self._channel_ensure_locks: dict[str, asyncio.Lock] = {}
-
-    def mark_shutting_down(self) -> None:
-        """Mark client as shutting down to suppress adapter restarts."""
-        self.is_shutting_down = True
 
     def register_adapter(self, adapter_type: str, adapter: BaseAdapter) -> None:
         """Manually register an adapter (for testing).
