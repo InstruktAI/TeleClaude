@@ -33,6 +33,7 @@ from teleclaude.core.reconciliation.template_installation import (
     plan_template_installation,
 )
 from teleclaude.git import GitCommandError
+from teleclaude.logging_config import setup_logging
 from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.project_setup.git_filters import GitFilterDisposition, ensure_git_filters
@@ -393,6 +394,7 @@ def main() -> None:
     A root argument runs the whole act; ``--plumbing-only <root>`` runs the
     machine plumbing alone, for installers that render no deployment output.
     """
+    setup_logging()
     arguments = sys.argv[1:]
     plumbing_only = arguments[:1] == [_PLUMBING_ONLY_FLAG]
     if plumbing_only:

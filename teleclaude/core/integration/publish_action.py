@@ -13,6 +13,7 @@ from teleclaude.core.integration.post_commit_maintenance import (
     _SYNC_ACTION_ID,
     activation_range_action_paths,
 )
+from teleclaude.logging_config import setup_logging
 from teleclaude.quality.scope import resolve_dirty_paths
 from teleclaude.sync import HomePublicationOutcome, PublicationMode, PublicationRunFailure, publish_homes
 
@@ -95,6 +96,7 @@ def run_home_sync_action(home: Path, project_root: Path) -> int:
 
 def main() -> int:
     """Run the maintenance action for the command line's working project root."""
+    setup_logging()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--after-sha", required=True)
     parser.add_argument("--before-sha")

@@ -40,6 +40,7 @@ from teleclaude.hooks.integrator_judgment_marker import (
     read_integrator_judgment_marker,
     record_integrator_judgment_activation,
 )
+from teleclaude.logging_config import setup_logging
 from teleclaude.project_root import resolve_project_root
 from teleclaude.runtime.command_runner import CommandResult, run_process_group_commands
 
@@ -231,6 +232,7 @@ def drain_maintenance(project_root: Path) -> bool:
 
 def main() -> int:
     """Drain maintenance for the current canonical checkout."""
+    setup_logging()
     return 0 if drain_maintenance(Path.cwd()) else 1
 
 
