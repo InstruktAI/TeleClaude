@@ -266,10 +266,16 @@ force an intent through the wrong lane to preserve an already chosen kind.
 A `bug` keeps its lane when its report states the current contract the
 behavior breaks and how it breaks it. Open that contract and confirm it states
 the behavior the report expected. A report that proves no contract break is not
-a bug: before calling `telec todo prepare {slug}`, reclassify it to `change`
-when it describes an outcome a change can deliver; otherwise reject it by
-recording the reason in the todo's `log` and removing it with
-`telec todo remove {slug}` (`sdlc/policy/todo-creation-discipline`).
+a bug, and is one of two things (`sdlc/policy/todo-creation-discipline`):
+
+- **An invalid bug report** — the behavior is what its contract permits, the
+  failure belongs to another owner, or the evidence does not show the behavior
+  claimed. Reject it: record the reason in the todo's `log`, then
+  `telec todo remove {slug}`. An invalid report is never reclassified to keep
+  it alive.
+- **A change request** — the report asks for behavior no current contract
+  states and names the outcome it wants. Reclassify it to `change` before
+  calling `telec todo prepare {slug}`.
 
 ### 1c. Settled change
 

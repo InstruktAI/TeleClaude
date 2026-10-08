@@ -117,9 +117,10 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   restores what that contract says, correcting any lower text that contradicts
   it on the way. A bug report states that contract and how the behavior breaks
   it. Where
-  no current contract states the wanted behavior, the work is a `change`,
-  however real the failure, and is created with
-  `telec todo create --kind change`. Evidence shows the behavior happened; the
+  no current contract states the expected behavior, it is not a defect,
+  however real the failure: it is a `change`, created with
+  `telec todo create --kind change`, only when that behavior is wanted, and
+  otherwise there is nothing to file. Evidence shows the behavior happened; the
   contract shows it is wrong.
 - **A filed defect claim carries its evidence.** A todo whose premise is a
   defect, or a defense against one, cites an occurrence or a dangerous path,
