@@ -255,8 +255,3 @@ docs:
 agents:
   enabled: true
 schema_version: 15
-hooks:
-  subscriptions:
-    - contract: {}
-      id: ''
-      target: {}
