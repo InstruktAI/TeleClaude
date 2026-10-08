@@ -9,6 +9,8 @@ description: Every repository-owned template TeleClaude installs onto a machine 
 
 ## What it is
 
+<!-- planned-change:retire-project-init -->
+
 TeleClaude installs repository-owned templates in several places: service
 definitions during machine installation; the TeleClaude home's repository layer
 and every declared person and company home's documentation baselines, before
@@ -22,6 +24,23 @@ installation renders the template's placeholders and places the result under a
 name derived from the template's path. One rendering contract and one naming
 contract govern all of them, so a template behaves the same wherever it is
 installed.
+
+<!-- change:retire-project-init -->
+
+TeleClaude installs repository-owned templates in several places: service
+definitions during machine installation; the TeleClaude home's repository layer
+and every declared person and company home's documentation baselines, before
+home activation; every home master and help desk that is absent, whenever
+convergence seeds it
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`);
+TeleClaude-owned git hooks into project and home repositories; and project
+skeleton files and a project's local documentation baselines during project
+initialization. Each installation renders the template's placeholders and places
+the result under a name derived from the template's path. One rendering contract
+and one naming contract govern all of them, so a template behaves the same
+wherever it is installed.
+
+<!-- /planned-change:retire-project-init -->
 
 What an installation does with the rendered result — refreshing a differing
 target, prompting before replacing a project-owned file, preserving a hook it
