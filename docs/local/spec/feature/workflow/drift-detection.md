@@ -711,8 +711,6 @@ Scenario: an artifact written or a stamp applied from a slug worktree records th
   And drift derived later from the owning checkout reports no drift for that unchanged snippet
 ```
 
-<!-- planned:drift-stamp-expires-without-overlap -->
-
 #### UC-WDD19: A cosmetic code verdict stands while origin/main advances outside the referenced paths
 
 ```gherkin
@@ -724,8 +722,6 @@ Scenario: origin/main advances past a cosmetic code-drift verdict without touchi
   Then the cosmetic verdict still stands for the implementation-plan code class
   And no new drift analysis is requested for that class
 ```
-
-<!-- /planned:drift-stamp-expires-without-overlap -->
 
 ### Cross-context references
 
