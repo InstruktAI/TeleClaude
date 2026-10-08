@@ -21,7 +21,7 @@ A consumer declares its interest in terms of event attributes only
 - the **types** it handles, as patterns;
 - whether it acts only on events **its own computer emitted**, read from the
   event's source;
-- optionally, the **subject kinds** or **home kinds** it answers.
+- optionally, the **subject kinds** or **origin kinds** it answers.
 
 An event outside that interest is passed over without being handed to the
 consumer. The event's data is read only by the consumer it is handed to.
@@ -142,9 +142,9 @@ Scenario Outline: Only exact names, whole-segment prefixes and the bare wildcard
 #### UC-EC7: Selection reads only event attributes
 
 ```gherkin
-Given a consumer declares interest by type pattern, source, and subject or home kind
+Given a consumer declares interest by type pattern, source, and subject or origin kind
 When an event reaches it
-Then whether it is handed the event depends only on the event's type, source, subject and home
+Then whether it is handed the event depends only on the event's type, source and origin, and subject
 And the event's data is never read before the event is handed to the consumer
 ```
 

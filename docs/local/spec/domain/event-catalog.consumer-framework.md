@@ -34,19 +34,19 @@ about its consumers
   `teleclaude` for what the platform itself emits, a published domain's name for
   that domain's events. An event relayed from an external system is named
   `<domain>.<name>` from what its declared source states.
-- **source:** the emitting computer.
+- **source:** where the event originated: the emitting computer, and its
+  **origin** there — a registered project, person, or company the act happened
+  in, named in the configuration-subject vocabulary; none when the act happened
+  in no registered project, person, or company; or unknown when the event does
+  not carry it, because it predates these facts or reports an act whose record
+  was kept before its origin was. A project origin also carries its owner as the
+  emitting computer resolves it: the declared company or person, declared
+  ownerless, or unresolved when that computer cannot read the project's
+  ownership declaration. Unresolved is never reported as ownerless. Where
+  `identity`'s reach reads an event, the event's origin is the record's subject.
 - **subject:** the one thing the event is about, as a typed reference.
 - **time:** when it happened.
 - **data:** the facts particular to the event's type.
-- **home:** a registered project, person, or company, named in the
-  configuration-subject vocabulary; none when the event belongs to no registered
-  home; or unknown when the event does not carry it, because it predates these
-  facts or reports an act whose record was kept before its home was. A project
-  home also carries its owner as the emitting computer resolves it: the declared
-  company or person, declared ownerless, or unresolved when that computer cannot
-  read the project's ownership declaration. Unresolved is never reported as
-  ownerless. Where `identity`'s reach reads an event, the event's home is the
-  record's subject.
 - **related:** typed references to the other things the event involves. When
   the event is produced while serving a request whose caller identity names a
   session, its related references include that session. Identity resolves the
@@ -59,24 +59,28 @@ A typed reference names a kind of thing and that thing's identity. The catalog
 owns the set of kinds a reference can name and the shape of each kind's
 identity; a producing context that needs a new kind adds it to that set.
 
-The producer supplies the subject and the home: the envelope cannot be built
-without them, and a home of none or unknown is stated explicitly. None is a
-claim that the event belongs to no registered home; unknown makes no claim, and
-a producer never states none or a guessed home in its place. The emission
+The producer supplies the subject and the origin: the envelope cannot be built
+without them, and an origin of none or unknown is stated explicitly. None is a
+claim that the act happened in no registered project, person, or company;
+unknown makes no claim, and a producer never states none or a guessed origin in
+its place. The emission
 boundary adds the source, time, session reference, and project owner, and an
 id when the producer states none. Which
-subject and home an event states, including for an event caused by earlier
+subject and origin an event states, including for an event caused by earlier
 events, is the producing context's emission invariant. Emission refuses and
 alters nothing on the strength of these facts.
 
-An event carries no notification rule, action affordance, audience, or routing
-scope. Whether and how a consumer reacts is decided by that consumer from the
-event's type, source, subject, and home; the data is opaque to routing.
+An event carries no notification rule, action affordance, audience, routing
+scope, or home. Whether and how a consumer reacts is decided by that consumer
+from the event's type, source and origin, and subject; the data is opaque to
+routing. A consumer that works in a home — a project's checkout, a person's or
+company's folder — resolves that home from the event's origin on its own
+computer.
 
 Within one version of a type, the attributes and data evolve additively, and a
 change that is not additive is a new version of the type. Event records the
 platform keeps are migrated forward. Internal event bus envelopes are not
-platform stream events; they state no subject and no home.
+platform stream events; they state no subject and no origin.
 
 ### Type declarations
 
@@ -86,8 +90,8 @@ and the catalog is generated from those declarations. A declaration states:
 - the type's **name** and **version**, and a **description** of what happened;
 - its **subject**: what its events are about, and the kind of thing their
   subject reference names;
-- its **home**: the home kinds its events' home can take, or that they belong to
-  no registered home;
+- its **origin**: the kinds its events' origin can take, or that their acts
+  happen in no registered project, person, or company;
 - its **data fields**: each field's name, JSON value kind, and whether it may be
   null;
 - its **related references**: the kinds of thing they name;
@@ -114,7 +118,7 @@ of one family.
   state also declares an ok state.
 - **The subject is the thing whose state is reported.** Every state of a family
   has the same subject kind, and the thing is the subject within the event's
-  home, so a failure and its recovery state the same subject and home.
+  origin, so a failure and its recovery state the same subject and origin.
 - **The type alone carries the state.** A consumer reads a thing's state from
   the event's type, never from its data.
 - **Declarations keep the convention.** The catalog is not generated from a
@@ -124,24 +128,24 @@ of one family.
 Events of published domains do not follow this convention; each domain names
 its events as its own vocabulary requires.
 
-### Event subjects and homes
+### Event subjects and origins
 
-The event platform's own emitters state as subject and home what their act
+The event platform's own emitters state as subject and origin what their act
 concerned:
 
 - failure-cascade detection and processor worker crashes: the computer whose
-  event processor observed them, with no home;
-- failure-burst detection: the event type whose events burst, with the home of
-  those events; bursts of one type under different homes are kept apart;
-- a dead-lettered stream entry: the event it carried, with no home;
+  event processor observed them, with no origin;
+- failure-burst detection: the event type whose events burst, with the origin of
+  those events; bursts of one type from different origins are kept apart;
+- a dead-lettered stream entry: the event it carried, with no origin;
 - entity degradation: the degraded thing the failing events it correlates are
-  about, with the home of those events. Correlation keeps same-named things
-  under different homes apart, so each degradation concerns one home. Failures
-  with an unknown home are correlated together, and their degradation states an
-  unknown home.
+  about, with the origin of those events. Correlation keeps same-named things
+  from different origins apart, so each degradation concerns one origin.
+  Failures with an unknown origin are correlated together, and their
+  degradation states an unknown origin.
 - signal ingest, clustering, and synthesis: the signal item, cluster, or
-  synthesis the act produced, with no home while signal sources are machine
-  configuration that no registered home declares.
+  synthesis the act produced, with no origin while signal sources are machine
+  configuration that no registered project, person, or company declares.
 
 Each detection reports when its episode is over: a burst and a failure cascade
 subside, and a degraded thing recovers, once the events the detection counts no
@@ -165,7 +169,7 @@ the stream on each computer
 
 - **Interest** is declared from event attributes only: type patterns, whether
   the consumer acts only on events its own computer emitted, and optionally the
-  subject or home kinds it answers.
+  subject kinds or origin kinds it answers.
 - **Type patterns** are an exact type name, a whole-segment prefix followed by
   `.*`, or `*`. The catalog owns this one matcher; every context that lets an
   author select events by type pattern matches with it.
@@ -197,6 +201,10 @@ responsibility.
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
   The notification projector reads those fields and the notification rules
   kept beside the type declarations; no other consumer reads either.
+- **The origin travels under a field named `home`.** The delivered model, wire
+  form and declarations carry the origin's registered project, person, or
+  company in a field named `home`. The name states nothing about any consumer's
+  home; the field is the event's origin.
 
 ## See Also
 
@@ -207,5 +215,6 @@ responsibility.
 - docs/local/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction.md
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
 - docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md
+- docs/local/adr/0118-an-event-states-its-origin-and-a-home-is-a-consumers.md
 - docs/local/spec/feature/event-catalog/event-envelope.md
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a context's event declarations confers no ownership of their meaning.

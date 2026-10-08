@@ -41,7 +41,7 @@ contracts and never creates shared ownership.
 <!-- planned-change:consumer-framework -->
 
 - `event-catalog`: the platform event stream's envelope shape, the facts every
-  event states about itself — its type, source, subject, home, related
+  event states about itself — its type, source and origin, subject, related
   references, and causation — the kinds of thing a reference can name, the
   vocabulary of states a platform event reports, and the event type
   declarations the catalog is generated from. It owns no event's meaning and no
@@ -50,7 +50,7 @@ contracts and never creates shared ownership.
 <!-- change:consumer-framework -->
 
 - `event-catalog`: the platform event stream's envelope shape, the facts every
-  event states about itself — its type, source, subject, home, related
+  event states about itself — its type, source and origin, subject, related
   references, and causation — the kinds of thing a reference can name, the
   vocabulary of states a platform event reports, the event type declarations
   the catalog is generated from, the one type-pattern matcher, and the consumer
