@@ -20,7 +20,6 @@ from typing import cast
 
 import teleclaude.config as _tc_config_module
 from teleclaude.company_setup.onboard_flow import scaffold_company
-from teleclaude.config import help_desk as help_desk_declaration
 from teleclaude.config._environment import (
     expand_environment_references,
     find_environment_references,
@@ -346,8 +345,6 @@ def _init_global(ref: SubjectRef, fields: Mapping[str, object] | None, evidence:
             carry_resource_migrations(stored, ref, evidence)
             transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, current))
             evidence.mark(target_id(ConfigSubjectKind.GLOBAL, None, TargetDocument.REGISTRY))
-    evidence.enter_unobserved()
-    help_desk_declaration.converge_platform_help_desk(GLOBAL_CONFIG_PATH.parent)
     return _read_global(SubjectRef(ConfigSubjectKind.GLOBAL))
 
 

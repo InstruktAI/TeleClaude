@@ -98,13 +98,11 @@ class TemplateTarget(StrEnum):
     """The closed set of target kinds a layered template installation addresses."""
 
     TELECLAUDE_HOME = "teleclaude-home"
-    TELECLAUDE_HOME_MASTER = "teleclaude-home-master"
     PERSON_HOME = "person-home"
     PERSON_MASTER = "person-master"
     COMPANY_HOME = "company-home"
     COMPANY_MASTER = "company-master"
     PROJECT = "project"
-    PLATFORM_HELP_DESK = "platform-help-desk"
     COMPANY_HELP_DESK = "company-help-desk"
     PROJECT_HELP_DESK = "project-help-desk"
 
@@ -149,13 +147,11 @@ _DOCS_MOUNT = Path("docs")
 _DOCS_TREE = "docs"
 _TEMPLATE_LAYERS: Mapping[TemplateTarget, tuple[TemplateLayer, ...]] = {
     TemplateTarget.TELECLAUDE_HOME: (TemplateLayer("home", _TARGET_ROOT_MOUNT),),
-    TemplateTarget.TELECLAUDE_HOME_MASTER: (TemplateLayer("home-platform", _TARGET_ROOT_MOUNT),),
     TemplateTarget.PERSON_HOME: (TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),),
     TemplateTarget.PERSON_MASTER: (TemplateLayer("home-person", _TARGET_ROOT_MOUNT),),
     TemplateTarget.COMPANY_HOME: (TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),),
     TemplateTarget.COMPANY_MASTER: (TemplateLayer("home-company", _TARGET_ROOT_MOUNT),),
     TemplateTarget.PROJECT: (TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),),
-    TemplateTarget.PLATFORM_HELP_DESK: (TemplateLayer("help-desk-platform", _TARGET_ROOT_MOUNT),),
     TemplateTarget.COMPANY_HELP_DESK: (TemplateLayer("help-desk-company", _TARGET_ROOT_MOUNT),),
     TemplateTarget.PROJECT_HELP_DESK: (TemplateLayer("help-desk-project", _TARGET_ROOT_MOUNT),),
 }

@@ -2044,7 +2044,6 @@ def _inflate_project_master(
     project_root: Path,
     warn_only: bool,
     observation: DistributionObservation | None,
-    resolution: DocsResolutionMode = DocsResolutionMode.SOURCE,
 ) -> str:
     """Compile one project master; only the project's root master gains the root extras."""
     return inflate_master(
@@ -2053,7 +2052,6 @@ def _inflate_project_master(
         root_extras=master_path == project_root / PROJECT_MASTER_FILENAME,
         warn_only=warn_only,
         observation=observation,
-        resolution=resolution,
     )
 
 
@@ -2074,33 +2072,6 @@ def _write_project_agents(
     agents_path = master_path.parent / GENERATED_ENTRYPOINT_FILENAME
     agents_path.write_text(inflated, encoding=UTF8)
     return agents_path
-
-
-def compile_walked_project_entrypoints(
-    project_root: Path,
-    relative_masters: frozenset[Path],
-) -> tuple[tuple[Path, str], ...]:
-    """Compile the named masters the project's master walk reaches, as entrypoint path and text.
-
-    A master the walk excludes is not compiled, whether or not it is named.
-    Global required reads resolve to the deployed corpus, so no other
-    publisher's unpublished source reaches an entrypoint compiled outside that
-    publisher's own publication.
-    """
-    return tuple(
-        (
-            master.parent / GENERATED_ENTRYPOINT_FILENAME,
-            _inflate_project_master(
-                master,
-                project_root=project_root,
-                warn_only=False,
-                observation=None,
-                resolution=DocsResolutionMode.DEPLOYED,
-            ),
-        )
-        for master in _iter_project_agent_masters(project_root)
-        if master.relative_to(project_root) in relative_masters
-    )
 
 
 def _render_global_skill_catalog(

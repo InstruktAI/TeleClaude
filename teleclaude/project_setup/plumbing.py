@@ -32,7 +32,7 @@ from teleclaude.core.reconciliation.template_installation import (
     apply_template_installation,
     plan_template_installation,
 )
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
+from teleclaude.git import GitCommandError
 from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.project_setup.git_filters import GitFilterDisposition, ensure_git_filters
@@ -51,14 +51,8 @@ _PLUMBING_ONLY_FLAG = "--plumbing-only"
 _HOOK_RESULT = "{hook_name}: {outcome}"
 _FILTER_RESULT = "filter-driver: {disposition}"
 _OUTPUT_RESULT = "{path}: {disposition}"
-_HELD_OUTPUT_RESULT = (
-    "{path}: tracked by git, left untouched; remove it from the index (keeping the file) so convergence can render it"
-)
 _ROOT_RESULT = "{project_root}: {outcome} (schema-link: {schema_link}, schema-copy: {schema_copy})"
 _RUN_RESULT = "Plumbing convergence {outcome}: {root_count} root(s)."
-_LS_FILES_NUL_OPTION = "-z"
-_PATHSPEC_SEPARATOR = "--"
-_NUL = "\0"
 
 
 class PlumbingConvergenceOutcome(StrEnum):
@@ -203,7 +197,7 @@ def _declared_kind(root: Path) -> ConfigKind | None:
 
 
 def _deployment_output_targets(root: Path) -> TemplateTargets:
-    """The deployment output a root's declaration owes: a project's enabled help desk, the platform home's output."""
+    """The masters a root's declaration owes: a project's enabled help desk, the tier homes' masters and desks."""
     kind = _declared_kind(root)
     if kind is ConfigKind.GLOBAL:
         return home_output_targets(root)
@@ -214,26 +208,10 @@ def _deployment_output_targets(root: Path) -> TemplateTargets:
     return ()
 
 
-def _tracked_paths(root: Path, paths: tuple[Path, ...]) -> frozenset[Path]:
-    """The given paths the root's repository tracks; a root that is not a repository tracks none."""
-    try:
-        repository = Repo(root)
-    except InvalidGitRepositoryError:
-        return frozenset()
-    working_tree = repository.working_tree_dir
-    if working_tree is None:
-        return frozenset()
-    checkout_root = Path(working_tree).resolve()
-    output = repository.git.ls_files(_LS_FILES_NUL_OPTION, _PATHSPEC_SEPARATOR, *(str(path) for path in paths))
-    tracked = {checkout_root / entry for entry in output.split(_NUL) if entry}
-    return frozenset(path for path in paths if path.resolve() in tracked)
-
-
 def _render_deployment_output(root: Path, targets: TemplateTargets) -> tuple[HomeTemplateOutcome, ...]:
-    """Render the targets from their templates, leaving every path the root's git tracks untouched."""
+    """Seed the targets' masters from their templates; an existing master is never rewritten."""
     plan = plan_template_installation(targets, values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
-    planned = tuple(file.target for target in plan.targets for file in target.files)
-    return apply_template_installation(plan, held_targets=_tracked_paths(root, planned))
+    return apply_template_installation(plan)
 
 
 def _with_output(
@@ -249,10 +227,10 @@ def _with_output(
 
 
 def converge_root(project_root: Path, *, run_id: str | None = None) -> PlumbingConvergenceResult:
-    """Converge one root's plumbing, then the deployment output its declaration owes.
+    """Converge one root's plumbing, then seed the masters its declaration owes.
 
-    A path the root's git tracks is reported and left untouched; neither it nor
-    a disabled desk's folder fails the root.
+    An existing master is left as it is; neither it nor a disabled desk's
+    folder fails the root.
     """
     result = _converge_machine_plumbing(project_root)
     if result.outcome is PlumbingConvergenceOutcome.DECLARATION_ERROR:
@@ -266,7 +244,6 @@ def converge_root(project_root: Path, *, run_id: str | None = None) -> PlumbingC
     try:
         outputs = _render_deployment_output(project_root, targets)
     except (
-        GitCommandError,
         HomeTemplateMaterializationConflict,
         InvalidTemplateEncodingError,
         OSError,
@@ -392,11 +369,9 @@ def converge_registered_roots(home: Path = TELECLAUDE_HOME) -> PlumbingConvergen
 
 
 def _print_output_results(result: PlumbingConvergenceResult) -> None:
-    """Report each deployment output a root's convergence wrote, and each tracked path it left untouched."""
+    """Report each deployment output a root's convergence wrote."""
     for output in result.output_results:
-        if output.disposition is HomeTemplateDisposition.HELD:
-            print(_HELD_OUTPUT_RESULT.format(path=output.target))
-        elif output.disposition is HomeTemplateDisposition.WRITTEN:
+        if output.disposition is HomeTemplateDisposition.WRITTEN:
             print(_OUTPUT_RESULT.format(path=output.target, disposition=output.disposition))
 
 

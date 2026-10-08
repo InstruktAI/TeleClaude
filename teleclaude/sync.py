@@ -29,11 +29,9 @@ from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
 from teleclaude.install.distribution import (
-    PROJECT_MASTER_FILENAME,
     DistributionBuild,
     HomeMasterInflationError,
     committed_retired_outputs,
-    compile_walked_project_entrypoints,
     distribute_committed,
 )
 from teleclaude.install.home_distribution import (
@@ -41,13 +39,11 @@ from teleclaude.install.home_distribution import (
     TierHome,
     deployed_tier_identities,
     distribute_tier_homes,
-    home_master_candidates,
     home_masters,
     inflate_home_entrypoint,
     inflate_home_entrypoints,
 )
 from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, TELECLAUDE_HOME, is_platform_home
-from teleclaude.project_manifest import load_registered_roots
 from teleclaude.quality.gate import LintGateResult, run_home_guardrail_gate
 
 logger = get_logger(__name__)
@@ -55,9 +51,7 @@ logger = get_logger(__name__)
 _GIT_MAIN_TIP_ARGS = ("--verify", "refs/heads/main^{commit}")
 _GIT_INSTALLED_COMMIT_ARGS = ("--verify", "HEAD^{commit}")
 _GIT_IGNORED_UNTRACKED_ARGS = ("-z", "--others", "--ignored", "--exclude-standard", "--")
-_GIT_IGNORED_UNTRACKED_COLLAPSED_ARGS = ("-z", "--others", "--ignored", "--exclude-standard", "--directory", "--")
 _GIT_PATH_SEPARATOR = "\0"
-_GIT_COLLAPSED_DIRECTORY_SUFFIX = "/"
 _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _STATE_DIRECTORY = ".teleclaude"
 _PUBLICATION_DIRECTORY = "publication"
@@ -83,7 +77,6 @@ _HOME_PUBLICATION_EVENT = "home_publication_outcome"
 _HOME_PUBLICATION_RUN_EVENT = "home_publication_run"
 _HOME_REFRESH_FAILED_EVENT = "home_entrypoint_refresh_failed"
 _HOME_REFRESH_SKIPPED_EVENT = "home_entrypoint_refresh_skipped"
-_PROJECT_REFRESH_FAILED_EVENT = "project_entrypoint_refresh_failed"
 _NO_PUBLISHED_HOME_GENERATIONS = "no_published_home_generations"
 _ROOT_RELATIVE_PATH = Path(".")
 _ERROR_SEPARATOR = ", "
@@ -265,11 +258,6 @@ def _publish_under_lease(
         return _finish_run(canonical_root, tip, mode, results, generations, all_homes, tree_paths)
 
     with materialize_tree(source) as snapshot_root:
-        for home, _ in pending:
-            if home.error is None:
-                _place_ignored_masters(
-                    canonical_root, snapshot_root, _ignored_masters(canonical_root, home.root, home.kind)
-                )
         for home, error in skipped:
             results[home.root.as_posix()] = _skipped_home(
                 home, tip, mode, error, canonical_root, snapshot_root, source, tree_paths
@@ -387,10 +375,7 @@ def _publish_project_home(
             candidates=distribution.retired_pointers,
         )
         if capabilities.docs and is_mother_project(snapshot_root):
-            failed_refreshes = [
-                *refresh_home_entrypoints(TELECLAUDE_HOME),
-                *refresh_project_entrypoints(canonical_root),
-            ]
+            failed_refreshes = refresh_home_entrypoints(TELECLAUDE_HOME)
             if failed_refreshes:
                 return HomePublicationResult(
                     home,
@@ -623,9 +608,6 @@ def _refresh_one_home(
             failures.append(Path(root_key))
             return
         home_root = snapshot_root / Path(root_key)
-        _place_ignored_masters(
-            canonical_root, snapshot_root, _ignored_masters(canonical_root, Path(root_key), declared[0].kind)
-        )
         masters = home_masters(home_root, declared[0].kind)
         entrypoints: list[HomeEntrypoint] = []
         for master, read_root in masters:
@@ -652,82 +634,6 @@ def _refresh_one_home(
     except (GitCommandError, OSError, subprocess.CalledProcessError, ValueError, yaml.YAMLError) as exc:
         logger.error(_HOME_REFRESH_FAILED_EVENT, home=root_key, published_generation=commit, cause=str(exc))
         failures.append(Path(root_key))
-
-
-def refresh_project_entrypoints(published_root: Path) -> list[Path]:
-    """Refresh the entrypoint beside each git-ignored master of every other registered project.
-
-    A project's ignored masters are not part of its committed outputs, so its own
-    publication is not the only moment they can change. Each master compiles
-    against the generation its project last published, which stays recorded as
-    it was: this installs entrypoints and advances nothing. A project whose
-    recorded generation does not subscribe `agents` has no artifact processing,
-    so it is left idle.
-    """
-    failures: list[Path] = []
-    published = published_root.resolve()
-    for registered in load_registered_roots(strict=True):
-        if registered.is_present and registered.path.resolve() != published:
-            _refresh_one_project(registered.path, failures)
-    return failures
-
-
-def _refresh_one_project(project_root: Path, failures: list[Path]) -> None:
-    """Compile one project's ignored masters at its recorded generation, preserving failures."""
-    try:
-        commit = _load_home_generations(project_root).get(_ROOT_RELATIVE_PATH.as_posix())
-        if commit is None:
-            return
-        masters = _ignored_masters(project_root, _ROOT_RELATIVE_PATH, ConfigKind.PROJECT)
-        if not masters:
-            return
-        with materialize_tree(TreeSource.recorded_commit(project_root, commit)) as snapshot_root:
-            if not resolve_capabilities(snapshot_root).agents:
-                return
-            _place_ignored_masters(project_root, snapshot_root, masters)
-            entrypoints = compile_walked_project_entrypoints(snapshot_root, frozenset(masters))
-            _install_canonical_files(
-                snapshot_root,
-                project_root,
-                [(output, text.encode(_UTF8)) for output, text in entrypoints],
-            )
-    except (GitCommandError, OSError, subprocess.CalledProcessError, ValueError, yaml.YAMLError) as exc:
-        logger.error(_PROJECT_REFRESH_FAILED_EVENT, project=str(project_root), cause=str(exc))
-        failures.append(project_root)
-
-
-def _ignored_masters(canonical_root: Path, home_root: Path, kind: ConfigKind) -> list[Path]:
-    """The masters the canonical checkout ignores now, whatever an earlier generation tracked at their path.
-
-    A project's are the masters git lists as ignored in their own right, so a
-    folder git ignores wholesale yields none. A home's are the paths of its
-    fixed master set, which its own rules may ignore as part of a wider folder.
-    Paths are relative to ``canonical_root``.
-    """
-    repository = Repo(str(canonical_root))
-    if kind is ConfigKind.PROJECT:
-        listed = repository.git.ls_files(*_GIT_IGNORED_UNTRACKED_COLLAPSED_ARGS).split(_GIT_PATH_SEPARATOR)
-        return [
-            Path(entry)
-            for entry in listed
-            if entry
-            and not entry.endswith(_GIT_COLLAPSED_DIRECTORY_SUFFIX)
-            and Path(entry).name == PROJECT_MASTER_FILENAME
-        ]
-    candidates = [
-        master.relative_to(canonical_root) for master, _ in home_master_candidates(canonical_root / home_root, kind)
-    ]
-    listed = repository.git.ls_files(*_GIT_IGNORED_UNTRACKED_ARGS, *(path.as_posix() for path in candidates))
-    ignored = set(listed.split(_GIT_PATH_SEPARATOR))
-    return [path for path in candidates if path.as_posix() in ignored]
-
-
-def _place_ignored_masters(canonical_root: Path, snapshot_root: Path, masters: Iterable[Path]) -> None:
-    """Put the canonical checkout's ignored masters into the snapshot, replacing what it holds there."""
-    for relative in masters:
-        destination = snapshot_root / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes((canonical_root / relative).read_bytes())
 
 
 def _finish_run(

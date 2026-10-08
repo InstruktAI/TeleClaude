@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.config.loader import load_company_config, load_global_config
+from teleclaude.config.loader import load_company_config
 from teleclaude.config.schema import ConfigKind
 from teleclaude.core.reconciliation.template_installation import TemplateTarget
 from teleclaude.paths import HELP_DESK_DIRNAME, ConfigFileName
@@ -19,7 +19,7 @@ def person_baseline_targets(root: Path) -> TemplateTargets:
 
 
 def person_master_targets(root: Path) -> TemplateTargets:
-    """A person home's master, deployment output of its kind's template."""
+    """A person home's master, seeded once from its kind's template and then owned by the home."""
     return ((root, TemplateTarget.PERSON_MASTER),)
 
 
@@ -29,7 +29,7 @@ def company_baseline_targets(root: Path) -> TemplateTargets:
 
 
 def company_master_targets(root: Path) -> TemplateTargets:
-    """A company home's master, deployment output of its kind's template."""
+    """A company home's master, seeded once from its kind's template and then owned by the home."""
     return ((root, TemplateTarget.COMPANY_MASTER),)
 
 
@@ -50,14 +50,6 @@ def company_home_targets(root: Path) -> TemplateTargets:
     return company_baseline_targets(root) + company_master_targets(root) + company_help_desk_targets(root)
 
 
-def platform_help_desk_targets(home: Path) -> TemplateTargets:
-    """The platform help desk, when the global declaration exists and enables it."""
-    declaration = home / ConfigFileName.OVERLAY
-    if declaration.is_file() and load_global_config(declaration).help_desk.enabled:
-        return ((home / HELP_DESK_DIRNAME, TemplateTarget.PLATFORM_HELP_DESK),)
-    return ()
-
-
 def project_targets(root: Path, *, docs: bool, help_desk: bool) -> TemplateTargets:
     """A project's documentation baselines and help desk, as its caller decides; installation never calls this."""
     targets: TemplateTargets = ()
@@ -72,8 +64,8 @@ def home_installation_targets(home: Path) -> TemplateTargets:
     """Every target machine installation converges: the home's repository layer and each declared tier home's baselines.
 
     The home itself never receives the documentation layer: its ``docs/`` is the
-    published documentation generation. Deployment output is not installed
-    (``home_output_targets``).
+    published documentation generation. The masters a home seeds are not
+    installed (``home_output_targets``).
     """
     targets: TemplateTargets = ((home, TemplateTarget.TELECLAUDE_HOME),)
     for root, kind in iter_declared_tier_roots(home):
@@ -82,14 +74,14 @@ def home_installation_targets(home: Path) -> TemplateTargets:
 
 
 def home_output_targets(home: Path) -> TemplateTargets:
-    """The deployment output a home declares: its master, each tier home's master, and every enabled help desk."""
-    targets: TemplateTargets = ((home, TemplateTarget.TELECLAUDE_HOME_MASTER),)
+    """The masters a home's declarations seed: each tier home's master and each enabled company help desk."""
+    targets: TemplateTargets = ()
     for root, kind in iter_declared_tier_roots(home):
         if kind is ConfigKind.COMPANY:
             targets += company_master_targets(root) + company_help_desk_targets(root)
         else:
             targets += person_master_targets(root)
-    return targets + platform_help_desk_targets(home)
+    return targets
 
 
 __all__ = [
@@ -102,6 +94,5 @@ __all__ = [
     "person_baseline_targets",
     "person_home_targets",
     "person_master_targets",
-    "platform_help_desk_targets",
     "project_targets",
 ]

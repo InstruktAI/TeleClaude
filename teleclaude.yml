@@ -192,7 +192,6 @@ checkpoint:
     - scope:
         include:
           - templates/help-desk-*/**
-          - templates/home-platform/**
           - templates/home-person/**
           - templates/home-company/**
       actions:
