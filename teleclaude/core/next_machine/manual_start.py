@@ -48,6 +48,7 @@ from teleclaude.core.next_machine.runner_types import (
 from teleclaude.core.next_machine.runtime.sessions import (
     PREPARE_LIFECYCLE_COMMANDS,
     find_live_commit_reviewer_for_initiator,
+    find_live_commit_reviewer_for_terminal_human,
     find_live_reviewer_for_slug,
     resolve_slug_holders,
 )
@@ -242,6 +243,7 @@ async def _guard_reviewer_start(
     *,
     command: SlashCommand | None,
     caller_session_id: str | None,
+    caller_human_email: str | None,
     thinking_mode: str,
     db: Db | None,
 ) -> None:
@@ -252,14 +254,15 @@ async def _guard_reviewer_start(
     reviewer (``/review-build``, ``/review-plan``,
     ``/review-architecture``) is keyed by exact ``(project, slug, command)``;
     commit review (``/review-commits``, no todo slug) is keyed by
-    ``(project, initiating driver, command, thinking mode)`` — mode is part of
-    that subject because doc-hygiene and code review use different thinking
-    modes, and a mode-blind subject refuses the cheap lane as a duplicate of
-    the expensive one. Silent no-op only when the
-    command cannot be resolved — a slugless subject with no caller identity is
-    refused rather than silently admitted, since a caller with no session
-    identity at all has no ``initiator_session_id`` and so can never be found
-    as a prior holder (see :class:`ReviewerIdentityUnresolved`).
+    ``(project, driver, command, thinking mode)`` — mode is part of that
+    subject because doc-hygiene and code review use different thinking modes,
+    and a mode-blind subject refuses the cheap lane as a duplicate of the
+    expensive one. The driver is the caller's session when it has one, even if
+    it also carries a human, and otherwise the caller's authenticated human
+    (``caller_human_email``). Silent no-op only when the command cannot be
+    resolved — a slugless subject whose caller has neither driver form is
+    refused rather than silently admitted, since such a launch can never be
+    found as a prior holder (see :class:`ReviewerIdentityUnresolved`).
 
     """
     if command is None:
@@ -277,11 +280,16 @@ async def _guard_reviewer_start(
         subject = f"/{command_value} {slug}"
     else:
         subject = f"/{command_value} at {thinking_mode} for this project and driver"
-        if not caller_session_id:
+        if caller_session_id:
+            holder = await find_live_commit_reviewer_for_initiator(
+                runtime_db, project_path, caller_session_id, command_value, thinking_mode
+            )
+        elif caller_human_email:
+            holder = await find_live_commit_reviewer_for_terminal_human(
+                runtime_db, project_path, caller_human_email, command_value, thinking_mode
+            )
+        else:
             raise ReviewerIdentityUnresolved(subject=subject)
-        holder = await find_live_commit_reviewer_for_initiator(
-            runtime_db, project_path, caller_session_id, command_value, thinking_mode
-        )
     if holder is None:
         return
     raise ReviewerConflict(subject=subject, holder=holder, reuse_command=f"telec sessions send {holder}")
@@ -293,6 +301,7 @@ async def guard_driver_start(
     *,
     launch_class: DriverLaunchClass,
     caller_session_id: str | None,
+    caller_human_email: str | None,
     command: SlashCommand | None = None,
     thinking_mode: str,
     db: Db | None = None,
@@ -323,7 +332,9 @@ async def guard_driver_start(
     Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
     holds the slug, :class:`ReviewerConflict` when a live reviewer already holds
     the review subject, or :class:`ReviewerIdentityUnresolved` when a slugless
-    reviewer subject has no caller identity to key dedup on; returns silently
+    reviewer subject has neither a caller session nor a caller human to key dedup
+    on (``caller_human_email`` is the terminal driver form, used only when
+    ``caller_session_id`` is unset); returns silently
     when the start is allowed (no live holder, or a producing worker child-spawn),
     returning the authoritative held-without-driver fact for stage evidence.
     """
@@ -333,6 +344,7 @@ async def guard_driver_start(
             slug,
             command=command,
             caller_session_id=caller_session_id,
+            caller_human_email=caller_human_email,
             thinking_mode=thinking_mode,
             db=db,
         )

@@ -26,6 +26,7 @@ from teleclaude.api.auth import (
     principal_for_carried_caller,
     resolve_caller_provenance,
 )
+from teleclaude.api.driver_start_guard import enforce_driver_start_guard, terminal_driver_email
 from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_procedure import normalize_procedure_activation_request
 from teleclaude.api.run_session_refusals import (
@@ -63,7 +64,6 @@ from teleclaude.constants import (
     COMMAND_ROLE_MAP,
     NON_SLUG_BOUND_COMMANDS,
     WORKTREE_DIR,
-    DriverLaunchClass,
     SlashCommand,
 )
 from teleclaude.core import agents as agents_module
@@ -82,7 +82,7 @@ from teleclaude.core.command_handlers import resolve_working_slug_from_subdir, s
 from teleclaude.core.command_input import REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import DISPATCH_ALLOWED, classify_driver_launch
+from teleclaude.core.command_service import DISPATCH_ALLOWED
 from teleclaude.core.db import db
 from teleclaude.core.models import (
     AgentDispatchMode,
@@ -93,7 +93,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
-from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start
+from teleclaude.core.next_machine.manual_start import DriverStartGuardResult
 from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_message_projection import (
@@ -107,7 +107,6 @@ from teleclaude.core.session_startup_message import (
 )
 from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.core.session_utils import split_project_path_and_subdir
-from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
     CreateSessionCommand,
@@ -298,45 +297,6 @@ def _normalize_command(command: str | None) -> SlashCommand | None:
     return resolve_slash_command(command)
 
 
-async def enforce_driver_start_guard(
-    *,
-    project_path: str,
-    working_slug: str | None,
-    command: str | None,
-    caller_session_id: str | None,
-    thinking_mode: str,
-) -> DriverStartGuardResult:
-    """Refuse a create-door driver start that would duplicate a live driver.
-
-    Shared by both create doors (run-session and generic create): it classifies
-    the requested launch and runs the two-signal dedup guard, mapping a conflict
-    to HTTP 409 naming the holder. A non-driver launch or an unclaimed slug passes
-    through silently — except a reviewer launch, which is checked even with no
-    slug (commit review carries no todo slug at all).
-    """
-    normalized_command = _normalize_command(command)
-    launch_class = classify_driver_launch(normalized_command)
-    if launch_class is not DriverLaunchClass.REVIEWER and not working_slug:
-        return DriverStartGuardResult()
-    try:
-        return await guard_driver_start(
-            project_path,
-            working_slug,
-            launch_class=launch_class,
-            caller_session_id=caller_session_id,
-            command=normalized_command,
-            thinking_mode=thinking_mode,
-        )
-    except ReviewerConflict as conflict:
-        raise RunSessionRefusal(
-            status_code=409, detail=conflict.summary(), reason=AgentDispatchReason.REVIEWER_CONFLICT
-        ) from conflict
-    except (ClaimConflict, ReviewerIdentityUnresolved) as conflict:
-        raise RunSessionRefusal(
-            status_code=409, detail=conflict.summary(), reason=AgentDispatchReason.RUN_REQUEST_REJECTED
-        ) from conflict
-
-
 async def guard_generic_create_session(
     request: CreateSessionRequest,
     cmd: object,
@@ -370,6 +330,7 @@ async def guard_generic_create_session(
         working_slug=working_slug,
         command=leading_command,
         caller_session_id=identity.session_id,
+        caller_human_email=terminal_driver_email(identity),
         thinking_mode=cmd.launch_intent.thinking_mode if cmd.launch_intent else "",
     )
 
@@ -861,6 +822,7 @@ async def _run_session(
             working_slug=plan.working_slug,
             command=request.command,
             caller_session_id=plan.initiator_session_id,
+            caller_human_email=terminal_driver_email(identity),
             thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
         )
     except RunSessionRefusal as exc:

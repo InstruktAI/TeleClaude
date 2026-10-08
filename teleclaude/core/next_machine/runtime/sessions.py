@@ -203,6 +203,28 @@ async def list_live_commit_reviewers_for_initiator(
     )
 
 
+def _holds_commit_review_subject(
+    *,
+    command: str | None,
+    session_project_path: str | None,
+    session_thinking_mode: str | None,
+    project_root: Path,
+    command_value: str,
+    thinking_mode: str,
+) -> bool:
+    """Return whether a session record holds the commit-review subject for this project and mode.
+
+    The project/command/mode part of the subject is the same whichever driver
+    form keys the lookup, so both driver lookups share it.
+    """
+    return session_thinking_mode == thinking_mode and is_commit_reviewer_in_project(
+        command=command,
+        session_project_path=session_project_path,
+        project_root=project_root,
+        command_value=command_value,
+    )
+
+
 async def find_live_commit_reviewer_for_initiator(
     db: Db,
     project_path: str | Path,
@@ -213,12 +235,14 @@ async def find_live_commit_reviewer_for_initiator(
     """Return the newest live commit-review session for this project, initiator, and mode.
 
     Commit review carries no todo slug — its subject is a commit series whose SHA
-    set changes every remediation round, so slug-keyed dedup cannot reach it. Its
-    subject is identified by the project, the driver (``initiator_session_id``)
-    that opened the review, and the thinking mode the review runs at, scoped by
-    :func:`_same_project_root` the same way the orchestrator-owner signal is, and
-    filtered at the query layer via ``list_sessions(initiator_session_id=...)``
-    rather than a second in-process pass.
+    set changes every remediation round, so slug-keyed dedup cannot reach it. For a
+    caller that has a session, the subject is identified by the project, the driver
+    (``initiator_session_id``) that opened the review, and the thinking mode the
+    review runs at, scoped by :func:`_same_project_root` the same way the
+    orchestrator-owner signal is, and filtered at the query layer via
+    ``list_sessions(initiator_session_id=...)`` rather than a second in-process
+    pass. A caller with no session is keyed by
+    :func:`find_live_commit_reviewer_for_terminal_human`.
 
     Mode belongs to the subject because the review lanes differ in cost and in
     what they read: doc-hygiene and code review use different modes over snippet
@@ -234,11 +258,49 @@ async def find_live_commit_reviewer_for_initiator(
     project_root = Path(project_path).resolve()
     sessions = await db.list_sessions(include_closed=False, initiator_session_id=initiator_session_id)
     for session in sessions:
-        if not _same_project_root(session.project_path, project_root):
+        if _holds_commit_review_subject(
+            command=session.command,
+            session_project_path=session.project_path,
+            session_thinking_mode=session.thinking_mode,
+            project_root=project_root,
+            command_value=command_value,
+            thinking_mode=thinking_mode,
+        ):
+            return session.session_id
+    return None
+
+
+async def find_live_commit_reviewer_for_terminal_human(
+    db: Db,
+    project_path: str | Path,
+    human_email: str,
+    command_value: str,
+    thinking_mode: str,
+) -> str | None:
+    """Return the newest live commit-review session a terminal human started for this project and mode.
+
+    A terminal caller has no session, so a reviewer it starts records no
+    ``initiator_session_id`` and is found by the human it records instead. The
+    empty-initiator condition keeps the two driver forms disjoint: a reviewer an
+    agent session opened inherits its human's ``human_email`` but carries that
+    session as its initiator, so it never holds its human's terminal subject.
+    ``db.list_sessions`` has no filter for either field, so both are matched here.
+    """
+    project_root = Path(project_path).resolve()
+    sessions = await db.list_sessions(include_closed=False)
+    for session in sessions:
+        if session.initiator_session_id:
             continue
-        if session.thinking_mode != thinking_mode:
+        if (session.human_email or "").casefold() != human_email.casefold():
             continue
-        if _matches_command(session.command, command_value):
+        if _holds_commit_review_subject(
+            command=session.command,
+            session_project_path=session.project_path,
+            session_thinking_mode=session.thinking_mode,
+            project_root=project_root,
+            command_value=command_value,
+            thinking_mode=thinking_mode,
+        ):
             return session.session_id
     return None
 
