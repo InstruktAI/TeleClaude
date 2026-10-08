@@ -15,8 +15,7 @@ They read the events the platform itself emits
 either reports that a thing failed, reports that a thing works, or reports
 neither; an event that reports neither is never told.
 
-The thing is what an administrator recognizes as broken: a recurring job is one
-thing across all its runs, and otherwise the thing is what the event is about.
+The thing is what the event is about: its subject.
 
 A thing whose working again the platform reports is broken from its first
 reported failure until an event reports that it works:
@@ -49,40 +48,40 @@ nor loses the message that a broken thing works again.
 #### UC-IA1: The first failure of a thing tells interested administrators
 
 ```gherkin
-Given a platform administrator whose notification interests select platform job events
-And a recurring job that is not broken
-When a run of that job fails
-Then the administrator receives one message that the job failed
+Given a platform administrator whose notification interests select the platform events that report a thing failing or working
+And a thing that is not broken
+When an event reports that the thing failed
+Then the administrator receives one message that the thing failed
 ```
 
 #### UC-IA2: A broken thing failing again tells nothing
 
 ```gherkin
-Given a platform administrator whose notification interests select platform job events
-And a recurring job whose last run failed and was told
-When the next runs of that job fail too
-Then the administrator receives no further message about that job
+Given a platform administrator whose notification interests select the platform events that report a thing failing or working
+And a thing whose failure was told and that no event has reported working since
+When further events report that the same thing failed
+Then the administrator receives no further message about that thing
 ```
 
 #### UC-IA3: A broken thing working again tells once, with how long it was broken
 
 ```gherkin
-Given a platform administrator who was told that a recurring job failed
-And the job's runs kept failing since
-When a run of that job succeeds
-Then the administrator receives one message that the job works again
-And the message states how long the job was broken
-When the following runs of that job succeed too
-Then the administrator receives no further message about that job
+Given a platform administrator who was told that a thing failed
+And further events reported that the same thing failed
+When an event reports that the thing works
+Then the administrator receives one message that the thing works again
+And the message states how long the thing was broken
+When further events report that the thing works
+Then the administrator receives no further message about that thing
 ```
 
 #### UC-IA4: A thing that was not broken working tells nothing
 
 ```gherkin
-Given a platform administrator whose notification interests select platform job events
-And a recurring job none of whose runs failed since it last worked
-When a run of that job succeeds
-Then the administrator receives no message about that job
+Given a platform administrator whose notification interests select the platform events that report a thing failing or working
+And a thing that is not broken
+When an event reports that the thing works
+Then the administrator receives no message about that thing
 ```
 
 #### UC-IA5: An event that reports no failure and no recovery tells nothing
@@ -99,34 +98,34 @@ Then the administrator receives no message about it
 Scenario Outline: The audience is the platform administrators whose interests select the event
   Given a person who <relationship>
   And whose notification interests <interests>
-  When a recurring job that is not broken fails
+  When an event reports that a thing that is not broken failed
   Then the person <outcome>
 
   Examples:
-    | relationship                         | interests                                        | outcome                         |
-    | is a platform administrator          | select platform job events                       | receives one message            |
-    | is a platform administrator          | select no platform job events                    | receives no message             |
-    | is a platform administrator          | select platform job events in a category switched off | receives no message        |
-    | is not a platform administrator      | select platform job events                       | receives no message             |
+    | relationship                    | interests                                              | outcome              |
+    | is a platform administrator     | select the event's type                                | receives one message |
+    | is a platform administrator     | do not select the event's type                         | receives no message  |
+    | is a platform administrator     | select the event's type in a category switched off     | receives no message  |
+    | is not a platform administrator | select the event's type                                | receives no message  |
 ```
 
 #### UC-IA8: Only the computer where it happened tells it
 
 ```gherkin
 Given a fleet of two computers that both receive every platform event
-And a platform administrator whose notification interests select platform job events
-When a recurring job fails on one of the computers
+And a platform administrator whose notification interests select the event's type
+When an event on one of the computers reports that a thing that is not broken failed
 Then the administrator receives exactly one message about it
-And it names the computer where the job failed
+And it names the computer where the thing failed
 ```
 
 #### UC-IA9: A restart changes nothing about what is told
 
 ```gherkin
-Given a platform administrator who was told that a recurring job failed
-When the platform restarts on the computer where the job runs
-And the job's next run fails
-Then the administrator receives no further message about that job
-When a later run of the job succeeds
-Then the administrator receives one message that the job works again, with how long it was broken
+Given a platform administrator who was told that a thing failed
+When the platform restarts on the computer where the thing failed
+And a further event reports that the same thing failed
+Then the administrator receives no further message about that thing
+When an event later reports that the thing works
+Then the administrator receives one message that the thing works again, with how long it was broken
 ```
