@@ -20,6 +20,9 @@ visibility: 'public'
 ## Steps
 
 1. Create a new adapter class inheriting `BaseAdapter` (and `UiAdapter` or `RemoteExecutionProtocol` as needed).
+   A human-facing adapter extends `UiAdapter`, which delivers each finished turn
+   as one message; it extends `EditableUiAdapter` instead only when the platform
+   edits sent messages in place and should stream live output.
    For a human-facing adapter other than Discord, implement only identity or
    invitation binding, conversational input modalities, and delivery of the
    session response to the origin endpoint.

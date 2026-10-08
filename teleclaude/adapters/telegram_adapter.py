@@ -33,6 +33,7 @@ from teleclaude.utils.markdown import (
     truncate_markdown_v2_with_consumed,
 )
 
+from .editable_ui_adapter import EditableUiAdapter
 from .telegram.input_handlers import InputHandlersMixin
 from .telegram.lifecycle import LifecycleMixin, TelegramApp
 from .telegram.message_ops import EditContext, MessageOperationsMixin
@@ -48,7 +49,7 @@ class TelegramAdapter(
     LifecycleMixin,
     InputHandlersMixin,
     MessageOperationsMixin,
-    UiAdapter,
+    EditableUiAdapter,
 ):
     """Telegram bot adapter using python-telegram-bot."""
 
@@ -229,7 +230,7 @@ class TelegramAdapter(
         most recent accumulated text is dispatched per scheduler tick.
         """
         if self._qos_scheduler._policy.mode == "off":
-            return await UiAdapter.send_threaded_output(
+            return await EditableUiAdapter.send_threaded_output(
                 self,
                 session,
                 text,
@@ -247,9 +248,9 @@ class TelegramAdapter(
         _generation_id = generation_id
         _metadata = metadata
 
-        def _task_factory(adapter: UiAdapter, lane_session: Session) -> Awaitable[object]:
-            return UiAdapter.send_threaded_output(
-                adapter,
+        def _task_factory(_adapter: UiAdapter, lane_session: Session) -> Awaitable[object]:
+            return EditableUiAdapter.send_threaded_output(
+                _self,
                 lane_session,
                 _text,
                 _multi,

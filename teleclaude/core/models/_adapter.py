@@ -145,7 +145,6 @@ class TelegramAdapterMetadata:
     parse_mode: str | None = None
     char_offset: int = 0
     user_id: int | None = None
-    badge_sent: bool = False
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object]) -> "TelegramAdapterMetadata":
@@ -159,7 +158,6 @@ class TelegramAdapterMetadata:
             parse_mode=str(raw["parse_mode"]) if raw.get("parse_mode") else None,
             char_offset=json_int(raw.get(_CHAR_OFFSET_FIELD, _CHAR_OFFSET_DEFAULT)),
             user_id=_int_or_none(raw.get("user_id")),
-            badge_sent=bool(raw.get("badge_sent", False)),
         )
 
     def to_dict(self) -> JsonDict:
@@ -179,7 +177,6 @@ class DiscordAdapterMetadata:
     output_message_id: str | None = None
     thread_topper_message_id: str | None = None
     status_message_id: str | None = None
-    badge_sent: bool = False
     char_offset: int = 0
 
     @classmethod
@@ -194,7 +191,6 @@ class DiscordAdapterMetadata:
             output_message_id=_str_or_none(raw.get("output_message_id")),
             thread_topper_message_id=_str_or_none(raw.get("thread_topper_message_id")),
             status_message_id=_str_or_none(raw.get("status_message_id")),
-            badge_sent=bool(raw.get("badge_sent", False)),
             char_offset=json_int(raw.get(_CHAR_OFFSET_FIELD, _CHAR_OFFSET_DEFAULT)),
         )
 
@@ -210,7 +206,6 @@ class WhatsAppAdapterMetadata:
     phone_number: str | None = None
     conversation_id: str | None = None
     output_message_id: str | None = None
-    badge_sent: bool = False
     char_offset: int = 0
     last_customer_message_at: str | None = None
     last_received_message_id: str | None = None
@@ -223,7 +218,6 @@ class WhatsAppAdapterMetadata:
             phone_number=_str_or_none(raw.get("phone_number")),
             conversation_id=_str_or_none(raw.get("conversation_id")),
             output_message_id=_str_or_none(raw.get("output_message_id")),
-            badge_sent=bool(raw.get("badge_sent", False)),
             char_offset=json_int(raw.get(_CHAR_OFFSET_FIELD, _CHAR_OFFSET_DEFAULT)),
             last_customer_message_at=_str_or_none(raw.get("last_customer_message_at")),
             last_received_message_id=_str_or_none(raw.get("last_received_message_id")),

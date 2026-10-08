@@ -691,7 +691,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         Never clears adapter delivery state (Task 9): acceptance does not cut
         output. Turn-boundary clearing happens only at the generation
-        boundary (``UiAdapter._maybe_clear_on_turn_boundary``, driven by
+        boundary (``EditableUiAdapter._maybe_clear_on_turn_boundary``, driven by
         Task 8's binding), so output still in flight from the previous turn
         keeps its edit target intact through this acceptance. Generation
         identity is the only mechanism that decides a turn boundary (Task

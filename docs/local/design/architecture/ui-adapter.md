@@ -55,7 +55,7 @@ Invariants
 **Outputs:**
 
 - Formatted UI messages (output, feedback, notices)
-- Output message edits (in-place updates for streaming content)
+- Output message edits (in-place updates for streaming content) on adapters that extend `EditableUiAdapter`
 
 - Channel/topic title updates with status emoji on the Discord thread only (channel lifecycle; non-Discord adapters carry no channel title to update)
 
@@ -67,6 +67,8 @@ Invariants
 - **Read-Only Core State**: UI adapters never mutate session, database, or domain state directly; all writes via commands.
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
+
+- **Projection Owned by the Adapter Class**: `UiAdapter` delivers each finished agent turn once, as one message on the staged final pass, and declines live renders. `EditableUiAdapter` extends it for platforms whose messages can be edited in place and streams live output by editing the generation's tracked message. Telegram and Discord extend `EditableUiAdapter`; WhatsApp extends `UiAdapter`. No adapter sends a session-identification message.
 
 - **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
   Core routes every snapshot with a durable output-generation identity derived from the bound transcript turn. An adapter edits only the message receipt owned by that generation; accepted input alone never clears the receipt for output that is still in flight.
@@ -84,7 +86,7 @@ Invariants
 
 - **Destination-Addressed Delivery**: On the four delivery methods (`send_message`, `edit_message`, `delete_message`, `send_file`) the adapter receives a resolved `Destination` carrying its platform delivery coords plus any adapter-local delivery metadata needed to perform the send (e.g. WhatsApp's `last_customer_message_at`, which decides text-vs-template delivery inside the 24-hour customer window), never a `Session`. Platform coords are resolved upstream — by AdapterClient routing or a UiAdapter internal helper path, both through the shared core resolver — and the adapter parses the payload out without deriving its own destination. Channel-lifecycle methods (`create_channel`, `update_channel_title`, `delete_channel`) are session-shaped and admin/Discord-only, hosted on the admin-reflection mixin rather than the universal UiAdapter contract.
 
-- **Inbound Resolve-Or-Create Seam**: An inbound message resolves to its bound session through the shared `core/inbound` seam, which the adapter feeds a thin per-adapter parse-in policy (identity-scoped lookup, create-with-bundled-first-message, metadata reconciliation, delivery). The seam returns `is_new`: a session created on this call has its first message bundled into the launch intent and receives no separate delivery, while an existing session's message is delivered unconditionally — no adapter gates inbound delivery on `lifecycle_status`. `on_session_status` is a presence-only path that drives the typing indicator and nothing else; the session-identification badge fires on the `accepted` boundary as a distinct concern.
+- **Inbound Resolve-Or-Create Seam**: An inbound message resolves to its bound session through the shared `core/inbound` seam, which the adapter feeds a thin per-adapter parse-in policy (identity-scoped lookup, create-with-bundled-first-message, metadata reconciliation, delivery). The seam returns `is_new`: a session created on this call has its first message bundled into the launch intent and receives no separate delivery, while an existing session's message is delivered unconditionally — no adapter gates inbound delivery on `lifecycle_status`. `on_session_status` is a presence-only path that drives the typing indicator and nothing else.
 
 ## Primary flows
 
@@ -106,6 +108,8 @@ sequenceDiagram
 ```
 
 ### 2. Output Message Lifecycle
+
+The lifecycle below is `EditableUiAdapter`'s. A `UiAdapter` that is not editable sends each finished turn once on its staged final pass and tracks no output message.
 
 ```mermaid
 stateDiagram-v2
@@ -176,26 +180,30 @@ flowchart TD
 
 ### 5. Output Rendering Flow
 
+An `EditableUiAdapter` renders every output update:
+
 ```mermaid
 sequenceDiagram
     participant Poller
-    participant UiAdapter
+    participant EditableUiAdapter
     participant Platform
     participant DB
 
-    Poller->>UiAdapter: send_output_update(session, output, is_final)
-    UiAdapter->>UiAdapter: Truncate to max_message_size
-    UiAdapter->>UiAdapter: Format with status line
-    UiAdapter->>DB: Get output_message_id
+    Poller->>EditableUiAdapter: send_output_update(session, output, is_final)
+    EditableUiAdapter->>EditableUiAdapter: Truncate to max_message_size
+    EditableUiAdapter->>EditableUiAdapter: Format with status line
+    EditableUiAdapter->>DB: Get output_message_id
     alt Message exists
-        UiAdapter->>Platform: editMessage(message_id, formatted_output)
-        Platform->>UiAdapter: Success
+        EditableUiAdapter->>Platform: editMessage(message_id, formatted_output)
+        Platform->>EditableUiAdapter: Success
     else No message or edit fails
-        UiAdapter->>Platform: sendMessage(formatted_output)
-        Platform->>UiAdapter: new_message_id
-        UiAdapter->>DB: Store output_message_id
+        EditableUiAdapter->>Platform: sendMessage(formatted_output)
+        Platform->>EditableUiAdapter: new_message_id
+        EditableUiAdapter->>DB: Store output_message_id
     end
 ```
+
+A `UiAdapter` that is not editable declines every update except the staged final pass, which carries the turn's delivery version; it sends that output once, overflowing into continuation messages when it exceeds `max_message_size`, and records the delivery receipt.
 
 ### 6. Session Title Synchronization
 

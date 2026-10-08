@@ -1,29 +1,32 @@
-"""Base adapter for UI-enabled platforms (Telegram, Slack, WhatsApp).
+"""Base adapter for UI-enabled platforms.
 
 UI adapters provide:
 - Output lane readiness
-- Output message management (edit/create messages)
+- Send-once output: one message per finished turn
 - Feedback message cleanup
 - Message formatting and display
+
+Platforms whose messages can be edited in place extend ``EditableUiAdapter``
+to stream live output instead.
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
-from teleclaude.adapters.ui.delivery_mixin import OutputDeliveryMixin
+from teleclaude.adapters.ui.message_delivery import MessageDeliveryMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.models._types import JsonValue
 from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.core.voice_message_handler import handle_voice
@@ -35,18 +38,17 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TURN_BOUNDARY_DETECTED_EVENT = "ui_adapter_turn_boundary_detected"
 _SHUTDOWN_REFUSAL_NOTICE = "TeleClaude is restarting and did not accept this message. Please send it again shortly."
 
 
 class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
-    OutputDeliveryMixin,
+    MessageDeliveryMixin,
     BaseAdapter,
 ):
     """Base class for UI-enabled adapters.
 
-    Provides output message management for platforms with editable messages.
-    Subclasses can override max_message_size and add platform-specific formatting.
+    Delivers each finished turn once. Subclasses can override max_message_size
+    and add platform-specific formatting.
     """
 
     # Adapter key for metadata storage (subclasses MUST override)
@@ -135,32 +137,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """
         raise error
 
-    async def _get_output_message_id(self, session: Session) -> str | None:
-        """Get output message ID from this adapter's origin_metadata section."""
-        fresh = await db.get_session(session.session_id)
-        if fresh:
-            session.origin_metadata = fresh.origin_metadata
-        raw = self._origin_field(session, "output_message_id")
-        result = str(raw) if raw else None
-        logger.debug(
-            "_get_output_message_id: adapter=%s session=%s raw=%s section_keys=%s",
-            self.ADAPTER_KEY,
-            session.session_id,
-            raw,
-            list(session.get_origin_section(self.ADAPTER_KEY).keys()),
-        )
-        return result
-
-    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        """Store output message ID in this adapter's origin_metadata section."""
-        await self._set_origin_field(session, output_message_id=message_id)
-        logger.debug(
-            "Stored output_message_id: adapter=%s session=%s message_id=%s",
-            self.ADAPTER_KEY,
-            session.session_id,
-            message_id,
-        )
-
     def get_last_delivered_at(self, session: Session) -> datetime | None:
         """Read last_delivered_at from this adapter's origin_metadata section."""
         raw = self._origin_field(session, "last_delivered_at")
@@ -207,81 +183,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         # Keep in-memory session consistent for subsequent reads within the same request
         session.origin_metadata[self.ADAPTER_KEY] = section
 
-    def _get_char_offset(self, session: Session) -> int:
-        """Get adapter-specific char offset."""
-        raw = self._origin_field(session, "char_offset", 0)
-        return int(str(raw)) if raw is not None else 0
-
-    async def _set_char_offset(self, session: Session, value: int) -> None:
-        """Set adapter-specific char offset."""
-        await self._set_origin_field(session, char_offset=value)
-
-    async def _write_cleared_turn_state(self, session: Session, **extra_fields: JsonValue) -> None:
-        await self._set_origin_field(
-            session,
-            char_offset=0,
-            output_message_id=None,
-            last_delivered_at=datetime.now(UTC).isoformat(),
-            **extra_fields,
-        )
-
-    async def clear_turn_state(self, session: Session) -> None:
-        """Reset threaded delivery receipts so the next render sends fresh.
-
-        Called only from the generation-boundary detector below, never at
-        acceptance: acceptance no longer clears any adapter delivery state
-        (Task 9) — clearing here loses the edit target for output still in
-        flight and reposts cumulative content as a new message, which is
-        exactly the defect this delivery removes.
-        """
-        await self._write_cleared_turn_state(session)
-
-    async def _maybe_clear_on_turn_boundary(self, session: Session) -> str | None:
-        """Reset per-adapter delivery state when a new turn has started.
-
-        Compares the session's current bound output generation (Task 8: cut
-        when a queued receipt binds into its native transcript turn) to the
-        anchor persisted in origin_metadata. A generation identity is never
-        misordered the way a timestamp comparison can be — replaces the prior
-        "latest genuine user message timestamp" comparison, the exact
-        mechanism the Turn provenance invariants name as the defect
-        ("Timestamp comparison misclassifies a late snapshot from an older
-        turn"). This is the *only* point that clears adapter delivery state;
-        acceptance (Task 9) never does. When the generation advances, the
-        previous turn's tracking message must not be edited with new-turn
-        content — it would overwrite displayed output and, on overflow,
-        silently bury chunk 1 inside a stale message that has already
-        scrolled away.
-
-        Returns the session's current generation id (or ``None`` when no
-        turn has bound yet), so the caller can stamp the render it is about
-        to send with the generation it was computed against.
-        """
-        latest_generation = await db.get_latest_output_generation(session.session_id)
-        if latest_generation is None:
-            return None  # no bound turn yet for this session
-
-        stored_generation_id = self._origin_field(session, "turn_anchor_generation_id")
-
-        if not isinstance(stored_generation_id, str) or not stored_generation_id:
-            await self._set_origin_field(session, turn_anchor_generation_id=latest_generation.generation_id)
-            return latest_generation.generation_id
-
-        if latest_generation.generation_id == stored_generation_id:
-            return latest_generation.generation_id
-
-        # New turn: clear delivery state so the next render creates a fresh message.
-        await self.clear_turn_state(session)
-        await self._set_origin_field(session, turn_anchor_generation_id=latest_generation.generation_id)
-        logger.debug(
-            _TURN_BOUNDARY_DETECTED_EVENT,
-            adapter=self.ADAPTER_KEY,
-            session_id=session.session_id,
-            previous_generation_id=stored_generation_id,
-            new_generation_id=latest_generation.generation_id,
-        )
-        return latest_generation.generation_id
-
     async def send_output_update(
         self,
         session: Session,
@@ -295,22 +196,21 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         delivery_ts: datetime | None = None,
         output_metadata: MessageMetadata | None = None,
     ) -> str | None:
-        """Handle live output pushed by the daemon-owned coordinator."""
-        _ = (started_at, last_output_changed_at, is_final, exit_code, render_markdown)
-        generation_id = await self._maybe_clear_on_turn_boundary(session)
-        return await self.send_threaded_output(
-            session,
-            output,
-            multi_message=multi_message,
-            delivery_ts=delivery_ts,
-            generation_id=generation_id,
-            metadata=output_metadata,
-        )
+        """Send each finished turn once, on its staged final pass.
 
-    async def _clear_output_message_id(self, session: Session) -> None:
-        """Clear output message ID in this adapter's origin_metadata section."""
-        await self._set_origin_field(session, output_message_id=None)
-        logger.debug("Cleared output_message_id: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
+        Live renders are declined: without in-place edits every render would
+        reach the person as a separate message. ``EditableUiAdapter`` streams
+        live output instead.
+        """
+        _ = (started_at, last_output_changed_at, exit_code, render_markdown)
+        if not is_final or delivery_ts is None:
+            return None
+        metadata = output_metadata or MessageMetadata(content_format=ContentFormat.MARKDOWN)
+        message_ids = await self.deliver_message(session, output, metadata=metadata, multi_message=multi_message)
+        if not message_ids:
+            return None
+        await self.set_last_delivered_at(session, delivery_ts)
+        return message_ids[-1]
 
     # === Output Message Management (Default Implementations) ===
 
@@ -322,30 +222,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     def _fits_budget(text: str, max_bytes: int) -> bool:
         """Check if text fits within both char and byte budgets."""
         return len(text.encode("utf-8")) <= max_bytes
-
-    def _build_session_id_lines(self, session: Session) -> str:
-        """Build session ID lines for status footer.
-
-        Shows TeleClaude session ID and native agent session ID (if available).
-
-        Args:
-            session: Session object
-
-        Returns:
-            Formatted session ID lines (may be empty string if no IDs)
-        """
-        lines: list[str] = []
-
-        # TeleClaude session ID (full UUID)
-        if session.session_id:
-            lines.append(f"\U0001f4cb tc: {session.session_id}")
-
-        # Native agent session ID (from session - set when any agent starts)
-        if session.native_session_id:
-            agent_name = session.active_agent or "ai"
-            lines.append(f"\U0001f916 {agent_name}: {session.native_session_id}")
-
-        return "\n".join(lines)
 
     async def _pre_handle_user_input(self, session: Session) -> None:
         """Called before handling user input - cleanup ephemeral messages.
@@ -545,31 +421,20 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
     # ==================== Event Handlers ====================
 
-    async def _send_session_badge(self, session: Session) -> None:
-        """Send session identification badge. Called once on session acceptance."""
-        badge_text = self._build_session_id_lines(session)
-        if badge_text:
-            badge_metadata = MessageMetadata(parse_mode=None)
-            destination = resolve_destination(session, self.ADAPTER_KEY, metadata=badge_metadata)
-            await self.send_message(destination, badge_text, metadata=badge_metadata)
-
     async def on_session_status(self, session: Session, status: str) -> None:
         """React to a lifecycle status transition for this adapter's session.
 
         Dispatched by ``AdapterClient.dispatch_session_status`` after origin
         resolution — only the responsible adapter is invoked. The adapter owns
         its own status-filter policy: typing fires on ``active`` / ``accepted``
-        for non-headless sessions; badge fires only on
-        ``accepted``.
+        for non-headless sessions.
         """
         if not self._presence_eligible(session, status):
             return
         await self._update_typing_presence(session, status)
-        if status == "accepted":
-            await self._trigger_session_badge(session)
 
     def _presence_eligible(self, session: Session, status: str) -> bool:
-        """Gate shared by typing and badge: known status, non-headless session."""
+        """Typing gate: known status, non-headless session."""
         if status not in ("active", "accepted"):
             return False
         if session.lifecycle_status == "headless":
@@ -600,20 +465,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 "Typing indicator failed for session %s on status %s",
                 session.session_id,
                 status,
-            )
-
-    async def _trigger_session_badge(self, session: Session) -> None:
-        """Session-identification concern: fire the once-on-acceptance badge."""
-        try:
-            await self._run_throttled_action(
-                session,
-                "session_badge",
-                lambda: self._send_session_badge(session),
-            )
-        except (OSError, RuntimeError, ValueError):
-            logger.debug(
-                "Session badge failed for session %s",
-                session.session_id,
             )
 
     async def on_session_updated(self, session: Session, updated_fields: Mapping[str, object]) -> None:

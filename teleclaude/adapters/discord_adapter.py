@@ -25,6 +25,7 @@ from teleclaude.adapters.discord import (
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.adapters.discord.listen_control import ListenHereView
 from teleclaude.adapters.discord.voice_room import VoiceRoom
+from teleclaude.adapters.editable_ui_adapter import EditableUiAdapter
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui.threaded_output import OverflowContext
@@ -95,7 +96,7 @@ class DiscordAdapter(
     InputHandlersMixin,
     MessageOperationsMixin,
     AdminReflectionMixin,
-    UiAdapter,
+    EditableUiAdapter,
 ):
     """Discord bot adapter using discord.py."""
 
@@ -652,10 +653,7 @@ class DiscordAdapter(
 
         raise error
 
-    async def _send_session_badge(self, session: Session) -> None:
-        """No-op — Discord sends thread topper at channel creation."""
-
-    # send_threaded_output: inherited from UiAdapter base class.
+    # send_threaded_output: inherited from EditableUiAdapter.
 
     async def on_session_updated(self, session: Session, updated_fields: Mapping[str, object]) -> None:
         """Refresh Discord thread topper when topper-relevant fields change.
