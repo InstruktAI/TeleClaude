@@ -96,8 +96,6 @@ building and documentation publication run only under a subscribed `docs`;
 agent-artifact transpilation and deployment run only under a subscribed
 `agents`. A project subscribing neither runs no per-project phase.
 
-<!-- planned:help-desks-as-deployment-output -->
-
 **Master sources.** Publication reads every `AGENTS.master.md` — the project
 master walk and the fixed home master set
 (`local/projects/teleclaude/spec/feature/context/agents-master-inflation`)
@@ -107,8 +105,6 @@ except tooling folders such as dependency environments and build output. In
 the Mother repository it also leaves out TeleClaude's own template tree,
 identified by where that tree resolves rather than by a folder name, so a
 `templates/` folder in any other repository is walked like every other folder.
-
-<!-- /planned:help-desks-as-deployment-output -->
 
 Project-setup convergence is not a publication phase; it is contracted in
 `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`.

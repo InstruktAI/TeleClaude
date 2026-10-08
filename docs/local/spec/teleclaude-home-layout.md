@@ -85,24 +85,6 @@ Run this top to bottom; the first match wins:
 
 ### Template-installed files
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-Machine installation writes TeleClaude's templates into the home, into every
-declared person and company home, and into every enabled help desk among them
-(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
-
-- Each home's `AGENTS.master.md`, and each help desk's, is refreshed from its
-  template on every installation, so an edit made in place does not last
-  (`general/policy/agent-artifact-governance`).
-- A person's or company's local baseline manifests under `docs/local/` are
-  created once and then belong to that home.
-- The platform help desk is the home's `help-desk/`; a company's help desk is
-  `companies/<slug>/help-desk/`. Each is a folder of its home, never a
-  repository of its own.
-- The home's `docs/` receives no template.
-
-<!-- change:help-desks-as-deployment-output -->
-
 TeleClaude's templates reach the home, every declared person and company home,
 and every enabled company help desk among them in two ways
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
@@ -122,8 +104,6 @@ and every enabled company help desk among them in two ways
   `companies/<slug>/help-desk/`. Each is a folder of its home, never a
   repository of its own.
 - The home's `docs/` receives no template.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ### The `/tmp` boundary
 

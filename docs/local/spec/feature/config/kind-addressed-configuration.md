@@ -100,25 +100,6 @@ absent; an existing one stays as its home keeps it. No documentation taxonomy
 directory is created.
 <!-- /planned-change:retire-project-init -->
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-Whether a `global`, `company`, or `project` home keeps a help desk is a field of
-that home's declaration, and a `patch` of the declaration turns it on or off
-under the same clearance as every other field of it. A person has no help desk.
-The platform and company help desks are scaffolded from their kind's help-desk
-template, in the TeleClaude home's `help-desk/` or a company home's
-`help-desk/`, by every convergence of their home while its declaration enables
-them — that home's `init` and every machine installation — which also brings a
-desk's master back to its template
-(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
-For a project, `init --help-desk` enables the help desk and scaffolds it in the
-project repository's `help-desk/`; it needs the administrator role for the
-project, and running it again converges the help desk's master to its template.
-A help desk's master never requires its home's local documentation
-(`general/policy/agent-artifact-governance`).
-
-<!-- change:help-desks-as-deployment-output -->
-
 Whether a `global`, `company`, or `project` home keeps a help desk is a field of
 that home's declaration, and a `patch` of the declaration turns it on or off
 under the same clearance as every other field of it. A person has no help desk.
@@ -150,8 +131,6 @@ capability blocks and carries no such requirement.
 
 A help desk's master never requires its home's local documentation
 (`general/policy/agent-artifact-governance`).
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a

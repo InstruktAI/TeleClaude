@@ -43,24 +43,12 @@ scope, storage location, and input surface.
 The `inbox/` directory is a git repository initialized by the onboard command.
 This enables `git diff` for smart re-processing on subsequent onboard runs.
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-`telec config company init` creates this home and every installation keeps it
-current:
-the company's master and its help desk's master are brought back to their
-templates, the local baseline manifests are created once and then curated by
-the company, and a taxonomy directory appears when its first snippet is written.
-
-<!-- change:help-desks-as-deployment-output -->
-
 `telec config company init` creates this home. The company's master and its
 help desk's master are seeded from their templates while absent — by that init
 and by the platform home's convergence at commit-boundary maintenance and
 through `telec sync` — and then belong to the company, whose history records
 them. The local baseline manifests are created once and then curated by the
 company, and a taxonomy directory appears when its first snippet is written.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 The analysis session writes every generated snippet into `docs/local/`.
 `docs/global/` holds what the company deliberately publishes, including every

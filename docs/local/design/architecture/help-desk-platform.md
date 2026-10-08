@@ -57,27 +57,7 @@ Three kinds exist:
 | Company  | a company home      | that company's external customers | `hd-company-<slug>`    |
 | Project  | a project           | that project's external customers | `hd-project-<slug>`    |
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`local/projects/teleclaude/spec/teleclaude-config`); enabling and scaffolding are described under Help Desk Scaffolding below. The concepts are `general/concept/help-desk/overview` and its per-kind siblings.
-
-<!-- change:help-desks-as-deployment-output -->
-
 A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`local/projects/teleclaude/spec/teleclaude-config`); enabling and scaffolding are described under Help Desk Scaffolding below. A project's enabled desk also requires the `agents` capability on that project (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`). The concepts are `general/concept/help-desk/overview` and its per-kind siblings.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
-
-<!-- planned-change:help-desks-as-deployment-output -->
-
-The help desk is a folder of the home that owns it, never a repository of its own: the platform help desk is `help-desk/` in the TeleClaude home, a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain and the runtime artifacts its sessions produce, and no documentation of its own.
-
-```
-<home>/help-desk/
-├── AGENTS.master.md                      # operator brain, the rendering of its kind's help-desk template
-├── .gitignore                            # ignore everything except the one AGENTS.master.md file
-```
-
-<!-- change:help-desks-as-deployment-output -->
 
 The help desk is a folder of the home that owns it, never a repository of its own: the platform help desk is `help-desk/` in the TeleClaude home, a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain, which its home's history records, and no documentation of its own; a desk session writes nothing into it.
 
@@ -86,8 +66,6 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 ├── AGENTS.master.md                      # operator brain, seeded from its kind's help-desk template, then the home's own
 ├── .gitignore                            # ignores everything else the folder holds
 ```
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 #### Entry and routing
 
@@ -136,16 +114,6 @@ A desk agent reads documentation at its visitor's depth (`local/projects/telecla
 
 ### Help Desk Scaffolding
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. Each kind has its own template in the TeleClaude repository — `templates/help-desk-platform/`, `templates/help-desk-company/`, and `templates/help-desk-project/` — carrying that kind's operator brain; the project template also carries the ignore declaration for the runtime directories.
-
-- The platform and company help desks are folders inside the TeleClaude home, so every machine installation converges them while their home enables them (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
-- A project help desk lives in the project's working tree, so only the project's `init --help-desk` converges it, and the project commits the result.
-- Scaffolding initializes no repository, runs no project initialization, and makes no commit of its own.
-
-<!-- change:help-desks-as-deployment-output -->
-
 A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The company and project kinds each have a template in the TeleClaude repository — `templates/help-desk-company/` and `templates/help-desk-project/` — carrying that kind's operator brain, seeded once, and the desk's ignore declaration. The platform help desk has no template: its operator brain is authored in the TeleClaude home.
 
 - A company help desk is a folder inside the TeleClaude home. The platform home's configuration-aware convergence seeds it at commit-boundary maintenance and through `telec sync` while its company enables it; machine installation seeds no desk (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`, `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
@@ -153,8 +121,6 @@ A home's declaration says whether it keeps a help desk, and how that field is se
 - Seeding writes an operator brain only while it is absent. An existing one is never rewritten, and its home's history records it like any other source.
 - A desk whose home stops enabling it keeps its folder and is no longer hosted.
 - Scaffolding initializes no repository, runs no project initialization, and makes no commit of its own.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 - A help desk's master requires only documentation every reader of that desk may read, never its home's local documentation (`general/policy/agent-artifact-governance`).
 
@@ -598,15 +564,7 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 6. **Channels are durable**: Internal channels use Redis Streams with consumer groups. Messages survive consumer downtime and agent death. Unacknowledged messages are redelivered.
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-7. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: each templated file converges to its kind's template, a create-once file is written only while absent, and nothing the template does not carry is touched.
-
-<!-- change:help-desks-as-deployment-output -->
-
 7. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 8. **A desk exists only where its home enables it**: no machine-wide desk location exists. A desk's folder follows from its home, and a home without `help_desk.enabled` has no desk.
 
@@ -718,26 +676,6 @@ sequenceDiagram
 
 ### Help Desk Scaffolding
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-```mermaid
-sequenceDiagram
-    participant Agent
-    participant Patch as telec config <kind> patch
-    participant Config as Home declaration
-    participant Converge as Home convergence
-    participant FS as Help desk folder
-
-    Agent->>Patch: Turn the home's help desk on
-    Patch->>Patch: Clear the caller for a patch of that home
-    Patch->>Config: Set help_desk.enabled
-    Converge->>Config: Read the declaration
-    Converge->>FS: Materialize the kind's help-desk template
-    Note over Converge,FS: Platform and company desks converge on their home's init and on every installation
-```
-
-<!-- change:help-desks-as-deployment-output -->
-
 ```mermaid
 sequenceDiagram
     participant Agent
@@ -753,8 +691,6 @@ sequenceDiagram
     Converge->>FS: Seed the kind's help-desk template where absent
     Note over Converge,FS: Every templated desk is seeded at its home's commit-boundary maintenance and telec sync, never at installation
 ```
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ## Failure Modes
 

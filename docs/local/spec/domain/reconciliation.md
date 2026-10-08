@@ -85,49 +85,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 #### Fresh-machine bootstrap
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-- **Decision boundary (core).** One reconciliation operation decides the
-  machine's owner from the installation's owner seed, the person registry and
-  whether the run has a terminal. With no person registered, a seed
-  establishes its person as platform administrator, and a terminal operator
-  without a seed is asked for one. A run with no terminal and no seed is
-  refused. With people registered, a matching seed is a no-op, no seed needs
-  nothing, and a conflicting seed is refused. A refusal writes nothing and fails
-  the installation, naming the mismatch or the missing seed. The decision is
-  taken as soon as the project's environment can evaluate it, before any step
-  that writes configuration or the home. Its write happens after configuration
-  is migrated and validated and before home activation.
-- **Writes it delegates.** The owner's registration (the registry entry and the
-  person's declaration) is made through config's first-person registration
-  (`local/projects/teleclaude/spec/domain/config`), never through the
-  configuration surface. The person home's template layer is left to home
-  activation, which
-  writes it over absent targets and records it as its own write. The
-  registration itself stays outside installation's record, as every registration
-  made through the configuration surface does.
-- **Startable checkout.** When the checkout has no environment settings file,
-  installation writes one through config's environment-defaults operation, holding only the
-  local defaults for services installation itself provisions. An existing file
-  is never rewritten.
-- **Install-time publication.** After home activation, installation invokes
-  context's installation entry point for the installed checkout's home, which
-  publishes the commit installation put in place
-  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
-  Installation acts only on its result. A home that was published or was
-  already current lets the installation continue. A home that was skipped, or a
-  run that failed, fails the installation with publication's cause. The global
-  home is not part of this step: its own publication follows its commits.
-- **Unattended execution.** The installation's own tool directory is on its
-  search path from the start of the run. In a run without a terminal, external
-  installers receive no terminal input and privilege escalation never prompts;
-  either fails at once and is reported. Optional desktop applications and their
-  companion services are declined unless chosen.
-- **Consumers.** The full installer runs every part; post-commit maintenance
-  reaches them through it. No other surface establishes an owner.
-
-<!-- change:help-desks-as-deployment-output -->
-
 - **Decision boundary (core).** One reconciliation operation decides the
   machine's owner from the installation's owner seed, the person registry and
   whether the run has a terminal. With no person registered, a seed
@@ -167,8 +124,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   companion services are declined unless chosen.
 - **Consumers.** The full installer runs every part; post-commit maintenance
   reaches them through it. No other surface establishes an owner.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 #### DeepSeek stack convergence
 
@@ -262,20 +217,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 #### Use cases (index of feature specs)
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-- **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
-- **home-template-materialization** — `docs/local/spec/feature/reconciliation/home-template-materialization.md` — materializing repository-owned regular-file templates into the TeleClaude home before activation
-- **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
-- **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
-- **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs
-
-- **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
-
-- **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
-
-<!-- change:help-desks-as-deployment-output -->
-
 - **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a root to its declaration: a project's installed git hooks, docs filter driver and help desk, and the masters and help desks the platform home seeds
 - **home-template-materialization** — `docs/local/spec/feature/reconciliation/home-template-materialization.md` — materializing the TeleClaude home's repository layer and documentation baselines before activation, and naming which home masters and help desks convergence seeds once
 - **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
@@ -285,8 +226,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 - **fresh-machine-bootstrap** — `docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md` — taking a fresh machine, with or without a person present, to a startable, owned TeleClaude that serves its published documentation
 
 - **deepseek-stack-convergence** — `docs/local/spec/feature/reconciliation/deepseek-stack-convergence.md` — moving the DeepSeek runtime, its TUI and every plugin to the newest mutually compatible set, verified and restorable, without pinning or dropping a plugin
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ### Event subjects and origins
 

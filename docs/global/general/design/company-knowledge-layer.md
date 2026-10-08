@@ -14,21 +14,6 @@ isolation is enforced.
 
 ## Inputs/Outputs
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
-| Component            | Receives                                               | Produces                                                                                                |
-| -------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Onboard command      | Company name, inbox path                               | Company directory, meta.yaml, git inbox, company master and local baselines from the platform templates |
-| Machine installation | Platform templates, declared company homes             | Each company master brought back to its template; missing local baselines created                       |
-| Analysis session     | Input files, existing snippets                         | Company doc snippets, updated meta.yaml                                                                 |
-| Publication          | The company's committed `docs/global`                  | The company's published snippets in the shared corpus                                                   |
-| Local index build    | The company's committed `docs/local`                   | The company's local catalog, kept in the company home                                                   |
-| Context selector     | Caller identity, landing location, selectors, catalogs | The caller's read set, each company read at the caller's depth                                          |
-| Project config       | `company: {slug}` declaration                          | The project's owning company                                                                            |
-| `telec docs index`   | The read set the selector resolved                     | Company snippets in index output                                                                        |
-
-<!-- change:help-desks-as-deployment-output -->
-
 | Component                 | Receives                                               | Produces                                                                                                |
 | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | Onboard command           | Company name, inbox path                               | Company directory, meta.yaml, git inbox, company master and local baselines from the platform templates |
@@ -40,8 +25,6 @@ isolation is enforced.
 | Context selector          | Caller identity, landing location, selectors, catalogs | The caller's read set, each company read at the caller's depth                                          |
 | Project config            | `company: {slug}` declaration                          | The project's owning company                                                                            |
 | `telec docs index`        | The read set the selector resolved                     | Company snippets in index output                                                                        |
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ## Invariants
 
