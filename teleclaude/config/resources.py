@@ -114,7 +114,6 @@ _SETTINGS_SECTION = "settings"
 _ORGANIZATION_SECTION = "organization"
 _COMPANY_SECTION = "company"
 _PROJECT_SECTION = "project"
-_HELP_DESK_HOME_REFUSAL = "a person or company home keeps its help desk through company or global init"
 _PERSON_IDENTITY_FIELDS = frozenset({"name", "email", "username", "role", "preferences", "expertise"})
 _DOCUMENT_MAPPING_ERROR = "Configuration document must be a mapping: {path}"
 _READ_ONLY_SCHEMA_VERSION_ERROR = "`schema_version` is read-only; the migration list owns its value."
@@ -342,8 +341,6 @@ def _init_global(ref: SubjectRef, fields: Mapping[str, object] | None, evidence:
     with file_transaction(GLOBAL_CONFIG_PATH) as transaction:
         stored = load_mapping(transaction.read_text(), GLOBAL_CONFIG_PATH)
         current = dict(upcast(stored, ref))
-        if fields and fields.get(help_desk_declaration.HELP_DESK_KEY):
-            current = help_desk_declaration.with_help_desk_enabled(current)
         if not GLOBAL_CONFIG_PATH.exists() or current != stored:
             _validate_global_candidate(current)
             carry_resource_migrations(stored, ref, evidence)
@@ -483,8 +480,6 @@ def _init_company(_ref: SubjectRef, fields: Mapping[str, object] | None, evidenc
     slug = fields.get(_SLUG_KEY)
     evidence.enter_unobserved()
     company_dir = scaffold_company(str(name), str(slug) if slug else None)
-    if fields.get(help_desk_declaration.HELP_DESK_KEY):
-        help_desk_declaration.enable_company_help_desk(company_dir, evidence)
     evidence.mark(target_id(ConfigSubjectKind.COMPANY, company_dir.name, TargetDocument.ROSTER))
     return _read_company(SubjectRef(ConfigSubjectKind.COMPANY, company_dir.name))
 

@@ -10,6 +10,7 @@ and exits non-zero before any configuration is read.
 from __future__ import annotations
 
 import asyncio
+import copy
 import dataclasses
 import json
 import sys
@@ -54,6 +55,7 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_PATCH,
 )
 from teleclaude.config import config
+from teleclaude.config._environment import environment_reference_at_path
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject, init_project_subject
 from teleclaude.config.resource_contract import (
@@ -81,7 +83,6 @@ from teleclaude.core.configuration_clearance import (
     ConfigurationTarget,
     ProjectCreationForm,
     decide,
-    is_administrator,
     standing_for,
 )
 from teleclaude.core.endpoints import (
@@ -102,7 +103,6 @@ from teleclaude.project_setup.init_flow import (
     PlatformPathDestination,
     ProjectDestination,
 )
-from teleclaude.slug import normalize_slug
 
 _YAML = "yaml"
 _JSON = "json"
@@ -135,7 +135,7 @@ _CREATE_USAGE_ERROR = (
 _CREATE_FORM_CONFLICT_ERROR = "Error: --company and --path never combine."
 _NO_PERSON_HOME_ERROR = "Error: creating in your own home needs a registered person."
 _SLUG_FIELD = "slug"
-_REDACTED_VALUE = "<redacted: platform administrator required>"
+_INLINE_SENSITIVE_VALUE = "<withheld: inline sensitive value>"
 _HELP_DESK_LINKS_VERB = "help-desk-links"
 _DESK_NOT_ENABLED_ERROR = "Error: help desk of {kind} {slug} is not enabled{request}"
 _DESK_NOT_HOSTED_ERROR = "Error: this computer does not host the help desk of {kind} {slug}{request}"
@@ -304,35 +304,71 @@ def _handle_list(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
 # --- get ---
 
 
-def _redact_path(document: dict[str, object], path: tuple[str, ...]) -> None:  # guard: loose-dict - raw YAML config
-    """Replace one schema-declared sensitive leaf in place, if the path is present."""
+def _withhold_inline_sensitive_leaf(
+    document: dict[str, object],  # guard: loose-dict - raw YAML config
+    path: tuple[str, ...],
+) -> None:
+    """Replace one schema-declared sensitive leaf in place unless it is a pure environment reference."""
     node: object = document
     for part in path[:-1]:
         if not isinstance(node, dict) or part not in node:
             return
         node = node[part]
-    if isinstance(node, dict) and path[-1] in node:
-        node[path[-1]] = _REDACTED_VALUE
+    if not isinstance(node, dict) or node.get(path[-1]) is None:
+        return
+    if environment_reference_at_path(document, path) is None:
+        node[path[-1]] = _INLINE_SENSITIVE_VALUE
 
 
-def _redact_sensitive_machine_fields(
+def _withhold_inline_sensitive_machine_values(
     computer_section: Mapping[str, object],
 ) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    """Redact every schema-declared sensitive machine leaf for a non-administrator caller."""
-    redacted = _to_plain(computer_section)
-    if not isinstance(redacted, dict):
+    """Render the machine view with every inline sensitive value withheld, for every caller alike."""
+    rendered = _to_plain(computer_section)
+    if not isinstance(rendered, dict):
         return dict(computer_section)
     for descriptor in machine_config_surface():
         if descriptor.sensitive:
-            _redact_path(redacted, descriptor.path)
-    return redacted
+            _withhold_inline_sensitive_leaf(rendered, descriptor.path)
+    return rendered
+
+
+def _drop_withheld_leaf(
+    document: dict[str, object],  # guard: loose-dict - caller-supplied RFC 7386 patch document
+    path: tuple[str, ...],
+) -> None:
+    """Remove one sensitive leaf that carries the withheld marker, then any parents the removal emptied."""
+    parents = [document]
+    for part in path[:-1]:
+        child = parents[-1].get(part)
+        if not isinstance(child, dict):
+            return
+        parents.append(child)
+    if parents[-1].get(path[-1]) != _INLINE_SENSITIVE_VALUE:
+        return
+    del parents[-1][path[-1]]
+    for depth in range(len(path) - 1, 0, -1):
+        if parents[depth]:
+            return
+        del parents[depth - 1][path[depth - 1]]
+
+
+def _without_withheld_sensitive_values(
+    patch: Mapping[str, object],
+) -> dict[str, object]:  # guard: loose-dict - caller-supplied RFC 7386 patch document
+    """Return the patch minus every sensitive leaf still carrying the marker `get` rendered, so the stored value stays."""
+    remaining = copy.deepcopy(dict(patch))
+    for descriptor in machine_config_surface():
+        if descriptor.sensitive:
+            _drop_withheld_leaf(remaining, descriptor.path)
+    return remaining
 
 
 def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
     parsed = parse_command_args(_GET_COMMAND_DEFS[kind], args)
     instance, paths = _require_instance(kind, subject_kind, parsed.positionals)
     output_format = _output_format(parsed.value(F.FLAG_CONFIG_FORMAT))
-    identity = _gate(
+    _gate(
         kind,
         "get",
         subject_kind,
@@ -350,10 +386,10 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
     if subject_kind is ConfigSubjectKind.PERSON and instance is not None:
         read_only["roles"] = person_roles(instance)
     sections = dict(view.sections)
-    if subject_kind is ConfigSubjectKind.COMPUTER and not is_administrator(standing_for(identity)):
+    if subject_kind is ConfigSubjectKind.COMPUTER:
         computer_section = sections.get(kind)
         if isinstance(computer_section, Mapping):
-            sections[kind] = _redact_sensitive_machine_fields(computer_section)
+            sections[kind] = _withhold_inline_sensitive_machine_values(computer_section)
     merged: dict[str, object] = {**sections, **read_only}  # guard: loose-dict - heterogeneous rendered config view
     rendered = _select_paths(merged, list(paths)) if paths else merged
     _render({**rendered, "revision": view.revision, "request_id": request_id}, output_format)
@@ -389,10 +425,10 @@ def _run_init(
 def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
     parsed = parse_command_args(_INIT_COMMAND_DEFS[kind], args)
     output_format = _output_format(None)
-    help_desk = F.FLAG_HELP_DESK in _INIT_COMMAND_DEFS[kind].flags and parsed.has(F.FLAG_HELP_DESK)
-    sections = frozenset({HELP_DESK_SECTION}) if help_desk else frozenset()
 
     if subject_kind is ConfigSubjectKind.PROJECT:
+        help_desk = parsed.has(F.FLAG_HELP_DESK)
+        sections = frozenset({HELP_DESK_SECTION}) if help_desk else frozenset()
         adoption_root = resolve_invocation_roots().adoption_root()
         _gate(
             kind,
@@ -418,12 +454,11 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             subject_kind,
             instance=None,
             operation=ConfigurationOperation.INIT,
-            sections=sections,
+            sections=frozenset(),
             request_id=request_id,
         )
-        singleton_fields = {HELP_DESK_SECTION: True} if help_desk else None
         _run_init(
-            lambda: init_subject(SubjectRef(subject_kind, None), singleton_fields, request_id=request_id),
+            lambda: init_subject(SubjectRef(subject_kind, None), None, request_id=request_id),
             output_format,
             request_id,
         )
@@ -441,9 +476,9 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
         kind,
         "init",
         subject_kind,
-        instance=(company_slug or normalize_slug(name)) if help_desk else None,
+        instance=None,
         operation=ConfigurationOperation.INIT,
-        sections=sections,
+        sections=frozenset(),
         request_id=request_id,
     )
     fields: dict[str, object] = {"name": name}  # guard: loose-dict - per-kind init payload, passed through as-is
@@ -464,8 +499,6 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
     else:
         if company_slug is not None:
             fields[_SLUG_FIELD] = company_slug
-        if help_desk:
-            fields[HELP_DESK_SECTION] = True
     _run_init(
         lambda: init_subject(SubjectRef(subject_kind, None), fields, request_id=request_id),
         output_format,
@@ -603,6 +636,8 @@ def _handle_patch(kind: str, subject_kind: ConfigSubjectKind, args: list[str], r
         return
 
     patch = _read_patch(parsed.value(F.FLAG_CONFIG_FROM_FILE), parsed.value(F.FLAG_CONFIG_YAML))
+    if subject_kind is ConfigSubjectKind.COMPUTER:
+        patch = _without_withheld_sensitive_values(patch)
     ref = SubjectRef(subject_kind, instance)
     sections = affected_sections(ref, patch)
     _gate(
