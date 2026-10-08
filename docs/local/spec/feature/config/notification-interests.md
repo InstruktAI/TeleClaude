@@ -1,5 +1,5 @@
 ---
-description: A person's notification interests — per category, a switch and type patterns relative to the category's namespace — seeded from their role when the person is created, changed afterwards only by the person or on their request, and validated without being altered.
+description: A person's notification interests — per category, a switch and type patterns relative to the category's namespace — starting from the person's role, changed afterwards only by the person or on their request, and validated without being altered.
 visibility: internal
 delivered_by:
   - platform-alerts
@@ -32,10 +32,15 @@ Interests only select. Whether a matching event is told to the person at all,
 and to whom an event may be told, is decided by the consumer that tells people
 (`local/projects/teleclaude/spec/feature/integration/incident-alerts`).
 
-A person's interests are seeded from their role's default interests when the
-person is created. From then on they change only when the person changes them,
-or an agent acting on the person's request does; the platform never adds,
-removes or rewrites them, including when role defaults change.
+A person starts with their role's interests when the person is created: a
+platform administrator starts with the `teleclaude` category switched on and
+selecting `job.*` and `deployment.*`, and every other role starts with none.
+From then on interests change only when the person changes them, or an agent
+acting on the person's request does; the platform never adds, removes or
+rewrites them.
+Configuration that predates notification interests converges to them like any
+new field (`local/projects/teleclaude/spec/feature/config/document-migration`);
+values already present are never overwritten.
 
 Validation reports an interest it cannot use — a category that is neither
 `teleclaude` nor a published domain, or a pattern the matcher refuses — and
@@ -76,19 +81,25 @@ When the person switches the "teleclaude" category on again
 Then the next event of a type under "teleclaude.job" matches the person's interests
 ```
 
-#### UC-NI3: A new person starts with their role's default interests
+#### UC-NI6: A new person starts with their role's interests
 
 ```gherkin
-Given a role whose default interests are declared
-When an operator creates a person holding that role
-Then the new person's configuration holds that role's default interests
+Scenario Outline: The starting interests follow the role
+  Given an operator creates a person whose role is <role>
+  When the person's configuration is read
+  Then <starting interests>
+
+  Examples:
+    | role                   | starting interests                                                                 |
+    | platform administrator | its teleclaude category is switched on and selects job and deployment events only  |
+    | any other role         | it holds no notification interests                                                 |
 ```
 
 #### UC-NI4: The platform never changes a person's interests
 
 ```gherkin
-Given a person whose interests differ from their role's default interests
-When the role's default interests change, or the platform is upgraded
+Given a person who has chosen their notification interests
+When the platform is upgraded, or the person's role changes
 Then the person's interests are exactly as they were
 And only the person, or an agent acting on the person's request, changes them
 ```

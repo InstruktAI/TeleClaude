@@ -15,7 +15,8 @@ They read the events the platform itself emits
 either reports that a thing failed, reports that a thing works, or reports
 neither; an event that reports neither is never told.
 
-The thing is what the event is about: its subject.
+The thing is what the event is about, its subject, with one exception: a
+recurring job is one thing across all its runs.
 
 A thing whose working again the platform reports is broken from its first
 reported failure until an event reports that it works:
@@ -27,6 +28,9 @@ reported failure until an event reports that it works:
   and how long it was broken, and the thing is no longer broken;
 - an event reporting that a thing works tells nothing when the thing is not
   broken.
+
+A failure of a kind the platform never reports recovering from is told each
+time it occurs, and nothing is kept about it.
 
 An alert is told to each platform administrator whose notification interests
 select the event's type
@@ -128,4 +132,26 @@ And a further event reports that the same thing failed
 Then the administrator receives no further message about that thing
 When an event later reports that the thing works
 Then the administrator receives one message that the thing works again, with how long it was broken
+```
+
+#### UC-IA10: A failure with no reported recovery is told each time
+
+```gherkin
+Given a platform administrator whose notification interests select the platform's failure detections
+And a kind of failure for which the platform never reports that the thing works again
+When that failure occurs twice for the same thing
+Then the administrator receives one message for each occurrence
+```
+
+#### UC-IA11: A recurring job is one thing across its runs
+
+```gherkin
+Given a platform administrator whose notification interests select platform job events
+And a recurring job that is not broken
+When a run of the job fails
+Then the administrator receives one message that the job failed
+When the job's next runs fail too
+Then the administrator receives no further message about that job
+When a later run of the job succeeds
+Then the administrator receives one message that the job works again, with how long it was broken
 ```
