@@ -85,24 +85,11 @@ Hosting their vocabulary confers no ownership of their subjects.
 
 ### Discovery and visibility
 
-<!-- planned-change:retire-session-event-subscriptions -->
-
-- **Discovery views:** the event list names every registered type and tells
-  its reader how an agent subscribes to a type; the schema view shows one
-  type's metadata, subject assignment, and payload fields
-  (`local/projects/teleclaude/spec/feature/event-catalog/event-discovery`).
-  Both read the registry an agent's CLI validates a subscription request
-  against, so what an agent discovers is what it may subscribe on.
-
-<!-- change:retire-session-event-subscriptions -->
-
 - **Discovery views:** the event list names every registered type with its
   metadata; the schema view shows one type's metadata, subject assignment, and
   payload fields
   (`local/projects/teleclaude/spec/feature/event-catalog/event-discovery`).
   Both read the catalog's registry.
-
-<!-- /planned-change:retire-session-event-subscriptions -->
 
 - **Visibility:** an event's declared visibility names the computers whose
   consumers it concerns. A local event concerns only the computer that emitted

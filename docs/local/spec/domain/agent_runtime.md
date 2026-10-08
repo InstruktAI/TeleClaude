@@ -151,56 +151,6 @@ TeleClaudeNext repository.
   validate a selection and to list memberships; this context never re-derives
   membership.
 
-<!-- planned-change:retire-session-event-subscriptions -->
-
-- **Owns (event subscriptions):** an agent session's standing requests to be
-  woken by platform stream events
-  (`local/projects/teleclaude/spec/feature/agent_runtime/event-subscriptions`).
-  The term is distinct from a procedure's declared event subscriptions, which
-  `context` publishes and `integration` routes.
-  - **Record.** A subscription is a durable record on the computer that hosts
-    its session. It carries the subscribed type, its mode, its narrowing, the
-    stream position current when it was created, and the session's principal
-    and company, which are fixed for the session's life. The session lists and
-    withdraws only its own; its close removes them all.
-  - **Consumption.** On each computer, this context reads the platform stream
-    through its own consumer, apart from the system pipeline's consumer, and
-    acknowledges an event only after every wake that event owes on this
-    computer has been handed off. A failure before that is retried, and
-    retries exhausted end in the stream's dead-letter path, which announces
-    itself. Neither path acknowledges the event as handled.
-  - **Match.** An event matches a live subscription when:
-    - it entered the stream after the subscription was created, judged by the
-      stream's own order rather than by clocks;
-    - its type is the subscribed type, and every narrowing value equals the
-      named payload field;
-    - its declared visibility concerns this computer;
-    - `identity`'s reach for the principal at the session's lineage root
-      admits the event's subject and carried owner;
-    - for a session operating under a company, the event concerns that
-      company: its subject is that company, or a project whose carried owner
-      is that company. The session company is business scope, so a
-      principal's wider reach never widens it
-      (`local/projects/teleclaude/spec/feature/agent_runtime/company-scoped-session-context`).
-  - **Handoff.** A matched event is handed to the session through control
-    delivery once per subscription and event; a repeated handoff of the same
-    pair resolves to the first. A single-delivery subscription first records
-    the event that claims it, which leaves it live for no other event, and is
-    removed once that event's handoff is recorded. Processing that resumes
-    after an interruption completes the claimed event's handoff and removal,
-    so a single-delivery subscription never wakes for a second event and is
-    never spent without its handoff. Delivery past the handoff is control
-    delivery's contract.
-- **Consumes (event subscriptions):** `event-catalog`'s registry and type
-  declarations, read only where an agent's CLI accepts a subscription request,
-  which is the one place a request is validated; the envelope facts each event
-  carries; and `identity`'s published reach record test, resolved per
-  principal and held until a declaration it reads changes. This context
-  restates neither the reach rule nor a type's declaration.
-
-<!-- change:retire-session-event-subscriptions -->
-<!-- /planned-change:retire-session-event-subscriptions -->
-
 <!-- planned-change:event-envelope -->
 
 ### Event subjects
