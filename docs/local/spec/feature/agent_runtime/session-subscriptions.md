@@ -212,6 +212,22 @@ And a blocked notification raised by delivery carries a capture of the target's 
 And the caller is not left to infer distress from silence or transcript polling
 ```
 
+<!-- planned:durable-session-bootstrap -->
+
+#### UC-SS20: A caller hears when its session's first startup input may not have arrived
+
+```gherkin
+Given an agent session watches a target session
+And the target's startup ended with an uncertain-delivery outcome because the agent_runtime service was replaced while submitting its first startup input
+When the replacement service records that outcome
+Then the outcome is delivered as a distress notification under the audience rules of this spec
+And the notification names the target session and states that its first startup input may not have reached the target's agent and was not submitted again
+And it carries an actionable way to inspect the target's terminal state
+And it is delivered once, and the target's later turn notifications are delivered as they would be without it
+```
+
+<!-- /planned:durable-session-bootstrap -->
+
 #### UC-SS5: Distress kinds vary by agent runtime without changing the caller contract
 
 ```gherkin

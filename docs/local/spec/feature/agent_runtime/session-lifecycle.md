@@ -119,6 +119,59 @@ Then the historical composer does not establish readiness
 And no message is pasted or submitted on that evidence
 ```
 
+<!-- planned:durable-session-bootstrap -->
+
+#### UC-SL52: An acknowledged startup survives replacement of the service
+
+```gherkin
+Given an agent caller's request to start a child session has been acknowledged
+And submission of the child's first startup input has not begun
+When the agent_runtime service is replaced, whether it stops gracefully or is lost abruptly
+Then the replacement service resumes the child's startup without the caller asking again
+And an agent not yet launched is launched once
+And an agent launch already under way is not repeated, and the child's hosting pane and the agent process running in it are kept
+And the initial message is submitted once, when the agent's own readiness signal admits input
+And the child is reported live only when its runtime announces its declared start boundary
+```
+
+#### UC-SL53: An interrupted first-input submission is reported, never repeated
+
+```gherkin
+Given an agent caller started a child session <start>
+And the agent_runtime service was replaced after <first input> began to be submitted and before that submission's outcome was recorded
+When the replacement service starts
+Then the child's startup ends with an uncertain-delivery outcome
+And <first input> is not submitted again, whatever the child's transcript or terminal shows
+And the outcome reaches the child's watchers as a startup-delivery notification
+
+Examples:
+  | start                      | first input         |
+  | with an initial message    | the initial message |
+  | without an initial message | the agent launch    |
+```
+
+#### UC-SL54: A closed or closing session's unfinished startup is left as it is
+
+```gherkin
+Given a child session's startup was unfinished when the agent_runtime service was replaced
+And the child is closed or closing
+When the replacement service starts
+Then nothing is launched in or submitted to the child
+And no startup-delivery notification is sent for it
+And the child stays closed or closing
+```
+
+#### UC-SL55: A finished startup is not revisited
+
+```gherkin
+Given a child session's startup has finished, either by submitting its first startup input or by failing before that submission began
+When the agent_runtime service is later replaced
+Then the replacement service neither resumes nor reports that startup
+And the startup counts as finished at that submission, whatever its agent does with the input afterwards
+```
+
+<!-- /planned:durable-session-bootstrap -->
+
 #### Initiator listener registration
 
 ```
@@ -470,6 +523,13 @@ And a platform administrator's listing is unchanged
 - **Host-pane reference uses the full session id.** The format is `<teleclaude-prefix><session-id>` with the full id; the v2-target domain spec phrases it as a short id for readability, but no shortening occurs here.
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
+
+<!-- planned:durable-session-bootstrap -->
+
+- **A startup's first startup input is the submission that finishes it.** For a start that carries an initial message, it is that message, submitted once the agent's readiness signal admits input; for a start without one, it is the agent launch. Every acknowledged start keeps its startup intent and its progress on the session record before the acknowledgement is returned, and that record stays with the session for as long as the session is retained.
+
+<!-- /planned:durable-session-bootstrap -->
+
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
 - **Listing reveals what the caller's reach admits.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees the sessions whose recorded subject their reach admits and the sessions recorded under their own principal (`local/projects/teleclaude/spec/feature/identity/data-visibility`). A platform role below administrator admits no session of its own. Sessions other computers share with this one are admitted by the same reach over the subject and owner they carry; a listing that names another computer is answered by that computer (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of reach.
