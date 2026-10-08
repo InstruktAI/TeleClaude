@@ -10,6 +10,7 @@ visibility: 'public'
 <!-- planned-change:retire-project-init -->
 
 - **Agents operate the daemon through `make` targets, never through raw host primitives.** The `make` targets own every host-level service mechanic internally: `make install` deploys the launchd/systemd service definitions, and `make start`/`stop`/`restart`/`kill`/`status` operate the services already deployed.
+
 - **Service definition deployment belongs to `make install`; `bin/daemon-control.sh` operates lifecycle only.** Deployment is content-gated — a definition is rewritten and its unit reloaded only when the content rendered from the template differs from what is deployed. An unchanged definition leaves its running service untouched, and a corrected template reaches every host on that host's next `make install`.
 
 - **On-demand maintenance defers service deployment.** Run as a step of `telec sync` (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`), `make install` deploys none of the service definitions it renders and stops, restarts or reloads no running service, though it may still start a service that is not running; the run instead reports a plain `make install` as owed whenever a deployed definition differs from what installation would deploy, or a service is due for withdrawal.
@@ -32,6 +33,31 @@ visibility: 'public'
 - **Do not hand-invoke host service primitives directly** — `bin/daemon-control.sh`, `bin/init/install_services.sh`, `launchctl`, `systemctl`, raw service bootout/bootstrap/unload/load. Route every service operation through the `make` targets, which wrap these safely. This is a use-the-sanctioned-wrapper rule, not an approval gate.
 
 <!-- /planned-change:retire-project-init -->
+
+<!-- planned:drain-accepted-work-before-restart -->
+
+### Graceful lifecycle operations
+
+- **Ordinary stop and restart prepare the observed daemon before replacing it.**
+  The lifecycle targets implement the accepted-work settlement contract
+  (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). They
+  require positive preparation support and a drained acknowledgment belonging to
+  the same process instance before the service-manager action. An observation
+  timeout reports incomplete preparation and leaves that service in its explicit
+  draining state; another call can finish the operation. Forced termination
+  remains an explicitly selected recovery action through `make kill`.
+- **Initial activation of a legacy runtime is explicit.** A daemon without the
+  preparation protocol is reported as unsupported by ordinary stop/restart.
+  The initial protocol activation uses an explicitly selected legacy activation
+  path after positive process identification and observation of its unfinished
+  work. That path reports legacy quiescence as observed, never as atomic draining,
+  uses the legacy runtime's supported termination signal, waits for exit, and
+  performs no forced termination on its observation timeout. It is unavailable
+  for a runtime that supports preparation. The activating agent reads the known
+  legacy limitation before selecting this path; the selector supplies no safety
+  evidence or authorization (`general/policy/human-contract`).
+
+<!-- /planned:drain-accepted-work-before-restart -->
 
 ## Rationale
 

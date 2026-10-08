@@ -464,6 +464,24 @@ And that conversation receives a notice that the message did not reach the agent
 And the composer's content is unchanged
 ```
 
+<!-- planned:drain-accepted-work-before-restart -->
+
+#### UC-SID21: Graceful shutdown settles input delivery and its acknowledgment
+
+```gherkin
+Given an agent caller's input has been acknowledged for delivery to an empty composer
+And the platform has begun placing that input into the target terminal
+When ordinary daemon shutdown is requested before delivery's outcome is recorded
+Then the existing delivery owner settles the paste and submission and records the same occurrence's delivery outcome before its dependencies stop
+And ordinary restart does not leave that occurrence eligible for an unguarded duplicate submission
+And occupied-composer and non-composer protections remain in force
+```
+
+Graceful settlement is owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`; abrupt-loss
+recovery continues to use this surface's durable accepted-input evidence.
+<!-- /planned:drain-accepted-work-before-restart -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.

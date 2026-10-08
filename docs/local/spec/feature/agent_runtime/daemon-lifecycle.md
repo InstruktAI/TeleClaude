@@ -131,6 +131,8 @@ And every startup attempt acquires the single-instance lock idempotently; failur
 
 #### Shutdown ordering
 
+<!-- planned-change:drain-accepted-work-before-restart -->
+
 ```
 Given a shutdown signal or a programmatic shutdown request arrives
 When the signal handler fires
@@ -151,6 +153,86 @@ And stop proceeds in this order:
 And every step is best-effort: a hiccup in one step is logged and the next step still runs
 And because the task registry step precedes the adapter stop step, a voice transcription that runs as a tracked task is cancelled while the adapters are still alive, so its cancellation handler can mark the persisted row interrupted and edit the user's placeholder in place before the adapter that owns that message is torn down
 ```
+
+<!-- change:drain-accepted-work-before-restart -->
+
+```gherkin
+Given a human operator requests ordinary daemon shutdown or restart
+When the running service begins preparation for shutdown
+Then admission closes to new business work before any completion dependency stops
+And acknowledged work retains its ownership until its effects and durable outcomes settle
+And runtime hooks, readiness signals, storage, terminal ownership and outcome delivery needed by that work remain available
+And long-running work leaves the service only at an existing durable recovery boundary or with an explicit terminal outcome
+And a successful preparation remains closed to new business work until the process exits
+And shutdown then stops background consumers, transports and adapters before closing storage and releasing the single-instance lock
+And independently running agent turns are neither terminated nor awaited as daemon-owned work
+```
+
+<!-- /planned-change:drain-accepted-work-before-restart -->
+
+<!-- planned:drain-accepted-work-before-restart -->
+
+#### UC-DL10: Draining refuses new work before acceptance
+
+```gherkin
+Given an agent caller asks a draining daemon to begin new business work
+When the request reaches a command ingress
+Then the caller receives a retryable shutdown refusal before acknowledgment or business effects
+And no operation receipt or session acceptance is reported for that refused request
+And status reads and completions belonging to already acknowledged work remain available
+```
+
+#### UC-DL11: An acknowledged mutation settles before its dependencies stop
+
+```gherkin
+Given an agent caller has an acknowledged removal or another daemon-owned mutation in progress
+When a human operator requests ordinary daemon shutdown
+Then the mutation completes or reports its established failure after required compensation
+And its durable outcome is settled before its storage, locks or completion dependencies are released
+And shutdown does not cancel an active external effect and leave it running after its owner exits
+```
+
+#### UC-DL12: A preparation timeout preserves unfinished work
+
+```gherkin
+Given a human operator requests ordinary stop or restart
+And acknowledged work has not settled within the preparation observation window
+When that window expires
+Then the operation reports that preparation did not complete
+And the running daemon retains its draining state and the unfinished work's required resources
+And the host service is neither forcibly terminated nor replaced by that request
+And retrying preparation observes the same process until it settles or is lost externally
+```
+
+#### UC-DL13: Preparation belongs to the observed process
+
+```gherkin
+Given an agent operating the host has observed the running daemon's preparation capability and process instance
+When it requests preparation and waits for completion
+Then completion is accepted only from that same process instance
+And an unsupported capability or replacement process produces a visible refusal before a preparation signal or service-manager replacement
+```
+
+### Graceful admission and settlement
+
+The service owns admission and draining across API, adapter, remote-command and
+scheduled-work ingress. Acknowledged operations, session bootstraps and input
+deliveries keep one owning scope through their effects and durable acknowledgments.
+Completion ingress is admitted only for work that already holds that ownership;
+daemon credentials alone confer no exemption. A refusal leaves an unaccepted
+command either unconsumed or explicitly answered as refused.
+
+The preparation observation window bounds the host caller's wait. Its expiry
+neither releases a mutating worker's ownership nor turns an unfinished action into
+success. The running service remains draining until acknowledged work reaches a
+settled boundary. Existing restart recovery remains authoritative for a forced
+termination or abrupt loss; an unfinished operation is not described as resumable
+merely because it has a durable receipt.
+
+This ownership boundary preserves the no-interference invariant
+(`general/principle/trust-and-guardrails`); recorded outcomes retain their
+evidence requirement (`general/principle/grounding`).
+<!-- /planned:drain-accepted-work-before-restart -->
 
 #### UC-DL4: Shutdown without active playback avoids invalid cancellation
 

@@ -56,7 +56,19 @@ stateDiagram-v2
 - **Fail-Fast Startup**: Required interface startup failures abort daemon startup instead of degrading silently.
 
 - **Outbox Recovery**: On restart, daemon processes undelivered hooks and pending commands from outbox tables.
-- **Clean Shutdown**: SIGTERM triggers graceful adapter shutdown, command completion, and resource cleanup.
+
+<!-- planned-change:drain-accepted-work-before-restart -->
+
+- **Shutdown Ordering**: SIGTERM requests worker teardown and tracked-task cancellation before the request surface, adapters and storage close. Unfinished receipt operations are reported stale after replacement.
+
+<!-- change:drain-accepted-work-before-restart -->
+
+- **Shutdown Ownership**: One daemon-owned admission and drain boundary implements accepted-work settlement (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). Finite accepted work retains its task, terminal and storage ownership through durable settlement, preserving the no-interference invariant (`general/principle/trust-and-guardrails`).
+- **Continuation Ownership**: Accepted operation continuations carry their existing ownership through in-process dispatch and self-HTTP. A completion is matched to its existing operation, bootstrap or input-delivery owner; ambient daemon credentials do not establish prior admission.
+- **Prepared Instance**: A process remains alive and closed to new business work after preparation completes. The health observation identifies protocol support, that process instance and its preparation phase; liveness alone is not preparation evidence.
+- **Existing Durability Owners**: Operation receipts, startup handovers and inbound-delivery records remain the durable authorities. The drain owner tracks their live execution without creating a second durable operation ledger.
+
+<!-- /planned-change:drain-accepted-work-before-restart -->
 
 ## Primary flows
 
@@ -131,6 +143,8 @@ The helper queries local closed sessions within the window and replays their
 
 ### 4. Graceful Shutdown
 
+<!-- planned-change:drain-accepted-work-before-restart -->
+
 ```mermaid
 sequenceDiagram
     participant SystemD
@@ -141,15 +155,61 @@ sequenceDiagram
     participant DB
 
     SystemD->>Daemon: SIGTERM
-    Daemon->>Adapters: Stop accepting requests
     Daemon->>Workers: Cancel background tasks
-    Workers->>Workers: Complete in-flight work
-    Daemon->>Sessions: Mark active sessions (no kill)
-    Daemon->>DB: Flush pending writes
-    Daemon->>Adapters: Shutdown hooks
+    Daemon->>Adapters: Stop request surface and adapters
+    Note over Sessions: Independent agent processes remain outside daemon teardown
+    Daemon->>DB: Close storage
     Daemon->>DB: Release lock
     Daemon->>SystemD: Exit 0
 ```
+
+<!-- change:drain-accepted-work-before-restart -->
+
+```mermaid
+sequenceDiagram
+    participant Host as Lifecycle target
+    participant Daemon
+    participant Admission
+    participant Work as Accepted work
+    participant Completion as Completion dependencies
+    participant Manager as Service manager
+    participant DB
+
+    Host->>Daemon: Observe support and process instance
+    Host->>Daemon: Request preparation of that instance
+    Daemon->>Admission: Close business admission
+    Daemon->>Work: Drain owned effects and acknowledgments
+    Work->>Completion: Finish with existing hooks, terminal ownership and outcomes
+    Work->>DB: Persist settled outcomes
+    Host->>Daemon: Observe same-instance preparation complete
+    Host->>Manager: Commit ordinary stop or restart
+    Manager->>Daemon: Terminate prepared instance
+    Daemon->>Completion: Stop consumers and transports
+    Daemon->>DB: Close storage and release lock
+    Daemon->>Manager: Exit
+```
+
+Finite accepted work is registered before its acceptance is returned. Submission
+transfers that ownership to its operation or bootstrap task; delivery retains it
+through the acknowledgment of the terminal effect. Background poll loops stop
+initiating work during preparation, while completion dependencies of live owners
+continue. The task registry and session bootstrap's background-task set participate
+in the same drain; neither set's membership alone classifies all of its tasks as
+finite business work.
+
+The preparation signal is installed before support is advertised. The host helper
+reads the current process instance before signaling and immediately before the
+service-manager action. Its bounded observation uses one shared runtime budget;
+expiration leaves the process draining and reports incomplete preparation. A new
+instance, missing capability or unreadable observation fails preparation. An
+external crash between the final observation and a manager's label-addressed action
+remains an abrupt-loss case.
+
+The terminal effect unit starts before its pre-effect durability mark and retains
+ownership through paste, submission and durable outcome recording. Its current
+owner completes an effect that has begun; replay after abrupt loss remains governed
+by the existing startup and accepted-input recovery contracts.
+<!-- /planned-change:drain-accepted-work-before-restart -->
 
 ## Failure modes
 
