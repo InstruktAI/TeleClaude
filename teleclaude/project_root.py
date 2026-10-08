@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from fnmatch import fnmatch
@@ -21,7 +20,7 @@ from teleclaude.core.worktree_layout import (
 from teleclaude.core.worktree_layout import (
     worktree_home_for_checkout,
 )
-from teleclaude.paths import is_platform_home
+from teleclaude.paths import invocation_cwd, is_platform_home
 
 DOC_LAYER_PATTERN = "docs/**"
 _PROJECT_ROOT_ERROR = "cwd does not resolve to a project checkout: {invocation_dir}"
@@ -92,27 +91,14 @@ def resolve_invocation_cwd() -> Path:
     That flag also sets the Python process's cwd to the installation root,
     which means ``Path.cwd()`` no longer reflects the directory the user was
     in when they ran ``telec``. Worktree detection and project-root resolution
-    silently fail because the cwd now points at the main repo, not the actual
+    would silently fail because the cwd points at the main repo, not the actual
     invocation directory.
 
-    The wrapper mitigates by exporting ``TELEC_INVOCATION_CWD=$PWD`` before
-    exec'ing uv. Handlers read that first. ``$PWD`` is the secondary
-    fallback — shell-exported PWD survives across ``uv run`` because uv
-    inherits the environment. ``Path.cwd()`` is the last resort for direct
-    module invocations that never went through the wrapper.
-
-    Resolution order:
-    1. ``TELEC_INVOCATION_CWD`` (wrapper-exported, authoritative).
-    2. ``PWD`` (shell environment, survives ``uv run --directory``).
-    3. ``Path.cwd()`` (process cwd; potentially hijacked by uv).
+    The directory is resolved by ``teleclaude.paths.invocation_cwd``, the
+    invocation-path owner: the wrapper-exported ``TELEC_INVOCATION_CWD``, then
+    the shell's ``PWD``, then ``Path.cwd()`` for direct module invocations.
     """
-    explicit = os.environ.get("TELEC_INVOCATION_CWD")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-    if explicit:
-        return Path(explicit)
-    pwd = os.environ.get("PWD")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-    if pwd:
-        return Path(pwd)
-    return Path.cwd()
+    return invocation_cwd()
 
 
 def resolve_git_root(start: str | Path) -> Path:

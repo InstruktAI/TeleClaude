@@ -13,13 +13,6 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.handlers._creation_gate import render_todo_creation_gate
-from teleclaude.cli.telec.handlers._todo_read import run_todo_read
-from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
-from teleclaude.cli.telec.handlers._todo_stamp import _handle_todo_stamp
-from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list, _resolve_project_root_or_exit
-from teleclaude.cli.telec.handlers.todo_remove import render_remove_refusal
-from teleclaude.cli.telec.handlers.todo_update_args import _parse_todo_update_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import TODO_CREATE, TODO_DELIVER, TODO_REACTIVATE, TODO_REMOVE
 from teleclaude.constants import (
@@ -30,10 +23,8 @@ from teleclaude.constants import (
     SLUG_NOT_FOUND_DETAIL,
     SLUG_NOT_IN_ICEBOX_DETAIL,
 )
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.paths import invocation_cwd
 from teleclaude.slug import validate_slug
-from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
-from teleclaude.types.todos import DependencyEntry
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import (
@@ -65,8 +56,6 @@ _UNKNOWN_TODO_SUBCOMMAND_TEMPLATE = "Unknown todo subcommand: {subcommand}"
 _TODO_CREATE_KIND_REQUIRED_TEMPLATE = "Error: --kind is required. Valid values: {valid_kinds}"
 _TODO_CREATE_KIND_INVALID_TEMPLATE = "Error: invalid --kind '{kind}'. Valid values: {valid_kinds}"
 _TODO_CREATED_KIND_TEMPLATE = "Created todo: {slug} (kind={kind})"
-
-_TODO_CREATION_GATE = render_todo_creation_gate(_CREATION_ACK_FLAG)
 
 
 @dataclass(frozen=True)
@@ -128,7 +117,7 @@ __all__ = [
 
 def _handle_todo_sync(args: list[str]) -> None:
     """Handle the public todo-state transfer command."""
-    from teleclaude.cli.telec.handlers.todo_sync import (  # noqa: PLC0415 - keep transfer dependencies command-local.
+    from teleclaude.cli.telec.handlers.todo_sync import (  # noqa: PLC0415 - command boundary: transfer dependencies.
         handle_todo_sync,
     )
 
@@ -137,11 +126,38 @@ def _handle_todo_sync(args: list[str]) -> None:
 
 def _handle_todo_sync_replica(args: list[str]) -> None:
     """Handle the hidden target-side transfer helper."""
-    from teleclaude.cli.telec.handlers.todo_sync import (  # noqa: PLC0415 - keep transfer dependencies command-local.
+    from teleclaude.cli.telec.handlers.todo_sync import (  # noqa: PLC0415 - command boundary: transfer dependencies.
         handle_todo_sync_replica,
     )
 
     handle_todo_sync_replica(args)
+
+
+def _handle_todo_list(args: list[str]) -> None:
+    """Handle telec todo list."""
+    from teleclaude.cli.telec.handlers.todo_list import (  # noqa: PLC0415 - command boundary: list reads and renders.
+        _handle_todo_list as handle_list,
+    )
+
+    handle_list(args)
+
+
+def _handle_todo_show(args: list[str]) -> None:
+    """Handle telec todo show."""
+    from teleclaude.cli.telec.handlers._todo_show import (  # noqa: PLC0415 - command boundary: show reads local state.
+        _handle_todo_show as handle_show,
+    )
+
+    handle_show(args)
+
+
+def _handle_todo_stamp(args: list[str]) -> None:
+    """Handle telec todo stamp."""
+    from teleclaude.cli.telec.handlers._todo_stamp import (  # noqa: PLC0415 - command boundary: stamp uses the API client.
+        _handle_todo_stamp as handle_stamp,
+    )
+
+    handle_stamp(args)
 
 
 def _handle_todo(args: list[str]) -> None:
@@ -175,7 +191,7 @@ def _validate_slugs(*slugs: str | None) -> None:
 
 
 def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:
-    from teleclaude.core.todos_db import TodosDb  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.core.todos_db import TodosDb  # noqa: PLC0415 - command boundary: local workflow store.
 
     async def _execute() -> object:
         db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
@@ -191,7 +207,10 @@ def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> obj
 
 def _handle_todo_freeze(args: list[str]) -> None:
     """Handle telec todo freeze <slug>."""
-    from teleclaude.core.todo_dependency_warnings import (  # noqa: PLC0415 - only freeze reads dependent warning state.
+    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: freeze resolves the store.
+        _resolve_project_root_or_exit,
+    )
+    from teleclaude.core.todo_dependency_warnings import (  # noqa: PLC0415 - command boundary: freeze warnings.
         freeze_dependent_warnings,
     )
 
@@ -232,9 +251,13 @@ def _handle_todo_freeze(args: list[str]) -> None:
 
 def _handle_todo_unfreeze(args: list[str]) -> None:
     """Handle telec todo unfreeze <slug>."""
-    from teleclaude.core.todo_dependency_warnings import (  # noqa: PLC0415 - only unfreeze reads dependent warning state.
+    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: unfreeze resolves the store.
+        _resolve_project_root_or_exit,
+    )
+    from teleclaude.core.todo_dependency_warnings import (  # noqa: PLC0415 - command boundary: unfreeze warnings.
         unfreeze_frozen_dep_warnings,
     )
+    from teleclaude.types.todos import DependencyEntry  # noqa: PLC0415 - command boundary: unfreeze cast.
 
     if not args:
         print(_usage("todo", "unfreeze"))
@@ -273,14 +296,17 @@ def _handle_todo_unfreeze(args: list[str]) -> None:
 
 def _handle_todo_deliver(args: list[str]) -> None:
     """Handle telec todo deliver <slug> [--commit SHA]."""
-    from teleclaude.core.next_machine.delivery import (  # noqa: PLC0415 - delivery owns lifecycle cleanup.
+    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: deliver resolves the store.
+        _resolve_project_root_or_exit,
+    )
+    from teleclaude.core.next_machine.delivery import (  # noqa: PLC0415 - command boundary: delivery cleanup.
         cleanup_delivered_slug,
     )
-    from teleclaude.core.next_machine.marker_reconciliation import (  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.core.next_machine.marker_reconciliation import (  # noqa: PLC0415 - command boundary: markers.
         MarkerMoment,
         reconcile_lifecycle_markers,
     )
-    from teleclaude.core.todos_db._errors import (  # noqa: PLC0415 - delivery is the only handler for this refusal.
+    from teleclaude.core.todos_db._errors import (  # noqa: PLC0415 - command boundary: delivery refusal.
         DeliveryProvenanceRefused,
     )
 
@@ -359,8 +385,16 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
 
 
 def _handle_todo_create(args: list[str]) -> None:
-    from teleclaude.api_models import TodoDumpRequest  # noqa: PLC0415 - deferred command-local dependency.
-    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.api_models import TodoDumpRequest  # noqa: PLC0415 - command boundary: create request model.
+    from teleclaude.cli.telec.handlers._creation_gate import (  # noqa: PLC0415 - command boundary: creation gate.
+        render_todo_creation_gate,
+    )
+    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.types.todo_kind import (  # noqa: PLC0415 - command boundary: kind vocabulary.
+        ALL_DUMP_KINDS,
+        TODO_KIND_USAGE,
+        TodoDumpKind,
+    )
 
     parsed = _parse_todo_create_args(args)
     _VALID_KINDS_STR = TODO_KIND_USAGE
@@ -394,7 +428,7 @@ def _handle_todo_create(args: list[str]) -> None:
     # and creates nothing. The gate verifies the pre-creation decisions were
     # faced, never that the answers are true.
     if not parsed.approved:
-        print(_TODO_CREATION_GATE, file=sys.stderr, end="")
+        print(render_todo_creation_gate(_CREATION_ACK_FLAG), file=sys.stderr, end="")
         return
 
     dump_kind = cast(TodoDumpKind, parsed.kind_value)
@@ -405,7 +439,7 @@ def _handle_todo_create(args: list[str]) -> None:
         after=parsed.after,
         schedule=parsed.schedule,
         kind=dump_kind,
-        cwd=parsed.project_root if parsed.project_root is not None else str(resolve_invocation_cwd()),
+        cwd=parsed.project_root if parsed.project_root is not None else str(invocation_cwd()),
         icebox=parsed.icebox,
         group=parsed.group,
         plan=parsed.plan,
@@ -437,28 +471,28 @@ def _handle_todo_create(args: list[str]) -> None:
 
 def _handle_todo_design(args: list[str]) -> None:
     """Handle telec todo design [<slug>]."""
-    from teleclaude.cli.tool_commands.todo import handle_todo_design  # noqa: PLC0415 - defer this tool handler.
+    from teleclaude.cli.tool_commands.todo import handle_todo_design  # noqa: PLC0415 - command boundary: handler.
 
     handle_todo_design(args)
 
 
 def _handle_todo_integrate(args: list[str]) -> None:
     """Handle telec todo integrate <slug>."""
-    from teleclaude.cli.tool_commands.todo import handle_todo_integrate  # noqa: PLC0415 - defer this tool handler.
+    from teleclaude.cli.tool_commands.todo import handle_todo_integrate  # noqa: PLC0415 - command boundary: handler.
 
     handle_todo_integrate(args)
 
 
 def _handle_todo_prepare(args: list[str]) -> None:
     """Handle telec todo prepare <slug>."""
-    from teleclaude.cli.tool_commands.todo import handle_todo_prepare  # noqa: PLC0415 - defer this tool handler.
+    from teleclaude.cli.tool_commands.todo import handle_todo_prepare  # noqa: PLC0415 - command boundary: handler.
 
     handle_todo_prepare(args)
 
 
 def _handle_todo_work(args: list[str]) -> None:
     """Handle telec todo work [<slug>]."""
-    from teleclaude.cli.tool_commands.todo import handle_todo_work  # noqa: PLC0415 - defer this tool handler.
+    from teleclaude.cli.tool_commands.todo import handle_todo_work  # noqa: PLC0415 - command boundary: handler.
 
     handle_todo_work(args)
 
@@ -468,11 +502,14 @@ def _handle_todo_remove(args: list[str]) -> None:
 
     Also cleans up worktree and branch if they exist.
     """
-    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.telec.handlers.todo_remove import (  # noqa: PLC0415 - command boundary: remove refusal view.
+        render_remove_refusal,
+    )
+    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - command boundary: daemon API client.
         print_json,
         tool_api_call,
     )
-    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - receipt polling is used by remove/update only.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt polling.
         poll_operation,
     )
 
@@ -497,7 +534,7 @@ def _handle_todo_remove(args: list[str]) -> None:
     body = {
         "slug": slug,
         "force": force,
-        "cwd": str(resolve_invocation_cwd()),
+        "cwd": str(invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
     receipt: object = tool_api_call("POST", "/todos/remove", json_body=body)
@@ -547,12 +584,19 @@ def _normalize_after_values(raw_values: list[str]) -> list[str]:
 
 
 def _handle_todo_update(args: list[str]) -> None:
-    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.telec.handlers.todo_update_args import (  # noqa: PLC0415 - command boundary: update arguments.
+        _parse_todo_update_args,
+    )
+    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - command boundary: daemon API client.
         print_json,
         tool_api_call,
     )
-    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - receipt polling is used by remove/update only.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt polling.
         poll_operation,
+    )
+    from teleclaude.types.todo_kind import (  # noqa: PLC0415 - command boundary: kind vocabulary.
+        ALL_DUMP_KINDS,
+        TODO_KIND_USAGE,
     )
 
     parsed = _parse_todo_update_args(args)
@@ -584,7 +628,7 @@ def _handle_todo_update(args: list[str]) -> None:
 
     body: _TodoUpdateBody = {
         "slug": slug,
-        "cwd": str(resolve_invocation_cwd()),
+        "cwd": str(invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
     if new_slug is not None:
@@ -681,6 +725,10 @@ def _handle_todo_artifacts(args: list[str]) -> None:
 
 def _handle_artifacts_list(args: list[str]) -> None:
     """Handle telec todo artifacts list <slug>."""
+    from teleclaude.cli.telec.handlers._todo_read import (  # noqa: PLC0415 - command boundary: local workflow-store read.
+        run_todo_read,
+    )
+
     if not args or args[0].startswith("-"):
         print("Usage: telec todo artifacts list <slug>")
         raise SystemExit(1)
@@ -703,6 +751,10 @@ def _handle_artifacts_list(args: list[str]) -> None:
 
 def _handle_artifacts_read(args: list[str]) -> None:
     """Handle telec todo artifacts read <slug> <name>."""
+    from teleclaude.cli.telec.handlers._todo_read import (  # noqa: PLC0415 - command boundary: local workflow-store read.
+        run_todo_read,
+    )
+
     if len(args) < 2:
         print("Usage: telec todo artifacts read <slug> <name>")
         raise SystemExit(1)
@@ -718,7 +770,10 @@ def _handle_artifacts_read(args: list[str]) -> None:
 
 def _handle_artifacts_diff(args: list[str]) -> None:
     """Handle telec todo artifacts diff <slug> <name> <old-digest> <new-digest>."""
-    from teleclaude.core.todos_db import malformed_digest_detail  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.telec.handlers._todo_read import (  # noqa: PLC0415 - command boundary: local workflow-store read.
+        run_todo_read,
+    )
+    from teleclaude.core.todos_db import malformed_digest_detail  # noqa: PLC0415 - command boundary: digest check.
 
     if len(args) < 4:
         print("Usage: telec todo artifacts diff <slug> <name> <old-digest> <new-digest>")
@@ -743,7 +798,7 @@ def _handle_artifacts_diff(args: list[str]) -> None:
 
 def _handle_artifacts_remove(args: list[str]) -> None:
     """Handle telec todo artifacts remove <slug> <name>."""
-    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - command boundary: daemon API client.
 
     slug_val: str | None = None
     name_val: str | None = None
@@ -777,7 +832,7 @@ def _handle_artifacts_remove(args: list[str]) -> None:
     result = tool_api_request(
         "DELETE",
         f"/todos/artifacts/{slug_val}/{name_val}",
-        params={"cwd": str(resolve_invocation_cwd())},
+        params={"cwd": str(invocation_cwd())},
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
         print(result, file=sys.stderr)
@@ -792,8 +847,8 @@ def _handle_artifacts_remove(args: list[str]) -> None:
 
 def _handle_artifacts_write(args: list[str]) -> None:
     """Handle telec todo artifacts write <slug> <name> <content>."""
-    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - deferred command-local dependency.
-    from teleclaude.core.next_machine.git_ops import (  # noqa: PLC0415 - only artifact writes record the codebase head.
+    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.core.next_machine.git_ops import (  # noqa: PLC0415 - command boundary: codebase head at write.
         get_head_commit,
     )
 
@@ -825,7 +880,7 @@ def _handle_artifacts_write(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_artifact_name_write(name_val)
-    cwd = str(resolve_invocation_cwd())
+    cwd = str(invocation_cwd())
     result = tool_api_request(
         "POST",
         f"/todos/artifacts/{slug_val}/{name_val}",
@@ -843,14 +898,11 @@ def _handle_artifacts_write(args: list[str]) -> None:
 
 
 # ── Reactivate handler ─────────────────────────────────────────────────────
-# _handle_todo_show is imported from _todo_show.py (combines --include-removed
-# and --include-artifact-content per the enrich-todo-show-payload merge).
-# _handle_todo_stamp is imported from _todo_stamp.py to respect module size.
 
 
 def _handle_todo_reactivate(args: list[str]) -> None:
     """Handle slug or durable-id reactivation of a soft-removed todo."""
-    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.tool_client import tool_api_request  # noqa: PLC0415 - command boundary: daemon API client.
 
     parsed = parse_command_args(TODO_REACTIVATE, args)
     positionals = parsed.positionals
@@ -863,7 +915,7 @@ def _handle_todo_reactivate(args: list[str]) -> None:
         print("Usage: telec todo reactivate <slug> | --id <row-id>")
         raise SystemExit(1)
 
-    result = tool_api_request("POST", target_path, json_body={"cwd": str(resolve_invocation_cwd())})
+    result = tool_api_request("POST", target_path, json_body={"cwd": str(invocation_cwd())})
 
     if isinstance(result, dict) and result.get("slug"):
         print(f"Restored todo: {result['slug']}")

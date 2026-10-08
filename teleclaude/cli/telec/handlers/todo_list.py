@@ -3,38 +3,22 @@
 from __future__ import annotations
 
 import json as _json
-import sys
-from pathlib import Path
 from typing import TypedDict
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
+from teleclaude.cli.telec.handlers._todo_roots import _resolve_project_root_or_exit
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import TODO_LIST
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todo import parse_since_to_cutoff
 from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.services.work import get_work_service
 
-__all__ = ["_handle_todo_list", "_resolve_project_root_or_exit"]
-
-
-def _resolve_project_root_or_exit() -> Path:
-    """Resolve the invocation project root, or exit with a clean CLI error.
-
-    ``require_project_root`` raises ``FileNotFoundError`` when the
-    invocation cwd does not resolve to a project checkout; surfaced as a raw
-    traceback otherwise, unlike the daemon API's equivalent clean 400.
-    """
-    try:
-        return resolve_invocation_roots().require_project_root()
-    except FileNotFoundError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        raise SystemExit(1) from exc
+__all__ = ["_handle_todo_list"]
 
 
 class _TodoListArgs(TypedDict):
