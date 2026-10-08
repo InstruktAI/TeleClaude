@@ -749,18 +749,18 @@ AGENT_ARTIFACT_SOURCE_GLOBS: tuple[str, ...] = ("AGENTS.master.md", "agents/**")
 # project-declared code scopes attach test and log-check separately.
 CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
 CHECKPOINT_HOME_PUBLICATION_BINDING = CheckpointBinding(
-    scope=CheckpointScope(
-        include=(
-            "people/*/docs/**",
-            "companies/*/docs/**",
-            "AGENTS.master.md",
-            "help-desk/AGENTS.master.md",
-            "people/*/AGENTS.master.md",
-            "companies/*/AGENTS.master.md",
-            "companies/*/help-desk/AGENTS.master.md",
-        )
-    ),
+    scope=CheckpointScope(include=("people/*/docs/**", "companies/*/docs/**")),
     actions=("sync",),
+)
+# A declaration decides the deployment output convergence renders, and the
+# publication that follows compiles what it rendered.
+CHECKPOINT_PROJECT_DESK_BINDING = CheckpointBinding(
+    scope=CheckpointScope(include=("teleclaude.yml",)),
+    actions=("plumbing-convergence", "sync"),
+)
+CHECKPOINT_HOME_DECLARATION_BINDING = CheckpointBinding(
+    scope=CheckpointScope(include=("teleclaude.yml", "people/*/teleclaude.yml", "companies/*/teleclaude.yml")),
+    actions=("plumbing-convergence", "sync"),
 )
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=AGENT_ARTIFACT_SOURCE_GLOBS),

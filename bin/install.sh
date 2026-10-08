@@ -1130,7 +1130,7 @@ install_python_deps() {
 }
 
 converge_plumbing() {
-    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing "$INSTALL_DIR"
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing --plumbing-only "$INSTALL_DIR"
 }
 
 converge_docs_layout() {

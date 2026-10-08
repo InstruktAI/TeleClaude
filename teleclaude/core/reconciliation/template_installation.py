@@ -98,8 +98,11 @@ class TemplateTarget(StrEnum):
     """The closed set of target kinds a layered template installation addresses."""
 
     TELECLAUDE_HOME = "teleclaude-home"
+    TELECLAUDE_HOME_MASTER = "teleclaude-home-master"
     PERSON_HOME = "person-home"
+    PERSON_MASTER = "person-master"
     COMPANY_HOME = "company-home"
+    COMPANY_MASTER = "company-master"
     PROJECT = "project"
     PLATFORM_HELP_DESK = "platform-help-desk"
     COMPANY_HELP_DESK = "company-help-desk"
@@ -140,20 +143,17 @@ class TemplateInstallationPlan:
     targets: tuple[PlannedTemplateTarget, ...]
 
 
-_TEMPLATES_ROOT = REPO_ROOT / "templates"
+_TEMPLATE_TREE_DIRNAME = "templates"
 _TARGET_ROOT_MOUNT = Path()
 _DOCS_MOUNT = Path("docs")
 _DOCS_TREE = "docs"
 _TEMPLATE_LAYERS: Mapping[TemplateTarget, tuple[TemplateLayer, ...]] = {
     TemplateTarget.TELECLAUDE_HOME: (TemplateLayer("home", _TARGET_ROOT_MOUNT),),
-    TemplateTarget.PERSON_HOME: (
-        TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),
-        TemplateLayer("home-person", _TARGET_ROOT_MOUNT),
-    ),
-    TemplateTarget.COMPANY_HOME: (
-        TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),
-        TemplateLayer("home-company", _TARGET_ROOT_MOUNT),
-    ),
+    TemplateTarget.TELECLAUDE_HOME_MASTER: (TemplateLayer("home-platform", _TARGET_ROOT_MOUNT),),
+    TemplateTarget.PERSON_HOME: (TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),),
+    TemplateTarget.PERSON_MASTER: (TemplateLayer("home-person", _TARGET_ROOT_MOUNT),),
+    TemplateTarget.COMPANY_HOME: (TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),),
+    TemplateTarget.COMPANY_MASTER: (TemplateLayer("home-company", _TARGET_ROOT_MOUNT),),
     TemplateTarget.PROJECT: (TemplateLayer(_DOCS_TREE, _DOCS_MOUNT),),
     TemplateTarget.PLATFORM_HELP_DESK: (TemplateLayer("help-desk-platform", _TARGET_ROOT_MOUNT),),
     TemplateTarget.COMPANY_HELP_DESK: (TemplateLayer("help-desk-company", _TARGET_ROOT_MOUNT),),
@@ -171,6 +171,14 @@ _EXCLUSIVE_CREATE_MODE = "xb"
 _CONFLICT_MESSAGE = "{kind}: {path}"
 _COLLISION_MESSAGE = "{kind}: {target} (from {source}) conflicts with {other_target} (from {other_source})"
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
+
+
+def template_tree_root(checkout_root: Path) -> Path:
+    """The directory of the template trees inside a TeleClaude checkout."""
+    return checkout_root / _TEMPLATE_TREE_DIRNAME
+
+
+_TEMPLATES_ROOT = template_tree_root(REPO_ROOT)
 
 
 def render_template(
@@ -478,4 +486,5 @@ __all__ = [
     "materialize_template_targets",
     "plan_template_installation",
     "render_template",
+    "template_tree_root",
 ]

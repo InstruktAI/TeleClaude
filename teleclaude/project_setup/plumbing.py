@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
@@ -12,13 +13,27 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.checkpoint_model import load_checkpoint_model
+from teleclaude.config.context_root import load_declared_config_kind
+from teleclaude.config.loader import load_declared_project_config
+from teleclaude.config.schema import ConfigKind
 from teleclaude.core.reconciliation.config_schemas import (
     SchemaCopyDisposition,
     SchemaLinkDisposition,
     converge_project_schema_link,
     remove_stray_schema_copy,
 )
-from teleclaude.git import GitCommandError
+from teleclaude.core.reconciliation.home_convergence import TemplateTargets, home_output_targets, project_targets
+from teleclaude.core.reconciliation.template_installation import (
+    HomeTemplateDisposition,
+    HomeTemplateMaterializationConflict,
+    HomeTemplateOutcome,
+    InvalidTemplateEncodingError,
+    UnresolvedPlaceholderError,
+    apply_template_installation,
+    plan_template_installation,
+)
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
+from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.project_setup.git_filters import GitFilterDisposition, ensure_git_filters
 from teleclaude.project_setup.hooks import HookConvergenceOutcome, install_code_hooks
@@ -32,10 +47,18 @@ _RUN_FINISHED_EVENT = "plumbing_convergence_run_finished"
 _REGISTRY_READ_FAILED_EVENT = "plumbing_convergence_registry_read_failed"
 _ROOT_OPERATIONAL_FAILURE_EVENT = "plumbing_convergence_root_operational_failure"
 _ROOT_ARGUMENT_REQUIRED = "A project root is required."
+_PLUMBING_ONLY_FLAG = "--plumbing-only"
 _HOOK_RESULT = "{hook_name}: {outcome}"
 _FILTER_RESULT = "filter-driver: {disposition}"
+_OUTPUT_RESULT = "{path}: {disposition}"
+_HELD_OUTPUT_RESULT = (
+    "{path}: tracked by git, left untouched; remove it from the index (keeping the file) so convergence can render it"
+)
 _ROOT_RESULT = "{project_root}: {outcome} (schema-link: {schema_link}, schema-copy: {schema_copy})"
-_RUN_RESULT = "Plumbing convergence {outcome}: {root_count} registered root(s)."
+_RUN_RESULT = "Plumbing convergence {outcome}: {root_count} root(s)."
+_LS_FILES_NUL_OPTION = "-z"
+_PATHSPEC_SEPARATOR = "--"
+_NUL = "\0"
 
 
 class PlumbingConvergenceOutcome(StrEnum):
@@ -71,6 +94,7 @@ class PlumbingConvergenceResult:
     filter_disposition: GitFilterDisposition | None
     schema_link: SchemaLinkDisposition | None = None
     schema_copy: SchemaCopyDisposition | None = None
+    output_results: tuple[HomeTemplateOutcome, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,35 +137,35 @@ def _record_root_result(
         filter_disposition=result.filter_disposition,
         schema_link=result.schema_link,
         schema_copy=result.schema_copy,
+        output_dispositions={str(item.target): item.disposition for item in result.output_results},
     )
     return result
 
 
 def converge_plumbing(project_root: Path, *, run_id: str | None = None) -> PlumbingConvergenceResult:
-    """Converge one adopted root's hooks and docs filter driver."""
+    """Converge one adopted root's hooks, docs filter driver and schema link."""
+    return _record_root_result(_converge_machine_plumbing(project_root), run_id=run_id)
+
+
+def _converge_machine_plumbing(project_root: Path) -> PlumbingConvergenceResult:
+    """Compare one root's installed plumbing against its declaration and close the gap."""
     require_own_checkout(project_root)
     try:
         capabilities = resolve_capabilities(project_root)
     except ValueError:
-        return _record_root_result(
-            PlumbingConvergenceResult(
-                project_root=project_root,
-                outcome=PlumbingConvergenceOutcome.DECLARATION_ERROR,
-                hook_results={},
-                filter_disposition=None,
-            ),
-            run_id=run_id,
+        return PlumbingConvergenceResult(
+            project_root=project_root,
+            outcome=PlumbingConvergenceOutcome.DECLARATION_ERROR,
+            hook_results={},
+            filter_disposition=None,
         )
 
     if not capabilities.is_target:
-        return _record_root_result(
-            PlumbingConvergenceResult(
-                project_root=project_root,
-                outcome=PlumbingConvergenceOutcome.NOT_ADOPTED,
-                hook_results={},
-                filter_disposition=None,
-            ),
-            run_id=run_id,
+        return PlumbingConvergenceResult(
+            project_root=project_root,
+            outcome=PlumbingConvergenceOutcome.NOT_ADOPTED,
+            hook_results={},
+            filter_disposition=None,
         )
 
     try:
@@ -162,17 +186,94 @@ def converge_plumbing(project_root: Path, *, run_id: str | None = None) -> Plumb
         )
         else PlumbingConvergenceOutcome.UNCHANGED
     )
-    return _record_root_result(
-        PlumbingConvergenceResult(
-            project_root=project_root,
-            outcome=outcome,
-            hook_results=hook_results,
-            filter_disposition=filter_disposition,
-            schema_link=schema_link.disposition,
-            schema_copy=schema_copy,
-        ),
-        run_id=run_id,
+    return PlumbingConvergenceResult(
+        project_root=project_root,
+        outcome=outcome,
+        hook_results=hook_results,
+        filter_disposition=filter_disposition,
+        schema_link=schema_link.disposition,
+        schema_copy=schema_copy,
     )
+
+
+def _declared_kind(root: Path) -> ConfigKind | None:
+    """The tier a root's declaration names, or ``None`` when the root declares nothing."""
+    marker = root / ConfigFileName.OVERLAY
+    return load_declared_config_kind(marker) if marker.is_file() else None
+
+
+def _deployment_output_targets(root: Path) -> TemplateTargets:
+    """The deployment output a root's declaration owes: a project's enabled help desk, the platform home's output."""
+    kind = _declared_kind(root)
+    if kind is ConfigKind.GLOBAL:
+        return home_output_targets(root)
+    if kind is ConfigKind.PROJECT:
+        config = load_declared_project_config(root)
+        if config is not None and config.help_desk.enabled:
+            return project_targets(root, docs=False, help_desk=True)
+    return ()
+
+
+def _tracked_paths(root: Path, paths: tuple[Path, ...]) -> frozenset[Path]:
+    """The given paths the root's repository tracks; a root that is not a repository tracks none."""
+    try:
+        repository = Repo(root)
+    except InvalidGitRepositoryError:
+        return frozenset()
+    working_tree = repository.working_tree_dir
+    if working_tree is None:
+        return frozenset()
+    checkout_root = Path(working_tree).resolve()
+    output = repository.git.ls_files(_LS_FILES_NUL_OPTION, _PATHSPEC_SEPARATOR, *(str(path) for path in paths))
+    tracked = {checkout_root / entry for entry in output.split(_NUL) if entry}
+    return frozenset(path for path in paths if path.resolve() in tracked)
+
+
+def _render_deployment_output(root: Path, targets: TemplateTargets) -> tuple[HomeTemplateOutcome, ...]:
+    """Render the targets from their templates, leaving every path the root's git tracks untouched."""
+    plan = plan_template_installation(targets, values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
+    planned = tuple(file.target for target in plan.targets for file in target.files)
+    return apply_template_installation(plan, held_targets=_tracked_paths(root, planned))
+
+
+def _with_output(
+    result: PlumbingConvergenceResult, outputs: tuple[HomeTemplateOutcome, ...]
+) -> PlumbingConvergenceResult:
+    """Fold a root's deployment output into its plumbing outcome; a failure outcome is never softened."""
+    if result.outcome in _FAILED_ROOT_OUTCOMES:
+        return replace(result, output_results=outputs)
+    written = any(item.disposition is HomeTemplateDisposition.WRITTEN for item in outputs)
+    converged = written or result.outcome is PlumbingConvergenceOutcome.CONVERGED
+    outcome = PlumbingConvergenceOutcome.CONVERGED if converged else PlumbingConvergenceOutcome.UNCHANGED
+    return replace(result, outcome=outcome, output_results=outputs)
+
+
+def converge_root(project_root: Path, *, run_id: str | None = None) -> PlumbingConvergenceResult:
+    """Converge one root's plumbing, then the deployment output its declaration owes.
+
+    A path the root's git tracks is reported and left untouched; neither it nor
+    a disabled desk's folder fails the root.
+    """
+    result = _converge_machine_plumbing(project_root)
+    if result.outcome is PlumbingConvergenceOutcome.DECLARATION_ERROR:
+        return _record_root_result(result, run_id=run_id)
+    try:
+        targets = _deployment_output_targets(project_root)
+    except ValueError:
+        return _record_root_result(replace(result, outcome=PlumbingConvergenceOutcome.DECLARATION_ERROR), run_id=run_id)
+    if not targets:
+        return _record_root_result(result, run_id=run_id)
+    try:
+        outputs = _render_deployment_output(project_root, targets)
+    except (
+        GitCommandError,
+        HomeTemplateMaterializationConflict,
+        InvalidTemplateEncodingError,
+        OSError,
+        UnresolvedPlaceholderError,
+    ) as exc:
+        raise PlumbingOperationalFailure from exc
+    return _record_root_result(_with_output(result, outputs), run_id=run_id)
 
 
 def _failed_root_result(project_root: Path, *, run_id: str) -> PlumbingConvergenceResult:
@@ -239,8 +340,18 @@ def _record_run_result(result: PlumbingConvergenceRunResult) -> PlumbingConverge
     return result
 
 
-def converge_registered_roots() -> PlumbingConvergenceRunResult:
-    """Converge plumbing for every root in the machine-local project registry."""
+def _converge_fleet_root(root: Path, *, run_id: str) -> PlumbingConvergenceResult:
+    """Converge one present root in a fleet run, recording an operational failure without ending the run."""
+    require_own_checkout(root)
+    try:
+        return converge_root(root, run_id=run_id)
+    except PlumbingOperationalFailure:
+        logger.exception(_ROOT_OPERATIONAL_FAILURE_EVENT, project_root=str(root), run_id=run_id)
+        return _failed_root_result(root, run_id=run_id)
+
+
+def converge_registered_roots(home: Path = TELECLAUDE_HOME) -> PlumbingConvergenceRunResult:
+    """Converge every root in the machine-local project registry, then the platform home's deployment output."""
     run_id = uuid4().hex
     try:
         registered_roots = load_registered_roots(strict=True)
@@ -256,58 +367,41 @@ def converge_registered_roots() -> PlumbingConvergenceRunResult:
             ),
         )
 
-    logger.info(_RUN_STARTED_EVENT, run_id=run_id, root_count=len(registered_roots))
+    roots = [registered_root.path for registered_root in registered_roots]
+    if _declared_kind(home) is ConfigKind.GLOBAL:
+        roots.append(home)
+    logger.info(_RUN_STARTED_EVENT, run_id=run_id, root_count=len(roots))
     results: list[PlumbingConvergenceResult] = []
     for registered_root in registered_roots:
         if not registered_root.is_present:
             results.append(_unavailable_root_result(registered_root.path, run_id=run_id))
             continue
-        require_own_checkout(registered_root.path)
-        try:
-            results.append(converge_plumbing(registered_root.path, run_id=run_id))
-        except PlumbingOperationalFailure:
-            logger.exception(
-                _ROOT_OPERATIONAL_FAILURE_EVENT,
-                project_root=str(registered_root.path),
-                run_id=run_id,
-            )
-            results.append(_failed_root_result(registered_root.path, run_id=run_id))
+        results.append(_converge_fleet_root(registered_root.path, run_id=run_id))
+    if home in roots:
+        results.append(_converge_fleet_root(home, run_id=run_id))
 
     terminal_results = tuple(results)
     return _record_run_result(
         PlumbingConvergenceRunResult(
             run_id=run_id,
-            root_count=len(registered_roots),
+            root_count=len(roots),
             results=terminal_results,
             outcome=_run_outcome(terminal_results),
         ),
     )
 
 
-def main() -> None:
-    """Run registered-root convergence, or one-root convergence for installers."""
-    if len(sys.argv) == 1:
-        run_result = converge_registered_roots()
-        for root_result in run_result.results:
-            print(
-                _ROOT_RESULT.format(
-                    project_root=root_result.project_root,
-                    outcome=root_result.outcome,
-                    schema_link=root_result.schema_link,
-                    schema_copy=root_result.schema_copy,
-                ),
-            )
-        print(_RUN_RESULT.format(outcome=run_result.outcome, root_count=run_result.root_count))
-        if run_result.outcome is PlumbingConvergenceRunOutcome.FAILED:
-            raise SystemExit(1)
-        return
-    if len(sys.argv) != 2:
-        raise SystemExit(_ROOT_ARGUMENT_REQUIRED)
-    result = converge_plumbing(Path(sys.argv[1]).resolve())
-    for hook_name, outcome in result.hook_results.items():
-        print(_HOOK_RESULT.format(hook_name=hook_name, outcome=outcome))
-    if result.filter_disposition is not None:
-        print(_FILTER_RESULT.format(disposition=result.filter_disposition))
+def _print_output_results(result: PlumbingConvergenceResult) -> None:
+    """Report each deployment output a root's convergence wrote, and each tracked path it left untouched."""
+    for output in result.output_results:
+        if output.disposition is HomeTemplateDisposition.HELD:
+            print(_HELD_OUTPUT_RESULT.format(path=output.target))
+        elif output.disposition is HomeTemplateDisposition.WRITTEN:
+            print(_OUTPUT_RESULT.format(path=output.target, disposition=output.disposition))
+
+
+def _print_root_line(result: PlumbingConvergenceResult) -> None:
+    """Report one root's terminal outcome."""
     print(
         _ROOT_RESULT.format(
             project_root=result.project_root,
@@ -316,6 +410,37 @@ def main() -> None:
             schema_copy=result.schema_copy,
         ),
     )
+
+
+def main() -> None:
+    """Run fleet convergence, or one-root convergence for installers and maintenance.
+
+    A root argument runs the whole act; ``--plumbing-only <root>`` runs the
+    machine plumbing alone, for installers that render no deployment output.
+    """
+    arguments = sys.argv[1:]
+    plumbing_only = arguments[:1] == [_PLUMBING_ONLY_FLAG]
+    if plumbing_only:
+        arguments = arguments[1:]
+    if not arguments and not plumbing_only:
+        run_result = converge_registered_roots()
+        for root_result in run_result.results:
+            _print_output_results(root_result)
+            _print_root_line(root_result)
+        print(_RUN_RESULT.format(outcome=run_result.outcome, root_count=run_result.root_count))
+        if run_result.outcome is PlumbingConvergenceRunOutcome.FAILED:
+            raise SystemExit(1)
+        return
+    if len(arguments) != 1:
+        raise SystemExit(_ROOT_ARGUMENT_REQUIRED)
+    root = Path(arguments[0]).resolve()
+    result = converge_plumbing(root) if plumbing_only else converge_root(root)
+    for hook_name, outcome in result.hook_results.items():
+        print(_HOOK_RESULT.format(hook_name=hook_name, outcome=outcome))
+    if result.filter_disposition is not None:
+        print(_FILTER_RESULT.format(disposition=result.filter_disposition))
+    _print_output_results(result)
+    _print_root_line(result)
     if result.outcome in _FAILED_ROOT_OUTCOMES:
         raise SystemExit(1)
 

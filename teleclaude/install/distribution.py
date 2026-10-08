@@ -33,6 +33,7 @@ from teleclaude.artifact_ownership import (
 )
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.constants import ArtifactKind
+from teleclaude.core.reconciliation.template_installation import template_tree_root
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.docs_publication import publish_generation
 from teleclaude.docs_publishers import (
@@ -1827,7 +1828,6 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
         ".git",
         ".agents",
         ".history",
-        "templates",
         "trees",
         "__pycache__",
         "dist",
@@ -1839,12 +1839,17 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     # trees, including a coincidentally named AGENTS.master.md that is not a
     # project-directory master. Every root this repository's own skill tree
     # can occupy — tiered and project-local — is skipped
-    # rather than walked; global_skill_source_root only resolves when
-    # project_root is Mother, and is a no-op path otherwise.
+    # rather than walked; global_skill_source_root is a plain path join that
+    # also resolves in a side project.
+    # TeleClaude's template trees hold masters that are templates, not
+    # project-directory masters; they are excluded by location, and only
+    # where the project is Mother.
     skill_tree_roots = {
         global_skill_source_root(project_root),
         agent_artifacts.project_skills_root(project_root),
     }
+    if agent_artifacts.is_mother_project(project_root):
+        skill_tree_roots.add(template_tree_root(project_root))
     matches: list[Path] = []
     for root, dirs, files in os.walk(project_root):
         root_path = Path(root)
@@ -2033,6 +2038,25 @@ def inflate_master(
     return composed
 
 
+def _inflate_project_master(
+    master_path: Path,
+    *,
+    project_root: Path,
+    warn_only: bool,
+    observation: DistributionObservation | None,
+    resolution: DocsResolutionMode = DocsResolutionMode.SOURCE,
+) -> str:
+    """Compile one project master; only the project's root master gains the root extras."""
+    return inflate_master(
+        master_path,
+        project_root=project_root,
+        root_extras=master_path == project_root / PROJECT_MASTER_FILENAME,
+        warn_only=warn_only,
+        observation=observation,
+        resolution=resolution,
+    )
+
+
 def _write_project_agents(
     master_path: Path,
     *,
@@ -2041,16 +2065,42 @@ def _write_project_agents(
     observation: DistributionObservation | None,
 ) -> Path:
     """Generate the ``AGENTS.md`` next to a project ``AGENTS.master.md``, the only file written there."""
-    inflated = inflate_master(
+    inflated = _inflate_project_master(
         master_path,
         project_root=project_root,
-        root_extras=master_path == project_root / PROJECT_MASTER_FILENAME,
         warn_only=warn_only,
         observation=observation,
     )
     agents_path = master_path.parent / GENERATED_ENTRYPOINT_FILENAME
     agents_path.write_text(inflated, encoding=UTF8)
     return agents_path
+
+
+def compile_walked_project_entrypoints(
+    project_root: Path,
+    relative_masters: frozenset[Path],
+) -> tuple[tuple[Path, str], ...]:
+    """Compile the named masters the project's master walk reaches, as entrypoint path and text.
+
+    A master the walk excludes is not compiled, whether or not it is named.
+    Global required reads resolve to the deployed corpus, so no other
+    publisher's unpublished source reaches an entrypoint compiled outside that
+    publisher's own publication.
+    """
+    return tuple(
+        (
+            master.parent / GENERATED_ENTRYPOINT_FILENAME,
+            _inflate_project_master(
+                master,
+                project_root=project_root,
+                warn_only=False,
+                observation=None,
+                resolution=DocsResolutionMode.DEPLOYED,
+            ),
+        )
+        for master in _iter_project_agent_masters(project_root)
+        if master.relative_to(project_root) in relative_masters
+    )
 
 
 def _render_global_skill_catalog(

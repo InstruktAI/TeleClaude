@@ -235,10 +235,11 @@ _HOOK_FIELD_SUFFIX = "'"
 def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResult:
     """Establish or converge the local-only history rooted at ``home``.
 
-    Every home and enabled help desk is first planned from its templates. Under
-    the shared commit lock, activation holds unrecorded targets, applies the
-    remaining writes, and records only those writes. A gate refusal restores
-    activation's working-tree writes, leaving installation non-fatal.
+    The home's repository layer and each declared tier home's baselines are
+    first planned from their templates. Under the shared commit lock,
+    activation holds unrecorded targets, applies the remaining writes, and
+    records only those writes. A gate refusal restores activation's
+    working-tree writes, leaving installation non-fatal.
     """
     home.mkdir(parents=True, exist_ok=True)
     repository, created_repository = _repository_at_home(home)

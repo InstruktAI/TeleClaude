@@ -153,12 +153,17 @@ def distribute_tier_homes(
             shutil.rmtree(previous_root)
 
 
-def home_masters(home_snapshot: Path, kind: ConfigKind) -> list[tuple[Path, Path]]:
-    """Return only the masters owned by one home with their read roots."""
+def home_master_candidates(home_snapshot: Path, kind: ConfigKind) -> list[tuple[Path, Path]]:
+    """Return the fixed set of masters a home of this kind can own with their read roots, present or not."""
     candidates = [(home_snapshot / PROJECT_MASTER_FILENAME, home_snapshot)]
     if kind in (ConfigKind.GLOBAL, ConfigKind.COMPANY):
         candidates.append((home_snapshot / HELP_DESK_DIRNAME / PROJECT_MASTER_FILENAME, home_snapshot))
-    return [(master, root) for master, root in candidates if master.is_file()]
+    return candidates
+
+
+def home_masters(home_snapshot: Path, kind: ConfigKind) -> list[tuple[Path, Path]]:
+    """Return only the masters owned by one home with their read roots."""
+    return [(master, root) for master, root in home_master_candidates(home_snapshot, kind) if master.is_file()]
 
 
 def inflate_home_entrypoint(
