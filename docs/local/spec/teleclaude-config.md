@@ -44,10 +44,32 @@ filename and takes no part in tier resolution. It declares `kind: computer`,
 which addresses the file and is never a tier
 (`local/projects/teleclaude/spec/feature/config/machine-config-load`).
 
+<!-- planned-change:config-field-constraints -->
+
 One JSON Schema per tier is generated from the same models the runtime
 validates against and published, with the MCP registry schema, into the
 TeleClaude home. No repository carries a schema file; publication is specified
 in `local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`.
+
+<!-- change:config-field-constraints -->
+
+One JSON Schema per tier is generated from the same models the runtime
+validates against and published, with the MCP registry schema, into the
+TeleClaude home. Each tier schema declares the JSON Schema dialect its
+generator emits. No repository carries a schema file; publication is specified
+in `local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`.
+
+A relationship between two fields of one tier document — a boolean field that,
+when true, requires another field of the same document to hold a given value —
+is declared once, on the requiring field. The tier's published schema carries
+the declaration, so an editor reports a violation on the requiring field, and
+every validation of the document refuses it in the same words, naming the
+requiring field, the field to set, and the value it requires. A declaration
+only validates: it never sets or changes a value, and a document that sets both
+fields is accepted. A relationship that needs data outside the one document is
+not declared this way.
+
+<!-- /planned-change:config-field-constraints -->
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline. The reference is relative and fixed by the file's tier alone, derived
