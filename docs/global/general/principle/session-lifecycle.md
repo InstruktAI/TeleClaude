@@ -95,9 +95,10 @@ So ending flows from context, not from a worker's own initiative.
 - **An orphaned session still has someone who will reach it.** A governor that ends before its
   children leaves them waiting on an authority that no longer exists. The fleet's overseer
   holds these by default, and a session whose governor is gone is its to resolve.
-- **A blocked session becomes a beacon.** When an outcome needs a human and the agents have
-  exhausted what they can resolve, the session stays alive as a signal rather than ending
-  quietly. Everything that succeeds, ends.
+- **A blocked session becomes a beacon.** When an outcome waits on a human's decision that
+  they will talk through with it, and the agents have exhausted what they can resolve, the
+  session stays alive as a signal rather than ending quietly. Everything that succeeds, or
+  only informs, ends.
 - **Resolve together before reaching for a human.** When a shortfall is within the agents'
   reach, they converge on it directly; only a decision that is genuinely a human's to make
   travels to the human.
@@ -140,7 +141,7 @@ So ending flows from context, not from a worker's own initiative.
 ## Tensions
 
 - **Signal vs. noise.** Observability invites keeping sessions alive; a true session list
-  invites ending them. The resolution: end on success, persist only while a human is needed.
+  invites ending them. The resolution: end on success, persist only while a human's decision is pending with it.
 - **Autonomy vs. lifecycle control.** An agent is autonomous in _what_ it does, but a governed
   session is not the author of _when it ends_ — its governor holds that. The asymmetry is
   intentional, and it binds to governance rather than to dispatch: reading it as a property of

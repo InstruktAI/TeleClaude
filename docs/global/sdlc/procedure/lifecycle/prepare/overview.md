@@ -283,9 +283,11 @@ and is one of two things (`sdlc/policy/todo-creation-discipline`):
   request in their own words is that human's to withdraw: hold it with
   `telec todo update {slug} --hold --reason <reason>` and stay open with why it
   breaks no contract, so the human can read it and talk it through with this
-  session (`general/principle/session-lifecycle`). End once they withdraw it or
-  restate it as a change. An invalid report is never reclassified to keep it
-  alive.
+  session (`general/principle/session-lifecycle`). When they withdraw it,
+  remove it and end. When they restate it as a change, record the restatement
+  in `input`, release the hold with `telec todo update {slug} --release`, and
+  reclassify it to `change` before calling `telec todo prepare {slug}`. An
+  invalid report is never reclassified to keep it alive.
 
 ### 1c. Settled change
 
