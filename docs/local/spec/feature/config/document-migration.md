@@ -79,6 +79,8 @@ The authoring rules every migration obeys are
 
 ## Canonical fields
 
+<!-- planned-change:config-field-constraints -->
+
 - **Version.** A non-negative integer each document carries at its top level.
   A document with no version is at version zero. The current version is the
   number of the last migration in the list.
@@ -95,6 +97,29 @@ The authoring rules every migration obeys are
   written untracked, restored after a refused commit, or failed with a reason.
   One document's failure never stops the run over the others; a run with any
   failed document ends failed.
+
+<!-- change:config-field-constraints -->
+
+- **Version.** A non-negative integer each document carries at its top level.
+  A document with no version is at version zero. The current version is the
+  number of the last migration in the list.
+- **Subject.** The document's kind (computer, global, person, company, or
+  project), its instance where the registries know one, and whether the
+  registries name it. The document at the root of a linked worktree of a
+  registered project root has that project's registry subject. A valid tier
+  declaration supplies a read-only subject when no registry names the
+  document; it supplies no instance or registration standing. A migration
+  reads the subject, never the document's location.
+- **Migration run outcome.** One structured record per document naming the
+  document, its subject, the version found, the version reached, and one
+  outcome: current, migrated and committed, migrated and left uncommitted,
+  written untracked, restored after a refused commit, or failed with a reason.
+  A document refused because it breaks a declared field relationship fails
+  with that reason and carries the relationship's message, which the run's
+  failure diagnostic shows. One document's failure never stops the run over
+  the others; a run with any failed document ends failed.
+
+<!-- /planned-change:config-field-constraints -->
 
 ### Use cases
 
