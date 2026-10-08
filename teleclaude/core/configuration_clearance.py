@@ -23,7 +23,6 @@ from teleclaude.caller_identity import (
     person_entries_for_email,
 )
 from teleclaude.cli.session_auth import ResolvedCliIdentity
-from teleclaude.config.help_desk import HELP_DESK_KEY
 from teleclaude.config_roster import load_person_memberships
 from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.constants import HUMAN_ROLE_MEMBER
@@ -32,8 +31,6 @@ logger = get_logger(__name__)
 
 _CONFIG_CLEARANCE_EVENT = "config_clearance"
 _ORGANIZATION_SECTION = "organization"
-# Initializing a project with the help-desk section opens it to people outside it, so it needs the project's administrator.
-HELP_DESK_SECTION = HELP_DESK_KEY
 _SINGLETON_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL})
 
 # PrincipalKind is the identity-owned CliCallerKind vocabulary (person/system/none):
@@ -282,8 +279,6 @@ def _decide_project(standing: ConfigurationStanding, target: ConfigurationTarget
     if target.operation is ConfigurationOperation.CREATE:
         return _decide_create(standing, target)
     if target.operation in (ConfigurationOperation.LIST, ConfigurationOperation.GET):
-        return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
-    if target.operation is ConfigurationOperation.INIT and HELP_DESK_SECTION not in target.sections:
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
     project_role = _effective_role(standing, Project(target.instance or ""))
     if target.operation is ConfigurationOperation.PATCH:

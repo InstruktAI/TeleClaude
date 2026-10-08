@@ -48,6 +48,7 @@ logger = get_logger(__name__)
 
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
 _PERSON_MCP_SECRET_MANAGEMENT_FAILED = "Personal MCP secret management failed"
+_ADOPT_UNDECLARED_PROJECT = "Run from {path}: telec config project adopt"
 
 
 class PersonMcpSecretManagementError(ValueError):
@@ -255,7 +256,7 @@ def validate_all() -> list[ValidationResult]:
                     area=project_area,
                     passed=False,
                     errors=[f"No project configuration declared at {root.path}"],
-                    suggestions=[f"Run from {root.path}: telec config project init"],
+                    suggestions=[_ADOPT_UNDECLARED_PROJECT.format(path=root.path)],
                 )
             )
         else:

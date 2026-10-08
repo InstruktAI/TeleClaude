@@ -17,7 +17,6 @@ from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabi
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config, write_declared_config
-from teleclaude.config.help_desk import with_help_desk_enabled
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
 from teleclaude.config.project_home import HomeOwner, adoptable_home_owner, owning_home_owner
@@ -29,7 +28,7 @@ from teleclaude.core.reconciliation.template_installation import materialize_tem
 from teleclaude.docs_index import ensure_project_config, get_project_slug
 from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName, is_platform_home
-from teleclaude.project_manifest_runtime import load_registered_entries, project_adoption_lock, register_root
+from teleclaude.project_manifest_runtime import project_adoption_lock, register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
@@ -64,11 +63,6 @@ _IDENTITY_CONFLICT = "Project identity '{identity}' is already held by {holding_
 _PROJECT_INITIALIZED_EVENT = "project_initialization_completed"
 _CREATE_CLEANUP_EVENT = "project_creation_cleanup_skipped"
 _NAME_TAKEN = "Project name '{identity}' is already taken by {holding_root}."
-_UNREGISTERED_FOLDER_REFUSAL = (
-    "{path} is not a registered project, and init converges registered projects only. "
-    "Run `telec config project create <name>` to make a new project, "
-    "or `telec config project adopt` to register this folder where it is."
-)
 _NO_IDENTITY = "Cannot derive a project identity for {path}: neither its project slug, its project name nor its folder name yields one."
 _DESTINATION_NOT_EMPTY = "Project destination is not empty: {path}"
 _DESTINATION_NOT_DIRECTORY = "Project destination is not a folder: {path}"
@@ -100,7 +94,6 @@ class ProjectOperation(StrEnum):
 
     CREATE = "create"
     ADOPT = "adopt"
-    INIT = "init"
 
 
 @dataclass(frozen=True)
@@ -211,15 +204,6 @@ def _declare_inferred_capabilities(
 
     _update_project_declaration(project_root, declare)
     return resolve_capabilities(project_root)
-
-
-def _enable_help_desk(raw: dict[str, object]) -> bool:  # guard: loose-dict - raw YAML config
-    """Set the declaration's help desk as enabled, reporting whether anything changed."""
-    enabled = with_help_desk_enabled(raw)
-    if enabled == raw:
-        return False
-    raw.update(enabled)
-    return True
 
 
 def _ensure_project_slug(project_root: Path) -> None:
@@ -355,11 +339,6 @@ def project_identity(project_root: Path) -> str:
     return identity
 
 
-def _is_registered(project_root: Path) -> bool:
-    """Return whether the folder is already recorded in the project registry."""
-    return any(entry.path == project_root for entry in load_registered_entries(include_in_transit=False))
-
-
 def _register_home_tier(
     project_root: Path,
     kind: ConfigKind,
@@ -442,7 +421,6 @@ def _converge_registered_project(
     project_root: Path,
     registered_root: Path,
     undeclared_capabilities: frozenset[CapabilityName],
-    help_desk: bool,
 ) -> None:
     """Run the stages every registered project goes through: migration, capabilities, templates, plumbing, slug."""
     is_mother = _is_teleclaude_project(project_root)
@@ -454,9 +432,7 @@ def _converge_registered_project(
         MigrationTrigger.REGISTRATION,
     )
     capabilities = _declare_inferred_capabilities(project_root, undeclared_capabilities)
-    if help_desk:
-        _update_project_declaration(project_root, _enable_help_desk)
-    templates = project_targets(project_root, docs=capabilities.docs, help_desk=help_desk)
+    templates = project_targets(project_root, docs=capabilities.docs, help_desk=False)
     if templates:
         materialize_template_targets(templates, values={}, environ=os.environ)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     if capabilities.docs:
@@ -543,58 +519,11 @@ def _adopt_locked(project_root: Path, trigger: ProjectInitializationTrigger) -> 
     registered_root = resolve_project_root(project_root)
     already_registered = not register_root(project_root=registered_root)
     _record_home_owner(project_root, home)
-    _converge_registered_project(project_root, registered_root, undeclared_capabilities, help_desk=False)
+    _converge_registered_project(project_root, registered_root, undeclared_capabilities)
     return _completed(
         registered_root,
         _registered_project_result(registered_root, already_registered),
         ProjectOperation.ADOPT,
-        trigger,
-    )
-
-
-def converge_project(
-    project_root: Path,
-    *,
-    trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
-    help_desk: bool = False,
-) -> ProjectInitializationResult:
-    """Converge a registered folder to the current required structure.
-
-    A folder that is not a registered entry is refused before anything is written,
-    and the refusal names project creation and adoption: ``init`` neither creates
-    nor adopts. It writes no registry entry.
-
-    With ``help_desk``, the project declaration records its help desk as enabled and
-    the project's help-desk folder is converged to the project help-desk template; the
-    files stay in the working tree, uncommitted.
-    """
-    with project_adoption_lock():
-        return _converge_locked(project_root, trigger, help_desk)
-
-
-def _converge_locked(
-    project_root: Path,
-    trigger: ProjectInitializationTrigger,
-    help_desk: bool,
-) -> ProjectInitializationResult:
-    project_root = project_root.expanduser().resolve()
-    if not _is_registered(project_root):
-        raise ValueError(_UNREGISTERED_FOLDER_REFUSAL.format(path=project_root))
-    config_path = project_root / ConfigFileName.OVERLAY
-    kind = load_declared_config_kind(config_path) if config_path.is_file() else ConfigKind.PROJECT
-    if kind is ConfigKind.GLOBAL:
-        raise ValueError(_GLOBAL_TIER_REFUSAL)
-    if kind in (ConfigKind.PERSON, ConfigKind.COMPANY):
-        return _register_home_tier(project_root, kind, ProjectOperation.INIT, trigger)
-
-    require_own_checkout(project_root)
-    undeclared_capabilities = _establish_repository_and_declaration(project_root)
-    registered_root = resolve_project_root(project_root)
-    _converge_registered_project(project_root, registered_root, undeclared_capabilities, help_desk)
-    return _completed(
-        registered_root,
-        _registered_project_result(registered_root, already_registered=True),
-        ProjectOperation.INIT,
         trigger,
     )
 

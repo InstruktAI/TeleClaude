@@ -511,9 +511,6 @@ def init_subject(
 
     `fields` carries init-time payload data person and company init consume
     (name, email, role, username, slug); computer and global ignore it.
-    Project init is not reachable through this dispatch — it addresses "the
-    caller's checkout", a filesystem context no `SubjectRef` carries, so the
-    CLI edge calls `init_project_subject(root)` directly for that kind.
     """
     # For person/company, the caller addresses `init` with no instance yet; person init
     # can also derive its lookup key from the name before deciding whether it converges.

@@ -50,14 +50,13 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_CREATE,
     CONFIG_PROJECT_GET,
     CONFIG_PROJECT_HELP_DESK_LINKS,
-    CONFIG_PROJECT_INIT,
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
 )
 from teleclaude.config import config
 from teleclaude.config._environment import environment_reference_at_path
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
-from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject, init_project_subject
+from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject
 from teleclaude.config.resource_contract import (
     InvalidCandidate,
     PartialCommitFailure,
@@ -78,7 +77,6 @@ from teleclaude.config.roster import RosterOutcome, RosterRefused
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.configuration_clearance import (
-    HELP_DESK_SECTION,
     ConfigurationOperation,
     ConfigurationTarget,
     ProjectCreationForm,
@@ -94,7 +92,6 @@ from teleclaude.core.endpoints import (
 from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
 from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import person_roles
-from teleclaude.docs_index import get_project_slug
 from teleclaude.invite import invite_person, render_help_desk_links
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
 from teleclaude.project_setup.init_flow import (
@@ -124,9 +121,12 @@ _INVALID_MESSAGE = "Error: {message}{request}"
 _PARTIAL_COMMIT_MESSAGE = (
     "Error: {message}{request}\nThe affected files may be in a mixed state — read them back before retrying."
 )
-_PROJECT_INIT_COMPLETE = "telec config project init complete."
 _PROJECT_CREATE_COMPLETE = "telec config project create complete."
 _PROJECT_ADOPT_COMPLETE = "telec config project adopt complete."
+_KIND_USAGE = "Usage: telec config {kind} <{verbs}>"
+_INIT_KIND_VERBS = "list|get|init|patch"
+_PROJECT_VERBS = "list|get|create|adopt|patch"
+_INIT_VERB = "init"
 _CREATE_VERB = "create"
 _ADOPT_VERB = "adopt"
 _CREATE_USAGE_ERROR = (
@@ -182,7 +182,6 @@ _INIT_COMMAND_DEFS = {
     "global": CONFIG_GLOBAL_INIT,
     "person": CONFIG_PERSON_INIT,
     "company": CONFIG_COMPANY_INIT,
-    "project": CONFIG_PROJECT_INIT,
 }
 _PATCH_COMMAND_DEFS = {
     "computer": CONFIG_COMPUTER_PATCH,
@@ -202,7 +201,8 @@ def handle_config_kind_command(kind: str, args: list[str]) -> None:
         print(f"Error: Unknown config kind: {kind}")
         raise SystemExit(1)
     if not args:
-        print(f"Usage: telec config {kind} <list|get|init|patch>")
+        verbs = _PROJECT_VERBS if subject_kind is ConfigSubjectKind.PROJECT else _INIT_KIND_VERBS
+        print(_KIND_USAGE.format(kind=kind, verbs=verbs))
         raise SystemExit(1)
     verb, verb_args = args[0], args[1:]
     request_id = str(uuid.uuid4())
@@ -211,7 +211,7 @@ def handle_config_kind_command(kind: str, args: list[str]) -> None:
         _handle_list(kind, subject_kind, verb_args, request_id)
     elif verb == "get":
         _handle_get(kind, subject_kind, verb_args, request_id)
-    elif verb == "init":
+    elif verb == _INIT_VERB and subject_kind is not ConfigSubjectKind.PROJECT:
         _handle_init(kind, subject_kind, verb_args, request_id)
     elif verb == "patch":
         _handle_patch(kind, subject_kind, verb_args, request_id)
@@ -425,27 +425,6 @@ def _run_init(
 def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
     parsed = parse_command_args(_INIT_COMMAND_DEFS[kind], args)
     output_format = _output_format(None)
-
-    if subject_kind is ConfigSubjectKind.PROJECT:
-        help_desk = parsed.has(F.FLAG_HELP_DESK)
-        sections = frozenset({HELP_DESK_SECTION}) if help_desk else frozenset()
-        adoption_root = resolve_invocation_roots().adoption_root()
-        _gate(
-            kind,
-            "init",
-            subject_kind,
-            instance=get_project_slug(adoption_root) if help_desk else None,
-            operation=ConfigurationOperation.INIT,
-            sections=sections,
-            request_id=request_id,
-        )
-        _run_init(
-            lambda: init_project_subject(adoption_root, request_id=request_id, help_desk=help_desk),
-            output_format,
-            request_id,
-            completion_line=_PROJECT_INIT_COMPLETE,
-        )
-        return
 
     if subject_kind in _SINGLETON_KINDS:
         _gate(

@@ -68,7 +68,7 @@ class ResourceChangeOutcome(StrEnum):
     least one of its writes remains (a compensation that failed, or a step it
     completed before a later step failed); `unrestored_targets` names each.
     `UNCONFIRMED` means the failure occurred inside a write the engine does
-    not observe step by step (a scaffold, a directory deletion, project init,
+    not observe step by step (a scaffold, a directory deletion, project adoption,
     a token issue, an environment write) and no own-evidence establishes
     either of the others. Forbidden: `ROLLED_BACK` while the operation's own
     evidence shows a write of its own remains, and `PARTIALLY_COMMITTED`
@@ -274,7 +274,7 @@ class OwnEvidence:
     `mark` records a target as a completed, remaining write the moment a step
     succeeds (a single-file replace, a `commit_documents` call). `enter_unobserved`
     flags that the next call is a flow the engine does not observe step by
-    step (a scaffold, a directory deletion, project init, a token issue, an
+    step (a scaffold, a directory deletion, project adoption, a token issue, an
     environment write). `run_observed`'s failure branch reads both: any
     remaining target means `partially_committed`; otherwise a failure inside
     an unobserved flow means `unconfirmed`; otherwise `rolled_back`.

@@ -86,17 +86,8 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
         _render_command(lines, f"{path} {sub_name}", sub_def, depth=min(depth + 1, 6))
 
 
-_HELP_DESK_ADMIN_NOTE = "--help-desk requires administrator authority over the home."
 _HELP_DESK_LINKS_NOTE = (
     "Renders only where the desk is enabled; a Discord visitor sends the identifier as their first message."
-)
-# Plain project init converges a registered project and is judged like adoption, at the caller's own person
-# scope; enabling its help desk is judged at the project, at the admin band.
-_HELP_DESK_PROJECT_INIT_AUTH = CommandAuth(
-    system=_AGENT_REACH,
-    human=_HR_MEMBER_CONTRIB_NEWCOMER,
-    scope=CommandScope.CALLER_PERSON,
-    when_flag=(FlagConditionedAuth(F.FLAG_HELP_DESK.long, CommandScope.INVOCATION, _HR_ADMIN),),
 )
 # Creation is judged at the home it lands in: the caller's own person scope, the named company, or the platform.
 _PROJECT_CREATE_AUTH = CommandAuth(
@@ -1435,8 +1426,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "The name is the project's identity: an invalid name, or one another project on "
                             "this computer already holds, is refused before anything is written.",
                             "The project gets its own repository on main, declares its owner and declares no "
-                            "capabilities yet. Scaffold inside it, then run `telec config project init` there "
-                            "to converge it.",
+                            "capabilities yet. Scaffold inside it, then run `telec config project adopt` there "
+                            "to declare them.",
                         ],
                         auth=_PROJECT_CREATE_AUTH,
                     ),
@@ -1452,19 +1443,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Writes nothing outside the project and the project registry.",
                         ],
                         auth=_PROJECT_ADOPT_AUTH,
-                    ),
-                    "init": CommandDef(
-                        desc="Converge a registered project's plumbing for the caller's checkout",
-                        args="[--help-desk]",
-                        flags=[F.FLAG_HELP, F.FLAG_HELP_DESK],
-                        notes=[
-                            "Sets up git hooks and converges plumbing for a project that is already registered.",
-                            "A folder that is not a registered project is refused, naming "
-                            "`telec config project create` and `telec config project adopt`.",
-                            "Syncs no artifacts — documentation publication is commit-bound.",
-                            _HELP_DESK_ADMIN_NOTE,
-                        ],
-                        auth=_HELP_DESK_PROJECT_INIT_AUTH,
                     ),
                     "patch": CommandDef(
                         desc="Patch one project's configuration",
@@ -1984,7 +1962,6 @@ CONFIG_PROJECT_LIST = CLI_SURFACE["config"].subcommands["project"].subcommands["
 CONFIG_PROJECT_GET = CLI_SURFACE["config"].subcommands["project"].subcommands["get"]
 CONFIG_PROJECT_CREATE = CLI_SURFACE["config"].subcommands["project"].subcommands["create"]
 CONFIG_PROJECT_ADOPT = CLI_SURFACE["config"].subcommands["project"].subcommands["adopt"]
-CONFIG_PROJECT_INIT = CLI_SURFACE["config"].subcommands["project"].subcommands["init"]
 CONFIG_PROJECT_PATCH = CLI_SURFACE["config"].subcommands["project"].subcommands["patch"]
 CONFIG_COMPANY_HELP_DESK_LINKS = CLI_SURFACE["config"].subcommands["company"].subcommands["help-desk-links"]
 CONFIG_PROJECT_HELP_DESK_LINKS = CLI_SURFACE["config"].subcommands["project"].subcommands["help-desk-links"]

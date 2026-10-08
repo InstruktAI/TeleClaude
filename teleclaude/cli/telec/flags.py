@@ -139,9 +139,6 @@ FLAG_PROJECT_PATH = Flag(
     desc="Create an ownerless platform project at this folder outside every home (platform administrators)",
     arity=VALUE,
 )
-FLAG_HELP_DESK = Flag(
-    "--help-desk", desc="Enable this home's help desk and scaffold it (home administrator only)", arity=SWITCH
-)
 
 FLAG_AGENT_STATUS = Flag("--status", desc="Status: available, unavailable, degraded", arity=VALUE)
 FLAG_AGENT_STATUS_REASON = Flag("--reason", desc="Reason for status change", arity=VALUE)

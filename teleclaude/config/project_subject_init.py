@@ -7,7 +7,6 @@ from pathlib import Path
 
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.resource_contract import (
-    InvalidCandidate,
     OwnEvidence,
     ResourceChangeOutcome,
     ResourceOperation,
@@ -27,13 +26,11 @@ from teleclaude.project_setup.init_flow import (
     ProjectInitializationResult,
     ProjectInitializationTrigger,
     adopt_project,
-    converge_project,
     create_project,
     project_identity,
 )
 from teleclaude.services.project_catalog import get_project_catalog_service
 
-_HELP_DESK_HOME_REFUSAL = "a person or company home keeps its help desk through company or global init"
 _NOT_REGISTERED = "project {where} did not register after {operation}"
 
 
@@ -99,27 +96,6 @@ def _run_project_operation(
         revision_after=view.revision,
     )
     return view
-
-
-def init_project_subject(
-    root: Path,
-    *,
-    request_id: str | None = None,
-    trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
-    help_desk: bool = False,
-) -> SubjectView:
-    """Converge the caller's registered folder and return its declared subject view."""
-    subject_kind, identity = _declared_subject(root, project_identity)
-    if help_desk and subject_kind in (ConfigSubjectKind.PERSON, ConfigSubjectKind.COMPANY):
-        raise InvalidCandidate(_HELP_DESK_HOME_REFUSAL)
-    return _run_project_operation(
-        lambda: converge_project(root, trigger=trigger, help_desk=help_desk),
-        where=str(root),
-        subject_kind=subject_kind,
-        identity=identity,
-        operation=ResourceOperation.INIT,
-        request_id=request_id,
-    )
 
 
 def adopt_project_subject(

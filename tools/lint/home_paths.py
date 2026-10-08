@@ -27,6 +27,7 @@ from pathlib import Path
 
 from teleclaude.git import GIT_EXECUTABLE
 
+_HOME_PATH_FOUND = "ERROR: Hardcoded HOME paths found in docs. Run 'telec sync' in the project to set up filters."
 _HOME_PATH_RE = re.compile(r"(?<!@)(/Users/[^/\s]+|/home/[^/\s]+)/\.teleclaude")
 
 
@@ -134,10 +135,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for path in offenders:
         print(path.relative_to(project_root))
-    print(
-        "ERROR: Hardcoded HOME paths found in docs. Run 'telec config project init' to set up filters.",
-        file=sys.stderr,
-    )
+    print(_HOME_PATH_FOUND, file=sys.stderr)
     return 1
 
 
