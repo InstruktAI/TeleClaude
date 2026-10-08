@@ -711,6 +711,22 @@ Scenario: an artifact written or a stamp applied from a slug worktree records th
   And drift derived later from the owning checkout reports no drift for that unchanged snippet
 ```
 
+<!-- planned:drift-stamp-expires-without-overlap -->
+
+#### UC-WDD19: A cosmetic code verdict stands while origin/main advances outside the referenced paths
+
+```gherkin
+Scenario: origin/main advances past a cosmetic code-drift verdict without touching the plan's referenced paths
+  Given a Todo whose implementation-plan has code drift because one of its referenced paths changed after the plan was written
+  And the drift analyzer has stamped that implementation-plan cosmetic
+  When origin/main advances with commits that change none of the plan's referenced paths
+  And the orchestrator calls "telec todo prepare" for the Todo
+  Then the cosmetic verdict still stands for the implementation-plan code class
+  And no new drift analysis is requested for that class
+```
+
+<!-- /planned:drift-stamp-expires-without-overlap -->
+
 ### Cross-context references
 
 - `agent_runtime` — the `/sdlc/drift-analyze` worker session is dispatched
