@@ -19,8 +19,6 @@ inline references inside the source, so the Deployed artifact is one
 self-contained document an agent CLI can read without resolving a tree of
 refs at runtime.
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 Inflation runs as a Sync step. The Source authors hold the canonical content;
 inflation produces the Deployed `AGENTS.md` beside each master, and that
 `AGENTS.md` is the only file it writes there — no per-agent companion such as
@@ -40,33 +38,6 @@ ever lands in a retained subtree. A home entrypoint inlines only activated,
 deployed documentation — never a publisher's unpublished source — apart from
 the home's own recorded tier source. Every Deployed `AGENTS.md` is fully
 inlined: it carries no `@` import for an agent CLI to resolve.
-
-<!-- change:help-desks-as-deployment-output -->
-
-Inflation runs as a Sync step. The Source authors hold the canonical content;
-inflation produces the Deployed `AGENTS.md` beside each master, and that
-`AGENTS.md` is the only file it writes there — no per-agent companion such as
-a `CLAUDE.md` pointer. A project's masters inflate during that project's sync.
-The home masters are a fixed set: the platform home's root `AGENTS.master.md`,
-the platform help desk's `help-desk/AGENTS.master.md`, each declared person's
-and company's root master, and each declared company's
-`help-desk/AGENTS.master.md`. Each is deployment output that convergence renders
-from its template and the home's repository ignores, so publication reads it
-from disk under the master-source rule in
-`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`.
-They inflate when the platform home's recorded source is published, and again
-whenever the Mother's global publication replaces documentation they inline; a refresh that cannot recompile one
-reports the Mother's publication as failed, so a lagging home entrypoint is
-always a visible, replayable failure. That refresh recompiles only a home
-generation whose entrypoints the home's own publication compiled; an earlier
-generation is left to the home's next publication. A master anywhere else in a home,
-including under a home's docs, is not compiled, so no generated entrypoint
-ever lands in a retained subtree. A home entrypoint inlines only activated,
-deployed documentation — never a publisher's unpublished source — apart from
-the home's own recorded tier source. Every Deployed `AGENTS.md` is fully
-inlined: it carries no `@` import for an agent CLI to resolve.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 Only the repository-root `AGENTS.master.md` is a project entrypoint. Its
 generated `AGENTS.md` receives the project-wide progressive baseline index and
@@ -212,8 +183,6 @@ Scenario: The roster lists every declared domain the global configuration does n
 
 #### UC-AMI10: Every home master compiles into its home's entrypoint
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 ```
 Scenario: Home publication inflates the fixed home master set
   Given the platform home's recorded source holds its root AGENTS.master.md and the platform help desk's help-desk/AGENTS.master.md
@@ -226,24 +195,6 @@ Scenario: Home publication inflates the fixed home master set
   And no CLAUDE.md is written beside any of them
   And the home's working tree holds no change the home's history would record
 ```
-
-<!-- change:help-desks-as-deployment-output -->
-
-```
-Scenario: Home publication inflates the fixed home master set
-  Given the platform home holds its root AGENTS.master.md and the platform help desk's help-desk/AGENTS.master.md
-  And a declared person home and a declared company home each hold a root AGENTS.master.md, and the company home a help-desk/AGENTS.master.md
-  And each of those masters is rendered from its template and ignored by the home's repository
-  When publication activates the home's recorded source
-  Then an AGENTS.md is written beside each of those masters
-  And each AGENTS.md carries its master's expanded authored content and required reads, with no @ import left in it
-  And every documentation read it inlines comes from the deployed documentation, except the home's own recorded tier source
-  And no AGENTS.md written there carries a project baseline index or activatable-procedure catalog
-  And no CLAUDE.md is written beside any of them
-  And the home's working tree holds no change the home's history would record
-```
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ```
 Scenario: A master outside the fixed home master set is not compiled
@@ -315,8 +266,6 @@ Scenario: The deployed Claude user settings make AGENTS.md load beside CLAUDE.md
 
 ### Cross-context references
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 - **config** — Provides the project root list and the Mother project identity
   consulted at gating time.
 - **agent_runtime** — Consumes the Deployed `AGENTS.md` at agent CLI startup.
@@ -327,23 +276,6 @@ Scenario: The deployed Claude user settings make AGENTS.md load beside CLAUDE.md
   desk, person, company, and company help desk masters and never a generated
   `AGENTS.md`; a master commit in the
   platform home owes the publication that inflates it.
-
-<!-- change:help-desks-as-deployment-output -->
-
-- **config** — Provides the project root list and the Mother project identity
-  consulted at gating time.
-- **agent_runtime** — Consumes the Deployed `AGENTS.md` at agent CLI startup.
-  The inflated file is the runtime baseline. Claude Code reads it through the
-  project-instructions setting TeleClaude's deployed Claude user settings
-  carry (`third-party/claude-code/instruction-files`).
-- **reconciliation** — Renders every master of the fixed home master set from
-  its template as deployment output. The home's retained set admits none of
-  those masters and never a generated `AGENTS.md`; a declaration commit in the
-  platform home owes the convergence that renders its masters and then the
-  publication that inflates them
-  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ## Known caveats
 

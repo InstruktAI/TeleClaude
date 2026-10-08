@@ -1,5 +1,5 @@
 ---
-description: Machine installation materializes the TeleClaude home's repository layer and every declared person and company home's documentation baselines before the retained history is activated, while help desks and template-rendered home masters are deployment output that convergence renders and no history ever records.
+description: Machine installation materializes the TeleClaude home's repository layer and every declared person and company home's documentation baselines before the retained history is activated, while convergence seeds each missing home master and help desk once and its home's history then records it as the home's own source.
 ---
 
 # Home Template Materialization — Spec
@@ -23,14 +23,16 @@ of material with two renderers.
   curates it (`general/policy/agent-artifact-governance`); the template's name
   decides that through the create-once marker in
   `local/projects/teleclaude/spec/feature/reconciliation/template-installation`.
-- **Deployment output.** The TeleClaude home's root master, each declared person
-  and company home's master, the platform help desk and each company help desk
-  are renderings of their kind's template. They are git-ignored, never part of
-  any repository, and nothing in them changes in place: a target that differs
-  from its rendered template is rewritten, and no history ever records it.
-  Machine installation renders none of them. The configuration-aware
-  convergence renders them at the commit boundary and through `telec sync`
+- **Seeded masters.** Each declared person and company home's master and each
+  enabled company help desk are seeded from their kind's template. Seeding
+  writes a master only while it is absent; an existing master is never
+  rewritten, whatever its content, and the home's history records it like any
+  other source the home owns. Machine installation seeds none of them. The
+  configuration-aware convergence seeds them at the commit boundary and through
+  `telec sync`
   (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+  The TeleClaude home's root master and the platform help desk have no
+  template: they are authored in the home and recorded by its history.
 
 Materialization writes each template's rendered content rather than linking it,
 so an installed home remains valid when the canonical checkout moves and every
@@ -42,14 +44,15 @@ discarded.
 
 The retained-set declaration in the home's repository layer is both the
 declaration consumed by membership decisions and the file recorded by
-activation; no parallel declaration exists in application code. It admits no
-`AGENTS.master.md` and nothing inside a help desk. Every retained target
+activation; no parallel declaration exists in application code. It admits the
+fixed home master set (`local/projects/teleclaude/spec/teleclaude-home-layout`)
+and nothing else inside a help desk. Every retained target
 materialization writes, new or refreshed, enters the activation's record, so a
 refreshed retained file never leaves the home's working tree dirty.
 
-A project's help desk is deployment output of the same kind, rendered into the
-project's working tree by that project's convergence while its declaration
-enables it; machine installation never writes into a project's working tree.
+A project's help desk is seeded the same way, into the project's repository,
+by that project's convergence while its declaration enables it, and the project
+records it; machine installation never writes into a project's working tree.
 
 ## Canonical fields
 
@@ -60,14 +63,12 @@ enables it; machine installation never writes into a project's working tree.
 | Target                                             | Present when                                     | Material                                                    | Rendered by  |
 | -------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------- | ------------ |
 | The TeleClaude home                                | always                                           | `templates/home`: retained-set declaration, editor settings | installation |
-| The TeleClaude home's root master                  | always                                           | its kind's master template                                  | convergence  |
 | A person home, `people/<slug>/`                    | the folder holds its person declaration          | `templates/docs` baselines                                  | installation |
-| A person home's master                             | the folder holds its person declaration          | `templates/home-person`                                     | convergence  |
+| A person home's master                             | the folder holds its person declaration          | `templates/home-person`, create-once                        | convergence  |
 | A company home, `companies/<slug>/`                | the folder holds its company declaration         | `templates/docs` baselines                                  | installation |
-| A company home's master                            | the folder holds its company declaration         | `templates/home-company`                                    | convergence  |
-| The platform help desk, `help-desk/`               | the global declaration enables its help desk     | `templates/help-desk-platform`                              | convergence  |
-| A company help desk, `companies/<slug>/help-desk/` | that company's declaration enables its help desk | `templates/help-desk-company`                               | convergence  |
-| A project help desk, `<project>/help-desk/`        | that project's declaration enables its help desk | `templates/help-desk-project`                               | convergence  |
+| A company home's master                            | the folder holds its company declaration         | `templates/home-company`, create-once                       | convergence  |
+| A company help desk, `companies/<slug>/help-desk/` | that company's declaration enables its help desk | `templates/help-desk-company`, master create-once           | convergence  |
+| A project help desk, `<project>/help-desk/`        | that project's declaration enables its help desk | `templates/help-desk-project`, master create-once           | convergence  |
 
 - **No documentation layer for the TeleClaude home.** The home's `docs/` is the
   published documentation generation
@@ -92,11 +93,10 @@ enables it; machine installation never writes into a project's working tree.
   is rewritten; an identical target is left untouched. A create-once target
   that exists is kept whatever its content. An unresolved placeholder fails
   before any target is written.
-- **Deployment output is ignored, never held.** A desk folder ignores itself
-  through its converged ignore file, and the home's retained set excludes every
-  master, so deployment output is never recorded and never held. A deployment
-  output path that git tracks is not written; convergence reports it with the
-  untrack that resolves it.
+- **Seeded masters are never rewritten.** A master template is create-once, so
+  convergence writes a master only while it is absent and leaves an existing
+  one as it is. A desk's ignore file converges to its kind's template and
+  ignores everything in the desk except what its home records.
 - **Unrecorded changes are held.** A retained target that differs from its
   last record — modified, staged, or present but never recorded, including
   before the history exists — is held: left byte for byte as it is, never
@@ -174,11 +174,10 @@ Then no file under the home's docs/ is written or replaced by materialization
 #### UC-HTM6: Installation renders no help desk
 
 ```gherkin
-Given the global declaration enables the platform help desk
-And a company declaration enables its help desk
+Given a company declaration enables its help desk
 When an agent runs machine installation
-Then nothing is written into the platform help desk or the company help desk
-And neither desk folder enters the activation's record
+Then nothing is written into the company help desk
+And the desk folder does not enter the activation's record
 ```
 
 #### UC-HTM7: A refreshed retained file enters the activation record
@@ -228,5 +227,9 @@ And the refresh is recorded by the activation commit
   because a later checkout no longer carries a matching template.
 - A help desk whose home stops enabling it keeps its folder in place, and the
   desk is no longer hosted.
+- Seeding records nothing. A master convergence seeds stays uncommitted until
+  its home records it, and publication compiles it only from that commit.
+- A template change reaches only masters seeded after it; an existing master
+  keeps its content until its home edits it.
 - One malformed home fails the whole installation. The failure names the path,
   and no home is half-converged.

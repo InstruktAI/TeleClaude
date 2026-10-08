@@ -96,14 +96,13 @@ folder is replaced. The files land in the working tree for the project to commit
 <!-- change:help-desks-as-deployment-output -->
 
 With `--help-desk`, and only for a caller with administrator authority over the
-project, sets the project's help desk as enabled in `teleclaude.yml` and brings
-the project's `help-desk/` folder to the project help-desk template: its master
-is the template's rendering after every such run, and no other file in the
-folder is replaced. An enabled help desk requires the project to subscribe
-`agents`; the configuration refuses a declaration that enables the desk without
-it, naming the field to set. The folder is git-ignored deployment output that
-the project never commits, and the project's convergence keeps it at its
-template for as long as the declaration enables the desk.
+project, sets the project's help desk as enabled in `teleclaude.yml` and seeds
+the project's `help-desk/` folder from the project help-desk template: its
+ignore file converges to the template, its master is written only while absent,
+and no other file in the folder is replaced. An enabled help desk requires the
+project to subscribe `agents`; the configuration refuses a declaration that
+enables the desk without it, naming the field to set. The project commits the
+desk's master, which is then the project's own source.
 
 <!-- /planned-change:help-desks-as-deployment-output -->
 

@@ -33,7 +33,7 @@ isolation is enforced.
 | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | Onboard command           | Company name, inbox path                               | Company directory, meta.yaml, git inbox, company master and local baselines from the platform templates |
 | Machine installation      | Platform templates, declared company homes             | Missing local baselines created                                                                         |
-| Platform home convergence | Platform templates, declared company homes             | Each company master, and each enabled company desk, brought back to its template                        |
+| Platform home convergence | Platform templates, declared company homes             | Each missing company master, and each enabled company desk's missing master, seeded from its template   |
 | Analysis session          | Input files, existing snippets                         | Company doc snippets, updated meta.yaml                                                                 |
 | Publication               | The company's committed `docs/global`                  | The company's published snippets in the shared corpus                                                   |
 | Local index build         | The company's committed `docs/local`                   | The company's local catalog, kept in the company home                                                   |

@@ -276,8 +276,8 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 <!-- change:help-desks-as-deployment-output -->
 
-- **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a root to its declaration: a project's installed git hooks, docs filter driver and help desk, and the platform home's template-rendered masters and help desks
-- **home-template-materialization** — `docs/local/spec/feature/reconciliation/home-template-materialization.md` — materializing the TeleClaude home's repository layer and documentation baselines before activation, and naming which home material is deployment output that convergence renders
+- **project-plumbing-convergence** — `docs/local/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a root to its declaration: a project's installed git hooks, docs filter driver and help desk, and the masters and help desks the platform home seeds
+- **home-template-materialization** — `docs/local/spec/feature/reconciliation/home-template-materialization.md` — materializing the TeleClaude home's repository layer and documentation baselines before activation, and naming which home masters and help desks convergence seeds once
 - **template-installation** — `docs/local/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
 - **config-schema-publication** — `docs/local/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
 - **launcher-code-identity** — `docs/local/spec/feature/reconciliation/launcher-code-identity.md` — signing every macOS launcher with one stable, machine-local authority, unattended, and replacing installed launchers only with a verified set built from changed inputs

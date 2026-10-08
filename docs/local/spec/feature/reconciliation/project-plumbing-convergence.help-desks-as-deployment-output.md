@@ -1,6 +1,6 @@
 ---
 description: Convergence of a root to its declaration — a project's installed git plumbing
-  and help desk, and the platform home's template-rendered masters and help desks — performed
+  and help desk, and the masters and help desks the platform home seeds from templates — performed
   at project initialization, at the commit boundary and by an on-demand maintenance run,
   and never by publication.
 visibility: internal
@@ -36,19 +36,18 @@ crossing and never restated here; what the converged plumbing then does — what
 the hooks check, what the docs pipeline processes — belongs to the contexts that
 own those behaviors.
 
-A root's declaration also decides deployment output that convergence renders
-into it: a project's help desk while the project's declaration enables one, and,
-in the platform home — the repository declaring the global tier, which holds the
-person and company homes — the home's root master, each declared person and
-company home's master, the platform help desk while the global declaration
-enables it, and each company help desk its company's declaration enables. Every
-one of them is the rendering of its kind's template, git-ignored and never part
-of any repository
+A root's declaration also decides which masters convergence seeds into it: a
+project's help desk while the project's declaration enables one, and, in the
+platform home — the repository declaring the global tier, which holds the
+person and company homes — each declared person and company home's master and
+each company help desk its company's declaration enables. Each is seeded from
+its kind's template only while absent, and then belongs to its home, whose
+history records it
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 
 Convergence runs at project initialization for a project. Machine installation
 converges the machine plumbing of the platform home and of the TeleClaude
-checkout, and renders no deployment output. An on-demand maintenance run
+checkout, and seeds no master. An on-demand maintenance run
 (`telec sync`, `local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`)
 performs the whole act for the root it runs in, as one of that root's
 maintenance steps. Publication performs none of it: deploying committed sources
@@ -115,33 +114,32 @@ publication.
   for the root without failing its convergence. Neither affects the hooks or
   the filter driver.
 - **Help desk.** A project whose declaration enables a help desk has its
-  `help-desk/` folder rendered from the project help-desk template on every
-  convergence: an absent or differing file is rewritten, an identical one is
-  left untouched. A project whose declaration does not enable one has nothing
-  rendered, and a desk folder left from an earlier enabling stays in place,
-  no longer hosted.
-- **Platform home deployment output.** The platform home's convergence renders
-  its root master, each declared person and company home's master and each
-  enabled desk under the same content gate. It converges no plumbing of the
-  home, which machine installation owns. A person or company home is
-  declared when its folder holds its tier declaration.
-- **Tracked output is never written.** A deployment output path the root's git
-  tracks is left untouched and reported for that root, naming the untrack that
-  resolves it, without failing the root's convergence.
-- **No tracked file is written.** Convergence writes only untracked machine
-  state and git-ignored deployment output. The one project-tracked file
-  TeleClaude ever writes is the `.gitattributes` docs-filter line, written
-  additively at adoption by its own step and never touched by a later
-  convergence.
+  `help-desk/` folder seeded from the project help-desk template on every
+  convergence: an absent master is written and an existing one is left as it
+  is, whatever its content; the desk's ignore file converges to its template.
+  A project whose declaration does not enable one has nothing seeded, and a
+  desk folder left from an earlier enabling stays in place, no longer hosted.
+- **Platform home masters.** The platform home's convergence seeds each
+  declared person and company home's master and each enabled company desk the
+  same way. The home's root master and the platform help desk have no template
+  and are never written. It converges no plumbing of the home, which machine
+  installation owns. A person or company home is declared when its folder
+  holds its tier declaration.
+- **No existing master is written.** Convergence writes untracked machine state,
+  a desk's ignore file, and masters that are absent. A master that exists is
+  never rewritten, so a recorded master never leaves its home's working tree
+  dirty. The one other project-tracked file TeleClaude ever writes is the
+  `.gitattributes` docs-filter line, written additively at adoption by its own
+  step and never touched by a later convergence.
 - **Installation converges machine plumbing only.** Machine installation's
   convergence of the TeleClaude checkout and of the platform home performs the
-  hooks, filter driver and schema link fields above and renders no help desk
-  and no master.
+  hooks, filter driver and schema link fields above and seeds no help desk and
+  no master.
 - **Fleet convergence is one operation.** A single operation converges every
   registered project root on the machine and the platform home: it enumerates
   the project entries of the project registry — a person or company home on it
   is part of the platform home — compares each root's installed plumbing and
-  deployment output against the current templates and its declaration, and
+  seeded masters against the current templates and its declaration, and
   performs only the actions that close a gap. It is what TeleClaude's
   commit-boundary trigger invokes, and it is invocable on its own. A root that
   already matches is left untouched, an unavailable root is reported rather
@@ -332,10 +330,11 @@ And no tracked file is written and no commit is produced
 
 ## Known caveats
 
-- A help desk master that fleet convergence re-renders has its entrypoint
-  rebuilt by the TeleClaude publication that follows the convergence, in every
-  registered project and in the platform home alike
+- A master convergence seeds is not recorded by it. Its entrypoint is compiled
+  by the publication that follows the commit recording it in its home
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
+- A changed master template reaches no existing master: convergence seeds only
+  absent masters, so an existing master changes only by its home's edit.
 - A changed hook template reaches a machine's registered roots when that change
   reaches the machine's canonical checkout, so installed plumbing lags only
   between a template change and its arrival there; a machine that has not

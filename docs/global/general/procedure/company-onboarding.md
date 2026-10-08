@@ -49,10 +49,8 @@ the company tree and starts no session:
 - Initialize `inbox/` as a git repository for change tracking.
 - Create `meta.yaml` with company name, slug, and creation timestamp.
 - Create the company's `AGENTS.master.md` and its local baseline manifests from
-  the platform's company templates. The master is git-ignored deployment
-  output, brought back to its template on every run and by the platform home's
-  convergence at commit-boundary maintenance and through `telec sync`; the
-  baselines are created once and are then the company's to curate.
+  the platform's company templates. Both are created once and are then the
+  company's own, recorded in the home's history.
 
 <!-- /planned-change:help-desks-as-deployment-output -->
 

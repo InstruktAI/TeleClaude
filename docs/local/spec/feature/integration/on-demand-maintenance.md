@@ -34,8 +34,6 @@ Publication is one of those steps and keeps its own contract
 
 ## Canonical fields
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 - **Location.** A run acts only from the canonical checkout on its main branch.
   From a worktree, from a canonical checkout on another branch, or from a
   directory holding no `teleclaude.yml`, it refuses before any step runs and
@@ -86,62 +84,6 @@ Publication is one of those steps and keeps its own contract
   runs' records accurate.
 - **Repetition.** A run repeated with nothing changed leaves deployed output and
   machine state as the previous run left them.
-
-<!-- change:help-desks-as-deployment-output -->
-
-- **Location.** A run acts only from the canonical checkout on its main branch.
-  From a worktree, from a canonical checkout on another branch, or from a
-  directory holding no `teleclaude.yml`, it refuses before any step runs and
-  names where to run it instead.
-- **Steps.** The owed steps run in the registry's declared order through the
-  commit-boundary executor, with the same structured attempt and outcome
-  records, marked as an on-demand run. Each step's outcome is reported as it
-  completes. A failed step never stops a later one. A run in which any step
-  failed exits non-zero. The run leaves no queued obligation behind: its caller
-  holds the outcome, and running it again is its recovery.
-- **Uncommitted edits.** The step set is resolved from the root's committed
-  declaration. Publication reads committed state, and the masters a repository
-  ignores from disk, under its own contract.
-  Every other step reads the canonical checkout as it stands, exactly as it does
-  at the commit boundary, so an uncommitted edit there can reach its output.
-  When the root's repository holds uncommitted changes, the run says so before
-  its first step, naming the uncommitted paths and, where known, the sessions
-  holding them, and then performs every step. Uncommitted edits never make a run
-  refuse or skip a step.
-- **Plumbing.** Every project's steps include converging that project's own
-  plumbing, whatever else its declaration carries.
-- **Disruptive steps.** Nothing a run performs stops, restarts or reloads a
-  running service. Restarting the daemon and reloading the terminal interface
-  are never performed by a run. During a run, installation deploys none of the
-  service definitions TeleClaude's installation renders, and stops, restarts or
-  reloads no running service. It may still start a service that is not running,
-  and a component it sets up may still rewrite its own scheduler configuration
-  where that reloads nothing. After its steps, the run
-  reports each such change that is owed, with the command that performs it. A
-  restart or reload is owed when a process it refreshes started from an earlier
-  commit than the one the run converged, and the changes between the two owe that
-  step under the root's own bindings. Deploying service definitions is owed when
-  a deployed definition differs from what installation would deploy, or a
-  service is due for withdrawal. A run that establishes nothing is owed adds
-  nothing. A run that cannot establish whether a change is owed, such as which
-  commit a running process started from, says so.
-- **Earlier failures.** A step that an earlier commit-boundary run recorded as
-  failed is named after the run's own steps, with the replay that recovers it.
-  That replay re-runs the recorded action for its original range. The run never
-  replaces or clears that record. The report names the standing integrator as
-  the owner of that replay.
-- **Report order.** Uncommitted edits come first, then step outcomes, then
-  earlier failures, and owed disruptive steps last.
-- **Listing.** `telec sync --list` prints, in order, every step the root's
-  registry declares with what a run would do with it — perform it or only
-  report whether it is owed — and changes nothing.
-- **Concurrency.** A run started while commit-boundary maintenance is still
-  running never performs a step at the same time as that run, and leaves both
-  runs' records accurate.
-- **Repetition.** A run repeated with nothing changed leaves deployed output and
-  machine state as the previous run left them.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ### Use cases
 

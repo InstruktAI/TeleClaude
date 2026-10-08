@@ -27,8 +27,8 @@ them, so a template behaves the same wherever it is installed.
 TeleClaude installs repository-owned templates in several places: service
 definitions during machine installation; the TeleClaude home's repository layer
 and every declared person and company home's documentation baselines, before
-home activation; every help desk and every template-rendered home master,
-whenever convergence renders them
+home activation; every home master and help desk that is absent, whenever
+convergence seeds it
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`);
 TeleClaude-owned git hooks into project and home repositories; project skeleton
 files and a project's local documentation baselines during project

@@ -122,26 +122,23 @@ A help desk's master never requires its home's local documentation
 Whether a `global`, `company`, or `project` home keeps a help desk is a field of
 that home's declaration, and a `patch` of the declaration turns it on or off
 under the same clearance as every other field of it. A person has no help desk.
-A desk is deployment output: rendered from its kind's help-desk template,
-ignored by git in its entirety, and never committed by its home.
+Seeding writes a desk's master only while it is absent; an existing master is
+its home's own source, recorded by the home's history and never rewritten.
 
-The platform and company help desks are scaffolded from their kind's help-desk
-template, in the TeleClaude home's `help-desk/` or a company home's
-`help-desk/`, by every convergence of their home while its declaration enables
-them — that home's `init`, and the platform home's configuration-aware
-convergence at commit-boundary maintenance and through `telec sync` — which also
-brings a desk's master back to its template. Machine installation scaffolds no
-desk
+A company help desk is seeded from the company help-desk template in the
+company home's `help-desk/` by that company's `init` and by the platform home's
+configuration-aware convergence at commit-boundary maintenance and through
+`telec sync`, while its declaration enables it. The platform help desk has no
+template: its master is authored in the TeleClaude home's `help-desk/`. Machine
+installation seeds no desk
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 
-For a project, the project's own convergence scaffolds the help desk in the
+For a project, the project's own convergence seeds the help desk in the
 project's `help-desk/` at commit-boundary maintenance and through `telec sync`
-whenever the project's declaration enables it, and brings the desk's master back
-to its template
+whenever the project's declaration enables it
 (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-`init --help-desk` also enables the help desk and scaffolds it; it needs the
-administrator role for the project, and running it again converges the help
-desk's master to its template.
+`init --help-desk` also enables the help desk and seeds it; it needs the
+administrator role for the project.
 
 A project's declaration that enables its help desk also requires
 `agents.enabled: true` on that project. The requirement is declared once on the

@@ -104,7 +104,7 @@ declared person and company home, and into every enabled help desk among them
 <!-- change:help-desks-as-deployment-output -->
 
 TeleClaude's templates reach the home, every declared person and company home,
-and every enabled help desk among them in two ways
+and every enabled company help desk among them in two ways
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`):
 
 - Machine installation writes the home's repository layer: its `.gitignore`
@@ -112,13 +112,15 @@ and every enabled help desk among them in two ways
   or company's local baseline manifests under `docs/local/` are created once,
   then belong to that home.
 - Convergence, at the home's commit-boundary maintenance and in `telec sync`,
-  renders each home's `AGENTS.master.md` and each enabled help desk from their
-  templates whenever they differ, so an edit made in place does not last
-  (`general/policy/agent-artifact-governance`). These are deployment output:
-  the home's repository ignores them and never records them.
+  seeds each person's and company's `AGENTS.master.md` and each enabled company
+  help desk from their templates while they are absent. A seeded master then
+  belongs to its home, whose history records it
+  (`general/policy/agent-artifact-governance`).
+- The home's root `AGENTS.master.md` and the platform help desk have no
+  template; they are authored in the home.
 - The platform help desk is the home's `help-desk/`; a company's help desk is
   `companies/<slug>/help-desk/`. Each is a folder of its home, never a
-  repository of its own, and ignores itself whole.
+  repository of its own.
 - The home's `docs/` receives no template.
 
 <!-- /planned-change:help-desks-as-deployment-output -->
@@ -141,8 +143,6 @@ across boots belongs at the home root beside the pidfile.
 
 ### Home entrypoints
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 The home masters are a fixed set: the home root's `AGENTS.master.md`, the
 platform help desk's `help-desk/AGENTS.master.md`, each declared person's and
 company's root master, and each declared company's
@@ -154,24 +154,6 @@ anywhere else in a home, including under a home's docs, is not compiled, so no
 generated entrypoint ever lands in a retained subtree. The `AGENTS.md` beside
 each master is generated: it is never retained, never edited, and never a
 placement target. The home holds no generated `CLAUDE.md`.
-
-<!-- change:help-desks-as-deployment-output -->
-
-The home masters are a fixed set: the home root's `AGENTS.master.md`, the
-platform help desk's `help-desk/AGENTS.master.md`, each declared person's and
-company's root master, and each declared company's
-`companies/<slug>/help-desk/AGENTS.master.md`. The home's retained set admits
-none of them: each is deployment output convergence renders from its template,
-and publication reads it from disk to inflate it
-(`local/projects/teleclaude/spec/feature/context/agents-master-inflation`). A
-change to a home's declaration owes the convergence that renders its masters
-and the publication that inflates them. A master anywhere else in a home,
-including under a home's docs, is not compiled, so no generated entrypoint ever
-lands in a retained subtree. The `AGENTS.md` beside each master is generated:
-it is never retained, never edited, and never a placement target. The home
-holds no generated `CLAUDE.md`.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ### Invariants
 

@@ -54,11 +54,11 @@ the company, and a taxonomy directory appears when its first snippet is written.
 <!-- change:help-desks-as-deployment-output -->
 
 `telec config company init` creates this home. The company's master and its
-help desk's master are deployment output, ignored by git and never committed:
-the platform home's convergence brings them back to their templates at
-commit-boundary maintenance and through `telec sync`. The local baseline
-manifests are created once and then curated by the company, and a taxonomy
-directory appears when its first snippet is written.
+help desk's master are seeded from their templates while absent — by that init
+and by the platform home's convergence at commit-boundary maintenance and
+through `telec sync` — and then belong to the company, whose history records
+them. The local baseline manifests are created once and then curated by the
+company, and a taxonomy directory appears when its first snippet is written.
 
 <!-- /planned-change:help-desks-as-deployment-output -->
 

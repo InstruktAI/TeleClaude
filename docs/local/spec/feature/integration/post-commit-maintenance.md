@@ -59,27 +59,12 @@ contract governs only what happens when maintenance runs.
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 - **Committed source.** A publication action is selected by its recorded range
   and publishes the homes that range touched at the repository's committed
   `main` tip, read under publication serialization
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
   Every other repository remains at its previously activated revision until its
   own maintenance or `telec sync` runs. Working-tree files are never inputs.
-
-<!-- change:help-desks-as-deployment-output -->
-
-- **Committed source.** A publication action is selected by its recorded range
-  and publishes the homes that range touched at the repository's committed
-  `main` tip, read under publication serialization
-  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
-  Every other repository remains at its previously activated revision until its
-  own maintenance or `telec sync` runs. Working-tree files are never inputs,
-  apart from the masters a repository ignores, which publication reads from
-  disk under its master-source rule.
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 - **Recovery.** A failed action is replayed through this executor for its
   original recorded range and action id, with the same attempt and outcome
@@ -323,8 +308,6 @@ And after every owed action succeeds, a log read whose window covers the activat
 But a read whose window misses that interval does not close it
 ```
 
-<!-- planned-change:help-desks-as-deployment-output -->
-
 #### UC-PCM18: A master commit in the platform home owes publication
 
 ```gherkin
@@ -336,22 +319,6 @@ And an agent reading the structured records observes the immutable range and the
 And no generated AGENTS.md beside those masters enters the commit, because the retained set does not admit it
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
-
-<!-- change:help-desks-as-deployment-output -->
-
-#### UC-PCM18: A declaration commit in the platform home owes convergence, then publication
-
-```gherkin
-Given the platform home carries the installed maintenance hook
-And its retained set admits no AGENTS.master.md and no generated AGENTS.md
-When a commit on the platform home's canonical main records a change to the global declaration, or to a declared person's or company's declaration
-Then convergence and then publication are included in the maintenance owed by that activation range
-And an agent reading the structured records observes the immutable range and both actions' terminal outcomes
-And no AGENTS.master.md or AGENTS.md enters any commit of the home
-But the same path shape in an ordinary project does not acquire a home-only maintenance binding
-```
-
-<!-- /planned-change:help-desks-as-deployment-output -->
 
 ## See Also
 
