@@ -85,9 +85,9 @@ platform's templates
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 A person or company home receives its kind's `AGENTS.master.md` and its local
 baseline manifests; a project that subscribes `docs` receives its local
-baseline manifests. A master is brought to its template's rendering on every
-run, while a baseline is created only when absent and otherwise stays as its
-home keeps it. No documentation taxonomy directory is created.
+baseline manifests. A master and a baseline are each written only while
+absent; an existing one stays as its home keeps it. No documentation taxonomy
+directory is created.
 <!-- change:retire-project-init -->
 
 For a person or a company, `init` also scaffolds that home from the platform's
@@ -95,9 +95,9 @@ templates
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 A person or company home receives its kind's `AGENTS.master.md` and its local
 baseline manifests, and adopting a project that subscribes `docs` gives it its
-local baseline manifests. A master is brought to its template's rendering on
-every run, while a baseline is created only when absent and otherwise stays as
-its home keeps it. No documentation taxonomy directory is created.
+local baseline manifests. A master and a baseline are each written only while
+absent; an existing one stays as its home keeps it. No documentation taxonomy
+directory is created.
 <!-- /planned-change:retire-project-init -->
 
 <!-- planned-change:help-desks-as-deployment-output -->
