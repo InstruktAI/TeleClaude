@@ -15,7 +15,7 @@ visibility: 'public'
 
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately while its retained artifacts stay readable until purge, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
 
-The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
+The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The worktree is detached from its active location into a uniquely named entry in the project's worktree trash area on the same filesystem; removal completion does not wait for that entry's recursive deletion. The daemon's existing maintenance pass reclaims detached entries at startup and periodically, off the event loop. The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
 Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded. A caller whose session is bound to the removed slug is released from that binding by the removal, so it can go on to drive another Todo. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
 
@@ -217,6 +217,16 @@ And the cleanup is committed automatically before removal reports success
 But if an affected path cannot be changed and committed safely, removal faults with the slug, source path, line, and reason
 And the Todo remains live with its pending material unchanged
 And automation-only marker cleanup creates no snippet-review obligation
+```
+
+#### UC-TR-DEFERRED-WORKTREE-RECLAIM: Removal releases the working location before bulk reclamation
+
+```gherkin
+Given a human operator removes a non-draft Todo with an active worktree
+When removal completes
+Then the worktree's active location is released for reuse
+And recursive deletion of the detached worktree is deferred to background maintenance
+And removal completion does not wait for that recursive deletion
 ```
 
 ### Cross-context references

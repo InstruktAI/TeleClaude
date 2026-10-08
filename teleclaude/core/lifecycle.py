@@ -21,7 +21,6 @@ from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ProjectRefreshTrigger, ProjectsChangedContext, TeleClaudeEvents
 from teleclaude.core.models import SessionSnapshot
-from teleclaude.core.next_machine.delivery import remove_legacy_worktree_trash
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
@@ -51,7 +50,6 @@ logger = get_logger(__name__)
 _CUTOVER_GENERATIONS_SEEDED_EVENT = "lifecycle_cutover_generations_seeded"
 _DISCORD_SEND_INTENTS_RECONCILED_EVENT = "lifecycle_discord_send_intents_reconciled"
 
-_LEGACY_WORKTREE_TRASH_TASK = "legacy-worktree-trash-removal"
 _WORKTREE_HOME_RECONCILE_TASK = "worktree-home-reconcile"
 _FINAL_OUTPUT_RECONCILE_TASK = "final-output-reconcile"
 _REMINDER_SCHEDULER_TASK = "reminder-scheduler"
@@ -163,7 +161,6 @@ class DaemonLifecycle:
         await self.api_server.start()
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
         logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
-        self._schedule_legacy_worktree_trash_removal()
         self._schedule_worktree_home_reconciliation()
         self._schedule_final_output_reconciliation()
 
@@ -218,19 +215,6 @@ class DaemonLifecycle:
         omitted_intent_count = await reconcile_pending_discord_send_intents()
         if omitted_intent_count:
             logger.info(_DISCORD_SEND_INTENTS_RECONCILED_EVENT, omitted_count=omitted_intent_count)
-
-    def _schedule_legacy_worktree_trash_removal(self) -> None:
-        """Clear leftover worktree trash outside the startup path."""
-        self.task_registry.spawn(
-            self._remove_legacy_worktree_trash_for_local_projects(),
-            name=_LEGACY_WORKTREE_TRASH_TASK,
-        )
-
-    async def _remove_legacy_worktree_trash_for_local_projects(self) -> None:
-        projects = await command_handlers.list_projects_with_todos()
-        for project in projects:
-            if project.path:
-                await asyncio.to_thread(remove_legacy_worktree_trash, project.path)
 
     def _schedule_worktree_home_reconciliation(self) -> None:
         self.task_registry.spawn(

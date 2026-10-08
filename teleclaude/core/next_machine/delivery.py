@@ -12,6 +12,7 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -29,9 +30,10 @@ logger = get_logger(__name__)
 
 GitNameSetFailureHandler = Callable[[list[str], str], None]
 
-_WORKTREE_REMOVAL_FAILED = "worktree removal failed for %s: %s"
-_LEGACY_WORKTREE_TRASH_DIR = ".trash"
-_LEGACY_TRASH_REMOVAL_FAILED = "legacy worktree trash removal failed for %s: %s"
+_WORKTREE_DETACH_FAILED = "worktree detachment failed for %s: %s"
+_WORKTREE_TRASH_DIR = ".trash"
+_WORKTREE_TRASH_ENTRY_TEMPLATE = "{slug}-{nonce}"
+_WORKTREE_TRASH_RECLAIM_FAILED = "worktree trash reclaim failed for %s: %s"
 _WORKTREE_HOME_RELEASE_FAILED = "worktree home release failed for %s: %s"
 
 
@@ -267,19 +269,27 @@ def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
             logger.warning("Failed to archive %s/%s: %s", slug, dirname, exc)
 
 
-def remove_legacy_worktree_trash(cwd: str) -> None:
-    """Delete the ``trees/.trash`` directory released worktrees were once parked in.
-
-    Cleanup now removes worktrees directly; this only clears what the retired
-    deferral left behind on a machine that has not run since.
-    """
-    trash_dir = Path(cwd) / WORKTREE_DIR / _LEGACY_WORKTREE_TRASH_DIR
+def reclaim_worktree_trash(cwd: str) -> None:
+    """Reclaim detached worktrees while keeping the container available to writers."""
+    trash_dir = Path(cwd) / WORKTREE_DIR / _WORKTREE_TRASH_DIR
     try:
-        shutil.rmtree(trash_dir)
+        entries = sorted(trash_dir.iterdir())
     except FileNotFoundError:
         return
     except OSError as exc:
-        logger.warning(_LEGACY_TRASH_REMOVAL_FAILED, trash_dir, exc)
+        logger.warning(_WORKTREE_TRASH_RECLAIM_FAILED, trash_dir, exc)
+        return
+
+    for entry in entries:
+        try:
+            if entry.is_symlink() or entry.is_file():
+                entry.unlink(missing_ok=True)
+            elif entry.is_dir():
+                shutil.rmtree(entry)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning(_WORKTREE_TRASH_RECLAIM_FAILED, entry, exc)
 
 
 def cleanup_delivered_slug(
@@ -299,16 +309,19 @@ def cleanup_delivered_slug(
     # 0. Archive binary artifacts (art/, html/) from workspace/ before cleanup
     _archive_binary_artifacts(project_root, slug)
 
-    # 1. Remove the worktree, then drop its git bookkeeping
+    # 1. Detach the worktree for background reclamation, then prune its bookkeeping.
     worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
         _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=cwd, timeout=None)
+        trash_dir = project_root / WORKTREE_DIR / _WORKTREE_TRASH_DIR
+        trash_path = trash_dir / _WORKTREE_TRASH_ENTRY_TEMPLATE.format(slug=slug, nonce=uuid4().hex)
         try:
-            shutil.rmtree(worktree_path)
+            trash_dir.mkdir(parents=True, exist_ok=True)
+            worktree_path.rename(trash_path)
         except FileNotFoundError:
             pass
         except OSError as exc:
-            logger.warning(_WORKTREE_REMOVAL_FAILED, slug, exc)
+            logger.warning(_WORKTREE_DETACH_FAILED, slug, exc)
         _run_git_cmd(["worktree", "prune", "--expire=now"], cwd=cwd, timeout=None)
 
     remove_worktree_trust(worktree_path)

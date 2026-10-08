@@ -32,7 +32,12 @@ from teleclaude.core.injected_text import (
     InjectedTextSourceFeature,
     semantic_envelope,
 )
-from teleclaude.core.next_machine.delivery import _run_git_cmd, git_name_set, parse_git_porcelain_paths
+from teleclaude.core.next_machine.delivery import (
+    _run_git_cmd,
+    git_name_set,
+    parse_git_porcelain_paths,
+    reclaim_worktree_trash,
+)
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -452,6 +457,7 @@ class MaintenanceService:
                     await asyncio.sleep(3600)
                 first_run = False
 
+                await self._cleanup_worktree_trash()
                 await self._cleanup_inactive_sessions()
                 await self._cleanup_removed_todos()
                 await session_cleanup.emit_recently_closed_session_events()
@@ -580,6 +586,12 @@ class MaintenanceService:
 
             # Open sessions are never auto-closed. Users and agents close them explicitly.
             # The cleanup routine only purges closed sessions past the retention window.
+
+    async def _cleanup_worktree_trash(self) -> None:
+        """Reclaim released worktrees outside caller execution and the event loop."""
+        for project_root in load_roots():
+            if is_project_checkout(project_root):
+                await asyncio.to_thread(reclaim_worktree_trash, str(project_root))
 
     async def _cleanup_removed_todos(self) -> None:
         """Finalize soft-removed todos past the retention window across every project DB.
