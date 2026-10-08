@@ -1,8 +1,9 @@
 ---
-description: Every reaction to a platform event runs as an independent consumer that is handed each event it declares interest in once, keeps its own progress through the stream, and retries and dead-letters its own failures without delaying or hiding any other consumer.
+description: Every reaction to a platform event runs as an independent consumer that
+  is handed each event it declares interest in once, keeps its own progress through
+  the stream, and retries and dead-letters its own failures without delaying or hiding
+  any other consumer.
 visibility: internal
-delivered_by:
-  - consumer-framework
 ---
 
 # Event Consumers — Spec

@@ -1,6 +1,6 @@
 ---
 visibility: internal
-description: Frozen v1 pointer to the executable event catalog — the attributes every platform event states about itself, the event type declarations producers construct and the catalog is generated from, and the feature contracts that consume them.
+description: Frozen v1 pointer to the executable event catalog — the attributes every platform event states about itself, the event type declarations producers construct and the catalog is generated from, the consumers that react to events, and the feature contracts that consume them.
 ---
 
 # Event Catalog — Spec
@@ -161,10 +161,34 @@ declaration in full
 (`local/projects/teleclaude/spec/feature/event-catalog/event-discovery`). Both
 read the generated catalog, so what an agent discovers is what producers emit.
 
+### Consumption
+
+Every reaction to platform events is a consumer with its own progress through
+the stream on each computer
+(`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`):
+
+- **Interest** is declared from event attributes only: type patterns, whether
+  the consumer acts only on events its own computer emitted, and optionally the
+  subject kinds or origin kinds it answers.
+- **Type patterns** are an exact type name, a whole-segment prefix followed by
+  `.*`, or `*`. The catalog owns this one matcher; every context that lets an
+  author select events by type pattern matches with it.
+- **Duplicate protection** is the platform's: a consumer is handed an event
+  once per event id while its record of the event is retained.
+- **Retry and dead letter** are per consumer: bounded attempts, then the event
+  is parked as that consumer's dead letter and announced, and the consumer
+  continues.
+
+The integration trigger, the lifecycle router, and correlation are consumers
+that act only on events their own computer emitted. The notification path —
+trust, deduplication, enrichment, classification, and the notification
+projector — runs as the system pipeline.
+
 ### Ownership boundary
 
 The catalog owns registry shape, discovery metadata, the reference kinds, the
-state vocabulary, and the envelope contract. The bounded context that produces an event owns its
+state vocabulary, the envelope contract, the type-pattern matcher, and the consumer runtime: progress,
+duplicate protection, retry, and dead letter. The bounded context that produces an event owns its
 semantic name, data meaning, and emission invariant; consuming contexts own
 their local reaction. Catalog registration does not transfer either
 responsibility.
@@ -189,6 +213,7 @@ responsibility.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md
 - docs/local/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction.md
+- docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
 - docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md
 - docs/local/adr/0118-an-event-states-its-origin-and-a-home-is-a-consumers.md
 - docs/local/spec/feature/event-catalog/event-envelope.md

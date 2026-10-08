@@ -471,15 +471,7 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 
 - `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.
 
-<!-- planned-change:consumer-framework -->
-
-- `integration` — the lifecycle router cartridge consumes the todo-created event and dispatches cartridge-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
-
-<!-- change:consumer-framework -->
-
 - `integration` — the lifecycle router consumer consumes the todo-created event and dispatches lane-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
-
-<!-- /planned-change:consumer-framework -->
 
 - `agent_runtime` — the creative state machine driven by `telec todo design` spawns and supervises creative sessions through `agent_runtime`.
 
