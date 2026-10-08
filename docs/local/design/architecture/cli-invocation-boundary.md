@@ -155,6 +155,14 @@ one, whose code is delivered code; that behavior is verified after delivery
 
 ## Failure modes
 
+<!-- planned:isolate-todo-command-dependencies -->
+
+A command-local dependency is validated when its selected handler loads. An
+import failure faults the command when that dependency loads; a successful sibling or
+help invocation does not establish the deferred leaf's importability. Validation
+covers the selected branch-to-leaf load paths, not just the shared router.
+<!-- /planned:isolate-todo-command-dependencies -->
+
 <!-- planned-change:isolate-todo-command-dependencies -->
 
 The shared todo router eagerly loads local-read and list/show/stamp modules and
