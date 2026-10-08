@@ -20,15 +20,6 @@ the files.
 
 ## Steps
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-1. **Scaffold with the framework's own generator, always** — the current
-   `npm create` / `create-next-app` incantation for the chosen flavor. Never
-   deploy scaffold files from a blessed folder — a baked scaffold is a stale
-   cache of the generator.
-
-<!-- change:personal-assistant-project-creation -->
-
 1. **Scaffold with the framework's own generator, always** — the current
    `npm create` / `create-next-app` incantation for the chosen flavor, aimed at
    the project folder `telec config project create` made (target `.`) rather
@@ -39,8 +30,6 @@ the files.
    `create-next-app` is one such generator: it accepts only a fixed list of
    pre-existing files, and `teleclaude.yml` is not on it (see See Also). Never deploy scaffold files from a blessed
    folder — a baked scaffold is a stale cache of the generator.
-
-<!-- /planned-change:personal-assistant-project-creation -->
 
 2. **Package manager ruling**: pnpm blessed for greenfield; in any existing
    repo the lockfile is law; never mix. The button contract is
@@ -74,8 +63,4 @@ the files.
 - ~/.teleclaude/docs/sdlc/concept/delivery-portfolio.md
 - ~/.teleclaude/docs/sdlc/policy/ci-pipeline-conventions.md
 
-<!-- planned:personal-assistant-project-creation -->
-
 - https://github.com/vercel/next.js/blob/v16.4.0/packages/create-next-app/helpers/is-folder-empty.ts — the pre-existing files `create-next-app` accepts in its target folder (v16.4.0); re-check against the version in use.
-
-<!-- /planned:personal-assistant-project-creation -->

@@ -28,12 +28,15 @@ leading/trailing hyphens and no consecutive hyphens. The stripped slug is
 returned; anything that fails the pattern raises a validation error and the
 schema layer surfaces the failure on the `project_slug` field.
 
-The slug is _populated_ — not validated — by project adoption, the sole writer
-of `~/.teleclaude/projects.yaml` (`local/projects/teleclaude/spec/feature/config/project-registry`).
+The slug is _populated_ — not validated — by project creation, which takes it
+from the name it is given, and by project adoption: the two writers of
+`~/.teleclaude/projects.yaml` (`local/projects/teleclaude/spec/feature/config/project-registry`).
+A name that is not a valid slug is refused by creation before anything is
+written.
 
 Existing project files whose
-`project_slug` is still missing or empty load successfully as `None`; init then
-fills the value during registration.
+`project_slug` is still missing or empty load successfully as `None`; adoption
+then fills the value during registration.
 
 ## Canonical fields
 
@@ -67,7 +70,7 @@ When the project overlay's slug validator runs
 Then trimming the value yields ""
 And the validator returns None (not a validation error)
 And the project overlay's project_slug is None
-And the project is accepted so it can be registered by telec config project init
+And the project is accepted so it can be registered by telec config project adopt
 ```
 
 #### UC-CFG-SLUG-4: Whitespace-only string normalizes to None
@@ -92,13 +95,13 @@ And the schema layer surfaces the validation failure on the project_slug field
 And the project overlay loader raises before the app config is returned
 ```
 
-#### UC-CFG-SLUG-6: Project initialization fills missing slug
+#### UC-CFG-SLUG-6: Project adoption fills missing slug
 
 ```
 Given a project root /repos/my-project whose teleclaude.yml has no project_slug
 And the project overlay loader returns an overlay instance with project_slug = None
-When the operator runs `telec config project init` inside /repos/my-project
-Then init computes a slug from the project (typically via normalize_slug on the directory name)
+When the operator runs `telec config project adopt` inside /repos/my-project
+Then adoption computes a slug from the project (typically via normalize_slug on the directory name)
 And writes the slug into the project's teleclaude.yml
 And appends the absolute path to ~/.teleclaude/projects.yaml
 And subsequent loads return the project overlay's project_slug = "<computed-slug>"
@@ -113,13 +116,14 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
   the per-project log namespace.
 - **Consumed by the knowledge bounded context (docs indexing)** — the slug
   is the second segment of every `local/projects/<slug>/…` identity the project owns.
-- **Written by `telec config project init`** — the sole writer of the project
-  registry; also fills `project_slug` in the project's own
+- **Written by `telec config project create` and `telec config project adopt`**
+  — the two writers of the project registry; creation takes the slug from the
+  name it is given, and adoption fills `project_slug` in the project's own
   `teleclaude.yml` when missing.
 
 - **Not validated by the publication pipeline** — publication does not register
-  projects; the registry-write responsibility belongs entirely to
-  `telec config project init`.
+  projects; the registry-write responsibility belongs entirely to project
+  creation and adoption.
 
 ## Allowed values
 
@@ -136,7 +140,7 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
   distinction so legacy configs load.
 - **The validator does not assert uniqueness.** Format compliance is checked at
   load time; uniqueness across registered projects is the responsibility of
-  `telec config project init` (which uses `ensure_unique_slug` against the registry).
+  project creation and adoption (which check the slug against the registry).
   Two project files on disk with the same `project_slug` will each load
   successfully — the collision only matters at registration / lookup time.
 - **`validate_slug` is the single source of slug format.** Any caller that

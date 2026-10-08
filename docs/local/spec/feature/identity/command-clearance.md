@@ -506,16 +506,6 @@ supplies.
   Machine and global configuration, and the listing, creation and management of
   people and companies, are judged at platform scope.
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-- Initializing a company or a project with `--help-desk` is judged at the home
-  whose help desk it enables, under the administrator band: a company init at the
-  company it names (its `--slug`, otherwise its normalized name), a project init at
-  the project of the checkout it initializes. The same init without the flag stays
-  a platform-scope act.
-
-<!-- change:personal-assistant-project-creation -->
-
 - Initializing a company or a project with `--help-desk` is judged at the home
   whose help desk it enables, under the administrator band: a company init at the
   company it names (its `--slug`, otherwise its normalized name), a project init at
@@ -529,8 +519,6 @@ supplies.
   folders a session can reach is not decided here. These bands admit every role
   but customer, so a registered person without a platform role creates in their
   own home, adopts, and converges.
-
-<!-- /planned-change:personal-assistant-project-creation -->
 
 - A command that names a target session is judged at the project that session runs
   in.

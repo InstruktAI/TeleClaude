@@ -1,5 +1,5 @@
 ---
-description: 'Complete telec config project init pipeline — project git plumbing, artifact sync, event domain seeding, project registration.'
+description: 'The project setup pipeline that telec config project create, adopt and init share — repository, placement and owner, capabilities, git plumbing, registration.'
 visibility: 'public'
 ---
 
@@ -7,9 +7,19 @@ visibility: 'public'
 
 ## Goal
 
-Bootstrap a project for TeleClaude by configuring project git plumbing, syncing
-artifacts, seeding event domains, and registering the project root. Machine-global
-agent infrastructure is installed by the TeleClaude checkout's `make install`.
+Set a project up for TeleClaude. Three commands share this pipeline:
+
+- `telec config project create <name>` makes a new, empty project and runs it.
+  The project lands in the caller's own home's `projects/<name>`, in a company's
+  `projects/<name>` with `--company <slug>`, or, for a platform administrator,
+  at a folder outside every home with `--path <dir>`.
+- `telec config project adopt` runs it for the folder the caller stands in,
+  registering existing work where it already is.
+- `telec config project init` re-runs it for a project already registered, to
+  converge it. It creates and adopts nothing.
+
+Machine-global agent infrastructure is installed by the TeleClaude checkout's
+`make install`.
 
 Initialization starts no agent session. AI-driven project analysis and quality-config
 assessment are separate sessions the operator starts explicitly — see the
@@ -17,16 +27,31 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ## Preconditions
 
-- The project directory exists and contains source files (or is being initialized).
+- For `create`: the name is a valid slug that no project on this computer holds.
+- For `adopt`: the folder holds the project's work.
+- For `init`: the folder is a registered project. For any other folder `init`
+  refuses and names `create` and `adopt`.
 - `telec` CLI is available and the daemon is running.
 
 ## Steps
 
+### 0. Check placement and owner
+
+Before any later step writes, the pipeline checks where the project sits. A
+project `create` makes inside a home lands directly in that home's `projects/`
+folder; `adopt` keeps a project wherever it already is. Inside a home the project
+declares that home's owner — `create` and `adopt` record it — and a declaration
+naming any other owner, or none, is refused. Outside every home the
+project keeps the owner it declares, or none; a project `create` makes there has
+none.
+
 ### 1. Ensure git repository
 
 Initializes a git repository on the `main` branch when the folder is not already
-inside one. A folder that is already inside a repository keeps its repository and
-branches as they are.
+inside one, or when the repository it is inside is the global home's: the global
+home's repository never holds a project. A folder inside any other repository
+keeps its repository and branches as they are. `create` always starts a new
+repository.
 
 Source: `teleclaude/project_setup/git_repo.py:ensure_git_repo()`
 
@@ -41,6 +66,9 @@ blocks are materialized — an explicit declaration is preserved, never overwrit
 The resolved subscriptions are then projected as markers under the repository's
 common git directory, where the installed shell plumbing reads them by existence
 check.
+
+A project `create` makes is empty, so it declares no capability block yet. The
+first `init` after its content is scaffolded infers them from what was built.
 
 This step runs before any capability-gated step below, so a project receives only the
 plumbing it subscribes to. Everything downstream reads the declaration; nothing
@@ -103,18 +131,12 @@ byte-for-byte unchanged, with no hook and no filter written or read for it.
 
 Source: `teleclaude/project_setup/plumbing.py:converge_plumbing()`
 
-### 5. Sync project artifacts
+### 5. Publish nothing
 
-Runs the bootstrap sync — validation runs and reports findings without blocking — to build
-snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to
-agent runtimes.
-
-This step happens before slug persistence because `sync_project_artifacts()`
-materializes a bare `teleclaude.yml` for fresh projects. `telec config project init` then
-rewrites that file in place to guarantee `project_slug` exists before the
-project is registered.
-
-Source: `teleclaude/project_setup/sync.py:sync_project_artifacts()`
+The pipeline runs no artifact sync and publishes nothing. Snippet indexes,
+generated `AGENTS.md` entrypoints, and distributed runtime artifacts reach
+readers from committed state at the commit boundary
+(`general/procedure/doc-snippet-authoring`).
 
 ### 6. Deploy the quality skeleton (`code` only)
 
@@ -128,18 +150,19 @@ Source: `teleclaude/project_setup/skeleton.py:deploy_skeleton()`
 
 ### 7. Ensure `project_slug` and register the project root
 
-Reads `teleclaude.yml`, ensures `project_slug` is set (deriving one from
-`project_name` or the directory name via `normalize_slug` when missing or
-invalid), and writes it back in place using comment-preserving YAML. Then
-appends the project's durable main checkout to `~/.teleclaude/projects.yaml`
+Reads `teleclaude.yml`, ensures `project_slug` is set (the name `create` was given,
+or for `adopt` one derived from `project_name` or the directory name via
+`normalize_slug` when missing or invalid), and writes it back in place using
+comment-preserving YAML. `create` and `adopt` then append the project's durable main checkout to `~/.teleclaude/projects.yaml`
 idempotently. The registered path is always that canonical checkout: invoked
 from a linked worktree, initialization resolves back to the owning checkout, so
 an ephemeral worktree path never enters the registry.
 
-Adoption is the only writer of the project registry, and this procedure is how
-a project is adopted, whether `telec config project init` or the daemon's
-add-project request invokes it. A folder whose identity another registry entry
-already holds is refused before any step writes, and a folder declaring the person
+Creation and adoption are the only writers of the project registry, whether
+`telec config project create`, `telec config project adopt`, or the daemon's
+add-project request invokes them; `init` records nothing. A folder whose
+identity another registry entry already holds is refused before any step
+writes, and a folder declaring the person
 or company tier is recorded without these steps. Publication must not mutate
 `~/.teleclaude/projects.yaml`. Once registered, the project is visible to
 `ProjectCatalogService` and every consumer that iterates projects (resolution of
@@ -154,15 +177,16 @@ Merges default event domain configurations into the global config
 (`~/.teleclaude/teleclaude.yml`) under `event_domains.domains`. Idempotent — skips
 if domains already have entries, preserving user customizations.
 
-This step applies to every project because event domains are global infrastructure
-that all projects share.
+Only `init` runs this step, and only for a caller whose platform role is
+member or administrator. For any other caller `init` converges the project and
+skips this step. `create` and `adopt` skip it.
 
 Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
 ### 9. Watcher ownership
 
-`telec config project init` does **not** install watchers. It registers the project root in
-`~/.teleclaude/projects.yaml`. Machine-global setup is installed by `make install`,
+The pipeline does **not** install watchers. `create` and `adopt` register the
+project root in `~/.teleclaude/projects.yaml`. Machine-global setup is installed by `make install`,
 and service startup/install is owned by `make start`; the global watcher reads this
 manifest to decide which projects to watch and sync surgically.
 
@@ -176,16 +200,17 @@ Source: `teleclaude/project_manifest.py:register_root()`
   project subscribes to — a project subscribing neither `code` nor `docs` receives none
   of them.
 
-- `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
-- Artifacts synced and indexes built.
-- Event domains seeded in global config (if not already populated).
+- `project_slug` persisted in `teleclaude.yml` and, for `create` and `adopt`, the
+  project root registered in `~/.teleclaude/projects.yaml`.
+- For a project inside a home, that home's owner declared in `teleclaude.yml`.
+- For `init` only, and only for a caller whose platform role is member or administrator: event domains seeded in global config (if not already populated).
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
 
 ## Recovery
 
 - `telec config project init` is idempotent. Re-running it is safe and will skip already-configured steps.
-- The bootstrap sync reports validation findings without blocking, so init always completes even when a project already carries findings; the commit gate validates once real work begins.
+- A refused `create` names its cause: a taken or invalid name, a path inside a home, or `--path` combined with `--company`. Nothing has been written.
 
 ## See Also
 

@@ -757,19 +757,6 @@ projects:
   - /abs/path/to/project-b
 ```
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
-location, etc.) lives in each project's own `teleclaude.yml` and is loaded
-through `ProjectCatalogService`. Adoption is the sole writer of the registry
-(`local/projects/teleclaude/spec/feature/config/project-registry`); publication never registers
-projects. `project_slug` is the
-canonical machine identity used for the log namespace
-(`instrukt-ai-logs {project_slug}`), the `local/projects/<slug>/…` documentation
-identities, and service-level project lookup. `project_name` remains display-only.
-
-<!-- change:personal-assistant-project-creation -->
-
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
 through `ProjectCatalogService`. Creation and adoption are the only writers of
@@ -778,8 +765,6 @@ publication never registers projects. `project_slug` is the
 canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the `local/projects/<slug>/…` documentation
 identities, and service-level project lookup. `project_name` remains display-only.
-
-<!-- /planned-change:personal-assistant-project-creation -->
 
 <!-- planned:github-todo-mirror -->
 

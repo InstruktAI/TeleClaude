@@ -7,20 +7,6 @@ description: One kind-addressed CLI contract for initializing, listing, reading,
 
 ## What it is
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-`telec config <kind> init|list|get|patch` is the agent-facing resource surface
-for configuration. The singular kind is `computer`, `global`, `person`,
-`company`, or `project`; an overlay subject's kind matches its declared
-`kind`. `computer` identifies the machine configuration by its fixed location
-in the machine home and does not become an overlay tier or a context root.
-`computer` and `global` are singletons. A person, company, or project is
-addressed by its stable slug, except that project initialization addresses the
-checkout the caller stands in: the owning checkout of the repository that holds
-the caller's current directory, or that directory itself when no repository
-holds it.
-<!-- change:personal-assistant-project-creation -->
-
 `telec config <kind> init|list|get|patch` is the agent-facing resource surface
 for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
@@ -50,7 +36,6 @@ For a project, `init` converges a registered project and creates or adopts
 nothing; for an unregistered folder it refuses and names `create` and `adopt`.
 Creating and adopting a project write nothing outside the project and the
 project registry.
-<!-- /planned-change:personal-assistant-project-creation -->
 
 The operation names describe the result, regardless of the subject's storage
 shape. `init` creates missing declarations and scaffolding and converges an
@@ -222,23 +207,14 @@ And the working directory selects no alternate machine file
 And overlay-tier resolution still recognizes only the overlay kinds
 ```
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-#### UC-KAC11: Project initialization adopts the checkout the caller stands in
-
-````gherkin
-Given an agent standing in a subdirectory, or in a slug worktree, of a project's repository
-When it initializes the project configuration
-<!-- change:personal-assistant-project-creation -->
 #### UC-KAC11: Project adoption adopts the checkout the caller stands in
 
 ```gherkin
 Given an agent standing in a subdirectory, or in a slug worktree, of a project's repository
 When it adopts the project
-<!-- /planned-change:personal-assistant-project-creation -->
 Then the declaration, plumbing, and registration are those of the repository's owning checkout
 And no declaration or plumbing is written into the subdirectory or the worktree
-````
+```
 
 #### UC-KAC12: Initializing a person or company scaffolds its home
 
@@ -307,8 +283,6 @@ And the company declaration and home are unchanged
   `local/projects/teleclaude/spec/feature/reconciliation/template-installation`);
   `init` applies them to the addressed home.
 
-<!-- planned:personal-assistant-project-creation -->
-
 #### UC-KAC17: Creating a project makes an empty, owned, registered project
 
 ```gherkin
@@ -327,8 +301,6 @@ When an agent acting for them creates a project with a path outside every home
 Then an ownerless project exists at that path, registered under its name
 And the same request naming a company, or a path inside a home, is refused before anything is written
 ```
-
-<!-- /planned:personal-assistant-project-creation -->
 
 <!-- planned:retire-project-init -->
 

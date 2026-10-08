@@ -1,5 +1,5 @@
 ---
-description: 'AI-driven project onboarding — initialize the project with telec config project init, then explicitly start the quality-config assessment and doc-snippet analysis sessions.'
+description: 'AI-driven project onboarding — adopt the project with telec config project adopt, then explicitly start the quality-config assessment and doc-snippet analysis sessions.'
 visibility: 'public'
 ---
 
@@ -29,10 +29,13 @@ surface that starts agents.
 
 ## Steps
 
-1. **Initialize.** From the project root, run `telec config project init`. It executes
-   project artifact sync, slug derivation, project registration, the release-channel
-   prompt, and event-domain seeding; see the project-initialization procedure for the
+1. **Adopt.** From the project root, run `telec config project adopt`. It
+   registers the project where it is: it gives the folder its own repository when
+   needed, checks placement and owner, declares capabilities, converges plumbing,
+   and derives the slug; see the project-initialization procedure for the
    per-step contract. It returns when plumbing is complete and starts no session.
+   A project already registered is converged with `telec config project init`
+   instead.
 
 2. **Check for sessions already in flight.** Run `telec sessions list` and look for an
    open session whose project path is this root and whose command is the one about to
@@ -62,7 +65,7 @@ the team adopts a new quality rule or upgrades blessed templates.
 
 ## Recovery
 
-- `telec config project init` is idempotent — re-running it is safe and will skip
-  already-configured steps.
+- `telec config project adopt` and `telec config project init` are idempotent —
+  re-running either is safe and will skip already-configured steps.
 - If `telec sessions run` fails to start a session, it reports the failure; start it
   again once the cause is resolved.

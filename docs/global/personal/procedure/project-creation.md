@@ -1,8 +1,10 @@
 ---
-description: Start a new project for the person when they ask their assistant to build something — shaped by the platform's new-build intake, created in their own projects area without asking, scaffolded and converged.
-activation_trigger: Use when the person asks you to build something new for them — a tool, an automation, a script, a small app — that no existing project of theirs already holds.
-delivered_by:
-  - personal-assistant-project-creation
+description: Start a new project for the person when they ask their assistant to build
+  something — shaped by the platform's new-build intake, created in their own projects
+  area without asking, scaffolded and converged.
+activation_trigger: Use when the person asks you to build something new for them —
+  a tool, an automation, a script, a small app — that no existing project of theirs
+  already holds.
 ---
 
 # Project Creation — Procedure

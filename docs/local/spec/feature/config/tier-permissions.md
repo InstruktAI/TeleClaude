@@ -57,18 +57,11 @@ A project root may sit inside a person's personal space. Resolution takes the
 nearest declaration, so such a root is a project on every axis: it registers as
 a project, its own repository holds its history, and it carries project
 lifecycle behavior. Its position inside a personal space grants it nothing and
-<!-- planned-change:personal-assistant-project-creation -->
-
-takes nothing from it. Whom it belongs to is a declared relationship like any
-other, never read off its location, and the acting caller's identity is
-resolved independently of the enclosing person context.
-<!-- change:personal-assistant-project-creation -->
 
 takes nothing from it. Whom it belongs to is a declared relationship, and
 inside a home that declaration must name the home's owner
 (`local/projects/teleclaude/spec/feature/config/project-ownership`). The acting
 caller's identity is resolved independently of the enclosing person context.
-<!-- /planned-change:personal-assistant-project-creation -->
 
 ## Canonical fields
 
@@ -135,20 +128,6 @@ And the project's own repository holds its history
 And the acting caller's identity is resolved independently of the enclosing person context
 ```
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-#### UC-TIERP-6: Location never establishes ownership
-
-```
-Given a project root inside one person's personal space
-And that project declares a different person as its owner
-When the owner of that project is resolved
-Then the owner is the person the project declares
-And the person whose personal space contains the project is not its owner
-```
-
-<!-- change:personal-assistant-project-creation -->
-
 #### UC-TIERP-6: A project in a personal space cannot name another owner
 
 ```
@@ -158,8 +137,6 @@ When that project's configuration is loaded
 Then loading is refused, naming the person whose space contains it
 And no permission axis is answered for it as that other person's project
 ```
-
-<!-- /planned-change:personal-assistant-project-creation -->
 
 ## Known caveats
 

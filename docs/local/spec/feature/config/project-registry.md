@@ -30,21 +30,6 @@ slug. A company home's display name is its declared name, then its slug. Each
 entry's description comes from its own configuration when present. Identities
 are unique among a machine's entries.
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-Adoption is what writes the registry, and nothing else does: no deployment or
-synchronization path adds, removes, or rewrites an entry. Adoption is reached
-through `telec config project init`, through the daemon's add-project request
-that TUIs send, and through the configuration migration that retires the
-machine configuration's former trusted-directory list. Adopting a folder that
-declares the person or company tier records it as it is. Any other folder is
-set up as a project first, as `general/procedure/project-initialization`
-describes, and a folder that declares no tier becomes a project. A folder
-declaring the global tier is refused, and so is a folder whose identity another
-entry already holds. Recording is idempotent, so adopting an already-recorded
-folder changes nothing.
-<!-- change:personal-assistant-project-creation -->
-
 Creation and adoption are what write the registry, and nothing else does: no
 deployment or synchronization path adds, removes, or rewrites an entry.
 Creation is reached through `telec config project create`, which makes a new
@@ -65,7 +50,6 @@ home's `projects/` folder. Adoption keeps a project where it already is,
 anywhere the caller can reach, inside a home or not. Either way a project inside
 a home is its own repository: the global home's repository never holds a
 project.
-<!-- /planned-change:personal-assistant-project-creation -->
 
 The recorded path is always the durable main checkout. A project may be adopted
 from inside a linked worktree, and the registry still names the checkout that
@@ -104,17 +88,8 @@ project to the project-acting consumers.
 - **Order.** Entries keep the order in which they were adopted. Consumers that
   present entries follow it.
 
-<!-- planned-change:personal-assistant-project-creation -->
-
-- **Writer.** Adoption only. Idempotent, and never performed by a deployment or
-  synchronization path.
-
-<!-- change:personal-assistant-project-creation -->
-
 - **Writer.** Creation and adoption only. Idempotent, and never performed by a
   deployment or synchronization path.
-
-<!-- /planned-change:personal-assistant-project-creation -->
 
 - **Readers.** Project-acting consumers read project entries; session-placing
   consumers read every entry. None discovers projects from the filesystem or
@@ -211,8 +186,6 @@ And an agent reading the machine configuration finds no trusted-directory list
 And the company home is still not on the registry
 ```
 
-<!-- planned:personal-assistant-project-creation -->
-
 #### UC-CFG-REG10: Adopting a folder inside a home registers it as itself
 
 ```gherkin
@@ -240,8 +213,6 @@ When an agent initializes the project configuration there
 Then the registry is unchanged and nothing is written
 And the refusal names project creation and project adoption
 ```
-
-<!-- /planned:personal-assistant-project-creation -->
 
 ## Known caveats
 

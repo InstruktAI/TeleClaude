@@ -1,7 +1,8 @@
 ---
-description: What a person experiences when they ask their own assistant to build something new — taken up as new-project work from the first turn, shaped as any new build is, placed in their own space without the question being asked, and left as a project of their own.
-delivered_by:
-  - personal-assistant-project-creation
+description: What a person experiences when they ask their own assistant to build
+  something new — taken up as new-project work from the first turn, shaped as any
+  new build is, placed in their own space without the question being asked, and left
+  as a project of their own.
 ---
 
 # Personal Projects — Spec
