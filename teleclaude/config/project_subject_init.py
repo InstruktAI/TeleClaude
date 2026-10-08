@@ -107,14 +107,13 @@ def init_project_subject(
     request_id: str | None = None,
     trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
     help_desk: bool = False,
-    seed_global: bool = False,
 ) -> SubjectView:
     """Converge the caller's registered folder and return its declared subject view."""
     subject_kind, identity = _declared_subject(root, project_identity)
     if help_desk and subject_kind in (ConfigSubjectKind.PERSON, ConfigSubjectKind.COMPANY):
         raise InvalidCandidate(_HELP_DESK_HOME_REFUSAL)
     return _run_project_operation(
-        lambda: converge_project(root, trigger=trigger, help_desk=help_desk, seed_global=seed_global),
+        lambda: converge_project(root, trigger=trigger, help_desk=help_desk),
         where=str(root),
         subject_kind=subject_kind,
         identity=identity,

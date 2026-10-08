@@ -83,13 +83,6 @@ class ClearanceReason(StrEnum):
     CREATION_FORM_REQUIRED = "creation_form_required"
 
 
-class SeedingOutcome(StrEnum):
-    """The closed outcome of the global event-domain seeding decision."""
-
-    ALLOWED = "allowed"
-    SKIPPED = "skipped"
-
-
 class ProjectCreationForm(StrEnum):
     """Where a created project lands, which decides the standing creating it needs."""
 
@@ -99,9 +92,6 @@ class ProjectCreationForm(StrEnum):
 
 
 _ADMIN_ROLE = "admin"
-# Event-domain seeding writes the global configuration, so it stays a platform-role act.
-_SEEDING_PLATFORM_ROLES = frozenset({"member", _ADMIN_ROLE})
-_GLOBAL_SEEDING_EVENT = "config_global_seeding"
 
 
 @dataclass(frozen=True)
@@ -278,22 +268,6 @@ def _decide_create(standing: ConfigurationStanding, target: ConfigurationTarget)
     if target.creation_form is None:
         return ClearanceDecision(False, RequiredStanding.FORBIDDEN, ClearanceReason.CREATION_FORM_REQUIRED)
     return _DECIDE_CREATE_BY_FORM[target.creation_form](standing, target)
-
-
-def decide_global_seeding(standing: ConfigurationStanding, *, request_id: str | None = None) -> bool:
-    """Decide whether a project init may seed the global event domains; a caller without the standing skips it.
-
-    Seeding is the one global write in project init, so it needs a platform role of member or
-    administrator. A caller without it is not refused: its init converges the project and skips the step.
-    """
-    allowed = standing.platform_role in _SEEDING_PLATFORM_ROLES
-    logger.info(
-        _GLOBAL_SEEDING_EVENT,
-        request_id=request_id,
-        outcome=(SeedingOutcome.ALLOWED if allowed else SeedingOutcome.SKIPPED).value,
-        caller_person=standing.person_slug,
-    )
-    return allowed
 
 
 def _decide_project(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:

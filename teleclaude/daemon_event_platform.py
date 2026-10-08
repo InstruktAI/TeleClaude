@@ -112,8 +112,8 @@ def daemon_project_config_path() -> Path:
     """Path to the daemon's own (mother) project ``teleclaude.yml``.
 
     It lives at the daemon's working dir — NOT next to the global runtime
-    ``config.yml`` in ``~/.teleclaude`` (that dir holds the GLOBAL teleclaude.yml
-    with people/event_domains, which is not a ProjectConfig).
+    ``config.yml`` in ``~/.teleclaude`` (that dir holds the GLOBAL teleclaude.yml,
+    which is not a ProjectConfig).
     """
     return Path(config.computer.default_working_dir) / ConfigFileName.OVERLAY
 
@@ -386,24 +386,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             producer=event_producer,
         )
 
-    def _build_domain_runner(self) -> object | None:
-        """Build the optional domain runner."""
-        event_domains_cfg = getattr(config, "event_domains", None)
-        if event_domains_cfg is None:
-            return None
-        try:
-            from teleclaude.events.startup import build_domain_pipeline_runner  # startup boundary
-
-            domain_runner = build_domain_pipeline_runner(event_domains_cfg)
-            logger.info("Domain pipeline runner built successfully")
-            return domain_runner
-        except Exception as domain_err:
-            logger.error(
-                "Failed to build domain pipeline runner: %s — domain pipeline disabled",
-                domain_err,
-            )
-            return None
-
     def _build_pipeline(
         self,
         context: PipelineContext,
@@ -422,7 +404,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 LifecycleRouterCartridge(),
             ],
             context,
-            domain_runner=self._build_domain_runner(),  # type: ignore[arg-type]
         )
 
     def _start_event_processor(self, redis_client: object, pipeline: Pipeline) -> str:

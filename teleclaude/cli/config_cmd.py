@@ -81,7 +81,6 @@ from teleclaude.core.configuration_clearance import (
     ConfigurationTarget,
     ProjectCreationForm,
     decide,
-    decide_global_seeding,
     is_administrator,
     standing_for,
 )
@@ -126,10 +125,6 @@ _PARTIAL_COMMIT_MESSAGE = (
     "Error: {message}{request}\nThe affected files may be in a mixed state — read them back before retrying."
 )
 _PROJECT_INIT_COMPLETE = "telec config project init complete."
-_PROJECT_INIT_SEEDING_SKIPPED = (
-    "Global event-domain seeding was skipped: it needs a platform role of member or administrator."
-)
-_COMPLETION_WITH_NOTE = "{completion}\n{note}"
 _PROJECT_CREATE_COMPLETE = "telec config project create complete."
 _PROJECT_ADOPT_COMPLETE = "telec config project adopt complete."
 _CREATE_VERB = "create"
@@ -399,7 +394,7 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
 
     if subject_kind is ConfigSubjectKind.PROJECT:
         adoption_root = resolve_invocation_roots().adoption_root()
-        identity = _gate(
+        _gate(
             kind,
             "init",
             subject_kind,
@@ -408,16 +403,11 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             sections=sections,
             request_id=request_id,
         )
-        seed_global = decide_global_seeding(standing_for(identity), request_id=request_id)
         _run_init(
-            lambda: init_project_subject(
-                adoption_root, request_id=request_id, help_desk=help_desk, seed_global=seed_global
-            ),
+            lambda: init_project_subject(adoption_root, request_id=request_id, help_desk=help_desk),
             output_format,
             request_id,
-            completion_line=_PROJECT_INIT_COMPLETE
-            if seed_global
-            else _COMPLETION_WITH_NOTE.format(completion=_PROJECT_INIT_COMPLETE, note=_PROJECT_INIT_SEEDING_SKIPPED),
+            completion_line=_PROJECT_INIT_COMPLETE,
         )
         return
 

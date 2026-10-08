@@ -16,12 +16,11 @@ from teleclaude.config_roster import CompanyMember as CompanyMember
 from teleclaude.config_roster import CompanyRole as CompanyRole
 from teleclaude.config_roster import PersonEntry as PersonEntry
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE, OnDemandDisposition
-from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 14
+CURRENT_SCHEMA_VERSION = 15
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
@@ -744,7 +743,6 @@ class GlobalConfig(ClosedModel):
     jobs: list[JobScheduleConfig] = []
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
-    event_domains: DomainsConfig | None = None
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
     help_desk: HelpDeskConfig = HelpDeskConfig()
     hooks: GlobalHooksConfig = GlobalHooksConfig()

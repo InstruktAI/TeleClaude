@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
     from teleclaude.events.cartridges.correlation import CorrelationConfig
     from teleclaude.events.cartridges.trust import TrustConfig
     from teleclaude.events.db import EventDB
-    from teleclaude.events.domain_pipeline import DomainPipelineRunner
     from teleclaude.events.producer import EventProducer
 
 logger = get_logger(__name__)
@@ -73,24 +71,18 @@ def failing_stage_from_exception(exc: BaseException) -> str | None:
 
 
 class Pipeline:
-    """Execute the approved system pipeline and optionally fan out to domain pipelines."""
+    """Execute the approved system pipeline."""
 
-    def __init__(
-        self,
-        cartridges: list[Cartridge],
-        context: PipelineContext,
-        domain_runner: DomainPipelineRunner | None = None,
-    ) -> None:
+    def __init__(self, cartridges: list[Cartridge], context: PipelineContext) -> None:
         self._cartridges = cartridges
         self._context = context
-        self._domain_runner = domain_runner
 
     def register(self, cartridge: Cartridge) -> None:
         """Append a cartridge to the end of the processing chain."""
         self._cartridges.append(cartridge)
 
     async def execute(self, event: EventEnvelope, /, *, entry_id: str) -> EventEnvelope | None:
-        """Run an event through the system pipeline and trigger domain fan-out."""
+        """Run an event through the system pipeline."""
         del entry_id
         current: EventEnvelope | None = event
         for cartridge in self._cartridges:
@@ -102,16 +94,4 @@ class Pipeline:
                 exc.add_note(f"{_FAILING_STAGE_NOTE_PREFIX}{cartridge.name}")
                 raise
 
-        if current is not None and self._domain_runner is not None:
-            await self._run_domain_pipelines(current)
-
         return current
-
-    async def _run_domain_pipelines(self, event: EventEnvelope) -> None:
-        """Run domain pipelines once the system pipeline completes."""
-        try:
-            results = await self._domain_runner.run_all(event, self._context)
-            logger.debug("Domain pipeline results: %s", {k: v is not None for k, v in results.items()})
-        except asyncio.CancelledError:
-            logger.debug("Domain pipeline fan-out cancelled during shutdown")
-            raise

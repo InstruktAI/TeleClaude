@@ -32,7 +32,6 @@ from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName, is_platform_home
 from teleclaude.project_manifest_runtime import load_registered_entries, project_adoption_lock, register_root
 from teleclaude.project_root import resolve_project_root
-from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.skeleton import deploy_skeleton
@@ -496,7 +495,7 @@ def adopt_project(
     repository never holds a project, so a folder inside it gets one of its own.
     Person and company homes are registered in their declared tier without project
     setup. This operation asks nothing and is idempotent. It spawns no agent
-    sessions, syncs no artifacts and seeds no event domains.
+    sessions and syncs no artifacts.
 
     A project subscribing ``docs`` receives its local baseline manifests when
     they are absent.
@@ -561,29 +560,25 @@ def converge_project(
     *,
     trigger: ProjectInitializationTrigger = ProjectInitializationTrigger.CLI,
     help_desk: bool = False,
-    seed_global: bool = False,
 ) -> ProjectInitializationResult:
     """Converge a registered folder to the current required structure.
 
     A folder that is not a registered entry is refused before anything is written,
     and the refusal names project creation and adoption: ``init`` neither creates
-    nor adopts. It writes no registry entry. Global event-domain seeding is the one
-    write outside the project; it runs only when ``seed_global`` is passed, and
-    deciding who may seed is the caller's, through identity's clearance.
+    nor adopts. It writes no registry entry.
 
     With ``help_desk``, the project declaration records its help desk as enabled and
     the project's help-desk folder is converged to the project help-desk template; the
     files stay in the working tree, uncommitted.
     """
     with project_adoption_lock():
-        return _converge_locked(project_root, trigger, help_desk, seed_global)
+        return _converge_locked(project_root, trigger, help_desk)
 
 
 def _converge_locked(
     project_root: Path,
     trigger: ProjectInitializationTrigger,
     help_desk: bool,
-    seed_global: bool,
 ) -> ProjectInitializationResult:
     project_root = project_root.expanduser().resolve()
     if not _is_registered(project_root):
@@ -599,8 +594,6 @@ def _converge_locked(
     undeclared_capabilities = _establish_repository_and_declaration(project_root)
     registered_root = resolve_project_root(project_root)
     _converge_registered_project(project_root, registered_root, undeclared_capabilities, help_desk)
-    if seed_global:
-        seed_event_domains(project_root)
     return _completed(
         registered_root,
         _registered_project_result(registered_root, already_registered=True),
@@ -683,7 +676,7 @@ def create_project(
     registry entry already holds, a destination that cannot hold the project, and a destination
     that is not empty. The project declares no capability blocks, because capabilities come from
     content and an empty folder would fix them off for good; the first convergence after
-    scaffolding infers them. Nothing is scaffolded, synced or seeded. A failure before
+    scaffolding infers them. Nothing is scaffolded or synced. A failure before
     registration removes only what creation made; after registration the project is genuine and
     stays for convergence to finish.
     """

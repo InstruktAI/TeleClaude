@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
 # Headless hook events carry no mode; the launch intent requires one, and "med"
-# is the canonical default across the platform (domain_config.mode default).
+# is the platform's standard mode.
 _HEADLESS_DEFAULT_THINKING_MODE = "med"
 
 # Hook outbox worker

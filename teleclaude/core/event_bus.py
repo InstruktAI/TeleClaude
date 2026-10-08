@@ -25,7 +25,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict, TypeVar, cast, overload
+from typing import Any, Literal, Protocol, TypedDict, TypeVar, cast, overload
 
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
@@ -62,16 +62,8 @@ from teleclaude.core.events import (
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
-from teleclaude.events.catalog import EventCatalog
-from teleclaude.events.domain_config import AutonomyLevel, AutonomyMatrix, DomainConfig
-from teleclaude.events.domain_handlers import DomainHandler, DomainHandlerSpec
-from teleclaude.events.domain_pipeline import DomainPipeline, DomainPipelineRunner
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventSubjectMarker, EventVisibility
-from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.processor import EventProcessor
-
-if TYPE_CHECKING:
-    from teleclaude.events.db import EventDB
 
 logger = get_logger(__name__)
 
@@ -80,7 +72,6 @@ INTERNAL_EVENT_NAMESPACE_PREFIX = "internal."
 _INTERNAL_CONSUMER_GROUP_PREFIX = "event-bus:"
 _INTERNAL_EVENT_SOURCE = "event-bus"
 _CONTEXT_TYPE_KEY = "context_type"
-_INTERNAL_DOMAIN_NAME = "internal-event-bus"
 # Live-process redelivery cache cap. The cache drops entries on successful
 # deliver() so steady-state size tracks in-flight envelopes. The cap bounds
 # pathological growth from envelopes that fail every retry and reach DLQ
@@ -94,6 +85,7 @@ TypedEventHandler = Callable[[EventNameT, EventContextT], Awaitable[object]]
 SessionStatusEventHandler = Callable[[str, SessionStatusContext], Awaitable[object]]
 SessionUpdatedEventHandler = Callable[[str, SessionUpdatedContext], Awaitable[object]]
 ContextBuilder = Callable[[Mapping[str, JsonValue]], EventContext]
+SubscriberProcess = Callable[[EventEnvelope], Awaitable[EventEnvelope | None]]
 
 
 class DispatchEnvelope(TypedDict, total=False):
@@ -152,13 +144,6 @@ class _InternalEventPipeline:
         """Deliver an internal event through the bus subscriber fan-out."""
         del entry_id
         return await self._bus.deliver(event)
-
-
-def _internal_pipeline_context() -> PipelineContext:
-    return PipelineContext(
-        catalog=cast(EventCatalog, object()),
-        db=cast("EventDB", object()),
-    )
 
 
 def decode_internal_event_envelope(envelope: EventEnvelope) -> tuple[str, EventContext]:
@@ -516,30 +501,28 @@ class EventBus:
 
     async def deliver(self, envelope: EventEnvelope) -> EventEnvelope | None:
         """Run matching local subscribers under the EventProcessor ACK boundary."""
-        specs = self._subscriber_specs()
-        if not specs:
+        processes = self._subscriber_processes()
+        if not processes:
             decode_internal_event_envelope(envelope)
             return envelope
 
-        runner = DomainPipelineRunner()
-        runner.register_domain_pipeline(
-            _INTERNAL_DOMAIN_NAME,
-            DomainPipeline(
-                domain=DomainConfig(
-                    name=_INTERNAL_DOMAIN_NAME,
-                    autonomy=AutonomyMatrix(global_default=AutonomyLevel.AUTONOMOUS),
-                ),
-                levels=[specs],
-            ),
-        )
-        results = await runner.run_all(envelope, _internal_pipeline_context())
-        # All level handlers succeeded or skipped — the EventProcessor will ACK
+        # Every subscriber gets to finish before a failure surfaces, so a slow
+        # sibling is not cancelled by a fast failure; the first failure in
+        # subscriber order is then re-raised and the EventProcessor retries.
+        outcomes = await asyncio.gather(*(process(envelope) for process in processes), return_exceptions=True)
+        result: EventEnvelope | None = None
+        for outcome in outcomes:
+            if isinstance(outcome, BaseException):
+                raise outcome
+            if outcome is not None:
+                result = outcome
+        # All subscribers succeeded or skipped — the EventProcessor will ACK
         # this entry and never redeliver it, so the per-handler success ledger
-        # for this envelope can be released. On exception, run_all re-raises and
-        # this line is skipped so retries still see prior successes as cache hits.
+        # for this envelope can be released. On exception the raise above skips
+        # this line so retries still see prior successes as cache hits.
         if envelope.idempotency_key is not None:
             self._successful_handlers.pop(envelope.idempotency_key, None)
-        return results.get(_INTERNAL_DOMAIN_NAME)
+        return result
 
     async def _publish_envelope(self, envelope: EventEnvelope) -> str:
         """Publish a pre-built envelope to the internal event stream.
@@ -574,20 +557,15 @@ class EventBus:
     def _wire_event_name(self, event: str) -> str:
         return f"{INTERNAL_EVENT_NAMESPACE_PREFIX}{event}"
 
-    def _subscriber_specs(self) -> list[DomainHandlerSpec]:
-        specs: list[DomainHandlerSpec] = []
-        for event_name, handlers in self._handlers.items():
-            for index, handler in enumerate(handlers):
-                specs.append(
-                    DomainHandlerSpec(
-                        handler_id=f"{event_name}:{index}",
-                        process=self._subscriber_process(event_name, handler),
-                    )
-                )
-        return specs
+    def _subscriber_processes(self) -> list[SubscriberProcess]:
+        return [
+            self._subscriber_process(event_name, handler)
+            for event_name, handlers in self._handlers.items()
+            for handler in handlers
+        ]
 
-    def _subscriber_process(self, subscribed_event: str, handler: EventHandler) -> DomainHandler:
-        async def _process(envelope: EventEnvelope, _context: PipelineContext) -> EventEnvelope | None:
+    def _subscriber_process(self, subscribed_event: str, handler: EventHandler) -> SubscriberProcess:
+        async def _process(envelope: EventEnvelope) -> EventEnvelope | None:
             event_name, context = decode_internal_event_envelope(envelope)
             if event_name != subscribed_event:
                 return envelope
@@ -611,7 +589,7 @@ class EventBus:
         # FIFO cap on retained idempotency keys (relies on dict insertion order).
         # Bounds pathological growth from envelopes that DLQ without the bus
         # observing the terminal ACK; live-process success cleanup happens in
-        # deliver() after run_all succeeds.
+        # deliver() after every subscriber succeeds.
         while len(self._successful_handlers) > _SUCCESS_CACHE_MAX_KEYS:
             evicted = next(iter(self._successful_handlers))
             self._successful_handlers.pop(evicted, None)
