@@ -4,9 +4,6 @@
 !config.yml
 !projects.yaml
 !/AGENTS.master.md
-!/help-desk/
-/help-desk/*
-!/help-desk/AGENTS.master.md
 !people/
 people/*
 !people/*/
@@ -26,9 +23,6 @@ companies/*/*
 !companies/*/teleclaude.yml
 !companies/*/meta.yaml
 !companies/*/AGENTS.master.md
-!companies/*/help-desk/
-companies/*/help-desk/*
-!companies/*/help-desk/AGENTS.master.md
 !companies/*/docs/
 companies/*/docs/*
 !companies/*/docs/**
