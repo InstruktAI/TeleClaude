@@ -258,6 +258,19 @@ def _path_overlaps_reference(path: str, reference: str) -> bool:
     return normalized_path == normalized_reference or normalized_path.startswith(f"{normalized_reference}/")
 
 
+def _commits_overlap_references(
+    cwd: str,
+    baseline: str,
+    head: str,
+    referenced_paths: list[str],
+) -> bool | None:
+    """Return whether non-merge commits in ``baseline..head`` change a referenced path, or None on git errors."""
+    changed_files = _meaningful_changed_files_between(cwd, baseline, head)
+    if changed_files is None:
+        return None
+    return any(_path_overlaps_reference(path, reference) for path in changed_files for reference in referenced_paths)
+
+
 def extract_referenced_paths(content: str) -> list[str]:
     """Return paths declared in fenced referenced-paths blocks."""
     references: set[str] = set()
@@ -284,7 +297,6 @@ def extract_referenced_paths(content: str) -> list[str]:
 def derive_artifact_drift(
     artifact_entry: ArtifactEntry,
     drift_reviewed_stamp: DriftReviewedStamp | None,
-    _current_head_sha: str,
     repo_root: str,
 ) -> ArtifactDriftStatus:
     """Derive artifact drift from recorded provenance and current git state.
@@ -302,26 +314,33 @@ def derive_artifact_drift(
     if artifact_entry.codebase_sha_at_write == current_head_sha:
         return DRIFT_FRESH
 
-    changed_files = _meaningful_changed_files_between(
+    has_overlap = _commits_overlap_references(
         repo_root,
         artifact_entry.codebase_sha_at_write,
         current_head_sha,
+        artifact_entry.referenced_paths,
     )
-    if changed_files is None:
+    if has_overlap is None:
         return _reviewed_verdict_or_pending(drift_reviewed_stamp)
-
-    has_overlap = any(
-        _path_overlaps_reference(path, reference)
-        for path in changed_files
-        for reference in artifact_entry.referenced_paths
-    )
     if not has_overlap:
         return DRIFT_FRESH
+
+    def review_still_holds(reviewed: DriftReviewedStamp) -> bool:
+        if not reviewed.head_sha_at_review:
+            return False
+        if reviewed.head_sha_at_review == current_head_sha:
+            return True
+        overlap_since_review = _commits_overlap_references(
+            repo_root,
+            reviewed.head_sha_at_review,
+            current_head_sha,
+            artifact_entry.referenced_paths,
+        )
+        return overlap_since_review is False
+
     return _reviewed_verdict_or_pending(
         drift_reviewed_stamp,
-        evidence_matches_review=lambda reviewed: (
-            bool(reviewed.head_sha_at_review) and reviewed.head_sha_at_review == current_head_sha
-        ),
+        evidence_matches_review=review_still_holds,
         require_evidence_for_substantive=True,
     )
 

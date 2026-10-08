@@ -551,7 +551,6 @@ async def derive_lifecycle_drift(
                 class_drift[class_name] = derive_artifact_drift(
                     entry,
                     model.approvals.drift_reviewed.get(artifact_name),
-                    "",
                     repo_root or "",
                 )
             elif class_name == DriftClass.UPSTREAM_ARTIFACT:
