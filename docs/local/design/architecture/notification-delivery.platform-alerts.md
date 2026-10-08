@@ -78,33 +78,28 @@ consumer that tells people.
   computer emitted; each computer keeps its own incident records, and no
   computer tells another computer's events.
 - **The record is the only state.** Messages are not stored, listed or pushed to
-  any shared surface. Beside the broken-since time, the record of an open matter
-  holds which selected recipients still await the message of the transition in
-  progress, and nothing once the recovery has reached them all. It survives a
-  restart.
-- **A recipient's message is outstanding until its send succeeds.** The record is
-  written before any message of a transition is sent, and each recipient is
-  marked the moment its send succeeds. A handling that finds an open record
-  sends the transition's message only to the recipients still outstanding, so a
-  message recorded as sent is never sent again and a restart neither repeats a
-  recorded alert nor loses a recovery.
+  any shared surface. The record of an open matter holds its current state, the
+  time it became broken, and, per selected recipient, the state that recipient
+  was last told. It survives a restart and is removed once every selected
+  recipient was last told the matter is ok.
+- **A recipient is outstanding while their last-told state differs from the
+  matter's.** Each event of a transition sends the matter's current state only
+  to outstanding recipients and records each recipient's new last-told state the
+  moment the send succeeds, so a message recorded as sent is never sent again.
+  An ok state that arrives while some recipients still await the failure makes
+  the recovery outstanding for every selected recipient instead; a failing state
+  that arrives while some recipients still await the recovery reopens the
+  matter, broken since that event, and is outstanding only for the recipients
+  who were last told ok.
 - **A failed send fails the handling, and only that recipient's message is
   retried.** The other recipients still receive theirs; the consumer runtime
   retries the handling with bounded attempts, sending only to recipients still
   outstanding, and finally parks the event as an announced dead letter, so an
-  undelivered alert is a visible failed outcome rather than a completed one. A
-  later event of the same transition, such as a further failure of a matter
-  still being told, again sends only to recipients still outstanding.
-- **A new transition replaces the outstanding one.** When an ok state arrives
-  while the failure message is still outstanding for some recipients, those
-  failure messages are dropped and the recovery becomes outstanding for every
-  selected recipient: telling someone that a thing broke after it already works
-  again is stale, and the recovery states how long it was broken.
+  undelivered alert is a visible failed outcome rather than a completed one.
 - **One window is inherent.** When a channel has accepted a message and the
   computer stops before the send is recorded, the next handling sends that
-  message again: the channels person-addressed delivery uses take no delivery
-  identity a resend could carry, and staying silent instead would lose the
-  alert.
+  message again; the channels person-addressed delivery uses take no delivery
+  identity a resend could carry.
 - **Messages state facts in plain sentences.** What happened (the type's
   declared description), the thing, the computer and the time, written so they
   read the same as plain text and as markdown on every channel; a recovery adds
@@ -125,19 +120,18 @@ flowchart TD
     E[Platform event emitted on this computer] --> R[Consumer runtime hands it to incident alerts]
     R --> S{State its type reports}
     S -- none --> N[Nothing]
-    S -- failing --> F{Open record for family, subject, home?}
-    F -- no --> O[Open record: broken since now, failure outstanding for each selected administrator]
-    F -- yes --> P{Failure still outstanding for anyone?}
-    P -- no --> N
-    P -- yes --> D
-    O --> D[Send to each outstanding recipient, marking each success]
-    S -- ok --> K{Open record?}
-    K -- no --> N
-    K -- yes --> Q[Recovery outstanding for each selected administrator not yet told]
-    Q --> D
+    S -- failing or ok --> F{Open record for family, subject, home?}
+    F -- no, and ok --> N
+    F -- no, and failing --> O[Open record: broken since now]
+    F -- yes --> U[Apply the state to the matter]
+    O --> W[Outstanding: selected recipients whose last-told state differs]
+    U --> W
+    W --> D[Send the current state to each outstanding recipient, recording each success]
     D --> G{Every send succeeded?}
     G -- no --> T[Handling fails: runtime retries, then parks a dead letter]
-    G -- yes --> X[Recovery fully told: remove record]
+    G -- yes --> X{Every selected recipient last told ok?}
+    X -- yes --> Y[Remove record]
+    X -- no --> Z[Keep record]
 ```
 
 A message for a failure reads, for example, as the thing, what happened, the
