@@ -1,17 +1,16 @@
 ---
 visibility: internal
-description: Frozen v1 ownership anchor for the marketing business domain hosted on the event platform — its content, campaign, and feed event vocabulary and the handlers that react to it.
+description: Frozen v1 ownership anchor for the marketing business domain whose content, campaign, and feed event vocabulary the event platform's catalog hosts.
 ---
 
 # Marketing Domain Spec — Spec
 
 ## What it is
 
-The v1 marketing area is a company business domain hosted as a domain cartridge
-on the event platform. It records a company's marketing work as events —
-content moving from brief to publication and performance, campaigns from launch
-to report, and feed items bridged from the signal pipeline — and reacts to them
-through its domain handlers.
+The v1 marketing area is a company business domain whose event vocabulary the
+event platform's catalog hosts. It records a company's marketing work as
+events — content moving from brief to publication and performance, campaigns
+from launch to report, and feed items bridged from the signal pipeline.
 
 ## Canonical fields
 
@@ -21,12 +20,12 @@ through its domain handlers.
 
 ### Ownership boundary
 
-- **Owns:** the meaning of its event names and payloads, their emission
-  invariants, and its handlers' reactions.
-- **Does not own:** the event envelope, the catalog registry, or the pipeline
-  that hosts its handlers, which belong to `local/projects/teleclaude/spec/domain/event-catalog`;
-  the signal pipeline whose output its feed bridge consumes; or the company
-  facts behind a company subject, which belong to config and identity.
+- **Owns:** the meaning of its event names and payloads, and their emission
+  invariants.
+- **Does not own:** the event envelope or the catalog registry, which belong to
+  `local/projects/teleclaude/spec/domain/event-catalog`; the signal pipeline
+  its feed items are bridged from; or the company facts behind a company
+  subject, which belong to config and identity.
 
 ### Event subjects
 

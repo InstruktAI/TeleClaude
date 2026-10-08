@@ -1,17 +1,16 @@
 ---
 visibility: internal
-description: Frozen v1 ownership anchor for the creative-production business domain hosted on the event platform — its asset and format event vocabulary and the handlers that react to it.
+description: Frozen v1 ownership anchor for the creative-production business domain whose asset and format event vocabulary the event platform's catalog hosts.
 ---
 
 # Creative Production Domain Spec — Spec
 
 ## What it is
 
-The v1 creative-production area is a company business domain hosted as a
-domain cartridge on the event platform. It records a company's creative asset
-work as events — assets moving from brief through draft, review, revision,
-approval, and delivery, and format transcoding for delivery — and reacts to them
-through its domain handlers.
+The v1 creative-production area is a company business domain whose event
+vocabulary the event platform's catalog hosts. It records a company's creative
+asset work as events — assets moving from brief through draft, review,
+revision, approval, and delivery, and format transcoding for delivery.
 
 ## Canonical fields
 
@@ -21,12 +20,11 @@ through its domain handlers.
 
 ### Ownership boundary
 
-- **Owns:** the meaning of its event names and payloads, their emission
-  invariants, and its handlers' reactions.
-- **Does not own:** the event envelope, the catalog registry, or the pipeline
-  that hosts its handlers, which belong to `local/projects/teleclaude/spec/domain/event-catalog`;
-  or the company facts behind a company subject, which belong to config and
-  identity.
+- **Owns:** the meaning of its event names and payloads, and their emission
+  invariants.
+- **Does not own:** the event envelope or the catalog registry, which belong to
+  `local/projects/teleclaude/spec/domain/event-catalog`; or the company facts
+  behind a company subject, which belong to config and identity.
 
 ### Event subjects
 

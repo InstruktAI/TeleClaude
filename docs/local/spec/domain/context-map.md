@@ -38,21 +38,10 @@ contracts and never creates shared ownership.
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
 
-<!-- planned-change:retire-event-domains -->
-
-- `marketing` and `creative_production`: company business domains hosted as
-  domain cartridges on the event platform. Each owns its event vocabulary's
-  meaning, emission invariants, and handler reactions; hosting confers none of
-  that on the event platform.
-
-<!-- change:retire-event-domains -->
-
 - `marketing` and `creative_production`: company business domains whose event
   vocabulary the event platform's catalog hosts. Each owns its event
   vocabulary's meaning and emission invariants; hosting confers none of that on
   the event platform.
-
-<!-- /planned-change:retire-event-domains -->
 
 <!-- planned-change:event-envelope -->
 
