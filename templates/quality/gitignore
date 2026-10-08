@@ -2,14 +2,14 @@
 
 .DS_Store
 Thumbs.db
-_.swp
-_~
+*.swp
+*~
 .idea/
 .history/
 
-# Backupp stuff
+# Backup stuff
 
-_.bak_
+*.bak*
 
 # Environment / secrets — never commit real values
 
@@ -18,20 +18,20 @@ _.bak_
 
 # Logs
 
-\*.log
+*.log
 logs/
 
 # Virtual Environment
 
-uv.\*
+uv.*
 !uv.lock
 .venv
 
 # Runtime
 
-_.pid
-_.db
-\*.db-journal
+*.pid
+*.db
+*.db-journal
 
 # AI agents
 
@@ -48,6 +48,7 @@ graphify-out/
 # TeleClaude stuff
 
 .teleclaude/
+publications/
 scratchpad/
 workspace/
 trees/
@@ -55,21 +56,16 @@ trees/
 teleclaude-mcp.local.jsonc
 
 # Per-file locks held by the atomic config writer. Recreated on every write,
-
-# never meaningful to track. Enumerated rather than a bare \*.lock so a
-
+# never meaningful to track. Enumerated rather than a bare *.lock so a
 # project's tracked uv.lock or Cargo.lock stays tracked.
 
-\*.yml.lock
+*.yml.lock
 .env.lock
 invitations.json.lock
 
 AGENTS.md
 CLAUDE.md
 
-\*_/index.yaml
+**/index.yaml
 # Retired per-domain bundle name; publication retracts the leftovers.
 docs/global/*/domain-baseline-bundle.md
-
-publications/inbox/\*
-!publications/inbox/.gitkeep
