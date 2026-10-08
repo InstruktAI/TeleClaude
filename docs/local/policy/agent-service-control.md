@@ -34,8 +34,6 @@ visibility: 'public'
 
 <!-- /planned-change:retire-project-init -->
 
-<!-- planned:drain-accepted-work-before-restart -->
-
 ### Graceful lifecycle operations
 
 - **Ordinary stop and restart prepare the observed daemon before replacing it.**
@@ -61,8 +59,6 @@ visibility: 'public'
   records, and new business requests can arrive between the observation and
   termination. Observed legacy quiescence neither closes admission nor proves
   that all effects have settled.
-
-<!-- /planned:drain-accepted-work-before-restart -->
 
 ## Rationale
 

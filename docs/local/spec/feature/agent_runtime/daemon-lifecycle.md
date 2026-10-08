@@ -131,31 +131,6 @@ And every startup attempt acquires the single-instance lock idempotently; failur
 
 #### Shutdown ordering
 
-<!-- planned-change:drain-accepted-work-before-restart -->
-
-```
-Given a shutdown signal or a programmatic shutdown request arrives
-When the signal handler fires
-Then it calls the service's shutdown request which marks the adapter client as shutting down, raises the shutdown event, and logs a resource snapshot
-And the service awaits the shutdown event and then runs stop
-And stop proceeds in this order:
-  1. Stop sandbox manager (release socket first)
-  2. Cancel cleanup, poller-watch, hook-outbox, mirror-worker tasks
-  3. Stop per-session hook-outbox workers
-  4. Stop workflow bridge and identity bridge (graceful stop + awaited task)
-  5. Await webhook delivery, channel subscription worker, deployment fanout, ingest scheduler, internal event bus, event processor (5s timeout each, then cancel)
-  6. Cancel resource monitor, write-ahead-log checkpoint, supervisor watch, contract sweep tasks
-  7. Close auxiliary clients (signal AI, event store, TTS manager)
-  8. Disconnect from chiptunes worker (the worker process persists across service restart)
-  9. Task registry shutdown with timeout — cancel any remaining tracked tasks, including voice transcription tasks while adapters are still available for in-place interruption notices
-  10. Lifecycle shutdown — inbound queue shutdown → request-surface stop → for each adapter, stop → storage close
-  11. Release the single-instance lock
-And every step is best-effort: a hiccup in one step is logged and the next step still runs
-And because the task registry step precedes the adapter stop step, a voice transcription that runs as a tracked task is cancelled while the adapters are still alive, so its cancellation handler can mark the persisted row interrupted and edit the user's placeholder in place before the adapter that owns that message is torn down
-```
-
-<!-- change:drain-accepted-work-before-restart -->
-
 ```gherkin
 Given a human operator requests ordinary daemon shutdown or restart
 When the running service begins preparation for shutdown
@@ -167,8 +142,6 @@ And a successful preparation remains closed to new business work until the proce
 And shutdown then stops background consumers, transports and adapters before closing storage and releasing the single-instance lock
 And independently running agent turns are neither terminated nor awaited as daemon-owned work
 ```
-
-<!-- /planned-change:drain-accepted-work-before-restart -->
 
 #### UC-DL4: Shutdown without active playback avoids invalid cancellation
 
@@ -346,8 +319,6 @@ And a fault while taking up one startup is recorded for that session and leaves 
 And no stage is skipped, reordered, or added
 ```
 
-<!-- planned:drain-accepted-work-before-restart -->
-
 #### UC-DL10: Draining refuses new work before acceptance
 
 ```gherkin
@@ -408,7 +379,6 @@ merely because it has a durable receipt.
 This ownership boundary preserves the no-interference invariant
 (`general/principle/trust-and-guardrails`); recorded outcomes retain their
 evidence requirement (`general/principle/grounding`).
-<!-- /planned:drain-accepted-work-before-restart -->
 
 ### Cross-context references
 

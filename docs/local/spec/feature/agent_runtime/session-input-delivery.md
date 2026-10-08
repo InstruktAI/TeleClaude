@@ -464,8 +464,6 @@ And that conversation receives a notice that the message did not reach the agent
 And the composer's content is unchanged
 ```
 
-<!-- planned:drain-accepted-work-before-restart -->
-
 #### UC-SID21: Graceful shutdown settles input delivery and its acknowledgment
 
 ```gherkin
@@ -480,7 +478,6 @@ And occupied-composer and non-composer protections remain in force
 Graceful settlement is owned by
 `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`; abrupt-loss
 recovery continues to use this surface's durable accepted-input evidence.
-<!-- /planned:drain-accepted-work-before-restart -->
 
 ### Cross-context references
 

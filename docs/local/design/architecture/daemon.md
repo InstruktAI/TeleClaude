@@ -57,18 +57,10 @@ stateDiagram-v2
 
 - **Outbox Recovery**: On restart, daemon processes undelivered hooks and pending commands from outbox tables.
 
-<!-- planned-change:drain-accepted-work-before-restart -->
-
-- **Shutdown Ordering**: SIGTERM requests worker teardown and tracked-task cancellation before the request surface, adapters and storage close. Unfinished receipt operations are reported stale after replacement.
-
-<!-- change:drain-accepted-work-before-restart -->
-
 - **Shutdown Ownership**: One daemon-owned admission and drain boundary implements accepted-work settlement (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). Finite accepted work retains its task, terminal and storage ownership through durable settlement, preserving the no-interference invariant (`general/principle/trust-and-guardrails`).
 - **Continuation Ownership**: Accepted operation continuations carry their existing ownership through in-process dispatch and self-HTTP. A completion is matched to its existing operation, bootstrap or input-delivery owner; ambient daemon credentials do not establish prior admission.
 - **Prepared Instance**: A process remains alive and closed to new business work after preparation completes. The health observation identifies protocol support, that process instance and its preparation phase; liveness alone is not preparation evidence.
 - **Existing Durability Owners**: Operation receipts, startup handovers and inbound-delivery records remain the durable authorities. The drain owner tracks their live execution without creating a second durable operation ledger.
-
-<!-- /planned-change:drain-accepted-work-before-restart -->
 
 ## Primary flows
 
@@ -143,28 +135,6 @@ The helper queries local closed sessions within the window and replays their
 
 ### 4. Graceful Shutdown
 
-<!-- planned-change:drain-accepted-work-before-restart -->
-
-```mermaid
-sequenceDiagram
-    participant SystemD
-    participant Daemon
-    participant Adapters
-    participant Workers
-    participant Sessions
-    participant DB
-
-    SystemD->>Daemon: SIGTERM
-    Daemon->>Workers: Cancel background tasks
-    Daemon->>Adapters: Stop request surface and adapters
-    Note over Sessions: Independent agent processes remain outside daemon teardown
-    Daemon->>DB: Close storage
-    Daemon->>DB: Release lock
-    Daemon->>SystemD: Exit 0
-```
-
-<!-- change:drain-accepted-work-before-restart -->
-
 ```mermaid
 sequenceDiagram
     participant Host as Lifecycle target
@@ -209,7 +179,6 @@ The terminal effect unit starts before its pre-effect durability mark and retain
 ownership through paste, submission and durable outcome recording. Its current
 owner completes an effect that has begun; replay after abrupt loss remains governed
 by the existing startup and accepted-input recovery contracts.
-<!-- /planned-change:drain-accepted-work-before-restart -->
 
 ## Failure modes
 

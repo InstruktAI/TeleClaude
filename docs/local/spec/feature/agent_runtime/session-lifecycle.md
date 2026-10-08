@@ -520,8 +520,6 @@ And a listing that names another computer is answered by that computer with the 
 And a platform administrator's listing is unchanged
 ```
 
-<!-- planned:drain-accepted-work-before-restart -->
-
 #### UC-SL56: Graceful restart settles an acknowledged startup launch
 
 ```gherkin
@@ -534,16 +532,10 @@ And the child keeps its accepted intent and hosting terminal
 And a later initial message remains governed by its readiness and draft-preservation contract
 ```
 
-<!-- /planned:drain-accepted-work-before-restart -->
-
 ### Cross-context references
-
-<!-- planned:drain-accepted-work-before-restart -->
 
 - **daemon lifecycle** — owns admission and graceful draining of acknowledged
   startup work (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
-
-<!-- /planned:drain-accepted-work-before-restart -->
 
 - **identity** — origin resolution plus the identity resolver resolve principal binding (human_email, human_role, person identity) for the Session aggregate.
 - **config** — the computer name, host-pane binary, enabled agents and defaults flow in via configuration resolution, and each home's help-desk declaration decides whether that home's help desk exists.
