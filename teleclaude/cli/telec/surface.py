@@ -939,14 +939,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Interrogate the pre-filing decisions before scaffolding a bug; a completed filing "
                     "enters the bug lane and the lifecycle router dispatches /prepare"
                 ),
-                args=(
-                    "<description> --contract <snippet-id> [--slug <slug>] [--body <text>] [--project <name>] "
-                    "[--human-involved <reason>]"
-                ),
+                args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_BUG_APPROVED,
-                    F.FLAG_BUG_CONTRACT,
                     F.FLAG_BUG_SLUG,
                     F.FLAG_BUG_BODY,
                     F.FLAG_BUG_PROJECT,

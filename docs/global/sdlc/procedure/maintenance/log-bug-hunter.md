@@ -120,7 +120,7 @@ whose records support a failure in the scanned project's own handling through
      attributing anything downstream of it to a failure upstream.
      State the expected outcome with its supporting source: the current
      contract the operation contradicts, located through `telec docs index` and
-     cited with `--contract`. Preserve an unknown operation or outcome
+     stated in the report with how the operation breaks it. Preserve an unknown operation or outcome
      explicitly; never infer one from an error signature. A signal whose
      expected outcome no current contract states is not a bug
      (`sdlc/policy/todo-creation-discipline`): carry it in the

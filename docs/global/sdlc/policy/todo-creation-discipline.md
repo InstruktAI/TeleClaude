@@ -113,8 +113,10 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   (`sdlc/procedure/lifecycle/work/deferrals`).
 - **A defect contradicts a current contract.** A defect is observed behavior
   that a current contract states otherwise: a snippet without pending
-  ownership. Its fix restores what that contract says, correcting any lower
-  text that contradicts it on the way. A bug filing names that contract. Where
+  ownership, or the declared outcome of the surface that misbehaved. Its fix
+  restores what that contract says, correcting any lower text that contradicts
+  it on the way. A bug report states that contract and how the behavior breaks
+  it. Where
   no current contract states the wanted behavior, the work is a `change`,
   however real the failure, and is created with
   `telec todo create --kind change`. Evidence shows the behavior happened; the
