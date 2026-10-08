@@ -194,9 +194,12 @@ responsibility.
   it, every event also carries the earlier envelope's fields in the shape those
   computers read, under the fleet's interoperability contract
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
-  No consumer on a current computer reads them. An event carries no human
-  action and no routing scope in that shape; an older computer reads both as
-  absent.
+  No consumer on a current computer reads them. The human action and routing
+  scope among them are read only by an older computer's notification projector;
+  they are carried until the fleet capability map shows every live computer
+  carries incident alerts
+  (`local/projects/teleclaude/spec/feature/integration/incident-alerts`), and
+  from then on no event carries them.
 
 ## See Also
 

@@ -42,10 +42,17 @@ happened tells it, so each administrator hears each alert once across the
 fleet. Each alert is one message in the form every person-addressed
 notification takes (`local/projects/teleclaude/spec/feature/integration/notification-messages`).
 
-The only state incident alerts keep is, per computer, which matters are open
-and since when; a thing that works again leaves nothing behind. No record of
-sent alerts is kept, and a restart of the platform neither tells an alert again
-nor loses the message that a broken thing works again.
+The only state incident alerts keep is, per computer, which matters are open,
+since when, and which selected administrators still await the message of the
+matter's latest transition; a thing that works again leaves nothing behind once
+every selected administrator has been told. No record of sent alerts is kept,
+and a restart of the platform neither tells a recorded alert again nor loses
+the message that a broken thing works again.
+
+A message that cannot be delivered to one administrator does not hold back the
+others. It stays outstanding and is attempted again a bounded number of times;
+an alert that still cannot be delivered is parked where it can be inspected,
+never counted as told.
 
 ## Canonical fields
 
@@ -148,3 +155,22 @@ Then the administrator receives no further message about that job
 When a later run of the job succeeds
 Then the administrator receives one message that the job works again, with how long it was broken
 ```
+
+#### UC-IA12: An administrator who cannot be reached is not counted as told
+
+```gherkin
+Given two platform administrators whose notification interests select platform job events
+And the channel of one of them fails to accept messages
+When a recurring job that is not broken fails
+Then the other administrator receives one message that the job failed
+And the message to the unreachable administrator is attempted again, without repeating it to the other
+And when it still cannot be delivered, the undelivered alert is parked where it can be inspected
+```
+
+## Known caveats
+
+- **A send the channel accepted just before the computer stopped is sent again.**
+  The platform records each administrator's message once the channel accepts
+  it; a message accepted in the moment before that record is made is sent again
+  after the restart, because the channels take no delivery identity a resend
+  could carry, and dropping it instead could lose the alert.

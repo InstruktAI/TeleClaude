@@ -41,14 +41,19 @@ consumer that tells people.
   (`local/projects/teleclaude/spec/feature/config/notification-interests`): a
   person's interests answer whether they select an event type.
 - The consumer's incident record: per lifecycle family and thing, the time the
-  thing became broken.
+  thing became broken, and which selected recipients still await the message
+  of the transition in progress.
 
 **Outputs:**
 
 - One message per selected recipient, sent through person-addressed messaging on
   the recipient's own routed channel
   (`local/projects/teleclaude/spec/messaging`).
-- Incident records opened on a first failure and removed on recovery.
+- Incident records opened on a first failure and removed once the recovery has
+  reached every selected recipient.
+- A failed outcome for a transition whose message did not reach a selected
+  recipient: the handling fails, and the consumer runtime retries it and finally
+  parks the event as an announced dead letter.
 
 ## Invariants
 
@@ -58,8 +63,8 @@ consumer that tells people.
 - **The type decides the transition.** A failing state with no open record
   opens one and tells; a failing state with an open record tells nothing; an ok
   state with an open record tells the recovery with how long the thing was
-  broken and removes the record; an ok state with no open record, and an event
-  with no state, tell nothing. The consumer knows no producer and no type name:
+  broken and then removes the record; an ok state with no open record, and an
+  event with no state, tell nothing. The consumer knows no producer and no type name:
   a family that follows the convention takes part without a change here.
 - **The audience is narrowed, never widened.** Incident alerts tell platform
   administrators only, and of those only the ones whose interests select the
@@ -73,44 +78,61 @@ consumer that tells people.
   computer emitted; each computer keeps its own incident records, and no
   computer tells another computer's events.
 - **The record is the only state.** Messages are not stored, listed or pushed to
-  any shared surface. The record survives a restart, so a restart neither tells
-  an alert again nor loses a recovery.
-- **An alert is never lost; a crash may repeat one.** The record is written before
-  the failure is told and removed after the recovery is told. When handling is
-  interrupted and the event is handed again, an open record that this same event
-  opened is told again rather than taken as already told.
-- **One recipient's delivery failure is that recipient's.** A recipient whose
-  channel cannot be reached is logged with the reason and the others still
-  receive the message; it never fails the event, which would repeat the message
-  to everyone already reached.
+  any shared surface. Beside the broken-since time, the record of an open matter
+  holds which selected recipients still await the message of the transition in
+  progress, and nothing once the recovery has reached them all. It survives a
+  restart.
+- **A recipient's message is outstanding until its send succeeds.** The record is
+  written before any message of a transition is sent, and each recipient is
+  marked the moment its send succeeds. A handling that finds an open record
+  sends the transition's message only to the recipients still outstanding, so a
+  message recorded as sent is never sent again and a restart neither repeats a
+  recorded alert nor loses a recovery.
+- **A failed send fails the handling, and only that recipient's message is
+  retried.** The other recipients still receive theirs; the consumer runtime
+  retries the handling with bounded attempts, sending only to recipients still
+  outstanding, and finally parks the event as an announced dead letter, so an
+  undelivered alert is a visible failed outcome rather than a completed one. A
+  later event of the same transition, such as a further failure of a matter
+  still being told, again sends only to recipients still outstanding.
+- **One window is inherent.** When a channel has accepted a message and the
+  computer stops before the send is recorded, the next handling sends that
+  message again: the channels person-addressed delivery uses take no delivery
+  identity a resend could carry, and staying silent instead would lose the
+  alert.
 - **Messages state facts in plain sentences.** What happened (the type's
   declared description), the thing, the computer and the time, written so they
   read the same as plain text and as markdown on every channel; a recovery adds
   how long the thing was broken. No bracketed envelope header, no instruction,
   no action.
-- **Events carry no notification facts.** Producers state no human action and no
-  routing scope on the wire; an older computer reads both as absent
+- **Notification facts leave the wire when the fleet answers that nobody reads
+  them.** Incident alerts are advertised as a fleet capability. While any live
+  computer does not carry it, events keep the human action and routing scope an
+  older computer's notification projector reads; once the fleet capability map
+  shows every live computer carries it, events carry neither
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
+  A current computer never reads them.
 
 ## Primary flows
 
 ```mermaid
 flowchart TD
-    E[Platform event emitted on this computer] --> R[Consumer runtime hands it to incident alerts once]
+    E[Platform event emitted on this computer] --> R[Consumer runtime hands it to incident alerts]
     R --> S{State its type reports}
     S -- none --> N[Nothing]
     S -- failing --> F{Open record for family, subject, home?}
-    F -- yes, opened by another event --> N
-    F -- no, or opened by this event --> O[Open record with broken-since time]
-    O --> A[Select administrators whose interests select the type]
+    F -- no --> O[Open record: broken since now, failure outstanding for each selected administrator]
+    F -- yes --> P{Failure still outstanding for anyone?}
+    P -- no --> N
+    P -- yes --> D
+    O --> D[Send to each outstanding recipient, marking each success]
     S -- ok --> K{Open record?}
     K -- no --> N
-    K -- yes --> A2[Select administrators whose interests select the type]
-    A --> M[Compose failure message per recipient]
-    A2 --> M2[Compose recovery message with duration]
-    M --> D[Person-addressed delivery on each routed channel]
-    M2 --> D
-    D --> X[Remove record after a recovery is told]
+    K -- yes --> Q[Recovery outstanding for each selected administrator not yet told]
+    Q --> D
+    D --> G{Every send succeeded?}
+    G -- no --> T[Handling fails: runtime retries, then parks a dead letter]
+    G -- yes --> X[Recovery fully told: remove record]
 ```
 
 A message for a failure reads, for example, as the thing, what happened, the
@@ -123,15 +145,16 @@ as a known one.
 
 - **Keying a matter on the subject alone** merges two families that report on
   the same subject, so one family's recovery closes the other's open failure.
-- **Taking any open record as already told** loses the alert when handling is
-  interrupted after the record is written and before the message is sent: the
-  event is handed again, finds the record and stays silent. A record that this
-  same event opened is told again.
-- **Raising a recipient's delivery failure** makes the consumer retry the event
-  and repeat the message to every recipient already reached.
+- **Taking an open record as already told** loses the alert when handling stops
+  after the record is written and before a message is sent; outstanding
+  recipients are what the next handling sends to.
+- **Treating a failed send as handled** completes the event with a selected
+  recipient never told, and no later event tells them.
+- **Resending to every recipient on retry** repeats the message to everyone the
+  first attempt reached; only outstanding recipients are sent to.
 - **Composing from a fixed list of known types** leaves a new family unreadable
   or silent until someone edits the list; composition reads the declaration.
-- **Pushing from more than one computer** returns the duplicate alerts every
-  computer used to send for every event; only the origin computer tells.
-- **Storing messages for a list nobody reads** recreates the notification archive
-  this design removes.
+- **Telling from more than one computer** sends an administrator one message per
+  computer for a single event; only the origin computer tells.
+- **Dropping notification facts before the fleet answers** silences what an
+  older computer's projector still tells for events it receives.

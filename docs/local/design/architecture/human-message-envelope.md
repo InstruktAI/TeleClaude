@@ -54,8 +54,9 @@ surfaces apply their own renderer contracts.
 
 - **Meaning precedes rendering.** Producers supply author, provenance, time,
   and content once. Renderers never reconstruct those facts from display text.
-- **Lineage is not authorship.** Account lineage never substitutes for the
-  human, agent, or machine that actually authored a message.
+- **Lineage is not authorship** (`general/concept/lineage-vs-authorship`):
+  account lineage never substitutes for the human, agent, or machine that
+  actually authored a message.
 - **One source of truth for human-facing rendering.** For a message rendered to
   a person, structured fields are authoritative and headers, aliases, cards, and
   notification text are presentation. Agent-facing transcript classification is
