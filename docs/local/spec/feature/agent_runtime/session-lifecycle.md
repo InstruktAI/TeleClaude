@@ -526,7 +526,7 @@ And a platform administrator's listing is unchanged
 
 <!-- planned:durable-session-bootstrap -->
 
-- **A startup's first startup input is the submission that finishes it.** For a start that carries an initial message, it is that message, submitted once the agent's readiness signal admits input; for a start without one, it is the agent launch. Every acknowledged start keeps its startup intent and its progress on the session record before the acknowledgement is returned, and that record stays with the session for as long as the session is retained.
+- **A startup's first startup input is the submission that finishes it.** For a start that carries an initial message, it is that message, submitted once the agent's readiness signal admits input; for a start without one, it is the agent launch. Every acknowledged start has its startup intent and its progress stored durably with the session before the acknowledgement is returned, and that startup record is kept for as long as the session is retained.
 
 <!-- /planned:durable-session-bootstrap -->
 
