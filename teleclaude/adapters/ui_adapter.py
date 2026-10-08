@@ -2,7 +2,8 @@
 
 UI adapters provide:
 - Output lane readiness
-- Send-once output: one message per finished turn
+- Send-once output: each finished turn is sent once, overflowing into
+  continuation messages when it exceeds the platform's message size
 - Feedback message cleanup
 - Message formatting and display
 

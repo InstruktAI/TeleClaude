@@ -68,7 +68,7 @@ Invariants
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 
-- **Projection Owned by the Adapter Class**: `UiAdapter` delivers each finished agent turn once, as one message on the staged final pass, and declines live renders. `EditableUiAdapter` extends it for platforms whose messages can be edited in place and streams live output by editing the generation's tracked message. Telegram and Discord extend `EditableUiAdapter`; WhatsApp extends `UiAdapter`. No adapter sends a session-identification message.
+- **Projection Owned by the Adapter Class**: `UiAdapter` sends each finished agent turn once, on the staged final pass, overflowing into continuation messages when it exceeds `max_message_size`, and declines live renders. `EditableUiAdapter` extends it for platforms whose messages can be edited in place and streams live output by editing the generation's tracked message. Telegram and Discord extend `EditableUiAdapter`; WhatsApp extends `UiAdapter`. No adapter sends a session-identification message.
 
 - **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
   Core routes every snapshot with a durable output-generation identity derived from the bound transcript turn. An adapter edits only the message receipt owned by that generation; accepted input alone never clears the receipt for output that is still in flight.
