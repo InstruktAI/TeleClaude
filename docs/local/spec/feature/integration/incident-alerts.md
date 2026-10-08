@@ -14,9 +14,10 @@ They read the states platform events report under the platform lifecycle
 convention (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`):
 an event belongs to a lifecycle family, the last segment of its type names a
 state the event catalog declares failing or ok, and the thing whose state it
-reports is its subject within its home, so a failure and its recovery name the
-same subject and home. A recurring job is therefore one thing across all its
-runs, and same-named things under different homes are different things.
+reports is its subject within its origin, so a failure and its recovery name the
+same subject and origin. A recurring job is therefore one thing across all its
+runs, and same-named things that originated in different projects, people or
+companies are different things.
 A matter is one lifecycle family's state of one thing: two families that report
 on the same subject are two matters, and one family's recovery never closes the
 other's failure.

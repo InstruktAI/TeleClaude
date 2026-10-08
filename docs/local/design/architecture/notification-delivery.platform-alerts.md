@@ -33,9 +33,10 @@ consumer that tells people.
   (`local/projects/teleclaude/spec/domain/event-catalog`, Lifecycle states): the
   type alone says whether the event reports a failing state, an ok state, or no
   state.
-- The event's subject and home, which identify the thing within its lifecycle
-  family; its source, which names the computer; its time; and its type's
-  declaration, whose description says what happened.
+- The event's subject and origin, which identify the thing within its lifecycle
+  family; its source, which names the computer and the registered project,
+  person or company the act happened in; its time; and its type's declaration,
+  whose description says what happened.
 - The platform administrators on the people roster and each one's notification
   interests, read through config's published interests contract
   (`local/projects/teleclaude/spec/feature/config/notification-interests`): a
@@ -58,8 +59,8 @@ consumer that tells people.
 ## Invariants
 
 - **A matter is one lifecycle family's state of one thing.** The thing is the
-  event's subject within its home; two families that report on the same subject
-  are two matters, and the same subject under two homes is two things.
+  event's subject within its origin; two families that report on the same
+  subject are two matters, and the same subject from two origins is two things.
 - **The type decides the transition.** A failing state with no open record
   opens one and tells; a failing state with an open record tells nothing; an ok
   state with an open record tells the recovery with how long the thing was
@@ -120,7 +121,7 @@ flowchart TD
     E[Platform event emitted on this computer] --> R[Consumer runtime hands it to incident alerts]
     R --> S{State its type reports}
     S -- none --> N[Nothing]
-    S -- failing or ok --> F{Open record for family, subject, home?}
+    S -- failing or ok --> F{Open record for family, subject, origin?}
     F -- no, and ok --> N
     F -- no, and failing --> O[Open record: broken since now]
     F -- yes --> U[Apply the state to the matter]
