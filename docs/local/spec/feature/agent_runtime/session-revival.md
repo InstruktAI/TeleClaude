@@ -175,8 +175,6 @@ Then it iterates discovered transcripts for that agent and matches by extracted 
 And returns true on first hit, false if no transcript matches
 ```
 
-<!-- planned-change:revived-agent-keeps-its-status -->
-
 #### UC-SR9: Revival completes through the restart flow
 
 ```gherkin
@@ -187,22 +185,6 @@ And if the session was closed (closed-at marker set), revival clears the marker 
 And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
-
-<!-- change:revived-agent-keeps-its-status -->
-
-#### UC-SR9: Revival completes through the restart flow
-
-```gherkin
-Given a TeleClaude session id has been resolved (reused or freshly created)
-When the service hands off to the restart-agent flow
-Then the agent CLI is launched with resume-from-transcript semantics (the agent CLI replays its own transcript)
-And if the session was closed (closed-at marker set), revival clears the marker and sets lifecycle status to headless before launch
-And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
-And a session the revival adopted a host pane for is `initializing` until the revived agent is ready for input, and then `active`
-And the response payload reports a successful create with session id, host-pane reference, and agent
-```
-
-<!-- /planned-change:revived-agent-keeps-its-status -->
 
 <!-- planned:revived-agent-keeps-its-status -->
 
@@ -213,9 +195,9 @@ Given a session whose agent status is <status> with its reason
 When the session is revived
 Then its agent status is still <status>, with the same reason
 And revival delivers no input to the agent and starts no turn
-And the status next moves on a normalized agent event, as for any session, such as the one the first input delivered to the revived agent produces
 And the session is not marked `stalled` with reason `no_start`, however long the revived agent stays quiet
 And this holds for a session whose status is `unknown` and for a freshly-minted revival row, which has no status before revival: each stays `unknown` until its first normalized agent event
+And otherwise the status moves as for any session: on a normalized agent event, such as the one the first input delivered to the revived agent produces, and, for a kept `active`, by the in-turn silence rule (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL29)
 ```
 
 <!-- /planned:revived-agent-keeps-its-status -->
@@ -272,7 +254,7 @@ And the resumed agent receives the resulting turn in the restored conversation
 
 <!-- planned:revived-agent-keeps-its-status -->
 
-- **A kept agent status is not evidence that the revived agent is running.** Revival keeps the status whether or not the relaunched process comes up. For a session revival adopted a host pane for, a lifecycle status still `initializing` is what shows that the revived agent never became ready for input (UC-SR9).
+- **A kept agent status is not evidence that the revived agent is running.** Revival keeps the status whether or not the relaunched process comes up, and no `no_start` stall flags a relaunch that never came up.
 
 <!-- /planned:revived-agent-keeps-its-status -->
 
