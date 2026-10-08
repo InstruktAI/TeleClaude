@@ -36,7 +36,7 @@ restart, then check the logs` is directive. One string reaching a human and an
 - **A limit found is recorded with its contract.** A limit of a current contract
   that investigation or review uncovers is recorded by the session that found it,
   in the owning snippet: a spec's `Known caveats`, or a design's `Failure modes`
-  when it is how the system fails. Their content is
+  when it is how the system fails. What each section holds is defined in
   `general/spec/snippet-authoring-schema`.
 
 ### Doc-driven delivery
