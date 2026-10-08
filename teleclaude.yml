@@ -245,4 +245,4 @@ docs:
   enabled: true
 agents:
   enabled: true
-schema_version: 14
+schema_version: 15
