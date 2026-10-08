@@ -229,6 +229,43 @@ class WhatsAppAdapter(UiAdapter):
 
         return last_message_id
 
+    async def send_output_update(
+        self,
+        session: Session,
+        output: str,
+        started_at: float,
+        last_output_changed_at: float,
+        is_final: bool = False,
+        exit_code: int | None = None,
+        render_markdown: bool = False,
+        multi_message: bool = False,
+        delivery_ts: datetime | None = None,
+        output_metadata: MessageMetadata | None = None,
+    ) -> str | None:
+        """Send each finished turn once; live renders are declined.
+
+        A WhatsApp message cannot be edited, so a live render would arrive as a
+        separate message per update. Only the staged final pass, which carries
+        the turn's delivery version, reaches the customer.
+        """
+        if not is_final or delivery_ts is None:
+            return None
+        return await super().send_output_update(
+            session,
+            output,
+            started_at,
+            last_output_changed_at,
+            is_final=is_final,
+            exit_code=exit_code,
+            render_markdown=render_markdown,
+            multi_message=multi_message,
+            delivery_ts=delivery_ts,
+            output_metadata=output_metadata,
+        )
+
+    async def _send_session_badge(self, session: Session) -> None:
+        """No-op — a WhatsApp conversation shows no session identity."""
+
     async def edit_message(
         self,
         destination: Destination,
