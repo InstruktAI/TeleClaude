@@ -10,11 +10,23 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller, require_clearance
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_for_role_resolution,
+    carried_caller,
+    require_clearance_at_caller_person,
+)
 from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
 from teleclaude.config import config
-from teleclaude.config.project_subject_init import init_project_subject
+from teleclaude.config.project_subject_init import adopt_project_subject
+from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.core import command_handlers
+from teleclaude.core.configuration_clearance import (
+    ConfigurationOperation,
+    ConfigurationTarget,
+    decide,
+    standing_for_caller,
+)
 from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.models import ProjectInfo
 from teleclaude.identity_reach import resolve_reach
@@ -26,7 +38,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_PROJECT_INIT_COMMAND = "telec config project init"
+_PROJECT_ADOPT_COMMAND = "telec config project adopt"
+_PROJECT_ADOPTION_REFUSED = "project adoption refused — required standing: {required_standing} ({reason})"
 _PROJECT_PATH_REQUIRED = "project path must be an absolute path"
 _PROJECT_PATH_FILE = "project path names a file"
 _PROJECT_PATH_CREATE_FAILED = "project folder could not be created"
@@ -143,9 +156,30 @@ def _remove_created_directories(directories: list[Path]) -> None:
 @router.post("/projects", response_model=ProjectDTO)
 async def add_project(
     request: AddProjectRequest,
-    _identity: CallerIdentity = Depends(require_clearance(_PROJECT_INIT_COMMAND)),
+    identity: CallerIdentity = Depends(require_clearance_at_caller_person(_PROJECT_ADOPT_COMMAND)),
 ) -> ProjectDTO:
-    """Adopt one folder through the same published operation as the CLI."""
+    """Adopt one folder through the same published operation as the CLI.
+
+    The verb band is the dependency; the target decision runs here, before the route makes any folder
+    or reads any declaration. A system principal, including the daemon, carries no person standing and
+    is refused.
+    """
+    clearance = decide(
+        standing_for_caller(caller_for_role_resolution(identity)),
+        ConfigurationTarget(
+            kind=ConfigSubjectKind.PROJECT,
+            instance=None,
+            operation=ConfigurationOperation.ADOPT,
+            sections=frozenset(),
+        ),
+    )
+    if not clearance.allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=_PROJECT_ADOPTION_REFUSED.format(
+                required_standing=clearance.required_standing.value, reason=clearance.reason
+            ),
+        )
     requested_path = Path(request.path).expanduser()
     if not requested_path.is_absolute():
         raise HTTPException(status_code=400, detail=_PROJECT_PATH_REQUIRED)
@@ -177,7 +211,7 @@ async def add_project(
 
     try:
         await asyncio.to_thread(
-            init_project_subject,
+            adopt_project_subject,
             project_root,
             trigger=ProjectInitializationTrigger.DAEMON,
         )

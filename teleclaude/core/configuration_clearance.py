@@ -14,6 +14,7 @@ from enum import StrEnum
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import (
+    CliCaller,
     CliCallerKind,
     Company,
     PersonCliCaller,
@@ -23,6 +24,7 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.config.help_desk import HELP_DESK_KEY
+from teleclaude.config_roster import load_person_memberships
 from teleclaude.config_subjects import ConfigSubjectKind
 
 logger = get_logger(__name__)
@@ -47,6 +49,8 @@ class ConfigurationOperation(StrEnum):
     LIST = "list"
     GET = "get"
     INIT = "init"
+    CREATE = "create"
+    ADOPT = "adopt"
     PATCH = "patch"
     REMOVE = "remove"
     INVITE = "invite"
@@ -61,6 +65,8 @@ class RequiredStanding(StrEnum):
     THE_PERSON = "the_person"
     PLATFORM_ADMINISTRATOR = "platform_administrator"
     EFFECTIVE_ADMINISTRATOR = "effective_administrator"
+    REGISTERED_PERSON = "registered_person"
+    COMPANY_MEMBER = "company_member"
     FORBIDDEN = "forbidden"
 
 
@@ -73,9 +79,29 @@ class ClearanceReason(StrEnum):
     READ_ONLY_PROJECTION = "read_only_projection"
     NO_PERSON_STANDING = "no_person_standing"
     EFFECTIVE_ADMINISTRATOR_REQUIRED = "effective_administrator_required"
+    COMPANY_MEMBERSHIP_REQUIRED = "company_membership_required"
+    CREATION_FORM_REQUIRED = "creation_form_required"
+
+
+class SeedingOutcome(StrEnum):
+    """The closed outcome of the global event-domain seeding decision."""
+
+    ALLOWED = "allowed"
+    SKIPPED = "skipped"
+
+
+class ProjectCreationForm(StrEnum):
+    """Where a created project lands, which decides the standing creating it needs."""
+
+    OWN_HOME = "own_home"
+    COMPANY = "company"
+    PLATFORM_PATH = "platform_path"
 
 
 _ADMIN_ROLE = "admin"
+# Event-domain seeding writes the global configuration, so it stays a platform-role act.
+_SEEDING_PLATFORM_ROLES = frozenset({"member", _ADMIN_ROLE})
+_GLOBAL_SEEDING_EVENT = "config_global_seeding"
 
 
 @dataclass(frozen=True)
@@ -96,6 +122,8 @@ class ConfigurationTarget:
     instance: str | None
     operation: ConfigurationOperation
     sections: frozenset[str]
+    # Only project creation sets this; the company form names its company in `instance`.
+    creation_form: ProjectCreationForm | None = None
 
 
 @dataclass(frozen=True)
@@ -108,13 +136,17 @@ class ClearanceDecision:
 
 
 def standing_for(identity: ResolvedCliIdentity) -> ConfigurationStanding:
-    """Resolve one caller's target standing from the gate's carried identity.
+    """Resolve one caller's target standing from the gate's carried identity."""
+    return standing_for_caller(identity.caller)
+
+
+def standing_for_caller(caller: CliCaller) -> ConfigurationStanding:
+    """Resolve a caller's target standing, for any entry that has resolved its caller.
 
     Uses the exact-one identity lookup: an email mapping to zero or several
     registered people carries no person standing, even though the ordinary CLI
     identity retains its caller identity for other commands.
     """
-    caller = identity.caller
     if caller.kind is not CliCallerKind.PERSON:
         return ConfigurationStanding(
             person_slug=None, platform_role=None, principal_kind=caller.kind, role_resolver=RoleResolver()
@@ -203,7 +235,72 @@ def _refuse_effective_admin_required(standing: ConfigurationStanding) -> Clearan
     )
 
 
+def _refuse_no_person(required: RequiredStanding) -> ClearanceDecision:
+    return ClearanceDecision(False, required, ClearanceReason.NO_PERSON_STANDING)
+
+
+def _decide_adopt(standing: ConfigurationStanding, _target: ConfigurationTarget) -> ClearanceDecision:
+    """Any registered person may adopt a folder, wherever it is."""
+    if standing.person_slug is None:
+        return _refuse_no_person(RequiredStanding.REGISTERED_PERSON)
+    return ClearanceDecision(True, RequiredStanding.REGISTERED_PERSON, ClearanceReason.VERB_BAND_ONLY)
+
+
+def _decide_create_in_own_home(standing: ConfigurationStanding, _target: ConfigurationTarget) -> ClearanceDecision:
+    if standing.person_slug is None:
+        return _refuse_no_person(RequiredStanding.THE_PERSON)
+    return ClearanceDecision(True, RequiredStanding.THE_PERSON, ClearanceReason.VERB_BAND_ONLY)
+
+
+def _decide_create_in_company(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
+    """A member of the company, any role, may create there; the platform role stands in for nothing."""
+    if standing.person_slug is None:
+        return _refuse_no_person(RequiredStanding.COMPANY_MEMBER)
+    if target.instance is not None and target.instance in load_person_memberships(standing.person_slug):
+        return ClearanceDecision(True, RequiredStanding.COMPANY_MEMBER, ClearanceReason.VERB_BAND_ONLY)
+    return ClearanceDecision(False, RequiredStanding.COMPANY_MEMBER, ClearanceReason.COMPANY_MEMBERSHIP_REQUIRED)
+
+
+def _decide_create_at_path(standing: ConfigurationStanding, _target: ConfigurationTarget) -> ClearanceDecision:
+    if is_administrator(standing):
+        return ClearanceDecision(True, RequiredStanding.PLATFORM_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
+    return _refuse_admin_required(standing)
+
+
+_DECIDE_CREATE_BY_FORM = {
+    ProjectCreationForm.OWN_HOME: _decide_create_in_own_home,
+    ProjectCreationForm.COMPANY: _decide_create_in_company,
+    ProjectCreationForm.PLATFORM_PATH: _decide_create_at_path,
+}
+
+
+def _decide_create(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
+    if target.creation_form is None:
+        return ClearanceDecision(False, RequiredStanding.FORBIDDEN, ClearanceReason.CREATION_FORM_REQUIRED)
+    return _DECIDE_CREATE_BY_FORM[target.creation_form](standing, target)
+
+
+def decide_global_seeding(standing: ConfigurationStanding, *, request_id: str | None = None) -> bool:
+    """Decide whether a project init may seed the global event domains; a caller without the standing skips it.
+
+    Seeding is the one global write in project init, so it needs a platform role of member or
+    administrator. A caller without it is not refused: its init converges the project and skips the step.
+    """
+    allowed = standing.platform_role in _SEEDING_PLATFORM_ROLES
+    logger.info(
+        _GLOBAL_SEEDING_EVENT,
+        request_id=request_id,
+        outcome=(SeedingOutcome.ALLOWED if allowed else SeedingOutcome.SKIPPED).value,
+        caller_person=standing.person_slug,
+    )
+    return allowed
+
+
 def _decide_project(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
+    if target.operation is ConfigurationOperation.ADOPT:
+        return _decide_adopt(standing, target)
+    if target.operation is ConfigurationOperation.CREATE:
+        return _decide_create(standing, target)
     if target.operation in (ConfigurationOperation.LIST, ConfigurationOperation.GET):
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
     if target.operation is ConfigurationOperation.INIT and HELP_DESK_SECTION not in target.sections:
@@ -254,6 +351,7 @@ def decide(
         instance=target.instance,
         operation=target.operation.value,
         sections=sorted(target.sections),
+        creation_form=target.creation_form.value if target.creation_form is not None else None,
         outcome="allowed" if decision.allowed else "refused",
         reason=decision.reason,
         required_standing=decision.required_standing.value,

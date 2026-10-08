@@ -673,7 +673,8 @@ class ProjectConfig(ClosedModel):
         """Enforce slug format when the field is set.
 
         Empty/missing values are accepted here so legacy configs still load;
-        ``telec config project init`` fills the value during registration.
+        project adoption (``telec config project adopt``) and creation fill the
+        value during registration.
         """
         if value is None:
             return None

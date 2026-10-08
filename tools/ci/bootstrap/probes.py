@@ -48,7 +48,7 @@ _SECTION_MISSING = "The configuration view did not render a {section} section."
 _PROJECT_OWNERSHIP_MISSING = "Project {slug} does not render company {company}; its owner declaration did not land."
 _CONFIG_PERSON_INIT = ("config", "person", "init")
 _CONFIG_COMPANY_INIT = ("config", "company", "init")
-_CONFIG_PROJECT_INIT = ("config", "project", "init")
+_CONFIG_PROJECT_ADOPT = ("config", "project", "adopt")
 _CONFIG_PERSON_GET = ("config", "person", "get")
 _CONFIG_PERSON_PATCH = ("config", "person", "patch")
 _CONFIG_COMPANY_GET = ("config", "company", "get")
@@ -100,7 +100,7 @@ _COMPANY_ROSTER_PATCHED = "assign the company and project roles"
 _PROJECT_CHECKOUT_CREATED = "create the probe repository directory {slug}"
 _PROJECT_GIT_INITIALIZED = "initialize probe repository {slug}"
 _PROJECT_DIRECTORY_SELECTED = "select probe project directory {slug}"
-_PROJECT_INITIALIZED = "register the probe project {slug}"
+_PROJECT_ADOPTED = "register the probe project {slug}"
 _PROJECT_COMPANY_PATCHED = "assign project {slug} to the probe company"
 _RETURN_TO_CHECKOUT = "return to the TeleClaude checkout"
 _READ_REVISION = "read {kind} {slug} revision before patch"
@@ -295,8 +295,8 @@ def _register_project(
     )
     selected = terminal.run([_CHANGE_DIRECTORY_COMMAND, project_root])
     harness.record_terminal_result(_PROJECT_DIRECTORY_SELECTED.format(slug=project_slug), selected)
-    initialized = terminal.run([telec, *_CONFIG_PROJECT_INIT])
-    harness.record_terminal_result(_PROJECT_INITIALIZED.format(slug=project_slug), initialized)
+    adopted = terminal.run([telec, *_CONFIG_PROJECT_ADOPT])
+    harness.record_terminal_result(_PROJECT_ADOPTED.format(slug=project_slug), adopted)
     revision = _read_revision(harness, terminal, telec, _PROJECT_KIND, project_slug)
     patch = yaml.safe_dump({_COMPANY_FIELD: company_slug}, sort_keys=False)
     patched = terminal.run(

@@ -30,6 +30,7 @@ from teleclaude.config.migrations import (
     upcast,
 )
 from teleclaude.config.migrations._runner import upcast_for_read
+from teleclaude.config.project_home import require_home_owner
 from teleclaude.config.schema import (
     AppConfig,
     CompanyConfig,
@@ -233,8 +234,15 @@ def _read_config_mapping(path: Path) -> object:
 
 
 def load_project_config(path: Path) -> ProjectConfig:
-    """Load project-level configuration."""
-    return load_config(path, ProjectConfig, ConfigKind.PROJECT, path.parent)
+    """Load project-level configuration.
+
+    A declaration inside a person's or company's home must name that home's owner
+    (`require_home_owner`); a missing declaration is the empty default and is not checked.
+    """
+    config = load_config(path, ProjectConfig, ConfigKind.PROJECT, path.parent)
+    if path.exists():
+        require_home_owner(path.parent, company=config.company, person=config.person)
+    return config
 
 
 def load_declared_project_config(root: Path) -> ProjectConfig | None:
@@ -266,7 +274,9 @@ def load_declared_project_config_from_content(path: Path, content: bytes) -> Pro
         raise ValueError(_CONTENT_READ_FAILURE.format(path=path, error=exc)) from exc
     if declared_config_kind(path, raw) is not ConfigKind.PROJECT:
         return None
-    return _validated_model(path, raw, ProjectConfig, ConfigKind.PROJECT)
+    config = _validated_model(path, raw, ProjectConfig, ConfigKind.PROJECT)
+    require_home_owner(path.parent, company=config.company, person=config.person)
+    return config
 
 
 def save_project_config(path: Path, config: ProjectConfig) -> None:

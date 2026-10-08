@@ -131,6 +131,14 @@ FLAG_REMINDER_CANCEL_ALL = Flag("--all", desc="Cancel all reminders owned by the
 # =============================================================================
 
 FLAG_COMPANY_SLUG = Flag("--slug", desc="Company slug (optional; derived from the name when omitted)", arity=VALUE)
+FLAG_PROJECT_COMPANY = Flag(
+    "--company", desc="Create the project in this company's home, owned by the company (company members)", arity=VALUE
+)
+FLAG_PROJECT_PATH = Flag(
+    "--path",
+    desc="Create an ownerless platform project at this folder outside every home (platform administrators)",
+    arity=VALUE,
+)
 FLAG_HELP_DESK = Flag(
     "--help-desk", desc="Enable this home's help desk and scaffold it (home administrator only)", arity=SWITCH
 )

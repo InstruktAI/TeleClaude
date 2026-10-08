@@ -122,7 +122,7 @@ def deliver(value: object, _subject: SubjectRef) -> None:
         ProjectInitializationTrigger,
     )
     from teleclaude.project_setup.init_flow import (  # noqa: PLC0415 - avoids the migration-step import cycle.
-        init_project as _init_project,
+        adopt_project as _adopt_project,
     )
 
     pending_rows = cast(tuple[Mapping[str, object], ...], value)
@@ -152,7 +152,7 @@ def deliver(value: object, _subject: SubjectRef) -> None:
             logger.warning(_MISSING_DIRECTORY_EVENT, trusted_directory_name=name)
             continue
         try:
-            result = _init_project(folder, trigger=ProjectInitializationTrigger.FOLD)
+            result = _adopt_project(folder, trigger=ProjectInitializationTrigger.FOLD)
         except ProjectIdentityConflict as error:
             raise RegistryConflict(str(error)) from error
 

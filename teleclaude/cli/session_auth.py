@@ -17,6 +17,7 @@ import psutil
 from teleclaude.caller_identity import (
     CliCaller,
     NoIdentityCliCaller,
+    Person,
     PersonCliCaller,
     Platform,
     ProjectPath,
@@ -392,6 +393,9 @@ def _fallback_role_target(
         if facts is not None and facts.project_path is not None:
             return SessionOf(Path(facts.project_path))
         return Platform()
+    if auth.scope is CommandScope.CALLER_PERSON:
+        person_slug = identity.caller.person_slug
+        return Person(person_slug) if person_slug else Platform()
     if auth.scope is not CommandScope.INVOCATION:
         return Platform()
     return ProjectPath(invocation_cwd())

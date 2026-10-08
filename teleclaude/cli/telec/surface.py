@@ -93,21 +93,43 @@ _HELP_DESK_ADMIN_NOTE = "--help-desk requires administrator authority over the h
 _HELP_DESK_LINKS_NOTE = (
     "Renders only where the desk is enabled; a Discord visitor sends the identifier as their first message."
 )
-# Enabling a help desk is judged at the home it opens, at the admin band; plain init stays a
+# Enabling a help desk is judged at the home it opens, at the admin band; plain company init stays a
 # platform-scope member act.
 _HELP_DESK_COMPANY_INIT_AUTH = CommandAuth(
     system=_AGENT_REACH,
     human=_HR_MEMBER,
     scope=CommandScope.PLATFORM,
-    when_flag=FlagConditionedAuth(
-        F.FLAG_HELP_DESK.long, CommandScope.NAMED_COMPANY, _HR_ADMIN, scope_flag=F.FLAG_COMPANY_SLUG.long
+    when_flag=(
+        FlagConditionedAuth(
+            F.FLAG_HELP_DESK.long, CommandScope.NAMED_COMPANY, _HR_ADMIN, scope_flag=F.FLAG_COMPANY_SLUG.long
+        ),
     ),
 )
+# Plain project init converges a registered project and is judged like adoption, at the caller's own person
+# scope; enabling its help desk is judged at the project, at the admin band.
 _HELP_DESK_PROJECT_INIT_AUTH = CommandAuth(
     system=_AGENT_REACH,
-    human=_HR_MEMBER,
-    scope=CommandScope.PLATFORM,
-    when_flag=FlagConditionedAuth(F.FLAG_HELP_DESK.long, CommandScope.INVOCATION, _HR_ADMIN),
+    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+    scope=CommandScope.CALLER_PERSON,
+    when_flag=(FlagConditionedAuth(F.FLAG_HELP_DESK.long, CommandScope.INVOCATION, _HR_ADMIN),),
+)
+# Creation is judged at the home it lands in: the caller's own person scope, the named company, or the platform.
+_PROJECT_CREATE_AUTH = CommandAuth(
+    system=_AGENT_REACH,
+    human=_HR_MEMBER_CONTRIB_NEWCOMER,
+    scope=CommandScope.CALLER_PERSON,
+    when_flag=(
+        FlagConditionedAuth(
+            F.FLAG_PROJECT_COMPANY.long,
+            CommandScope.NAMED_COMPANY,
+            _HR_MEMBER_CONTRIB_NEWCOMER,
+            scope_flag=F.FLAG_PROJECT_COMPANY.long,
+        ),
+        FlagConditionedAuth(F.FLAG_PROJECT_PATH.long, CommandScope.PLATFORM, _HR_ADMIN),
+    ),
+)
+_PROJECT_ADOPT_AUTH = CommandAuth(
+    system=_AGENT_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER, scope=CommandScope.CALLER_PERSON
 )
 _JOBS_READ_AUTH = CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB)
 _JOBS_CONFIG_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.INVOCATION)
@@ -1439,12 +1461,45 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
                     ),
+                    "create": CommandDef(
+                        desc="Create a new, empty project",
+                        args="<name> [--company <slug> | --path <dir>]",
+                        flags=[F.FLAG_HELP, F.FLAG_PROJECT_COMPANY, F.FLAG_PROJECT_PATH],
+                        notes=[
+                            "Without a flag the project lands in your own projects area, owned by you.",
+                            "--company puts it in that company's projects area, owned by the company; "
+                            "any member of the company may. --path makes an ownerless platform project at a "
+                            "folder outside every home, for platform administrators; it never combines with "
+                            "--company.",
+                            "The name is the project's identity: an invalid name, or one another project on "
+                            "this computer already holds, is refused before anything is written.",
+                            "The project gets its own repository on main, declares its owner and declares no "
+                            "capabilities yet. Scaffold inside it, then run `telec config project init` there "
+                            "to converge it.",
+                        ],
+                        auth=_PROJECT_CREATE_AUTH,
+                    ),
+                    "adopt": CommandDef(
+                        desc="Register the folder you stand in as a project, where it is",
+                        flags=[F.FLAG_HELP],
+                        notes=[
+                            "Adopts the checkout that owns your current directory, or the directory itself when "
+                            "no repository holds it or only the global home's does.",
+                            "Inside a home the project is owned by that home and gets its own repository if it "
+                            "has none; a different declared owner is refused. Outside every home the declared "
+                            "owner stays. No file is moved.",
+                            "Writes nothing outside the project and the project registry.",
+                        ],
+                        auth=_PROJECT_ADOPT_AUTH,
+                    ),
                     "init": CommandDef(
-                        desc="Initialize project plumbing for the caller's checkout",
+                        desc="Converge a registered project's plumbing for the caller's checkout",
                         args="[--help-desk]",
                         flags=[F.FLAG_HELP, F.FLAG_HELP_DESK],
                         notes=[
-                            "Sets up git hooks, converges plumbing, and registers the project root.",
+                            "Sets up git hooks and converges plumbing for a project that is already registered.",
+                            "A folder that is not a registered project is refused, naming "
+                            "`telec config project create` and `telec config project adopt`.",
                             "Syncs no artifacts — documentation publication is commit-bound.",
                             _HELP_DESK_ADMIN_NOTE,
                         ],
@@ -1969,6 +2024,8 @@ CONFIG_COMPANY_INIT = CLI_SURFACE["config"].subcommands["company"].subcommands["
 CONFIG_COMPANY_PATCH = CLI_SURFACE["config"].subcommands["company"].subcommands["patch"]
 CONFIG_PROJECT_LIST = CLI_SURFACE["config"].subcommands["project"].subcommands["list"]
 CONFIG_PROJECT_GET = CLI_SURFACE["config"].subcommands["project"].subcommands["get"]
+CONFIG_PROJECT_CREATE = CLI_SURFACE["config"].subcommands["project"].subcommands["create"]
+CONFIG_PROJECT_ADOPT = CLI_SURFACE["config"].subcommands["project"].subcommands["adopt"]
 CONFIG_PROJECT_INIT = CLI_SURFACE["config"].subcommands["project"].subcommands["init"]
 CONFIG_PROJECT_PATCH = CLI_SURFACE["config"].subcommands["project"].subcommands["patch"]
 CONFIG_COMPANY_HELP_DESK_LINKS = CLI_SURFACE["config"].subcommands["company"].subcommands["help-desk-links"]

@@ -85,18 +85,19 @@ class CommandAuth:
     caller_independent: bool = False
     scope: CommandScope = CommandScope.INVOCATION
     scope_flag: str | None = None
-    when_flag: FlagConditionedAuth | None = None
+    when_flag: tuple[FlagConditionedAuth, ...] = ()
 
-    def conditioned(self, flag_present: bool) -> CommandAuth:
-        """Return the declaration that applies: the flag-conditioned scope and band when its flag is present."""
-        if self.when_flag is None or not flag_present:
+    def conditioned(self, present_flags: frozenset[str]) -> CommandAuth:
+        """Return the declaration that applies: the first flag-conditioned scope and band whose flag is present."""
+        condition = next((candidate for candidate in self.when_flag if candidate.flag in present_flags), None)
+        if condition is None:
             return self
         return replace(
             self,
-            scope=self.when_flag.scope,
-            human=self.when_flag.human,
-            scope_flag=self.when_flag.scope_flag,
-            when_flag=None,
+            scope=condition.scope,
+            human=condition.human,
+            scope_flag=condition.scope_flag,
+            when_flag=(),
         )
 
     def allows(self, system_role: str | None, human_role: str | None) -> bool:

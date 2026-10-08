@@ -54,8 +54,16 @@ class InvocationRoots:
     context_kind: ConfigKind | None
 
     def adoption_root(self) -> Path:
-        """Return the owning checkout, or let project init adopt a fresh directory before it has a Git checkout."""
-        return resolve_owning_checkout(self.invocation_dir) or self.invocation_dir
+        """Return the folder project adoption addresses.
+
+        That is the owning checkout of the repository holding the invocation
+        directory. A directory no repository holds, or one held only by the global
+        home's repository (which never holds a project), is addressed itself.
+        """
+        owner = resolve_owning_checkout(self.invocation_dir)
+        if owner is None or (is_platform_home(owner) and not is_platform_home(self.invocation_dir)):
+            return self.invocation_dir
+        return owner
 
     def require_project_root(self) -> Path:
         """Return shared project state for project contexts, otherwise fail with the invocation path."""

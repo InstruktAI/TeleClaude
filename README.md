@@ -120,9 +120,9 @@ instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 
 `make install`, `telec config wizard`, and `make start` are for this TeleClaude repo itself. They install machine-global tooling, collect interactive configuration, and bring the daemon up. The installer publishes the CLIs (`telec`, `graphify`) to `~/.local/bin`, ensures the InstruktAI logging CLI (`instrukt-ai-logs`) is present and current and wires its rotation and scheduling, and, if `~/.local/bin` isn't on your `PATH`, detects your shell and offers to add it — no manual PATH editing.
 
-`telec config project init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up git hooks, registry state, and project-local config; documentation publication happens through the project's own commit and review boundary, not as a side effect of init. It is project setup, not repo installation.
+`telec config project create`, `adopt` and `init` are different. They bring a project under TeleClaude, each as its own act. `telec config project create <name>` makes a new, empty project of its own in your projects area (`--company <slug>` for a company's, `--path <dir>` for a platform administrator's ownerless one outside every home). `telec config project adopt` registers the folder you stand in, where it is, keeping its history and location. `telec config project init` then converges a project that is already registered, wiring up git hooks, registry state, and project-local config; it refuses a folder that is not registered and names `create` and `adopt`. Documentation publication happens through the project's own commit and review boundary, not as a side effect of any of them. This is project setup, not repo installation.
 
-For AI-driven project analysis and quality-config assessment, start the sessions explicitly after `telec config project init`: `telec sessions run --command /projects-analyze` and `telec sessions run --command /projects-assess-config`.
+For AI-driven project analysis and quality-config assessment, start the sessions explicitly after `telec config project create` or `telec config project adopt`: `telec sessions run --command /projects-analyze` and `telec sessions run --command /projects-assess-config`.
 
 ### Antigravity permissions
 

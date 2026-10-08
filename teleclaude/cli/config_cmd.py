@@ -45,6 +45,8 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PERSON_INVITE,
     CONFIG_PERSON_LIST,
     CONFIG_PERSON_PATCH,
+    CONFIG_PROJECT_ADOPT,
+    CONFIG_PROJECT_CREATE,
     CONFIG_PROJECT_GET,
     CONFIG_PROJECT_HELP_DESK_LINKS,
     CONFIG_PROJECT_INIT,
@@ -53,7 +55,7 @@ from teleclaude.cli.telec.surface import (
 )
 from teleclaude.config import config
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
-from teleclaude.config.project_subject_init import init_project_subject
+from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject, init_project_subject
 from teleclaude.config.resource_contract import (
     InvalidCandidate,
     PartialCommitFailure,
@@ -77,7 +79,9 @@ from teleclaude.core.configuration_clearance import (
     HELP_DESK_SECTION,
     ConfigurationOperation,
     ConfigurationTarget,
+    ProjectCreationForm,
     decide,
+    decide_global_seeding,
     is_administrator,
     standing_for,
 )
@@ -92,7 +96,13 @@ from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import person_roles
 from teleclaude.docs_index import get_project_slug
 from teleclaude.invite import invite_person, render_help_desk_links
-from teleclaude.project_root import resolve_invocation_roots
+from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
+from teleclaude.project_setup.init_flow import (
+    CompanyHomeDestination,
+    PersonHomeDestination,
+    PlatformPathDestination,
+    ProjectDestination,
+)
 from teleclaude.slug import normalize_slug
 
 _YAML = "yaml"
@@ -116,6 +126,19 @@ _PARTIAL_COMMIT_MESSAGE = (
     "Error: {message}{request}\nThe affected files may be in a mixed state — read them back before retrying."
 )
 _PROJECT_INIT_COMPLETE = "telec config project init complete."
+_PROJECT_INIT_SEEDING_SKIPPED = (
+    "Global event-domain seeding was skipped: it needs a platform role of member or administrator."
+)
+_COMPLETION_WITH_NOTE = "{completion}\n{note}"
+_PROJECT_CREATE_COMPLETE = "telec config project create complete."
+_PROJECT_ADOPT_COMPLETE = "telec config project adopt complete."
+_CREATE_VERB = "create"
+_ADOPT_VERB = "adopt"
+_CREATE_USAGE_ERROR = (
+    "Error: project create takes exactly one name: telec config project create <name> [--company <slug> | --path <dir>]"
+)
+_CREATE_FORM_CONFLICT_ERROR = "Error: --company and --path never combine."
+_NO_PERSON_HOME_ERROR = "Error: creating in your own home needs a registered person."
 _SLUG_FIELD = "slug"
 _REDACTED_VALUE = "<redacted: platform administrator required>"
 _HELP_DESK_LINKS_VERB = "help-desk-links"
@@ -197,6 +220,10 @@ def handle_config_kind_command(kind: str, args: list[str]) -> None:
         _handle_init(kind, subject_kind, verb_args, request_id)
     elif verb == "patch":
         _handle_patch(kind, subject_kind, verb_args, request_id)
+    elif verb == _CREATE_VERB and subject_kind is ConfigSubjectKind.PROJECT:
+        _handle_create(verb_args, request_id)
+    elif verb == _ADOPT_VERB and subject_kind is ConfigSubjectKind.PROJECT:
+        _handle_adopt(verb_args, request_id)
     elif verb == "invite" and subject_kind is ConfigSubjectKind.PERSON:
         _handle_invite(verb_args, request_id)
     elif verb == "discord-voice-bot" and subject_kind is ConfigSubjectKind.PERSON:
@@ -220,11 +247,18 @@ def _gate(
     operation: ConfigurationOperation,
     sections: frozenset[str],
     request_id: str,
+    creation_form: ProjectCreationForm | None = None,
 ) -> ResolvedCliIdentity:
     """Verb band, then target clearance. Refuses and exits before any config is read."""
     identity = resolve_cli_identity()
     standing = standing_for(identity)
-    target = ConfigurationTarget(kind=subject_kind, instance=instance, operation=operation, sections=sections)
+    target = ConfigurationTarget(
+        kind=subject_kind,
+        instance=instance,
+        operation=operation,
+        sections=sections,
+        creation_form=creation_form,
+    )
     decision = decide(standing, target, request_id=request_id)
     if not decision.allowed:
         print(
@@ -365,7 +399,7 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
 
     if subject_kind is ConfigSubjectKind.PROJECT:
         adoption_root = resolve_invocation_roots().adoption_root()
-        _gate(
+        identity = _gate(
             kind,
             "init",
             subject_kind,
@@ -374,11 +408,16 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
             sections=sections,
             request_id=request_id,
         )
+        seed_global = decide_global_seeding(standing_for(identity), request_id=request_id)
         _run_init(
-            lambda: init_project_subject(adoption_root, request_id=request_id, help_desk=help_desk),
+            lambda: init_project_subject(
+                adoption_root, request_id=request_id, help_desk=help_desk, seed_global=seed_global
+            ),
             output_format,
             request_id,
-            completion_line=_PROJECT_INIT_COMPLETE,
+            completion_line=_PROJECT_INIT_COMPLETE
+            if seed_global
+            else _COMPLETION_WITH_NOTE.format(completion=_PROJECT_INIT_COMPLETE, note=_PROJECT_INIT_SEEDING_SKIPPED),
         )
         return
 
@@ -441,6 +480,90 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
         lambda: init_subject(SubjectRef(subject_kind, None), fields, request_id=request_id),
         output_format,
         request_id,
+    )
+
+
+# --- create and adopt ---
+
+
+def _creation_target(parsed_company: str | None, parsed_path: str | None) -> tuple[ProjectCreationForm, str | None]:
+    """Name the creation form a request asks for and the company it names, if any."""
+    if parsed_path is not None:
+        return ProjectCreationForm.PLATFORM_PATH, None
+    if parsed_company is not None:
+        return ProjectCreationForm.COMPANY, parsed_company
+    return ProjectCreationForm.OWN_HOME, None
+
+
+def _creation_destination(
+    form: ProjectCreationForm,
+    company: str | None,
+    path: str | None,
+    person_slug: str | None,
+) -> ProjectDestination:
+    """Resolve where a created project lands from the form the request asked for."""
+    if form is ProjectCreationForm.PLATFORM_PATH and path is not None:
+        requested = Path(path).expanduser()
+        return PlatformPathDestination(requested if requested.is_absolute() else resolve_invocation_cwd() / requested)
+    if form is ProjectCreationForm.COMPANY and company is not None:
+        return CompanyHomeDestination(company)
+    if person_slug is None:
+        print(_NO_PERSON_HOME_ERROR)
+        raise SystemExit(1)
+    return PersonHomeDestination(person_slug)
+
+
+def _handle_create(args: list[str], request_id: str) -> None:
+    parsed = parse_command_args(CONFIG_PROJECT_CREATE, args)
+    if len(parsed.positionals) != 1:
+        print(_CREATE_USAGE_ERROR)
+        raise SystemExit(1)
+    name = parsed.positionals[0]
+    company = parsed.value(F.FLAG_PROJECT_COMPANY)
+    path = parsed.value(F.FLAG_PROJECT_PATH)
+    if company is not None and path is not None:
+        print(_CREATE_FORM_CONFLICT_ERROR)
+        raise SystemExit(1)
+    form, instance = _creation_target(company, path)
+    identity = _gate(
+        ConfigSubjectKind.PROJECT.value,
+        _CREATE_VERB,
+        ConfigSubjectKind.PROJECT,
+        instance=instance,
+        operation=ConfigurationOperation.CREATE,
+        sections=frozenset(),
+        request_id=request_id,
+        creation_form=form,
+    )
+    destination = _creation_destination(form, company, path, standing_for(identity).person_slug)
+    _run_init(
+        lambda: create_project_subject(name, destination, request_id=request_id),
+        _output_format(None),
+        request_id,
+        completion_line=_PROJECT_CREATE_COMPLETE,
+    )
+
+
+def _handle_adopt(args: list[str], request_id: str) -> None:
+    parsed = parse_command_args(CONFIG_PROJECT_ADOPT, args)
+    if parsed.positionals:
+        print(_UNEXPECTED_ARGUMENT_ERROR.format(argument=parsed.positionals[0]))
+        raise SystemExit(1)
+    adoption_root = resolve_invocation_roots().adoption_root()
+    _gate(
+        ConfigSubjectKind.PROJECT.value,
+        _ADOPT_VERB,
+        ConfigSubjectKind.PROJECT,
+        instance=None,
+        operation=ConfigurationOperation.ADOPT,
+        sections=frozenset(),
+        request_id=request_id,
+    )
+    _run_init(
+        lambda: adopt_project_subject(adoption_root, request_id=request_id),
+        _output_format(None),
+        request_id,
+        completion_line=_PROJECT_ADOPT_COMPLETE,
     )
 
 

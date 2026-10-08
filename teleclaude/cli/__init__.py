@@ -13,6 +13,7 @@ class CommandScope(StrEnum):
     TARGET_PATH = "target_path"
     NAMED_TRUSTED_DIRECTORY = "named_trusted_directory"
     NAMED_COMPANY = "named_company"
+    CALLER_PERSON = "caller_person"
 
 
 class ConfigSubjectType(StrEnum):

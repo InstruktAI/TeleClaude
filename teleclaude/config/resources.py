@@ -66,6 +66,7 @@ from teleclaude.config.person_resource import (
 from teleclaude.config.person_resource import (
     person_view as _person_view,
 )
+from teleclaude.config.project_home import require_home_owner
 from teleclaude.config.resource_catalog import list_subjects as _list_subjects
 from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import (
@@ -777,7 +778,8 @@ def _patch_project(
             raise StaleRevision(expected=expected_revision, actual=actual_revision)
         candidate_section = apply_merge_patch(current_section, patch)
         try:
-            ProjectConfig.model_validate({**candidate_section, _KIND_KEY: ConfigKind.PROJECT.value})
+            candidate = ProjectConfig.model_validate({**candidate_section, _KIND_KEY: ConfigKind.PROJECT.value})
+            require_home_owner(path.parent, company=candidate.company, person=candidate.person)
         except Exception as exc:
             raise InvalidCandidate(str(exc)) from exc
         # Written only — the project's own commit/review boundary governs afterward; this

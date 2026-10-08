@@ -78,12 +78,17 @@ def _resolve_and_enforce(cmd: str, args: list[str]) -> tuple[list[str], CommandD
 
 
 def _effective_auth(node: CommandDef, parsed: ParsedArgs) -> CommandAuth | None:
-    """Return the node's declaration, conditioned on whether its flag-conditioned flag is present."""
+    """Return the node's declaration, conditioned on which of its flag-conditioned flags are present."""
     auth = node.auth
-    if auth is None or auth.when_flag is None:
+    if auth is None or not auth.when_flag:
         return auth
-    flag = next((candidate for candidate in node.flags if candidate.long == auth.when_flag.flag), None)
-    return auth.conditioned(flag is not None and parsed.has(flag))
+    declared = {candidate.long: candidate for candidate in node.flags}
+    present = frozenset(
+        condition.flag
+        for condition in auth.when_flag
+        if condition.flag in declared and parsed.has(declared[condition.flag])
+    )
+    return auth.conditioned(present)
 
 
 def _role_target_for_command(
@@ -116,7 +121,7 @@ def _role_target_for_command(
         if subject_type is ConfigSubjectType.COMPANY:
             return Company(subject)
         return Project(subject)
-    if auth.scope is CommandScope.TARGET_SESSION:
+    if auth.scope in (CommandScope.TARGET_SESSION, CommandScope.CALLER_PERSON):
         return None
     if auth.scope is CommandScope.NAMED_COMPANY:
         return _named_company_target(node, auth, parsed)

@@ -71,8 +71,8 @@ _MESSAGE_FIELD = "message"
 _DIRECT_FIELD = "direct"
 _CLOSE_LINK_FIELD = "close_link"
 _SESSIONS_SEND_COMMAND = "sessions send"
-_PROJECT_INIT_COMMAND = "telec config project init"
-_PROJECT_INIT_CLEARANCE = ClearanceScope.verb(_PROJECT_INIT_COMMAND)
+_PROJECT_ADOPT_COMMAND = "telec config project adopt"
+_PROJECT_ADOPT_CLEARANCE = ClearanceScope.verb(_PROJECT_ADOPT_COMMAND)
 _HTTP_POST = HTTPMethod.POST
 
 # Reconnection settings
@@ -646,7 +646,7 @@ class _TelecSessionAPI:
 
     async def add_project(self, path: str) -> ProjectDTO:
         """Adopt a local project folder through the daemon API."""
-        options = RequestOptions(json_body={_PROJECT_PATH_FIELD: path}, clearance_scope=_PROJECT_INIT_CLEARANCE)
+        options = RequestOptions(json_body={_PROJECT_PATH_FIELD: path}, clearance_scope=_PROJECT_ADOPT_CLEARANCE)
         response = await self._request(_HTTP_POST, _PROJECTS_ROUTE, request_options=options)
         return ProjectDTO.model_validate_json(response.text)
 

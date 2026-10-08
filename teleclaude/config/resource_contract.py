@@ -90,6 +90,8 @@ class ResourceOperation(StrEnum):
     """Closed operation vocabulary for the `config_resource_change` terminal record."""
 
     INIT = "init"
+    CREATE = "create"
+    ADOPT = "adopt"
     PATCH = "patch"
     REMOVE = "remove"
 

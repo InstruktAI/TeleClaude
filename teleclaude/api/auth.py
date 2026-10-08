@@ -13,6 +13,7 @@ from teleclaude.caller_identity import (
     CarriedIdentity,
     CliCaller,
     NoIdentityCliCaller,
+    Person,
     PersonCliCaller,
     Platform,
     RoleResolver,
@@ -23,7 +24,7 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.config import config
-from teleclaude.constants import LOGIN_REQUIRED_DETAIL, ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL, ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import db
@@ -73,6 +74,20 @@ def caller_role_at_platform(identity: CallerIdentity) -> str | None:
         return identity.system_role
     if identity.email is not None:
         return "customer"
+    return None
+
+
+def caller_role_at_own_person_scope(identity: CallerIdentity) -> str | None:
+    """Resolve a carried caller's role at their own person scope, the scope that admits any registered person."""
+    caller = caller_for_role_resolution(identity)
+    if isinstance(caller, PersonCliCaller):
+        if not caller.person_slug:
+            return HUMAN_ROLE_CUSTOMER
+        return RoleResolver().role_for(caller, Person(caller.person_slug))
+    if isinstance(caller, SystemCliCaller):
+        return identity.system_role
+    if identity.email is not None:
+        return HUMAN_ROLE_CUSTOMER
     return None
 
 
@@ -160,6 +175,22 @@ def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
     return _require
 
 
+def require_clearance_at_caller_person(command_path: str) -> Callable[..., CallerIdentity]:
+    """Return a route dependency enforcing a verb's band judged at the caller's own person scope.
+
+    ``require_clearance`` is scope-blind: it judges the carried platform role, which refuses a
+    registered person who holds none. A verb declared at the caller-person scope is judged by the
+    role that person holds at themselves, as the CLI judges it.
+    """
+
+    def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
+        if not is_command_allowed(command_path, identity.system_role, caller_role_at_own_person_scope(identity)):
+            raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))
+        return identity
+
+    return _require
+
+
 async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
     """Build session provenance from the caller's session record when present."""
     if not identity.session_id:
@@ -192,5 +223,6 @@ __all__ = [
     "carried_caller_session_id",
     "principal_for_carried_caller",
     "require_clearance",
+    "require_clearance_at_caller_person",
     "resolve_caller_provenance",
 ]
