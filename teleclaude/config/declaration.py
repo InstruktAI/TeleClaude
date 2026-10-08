@@ -10,7 +10,8 @@ from typing import Any, Final
 
 from ruamel.yaml import YAML
 
-from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, ConfigKind
+from teleclaude.config.field_constraints import refuse_document
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, TIER_DOCUMENT_MODELS, ConfigKind
 from teleclaude.file_transaction import file_transaction
 
 HOME_SCHEMA_DIRECTORY: Final = "schemas"
@@ -53,7 +54,11 @@ def render_declared_config(
     kind: ConfigKind,
     document: Mapping[str, object],
 ) -> str:
-    """Render a declared document for an already-held file transaction."""
+    """Render a declared document for an already-held file transaction.
+
+    Raises ``FieldConstraintRefusal`` before producing output when the document breaks a
+    relationship declared on its tier's fields.
+    """
     return _render_document(kind, document, _SCHEMA_MODELINE_PREFIX + _SCHEMA_REFERENCES[kind])
 
 
@@ -63,6 +68,7 @@ def write_yaml_document(path: Path, document: Mapping[str, object]) -> None:
 
 
 def _render_document(kind: ConfigKind, document: Mapping[str, object], modeline: str | None) -> str:
+    refuse_document(TIER_DOCUMENT_MODELS[kind], document)
     declared_document: Any = document.copy() if isinstance(document, dict) else dict(document)
     _strip_schema_modelines(declared_document)
     declared_document[_KIND_FIELD] = kind.value

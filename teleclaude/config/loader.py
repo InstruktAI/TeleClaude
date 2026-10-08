@@ -32,6 +32,7 @@ from teleclaude.config.migrations import (
 from teleclaude.config.migrations._runner import upcast_for_read
 from teleclaude.config.project_home import require_home_owner
 from teleclaude.config.schema import (
+    TIER_DOCUMENT_MODELS,
     AppConfig,
     CompanyConfig,
     ConfigKind,
@@ -68,12 +69,6 @@ _STAGED_DECLARATION_YAML_ERROR = "{path}: invalid YAML: {error}"
 _STAGED_DECLARATION_MAPPING_ERROR = "{path}: declaration must be a mapping"
 _STAGED_DECLARATION_KIND_ERROR = "{path}: declaration kind must be one of: global, project, person, company"
 _STAGED_DECLARATION_SCHEMA_ERROR = "{path}: invalid {kind} declaration: {error}"
-_SCHEMA_BY_KIND: Mapping[ConfigKind, type[BaseModel]] = {
-    ConfigKind.GLOBAL: GlobalConfig,
-    ConfigKind.PROJECT: ProjectConfig,
-    ConfigKind.PERSON: PersonConfig,
-    ConfigKind.COMPANY: CompanyConfig,
-}
 
 
 @dataclass(frozen=True)
@@ -124,7 +119,7 @@ def _validate_overlay_candidate(
     candidate[_KIND_FIELD] = kind.value
     if kind is ConfigKind.PERSON and subject.instance is not None:
         candidate.setdefault(_PERSON_SLUG_FIELD, subject.instance)
-    _SCHEMA_BY_KIND[kind].model_validate(candidate)
+    TIER_DOCUMENT_MODELS[kind].model_validate(candidate)
 
 
 class DeclaredMailAccountRefusal(StrEnum):
@@ -218,7 +213,7 @@ def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
         return [_STAGED_DECLARATION_KIND_ERROR.format(path=path)]
 
     try:
-        _SCHEMA_BY_KIND[kind].model_validate(raw)
+        TIER_DOCUMENT_MODELS[kind].model_validate(raw)
     except ValidationError as exc:
         return [_STAGED_DECLARATION_SCHEMA_ERROR.format(path=path, kind=kind.value, error=exc)]
     return []

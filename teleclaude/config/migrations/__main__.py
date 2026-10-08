@@ -13,6 +13,7 @@ _FAILED_MIGRATION_DIAGNOSTIC = (
     "Configuration migration failed: subject={subject_kind} source={subject_source} "
     "version={from_version}->{to_version} reason={reason}\n"
 )
+_FAILED_MIGRATION_DIAGNOSTIC_DETAIL = "  {diagnostic}\n"
 _FAILED_RECORD_MISSING_REASON = "Failed migration record has no failure reason"
 
 
@@ -37,6 +38,8 @@ def main() -> int:
                 reason=reason.value,
             )
         )
+        if record["diagnostic"] is not None:
+            sys.stderr.write(_FAILED_MIGRATION_DIAGNOSTIC_DETAIL.format(diagnostic=record["diagnostic"]))
     return int(any(record["outcome"] is MigrationOutcome.FAILED for record in records))
 
 

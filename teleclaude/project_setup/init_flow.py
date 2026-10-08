@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import os
 import shutil
 from collections.abc import Callable, Mapping
@@ -270,9 +269,7 @@ def _ensure_project_slug(project_root: Path) -> None:
         )
 
     raw["project_slug"] = slug
-    buffer = io.StringIO()
-    yaml_rt.dump(raw, buffer)
-    config_path.write_text(buffer.getvalue(), encoding="utf-8")
+    write_declared_config(config_path, ConfigKind.PROJECT, raw)
 
 
 def _identity_holder(identity: str, root: Path | None, *, include_in_transit: bool) -> Path | None:
