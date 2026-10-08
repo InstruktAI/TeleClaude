@@ -90,18 +90,6 @@ _HELP_DESK_ADMIN_NOTE = "--help-desk requires administrator authority over the h
 _HELP_DESK_LINKS_NOTE = (
     "Renders only where the desk is enabled; a Discord visitor sends the identifier as their first message."
 )
-# Enabling a help desk is judged at the home it opens, at the admin band; plain company init stays a
-# platform-scope member act.
-_HELP_DESK_COMPANY_INIT_AUTH = CommandAuth(
-    system=_AGENT_REACH,
-    human=_HR_MEMBER,
-    scope=CommandScope.PLATFORM,
-    when_flag=(
-        FlagConditionedAuth(
-            F.FLAG_HELP_DESK.long, CommandScope.NAMED_COMPANY, _HR_ADMIN, scope_flag=F.FLAG_COMPANY_SLUG.long
-        ),
-    ),
-)
 # Plain project init converges a registered project and is judged like adoption, at the caller's own person
 # scope; enabling its help desk is judged at the project, at the admin band.
 _HELP_DESK_PROJECT_INIT_AUTH = CommandAuth(
@@ -129,7 +117,7 @@ _PROJECT_ADOPT_AUTH = CommandAuth(
     system=_AGENT_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER, scope=CommandScope.CALLER_PERSON
 )
 _JOBS_READ_AUTH = CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB)
-_JOBS_CONFIG_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.INVOCATION)
+_JOBS_CONFIG_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 _JOBS_RUN_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 
 CLI_SURFACE: dict[str, CommandDef] = {
@@ -1285,9 +1273,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "init": CommandDef(
                         desc="Converge the global configuration without overwriting existing values",
-                        args="[--help-desk]",
-                        flags=[F.FLAG_HELP, F.FLAG_HELP_DESK],
-                        notes=[_HELP_DESK_ADMIN_NOTE],
+                        flags=[F.FLAG_HELP],
                         auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
@@ -1389,10 +1375,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "init": CommandDef(
                         desc="Scaffold a company without overwriting existing values",
-                        args="<name> [--slug <slug>] [--help-desk]",
-                        flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG, F.FLAG_HELP_DESK],
-                        notes=[_HELP_DESK_ADMIN_NOTE],
-                        auth=_HELP_DESK_COMPANY_INIT_AUTH,
+                        args="<name> [--slug <slug>]",
+                        flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
+                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch one company's roster or fields",
@@ -1498,7 +1483,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         notes=["Writes the project's teleclaude.yml only — never commits."],
                         auth=CommandAuth(
                             system=_AGENT_REACH,
-                            human=_HR_ADMIN,
+                            human=_HR_MEMBER,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
                     ),

@@ -26,13 +26,13 @@ from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.config.help_desk import HELP_DESK_KEY
 from teleclaude.config_roster import load_person_memberships
 from teleclaude.config_subjects import ConfigSubjectKind
+from teleclaude.constants import HUMAN_ROLE_MEMBER
 
 logger = get_logger(__name__)
 
 _CONFIG_CLEARANCE_EVENT = "config_clearance"
 _ORGANIZATION_SECTION = "organization"
-_IDENTITY_SECTION = "identity"
-# The help-desk section opens a home to people outside it, so initializing with it needs the home's administrator.
+# Initializing a project with the help-desk section opens it to people outside it, so it needs the project's administrator.
 HELP_DESK_SECTION = HELP_DESK_KEY
 _SINGLETON_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL})
 
@@ -65,6 +65,7 @@ class RequiredStanding(StrEnum):
     THE_PERSON = "the_person"
     PLATFORM_ADMINISTRATOR = "platform_administrator"
     EFFECTIVE_ADMINISTRATOR = "effective_administrator"
+    EFFECTIVE_MEMBER = "effective_member"
     REGISTERED_PERSON = "registered_person"
     COMPANY_MEMBER = "company_member"
     FORBIDDEN = "forbidden"
@@ -79,6 +80,7 @@ class ClearanceReason(StrEnum):
     READ_ONLY_PROJECTION = "read_only_projection"
     NO_PERSON_STANDING = "no_person_standing"
     EFFECTIVE_ADMINISTRATOR_REQUIRED = "effective_administrator_required"
+    EFFECTIVE_MEMBER_REQUIRED = "effective_member_required"
     COMPANY_MEMBERSHIP_REQUIRED = "company_membership_required"
     CREATION_FORM_REQUIRED = "creation_form_required"
 
@@ -178,11 +180,9 @@ def _decide_person(standing: ConfigurationStanding, target: ConfigurationTarget)
             return ClearanceDecision(True, RequiredStanding.PLATFORM_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
         return _refuse_admin_required(standing)
 
-    # GET or PATCH: self-service is possible only on the caller's own instance, and only
-    # when a patch names no `identity` field — identity changes are never self-service.
+    # GET or PATCH: a person reads and changes their own instance, whatever it holds.
     is_own_instance = standing.person_slug is not None and standing.person_slug == target.instance
-    patches_identity = target.operation is ConfigurationOperation.PATCH and _IDENTITY_SECTION in target.sections
-    if is_own_instance and not patches_identity:
+    if is_own_instance:
         if is_administrator(standing):
             return ClearanceDecision(True, RequiredStanding.PLATFORM_ADMINISTRATOR, ClearanceReason.OWN_SETTINGS)
         return ClearanceDecision(True, RequiredStanding.THE_PERSON, ClearanceReason.OWN_SETTINGS)
@@ -193,7 +193,7 @@ def _decide_person(standing: ConfigurationStanding, target: ConfigurationTarget)
 
 
 def _decide_company(standing: ConfigurationStanding, target: ConfigurationTarget) -> ClearanceDecision:
-    if target.operation is ConfigurationOperation.INIT and HELP_DESK_SECTION not in target.sections:
+    if target.operation is ConfigurationOperation.INIT:
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
     if target.operation is ConfigurationOperation.LIST:
         if is_administrator(standing):
@@ -223,6 +223,12 @@ def _refuse_effective_admin_required(standing: ConfigurationStanding) -> Clearan
         RequiredStanding.EFFECTIVE_ADMINISTRATOR,
         ClearanceReason.EFFECTIVE_ADMINISTRATOR_REQUIRED,
     )
+
+
+def _refuse_effective_member_required(standing: ConfigurationStanding) -> ClearanceDecision:
+    if standing.principal_kind is not CliCallerKind.PERSON or standing.person_slug is None:
+        return ClearanceDecision(False, RequiredStanding.EFFECTIVE_MEMBER, ClearanceReason.NO_PERSON_STANDING)
+    return ClearanceDecision(False, RequiredStanding.EFFECTIVE_MEMBER, ClearanceReason.EFFECTIVE_MEMBER_REQUIRED)
 
 
 def _refuse_no_person(required: RequiredStanding) -> ClearanceDecision:
@@ -279,7 +285,12 @@ def _decide_project(standing: ConfigurationStanding, target: ConfigurationTarget
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
     if target.operation is ConfigurationOperation.INIT and HELP_DESK_SECTION not in target.sections:
         return ClearanceDecision(True, RequiredStanding.NONE, ClearanceReason.VERB_BAND_ONLY)
-    if _effective_role(standing, Project(target.instance or "")) == _ADMIN_ROLE:
+    project_role = _effective_role(standing, Project(target.instance or ""))
+    if target.operation is ConfigurationOperation.PATCH:
+        if project_role in (_ADMIN_ROLE, HUMAN_ROLE_MEMBER):
+            return ClearanceDecision(True, RequiredStanding.EFFECTIVE_MEMBER, ClearanceReason.VERB_BAND_ONLY)
+        return _refuse_effective_member_required(standing)
+    if project_role == _ADMIN_ROLE:
         return ClearanceDecision(True, RequiredStanding.EFFECTIVE_ADMINISTRATOR, ClearanceReason.VERB_BAND_ONLY)
     return _refuse_effective_admin_required(standing)
 
