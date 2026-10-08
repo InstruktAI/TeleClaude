@@ -202,10 +202,14 @@ And no other computer emits a degradation event for those failures
 
 - **event-catalog** — owns the envelope attributes consumers select on and the
   event a dead letter is announced with.
-- **workflow** — owns the lifecycle runner the lifecycle router wakes; the
-  router consumer decides nothing about which todo is dispatched.
-- **integration** — owns the integrator the integration trigger spawns and its
-  singleton lease; procedure activation is a consumer under its own contract.
+- **workflow** — owns both of its reactions: the lifecycle runner the lifecycle
+  router wakes, and the integrator the integration trigger spawns, with its
+  singleton lease. Each starts sessions through `agent_runtime`'s dispatch
+  contract, and neither consumer decides which todo is dispatched or
+  integrated.
+- **integration** — owns the notification path that runs as the system
+  pipeline, and procedure activation, which is a consumer under its own
+  contract.
 - **context** and **identity** — a context that lets authors select events by
   type pattern owns that declaration and matches it with this matcher.
 
