@@ -73,6 +73,7 @@ class DaemonLifecycle:
         runtime_settings: RuntimeSettings | None = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
+        recover_session_startups: Callable[[], Awaitable[None]],
         event_platform_init: Callable[[], Awaitable[None]],
         event_consumer_start: Callable[[], Awaitable[None]],
         api_restart_max: int,
@@ -88,6 +89,7 @@ class DaemonLifecycle:
         self.event_subscription_service = event_subscription_service
         self._log_background_task_exception = log_background_task_exception
         self._init_voice_handler = init_voice_handler
+        self._recover_session_startups = recover_session_startups
         self._event_platform_init = event_platform_init
         self._event_consumer_start = event_consumer_start
 
@@ -204,6 +206,7 @@ class DaemonLifecycle:
             logger.info("Processed voice transcription startup work for %d row(s)", processed_voice_count)
 
         await get_operations_service().deliver_startup_recovery()
+        await self._recover_session_startups()
 
         logger.info("[STARTUP] Starting inbound queue manager (usually <1s)")
         await get_inbound_queue_manager().startup()

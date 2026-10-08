@@ -105,6 +105,7 @@ class SessionOriginMetadata(TypedDict):
     attention_observation: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote distress evidence
     inferred_stall_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote watchdog evidence
     delivery_block_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote delivery evidence
+    startup_delivery_uncertain_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote evidence
     confinement: NotRequired[SessionConfinementSection | None]
     endpoint: NotRequired[dict[str, object] | None]  # guard: loose-dict - EndpointStamp.to_dict()
 

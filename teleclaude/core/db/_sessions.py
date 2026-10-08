@@ -17,8 +17,9 @@ from teleclaude.slug import replace_slug_token
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField
+from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField, SessionLaunchIntent
 from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from ..session_startup import StartupHandoverState, encode_startup_intent
 from ..session_status import SessionLifecycleStatus
 from ._agent_status import (
     EMPTY_AGENT_STATUS_REASON,
@@ -99,6 +100,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         native_session_id: str | None = None,
         native_log_file: str | None = None,
         origin_metadata: JsonDict | None = None,
+        startup_intent: SessionLaunchIntent | None = None,
         emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
@@ -130,6 +132,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             native_session_id: Optional native agent session identifier
             native_log_file: Optional native transcript or log path
             origin_metadata: Optional root origin-metadata sections written with the row
+            startup_intent: Optional launch intent recorded as the session's startup handover in the same write
             emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
 
         Returns:
@@ -216,6 +219,18 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         )
         async with self._session() as db_session:
             db_session.add(db_row)
+            if startup_intent is not None:
+                # The handover references the session row, so the parent insert is
+                # flushed first; both commit together or not at all.
+                await db_session.flush()
+                db_session.add(
+                    db_models.SessionStartupHandover(
+                        session_id=session.session_id,
+                        launch_intent_json=encode_startup_intent(startup_intent),
+                        state=StartupHandoverState.ACCEPTED.value,
+                        updated_at=now.isoformat(),
+                    )
+                )
             await db_session.commit()
 
         if emit_session_started:

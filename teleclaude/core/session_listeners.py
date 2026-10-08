@@ -79,6 +79,17 @@ _DELIVERY_BLOCK_HUMAN_NOTIFICATION_TEMPLATE = (
     "Session{location_part}{title_part} shows a screen other than its composer while input waits: {evidence}. "
     "Use telec sessions tail {target_session_id}{computer_selector} to inspect."
 )
+_PARENT_STARTUP_DELIVERY_UNCERTAIN_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} may not have received its first startup input: "
+    "the service was replaced while that input was being submitted, and it was not submitted again. "
+    "Assess its current state and recover within your mandate. "
+    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
+)
+_STARTUP_DELIVERY_UNCERTAIN_HUMAN_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} may not have received its first startup input: "
+    "the service was replaced while that input was being submitted, and it was not submitted again. "
+    "Use telec sessions tail {target_session_id}{computer_selector} to inspect."
+)
 _ATTENTION_EVIDENCE_PROVIDER_KEY = "provider"
 _ATTENTION_EVIDENCE_NATIVE_EVENT_KEY = "native_event"
 _ATTENTION_EVIDENCE_DETAILS_KEY = "details"
@@ -92,6 +103,9 @@ _INFERRED_STALL_NO_SIGNAL_TEMPLATE = "gave no agent activity for {timeout}"
 _INFERRED_STALL_NO_START_TEMPLATE = "did not start within {timeout}\nPane last lines:\n{pane_tail}"
 DELIVERY_BLOCK_EVIDENCE_METADATA_KEY: Final[Literal["delivery_block_evidence"]] = "delivery_block_evidence"
 DELIVERY_BLOCK_PANE_TAIL_FIELD = "pane_tail"
+STARTUP_DELIVERY_UNCERTAIN_EVIDENCE_METADATA_KEY: Final[Literal["startup_delivery_uncertain_evidence"]] = (
+    "startup_delivery_uncertain_evidence"
+)
 _DELIVERY_BLOCK_PANE_TEMPLATE = "Pane last lines:\n{pane_tail}"
 _INFERRED_STALL_REASON_REQUIRED_ERROR = "Inferred stall evidence requires a watchdog reason"
 _INFERRED_STALL_TIMEOUTS: dict[AgentStatusReason, str] = {
@@ -166,6 +180,15 @@ class DeliveryBlockEvidence:
 def _delivery_block_summary(evidence: DeliveryBlockEvidence) -> str:
     """Render the captured screen as labelled data."""
     return _DELIVERY_BLOCK_PANE_TEMPLATE.format(pane_tail=evidence.pane_tail or _ATTENTION_EVIDENCE_UNAVAILABLE)
+
+
+@dataclass(frozen=True)
+class StartupDeliveryUncertainEvidence:
+    """Daemon-observed fact that the service was replaced while a session's first startup input was submitted.
+
+    The fact carries no payload: the notice states that the input may not have
+    arrived and was not submitted again, and the watcher inspects the terminal.
+    """
 
 
 class StopNotificationVariant(StrEnum):
@@ -501,6 +524,7 @@ def _distress_notification_message(
     notification_kind: NotificationKind,
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
+    startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
 ) -> str:
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
@@ -510,6 +534,9 @@ def _distress_notification_message(
     elif delivery_block_evidence is not None:
         template = _DELIVERY_BLOCK_HUMAN_NOTIFICATION_TEMPLATE
         evidence = _delivery_block_summary(delivery_block_evidence)
+    elif startup_delivery_uncertain_evidence is not None:
+        template = _STARTUP_DELIVERY_UNCERTAIN_HUMAN_NOTIFICATION_TEMPLATE
+        evidence = _ATTENTION_EVIDENCE_UNAVAILABLE
     else:
         template = (
             _BLOCKED_NOTIFICATION_TEMPLATE
@@ -552,6 +579,7 @@ def _parent_attention_message(
     observation: AgentAttentionObservation | None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
+    startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
 ) -> str:
     """Format parent-only guidance around labelled native or daemon-observed evidence."""
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
@@ -562,6 +590,9 @@ def _parent_attention_message(
     elif delivery_block_evidence is not None:
         template = _PARENT_DELIVERY_BLOCK_NOTIFICATION_TEMPLATE
         evidence = _delivery_block_summary(delivery_block_evidence)
+    elif startup_delivery_uncertain_evidence is not None:
+        template = _PARENT_STARTUP_DELIVERY_UNCERTAIN_NOTIFICATION_TEMPLATE
+        evidence = _ATTENTION_EVIDENCE_UNAVAILABLE
     else:
         template = (
             _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
@@ -615,6 +646,7 @@ async def notify_distress(
     observation: AgentAttentionObservation | None = None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
+    startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
     occurrence_key: str | None = None,
     occurred_at: datetime | None,
 ) -> set[str]:
@@ -627,6 +659,7 @@ async def notify_distress(
         observation,
         inferred_stall_evidence,
         delivery_block_evidence,
+        startup_delivery_uncertain_evidence,
     )
     reached = await _notify_listeners(
         target_session_id,
@@ -646,6 +679,7 @@ async def notify_distress_human_fallback(
     title: str | None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
+    startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
 ) -> bool:
     """Deliver unwatched distress only to the target session's own adapter."""
     target = await db.get_session(target_session_id)
@@ -658,6 +692,7 @@ async def notify_distress_human_fallback(
         notification_kind,
         inferred_stall_evidence,
         delivery_block_evidence,
+        startup_delivery_uncertain_evidence,
     )
     return (
         await client.send_message(
@@ -725,6 +760,7 @@ async def deliver_remote_distress_notification(
     observation: AgentAttentionObservation | None = None,
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
+    startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
     *,
     occurred_at: datetime | None,
 ) -> bool:
@@ -740,6 +776,7 @@ async def deliver_remote_distress_notification(
         observation,
         inferred_stall_evidence,
         delivery_block_evidence,
+        startup_delivery_uncertain_evidence,
     )
     try:
         await handoff_control_payload(

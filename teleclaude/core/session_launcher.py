@@ -16,6 +16,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.command_handlers import create_session as create_tmux_session
 from teleclaude.core.models import AgentDispatchMode, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.session_startup import bootstrap_task_label
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -83,7 +84,7 @@ async def _create_session_with_intent(
     session_id = str(session_id_raw)
     queue_background_task(
         bootstrap_session(session_id, cmd.launch_intent),
-        f"session_bootstrap:{session_id}",
+        bootstrap_task_label(session_id),
     )
     logger.debug(
         "NEW_SESSION result: session_id=%s, launch_intent=%s",

@@ -52,9 +52,11 @@ from teleclaude.core.session_listeners import (
     INFERRED_STALL_EVIDENCE_METADATA_KEY,
     INFERRED_STALL_PANE_TAIL_FIELD,
     INFERRED_STALL_REASON_FIELD,
+    STARTUP_DELIVERY_UNCERTAIN_EVIDENCE_METADATA_KEY,
     DeliveryBlockEvidence,
     InferredStallEvidence,
     NotificationKind,
+    StartupDeliveryUncertainEvidence,
     StopNotificationVariant,
     build_inferred_stall_evidence,
     deliver_remote_distress_notification,
@@ -198,6 +200,17 @@ def _delivery_block_evidence_from_metadata(metadata: JsonDict | None) -> Deliver
         return None
     raw_pane_tail = raw_evidence.get(DELIVERY_BLOCK_PANE_TAIL_FIELD)
     return DeliveryBlockEvidence(pane_tail=raw_pane_tail if isinstance(raw_pane_tail, str) else "")
+
+
+def _startup_delivery_uncertain_evidence_from_metadata(
+    metadata: JsonDict | None,
+) -> StartupDeliveryUncertainEvidence | None:
+    """Decode additive daemon-side startup evidence, ignoring older unknown shapes."""
+    if metadata is None:
+        return None
+    if not isinstance(metadata.get(STARTUP_DELIVERY_UNCERTAIN_EVIDENCE_METADATA_KEY), dict):
+        return None
+    return StartupDeliveryUncertainEvidence()
 
 
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
@@ -552,6 +565,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 _attention_observation_from_metadata(origin_metadata),
                 _inferred_stall_evidence_from_metadata(origin_metadata),
                 _delivery_block_evidence_from_metadata(origin_metadata),
+                _startup_delivery_uncertain_evidence_from_metadata(origin_metadata),
                 occurred_at=_wire_moment_arg(args, _DISTRESS_NOTIFICATION_OCCURRED_AT_INDEX),
             )
             return {"status": "success", "data": {"delivered": delivered}}
