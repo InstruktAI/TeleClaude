@@ -73,7 +73,7 @@ a refused read returns no configuration.
 
 ### Standing
 
-<!-- planned-change:config-clearance-drops-field-gates -->
+<!-- planned-change:retire-event-domains -->
 
 | Target               | Operation                                                                               | Standing required                               |
 | -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -98,29 +98,30 @@ a refused read returns no configuration.
 
 A project init by a caller without the standing for global event-domain seeding
 still converges the project: it skips that step instead of being refused.
-<!-- change:config-clearance-drops-field-gates -->
 
-| Target               | Operation                                                         | Standing required                                   |
-| -------------------- | ----------------------------------------------------------------- | --------------------------------------------------- |
-| computer, global     | list, get                                                         | none beyond the verb band                           |
-| computer, global     | init, patch                                                       | platform administrator                              |
-| person, own instance | get, patch                                                        | the person                                          |
-| person, any instance | get, patch                                                        | platform administrator                              |
-| person               | init; removal; invitation; voice-bot credential binding; list     | platform administrator                              |
-| person               | patch of organizational memberships                               | refused for every caller — read-only projection     |
-| company              | list                                                              | platform administrator                              |
-| company              | get, patch                                                        | `admin` effective role for that company             |
-| company              | init                                                              | none beyond the verb band                           |
-| project              | list, get; init of a registered project                           | none beyond the verb band                           |
-| project              | adopt, anywhere                                                   | a registered person                                 |
-| project              | create in the caller's own home                                   | the person                                          |
-| project              | create with `--company`                                           | membership of that company, any role                |
-| project              | create with `--path`                                              | platform administrator                              |
-| project              | patch                                                             | `member` or `admin` effective role for that project |
-| company              | help-desk links                                                   | `admin` effective role for that company             |
-| project              | init of the caller's checkout with `--help-desk`; help-desk links | `admin` effective role for that project             |
+<!-- change:retire-event-domains -->
 
-<!-- /planned-change:config-clearance-drops-field-gates -->
+| Target               | Operation                                                                               | Standing required                               |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| computer, global     | list, get                                                                               | none beyond the verb band                       |
+| computer, global     | init, patch                                                                             | platform administrator                          |
+| person, own instance | get; patch of settings                                                                  | the person                                      |
+| person, any instance | get; patch of settings                                                                  | platform administrator                          |
+| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
+| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
+| company              | list                                                                                    | platform administrator                          |
+| company              | get, patch                                                                              | `admin` effective role for that company         |
+| company              | init                                                                                    | none beyond the verb band                       |
+| project              | list, get; init of a registered project                                                 | none beyond the verb band                       |
+| project              | adopt, anywhere                                                                         | a registered person                             |
+| project              | create in the caller's own home                                                         | the person                                      |
+| project              | create with `--company`                                                                 | membership of that company, any role            |
+| project              | create with `--path`                                                                    | platform administrator                          |
+| project              | patch                                                                                   | `admin` effective role for that project         |
+| company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
+| project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
+
+<!-- /planned-change:retire-event-domains -->
 
 ### Use cases
 

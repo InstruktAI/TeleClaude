@@ -171,6 +171,8 @@ or company tier is recorded without these steps. Publication must not mutate
 Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
 and `teleclaude/project_manifest.py:register_root()`
 
+<!-- planned-change:retire-event-domains -->
+
 ### 8. Seed event domains
 
 Merges default event domain configurations into the global config
@@ -185,6 +187,12 @@ Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
 ### 9. Watcher ownership
 
+<!-- change:retire-event-domains -->
+
+### 8. Watcher ownership
+
+<!-- /planned-change:retire-event-domains -->
+
 The pipeline does **not** install watchers. `create` and `adopt` register the
 project root in `~/.teleclaude/projects.yaml`. Machine-global setup is installed by `make install`,
 and service startup/install is owned by `make start`; the global watcher reads this
@@ -193,6 +201,8 @@ manifest to decide which projects to watch and sync surgically.
 Source: `teleclaude/project_manifest.py:register_root()`
 
 ## Outputs
+
+<!-- planned-change:retire-event-domains -->
 
 - Capability subscriptions declared in `teleclaude.yml` and projected as markers under
   the repository's common git directory.
@@ -206,6 +216,22 @@ Source: `teleclaude/project_manifest.py:register_root()`
 - For `init` only, and only for a caller whose platform role is member or administrator: event domains seeded in global config (if not already populated).
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
 - With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
+
+<!-- change:retire-event-domains -->
+
+- Capability subscriptions declared in `teleclaude.yml` and projected as markers under
+  the repository's common git directory.
+- Git filters, `.gitattributes`, and code hooks configured for the capabilities the
+  project subscribes to — a project subscribing neither `code` nor `docs` receives none
+  of them.
+
+- `project_slug` persisted in `teleclaude.yml` and, for `create` and `adopt`, the
+  project root registered in `~/.teleclaude/projects.yaml`.
+- For a project inside a home, that home's owner declared in `teleclaude.yml`.
+- The local baseline manifests, when the project subscribes `docs` and they were absent.
+- With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
+
+<!-- /planned-change:retire-event-domains -->
 
 ## Recovery
 
