@@ -211,15 +211,6 @@ Then no activation-mode finding is reported
 #### UC-SFV4: Only a procedure published where subscriptions are routed may declare them
 
 ```
-<!-- planned-change:procedure-activation-gated-on-company -->
-Given a procedure snippet published in the global tier or in a company's tier declares the events that activate it
-When snippet validation runs
-Then no subscription-tier finding is reported
-Given a procedure snippet published in any other tier declares the events that activate it
-When snippet validation runs
-Then a subscription-tier finding is reported for that file, naming its tier
-And the sync exits with a non-zero status
-<!-- change:procedure-activation-gated-on-company -->
 Given a procedure snippet published in the global tier, in a company's tier, or in a person's tier declares the events that activate it
 When snippet validation runs
 Then no subscription-tier finding is reported
@@ -227,7 +218,6 @@ Given a procedure snippet published in any other tier declares the events that a
 When snippet validation runs
 Then a subscription-tier finding is reported for that file, naming its tier
 And the sync exits with a non-zero status
-<!-- /planned-change:procedure-activation-gated-on-company -->
 ```
 
 #### UC-SFV5: An empty companion is accepted as a retirement
@@ -238,8 +228,6 @@ When snippet validation runs on that commit
 Then the agent receives no frontmatter, title-suffix, or section finding for the companion
 And the live snippet is still validated in full
 ```
-
-<!-- planned:procedure-activation-gated-on-company -->
 
 #### UC-SFV6: A subscribed procedure declares the one home kind it answers
 
@@ -281,8 +269,6 @@ Scenario Outline: Each declared subscription is checked against the type-pattern
     | erp.*.paid       | a subscription finding naming the pattern is reported and the sync exits non-zero       |
     | *.paid           | a subscription finding naming the pattern is reported and the sync exits non-zero       |
 ```
-
-<!-- /planned:procedure-activation-gated-on-company -->
 
 ### Cross-context references
 

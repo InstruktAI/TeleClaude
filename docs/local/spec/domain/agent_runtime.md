@@ -85,30 +85,6 @@ TeleClaudeNext repository.
   It reads the corpus `context` publishes and the canonical value the command's
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
 
-<!-- planned-change:procedure-activation-gated-on-company -->
-
-- **Owns (procedure activation runner):** on each computer, one standing agent
-  per procedure per company, as the runner's own behavior. The runner resolves
-  the agent through the inbound resolve-or-create seam, serialized per
-  procedure and company so concurrent activations there cannot both start one.
-  When one or more sessions under the system principal already run the
-  procedure for the company, it wakes one and starts none; a session carrying
-  human lineage is never adopted; when none does, it starts one by dispatching the generic
-  procedure-activation command — carrying the procedure's identity and the
-  company — in the company's home, under the system principal, with the
-  session's company set. The triggering event reaches a new agent as its first
-  input through the same session-input delivery that wakes an existing one,
-  never as additional startup context. Nothing restricts starting such a
-  session by hand, and nothing coordinates computers. Each activation is a
-  durable operation of its own kind, whose outcome events
-  `agent_runtime.procedure_activation.completed` and
-  `agent_runtime.procedure_activation.failed` this context owns and registers;
-  completion or failure is recorded once, a failure is never presented as
-  success, and it never moves the responsibility to another agent. The agent's
-  lifecycle and its handling of later events belong to the procedure it loads.
-
-<!-- change:procedure-activation-gated-on-company -->
-
 - **Owns (procedure activation runner):** on the computer that emitted an
   event, one standing agent per procedure per activation home — a company, a
   person, a project, or the platform — as the runner's own behavior. The runner
@@ -135,8 +111,6 @@ TeleClaudeNext repository.
   completion or failure is recorded once, a failure is never presented as
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
-
-<!-- /planned-change:procedure-activation-gated-on-company -->
 
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is

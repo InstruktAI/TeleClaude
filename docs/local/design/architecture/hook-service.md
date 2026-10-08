@@ -81,15 +81,6 @@ properties, payload)` before entering the dispatch pipeline.
   contract alongside the event, so a handler shared by several contracts knows
   which one matched.
 
-<!-- planned-change:procedure-activation-gated-on-company -->
-
-- **Derived contracts are not persisted.** A contract its owner derives from its
-  own source of truth is held in the registry's memory only. It is never
-  restored from storage at startup; its owner rebuilds it.
-
-<!-- change:procedure-activation-gated-on-company -->
-<!-- /planned-change:procedure-activation-gated-on-company -->
-
 - **At-least-once external delivery.** External webhooks are enqueued in
   `webhook_outbox` and delivered with exponential backoff. Dead-lettering after
   max attempts prevents infinite retry.
@@ -194,26 +185,6 @@ After 10 attempts: dead-lettered (status=`dead_letter`).
 
 ### 4. Contract lifecycle
 
-<!-- planned-change:procedure-activation-gated-on-company -->
-
-Contracts enter the system through four paths:
-
-| Source           | How                                                   | Persistence                                    |
-| ---------------- | ----------------------------------------------------- | ---------------------------------------------- |
-| **Config**       | `teleclaude.yml` `hooks.subscriptions` list           | Loaded at startup via `load_hooks_config` → DB |
-| **API**          | `POST /hooks/contracts`                               | DB + in-memory cache                           |
-| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache                           |
-| **Derived**      | Rebuilt by their owner from its own source of truth   | In-memory cache only                           |
-
-Config, API, and programmatic contracts are persisted in the
-`webhook_contracts` table and cached in-memory by `ContractRegistry`; the cache
-is the authoritative source for matching and the DB is the durable store that
-survives restarts. Derived contracts are never persisted: their owner rebuilds
-them from its source of truth after registering the handler they target, so a
-restart never restores one ahead of its handler. Procedure-subscription
-contracts are derived, rebuilt from the documentation publication index.
-<!-- change:procedure-activation-gated-on-company -->
-
 Contracts enter the system through three paths:
 
 | Source           | How                                                   | Persistence                                    |
@@ -225,7 +196,6 @@ Contracts enter the system through three paths:
 Contracts are persisted in the `webhook_contracts` table and cached in-memory by
 `ContractRegistry`; the cache is the authoritative source for matching and the
 DB is the durable store that survives restarts.
-<!-- /planned-change:procedure-activation-gated-on-company -->
 
 **Contract structure:**
 
@@ -241,11 +211,7 @@ Contract
   ├─ properties: dict[str, PropertyCriterion]
   ├─ active: bool
   ├─ expires_at: str | None     # TTL support
-<!-- planned-change:procedure-activation-gated-on-company -->
-  └─ source: "config" | "api" | "programmatic" | "derived"
-<!-- change:procedure-activation-gated-on-company -->
   └─ source: "config" | "api" | "programmatic"
-<!-- /planned-change:procedure-activation-gated-on-company -->
 ```
 
 **Matching:** The matcher evaluates an event against a contract's criteria using
@@ -277,10 +243,6 @@ delivery_worker = WebhookDeliveryWorker()
 # 5. Load state
 await contract_registry.load_from_db()       # restore persisted contracts from DB
 await load_hooks_config(hooks_cfg, contract_registry)  # add config contracts
-<!-- planned-change:procedure-activation-gated-on-company -->
-# derived contracts are rebuilt by their owners after their handlers register
-<!-- change:procedure-activation-gated-on-company -->
-<!-- /planned-change:procedure-activation-gated-on-company -->
 
 # 6. Wire into daemon
 set_contract_registry(contract_registry)     # inject into API routes

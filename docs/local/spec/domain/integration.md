@@ -49,33 +49,6 @@ implementation remain the current appliance contract.
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
 
-<!-- planned-change:procedure-activation-gated-on-company -->
-
-- **Owns (procedure subscription routing):** stamping a verified event, at the
-  ingress and before it is relayed, with the company `config` declares for its
-  source; turning each published procedure subscription into a contract in the
-  existing contract-routing model that carries the procedure's canonical ID;
-  and, on each computer, matching the event against those contracts only when
-  `config` answers that the event's company is configured on that computer,
-  producing one activation per match: the procedure, the company, the event's
-  context, and the platform's system principal as its origin. A computer that
-  does not host the company, and any computer receiving an event with no
-  company, produces no activation and records no failure. The event names no
-  consumer; each computer decides for itself and nothing coordinates them.
-  Procedure-subscription contracts are derived state: held only in the
-  registry's memory, never persisted or restored from storage, and rebuilt from
-  the publication index `context` publishes. They are derived when the
-  activation handler registers, keyed to the digest of the index they came
-  from; before matching an event, the router compares that digest with the
-  currently published index and re-derives when they differ. A procedure
-  contract therefore never exists without the handler that serves it, and an
-  added, edited, or removed subscription takes effect at the next event without
-  a restart or a separate trigger. Editing a procedure's subscriptions changes
-  its event membership and never the procedure-and-company identity of its
-  agent.
-
-<!-- change:procedure-activation-gated-on-company -->
-
 - **Owns (procedure subscription routing):** reading each published procedure
   subscription — its type patterns, the home kind it answers, and the tier it is
   published in — from the publication index `context` publishes; and running,
@@ -99,30 +72,15 @@ implementation remain the current appliance contract.
   a restart or a separate trigger. Editing a procedure's subscriptions changes
   its event membership and never the procedure-and-home identity of its agent.
 
-<!-- /planned-change:procedure-activation-gated-on-company -->
-
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
-
-<!-- planned-change:procedure-activation-gated-on-company -->
-
-- **Does not own (procedure activation):** whether a standing agent exists,
-  starting or waking it, or the identity it runs under. The activation
-  handler's first act submits the activation to `agent_runtime` as a command
-  addressed to its own computer with a durable operation receipt, so the
-  operation exists before any fallible step; a submission that itself fails is
-  emitted as a platform error event. It takes no further decision.
-
-<!-- change:procedure-activation-gated-on-company -->
 
 - **Does not own (procedure activation):** whether a standing agent exists,
   starting or waking it, or the identity it runs under. For each match, the
   activation consumer's first act submits the activation to `agent_runtime` as
   a command addressed to its own computer with a durable operation receipt, so
   the operation exists before any fallible step. It takes no further decision.
-
-<!-- /planned-change:procedure-activation-gated-on-company -->
 
 - **Owns (conversation entry, adapter side):** recognising an entry identifier
   in what a person sent — however the adapter carries it — and handing it to the

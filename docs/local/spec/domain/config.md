@@ -106,20 +106,6 @@ TeleClaudeNext.
   supply strictness as a validation argument. The behavioral contract is
   `local/projects/teleclaude/spec/feature/config/unknown-key-warning`.
 
-<!-- planned-change:procedure-activation-gated-on-company -->
-
-- **Also owns:** an inbound event source's declaration — made in the
-  configuration of the home it concerns, with its signing secret referenced from
-  that home's own `.env` — and the answer to which sources a registered home
-  declares. It also answers, on each computer, whether a company is configured
-  there, which procedure activation consults before activating anything for
-  that company. Owning the declarations is not owning what a company context
-  means, which belongs to `local/projects/teleclaude/spec/domain/identity`, or
-  what a session does with it, which belongs to
-  `local/projects/teleclaude/spec/domain/agent_runtime`.
-
-<!-- change:procedure-activation-gated-on-company -->
-
 - **Also owns:** an inbound event source's declaration — made in the
   configuration of the home it concerns, with its signing secret referenced from
   that home's own `.env` — and the answer to which sources a registered home
@@ -131,8 +117,6 @@ TeleClaudeNext.
   owning what a company context means, which belongs to
   `local/projects/teleclaude/spec/domain/identity`, or what a session does in a
   home, which belongs to `local/projects/teleclaude/spec/domain/agent_runtime`.
-
-<!-- /planned-change:procedure-activation-gated-on-company -->
 
 <!-- planned:platform-alerts -->
 
