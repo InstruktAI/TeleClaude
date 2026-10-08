@@ -120,10 +120,7 @@ implementation remain the current appliance contract.
   starting or waking it, or the identity it runs under. For each match, the
   activation consumer's first act submits the activation to `agent_runtime` as
   a command addressed to its own computer with a durable operation receipt, so
-  the operation exists before any fallible step; a submission that itself fails
-  fails the consumer's handling of the event, which the consumer runtime
-  retries and, when it keeps failing, parks and announces. It takes no further
-  decision.
+  the operation exists before any fallible step. It takes no further decision.
 
 <!-- /planned-change:procedure-activation-gated-on-company -->
 
