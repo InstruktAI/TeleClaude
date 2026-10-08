@@ -20,20 +20,6 @@ resolves the caller through the shared principal-resolution capability
 applies this target decision. An unidentified caller holds no role and is
 refused before any configuration is read.
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-A person may read and change settings in their own person overlay, directly or
-through an agent. Person-registry identity fields, including platform role,
-remain platform-administrator-maintained. A company, its roster included, is
-read and changed through that company's configuration resource by a caller whose
-effective role for that company is `admin`
-(`local/projects/teleclaude/design/architecture/scoped-roles`); a platform administrator holds
-that role for every company. Machine and global configuration writes remain
-platform-administrator operations. Project writes require the `admin` effective
-role for that project and also respect their repository's ownership and commit
-boundary; naming a project in the CLI never grants authority over it.
-<!-- change:config-clearance-drops-field-gates -->
-
 A person may read and change their own person configuration, directly or
 through an agent, its person-registry identity fields included. A company, its
 roster included, is read and changed through that company's configuration
@@ -52,7 +38,6 @@ which parts of it: a caller that may patch a subject may patch every field and
 section of it, and every caller that may read a subject reads the same fields.
 A guardrail finer than that guards no harm that restoring state cannot repair
 (`general/principle/trust-and-guardrails`).
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 A caller whose principal is a system principal carries no person
 (`local/projects/teleclaude/spec/identity-and-auth` §8). It holds no standing that belongs to a
@@ -72,30 +57,6 @@ a refused read returns no configuration.
 ## Canonical fields
 
 ### Standing
-
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-| Target               | Operation                                                                               | Standing required                               |
-| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| computer, global     | list, get                                                                               | none beyond the verb band                       |
-| computer, global     | init, patch                                                                             | platform administrator                          |
-| person, own instance | get; patch of settings                                                                  | the person                                      |
-| person, any instance | get; patch of settings                                                                  | platform administrator                          |
-| person               | patch of identity fields; init; removal; invitation; voice-bot credential binding; list | platform administrator                          |
-| person               | patch of organizational memberships                                                     | refused for every caller — read-only projection |
-| company              | list                                                                                    | platform administrator                          |
-| company              | get, patch                                                                              | `admin` effective role for that company         |
-| company              | init                                                                                    | none beyond the verb band                       |
-| project              | list, get; init of a registered project                                                 | none beyond the verb band                       |
-| project              | adopt, anywhere                                                                         | a registered person                             |
-| project              | create in the caller's own home                                                         | the person                                      |
-| project              | create with `--company`                                                                 | membership of that company, any role            |
-| project              | create with `--path`                                                                    | platform administrator                          |
-| project              | patch                                                                                   | `admin` effective role for that project         |
-| company              | init with `--help-desk`; help-desk links                                                | `admin` effective role for that company         |
-| project              | init of the caller's checkout with `--help-desk`; help-desk links                       | `admin` effective role for that project         |
-
-<!-- change:config-clearance-drops-field-gates -->
 
 | Target               | Operation                                                         | Standing required                                   |
 | -------------------- | ----------------------------------------------------------------- | --------------------------------------------------- |
@@ -117,23 +78,7 @@ a refused read returns no configuration.
 | company              | help-desk links                                                   | `admin` effective role for that company             |
 | project              | init of the caller's checkout with `--help-desk`; help-desk links | `admin` effective role for that project             |
 
-<!-- /planned-change:config-clearance-drops-field-gates -->
-
 ### Use cases
-
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-#### UC-CTC1: A person's agent edits that person's settings
-
-```gherkin
-Given a person directs an agent bound to their verified principal
-And the agent's system role permits configuration patching
-When the agent patches that person's own settings
-Then the operation is accepted
-And the resulting state belongs to that person
-```
-
-<!-- change:config-clearance-drops-field-gates -->
 
 #### UC-CTC1: A person's agent edits all of that person's configuration
 
@@ -145,21 +90,7 @@ Then the operation is accepted
 And the resulting state belongs to that person
 ```
 
-<!-- /planned-change:config-clearance-drops-field-gates -->
-
 #### UC-CTC2: Person ownership does not confer platform-role authority
-
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-```gherkin
-Given a non-administrator directs an agent bound to their verified principal
-When the agent attempts to change the person's platform role or registry identity
-Then the change is refused before persistence
-And the refusal names the administrator standing required for those fields
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 #### UC-CTC3: An agent cannot edit another person's instance by naming it
 
@@ -241,20 +172,6 @@ And the same person's read or patch of a different company is refused
 And their attempt to list every company is refused
 ```
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-#### UC-CTC10: Opening a home to outsiders requires that home's administrator
-
-```gherkin
-Given an agent acts for a person whose effective role for a company is member
-When it initializes that company with a help desk, or asks for that company's help-desk links
-Then the operation is refused before any configuration is read or written
-And the refusal names the company administrator standing it requires
-And the same operation for a person holding that company's admin role is accepted
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-
 #### UC-CTC10: A company's help-desk links need that company's administrator
 
 ```gherkin
@@ -264,10 +181,6 @@ Then the request is refused before any configuration is read
 And the refusal names the company administrator standing it requires
 And the same request for a person holding that company's admin role is accepted
 ```
-
-<!-- /planned-change:config-clearance-drops-field-gates -->
-
-<!-- planned:config-clearance-drops-field-gates -->
 
 #### UC-CTC11: Whoever may work in a project changes its declaration
 
@@ -285,8 +198,6 @@ Given a machine configuration holding fields its schema marks sensitive
 When an agent acting for a platform administrator and an agent acting for a person below administrator each read it
 Then both receive the same view of every field
 ```
-
-<!-- /planned:config-clearance-drops-field-gates -->
 
 ## Known caveats
 

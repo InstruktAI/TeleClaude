@@ -180,19 +180,6 @@ And a platform administrator receives the existing unknown-name listing
 
 #### UC-CCS11: Enabling a help desk is judged at the home it opens
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-```
-Given a person holding no platform role and the admin role in one company
-When the person runs `telec config company init` with `--help-desk` naming that company
-Then the command passes clearance and proceeds to the company's configuration clearance
-But the same command naming another company is refused with the not-permitted failure naming `customer`
-And `telec config company init` without `--help-desk` is refused at platform scope as before
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-<!-- /planned-change:config-clearance-drops-field-gates -->
-
 ### Cross-context references
 
 - The verb→Role allowlist data lives in the CLI surface schema, owned by the `config`/CLI-shape concern. The identity context owns only the gate logic.
@@ -511,24 +498,6 @@ supplies.
   Machine and global configuration, and the listing, creation and management of
   people and companies, are judged at platform scope.
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-- Initializing a company or a project with `--help-desk` is judged at the home
-  whose help desk it enables, under the administrator band: a company init at the
-  company it names (its `--slug`, otherwise its normalized name), a project init at
-  the project of the checkout it initializes. The same project init without the
-  flag is judged like adoption.
-- Creating a project is judged at the home it lands in: the caller's own person
-  scope, the company scope `--company` names, or platform scope for `--path`.
-  Adopting a project, and initializing one without `--help-desk`, is judged at
-  the caller's own person scope wherever the folder is, so any registered person
-  adopts a folder they can reach and converges a project they created; which
-  folders a session can reach is not decided here. These bands admit every role
-  but customer, so a registered person without a platform role creates in their
-  own home, adopts, and converges.
-
-<!-- change:config-clearance-drops-field-gates -->
-
 - Initializing a project with `--help-desk` is judged at the project of the
   checkout it initializes, under the administrator band. The same project init
   without the flag is judged like adoption.
@@ -540,8 +509,6 @@ supplies.
   folders a session can reach is not decided here. These bands admit every role
   but customer, so a registered person without a platform role creates in their
   own home, adopts, and converges.
-
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 - A command that names a target session is judged at the project that session runs
   in.

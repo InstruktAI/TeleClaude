@@ -53,20 +53,6 @@ baseline manifests. A master is brought to its template's rendering on every
 run, while a baseline is created only when absent and otherwise stays as its
 home keeps it. No documentation taxonomy directory is created.
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-`init --help-desk` on `global`, `company`, or `project` enables that home's help
-desk: it sets the home's `help_desk.enabled` and scaffolds the help desk from
-the kind's help-desk template, in the TeleClaude home's `help-desk/`, a company
-home's `help-desk/`, or a project repository's `help-desk/`. A person has no
-help desk. A help desk admits people outside its home, so `help_desk` is an
-administrator field: the caller holds the platform administrator role, or the
-administrator role in the company that owns the home. Running it again
-converges the help desk's master to its template. A help desk's master never
-requires its home's local documentation
-(`general/policy/agent-artifact-governance`).
-<!-- change:config-clearance-drops-field-gates -->
-
 Whether a `global`, `company`, or `project` home keeps a help desk is a field of
 that home's declaration, and a `patch` of the declaration turns it on or off
 under the same clearance as every other field of it. A person has no help desk.
@@ -81,7 +67,6 @@ project repository's `help-desk/`; it needs the administrator role for the
 project, and running it again converges the help desk's master to its template.
 A help desk's master never requires its home's local documentation
 (`general/policy/agent-artifact-governance`).
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a
@@ -112,22 +97,11 @@ prerequisite for an assignment. Company administrators cover company-owned
 projects by role, without explicit project entries. The platform role on the
 person entry remains independent of the company role.
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-The command boundary passes the verified caller, target instance, and affected
-fields to identity-owned clearance before mutation. A person may edit their
-own settings through an agent acting under their authority. Registry identity
-fields, platform role, company rosters, and machine or global settings retain
-their respective administrator boundary. An agent's system role can narrow
-the caller's reach but cannot widen it.
-<!-- change:config-clearance-drops-field-gates -->
-
 The command boundary passes the verified caller, target instance, and affected
 fields to identity-owned clearance before mutation, and clearance decides who
 may perform that operation on that subject
 (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`). An
 agent's system role can narrow the caller's reach but cannot widen it.
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 The unqualified `telec config get|patch` routes and the old person CRUD routes
 are absent. They never silently resolve to a new target. Operations outside
@@ -217,19 +191,6 @@ And every company roster entry naming them is removed with its assignments
 And the result identifies the companies and assignments changed
 ```
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-#### UC-KAC9: A person may change their own settings without gaining registry authority
-
-```gherkin
-Given a person directs an agent acting under their verified identity
-When that agent patches the person's own settings
-Then the change is allowed if the agent's system role permits the operation
-But a patch to the platform role, another person's settings, or a company roster is refused without the authority required for that target
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-
 #### UC-KAC9: A person may change all of their own configuration
 
 ```gherkin
@@ -238,8 +199,6 @@ When that agent patches the person's own configuration, their registry identity 
 Then the change is allowed if the agent's system role permits the operation
 But a patch to another person's configuration or a company roster is refused without the authority required for that target
 ```
-
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 #### UC-KAC10: Machine configuration is explicit without joining overlay resolution
 
@@ -280,21 +239,6 @@ Then the master equals the rendering of its kind's template
 And each local baseline manifest keeps its content byte for byte
 ```
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-#### UC-KAC14: Enabling a company help desk scaffolds it inside the company home
-
-```gherkin
-Given an administrator of a company whose declaration does not enable a help desk
-When they initialize the company with --help-desk
-Then the company declaration records its help desk as enabled
-And values already set in the declaration are preserved
-And the company home holds a help-desk folder whose master is the rendering of the company help-desk template
-And that master requires none of the company's local documentation
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-
 #### UC-KAC14: A company help desk follows the company's declaration
 
 ```gherkin
@@ -305,8 +249,6 @@ And values already set in the declaration are preserved
 And after the company home next converges it holds a help-desk folder whose master is the rendering of the company help-desk template
 And that master requires none of the company's local documentation
 ```
-
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 #### UC-KAC15: A project help desk is scaffolded in the project's repository
 
@@ -320,18 +262,6 @@ And no file outside the project's declaration and its help-desk folder is writte
 ```
 
 #### UC-KAC16: Enabling a help desk requires administrator authority
-
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-```gherkin
-Given a caller who belongs to a company without holding its administrator role
-When they initialize the company with --help-desk
-Then the command is refused before any write
-And the company declaration and home are unchanged
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 ### Cross-context references
 

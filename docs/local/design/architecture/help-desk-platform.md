@@ -114,13 +114,7 @@ A desk agent reads documentation at its visitor's depth (`local/projects/telecla
 
 ### Help Desk Scaffolding
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-`telec config <kind> init --help-desk` enables a home's help desk and scaffolds it; it requires administrator authority over the home (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`). Each kind has its own template in the TeleClaude repository — `templates/help-desk-platform/`, `templates/help-desk-company/`, and `templates/help-desk-project/` — carrying that kind's operator brain; the project template also carries the ignore declaration for the runtime directories.
-<!-- change:config-clearance-drops-field-gates -->
-
 A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. Each kind has its own template in the TeleClaude repository — `templates/help-desk-platform/`, `templates/help-desk-company/`, and `templates/help-desk-project/` — carrying that kind's operator brain; the project template also carries the ignore declaration for the runtime directories.
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 - The platform and company help desks are folders inside the TeleClaude home, so every machine installation converges them while their home enables them (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 - A project help desk lives in the project's working tree, so only the project's `init --help-desk` converges it, and the project commits the result.
@@ -679,24 +673,6 @@ sequenceDiagram
 
 ### Help Desk Scaffolding
 
-<!-- planned-change:config-clearance-drops-field-gates -->
-
-```mermaid
-sequenceDiagram
-    participant Admin
-    participant Init as telec config init --help-desk
-    participant Config as Home declaration
-    participant FS as Help desk folder
-
-    Admin->>Init: Enable the home's help desk
-    Init->>Init: Verify administrator authority over the home
-    Init->>Config: Set help_desk.enabled
-    Init->>FS: Materialize the kind's help-desk template
-    Note over FS: Platform and company help desks converge again on every installation
-```
-
-<!-- change:config-clearance-drops-field-gates -->
-
 ```mermaid
 sequenceDiagram
     participant Agent
@@ -712,8 +688,6 @@ sequenceDiagram
     Converge->>FS: Materialize the kind's help-desk template
     Note over Converge,FS: Platform and company desks converge on their home's init and on every installation
 ```
-
-<!-- /planned-change:config-clearance-drops-field-gates -->
 
 ## Failure Modes
 
