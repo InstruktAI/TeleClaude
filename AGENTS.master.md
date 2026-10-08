@@ -9,5 +9,6 @@ This file provides guidance to agents when working with code in this repository.
 ## Required reads
 
 - @docs/local/baseline.md
+- @docs/local/baseline-progressive.md
 
 <!-- /LOCKED_FILE -->
