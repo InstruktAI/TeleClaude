@@ -938,6 +938,17 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.ACTIVATE_PROCEDURE: ActivateProcedureCommand,
 }
 
+_WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {
+    "response_mode": ResponseMode,
+    "entry_point": SessionEntryPoint,
+    "command_input_mode": CommandInputMode,
+    "action": DiscordThreadClaimAction,
+    "kind": DiscordThreadClaimKind,
+    "lifecycle": DiscordThreadClaimLifecycle,
+    "text_kind": TranscriptEntryKind,
+    "source_feature": InjectedTextSourceFeature,
+}
+
 
 def command_from_dict(data: JsonDict) -> InternalCommand:
     """Rebuild an internal command from its cross-computer wire payload."""
@@ -954,20 +965,11 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             continue
         raw_value: object = data[name]
         value: object = raw_value
-        if name == "response_mode" and isinstance(raw_value, str):
-            value = ResponseMode(raw_value)
+        enum_type = _WIRE_ENUM_FIELDS.get(name)
+        if enum_type is not None and isinstance(raw_value, str):
+            value = enum_type(raw_value)
         elif name == "launch_intent" and isinstance(raw_value, dict):
             value = SessionLaunchIntent.from_dict(raw_value)
-        elif name == "entry_point" and isinstance(raw_value, str):
-            value = SessionEntryPoint(raw_value)
-        elif name == "command_input_mode" and isinstance(raw_value, str):
-            value = CommandInputMode(raw_value)
-        elif name == "action" and isinstance(raw_value, str):
-            value = DiscordThreadClaimAction(raw_value)
-        elif name == "kind" and isinstance(raw_value, str):
-            value = DiscordThreadClaimKind(raw_value)
-        elif name == "lifecycle" and isinstance(raw_value, str):
-            value = DiscordThreadClaimLifecycle(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
         elif name == _ENDPOINT_FIELD and isinstance(raw_value, dict):
