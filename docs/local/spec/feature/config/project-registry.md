@@ -30,6 +30,8 @@ slug. A company home's display name is its declared name, then its slug. Each
 entry's description comes from its own configuration when present. Identities
 are unique among a machine's entries.
 
+<!-- planned-change:retire-project-init -->
+
 Creation and adoption are what write the registry, and nothing else does: no
 deployment or synchronization path adds, removes, or rewrites an entry.
 Creation is reached through `telec config project create`, which makes a new
@@ -44,6 +46,22 @@ refused, and so is a folder whose identity another entry already holds.
 Recording is idempotent, so adopting an already-recorded folder changes
 nothing. Initializing a project records nothing: it converges a project already
 recorded.
+<!-- change:retire-project-init -->
+
+Creation and adoption are what write the registry, and nothing else does: no
+deployment or synchronization path adds, removes, or rewrites an entry.
+Creation is reached through `telec config project create`, which makes a new
+project and records it. Adoption is reached through `telec config project
+adopt`, through the daemon's add-project request that TUIs send, and through
+the configuration migration that retires the machine configuration's former
+trusted-directory list. Adopting a folder that declares the person or company
+tier records it as it is. Any other folder is set up as a project first, as
+`general/procedure/project-initialization` describes, and a folder that
+declares no tier becomes a project. A folder declaring the global tier is
+refused, and so is a folder whose identity another entry already holds.
+Recording is idempotent, so adopting an already-recorded folder changes
+nothing beyond converging it.
+<!-- /planned-change:retire-project-init -->
 
 A project created inside a person's or a company's home lands directly in that
 home's `projects/` folder. Adoption keeps a project where it already is,
@@ -205,6 +223,8 @@ Then the project is registered at that folder, owned by that person
 And no file is moved
 ```
 
+<!-- planned-change:retire-project-init -->
+
 #### UC-CFG-REG12: Initializing an unregistered folder records nothing
 
 ```gherkin
@@ -213,6 +233,12 @@ When an agent initializes the project configuration there
 Then the registry is unchanged and nothing is written
 And the refusal names project creation and project adoption
 ```
+
+<!-- change:retire-project-init -->
+
+#### UC-CFG-REG12: Initializing an unregistered folder records nothing
+
+<!-- /planned-change:retire-project-init -->
 
 ## Known caveats
 

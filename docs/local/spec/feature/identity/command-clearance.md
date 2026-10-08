@@ -493,6 +493,8 @@ A person is cleared by their effective role at the command's scope
 from the invocation and the object itself, never from a scope or role the caller
 supplies.
 
+<!-- planned-change:retire-project-init -->
+
 - A command that addresses a configuration subject is judged at that subject: a
   company at that company, a project at that project, a person at that person.
   Machine and global configuration, and the listing, creation and management of
@@ -509,6 +511,24 @@ supplies.
   folders a session can reach is not decided here. These bands admit every role
   but customer, so a registered person without a platform role creates in their
   own home, adopts, and converges.
+
+<!-- change:retire-project-init -->
+
+- A command that addresses a configuration subject is judged at that subject: a
+  company at that company, a project at that project, a person at that person.
+  Machine and global configuration, and the listing, creation and management of
+  people and companies, are judged at platform scope.
+
+- Creating a project is judged at the home it lands in: the caller's own person
+  scope, the company scope `--company` names, or platform scope for `--path`.
+  Adopting a project is judged at the caller's own person scope wherever the
+  folder is, so any registered person adopts a folder they can reach, including
+  a project they created, to converge it; which
+  folders a session can reach is not decided here. These bands admit every role
+  but customer, so a registered person without a platform role creates in their
+  own home and adopts.
+
+<!-- /planned-change:retire-project-init -->
 
 - A command that names a target session is judged at the project that session runs
   in.

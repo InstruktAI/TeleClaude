@@ -32,10 +32,17 @@ A project has two verbs of its own besides the resource operations:
 - `adopt` registers the folder the caller stands in, in place, as
   `local/projects/teleclaude/spec/feature/config/project-registry` describes.
 
+<!-- planned-change:retire-project-init -->
+
 For a project, `init` converges a registered project and creates or adopts
 nothing; for an unregistered folder it refuses and names `create` and `adopt`.
 Creating and adopting a project write nothing outside the project and the
 project registry.
+<!-- change:retire-project-init -->
+
+Creating and adopting a project write nothing outside the project and the
+project registry.
+<!-- /planned-change:retire-project-init -->
 
 The operation names describe the result, regardless of the subject's storage
 shape. `init` creates missing declarations and scaffolding and converges an
@@ -43,6 +50,8 @@ existing instance to the current required structure while preserving values
 already set. It starts no agent and sends no invitation. Analysis is invoked
 through an activatable procedure in an explicitly started session; an
 invitation is a separate explicit action.
+
+<!-- planned-change:retire-project-init -->
 
 For a person, a company, or a project, `init` also scaffolds that home from the
 platform's templates
@@ -52,6 +61,17 @@ baseline manifests; a project that subscribes `docs` receives its local
 baseline manifests. A master is brought to its template's rendering on every
 run, while a baseline is created only when absent and otherwise stays as its
 home keeps it. No documentation taxonomy directory is created.
+<!-- change:retire-project-init -->
+
+For a person or a company, `init` also scaffolds that home from the platform's
+templates
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+A person or company home receives its kind's `AGENTS.master.md` and its local
+baseline manifests, and adopting a project that subscribes `docs` gives it its
+local baseline manifests. A master is brought to its template's rendering on
+every run, while a baseline is created only when absent and otherwise stays as
+its home keeps it. No documentation taxonomy directory is created.
+<!-- /planned-change:retire-project-init -->
 
 <!-- planned-change:help-desks-as-deployment-output -->
 
