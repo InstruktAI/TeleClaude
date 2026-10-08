@@ -33,13 +33,10 @@ __all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand", "
 
 
 class EventCommand(StrEnum):
-    """Closed subcommand names for the event catalog and subscription interface."""
+    """Closed subcommand names for the event catalog interface."""
 
     LIST = "list"
     SCHEMA = "schema"
-    SUBSCRIBE = "subscribe"
-    SUBSCRIPTIONS = "subscriptions"
-    UNSUBSCRIBE = "unsubscribe"
 
 
 def export_surface_markdown() -> str:
@@ -1142,23 +1139,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=frozenset(), human=_HR_MEMBER_CONTRIB_NEWCOMER, caller_independent=True),
             ),
-            EventCommand.SUBSCRIBE.value: CommandDef(
-                desc="Subscribe the caller session to an event type",
-                args="<event> [--once] [--where <field>=<value>]...",
-                flags=[F.FLAG_HELP, F.FLAG_EVENTS_ONCE, F.FLAG_EVENTS_WHERE],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
-            EventCommand.SUBSCRIPTIONS.value: CommandDef(
-                desc="List the caller session's live event subscriptions",
-                flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
-            EventCommand.UNSUBSCRIBE.value: CommandDef(
-                desc="Withdraw one of the caller session's event subscriptions",
-                args="<subscription-id>",
-                flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
         },
     ),
     "signals": CommandDef(
@@ -1978,9 +1958,6 @@ CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 
 EVENTS_LIST = CLI_SURFACE["events"].subcommands[EventCommand.LIST.value]
 EVENTS_SCHEMA = CLI_SURFACE["events"].subcommands[EventCommand.SCHEMA.value]
-EVENTS_SUBSCRIBE = CLI_SURFACE["events"].subcommands[EventCommand.SUBSCRIBE.value]
-EVENTS_SUBSCRIPTIONS = CLI_SURFACE["events"].subcommands[EventCommand.SUBSCRIPTIONS.value]
-EVENTS_UNSUBSCRIBE = CLI_SURFACE["events"].subcommands[EventCommand.UNSUBSCRIBE.value]
 
 MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
 MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]

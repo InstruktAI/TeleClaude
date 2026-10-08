@@ -140,9 +140,8 @@ class _InternalEventPipeline:
     def __init__(self, bus: EventBus) -> None:
         self._bus = bus
 
-    async def execute(self, event: EventEnvelope, /, *, entry_id: str) -> EventEnvelope | None:
+    async def execute(self, event: EventEnvelope, /) -> EventEnvelope | None:
         """Deliver an internal event through the bus subscriber fan-out."""
-        del entry_id
         return await self._bus.deliver(event)
 
 

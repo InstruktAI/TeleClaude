@@ -86,7 +86,7 @@ class RelayDeliveryPipeline:
     def __init__(self, dispatcher: HookDispatcher) -> None:
         self._dispatcher = dispatcher
 
-    async def execute(self, envelope: EventEnvelope, /, *, entry_id: str) -> HookEvent | None:
+    async def execute(self, envelope: EventEnvelope, /) -> HookEvent | None:
         """Dispatch one relayed envelope; a failure escaping dispatch propagates to the processor's retry and DLQ."""
         if envelope.source not in set(RelayProtocol):
             return None

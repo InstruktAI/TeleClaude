@@ -40,7 +40,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.config.runtime_settings import RuntimeSettings
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
-    from teleclaude.core.event_subscriptions import EventSubscriptionService
     from teleclaude.core.reminders import ReminderService
     from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.api_models import TodoDTO
@@ -69,7 +68,6 @@ class DaemonLifecycle:
         shutdown_event: asyncio.Event,
         task_registry: TaskRegistry,
         reminder_service: ReminderService,
-        event_subscription_service: EventSubscriptionService,
         runtime_settings: RuntimeSettings | None = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
@@ -86,7 +84,6 @@ class DaemonLifecycle:
         self.shutdown_event = shutdown_event
         self.task_registry = task_registry
         self.reminder_service = reminder_service
-        self.event_subscription_service = event_subscription_service
         self._log_background_task_exception = log_background_task_exception
         self._init_voice_handler = init_voice_handler
         self._recover_session_startups = recover_session_startups
@@ -142,7 +139,6 @@ class DaemonLifecycle:
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
             reminder_service=self.reminder_service,
-            event_subscription_service=self.event_subscription_service,
             refresh_local_projects=self.refresh_local_projects,
         )
 

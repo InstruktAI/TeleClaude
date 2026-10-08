@@ -21,7 +21,6 @@ from ._conversation_bindings import (
 )
 from ._conversation_delivery import DbConversationDeliveryMixin
 from ._discord_reflection import DbDiscordReflectionMixin
-from ._event_subscriptions import DbEventSubscriptionsMixin
 from ._hooks import DbHooksMixin
 from ._inbound import (
     AcceptedTurnBindingRecord,
@@ -70,7 +69,6 @@ class Db(
     DbDiscordReflectionMixin,
     DbAgentStopsMixin,
     DbControlDeliveryMixin,
-    DbEventSubscriptionsMixin,
     DbRemindersMixin,
     DbConversationDeliveryMixin,
     DbLinksMixin,

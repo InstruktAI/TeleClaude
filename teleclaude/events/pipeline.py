@@ -81,9 +81,8 @@ class Pipeline:
         """Append a cartridge to the end of the processing chain."""
         self._cartridges.append(cartridge)
 
-    async def execute(self, event: EventEnvelope, /, *, entry_id: str) -> EventEnvelope | None:
+    async def execute(self, event: EventEnvelope, /) -> EventEnvelope | None:
         """Run an event through the system pipeline."""
-        del entry_id
         current: EventEnvelope | None = event
         for cartridge in self._cartridges:
             if current is None:

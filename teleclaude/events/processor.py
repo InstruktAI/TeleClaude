@@ -24,9 +24,9 @@ CONSUMER_GROUP = "event-processor"
 
 
 class StreamEntryPipeline(Protocol):
-    """Execute a stream envelope with the id of its source entry."""
+    """Execute one envelope read from the event stream."""
 
-    async def execute(self, envelope: EventEnvelope, /, *, entry_id: str) -> object: ...
+    async def execute(self, envelope: EventEnvelope, /) -> object: ...
 
 
 @dataclass
@@ -222,7 +222,7 @@ class EventProcessor:
                 envelope: EventEnvelope | None = None
                 try:
                     envelope = EventEnvelope.from_stream_dict(data)
-                    await self._pipeline.execute(envelope, entry_id=entry_id)
+                    await self._pipeline.execute(envelope)
                     try:
                         await self._redis.xack(self._stream, self._group, entry_id)
                     except Exception:
