@@ -7,21 +7,6 @@ description: One kind-addressed CLI contract for initializing, listing, reading,
 
 ## What it is
 
-<!-- planned-change:retire-project-init -->
-
-`telec config <kind> init|list|get|patch` is the agent-facing resource surface
-for configuration. The singular kind is `computer`, `global`, `person`,
-`company`, or `project`; an overlay subject's kind matches its declared
-`kind`. `computer` identifies the machine configuration by its fixed location
-in the machine home and does not become an overlay tier or a context root.
-`computer` and `global` are singletons. A person, company, or project is
-addressed by its stable slug, except where a project comes into being:
-creation addresses the folder it makes, and adoption addresses the checkout the
-caller stands in — the owning checkout of the repository that holds the caller's
-current directory, or that directory itself when no repository holds it or when
-the repository holding it is the global home's.
-<!-- change:retire-project-init -->
-
 `telec config <kind> list|get|patch`, with `init` for every kind but `project`,
 is the agent-facing resource surface for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
@@ -33,7 +18,6 @@ creation addresses the folder it makes, and adoption addresses the checkout the
 caller stands in — the owning checkout of the repository that holds the caller's
 current directory, or that directory itself when no repository holds it or when
 the repository holding it is the global home's.
-<!-- /planned-change:retire-project-init -->
 
 A project has two verbs of its own besides the resource operations:
 
@@ -48,27 +32,8 @@ A project has two verbs of its own besides the resource operations:
 - `adopt` registers the folder the caller stands in, in place, as
   `local/projects/teleclaude/spec/feature/config/project-registry` describes.
 
-<!-- planned-change:retire-project-init -->
-
-For a project, `init` converges a registered project and creates or adopts
-nothing; for an unregistered folder it refuses and names `create` and `adopt`.
 Creating and adopting a project write nothing outside the project and the
 project registry.
-<!-- change:retire-project-init -->
-
-Creating and adopting a project write nothing outside the project and the
-project registry.
-<!-- /planned-change:retire-project-init -->
-
-<!-- planned-change:retire-project-init -->
-
-The operation names describe the result, regardless of the subject's storage
-shape. `init` creates missing declarations and scaffolding and converges an
-existing instance to the current required structure while preserving values
-already set. It starts no agent and sends no invitation. Analysis is invoked
-through an activatable procedure in an explicitly started session; an
-invitation is a separate explicit action.
-<!-- change:retire-project-init -->
 
 The operation names describe the result, regardless of the subject's storage
 shape. For computer, global, person and company, `init` creates missing declarations and scaffolding and converges an
@@ -76,19 +41,6 @@ existing instance to the current required structure while preserving values
 already set. It starts no agent and sends no invitation. Analysis is invoked
 through an activatable procedure in an explicitly started session; an
 invitation is a separate explicit action.
-<!-- /planned-change:retire-project-init -->
-
-<!-- planned-change:retire-project-init -->
-
-For a person, a company, or a project, `init` also scaffolds that home from the
-platform's templates
-(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
-A person or company home receives its kind's `AGENTS.master.md` and its local
-baseline manifests; a project that subscribes `docs` receives its local
-baseline manifests. A master and a baseline are each written only while
-absent; an existing one stays as its home keeps it. No documentation taxonomy
-directory is created.
-<!-- change:retire-project-init -->
 
 For a person or a company, `init` also scaffolds that home from the platform's
 templates
@@ -98,7 +50,6 @@ baseline manifests, and adopting a project that subscribes `docs` gives it its
 local baseline manifests. A master and a baseline are each written only while
 absent; an existing one stays as its home keeps it. No documentation taxonomy
 directory is created.
-<!-- /planned-change:retire-project-init -->
 
 Whether a `global`, `company`, or `project` home keeps a help desk is a field of
 that home's declaration, and a `patch` of the declaration turns it on or off
@@ -114,23 +65,10 @@ template: its master is authored in the TeleClaude home's `help-desk/`. Machine
 installation seeds no desk
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 
-<!-- planned-change:retire-project-init -->
-
 For a project, the project's own convergence seeds the help desk in the
 project's `help-desk/` at commit-boundary maintenance and through `telec sync`
 whenever the project's declaration enables it
 (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-`init --help-desk` also enables the help desk and seeds it; it needs the
-administrator role for the project.
-
-<!-- change:retire-project-init -->
-
-For a project, the project's own convergence seeds the help desk in the
-project's `help-desk/` at commit-boundary maintenance and through `telec sync`
-whenever the project's declaration enables it
-(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-
-<!-- /planned-change:retire-project-init -->
 
 A project's declaration that enables its help desk also requires
 `agents.enabled: true` on that project. The requirement is declared once on the
@@ -325,24 +263,7 @@ And after the company home next converges it holds a help-desk folder whose mast
 And that master requires none of the company's local documentation
 ```
 
-<!-- planned-change:retire-project-init -->
-
-#### UC-KAC15: A project help desk is scaffolded in the project's repository
-
-```gherkin
-Given an administrator of the company that owns a project
-When they initialize the project with --help-desk
-Then the project declaration records its help desk as enabled
-And the project's help-desk folder holds the rendering of the project help-desk template
-And the master there requires none of the project's local documentation
-And no file outside the project's declaration and its help-desk folder is written for the help desk
-```
-
-<!-- change:retire-project-init -->
-
 #### UC-KAC15:
-
-<!-- /planned-change:retire-project-init -->
 
 #### UC-KAC16: Enabling a help desk requires administrator authority
 

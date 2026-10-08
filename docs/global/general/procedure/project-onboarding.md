@@ -29,31 +29,6 @@ surface that starts agents.
 
 ## Steps
 
-<!-- planned-change:retire-project-init -->
-
-1. **Adopt.** From the project root, run `telec config project adopt`. It
-   registers the project where it is: it gives the folder its own repository when
-   needed, checks placement and owner, declares capabilities, converges plumbing,
-   and derives the slug; see the project-initialization procedure for the
-   per-step contract. It returns when plumbing is complete and starts no session.
-   A project already registered is converged with `telec config project init`
-   instead.
-
-2. **Check for sessions already in flight.** Run `telec sessions list` and look for an
-   open session whose project path is this root and whose command is the one about to
-   be started. Starting a second one duplicates work; the sessions surface does not
-   deduplicate on the caller's behalf.
-3. **Assess the quality configuration.** Start
-   `telec sessions run --command /projects-assess-config --path <project-root>`. The
-   session compares the project's quality tooling against
-   `templates/quality/{language}/`.
-4. **Analyze the codebase.** Start
-   `telec sessions run --command /projects-analyze --path <project-root>`. The session
-   follows the project-analysis procedure and emits schema-valid snippets under
-   `docs/local/`.
-
-<!-- change:retire-project-init -->
-
 1. **Adopt.** From the project root, run `telec config project adopt`. It
    registers the project where it is: it gives the folder its own repository when
    needed, checks placement and owner, declares capabilities, converges plumbing,
@@ -74,8 +49,6 @@ surface that starts agents.
    follows the project-analysis procedure and emits schema-valid snippets under
    `docs/local/`.
 
-<!-- /planned-change:retire-project-init -->
-
 Steps 3 and 4 run concurrently once started, and either can be started again on its own
 later: re-run the analysis when codebase structure has shifted, and the assessment after
 the team adopts a new quality rule or upgrades blessed templates.
@@ -91,18 +64,7 @@ the team adopts a new quality rule or upgrades blessed templates.
 
 ## Recovery
 
-<!-- planned-change:retire-project-init -->
-
-- `telec config project adopt` and `telec config project init` are idempotent —
-  re-running either is safe and will skip already-configured steps.
-- If `telec sessions run` fails to start a session, it reports the failure; start it
-  again once the cause is resolved.
-
-<!-- change:retire-project-init -->
-
 - `telec config project adopt` is idempotent — re-running it is safe and will
   skip already-configured steps.
 - If `telec sessions run` fails to start a session, it reports the failure; start it
   again once the cause is resolved.
-
-<!-- /planned-change:retire-project-init -->

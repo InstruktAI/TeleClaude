@@ -116,18 +116,6 @@ A desk agent reads documentation at its visitor's depth (`local/projects/telecla
 
 A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The company and project kinds each have a template in the TeleClaude repository — `templates/help-desk-company/` and `templates/help-desk-project/` — carrying that kind's operator brain, seeded once, and the desk's ignore declaration. The platform help desk has no template: its operator brain is authored in the TeleClaude home.
 
-<!-- planned-change:retire-project-init -->
-
-- A company help desk is a folder inside the TeleClaude home. The platform home's configuration-aware convergence seeds it at commit-boundary maintenance and through `telec sync` while its company enables it; machine installation seeds no desk (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`, `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-- A project help desk lives in the project's repository. The project's own convergence seeds it at commit-boundary maintenance and through `telec sync` whenever the project's declaration enables it, and the project's `init --help-desk` enables and seeds it.
-- Seeding writes an operator brain only while it is absent. An existing one is never rewritten, and its home's history records it like any other source.
-- A desk whose home stops enabling it keeps its folder and is no longer hosted.
-- Scaffolding initializes no repository, runs no project initialization, and makes no commit of its own.
-
-- A help desk's master requires only documentation every reader of that desk may read, never its home's local documentation (`general/policy/agent-artifact-governance`).
-
-<!-- change:retire-project-init -->
-
 - A company help desk is a folder inside the TeleClaude home. The platform home's configuration-aware convergence seeds it at commit-boundary maintenance and through `telec sync` while its company enables it; machine installation seeds no desk (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`, `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 - A project help desk lives in the project's repository. The project's own convergence seeds it at commit-boundary maintenance and through `telec sync` whenever the project's declaration enables it.
 - Seeding writes an operator brain only while it is absent. An existing one is never rewritten, and its home's history records it like any other source.
@@ -135,8 +123,6 @@ A home's declaration says whether it keeps a help desk, and how that field is se
 - Scaffolding initializes no repository, runs no project initialization, and makes no commit of its own.
 
 - A help desk's master requires only documentation every reader of that desk may read, never its home's local documentation (`general/policy/agent-artifact-governance`).
-
-<!-- /planned-change:retire-project-init -->
 
 ### Knowledge Authoring Command
 

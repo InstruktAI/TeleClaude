@@ -32,22 +32,7 @@ Then the company structure is established
 And no analysis session is started
 ```
 
-<!-- planned-change:retire-project-init -->
-
-#### UC-ESD2: Reinitializing a project starts no agent
-
-```gherkin
-Given a project is already registered and has material available for analysis
-When an agent initializes that project again
-Then its required setup is converged
-And no analysis or assessment session is started
-```
-
-<!-- change:retire-project-init -->
-
 #### UC-ESD2:
-
-<!-- /planned-change:retire-project-init -->
 
 #### UC-ESD3: An explicit session runs analysis
 

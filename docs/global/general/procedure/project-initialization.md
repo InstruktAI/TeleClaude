@@ -1,5 +1,5 @@
 ---
-description: 'The project setup pipeline that telec config project create, adopt and init share — repository, placement and owner, capabilities, git plumbing, registration.'
+description: 'The project setup pipeline that telec config project create and adopt share — repository, placement and owner, capabilities, git plumbing, registration.'
 visibility: 'public'
 ---
 
@@ -7,16 +7,15 @@ visibility: 'public'
 
 ## Goal
 
-Set a project up for TeleClaude. Three commands share this pipeline:
+Set a project up for TeleClaude. Two commands share this pipeline:
 
 - `telec config project create <name>` makes a new, empty project and runs it.
   The project lands in the caller's own home's `projects/<name>`, in a company's
   `projects/<name>` with `--company <slug>`, or, for a platform administrator,
   at a folder outside every home with `--path <dir>`.
 - `telec config project adopt` runs it for the folder the caller stands in,
-  registering existing work where it already is.
-- `telec config project init` re-runs it for a project already registered, to
-  converge it. It creates and adopts nothing.
+  registering existing work where it already is. Running it again in a project
+  already registered converges that project.
 
 Machine-global agent infrastructure is installed by the TeleClaude checkout's
 `make install`.
@@ -29,8 +28,6 @@ project-onboarding procedure (`general/procedure/project-onboarding`).
 
 - For `create`: the name is a valid slug that no project on this computer holds.
 - For `adopt`: the folder holds the project's work.
-- For `init`: the folder is a registered project. For any other folder `init`
-  refuses and names `create` and `adopt`.
 - `telec` CLI is available and the daemon is running.
 
 ## Steps
@@ -67,8 +64,8 @@ The resolved subscriptions are then projected as markers under the repository's
 common git directory, where the installed shell plumbing reads them by existence
 check.
 
-A project `create` makes is empty, so it declares no capability block yet. The
-first `init` after its content is scaffolded infers them from what was built.
+A project `create` makes is empty, so it declares no capability block yet.
+Adopting it after its content is scaffolded infers them from what was built.
 
 This step runs before any capability-gated step below, so a project receives only the
 plumbing it subscribes to. Everything downstream reads the declaration; nothing
@@ -82,17 +79,6 @@ and `teleclaude/project_setup/capability_markers.py:project_capabilities()`
 For a project subscribing `docs`, creates the local baseline manifests under
 `docs/local/` from the platform's documentation template when they are absent.
 An existing manifest is never changed: it is the project's own curation.
-
-### 2c. Enable and scaffold the help desk (`--help-desk` only)
-
-With `--help-desk`, and only for a caller with administrator authority over the
-project, sets the project's help desk as enabled in `teleclaude.yml` and seeds
-the project's `help-desk/` folder from the project help-desk template: its
-ignore file converges to the template, its master is written only while absent,
-and no other file in the folder is replaced. An enabled help desk requires the
-project to subscribe `agents`; the configuration refuses a declaration that
-enables the desk without it, naming the field to set. The project commits the
-desk's master, which is then the project's own source.
 
 ### 3. Update .gitattributes (`docs` only)
 
@@ -163,7 +149,7 @@ an ephemeral worktree path never enters the registry.
 
 Creation and adoption are the only writers of the project registry, whether
 `telec config project create`, `telec config project adopt`, or the daemon's
-add-project request invokes them; `init` records nothing. A folder whose
+add-project request invokes them. A folder whose
 identity another registry entry already holds is refused before any step
 writes, and a folder declaring the person
 or company tier is recorded without these steps. Publication must not mutate
@@ -195,11 +181,10 @@ Source: `teleclaude/project_manifest.py:register_root()`
   project root registered in `~/.teleclaude/projects.yaml`.
 - For a project inside a home, that home's owner declared in `teleclaude.yml`.
 - The local baseline manifests, when the project subscribes `docs` and they were absent.
-- With `--help-desk`: the help desk enabled in `teleclaude.yml` and the `help-desk/` folder scaffolded.
 
 ## Recovery
 
-- `telec config project init` is idempotent. Re-running it is safe and will skip already-configured steps.
+- `telec config project adopt` is idempotent. Re-running it is safe and will skip already-configured steps.
 - A refused `create` names its cause: a taken or invalid name, a path inside a home, or `--path` combined with `--company`. Nothing has been written.
 
 ## See Also
