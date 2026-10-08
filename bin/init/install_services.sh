@@ -289,7 +289,9 @@ WorkingDirectory=$PROJECT_ROOT
 Environment="PATH=$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 # SSH_AUTH_SOCK sourced from keychain in wrapper
 ExecStart=$PROJECT_ROOT/bin/teleclaude-wrapper.sh
-Restart=on-failure
+# Relaunch on every exit, clean ones included, as launchd KeepAlive does: the
+# daemon applies restart-required config changes by shutting down gracefully.
+Restart=always
 RestartSec=10
 LimitNOFILE=4096
 StandardOutput=null

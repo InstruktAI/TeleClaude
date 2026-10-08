@@ -1268,8 +1268,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         reload_config() updates the in-memory singleton; hot-reloadable sections take
         effect immediately (tts also needs its manager to re-read). If any changed section
-        is not hot-reloadable, request a graceful shutdown — launchd KeepAlive relaunches
-        the daemon, which reads the fresh config at startup.
+        is not hot-reloadable, request a graceful shutdown — the service manager relaunches
+        the daemon on any exit, and it reads the fresh config at startup.
         """
         changed = reload_config()
         if not changed:
