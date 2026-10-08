@@ -1,5 +1,5 @@
 ---
-description: 'Sessions are ephemeral expressions; artifacts carry continuity. The agent that dispatches work ends it, then itself. A session persists only while it holds a signal a human must see.'
+description: 'Sessions are ephemeral expressions; artifacts carry continuity. The agent that dispatches work ends it, then itself. A session persists only while it holds a decision the human will talk through with it.'
 visibility: 'public'
 ---
 
@@ -15,9 +15,11 @@ the session has no further reason to exist. The agent that spawned it ends it, t
 itself. What remains is the work — the artifacts and the shared state. The sessions were
 merely the hands.
 
-The one exception: when an outcome requires human attention, the session that holds the
-signal stays alive. It is a beacon — visible, waiting. The human sees it, reads what is
-blocked, and steps in. Once resolved, it too can end.
+The one exception: when the work waits on a human's decision that they will talk through
+with the agent that reasoned it, that session stays alive. It is a beacon — visible,
+waiting. The human sees it, reads what is blocked, and steps in. Once resolved, it too can
+end. An outcome that only informs the human needs no conversation: it is delivered, and the
+session ends.
 
 ## Rationale
 

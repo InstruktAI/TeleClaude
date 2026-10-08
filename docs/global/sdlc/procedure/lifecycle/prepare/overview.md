@@ -278,12 +278,14 @@ and is one of two things (`sdlc/policy/todo-creation-discipline`):
   Reclassify it to `change` before calling `telec todo prepare {slug}`.
 - **An invalid bug report** — a report of behavior its contract permits,
   asking for no outcome anyone wants. Record the reason in the todo's `log`.
-  An agent-originated report is rejected with `telec todo remove {slug}`. A
-  report carrying a human's request in their own words is that human's to
-  withdraw: tell them with `telec message` why it breaks no contract, and hold
-  it with `telec todo update {slug} --hold --reason <reason>` until they
-  withdraw it or restate it as a change. An invalid report is never
-  reclassified to keep it alive.
+  An agent-originated report is rejected with `telec todo remove {slug}`, and
+  the session ends as at any terminal outcome. A report carrying a human's
+  request in their own words is that human's to withdraw: hold it with
+  `telec todo update {slug} --hold --reason <reason>` and stay open with why it
+  breaks no contract, so the human can read it and talk it through with this
+  session (`general/principle/session-lifecycle`). End once they withdraw it or
+  restate it as a change. An invalid report is never reclassified to keep it
+  alive.
 
 ### 1c. Settled change
 
