@@ -14,7 +14,8 @@ points its reader to the schema view. The schema view shows one type's
 declaration in full: its name, version and description, what its events are
 about and the kind of their subject, the home kinds their home can take or that
 they belong to no home, every data field with its value kind and whether it may
-be null, and the kinds of thing their related references name.
+be null, the kinds of thing their related references name, and, for a platform
+type that reports a state, its family and whether the state is failing or ok.
 
 Both views read the catalog generated from the event types producers construct,
 so what an agent discovers is what producers emit. A type's first name segment
@@ -36,6 +37,7 @@ catalog (`local/projects/teleclaude/spec/domain/event-catalog`).
 Given an agent wants to know what a listed event type carries
 When it views that event type's schema
 Then it sees the type's name, version and description, what its events are about and the kind of their subject, the home kinds their home can take, every data field with its value kind and nullability, and the kinds of thing their related references name
+And for a platform type that reports a state, it sees the type's family and whether the state is failing or ok
 And it sees no notification rule, action, audience or routing scope
 ```
 

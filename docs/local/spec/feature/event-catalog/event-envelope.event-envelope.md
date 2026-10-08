@@ -19,7 +19,7 @@ attributes, set by its producer where the event happens:
   its source declares.
 - **source** — the computer the event was emitted on.
 - **subject** — the one thing the event is about, as a typed reference: the kind
-  of thing and its identity, such as a todo, a session, a job run or a computer.
+  of thing and its identity, such as a todo, a session, a job or a computer.
 - **time** — when it happened.
 - **data** — the facts particular to the event's type.
 - **home** — the registered project, person or company the event belongs to;
@@ -45,14 +45,28 @@ source, subject and home, and reads the data only once the event has reached
 it. Emission decides nothing about consumers and refuses nothing on the
 strength of these facts.
 
+A platform event that reports the state of a thing names that state in the last
+segment of its type, under a family prefix shared by every state of that
+lifecycle: a job's runs succeeded, failed or stalled are three states of one
+family. The event catalog owns the closed set of state segments and marks each
+one failing or ok, so a consumer reads a thing's state from the type alone. A
+family that can report a thing failing also reports it ok, so everything that
+can be reported broken has a reported way back; the correlation detections
+report when their episode is over. The subject is the thing whose state is
+reported, so a job's outcomes are about the job, not the single run. An event
+that reports no state of a thing, such as a dead-lettered stream entry, does not
+end in a state segment. Events of published domains do not follow this
+convention.
+
 Every event type is declared once, as the type its producers construct. The
 declaration states the type's name, what its events are about and the kind of
 their subject, the home kinds their home can take or that they belong to no
-home, the data fields they carry with each field's value kind, and the kinds of
-thing their related references name. A producer can only emit an event its
-type's declaration allows. The event catalog that `telec events list` and
-`telec events schema` show is generated from these declarations, so what an
-agent discovers is what producers emit.
+home, the data fields they carry with each field's value kind, the kinds of
+thing their related references name, and, for a platform type that reports a
+state, its family and whether the state is failing or ok. A producer can only
+emit an event its type's declaration allows. The event catalog that
+`telec events list` and `telec events schema` show is generated from these
+declarations, so what an agent discovers is what producers emit.
 
 Every attribute an event is emitted with travels with it unchanged to every
 computer it reaches, whether or not that computer knows the named home or the
@@ -84,9 +98,9 @@ Scenario Outline: The first segment of the type name is its owner
   Then the type name begins with "<first segment>"
 
   Examples:
-    | producer                                                         | first segment |
-    | the platform, about its own operation                            | teleclaude    |
-    | the platform, about the sdlc domain it publishes                 | sdlc          |
+    | producer                                                          | first segment |
+    | the platform, about its own operation                             | teleclaude    |
+    | the platform, about the sdlc domain it publishes                  | sdlc          |
     | an inbound endpoint, relaying a request whose source declares erp | erp           |
 ```
 
@@ -100,12 +114,12 @@ Scenario Outline: Subject and home are separate facts
   And its home is <home>
 
   Examples:
-    | act                                                  | subject                    | home                          |
-    | a todo of a registered project changes phase         | that todo                  | that project                   |
-    | a session working in a registered person's folder ends | that session             | that person                   |
-    | a job run executing for a registered project fails   | that job run               | that project                  |
-    | the event stream's processor detects a failure burst | the computer it runs on    | none                          |
-    | a session working in a folder no registration governs ends | that session         | none                          |
+    | act                                                        | subject                 | home         |
+    | a todo of a registered project changes phase               | that todo               | that project |
+    | a session working in a registered person's folder ends     | that session            | that person  |
+    | a run of a job executing for a registered project fails    | that job                | that project |
+    | the event stream's processor detects a failure cascade     | the computer it runs on | none         |
+    | a session working in a folder no registration governs ends | that session            | none         |
 ```
 
 #### UC-EE4: A project home carries its owner as known where the event happened
@@ -118,10 +132,10 @@ Scenario Outline: The owner travels with the project home
   Then the event names <owner on the event> as the project's owner
 
   Examples:
-    | declared owner                                  | owner on the event       |
-    | a company                                       | that company             |
-    | a person                                        | that person              |
-    | no one                                          | no owner                 |
+    | declared owner                                  | owner on the event         |
+    | a company                                       | that company               |
+    | a person                                        | that person                |
+    | no one                                          | no owner                   |
     | a declaration the emitting computer cannot read | unresolved, never no owner |
 ```
 
@@ -178,6 +192,7 @@ And this holds when the receiving computer does not know the named home or the n
 Given an event type is declared as the type its producers construct
 When an agent reads that type in the event catalog
 Then it sees the type's name, what its events are about and their subject kind, the home kinds their home can take or that they belong to no home, the data fields they carry with each field's value kind, and the kinds of thing their related references name
+And for a platform type that reports a state, it sees the type's family and whether the state is failing or ok
 And every event a producer emits of that type carries attributes and data consistent with that declaration
 ```
 
@@ -190,10 +205,10 @@ Scenario Outline: Readers keep working as a type evolves
   Then <outcome>
 
   Examples:
-    | change                                             | outcome                                                                    |
-    | a data field is added                              | the consumer ignores the field it does not know and processes the event  |
-    | an optional data field is absent                   | the consumer processes the event without it                               |
-    | a field is removed or its meaning changes          | the event is emitted as a new version of the type                         |
+    | change                                    | outcome                                                                 |
+    | a data field is added                     | the consumer ignores the field it does not know and processes the event |
+    | an optional data field is absent          | the consumer processes the event without it                             |
+    | a field is removed or its meaning changes | the event is emitted as a new version of the type                       |
 ```
 
 #### UC-EE12: Computers on different versions keep exchanging events
@@ -216,6 +231,39 @@ Then both carry the same id
 And two distinct occurrences never share an id
 ```
 
+#### UC-EE14: A platform event's type names the state it reports
+
+```gherkin
+Scenario Outline: The state is read from the type alone
+  Given the platform emits an event about <act>
+  When an agent consuming platform events reads its type
+  Then <what the type tells>
+
+  Examples:
+    | act                                          | what the type tells                                                      |
+    | a run of a job that failed                   | a failing state of the job's run family, about that job                  |
+    | a run of the same job that succeeded         | an ok state of the same family, about the same job                       |
+    | a session that ended                         | no state                                                                 |
+    | a stream entry that was dead-lettered        | no state                                                                 |
+    | a todo of the sdlc domain that changed phase | nothing about state: domain events do not follow the platform convention |
+```
+
+#### UC-EE15: Everything reported broken has a reported way back
+
+```gherkin
+Scenario Outline: A failing lifecycle reports when it is over
+  Given the platform reported <thing> in a failing state
+  When <recovery>
+  Then the platform emits an event reporting an ok state of the same family about the same thing within the same home
+
+  Examples:
+    | thing                                                   | recovery                                                                                     |
+    | a job whose run failed                                  | a later run of that job succeeds                                                             |
+    | a burst of one event type                               | that type's events no longer reach the burst threshold within the detection window           |
+    | a thing degraded by repeated failures                   | none of its failing event types reaches the degradation threshold within the window any more |
+    | a burst that began before the event processor restarted | after the restart, that type's events no longer reach the burst threshold within the window  |
+```
+
 ## Known caveats
 
 - **The home is resolved from valid declarations.** The commit gate guarantees
@@ -236,6 +284,7 @@ And two distinct occurrences never share an id
 
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why the attributes follow CloudEvents, why the home moved out of the subject, and why conformance waits for an external consumer.
 - docs/local/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction.md — why notification rules, action affordances and routing scope are not event facts.
+- docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md — why a platform event's state is the last segment of its type, and why every failing family declares an ok state.
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why events state facts about themselves and receipt is decided on the receiving side.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why the home distinguishes none from unknown.
 - docs/local/adr/0026-cross-version-fleet-compatibility.md — why the envelope evolves additively across a mixed-version fleet.

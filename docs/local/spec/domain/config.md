@@ -208,11 +208,11 @@ Every platform event config emits states as its subject what its act concerned:
 Every platform event config emits states as its subject and home what its act
 concerned:
 
-- a job run's outcome: the job run, with the project the run executes for as
-  home, including a globally published job run in a subscribing project. Every
-  job run executes for a registered project; an outcome recorded before runs
-  were keyed by project, whose project cannot be recovered from its record,
-  states an unknown home.
+- a job run's outcome: the job, one thing across all its runs, with the project
+  the run executes for as home. A globally published job is a separate job in
+  each subscribing project. Every job run executes for a registered project; an
+  outcome recorded before runs were keyed by project, whose project cannot be
+  recovered from its record, states an unknown home.
 - an effective configuration change: the configuration that changed, with the
   project whose configuration it is as home. A machine or global configuration
   change has no home.
@@ -227,6 +227,7 @@ concerned:
 <!-- planned:event-envelope -->
 
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+- docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md — why the subject of an event that reports a state is the thing whose state it is.
 
 <!-- /planned:event-envelope -->
 

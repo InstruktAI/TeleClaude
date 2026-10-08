@@ -99,7 +99,8 @@ concerned:
 - todo lifecycle, roadmap, preparation, build, review, integration, and delivery
   events: the todo or delivery they concern, with the project it belongs to as
   home;
-- deployment events: the deployment, with the deployed project as home;
+- deployment events: the deployed project's deployment, one thing across all
+  its deployments, with the deployed project as home;
 - the schedule clock's minute tick: the computer whose clock ticked, with no
   home.
 
@@ -113,6 +114,7 @@ concerned:
 <!-- planned:event-envelope -->
 
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject and the home it belongs to separately.
+- docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md — why the subject of an event that reports a state is the thing whose state it is.
 
 <!-- /planned:event-envelope -->
 

@@ -90,19 +90,49 @@ and the catalog is generated from those declarations. A declaration states:
   no registered home;
 - its **data fields**: each field's name, JSON value kind, and whether it may be
   null;
-- its **related references**: the kinds of thing they name.
+- its **related references**: the kinds of thing they name;
+- its **state**, for a platform type that reports one: its family and the
+  state, marked failing or ok.
 
 A producer can only emit an event its type's declaration allows. The catalog
 owns the declaration's shape. The producing context authors its values, and the
 events it emits carry attributes and data consistent with them.
+
+### Lifecycle states
+
+A platform event that reports the state of a thing names that state in the last
+segment of its type, under a family prefix shared by every state of that
+lifecycle: a job's run outcomes, succeeded, failed and stalled, are three states
+of one family.
+
+- **The vocabulary is closed.** The catalog owns the set of state segments and
+  marks each one failing or ok. A platform type whose last segment is in the
+  vocabulary reports that state. A platform type that reports no state does not
+  end in a state segment; an event about an act that leaves nothing to recover,
+  such as a dead-lettered stream entry, reports no state.
+- **Every failing family has a way back.** A family that declares a failing
+  state also declares an ok state.
+- **The subject is the thing whose state is reported.** Every state of a family
+  has the same subject kind, and the thing is the subject within the event's
+  home, so a failure and its recovery state the same subject and home.
+- **The type alone carries the state.** A consumer reads a thing's state from
+  the event's type, never from its data.
+- **Declarations keep the convention.** The catalog is not generated from a
+  declaration set that breaks these rules, so a producer cannot emit a state
+  its family does not declare.
+
+Events of published domains do not follow this convention; each domain names
+its events as its own vocabulary requires.
 
 ### Event subjects and homes
 
 The event platform's own emitters state as subject and home what their act
 concerned:
 
-- failure-burst and failure-cascade detection and processor worker crashes:
-  the computer whose event processor observed them, with no home;
+- failure-cascade detection and processor worker crashes: the computer whose
+  event processor observed them, with no home;
+- failure-burst detection: the event type whose events burst, with the home of
+  those events; bursts of one type under different homes are kept apart;
 - a dead-lettered stream entry: the event it carried, with no home;
 - entity degradation: the degraded thing the failing events it correlates are
   about, with the home of those events. Correlation keeps same-named things
@@ -112,6 +142,13 @@ concerned:
 - signal ingest, clustering, and synthesis: the signal item, cluster, or
   synthesis the act produced, with no home while signal sources are machine
   configuration that no registered home declares.
+
+Each detection reports when its episode is over: a burst and a failure cascade
+subside, and a degraded thing recovers, once the events the detection counts no
+longer reach its threshold within its window. A thing is degraded from the
+first of its failing event types reaching the threshold until none does. An
+episode that began before the computer's event processor restarted is still
+reported over after the restart.
 
 ### Discovery
 
@@ -146,7 +183,7 @@ projector — runs as the system pipeline.
 ### Ownership boundary
 
 The catalog owns registry shape, discovery metadata, the reference kinds, the
-envelope contract, the type-pattern matcher, and the consumer runtime: progress,
+state vocabulary, the envelope contract, the type-pattern matcher, and the consumer runtime: progress,
 duplicate protection, retry, and dead letter. The bounded context that produces an event owns its
 semantic name, data meaning, and emission invariant; consuming contexts own
 their local reaction. Catalog registration does not transfer either
@@ -169,5 +206,6 @@ responsibility.
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md
 - docs/local/adr/0115-an-event-states-facts-and-its-consumers-own-every-reaction.md
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
+- docs/local/adr/0117-a-platform-event-type-names-the-state-it-reports.md
 - docs/local/spec/feature/event-catalog/event-envelope.md
 - ~/.teleclaude/docs/sdlc/policy/domain-ownership.md — why hosting a context's event declarations confers no ownership of their meaning.

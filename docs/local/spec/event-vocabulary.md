@@ -170,6 +170,10 @@ Each type's name, declaration, and data fields are read from the generated
 catalog with `telec events list` and `telec events schema <type>`; this
 vocabulary does not restate them.
 
+A `teleclaude` type that reports the state of a thing ends in a state segment
+under its lifecycle family, from the closed vocabulary the event catalog owns
+(`local/projects/teleclaude/spec/domain/event-catalog`).
+
 <!-- /planned-change:event-envelope -->
 
 ### Expansion Joint

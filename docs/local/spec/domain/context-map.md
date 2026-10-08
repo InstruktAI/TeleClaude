@@ -38,12 +38,12 @@ contracts and never creates shared ownership.
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
 
+<!-- planned-change:event-envelope -->
+
 - `marketing` and `creative_production`: company business domains whose event
   vocabulary the event platform's catalog hosts. Each owns its event
   vocabulary's meaning and emission invariants; hosting confers none of that on
   the event platform.
-
-<!-- planned-change:event-envelope -->
 
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — origin and subject — and each event type's
@@ -54,9 +54,10 @@ contracts and never creates shared ownership.
 
 - `event-catalog`: the platform event stream's envelope shape, the facts every
   event states about itself — its type, source, subject, home, related
-  references, and causation — the kinds of thing a reference can name, and the
-  event type declarations the catalog is generated from. It owns no event's
-  meaning and no consumer's reaction.
+  references, and causation — the kinds of thing a reference can name, the
+  vocabulary of states a platform event reports, and the event type
+  declarations the catalog is generated from. It owns no event's meaning and no
+  consumer's reaction.
 
 <!-- /planned-change:event-envelope -->
 
