@@ -109,7 +109,7 @@ And the result is returned without warning
   the resolved context and its declared tier.
 - The `config` bounded context (`local/projects/teleclaude/spec/domain/config.md`) targets a
   true "effective configuration" merge with `person → project → global`
-  precedence and a `config.effective.updated` event. The current resolver
+  precedence and an effective-configuration-updated event. The current resolver
   does not compute that merge and does not emit that event — consumers
   read the layer they need from the composed app config.
 

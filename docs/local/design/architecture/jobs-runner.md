@@ -36,7 +36,7 @@ notification shape:
   A script job closes synchronously in the same tick; an agent job closes on a later tick
   when its structured outcome report arrives.
 - A run that stays open past its expected window (`timeout`) is marked **stalled**.
-- On every close or stall the runner emits a `job.run.*` event; an actionable outcome
+- On every close or stall the runner emits a job-run outcome event; an actionable outcome
   (failure or stall) notifies a human through the notification cartridge, a clean run is
   silent. "Dispatched" never means "succeeded."
 
@@ -101,7 +101,7 @@ is down.
 
 #### Outcome reporting and notification
 
-Outcomes ride the platform's existing event substrate. The runner emits a `job.run.*`
+Outcomes ride the platform's existing event substrate. The runner emits a job-run outcome
 event on close or stall through `EventProducer`; the notification cartridge projects an
 actionable event (failure or stall) to admins and stays silent for a clean run. The agent
 never emits events — it reports only through `telec jobs report`, and the runner owns the
@@ -113,15 +113,15 @@ that project, so a later run cannot overwrite a notification that has not yet be
 
 #### Components
 
-| Component      | Path                                | Role                                                                           |
-| -------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
-| CLI entry      | `scripts/cron_runner.py`            | Argument parsing, logging setup, invokes engine                                |
-| Engine         | `teleclaude/cron/runner.py`         | Effective-set loading, schedule evaluation, run open/close/stall, event emit   |
-| State          | `teleclaude/cron/state.py`          | JSON persistence of the per-job run lifecycle                                  |
-| Event schemas  | `teleclaude/events/schemas/jobs.py` | The `job.run.succeeded` / `job.run.failed` / `job.run.stalled` catalog entries |
-| Report wrapper | `telec jobs report`                 | The single structured-outcome channel an agent job uses to close its run       |
-| Job base       | `jobs/base.py`                      | Abstract `Job` class, `JobResult`                                              |
-| Job modules    | `jobs/*.py`                         | Concrete job implementations, each exposing a module-level `JOB`               |
+| Component      | Path                                | Role                                                                         |
+| -------------- | ----------------------------------- | ---------------------------------------------------------------------------- |
+| CLI entry      | `scripts/cron_runner.py`            | Argument parsing, logging setup, invokes engine                              |
+| Engine         | `teleclaude/cron/runner.py`         | Effective-set loading, schedule evaluation, run open/close/stall, event emit |
+| State          | `teleclaude/cron/state.py`          | JSON persistence of the per-job run lifecycle                                |
+| Event schemas  | `teleclaude/events/schemas/jobs.py` | The succeeded, failed and stalled job-run catalog entries                    |
+| Report wrapper | `telec jobs report`                 | The single structured-outcome channel an agent job uses to close its run     |
+| Job base       | `jobs/base.py`                      | Abstract `Job` class, `JobResult`                                            |
+| Job modules    | `jobs/*.py`                         | Concrete job implementations, each exposing a module-level `JOB`             |
 
 #### Cross-project iteration
 
@@ -144,7 +144,7 @@ and the walk continues.
 
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
-- `job.run.*` events on close/stall, projected to a human when actionable
+- Job-run outcome events on close/stall, projected to a human when actionable
 - Run reports under `JOBS_DIR`, keyed by project and declared job name (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
 
@@ -157,7 +157,7 @@ and the walk continues.
 - A job that has never run waits for its first scheduled occurrence after discovery.
 - A run is opened at dispatch and closed only by a real outcome — dispatch never marks success.
 - A job with an open run is not re-dispatched until its run closes or stalls.
-- Both job classes produce the same `JobResult` outcome and `job.run.*` event shape.
+- Both job classes produce the same `JobResult` outcome and job-run outcome event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
 - A job has one identity, the `name` its declaration carries. Dispatch, run state, the run directory, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
@@ -208,14 +208,14 @@ Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a given
 2. Write pidfile. Register cleanup via `atexit`.
 3. `cron_runner.py` invokes `run_due_jobs()`.
 4. Sweep open runs: close each agent run whose structured outcome has arrived (emit
-   `job.run.succeeded`/`job.run.failed`); stall any open run past its `timeout` (emit
-   `job.run.stalled`); re-attempt any closed-but-unnotified emission.
+   the job-run succeeded or failed event); stall any open run past its `timeout` (emit
+   the job-run stalled event); re-attempt any closed-but-unnotified emission.
 5. Compose each registered project's effective job set through `load_effective_jobs`, including its local declarations and subscribed global jobs.
 6. For each due job not already open: open a run. A script job runs `JOB.run()` in-process
    on a daemon thread joined with `timeout`; if it times out, the runner records the failed
    outcome and aborts the rest of the pass so no later job starts. An agent job creates its
    session and stays open for the sweep; a session-creation failure records a failed outcome
-   and emits `job.run.failed` rather than skipping silently.
+   and emits the job-run failed event rather than skipping silently.
 7. Persist the run lifecycle after every transition.
 8. Remove pidfile on exit (the daemon thread of any timed-out job is reaped here).
 
@@ -332,8 +332,8 @@ keep separate notification lifecycles.
 - **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
 - **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
 - **Script job exceeds `timeout`**: The daemon-thread join records a failed `JobResult` and the runner aborts the rest of the pass so no later job runs concurrently; the hung job is hard-reaped when the runner process exits, freeing the pidlock, and the deferred jobs run on the next trigger.
-- **A job cannot start**: An agent session-creation failure — including an agent preference list with no eligible candidate — records a failed outcome carrying the dispatch refusal reason and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
-- **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, notifies a human.
+- **A job cannot start**: An agent session-creation failure — including an agent preference list with no eligible candidate — records a failed outcome carrying the dispatch refusal reason and emits the job-run failed event; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
+- **Agent run never reported within its window**: Marked `stalled`, emits the job-run stalled event, notifies a human.
 - **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
 - **Daemon unavailable during an agent job**: The agent spawns without MCP tools and still reports its outcome to the filesystem; the run closes normally.

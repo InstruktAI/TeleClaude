@@ -42,7 +42,7 @@ policy row, so a recurrence becomes configuration rather than a fresh incident.
 **Outputs:**
 
 - Terminated leaked processes whose signature match has outlived its TTL.
-- One observable reap event per killed pid — `system.process.reaped`, joining the
+- One observable reap event per killed pid — the process-reaped event, joining the
   existing `system.*` infrastructure-event family in
   `teleclaude/events/schemas/system.py`. Payload: the pid, the matched signature
   (id + name), the reap reason, and — when the reap is a lease expiry — the owner

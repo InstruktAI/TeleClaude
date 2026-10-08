@@ -339,7 +339,7 @@ the computer-name wizard step is the task that adds the writer.
 
 ### Reload semantics
 
-Wizard writes do **not** publish `config.effective.updated`. That
+Wizard writes do **not** publish the effective-configuration-updated event. That
 event is part of the `config` bounded context's domain contract (per
 `local/projects/teleclaude/spec/domain/config.md`); the current machine-config-load and
 layered-overlay-resolution contracts have no filesystem watcher and

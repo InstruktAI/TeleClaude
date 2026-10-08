@@ -209,7 +209,7 @@ And every other rejected value is shown as written
 
 ### Cross-context references
 
-- The config bounded context does not emit the `config.effective.updated`
+- The config bounded context does not emit the effective-configuration-updated
   event described in `local/projects/teleclaude/spec/domain/config.md` for machine-config
   load. The initial machine config is read once at process start. While the
   runtime is up, the config bounded context watches the file for changes

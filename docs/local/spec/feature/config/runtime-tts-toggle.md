@@ -396,7 +396,7 @@ Then the removal fails closed with a clear error
   its `enabled` flag directly. The relationship is "config owns the
   toggle; TTS owns the consumption". The current coupling is a direct
   in-process write held together by convention; the same coordination
-  would flow through a `config.effective.updated` event consumed by the
+  would flow through an effective-configuration-updated event consumed by the
   TTS context in the target model.
 - **Distinct from the YAML overlays.** The `tts` block in `teleclaude.yml`
   (and in machine `config.yml`) defines boot-time TTS shape — voices,
@@ -404,7 +404,7 @@ Then the removal fails closed with a clear error
   TTS manager. The runtime-settings layer does not mutate those YAML
   files. The JSON state file is a separate persistence surface.
 - **No domain event today.** A patch does not emit
-  `config.effective.updated` or any other event. Consumers other than the
+  the effective-configuration-updated event or any other event. Consumers other than the
   TTS context learn about a toggle only by reading the TTS context's
   enabled flag directly.
 

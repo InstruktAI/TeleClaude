@@ -102,7 +102,7 @@ And leaves the prior committed target unchanged
 ```gherkin
 Given a machine-config mutation has committed
 When the transaction returns
-Then no `config.effective.updated` event is emitted in v1
+Then no effective-configuration-updated event is emitted in v1
 And runtime reload behavior remains owned by the existing config watcher and service lifecycle
 ```
 

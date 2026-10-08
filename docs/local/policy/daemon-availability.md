@@ -10,7 +10,7 @@ visibility: 'public'
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 - `make restart` ends when the service manager accepts the restart. Nothing follows it: no wait, check, or other step runs after the restart inside the command, and it is the last action of any maintenance or recovery sequence that includes it. Its outcome records only that acceptance.
 - After a canonical-main change needing a restart, commit-boundary maintenance invokes `make restart` as its final action; an agent does not repeat it. Agent-operated recovery invokes `make restart` the same way.
-- Daemon process-lifecycle observability is in-daemon: the janitor emits one `system.process.reaped` event per kill (queryable via `telec events`), and structured logs carry SIGTERM and shutdown attribution. Ad-hoc host probes (`dtrace`/`fs_usage`) installed outside `make` are not used.
+- Daemon process-lifecycle observability is in-daemon: the janitor emits one process-reaped event per kill (queryable via `telec events`), and structured logs carry SIGTERM and shutdown attribution. Ad-hoc host probes (`dtrace`/`fs_usage`) installed outside `make` are not used.
 - Daemon health (API socket, API health/read endpoints, adapters) is verified by `make status`, a separate invocation that is never part of `make restart`. After a canonical-main activation, the standing integrator's log judgment establishes whether the restarted daemon came back healthy.
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 - `make stop` and `make restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
@@ -32,7 +32,7 @@ visibility: 'public'
 
 - Use `make restart` only after changes that require it.
 - Review recent logs with `instrukt-ai-logs teleclaude --since 2m` if stability is in doubt.
-- If the daemon restarts unexpectedly, review the `system.process.reaped` event stream (`telec events`) and structured shutdown logs before taking action.
+- If the daemon restarts unexpectedly, review the process-reaped event stream (`telec events`) and structured shutdown logs before taking action.
 - A `make stop` that leaves the daemon or a managed launchd unit alive past 30 seconds, or that signals a session, tmux, or spawn-registry lease-holder pid, is a defect.
 
 ## Exceptions

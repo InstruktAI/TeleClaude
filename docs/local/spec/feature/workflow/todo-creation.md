@@ -1,5 +1,5 @@
 ---
-description: 'Todo creation — `telec todo create is the single creation command, and `telec todo design` enters the creative state machine. The workflow service emits `workflow.todo.created` consumed by the lifecycle router.'
+description: 'Todo creation — `telec todo create is the single creation command, and `telec todo design` enters the creative state machine. The workflow service emits the todo-created event consumed by the lifecycle router.'
 visibility: 'public'
 ---
 
@@ -12,7 +12,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 - **`telec todo create <slug> <content> --kind <kind>`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is required. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
   - `--kind <kind>` — **required**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). The kind maps one-to-one onto the todo's lifecycle lane from creation. A creation request without a kind is refused before anything is written, and the refusal names the four kinds. A wrong kind is corrected with `telec todo update <slug> --kind <kind>`.
   - `--icebox` — creates the todo directly in the icebox (roadmap `status="icebox"`) instead of `active`. The lifecycle runner skips iceboxed entries, so no session is dispatched; the todo's kind, state, and `input` artifact are written normally, and unfreezing it later returns it to `active` and starts its lane. It is the only flag that parks a new todo instead of letting it enter its lifecycle.
-  - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path resolves the project's workflow state root server-side, and the `workflow.todo.created` payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
+  - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path resolves the project's workflow state root server-side, and the todo-created event payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
 
 - `--group <parent-slug>` — attaches the new todo as a child of `<parent-slug>` by recording a group reference to the parent's durable row id. The child is created complete (content + kind + state + `input` artifact) in one call. The first grouped child transitions the parent's row to status `holder` — a one-way exit from the todo lifecycle: the parent's `todo_state` is removed, any claim or hold on it is void, and all of its artifacts and their version history are preserved as frozen evidence, so a parent still in the prepare lane — including one carrying a PRD, architecture, or plan — can be grouped (see UC-WTC24). A parent whose `lifecycle_phase` has reached `prepared` or a work-lane phase is refused with a 409, because a todo cannot exit the lifecycle mid-build (see UC-WTC16). Grouping under an existing holder attaches the child the same way, including a holder whose earlier group has ended. `create --group` is the atomic, fully-formed way to attach a grouped child. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
 
@@ -28,11 +28,11 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - **`telec todo design [<slug>]`** — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
-The Todo aggregate's invariants — unique kebab-case slug, a canonical kind present from creation, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for `workflow.todo.created`.
+The Todo aggregate's invariants — unique kebab-case slug, a canonical kind present from creation, `after` dependencies validated against the todo list — are enforced before the entry is written. The workflow service is the single emission point for the todo-created event.
 
 ## Canonical fields
 
-### `workflow.todo.created` payload (partial shape)
+### Todo-created event payload (partial shape)
 
 The workflow service emits the event with this payload:
 
@@ -59,7 +59,7 @@ When they run `telec todo create my-feature "<content>" --kind feature`
 Then the CLI validates that <content> is non-empty and the provided --kind value is canonical
 And submits a creation request with kind="feature"
 And the workflow service creates the todo entry, default state, and an `input` artifact whose body is "# my-feature — Input\n\n<content>\n" in one transaction
-And the workflow service emits workflow.todo.created with kind="feature" and pickup_requested=true
+And the workflow service emits the todo-created event with kind="feature" and pickup_requested=true
 And the lifecycle router consumes the event and dispatches /sdlc/prepare
 And the CLI reports "Created todo: my-feature"
 ```
@@ -71,7 +71,7 @@ Given an operator knows an idea is parked and should not enter the lifecycle yet
 When they run `telec todo create parked-idea "<content>" --kind change --icebox`
 Then the request carries kind="change" and icebox=True
 And the route writes state + `input` artifact with the roadmap entry's status set to "icebox"
-And the route emits workflow.todo.created with pickup_requested=false
+And the route emits the todo-created event with pickup_requested=false
 And the lifecycle runner skips the iceboxed slug and spawns no session
 And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns it to active
 ```
@@ -92,7 +92,7 @@ And `telec todo list` projects the same active row as held, reusing the existing
 
 ```
 Given a todo is created with `telec todo create held-change "<content>" --kind change --hold --reason "live-human prepare owns this todo"`
-When the route emits workflow.todo.created
+When the route emits the todo-created event
 Then the payload carries pickup_requested=false
 And the lifecycle router consumes the event without dispatching a session
 And the lifecycle runner skips the active held todo as HELD
@@ -104,7 +104,7 @@ And after `telec todo update held-change --release` the active todo becomes elig
 ```
 Given a caller submits a create request carrying both hold=True and icebox=True
 When the workflow service validates the request
-Then the create is rejected before any roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+Then the create is rejected before any roadmap row, state, `input` artifact, or todo-created event is written
 And the diagnostic names hold and icebox as mutually exclusive
 ```
 
@@ -116,7 +116,7 @@ When they run `telec todo create child-a "<content>" --kind change --group paren
 Then the request carries kind="change" and group="parent-slug"
 And the route writes "child-a"'s state + `input` artifact with a group reference to the parent row's durable id
 And the same write transitions "parent-slug"'s row to status holder, removes its `todo_state`, voids any claim or hold on it, and preserves all of its artifacts and their version history as frozen evidence
-And the route emits workflow.todo.created for "child-a" so its own lane proceeds under the normal dependency gate
+And the route emits the todo-created event for "child-a" so its own lane proceeds under the normal dependency gate
 And this applies because parent-slug's lifecycle_phase has not yet reached "prepared" — a parent at or past "prepared" is refused (see UC-WTC16)
 ```
 
@@ -147,7 +147,7 @@ Given an operator wants to create a todo against a project other than the invoca
 When they run `telec todo create remote-task "<content>" --kind change --project-root /path/to/other-project`
 Then the CLI sends the create request with cwd resolved from the supplied project root
 And the workflow service writes the todo into that project's workflow state, not the invocation cwd's
-And the emitted workflow.todo.created payload's project_path reflects the targeted project root
+And the emitted todo-created event payload's project_path reflects the targeted project root
 And the lifecycle runner acts against the targeted project
 ```
 
@@ -157,7 +157,7 @@ And the lifecycle runner acts against the targeted project
 Given a caller submits a create request carrying a retired parking field — `--release` or the hidden `--silent` (or the corresponding `release`/`silent` request body field)
 When the workflow service validates the request body
 Then the create is rejected at the request boundary (fail-closed) rather than silently accepted
-And no roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+And no roadmap row, state, `input` artifact, or todo-created event is written
 And the `hold` field is accepted (it is the hidden specialist dispatch brake — see UC-WTC18)
 ```
 
@@ -167,7 +167,7 @@ When they run `telec todo create my-feature "<content>" --kind change --plan`
 Then the request carries kind="change" and plan=true
 And the route writes the content as the `implementation-plan` artifact (body prefixed "# my-feature — Implementation Plan")
 And the route seeds the prepare lifecycle at plan-drafting so lifecycle_phase becomes "plan_drafting"
-And the route emits workflow.todo.created with canonical kind="change" and pickup_requested=true
+And the route emits the todo-created event with canonical kind="change" and pickup_requested=true
 And the lifecycle router dispatches /sdlc/prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
 And the CLI prints "Created todo: my-feature (kind=change)"
 ```
@@ -202,7 +202,7 @@ Given a human or agent creates a task with substantive input
 When they run `telec todo create call-supplier-api "<what to do>" --kind task`
 Then workflow writes the roadmap row, Todo state, and `input` artifact atomically
 And sets kind="task" and lifecycle_phase="task_plan_drafting"
-And emits `workflow.todo.created` with kind="task", lifecycle_phase="task_plan_drafting", and project identity
+And emits the todo-created event with kind="task", lifecycle_phase="task_plan_drafting", and project identity
 And the lifecycle runner may dispatch `/sdlc/prepare-task`
 And the task cannot dispatch `/sdlc/run-task` until a `task-plan` exists and the human authorization stamp is present
 ```
@@ -253,7 +253,7 @@ And no todo entry mutation happens for slugs that already exist; design only orc
 Given a customer-support agent completes the pre-filing interrogation and files a bug via `telec bugs report`
 When the workflow service handles the bug creation with kind="bug"
 Then it writes state + todo entry + `input` artifact and enters the diagnose phase
-And the workflow service emits workflow.todo.created with canonical kind="bug" and pickup_requested=true
+And the workflow service emits the todo-created event with canonical kind="bug" and pickup_requested=true
 And the lifecycle router consumes the event and dispatches /sdlc/prepare for the bug lane (diagnosis → plan → plan-review)
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
@@ -298,7 +298,7 @@ When the workflow service writes the roadmap row
 Then `lineage` records the human root alone as `human:<email>`
 And `entry_point` records the door used (`tui` or `cli`), stamped by the door itself
 And `human_involved` is `true`, derived mechanically from the human door
-And the emitted `workflow.todo.created` payload carries the same creation record
+And the emitted todo-created event payload carries the same creation record
 ```
 
 #### UC-WTC9: Agent filing records the complete lineage chain in one value
@@ -436,7 +436,7 @@ And the usage line and the Options table do not advertise the hidden `--hold` fl
 
 ```gherkin
 Given a human runs `telec todo create child "<content>" --kind change --after parent` while "parent" has not yet reached PREPARED
-When the workflow service creates "child" and emits workflow.todo.created with pickup_requested=true
+When the workflow service creates "child" and emits the todo-created event with pickup_requested=true
 And the lifecycle router consumes the event
 Then the router consults the dependency graph and finds "child"'s prepare gate unsatisfied (parent not PREPARED)
 And the router treats the dep-blocked child as silent — it does not dispatch /sdlc/prepare for "child"
@@ -448,7 +448,7 @@ And "child" waits until "parent" reaches PREPARED, at which point auto-continue 
 
 ```gherkin
 Given a human runs `telec todo create child "<content>" --kind change --after parent` while "parent" is already PREPARED
-When the lifecycle router consumes workflow.todo.created for "child"
+When the lifecycle router consumes the todo-created event for "child"
 Then the router finds "child"'s prepare gate satisfied
 And the router dispatches /sdlc/prepare for "child" as usual
 ```
@@ -460,7 +460,7 @@ Given a live-human prepare orchestrator needs to own a new todo before the runne
 When they run `telec todo create held-change "<content>" --kind change --hold --reason '<why this waits, or the gate or owner it waits on>'`
 Then the persisted state has hold=True and hold_audit.source="creation" with the stated reason, the time, and the caller session id
 And `telec todo show held-change` exposes that source and reason together
-And a `--hold` create whose reason is missing or blank is refused before any roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+And a `--hold` create whose reason is missing or blank is refused before any roadmap row, state, `input` artifact, or todo-created event is written
 And a `--reason` supplied without `--hold` is refused before any write rather than ignored
 And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
 ```
@@ -470,7 +470,7 @@ And the reason input is hidden from the structured flag surfaces exactly as `--h
 ```gherkin
 Given an agent runs `telec todo create My_Slug "<content>" --kind change`
 When the workflow service validates the creation request
-Then the create is refused before any roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+Then the create is refused before any roadmap row, state, `input` artifact, or todo-created event is written
 And the diagnostic names the slug format the invariant requires
 And a slug carrying a path separator or a relative-path segment is refused the same way
 And each `--after` dependency slug and the `--group` parent slug are held to that same format invariant
@@ -482,11 +482,11 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 
 <!-- planned-change:consumer-framework -->
 
-- `integration` — the lifecycle router cartridge consumes `workflow.todo.created` and dispatches cartridge-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
+- `integration` — the lifecycle router cartridge consumes the todo-created event and dispatches cartridge-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
 
 <!-- change:consumer-framework -->
 
-- `integration` — the lifecycle router consumer consumes `workflow.todo.created` and dispatches lane-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
+- `integration` — the lifecycle router consumer consumes the todo-created event and dispatches lane-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
 
 <!-- /planned-change:consumer-framework -->
 
@@ -496,7 +496,7 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
 - `--kind` is **required** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`, and a request without one is refused before anything is written. A bare `task` is created silent and enters `task_plan_drafting`, where `/sdlc/prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/sdlc/run-task` once its dependency or `schedule` gate passes.
-- A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits `workflow.todo.created` after a successful create.
+- A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits the todo-created event after a successful create.
 
 - `--group <parent-slug>` is the create-time path to a grouped child. It records the child's group reference to the parent row's durable id inside the create transaction. The first grouped child transitions the parent's row to status `holder` in the same transaction — removing its `todo_state` and voiding any claim or hold — while preserving all of its artifacts and their version history as frozen evidence, so a parent still in the prepare lane can be grouped without shredding prepared work (see UC-WTC24). A parent whose lifecycle_phase has reached `prepared` or the work lane is refused with a 409 instead (see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18). Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
 
@@ -509,7 +509,7 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 - The CLI's `--after` parser splits on commas after trimming; empty entries are dropped. Dependency-existence validation happens when the entry is inserted, not in the CLI.
 - The `--plan` path writes content prefixed with `# <slug> — Implementation Plan\n\n` for `--kind change` and `# <slug> — Task Plan\n\n` for `--kind task`; the default path writes content prefixed with `# <slug> — Input\n\n`. Callers should not pre-add those headers in the supplied content.
 
-- The `workflow.todo.created` payload's creation record (`lineage`, `entry_point`, `human_involved`, `context`) is populated from the roadmap row's persisted values. `todo_id` and `project_id` may still not be populated by every emitter; downstream consumers fill those via serde defaults.
+- The todo-created event payload's creation record (`lineage`, `entry_point`, `human_involved`, `context`) is populated from the roadmap row's persisted values. `todo_id` and `project_id` may still not be populated by every emitter; downstream consumers fill those via serde defaults.
 - Answering "who created this todo" means reading the creation record — `entry_point`, `lineage`, `human_involved`, `context` — never inferring from account identity. The lineage root is the authority the work ran under, not the author of the work.
 
 ## See Also

@@ -332,7 +332,7 @@ PREPARED is to persist/emit the phase transition and return its own cleanup
 instruction. Dependent child selection and dispatch belong to the lifecycle
 runner. In v1, PREPARED currently has no runner wake-up emission; this delivery
 wires the existing phase-transition seam (the same seam that currently emits
-finalize-ready only) to publish or bridge the target `workflow.todo.phase_advanced`
+finalize-ready only) to publish or bridge the target phase-advanced
 wake-up for PREPARED and other eligibility-changing prepare/work transitions.
 The runner then evaluates the full eligible project set and dispatches children
 through the ordinary lifecycle-session start path, which records the spawned
@@ -375,7 +375,7 @@ And it emits no auto-continue operation
 Given "parent" reaches lifecycle_phase=PREPARED
 And "child-a" and "child-b" may now have their prepare gates satisfied
 When the orchestrator calls "telec todo prepare parent" and the machine derives PREPARED
-Then the v1 phase-transition seam emits or bridges the target `workflow.todo.phase_advanced` wake-up for "parent"
+Then the v1 phase-transition seam emits or bridges the target phase-advanced wake-up for "parent"
 And returns only "parent" cleanup/terminal instructions
 And it does not emit `telec sessions send <parent_worker>` for any child
 And it does not emit a fresh `/sdlc/prepare` run for any child

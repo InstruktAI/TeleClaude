@@ -162,7 +162,7 @@ And the user has no surface to override these binary paths
 
 ### Cross-context references
 
-- The config bounded context does not emit a `config.effective.updated` event
+- The config bounded context does not emit an effective-configuration-updated event
   for this validation today; validation failures surface as load-time errors
   at process start and are not propagated as a config event. Generalising
   this signal into the effective-configuration event taxonomy is described

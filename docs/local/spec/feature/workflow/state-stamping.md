@@ -105,7 +105,7 @@ Given a Todo has kind="task", lifecycle_phase="prepared", and a current `task-pl
 When a human authorizes the task from the TUI or runs `telec todo stamp my-slug --task-approved`
 Then workflow records a task authorization stamp with caller_session_id, approved_at, and approved_digest set to the current `task-plan` digest
 And the state-write boundary re-validates the full Todo state before commit
-And workflow emits `workflow.todo.updated` so the lifecycle runner re-evaluates task eligibility
+And workflow emits the todo-updated event so the lifecycle runner re-evaluates task eligibility
 ```
 
 ```gherkin

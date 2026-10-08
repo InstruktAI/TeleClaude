@@ -39,7 +39,7 @@ An `after` edge is **gate-only**: it is dispatch-blocking ordering metadata cons
 
 Both gates apply in **both dispatch directions**:
 
-1. **Create-time dispatch** — when a todo is created (`workflow.todo.created`), the lifecycle router consults the dependency graph before auto-dispatching. A dep-blocked child is not auto-dispatched (see `@spec/feature/workflow/todo-creation`).
+1. **Create-time dispatch** — when a todo is created (the todo-created event), the lifecycle router consults the dependency graph before auto-dispatching. A dep-blocked child is not auto-dispatched (see `@spec/feature/workflow/todo-creation`).
 2. **Resolution-time dispatch** — when the prepare/work orchestrators resolve the next runnable slug, the same phase-specific gate skips dep-blocked candidates.
 
 The prepared-set used by the prepare gate, like the delivered-set used by the work gate, is computed with holder roll-up: a holder dependency is satisfied for the prepare gate when every direct child has reached `PREPARED`, mirroring `effective_delivered_slugs_for_dependencies` for the delivered-set.
@@ -141,7 +141,7 @@ And the same "child" is still WORK-blocked until "parent" is delivered
 
 ```gherkin
 Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
-When the lifecycle router consumes workflow.todo.created for "child"
+When the lifecycle router consumes the todo-created event for "child"
 Then the router consults the dependency graph and finds the prepare gate unsatisfied
 And the router does not auto-dispatch /sdlc/prepare for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)

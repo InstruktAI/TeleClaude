@@ -135,7 +135,7 @@ And no "table already exists" error is raised by the process that loses the crea
 ### Cross-context references
 
 - Producer of events consumed: the agent_runtime hook receiver (receives from the hook shim subprocess via inter-process delivery)
-- Consumers: any subscriber to `agent_runtime.session.started` / `session.updated` / `agent_runtime.session.ended` events (frontend, session_mirrors at session-end, etc.)
+- Consumers: any subscriber to `agent_runtime.session.started` / `session.updated` / session-ended events (frontend, session_mirrors at session-end, etc.)
 - Coordinates with: `transport-rules.md` (the change-axis test placing agent CLI hooks in agent_runtime; the "durable store → event bus dispatch" pattern)
 
 ## Allowed values

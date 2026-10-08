@@ -70,7 +70,7 @@ These effects compound: pool starvation delays request handlers, background work
 
 ### Lifecycle Runner Corpus Load
 
-The lifecycle runner loads the project's whole todo corpus on every dispatch pass, and a pass runs per registered project on every `scheduler.tick.minute`. The load is therefore a steady background cost paid whether or not the pass dispatches anything.
+The lifecycle runner loads the project's whole todo corpus on every dispatch pass, and a pass runs per registered project on every minute tick of the schedule clock. The load is therefore a steady background cost paid whether or not the pass dispatches anything.
 
 - **One snapshot per pass.** The runner resolves row status, holder classification, and lifecycle state for the whole corpus through a single batched read in one database session. No session and no statement is opened per row. A per-row read scales session count with the size of the corpus, and each session acquires its own connection, so connection setup scales with it too.
 - **Every row's state is validated identically.** Each row's stored state passes through the same upcycle and validation path regardless of status, so a malformed or future-version payload aborts the pass wherever it sits. Cheapening that path for rows that cannot be dispatched trades a fail-loud guarantee for a fraction of a cost the batching already removes.

@@ -8,7 +8,7 @@ visibility: public
 
 ## What it is
 
-The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton and consumes finalize-ready Todos in FIFO order under the `integration/main` lease. The integration worktree prepares and publishes each candidate commit without reconciling documentation. After confirming that candidate push, the machine synchronizes repository-root main, folds the candidate slug there, runs the final gates, publishes the resulting root head, and records delivery only after confirming that final push. When repository-root main is unsafe to mutate, delivery waits with the blocking evidence. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
+The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton and consumes finalize-ready Todos in FIFO order under the `integration/main` lease. The integration worktree prepares and publishes each candidate commit without reconciling documentation. After confirming that candidate push, the machine synchronizes repository-root main, folds the candidate slug there, runs the final gates, publishes the resulting root head, and records delivery only after confirming that final push. When repository-root main is unsafe to mutate, delivery waits with the blocking evidence. When the queue drains, the integrator emits the todo-delivered event per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
 
 ## Canonical fields
 
@@ -465,7 +465,7 @@ And origin/main is unchanged
 
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`, `integration.candidate.parked`, `integration.drain.completed`.
 
-- `workflow` — delivery bookkeeping records the delivery commit; `workflow.todo.delivered` is emitted by the workflow context after push succeeds.
+- `workflow` — delivery bookkeeping records the delivery commit; the todo-delivered event is emitted by the workflow context after push succeeds.
 - `operations` — `telec todo integrate` returns an operation receipt; the integrator runs inside the operation runner so failures surface through operation status.
 
 <!-- planned-change:consumer-framework -->
@@ -473,9 +473,9 @@ And origin/main is unchanged
 - `workflow.lifecycle_runner` — observes workflow wake-up events only to
   re-evaluate prepare/work candidates and downstream dependencies. It does not
   spawn or inline the integrator for `finalize_ready`; the
-  `workflow.todo.phase_advanced` finalize-ready handoff remains owned by
+  phase-advanced finalize-ready handoff remains owned by
   `IntegrationTriggerCartridge` plus the integrator singleton lease. When
-  `workflow.todo.delivered` fires, the runner may re-evaluate dependents whose
+  the todo-delivered event fires, the runner may re-evaluate dependents whose
   work gates are now satisfied.
 
 <!-- change:consumer-framework -->
@@ -483,9 +483,9 @@ And origin/main is unchanged
 - `workflow.lifecycle_runner` — observes workflow wake-up events only to
   re-evaluate prepare/work candidates and downstream dependencies. It does not
   spawn or inline the integrator for `finalize_ready`; the
-  `workflow.todo.phase_advanced` finalize-ready handoff remains owned by
+  phase-advanced finalize-ready handoff remains owned by
   the integration trigger consumer plus the integrator singleton lease. When
-  `workflow.todo.delivered` fires, the runner may re-evaluate dependents whose
+  the todo-delivered event fires, the runner may re-evaluate dependents whose
   work gates are now satisfied.
 
 <!-- /planned-change:consumer-framework -->
@@ -497,7 +497,7 @@ And origin/main is unchanged
 - The integration worktree prepares and publishes the candidate commit. That confirmed push is intermediate evidence and does not release dependencies. Repository-root main owns the sole documentation fold, the final content gate, the final push, and the recorded delivery SHA.
 - Repository-root main may contain committed work ahead of the intermediate candidate push. That committed state remains part of finalization. Any graph, conflict, or dirty-path condition that prevents safe synchronization or reconciliation blocks delivery and leaves uncommitted work untouched.
 - When the idle step is called with an explicit slug, only that slug is verified as ready; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
-- The normal enqueue path is event-triggered: `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
+- The normal enqueue path is event-triggered: the phase-advanced event (with `phase=finalize_ready` in its data) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
 - Legacy entries are normalized so older persisted `finalize.status="handed_off"` reads back as `finalize.status="ready"` and is picked up by the same rule.
 
 - The loop limit exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.

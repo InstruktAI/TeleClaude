@@ -252,7 +252,7 @@ Given an active task todo
 When the operator runs "telec todo update my-task --schedule 2026-06-12T09:00:00Z"
 Then the update leg validates the schedule (a one-shot ISO-8601 instant or a recurring rule)
 And persists it as the task execution eligibility
-And emits `workflow.todo.updated` so the lifecycle runner re-evaluates the task
+And emits the todo-updated event so the lifecycle runner re-evaluates the task
 ```
 
 ```gherkin

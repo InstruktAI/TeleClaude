@@ -112,7 +112,7 @@ And the responsibility for invariants (e.g., stable-channel pinning) lies with t
   locked read, compare, validate, and replace transaction instead. There is no equivalent atomic helper
   for global or per-person overlays today.
 - The atomic-replace contract is one of the inputs into the `config`
-  domain's `config.effective.updated` event (see
+  domain's effective-configuration-updated event (see
   `local/projects/teleclaude/spec/domain/config.md`): a filesystem watcher that observes an
   atomic-replace inode change can rely on the new file being complete, not
   partially written.
