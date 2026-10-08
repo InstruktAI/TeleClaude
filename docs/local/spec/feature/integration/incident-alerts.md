@@ -29,9 +29,6 @@ reported failure until an event reports that it works:
 - an event reporting that a thing works tells nothing when the thing is not
   broken.
 
-A failure of a thing whose working again the platform never reports is told
-each time it occurs, and nothing is kept about it.
-
 An alert is told to each platform administrator whose notification interests
 select the event's type
 (`local/projects/teleclaude/spec/feature/config/notification-interests`), and to
@@ -94,15 +91,6 @@ Then the administrator receives no message about that job
 Given a platform administrator whose notification interests select every platform event
 When a platform event occurs that reports neither that a thing failed nor that it works
 Then the administrator receives no message about it
-```
-
-#### UC-IA6: A failure with no reported recovery is told each time
-
-```gherkin
-Given a platform administrator whose notification interests select the platform's failure detections
-And a kind of failure for which the platform never reports that the thing works again
-When that failure occurs twice for the same thing
-Then the administrator receives one message for each occurrence
 ```
 
 #### UC-IA7: Only interested administrators are told
