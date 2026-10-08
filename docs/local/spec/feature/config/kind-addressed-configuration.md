@@ -7,6 +7,8 @@ description: One kind-addressed CLI contract for initializing, listing, reading,
 
 ## What it is
 
+<!-- planned-change:retire-project-init -->
+
 `telec config <kind> init|list|get|patch` is the agent-facing resource surface
 for configuration. The singular kind is `computer`, `global`, `person`,
 `company`, or `project`; an overlay subject's kind matches its declared
@@ -18,6 +20,20 @@ creation addresses the folder it makes, and adoption addresses the checkout the
 caller stands in — the owning checkout of the repository that holds the caller's
 current directory, or that directory itself when no repository holds it or when
 the repository holding it is the global home's.
+<!-- change:retire-project-init -->
+
+`telec config <kind> list|get|patch`, with `init` for every kind but `project`,
+is the agent-facing resource surface for configuration. The singular kind is `computer`, `global`, `person`,
+`company`, or `project`; an overlay subject's kind matches its declared
+`kind`. `computer` identifies the machine configuration by its fixed location
+in the machine home and does not become an overlay tier or a context root.
+`computer` and `global` are singletons. A person, company, or project is
+addressed by its stable slug, except where a project comes into being:
+creation addresses the folder it makes, and adoption addresses the checkout the
+caller stands in — the owning checkout of the repository that holds the caller's
+current directory, or that directory itself when no repository holds it or when
+the repository holding it is the global home's.
+<!-- /planned-change:retire-project-init -->
 
 A project has two verbs of its own besides the resource operations:
 
@@ -44,12 +60,23 @@ Creating and adopting a project write nothing outside the project and the
 project registry.
 <!-- /planned-change:retire-project-init -->
 
+<!-- planned-change:retire-project-init -->
+
 The operation names describe the result, regardless of the subject's storage
 shape. `init` creates missing declarations and scaffolding and converges an
 existing instance to the current required structure while preserving values
 already set. It starts no agent and sends no invitation. Analysis is invoked
 through an activatable procedure in an explicitly started session; an
 invitation is a separate explicit action.
+<!-- change:retire-project-init -->
+
+The operation names describe the result, regardless of the subject's storage
+shape. For computer, global, person and company, `init` creates missing declarations and scaffolding and converges an
+existing instance to the current required structure while preserving values
+already set. It starts no agent and sends no invitation. Analysis is invoked
+through an activatable procedure in an explicitly started session; an
+invitation is a separate explicit action.
+<!-- /planned-change:retire-project-init -->
 
 <!-- planned-change:retire-project-init -->
 
