@@ -114,12 +114,23 @@ template: its master is authored in the TeleClaude home's `help-desk/`. Machine
 installation seeds no desk
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
 
+<!-- planned-change:retire-project-init -->
+
 For a project, the project's own convergence seeds the help desk in the
 project's `help-desk/` at commit-boundary maintenance and through `telec sync`
 whenever the project's declaration enables it
 (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 `init --help-desk` also enables the help desk and seeds it; it needs the
 administrator role for the project.
+
+<!-- change:retire-project-init -->
+
+For a project, the project's own convergence seeds the help desk in the
+project's `help-desk/` at commit-boundary maintenance and through `telec sync`
+whenever the project's declaration enables it
+(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+
+<!-- /planned-change:retire-project-init -->
 
 A project's declaration that enables its help desk also requires
 `agents.enabled: true` on that project. The requirement is declared once on the
