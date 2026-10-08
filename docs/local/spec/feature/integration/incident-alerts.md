@@ -52,7 +52,9 @@ the message that a broken thing works again.
 A message that cannot be delivered to one administrator does not hold back the
 others. It stays outstanding and is attempted again a bounded number of times;
 an alert that still cannot be delivered is parked where it can be inspected,
-never counted as told.
+never counted as told. When the thing works again before an outstanding failure
+message was delivered, that administrator is told the recovery, with how long
+the thing was broken, instead of the stale failure.
 
 ## Canonical fields
 

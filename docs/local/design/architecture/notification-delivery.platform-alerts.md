@@ -95,6 +95,11 @@ consumer that tells people.
   undelivered alert is a visible failed outcome rather than a completed one. A
   later event of the same transition, such as a further failure of a matter
   still being told, again sends only to recipients still outstanding.
+- **A new transition replaces the outstanding one.** When an ok state arrives
+  while the failure message is still outstanding for some recipients, those
+  failure messages are dropped and the recovery becomes outstanding for every
+  selected recipient: telling someone that a thing broke after it already works
+  again is stale, and the recovery states how long it was broken.
 - **One window is inherent.** When a channel has accepted a message and the
   computer stops before the send is recorded, the next handling sends that
   message again: the channels person-addressed delivery uses take no delivery

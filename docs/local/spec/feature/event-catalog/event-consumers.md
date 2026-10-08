@@ -208,18 +208,9 @@ And no other computer emits a degradation event for those failures
   contract, and neither consumer decides which todo is dispatched or
   integrated.
 
-<!-- planned-change:platform-alerts -->
-
 - **integration** — owns the notification path that runs as the system
   pipeline, and procedure activation, which is a consumer under its own
   contract.
-
-<!-- change:platform-alerts -->
-
-- **integration** — owns the consumers that tell people and procedure
-  activation, each a consumer under its own contract.
-
-<!-- /planned-change:platform-alerts -->
 
 - **context** and **identity** — a context that lets authors select events by
   type pattern owns that declaration and matches it with this matcher.
