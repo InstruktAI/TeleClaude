@@ -119,8 +119,6 @@ Then the historical composer does not establish readiness
 And no message is pasted or submitted on that evidence
 ```
 
-<!-- planned:durable-session-bootstrap -->
-
 #### UC-SL52: An acknowledged startup survives replacement of the service
 
 ```gherkin
@@ -169,8 +167,6 @@ When the agent_runtime service is later replaced
 Then the replacement service neither resumes nor reports that startup
 And the startup counts as finished at that submission, whatever its agent does with the input afterwards
 ```
-
-<!-- /planned:durable-session-bootstrap -->
 
 #### Initiator listener registration
 
@@ -524,11 +520,7 @@ And a platform administrator's listing is unchanged
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
 
-<!-- planned:durable-session-bootstrap -->
-
 - **A startup's first startup input is the submission that finishes it.** For a start that carries an initial message, it is that message, submitted once the agent's readiness signal admits input; for a start without one, it is the agent launch. Every acknowledged start has its startup intent and its progress stored durably with the session before the acknowledgement is returned, and that startup record is kept for as long as the session is retained.
-
-<!-- /planned:durable-session-bootstrap -->
 
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.

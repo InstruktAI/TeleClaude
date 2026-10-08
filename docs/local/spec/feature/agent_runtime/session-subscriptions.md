@@ -212,8 +212,6 @@ And a blocked notification raised by delivery carries a capture of the target's 
 And the caller is not left to infer distress from silence or transcript polling
 ```
 
-<!-- planned:durable-session-bootstrap -->
-
 #### UC-SS20: A caller hears when its session's first startup input may not have arrived
 
 ```gherkin
@@ -225,8 +223,6 @@ And the notification names the target session and states that its first startup 
 And it carries an actionable way to inspect the target's terminal state
 And it is delivered once, and the target's later turn notifications are delivered as they would be without it
 ```
-
-<!-- /planned:durable-session-bootstrap -->
 
 #### UC-SS5: Distress kinds vary by agent runtime without changing the caller contract
 

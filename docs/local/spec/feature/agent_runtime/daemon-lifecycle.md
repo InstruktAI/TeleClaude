@@ -50,23 +50,6 @@ And total elapsed >=30s triggers a slow-startup warning
 
 #### UC-DL6: Post-adapter completion tasks
 
-<!-- planned-change:durable-session-bootstrap -->
-
-```
-Given adapters have started and the event platform is up
-When the post-adapter completion stage runs
-Then the service's in-memory cache is wired into the transport adapter when present
-And the voice handler is initialized
-And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in pending|in_progress|interrupted (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice identifier was persisted — or transitioned to a terminal failed state with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
-And operations normalized to their stale outcome by the operations stage have their outcomes delivered here (see `durable-operation-outcomes#uc-do3-staleness-is-an-outcome-and-reaches-the-caller` for the delivery contract)
-And the inbound queue manager is brought up
-And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
-And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
-And the request surface starts AFTER these tasks have completed
-```
-
-<!-- change:durable-session-bootstrap -->
-
 ```
 Given adapters have started and the event platform is up
 When the post-adapter completion stage runs
@@ -80,8 +63,6 @@ And conversation-delivery reconciliation re-sends bounded peer bundles for any c
 And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
 And the request surface starts AFTER these tasks have completed
 ```
-
-<!-- /planned-change:durable-session-bootstrap -->
 
 #### Cache warm honesty
 
@@ -336,8 +317,6 @@ And startup proceeds to its running state
 And no stage is skipped, reordered, or added
 ```
 
-<!-- planned:durable-session-bootstrap -->
-
 #### UC-DL9: Session startups left unfinished by a previous run neither abort nor hold the boot
 
 ```gherkin
@@ -348,8 +327,6 @@ And a resumed startup waits for its agent in the background, so the stage comple
 And a fault while taking up one startup is recorded for that session and leaves the others and the boot unaffected
 And no stage is skipped, reordered, or added
 ```
-
-<!-- /planned:durable-session-bootstrap -->
 
 ### Cross-context references
 
