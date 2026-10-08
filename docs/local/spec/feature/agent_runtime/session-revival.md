@@ -175,6 +175,8 @@ Then it iterates discovered transcripts for that agent and matches by extracted 
 And returns true on first hit, false if no transcript matches
 ```
 
+<!-- planned-change:revived-agent-keeps-its-status -->
+
 #### UC-SR9: Revival completes through the restart flow
 
 ```gherkin
@@ -185,6 +187,38 @@ And if the session was closed (closed-at marker set), revival clears the marker 
 And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
+
+<!-- change:revived-agent-keeps-its-status -->
+
+#### UC-SR9: Revival completes through the restart flow
+
+```gherkin
+Given a TeleClaude session id has been resolved (reused or freshly created)
+When the service hands off to the restart-agent flow
+Then the agent CLI is launched with resume-from-transcript semantics (the agent CLI replays its own transcript)
+And if the session was closed (closed-at marker set), revival clears the marker and sets lifecycle status to headless before launch
+And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
+And a session the revival adopted a host pane for is `initializing` until the revived agent is ready for input, and then `active`
+And the response payload reports a successful create with session id, host-pane reference, and agent
+```
+
+<!-- /planned-change:revived-agent-keeps-its-status -->
+
+<!-- planned:revived-agent-keeps-its-status -->
+
+#### UC-SR10: A revived agent keeps its status until it acts
+
+```gherkin
+Given a session whose agent status is <status> with its reason
+When the session is revived
+Then its agent status is still <status>, with the same reason
+And revival delivers no input to the agent and starts no turn
+And the status next moves on a normalized agent event, as for any session, such as the one the first input delivered to the revived agent produces
+And the session is not marked `stalled` with reason `no_start`, however long the revived agent stays quiet
+And this holds for a session whose status is `unknown` and for a freshly-minted revival row, which has no status before revival: each stays `unknown` until its first normalized agent event
+```
+
+<!-- /planned:revived-agent-keeps-its-status -->
 
 #### UC-SR7 — Revival preserves generation and delivery identity across native-session replacement
 
@@ -222,9 +256,25 @@ And the resumed agent receives the resulting turn in the restored conversation
 
 - **The transcript continuity is the agent CLI's own.** TeleClaude does not splice transcript files; resumption relies on the agent CLI's native resume semantics. For Codex this maps to a rollout-file path; for Claude/Gemini it maps to transcript files indexed by directory layout.
 - **Agent mismatch on an existing native binding is rejected, not switched.** If a native id was first launched as Claude and a revive request asks for Gemini against the same id, the service rejects rather than relaunch the transcript under a different agent.
+
+<!-- planned-change:revived-agent-keeps-its-status -->
+
 - **Revival on an open running session has the same effect as restart.** Reviving a row whose agent is still alive will terminate the agent process and relaunch it; the verb is named for the typical case (closed/ended) but the underlying path is symmetric.
+
+<!-- change:revived-agent-keeps-its-status -->
+
+- **Revival on an open running session relaunches its agent as restart does.** Reviving a row whose agent is still alive terminates the agent process and relaunches it; the verb is named for the typical case (closed/ended). Unlike restart, revival keeps the session's agent status (UC-SR10).
+
+<!-- /planned-change:revived-agent-keeps-its-status -->
+
 - **`--attach` is a client-side affordance only.** The agent_runtime service never attaches the caller's terminal to a host pane; the CLI handler attaches locally after a successful revive response.
 - **No completion-event guarantees on the response.** Unlike agent restart, revive awaits the restart-agent flow synchronously and returns when the relaunch has been dispatched; agent readiness is observed downstream (e.g., via the session-ready signal on the event bus), not in the response.
+
+<!-- planned:revived-agent-keeps-its-status -->
+
+- **A kept agent status is not evidence that the revived agent is running.** Revival keeps the status whether or not the relaunched process comes up. For a session revival adopted a host pane for, a lifecycle status still `initializing` is what shows that the revived agent never became ready for input (UC-SR9).
+
+<!-- /planned:revived-agent-keeps-its-status -->
 
 ## See Also
 
