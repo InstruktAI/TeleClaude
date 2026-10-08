@@ -53,6 +53,8 @@ baseline manifests. A master is brought to its template's rendering on every
 run, while a baseline is created only when absent and otherwise stays as its
 home keeps it. No documentation taxonomy directory is created.
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 Whether a `global`, `company`, or `project` home keeps a help desk is a field of
 that home's declaration, and a `patch` of the declaration turns it on or off
 under the same clearance as every other field of it. A person has no help desk.
@@ -67,6 +69,45 @@ project repository's `help-desk/`; it needs the administrator role for the
 project, and running it again converges the help desk's master to its template.
 A help desk's master never requires its home's local documentation
 (`general/policy/agent-artifact-governance`).
+
+<!-- change:help-desks-as-deployment-output -->
+
+Whether a `global`, `company`, or `project` home keeps a help desk is a field of
+that home's declaration, and a `patch` of the declaration turns it on or off
+under the same clearance as every other field of it. A person has no help desk.
+A desk is deployment output: rendered from its kind's help-desk template,
+ignored by git in its entirety, and never committed by its home.
+
+The platform and company help desks are scaffolded from their kind's help-desk
+template, in the TeleClaude home's `help-desk/` or a company home's
+`help-desk/`, by every convergence of their home while its declaration enables
+them — that home's `init`, and the platform home's configuration-aware
+convergence at commit-boundary maintenance and through `telec sync` — which also
+brings a desk's master back to its template. Machine installation scaffolds no
+desk
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+
+For a project, the project's own convergence scaffolds the help desk in the
+project's `help-desk/` at commit-boundary maintenance and through `telec sync`
+whenever the project's declaration enables it, and brings the desk's master back
+to its template
+(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+`init --help-desk` also enables the help desk and scaffolds it; it needs the
+administrator role for the project, and running it again converges the help
+desk's master to its template.
+
+A project's declaration that enables its help desk also requires
+`agents.enabled: true` on that project. The requirement is declared once on the
+project's help-desk field through the field relationship of
+`local/projects/teleclaude/spec/teleclaude-config` (Tier declaration and editor
+schemas), so the editor flags a violating declaration and every configuration
+write refuses it, naming the field to set. A global or company home declares no
+capability blocks and carries no such requirement.
+
+A help desk's master never requires its home's local documentation
+(`general/policy/agent-artifact-governance`).
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 `list` enumerates registered instances; for a singleton it reports that one
 subject. `get` returns the current declared view and an opaque revision for a

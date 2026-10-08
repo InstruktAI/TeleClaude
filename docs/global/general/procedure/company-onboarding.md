@@ -31,6 +31,8 @@ linked projects from the first session.
 On first onboard, run `telec config company init <name> [--slug <slug>]`. It converges
 the company tree and starts no session:
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 - Derive slug from name (lowercase kebab-case).
 - Create `~/.teleclaude/companies/{slug}/` with its `inbox/` subdirectory.
 - Initialize `inbox/` as a git repository for change tracking.
@@ -39,6 +41,20 @@ the company tree and starts no session:
   the platform's company templates. The master is brought back to its template
   on every run and every installation; the baselines are created once and are
   then the company's to curate.
+
+<!-- change:help-desks-as-deployment-output -->
+
+- Derive slug from name (lowercase kebab-case).
+- Create `~/.teleclaude/companies/{slug}/` with its `inbox/` subdirectory.
+- Initialize `inbox/` as a git repository for change tracking.
+- Create `meta.yaml` with company name, slug, and creation timestamp.
+- Create the company's `AGENTS.master.md` and its local baseline manifests from
+  the platform's company templates. The master is git-ignored deployment
+  output, brought back to its template on every run and by the platform home's
+  convergence at commit-boundary maintenance and through `telec sync`; the
+  baselines are created once and are then the company's to curate.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 On re-onboard:
 

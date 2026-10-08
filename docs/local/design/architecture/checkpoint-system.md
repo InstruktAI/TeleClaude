@@ -183,11 +183,30 @@ toolchain contract requires that target, and where its absence stays a failure.
 Commit-boundary installation, bound only under `code`, therefore behaves as
 before.
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 The platform base also declares converging the invoking root's own plumbing as
 `plumbing-convergence`, with no base binding. Commit-boundary maintenance in a
 project is therefore unchanged, and every on-demand run converges the root's
 plumbing. TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
 convergence bound to its hook templates.
+
+<!-- change:help-desks-as-deployment-output -->
+
+The platform base also declares converging the invoking root to its declaration
+as `plumbing-convergence`
+(`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+One base binding carries it beside the capability bindings: while a project's
+committed declaration enables a help desk, a change to that declaration owes
+`plumbing-convergence`. In the platform home, a change to the global
+declaration or to a person or company declaration owes `plumbing-convergence`
+and then publication; the platform home's publication binding covers its tier
+documentation and no master path. Every on-demand run converges the root.
+TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
+convergence, bound to its hook templates and to its help-desk and home master
+templates, the latter also owing publication.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 TeleClaude's overlay declares `restart` and `tui-reload` `defer`. Each probe
 reads the commit the daemon, or each live TUI, started from, and reports the

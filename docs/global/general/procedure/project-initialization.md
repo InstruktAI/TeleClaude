@@ -85,11 +85,27 @@ An existing manifest is never changed: it is the project's own curation.
 
 ### 2c. Enable and scaffold the help desk (`--help-desk` only)
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 With `--help-desk`, and only for a caller with administrator authority over the
 project, sets the project's help desk as enabled in `teleclaude.yml` and brings
 the project's `help-desk/` folder to the project help-desk template: its master
 is the template's rendering after every such run, and no other file in the
 folder is replaced. The files land in the working tree for the project to commit.
+
+<!-- change:help-desks-as-deployment-output -->
+
+With `--help-desk`, and only for a caller with administrator authority over the
+project, sets the project's help desk as enabled in `teleclaude.yml` and brings
+the project's `help-desk/` folder to the project help-desk template: its master
+is the template's rendering after every such run, and no other file in the
+folder is replaced. An enabled help desk requires the project to subscribe
+`agents`; the configuration refuses a declaration that enables the desk without
+it, naming the field to set. The folder is git-ignored deployment output that
+the project never commits, and the project's convergence keeps it at its
+template for as long as the declaration enables the desk.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 ### 3. Update .gitattributes (`docs` only)
 

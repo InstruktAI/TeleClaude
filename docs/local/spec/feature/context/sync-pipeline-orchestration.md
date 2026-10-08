@@ -11,12 +11,26 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 Publication is Context's routine for promoting committed source into deployed
 agent runtime outputs. Committed state has passed the commit gate
 (`local/projects/teleclaude/design/code-commit`) and is the source of truth, so
 publication derives and never validates: it resolves committed source, rebuilds
 derived indexes, and distributes runtime artifacts. It never reads a working
 tree.
+
+<!-- change:help-desks-as-deployment-output -->
+
+Publication is Context's routine for promoting committed source into deployed
+agent runtime outputs. Committed state has passed the commit gate
+(`local/projects/teleclaude/design/code-commit`) and is the source of truth, so
+publication derives and never validates: it resolves committed source, rebuilds
+derived indexes, and distributes runtime artifacts. The one thing it reads from
+the canonical checkout's working tree is a master its repository ignores (see
+**Master sources** below); it reads nothing else from a working tree.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 Three entry points run the same routine:
 
@@ -56,6 +70,8 @@ lifecycle before the delivery commit is made.
 
 The unit of publication is one home. For each home in scope:
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 1. **Resolve committed source** — while holding publication serialization,
    read the canonical checkout's committed `main` tip, or for the installation
    entry point the installed commit, and materialize it; every other publisher
@@ -66,6 +82,22 @@ The unit of publication is one home. For each home in scope:
 3. **Distribute** — compose and atomically deploy the home's capability-gated
    runtime outputs, replacing only that home's contribution, then record the
    tip as that home's published generation.
+
+<!-- change:help-desks-as-deployment-output -->
+
+1. **Resolve committed source** — while holding publication serialization,
+   read the canonical checkout's committed `main` tip, or for the installation
+   entry point the installed commit, and materialize it, together with the
+   masters its repository ignores, read from the canonical checkout's disk;
+   every other publisher keeps its previously activated revision.
+
+2. **Build indexes** — derive the home's indexes from that snapshot and write
+   portable derived indexes to the canonical checkout.
+3. **Distribute** — compose and atomically deploy the home's capability-gated
+   runtime outputs, replacing only that home's contribution, then record the
+   tip as that home's published generation.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 A home whose build fails — an unreadable declaration, an index that cannot be
 built, an entrypoint that cannot be composed — is skipped. Its previous
@@ -85,7 +117,16 @@ when the home already records that commit.
 A Mother publication also refreshes the home entrypoints that inline the
 Mother's documentation.
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 There is no working-tree entrypoint and no bypass.
+
+<!-- change:help-desks-as-deployment-output -->
+
+There is no working-tree entrypoint and no bypass: an ignored master is read
+from disk only as part of publishing the home whose repository ignores it.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 ## Canonical fields
 
@@ -95,6 +136,33 @@ subscribes the capability that owns it
 building and documentation publication run only under a subscribed `docs`;
 agent-artifact transpilation and deployment run only under a subscribed
 `agents`. A project subscribing neither runs no per-project phase.
+
+<!-- planned:help-desks-as-deployment-output -->
+
+**Master sources.** One rule decides where publication reads each
+`AGENTS.master.md` from, for the project master walk and for the fixed home
+master set (`local/projects/teleclaude/spec/feature/context/agents-master-inflation`)
+alike:
+
+- A master its repository tracks is read from the committed source.
+- A master its repository ignores is read from the canonical checkout's disk. It
+  is deployment output rendered from TeleClaude's committed templates and has no
+  committed version
+  (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
+- A master its repository neither tracks nor ignores is work in progress and is
+  never read.
+
+The fixed home master set names its paths, so each is read by this rule
+wherever it sits. The project master walk covers every folder of the committed
+tree and every master the repository ignores in its own right; a master inside
+a folder the repository ignores wholesale, such as a scratch area or a worktree
+container, is not part of the walk, and neither are tooling folders such as
+dependency environments and build output. In the Mother repository it also
+leaves out TeleClaude's own template tree, identified by where that tree
+resolves rather than by a folder name, so a `templates/` folder in any other
+repository is walked like every other folder.
+
+<!-- /planned:help-desks-as-deployment-output -->
 
 Project-setup convergence is not a publication phase; it is contracted in
 `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`.
@@ -131,12 +199,26 @@ And no displaced legacy symlink remains beside the deployed root
 
 #### UC-SPO24: Uncommitted source cannot publish
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 ```gherkin
 Given a home whose working tree holds uncommitted edits
 When maintenance or telec sync publishes that home
 Then the deployed output reflects only its committed files
 And telec sync states that uncommitted changes were not published
 ```
+
+<!-- change:help-desks-as-deployment-output -->
+
+```gherkin
+Given a home whose working tree holds uncommitted edits to files its repository tracks
+And an untracked master its repository does not ignore
+When maintenance or telec sync publishes that home
+Then no uncommitted edit and no such master reaches the deployed output
+And telec sync states that uncommitted changes were not published
+```
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 #### UC-SPO25: Recovery converges to the committed main tip
 
@@ -335,6 +417,8 @@ And every other home's deployed output is unchanged
 
 ## Known caveats
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 - Publication is idempotent at the authored-source layer: it builds indexes
   from the committed snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
@@ -357,3 +441,38 @@ And every other home's deployed output is unchanged
 - Publication fails explicitly when its distribution implementation is
   unavailable; publication never reports success after omitting a
   runtime-output phase.
+
+<!-- change:help-desks-as-deployment-output -->
+
+- Publication is idempotent at the authored-source layer: it builds indexes
+  from the committed snapshot and places published domain bundles inside the
+  deployed generation. It writes gitignored `index.yaml` files with canonical
+  checkout paths whenever a home publishes. The host
+  documentation lease covers the checkout write and every publication action,
+  including maintenance from a person's direct Git commit or merge and
+  `telec sync`, so a later publication runs after an earlier one releases it.
+  Publication never mutates authored source snippets or uses uncommitted files;
+  an ignored master is deployment output, not an uncommitted file.
+
+- Deployed artifacts reflect committed state, and each ignored master as it
+  stands on disk when its home publishes. Between a save and its commit, the
+  deployed tree is the previous commit's.
+
+- An ignored master changes without a commit in its own repository, so a
+  change to one owes that repository no publication. A master re-rendered in
+  another repository's maintenance is compiled into its entrypoint at that
+  repository's next publication or `telec sync`; the home entrypoints follow
+  the Mother's publication, which refreshes them.
+
+- Project bootstrap converges declarations, filters, and hooks but publishes no
+  working-tree source. The first canonical commit activates the project's
+  subscribed outputs; `telec sync` in the project's home publishes its committed
+  state at any time.
+- Commit-boundary maintenance owes publication only for the paths its
+  repository's maintenance bindings name, and those bindings are anchored at the
+  repository root.
+- Publication fails explicitly when its distribution implementation is
+  unavailable; publication never reports success after omitting a
+  runtime-output phase.
+
+<!-- /planned-change:help-desks-as-deployment-output -->

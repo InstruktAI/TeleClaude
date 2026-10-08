@@ -9,6 +9,8 @@ description: Every repository-owned template TeleClaude installs onto a machine 
 
 ## What it is
 
+<!-- planned-change:help-desks-as-deployment-output -->
+
 TeleClaude installs repository-owned templates in several places: service
 definitions during machine installation; the home template layers into the
 TeleClaude home, into every declared person and company home, and into every
@@ -19,6 +21,24 @@ help desk's folder when initialization enables it. Each installation renders
 the template's placeholders and places the result under a name derived from the
 template's path. One rendering contract and one naming contract govern all of
 them, so a template behaves the same wherever it is installed.
+
+<!-- change:help-desks-as-deployment-output -->
+
+TeleClaude installs repository-owned templates in several places: service
+definitions during machine installation; the TeleClaude home's repository layer
+and every declared person and company home's documentation baselines, before
+home activation; every help desk and every template-rendered home master,
+whenever convergence renders them
+(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`);
+TeleClaude-owned git hooks into project and home repositories; project skeleton
+files and a project's local documentation baselines during project
+initialization; and a help desk's folder when initialization enables it. Each
+installation renders the template's placeholders and places the result under a
+name derived from the template's path. One rendering contract and one naming
+contract govern all of them, so a template behaves the same wherever it is
+installed.
+
+<!-- /planned-change:help-desks-as-deployment-output -->
 
 What an installation does with the rendered result — refreshing a differing
 target, prompting before replacing a project-owned file, preserving a hook it
