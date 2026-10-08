@@ -57,6 +57,11 @@ visibility: 'public'
   legacy limitation before selecting this path; the selector supplies no safety
   evidence or authorization (`general/policy/human-contract`).
 
+  Immediate API effects can be running without the inspected durable work
+  records, and new business requests can arrive between the observation and
+  termination. Observed legacy quiescence neither closes admission nor proves
+  that all effects have settled.
+
 <!-- /planned:drain-accepted-work-before-restart -->
 
 ## Rationale
