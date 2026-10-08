@@ -68,6 +68,7 @@ class NoData(EventData):
 
 class DeadLetteredData(EventData):
     attempt_count: str
+    consumer: str
     consumer_id: str
     dlq_destination: str
     failing_stage: str

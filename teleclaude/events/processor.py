@@ -25,6 +25,8 @@ logger = get_logger(__name__)
 
 STREAM_NAME = "teleclaude:events"
 CONSUMER_GROUP = "event-processor"
+#: Pause between in-place attempts at one entry in ordered mode.
+ORDERED_RETRY_PAUSE_S = 1.0
 _STREAM_ENTRY_IDENTITY = "{stream}/{entry_id}"
 
 
@@ -43,16 +45,33 @@ class _PendingEntryInfo:
 
 
 @dataclass
+class _ParkedEntry:
+    """An entry that reached the attempt ceiling: its dead-letter record and which parking steps are done."""
+
+    record: dict[str, str]
+    failed_event_id: str
+    persisted: bool = False
+    announced: bool = False
+
+
+@dataclass
 class _AttemptState:
     attempt_count: int = 0
     first_attempt_at: int | None = None
     last_attempt_at: int | None = None
     consumer_id: str | None = None
     failing_stage: str | None = None
+    parked: _ParkedEntry | None = None
 
 
 class EventProcessor[DecodedT: BaseModel]:
-    """Consume entries from a Redis stream, decode each with the stream's codec, and drive its pipeline."""
+    """Consume entries from a Redis stream, decode each with the stream's codec, and drive its pipeline.
+
+    By default a failed entry stays pending and is retried through stale-pending reclaim while later
+    entries continue. In ordered mode the reader owns its group alone under a stable reader name: a
+    failed entry is attempted again in place until the attempt ceiling, then dead-lettered, and no
+    later entry is read first, so handling stays in stream order and a parked entry blocks nothing.
+    """
 
     def __init__(
         self,
@@ -60,6 +79,8 @@ class EventProcessor[DecodedT: BaseModel]:
         pipeline: StreamEntryPipeline[DecodedT],
         *,
         codec: EntryCodec[DecodedT],
+        declared_name: str,
+        ordered: bool = False,
         idle_threshold_ms: int | None = None,
         max_attempts: int | None = None,
         sweep_interval_ms: int | None = None,
@@ -77,6 +98,9 @@ class EventProcessor[DecodedT: BaseModel]:
         self._stream = options.get("stream") or STREAM_NAME
         self._group = options.get("group") or CONSUMER_GROUP
         self._consumer = options.get("consumer_name") or f"processor-{os.getpid()}"
+        self._declared_name = declared_name
+        self._ordered = ordered
+        self._shutdown_event: asyncio.Event | None = None
         reliability = config.event_reliability
         self._idle_threshold_ms = idle_threshold_ms if idle_threshold_ms is not None else reliability.idle_threshold_ms
         self._max_attempts = max_attempts if max_attempts is not None else reliability.max_attempts
@@ -95,13 +119,21 @@ class EventProcessor[DecodedT: BaseModel]:
         """Run the stream consumption loop until shutdown is requested."""
         if self._first_attempt_observed_at is None:
             self._first_attempt_observed_at = int(time.time())
+        self._shutdown_event = shutdown_event
         await self._ensure_consumer_group()
         await self._recover_pending(include_current_consumer=True)
 
-        logger.info("EventProcessor started", stream=self._stream, group=self._group, consumer=self._consumer)
+        logger.info(
+            "EventProcessor started",
+            stream=self._stream,
+            group=self._group,
+            consumer=self._consumer,
+            name=self._declared_name,
+            ordered=self._ordered,
+        )
 
         sweep_task: asyncio.Task[None] | None = None
-        if not shutdown_event.is_set():
+        if not shutdown_event.is_set() and not self._ordered:
             sweep_task = asyncio.create_task(self._run_periodic_recovery(shutdown_event), name="event-recovery-sweep")
         try:
             while not shutdown_event.is_set():
@@ -149,7 +181,8 @@ class EventProcessor[DecodedT: BaseModel]:
         if include_current_consumer:
             await self._recover_current_consumer_pending()
 
-        await self._reclaim_stale_pending(pending_depth=pending_depth)
+        if not self._ordered:
+            await self._reclaim_stale_pending(pending_depth=pending_depth)
 
     async def _run_periodic_recovery(self, shutdown_event: asyncio.Event) -> None:
         """Run stale-pending recovery at the configured sweep cadence."""
@@ -222,28 +255,61 @@ class EventProcessor[DecodedT: BaseModel]:
         await self._process_entries([(self._stream, messages)])
 
     async def _process_entries(self, entries: Any) -> None:
-        """Deserialize, execute, and acknowledge a batch of stream entries."""
+        """Deserialize, execute, and acknowledge a batch of stream entries, one after the other."""
         for stream, messages in entries:
             for raw_entry_id, data in messages:
                 entry_id = self._decode(raw_entry_id)
-                decoded: DecodedT | None = None
-                try:
-                    decoded = self._codec.decode(data, entry_id)
-                    await self._pipeline.execute(decoded)
-                    try:
-                        await self._redis.xack(self._stream, self._group, entry_id)
-                    except Exception:
-                        logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
-                except Exception as exc:
-                    if decoded is None:
-                        logger.exception("EventProcessor failed to deserialize entry", entry_id=entry_id)
-                        continue
-                    await self._handle_processing_failure(
-                        stream=self._decode(stream),
-                        entry_id=entry_id,
-                        decoded=decoded,
-                        exc=exc,
-                    )
+                if self._ordered:
+                    await self._process_entry_in_order(self._decode(stream), entry_id, data)
+                else:
+                    await self._process_entry(self._decode(stream), entry_id, data)
+
+    async def _process_entry_in_order(self, stream: str, entry_id: str, data: Any) -> None:
+        """Attempt one entry until it is handled or parked; an entry left unsettled is attempted again first."""
+        while not await self._attempt_in_order(stream, entry_id, data):
+            if self._shutdown_event is not None and self._shutdown_event.is_set():
+                return
+            await self._pause_before_next_attempt()
+        self._attempts.pop(entry_id, None)
+
+    async def _attempt_in_order(self, stream: str, entry_id: str, data: Any) -> bool:
+        """Run the entry through the pipeline, or, once it reached the ceiling, finish parking it without the handler."""
+        state = self._attempts.get(entry_id)
+        if state is not None and state.parked is not None:
+            return await self._complete_parking(entry_id, state)
+        return await self._process_entry(stream, entry_id, data)
+
+    async def _pause_before_next_attempt(self) -> None:
+        """Wait between in-place attempts; shutdown ends the wait early."""
+        if self._shutdown_event is None:
+            await asyncio.sleep(ORDERED_RETRY_PAUSE_S)
+            return
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=ORDERED_RETRY_PAUSE_S)
+        except TimeoutError:
+            pass
+
+    async def _process_entry(self, stream: str, entry_id: str, data: Any) -> bool:
+        """Run one entry through the pipeline; return whether it is settled (handled, parked, or undecodable)."""
+        decoded: DecodedT | None = None
+        try:
+            decoded = self._codec.decode(data, entry_id)
+            await self._pipeline.execute(decoded)
+            try:
+                await self._redis.xack(self._stream, self._group, entry_id)
+            except Exception:
+                logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
+            return True
+        except Exception as exc:
+            if decoded is None:
+                logger.exception("EventProcessor failed to deserialize entry", entry_id=entry_id)
+                return True
+            return await self._handle_processing_failure(
+                stream=stream,
+                entry_id=entry_id,
+                decoded=decoded,
+                exc=exc,
+            )
 
     async def _handle_processing_failure(
         self,
@@ -252,8 +318,12 @@ class EventProcessor[DecodedT: BaseModel]:
         entry_id: str,
         decoded: DecodedT,
         exc: Exception,
-    ) -> None:
-        """Track a failed attempt and transition to DLQ when the ceiling is reached."""
+    ) -> bool:
+        """Track a failed attempt and transition to DLQ when the ceiling is reached.
+
+        Returns whether the entry is settled (parked); an entry left pending below the ceiling, or
+        whose parking is not finished, is not.
+        """
         state = self._record_attempt(entry_id, exc)
         logger.warning(
             "event_processor_retry",
@@ -261,31 +331,49 @@ class EventProcessor[DecodedT: BaseModel]:
             retry=state.attempt_count,
             entry_id=entry_id,
             consumer=state.consumer_id or self._consumer,
+            name=self._declared_name,
         )
 
         if state.attempt_count < self._max_attempts:
             logger.exception("EventProcessor failed to process entry", entry_id=entry_id)
-            return
+            return False
 
-        record = self._build_dead_letter_record(
-            stream=stream,
-            entry_id=entry_id,
-            decoded=decoded,
-            exc=exc,
-            state=state,
-        )
+        if state.parked is None:
+            state.parked = _ParkedEntry(
+                record=self._build_dead_letter_record(
+                    stream=stream,
+                    entry_id=entry_id,
+                    decoded=decoded,
+                    exc=exc,
+                    state=state,
+                ),
+                failed_event_id=self._codec.event_id(decoded),
+            )
+        return await self._complete_parking(entry_id, state)
 
-        try:
-            await self._redis.xadd(self._dlq_destination, record)
-        except Exception:
-            logger.exception("EventProcessor failed to persist dead-letter record", entry_id=entry_id)
-            return
+    async def _complete_parking(self, entry_id: str, state: _AttemptState) -> bool:
+        """Persist the dead-letter record, announce it, and acknowledge the entry; each step is done once.
 
-        try:
-            await self._emit_dead_letter_signal(record, self._codec.event_id(decoded))
-        except Exception:
-            logger.exception("EventProcessor failed to emit dead-letter signal", entry_id=entry_id)
-            return
+        Returns whether the entry is settled. A step that fails leaves the earlier ones recorded, so a
+        later call repeats only what remains and never writes a second record.
+        """
+        parked = state.parked
+        assert parked is not None  # set by _handle_processing_failure before parking
+        if not parked.persisted:
+            try:
+                await self._redis.xadd(self._dlq_destination, parked.record)
+            except Exception:
+                logger.exception("EventProcessor failed to persist dead-letter record", entry_id=entry_id)
+                return False
+            parked.persisted = True
+
+        if not parked.announced:
+            try:
+                await self._emit_dead_letter_signal(parked.record, parked.failed_event_id)
+            except Exception:
+                logger.exception("EventProcessor failed to emit dead-letter signal", entry_id=entry_id)
+                return False
+            parked.announced = True
 
         logger.info(
             "event_processor_dead_letter",
@@ -294,17 +382,19 @@ class EventProcessor[DecodedT: BaseModel]:
             dead_letter=1,
             entry_id=entry_id,
             destination=self._dlq_destination,
+            name=self._declared_name,
         )
         try:
             await self._redis.xack(self._stream, self._group, entry_id)
         except Exception:
             logger.exception("EventProcessor failed to ACK dead-lettered entry", entry_id=entry_id)
-            if not self._ack_failure_reclaiming:
+            if not self._ordered and not self._ack_failure_reclaiming:
                 self._ack_failure_reclaiming = True
                 try:
                     await self._reclaim_stale_pending(pending_depth=len(self._pending_info))
                 finally:
                     self._ack_failure_reclaiming = False
+        return True
 
     def _record_attempt(self, entry_id: str, exc: Exception) -> _AttemptState:
         info = self._pending_info.get(entry_id)
@@ -341,6 +431,7 @@ class EventProcessor[DecodedT: BaseModel]:
             "first_attempt_at": str(state.first_attempt_at or ""),
             "last_attempt_at": str(state.last_attempt_at or ""),
             "consumer_id": state.consumer_id or self._consumer,
+            "consumer": self._declared_name,
             "dlq_destination": self._dlq_destination,
         }
 
@@ -360,6 +451,7 @@ class EventProcessor[DecodedT: BaseModel]:
                     attempt_count=record["attempt_count"],
                     failing_stage=record["failing_stage"],
                     consumer_id=record["consumer_id"],
+                    consumer=record["consumer"],
                     dlq_destination=record["dlq_destination"],
                 ),
                 causationid=failed_event_id,

@@ -15,7 +15,7 @@ import aiosqlite
 
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
-from teleclaude.events.db_migrations import migrate_forward
+from teleclaude.events.db_migrations import HANDLED_EVENTS_TABLE, INHERITED_WINDOW_COLUMN, migrate_forward
 from teleclaude.events.envelope import (
     home_owner_token,
     home_token,
@@ -139,14 +139,15 @@ CREATE TABLE IF NOT EXISTS quarantined_events (
 );
 """
 
-_CREATE_CORRELATION_TABLE = """
+_CREATE_CORRELATION_TABLE = f"""
 CREATE TABLE IF NOT EXISTS correlation_windows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
     home TEXT NOT NULL,
     subject TEXT,
     window_start TEXT NOT NULL,
-    count INTEGER NOT NULL DEFAULT 1
+    count INTEGER NOT NULL DEFAULT 1,
+    {INHERITED_WINDOW_COLUMN} INTEGER NOT NULL DEFAULT 0
 );
 """
 _CREATE_EPISODE_TABLE = """
@@ -160,12 +161,29 @@ CREATE TABLE IF NOT EXISTS correlation_episodes (
     UNIQUE(detection, subject, home)
 );
 """
+_CREATE_HANDLED_EVENTS_TABLE = f"""
+CREATE TABLE IF NOT EXISTS {HANDLED_EVENTS_TABLE} (
+    consumer TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    handled_at TEXT NOT NULL,
+    PRIMARY KEY (consumer, event_id)
+) WITHOUT ROWID;
+"""
+_CREATE_HANDLED_EVENTS_INDEX = (
+    f"CREATE INDEX IF NOT EXISTS idx_handled_events_handled_at ON {HANDLED_EVENTS_TABLE} (handled_at);"
+)
+_SELECT_HANDLED_EVENT_SQL = f"SELECT 1 FROM {HANDLED_EVENTS_TABLE} WHERE consumer = ? AND event_id = ?"
+_INSERT_HANDLED_EVENT_SQL = (
+    f"INSERT OR IGNORE INTO {HANDLED_EVENTS_TABLE} (consumer, event_id, handled_at) VALUES (?, ?, ?)"
+)
+_DELETE_HANDLED_EVENTS_SQL = f"DELETE FROM {HANDLED_EVENTS_TABLE} WHERE handled_at < ?"
 _INSERT_CORRELATION_WINDOW_SQL = (
     "INSERT INTO correlation_windows (event_type, home, subject, window_start, count) VALUES (?, ?, ?, ?, 1)"
 )
 _SELECT_CORRELATION_COUNT_SQL = (
     "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND window_start >= ?"
 )
+_CORRELATION_ADMITTED_ONLY_FILTER_SQL = f" AND {INHERITED_WINDOW_COLUMN} = 0"
 _CORRELATION_HOME_FILTER_SQL = " AND home = ?"
 _CORRELATION_SUBJECT_FILTER_SQL = " AND subject = ?"
 _INSERT_EPISODE_SQL = (
@@ -329,6 +347,8 @@ class EventDB:
                 (_RENAMED_DOMAIN_FROM, _RENAMED_DOMAIN_TO, _RENAMED_DOMAIN_FROM),
             )
         await migrate_forward(self._conn)
+        await self._conn.execute(_CREATE_HANDLED_EVENTS_TABLE)
+        await self._conn.execute(_CREATE_HANDLED_EVENTS_INDEX)
         # Preserve retired event rows as history while closing their notification projections.
         resolved_at = _now_iso()
         await self._conn.execute(
@@ -608,6 +628,24 @@ class EventDB:
         quarantine_deleted = max(quarantine_cursor.rowcount, 0)
         return notifications_deleted + quarantine_deleted
 
+    # --- Handled-event records ---
+
+    async def has_handled_event(self, consumer: str, event_id: str) -> bool:
+        """Return whether the consumer has a record of handling the event id."""
+        cursor = await self._db().execute(_SELECT_HANDLED_EVENT_SQL, (consumer, event_id))
+        return (await cursor.fetchone()) is not None
+
+    async def record_handled_event(self, consumer: str, event_id: str, handled_at: datetime) -> None:
+        """Record that the consumer handled the event id; recording again changes nothing."""
+        await self._db().execute(_INSERT_HANDLED_EVENT_SQL, (consumer, event_id, handled_at.isoformat()))
+        await self._db().commit()
+
+    async def prune_handled_events(self, *, older_than: datetime) -> int:
+        """Delete handled-event records older than the cutoff and return how many were deleted."""
+        cursor = await self._db().execute(_DELETE_HANDLED_EVENTS_SQL, (older_than.isoformat(),))
+        await self._db().commit()
+        return max(cursor.rowcount, 0)
+
     # --- Enrichment query helpers ---
 
     async def count_events_by_entity(
@@ -660,11 +698,18 @@ class EventDB:
         event_type: str,
         since: datetime,
         *,
+        include_inherited: bool,
         home: str | None = None,
         subject: str | None = None,
     ) -> int:
-        """Return the total correlation count for a type since the given time, narrowed to a home and a subject."""
+        """Return the total correlation count for a type since the given time, narrowed to a home and a subject.
+
+        Rows counted before correlation acted only on its own computer's events are inherited; a count
+        that decides a detection leaves them out, and one that decides an episode is over keeps them.
+        """
         sql = _SELECT_CORRELATION_COUNT_SQL
+        if not include_inherited:
+            sql += _CORRELATION_ADMITTED_ONLY_FILTER_SQL
         params: list[str] = [event_type, since.isoformat()]
         if home is not None:
             sql += _CORRELATION_HOME_FILTER_SQL

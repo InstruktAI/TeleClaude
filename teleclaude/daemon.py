@@ -219,7 +219,7 @@ _record_import_timing("teleclaude.daemon_session", _t)
 
 _t = time.perf_counter()
 from teleclaude.events import EventDB
-from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.envelope_facts import home_for_project_path as _workflow_event_home
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import ConfigurationRef, TodoRef
@@ -496,6 +496,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._event_db: EventDB | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
+        self._event_consumers_task: asyncio.Task[object] | None = None
         self._relay_delivery_task: asyncio.Task[object] | None = None
         self._internal_event_bus_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
@@ -643,8 +644,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 finalize_state = finalize if isinstance(finalize, dict) else {}
                 sha = str(finalize_state.get("sha", ""))
                 branch = str(finalize_state.get("branch", slug))
+                worker_session_id = str(finalize_state.get("worker_session_id", ""))
                 await publish_event(
                     TodoFinalizeReady(
+                        id=occurrence_id(slug, sha, worker_session_id),
                         subject=TodoRef(slug),
                         home=_workflow_event_home(project_root),
                         data=TodoFinalizeReadyData(
@@ -652,7 +655,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                             branch=branch,
                             sha=sha,
                             project_path=project_root,
-                            worker_session_id=str(finalize_state.get("worker_session_id", "")),
+                            worker_session_id=worker_session_id,
                             ready_at=str(finalize_state.get("ready_at", "")),
                         ),
                     ),
@@ -1088,6 +1091,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
         await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
         await self._await_task_attr("_event_processor_task", "EventProcessor stopped", timeout=5.0)
+        await self._await_task_attr("_event_consumers_task", "Event consumers stopped", timeout=5.0)
         await self._await_task_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)
 
         for attr_name, log_message in (

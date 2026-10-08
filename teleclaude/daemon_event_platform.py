@@ -17,6 +17,8 @@ from teleclaude.config.loader import load_project_config
 from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
+from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
+from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.organization import platform_admin_people
 from teleclaude.deployment.handler import (
@@ -25,6 +27,8 @@ from teleclaude.deployment.handler import (
     handle_deployment_event,
 )
 from teleclaude.events import (
+    Consumer,
+    ConsumerRuntime,
     EventDB,
     EventLevel,
     EventProcessor,
@@ -38,17 +42,14 @@ from teleclaude.events import (
 )
 from teleclaude.events.cartridges import (
     ClassificationCartridge,
-    CorrelationCartridge,
     DeduplicationCartridge,
     EnrichmentCartridge,
-    IntegrationTriggerCartridge,
-    LifecycleRouterCartridge,
     NotificationProjectorCartridge,
     TrustCartridge,
 )
-from teleclaude.events.cartridges.correlation import CorrelationConfig
 from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.cartridges.trust import TrustConfig
+from teleclaude.events.correlation import CorrelationConfig, build_correlation_consumer
 from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer
 from teleclaude.events.delivery.targeted import build_targeted_push_callback
 from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
@@ -81,11 +82,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
+_SYSTEM_PIPELINE_PROCESSOR_NAME = "system-pipeline"
+_RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
 _RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
 _RELAY_DELIVERY_CONSUMER_SUFFIX = "-relay-"
 _RELAY_DELIVERY_TASK_NAME = "relay-delivery-processor"
 _RELAY_DELIVERY_LOG_TASK_NAME = "relay_delivery_processor"
 _RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
+_EVENT_CONSUMERS_TASK_NAME = "event-consumers"
+_EVENT_CONSUMERS_LOG_TASK_NAME = "event_consumers"
+_EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _API_SERVER_ATTRIBUTE = "api_server"
 _API_APP_ATTRIBUTE = "app"
 _INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
@@ -176,6 +182,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _deployment_fanout_task: asyncio.Task[object] | None
         _contract_sweep_task: asyncio.Task[object] | None
         _event_processor_task: asyncio.Task[object] | None
+        _event_consumers_task: asyncio.Task[object] | None
         _relay_delivery_task: asyncio.Task[object] | None
         _internal_event_bus_task: asyncio.Task[object] | None
         _ingest_scheduler_task: asyncio.Task[object] | None
@@ -313,13 +320,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         except Exception:
             logger.warning("Could not load people config for WhatsApp delivery adapter")
 
-    def _build_integration_trigger(self) -> IntegrationTriggerCartridge:
-        """Create the integration trigger cartridge."""
+    def _build_integration_trigger(self) -> Consumer:
+        """Create the integration trigger consumer."""
         from teleclaude.core.integration_bridge import spawn_integrator_session  # startup boundary
 
-        return IntegrationTriggerCartridge(
-            spawn_callback=spawn_integrator_session,
-        )
+        return build_integration_trigger_consumer(spawn_integrator_session)
 
     def _build_pipeline_context(
         self,
@@ -334,26 +339,18 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             db=self._event_db,
             push_callbacks=push_callbacks,
             trust_config=TrustConfig(known_sources=_KNOWN_EVENT_SOURCES),
-            correlation_config=CorrelationConfig(),
             producer=event_producer,
         )
 
-    def _build_pipeline(
-        self,
-        context: PipelineContext,
-        integration_trigger: IntegrationTriggerCartridge,
-    ) -> Pipeline:
-        """Build the system event pipeline."""
+    def _build_pipeline(self, context: PipelineContext) -> Pipeline:
+        """Build the system event pipeline: the notification path, beside the independent event consumers."""
         return Pipeline(
             [
                 TrustCartridge(),
-                integration_trigger,
                 DeduplicationCartridge(),
                 EnrichmentCartridge(),
-                CorrelationCartridge(),
                 ClassificationCartridge(),
                 NotificationProjectorCartridge(),
-                LifecycleRouterCartridge(),
             ],
             context,
         )
@@ -366,6 +363,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             redis_client=redis_client,
             pipeline=pipeline,
             codec=PLATFORM_ENTRY_CODEC,
+            declared_name=_SYSTEM_PIPELINE_PROCESSOR_NAME,
             group=f"{EVENT_PROCESSOR_GROUP}-{computer_label}",
             consumer_name=f"{computer_label}-{os.getpid()}",
             idle_threshold_ms=reliability.idle_threshold_ms,
@@ -380,6 +378,34 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("EventProcessor started")
         return computer_label
 
+    def _event_consumers(self) -> list[Consumer]:
+        """The platform's own reactions to events, each an independent consumer on this computer."""
+        assert self._event_db is not None  # initialized by _start_event_platform_prepare
+        assert self._event_producer is not None  # configured by _start_event_platform_prepare
+        return [
+            self._build_integration_trigger(),
+            build_lifecycle_router_consumer(),
+            build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
+        ]
+
+    def _start_event_consumers_runtime(self, redis_client: object) -> None:
+        """Start the consumer runtime: one ordered reader of the platform stream per declared consumer."""
+        assert self._event_db is not None  # initialized by _start_event_platform_prepare
+        consumers = self._event_consumers()
+        runtime = ConsumerRuntime(
+            consumers,
+            redis_client=redis_client,
+            db=self._event_db,
+            computer=config.computer.name,
+        )
+        self._event_consumers_task = asyncio.create_task(
+            runtime.run(self.shutdown_event), name=_EVENT_CONSUMERS_TASK_NAME
+        )
+        self._event_consumers_task.add_done_callback(
+            self._log_background_task_exception(_EVENT_CONSUMERS_LOG_TASK_NAME)
+        )
+        logger.info(_EVENT_CONSUMERS_STARTED_EVENT, consumers=[consumer.name for consumer in consumers])
+
     def _start_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
         """Start the per-computer group that delivers relayed external events to the local hook dispatcher."""
         redis_client = self._event_redis_client
@@ -392,6 +418,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             redis_client=redis_client,
             pipeline=RelayDeliveryPipeline(dispatcher),
             codec=PLATFORM_ENTRY_CODEC,
+            declared_name=_RELAY_DELIVERY_PROCESSOR_NAME,
             group=_RELAY_DELIVERY_GROUP_PREFIX + computer_label,
             consumer_name=computer_label + _RELAY_DELIVERY_CONSUMER_SUFFIX + str(os.getpid()),
             idle_threshold_ms=reliability.idle_threshold_ms,
@@ -553,9 +580,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._start_internal_event_bus(redis_client)
         event_producer = self._configure_event_producer(redis_client)
         push_callbacks = self._build_push_callbacks()
-        integration_trigger = self._build_integration_trigger()
         context = self._build_pipeline_context(event_catalog, push_callbacks, event_producer)
-        pipeline = self._build_pipeline(context, integration_trigger)
+        pipeline = self._build_pipeline(context)
         self._event_pipeline = pipeline
         self._event_pipeline_context = context
         self._event_producer = event_producer
@@ -571,6 +597,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         assert context is not None  # built by _start_event_platform_prepare
         assert event_producer is not None  # built by _start_event_platform_prepare
         computer_label = self._start_event_processor(redis_client, pipeline)
+        self._start_event_consumers_runtime(redis_client)
         self._event_platform_status.pending_recovery_progress = "processor_started"
         logger.info(
             "event_platform_redis_available: pending recovery scheduled",

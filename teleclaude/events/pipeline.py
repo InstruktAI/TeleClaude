@@ -1,4 +1,4 @@
-"""Pipeline runtime — sequential cartridge executor."""
+"""Pipeline runtime — the sequential executor of the notification path's stages."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.wire import StreamEvent
 
 if TYPE_CHECKING:
-    from teleclaude.events.cartridges.correlation import CorrelationConfig
     from teleclaude.events.cartridges.trust import TrustConfig
     from teleclaude.events.db import EventDB
     from teleclaude.events.producer import EventProducer
@@ -27,11 +26,6 @@ def _default_trust_config() -> Any:
     return import_module("teleclaude.events.cartridges.trust").TrustConfig()
 
 
-def _default_correlation_config() -> Any:
-    """Build the default correlation configuration lazily to avoid import cycles."""
-    return import_module("teleclaude.events.cartridges.correlation").CorrelationConfig()
-
-
 @dataclass
 class PipelineContext:
     """Shared services and configuration available to every cartridge invocation."""
@@ -40,7 +34,6 @@ class PipelineContext:
     db: EventDB
     push_callbacks: list[Callable[..., object]] = field(default_factory=list)
     trust_config: TrustConfig = field(default_factory=_default_trust_config)
-    correlation_config: CorrelationConfig = field(default_factory=_default_correlation_config)
     producer: EventProducer | None = None
     ai_client: object = None
     emit: Callable[..., Awaitable[object]] | None = None
@@ -71,7 +64,7 @@ def failing_stage_from_exception(exc: BaseException) -> str | None:
 
 
 class Pipeline:
-    """Execute the approved system pipeline."""
+    """Execute the system pipeline: the notification path from trust to the notification projector."""
 
     def __init__(self, cartridges: list[Cartridge], context: PipelineContext) -> None:
         self._cartridges = cartridges

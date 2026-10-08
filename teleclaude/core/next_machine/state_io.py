@@ -200,7 +200,7 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
 
     The caller session identity is required: it becomes the
     ``worker_session_id`` field on the eventual ``todo_finalize_ready`` event,
-    which the integration trigger cartridge uses to attribute the spawn.
+    which the integration trigger consumer uses to attribute the spawn.
     Empty caller identity would propagate an unattributable event downstream.
     """
     if not caller_session_id:

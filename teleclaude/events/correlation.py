@@ -1,12 +1,15 @@
-"""Correlation cartridge — detects burst, cascade and entity degradation patterns, and reports when each is over.
+"""Correlation consumer: detects burst, cascade and entity degradation patterns, and reports when each is over.
 
-Each detection reports once an episode begins (a burst again for every window bucket
-while it lasts) and, when the events it counts no longer reach its threshold within the
-window, reports the episode over with the ok state of its family. Open episodes are the
-event catalog's own durable state, so an episode that began before a restart is still
-reported over after it. A burst is one event type within one home, a failure cascade is
-the observing computer, and a degradation is one thing (subject and home) across all of
-its failing event types.
+Each detection reports once an episode begins (a burst again for every window bucket while it lasts)
+and, when the events it counts no longer reach its threshold within the window, reports the episode
+over with the ok state of its family. Open episodes are the event catalog's own durable state, so an
+episode that began before a restart is still reported over after it. A burst is one event type within
+one origin, a failure cascade is the observing computer, and a degradation is one thing (subject and
+origin) across all of its failing event types. Correlation acts only on events its own computer
+emitted, so each failure is correlated and announced once, by the computer it happened on.
+
+Window rows counted before correlation acted only on its own computer's events are inherited: a count
+that decides a detection leaves them out, and a count that decides an episode is over keeps them.
 """
 
 from __future__ import annotations
@@ -21,18 +24,23 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config as _global_config
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.catalog import PlatformEvent
-from teleclaude.events.db import CorrelationEpisode, EpisodeDetection
+from teleclaude.events.consumers import Consumer, Interest
+from teleclaude.events.db import CorrelationEpisode, EpisodeDetection, EventDB
 from teleclaude.events.envelope import (
     EventHomeMarker,
     EventLevel,
     EventVisibility,
+    ReceivedEvent,
     home_from_token,
     home_token,
     occurrence_id,
 )
-from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.producer import EventProducer
 from teleclaude.events.references import ComputerRef, EventRef, EventTypeRef
 from teleclaude.events.schemas.system import (
+    BURST_FAMILY,
+    ENTITY_FAMILY,
+    FAILURE_CASCADE_FAMILY,
     BurstData,
     BurstDetected,
     BurstSubsided,
@@ -46,9 +54,12 @@ from teleclaude.events.schemas.system import (
     FailureCascadeSubsided,
     FailureCascadeSubsidedData,
 )
-from teleclaude.events.wire import LegacyFacts, StreamEvent
+from teleclaude.events.type_pattern import ANY_TYPE, TypePattern
+from teleclaude.events.wire import LegacyFacts
 
 logger = get_logger(__name__)
+
+CORRELATION_CONSUMER = "correlation"
 
 _FAILURE_TYPE_KEYWORDS = ("crash", "fail", "error")
 _WORKER_CRASHED_EVENT_TYPE = "teleclaude.system.worker.crashed"
@@ -65,6 +76,11 @@ _CASCADE_ACTION = HumanActionIntent(
     summary="Repeated worker crashes were detected.",
     action="Investigate the crashing workers",
 )
+#: Every state of the families correlation alone emits, so neither its detections nor their ends feed its counts.
+_OWN_REPORTS = tuple(TypePattern.below(family) for family in (BURST_FAMILY, FAILURE_CASCADE_FAMILY, ENTITY_FAMILY))
+
+_EPISODE_OPENED_EVENT = "Correlation episode opened"
+_EPISODE_OVER_EVENT = "Correlation episode over"
 
 
 def _is_failure_type(event_type: str) -> bool:
@@ -93,49 +109,44 @@ def _ended_facts(level: EventLevel) -> LegacyFacts:
     )
 
 
-class CorrelationCartridge:
+class _Correlation:
     """Detect correlated operational patterns and emit synthetic system events."""
 
-    name = "correlation"
-
-    def describe(self) -> str:
-        """Return cartridge name."""
-        return self.name
-
-    def __init__(self) -> None:
-        # Burst identity is deterministic per host, type, home and bucket; durable
-        # pipeline idempotency suppresses replays across restarts.
+    def __init__(self, db: EventDB, producer: EventProducer, config: CorrelationConfig) -> None:
+        self._db = db
+        self._producer = producer
+        self._config = config
+        # A burst's id is deterministic per computer, type, origin and bucket; this set only spares
+        # re-deriving a report already emitted in this run.
         self._emitted_bursts: set[tuple[str, str, int]] = set()
 
-    async def process(self, event: StreamEvent, context: PipelineContext) -> StreamEvent | None:
+    async def handle(self, event: ReceivedEvent) -> None:
         """Update correlation windows, emit synthetic alerts when thresholds are crossed, and report episodes over."""
-        # Skip synthetic events from correlation to prevent re-entry loops
-        if event.legacy.producer == _CORRELATION_PRODUCER:
-            return event
+        if any(pattern.matches(event.type) for pattern in _OWN_REPORTS):
+            return
 
-        config = context.correlation_config
+        config = self._config
         now = config.clock()
         home_key = home_token(event.home)
         subject_key = event.subject.to_token() if event.subject is not None else None
         window_start = now - timedelta(seconds=config.window_seconds)
         prune_before = now - timedelta(seconds=2 * config.window_seconds)
 
-        await context.db.prune_correlation_windows(older_than=prune_before)
-        await context.db.increment_correlation_window(event.type, home_key, subject_key, now)
+        await self._db.prune_correlation_windows(older_than=prune_before)
+        await self._db.increment_correlation_window(event.type, home_key, subject_key, now)
 
-        await self._detect_burst(event, context, now, window_start)
-        await self._detect_failure_cascade(event, context, now, window_start)
-        await self._detect_degradation(event, context, now, window_start)
-        await self._report_ended_episodes(context, window_start)
-        return event
+        await self._detect_burst(event, now, window_start)
+        await self._detect_failure_cascade(event, now, window_start)
+        await self._detect_degradation(event, now, window_start)
+        await self._report_ended_episodes(window_start)
 
-    async def _detect_burst(
-        self, event: StreamEvent, context: PipelineContext, now: datetime, window_start: datetime
-    ) -> None:
-        """N events of one type within one home in the window: report once per window bucket."""
-        config = context.correlation_config
+    async def _detect_burst(self, event: ReceivedEvent, now: datetime, window_start: datetime) -> None:
+        """N events of one type within one origin in the window: report once per window bucket."""
+        config = self._config
         home_key = home_token(event.home)
-        burst_count = await context.db.get_correlation_count(event.type, window_start, home=home_key)
+        burst_count = await self._db.get_correlation_count(
+            event.type, window_start, include_inherited=False, home=home_key
+        )
         if burst_count < config.burst_threshold:
             return
         window_bucket = int(now.timestamp() // config.window_seconds)
@@ -143,9 +154,7 @@ class CorrelationCartridge:
         if burst_key in self._emitted_bursts:
             return
         subject = EventTypeRef(event.type)
-        opened = await self._open_episode(
-            context, EpisodeDetection.BURST, subject.to_ref().to_token(), home_key, now, []
-        )
+        opened = await self._open_episode(EpisodeDetection.BURST, subject.to_ref().to_token(), home_key, now, [])
         emitted = await self._emit(
             BurstDetected(
                 id=occurrence_id(
@@ -162,28 +171,26 @@ class CorrelationCartridge:
                 domain=_SYSTEM_DOMAIN,
                 visibility=EventVisibility.LOCAL,
             ),
-            context,
             opened_episode=(EpisodeDetection.BURST, subject.to_ref().to_token(), home_key) if opened else None,
         )
         if emitted:
             self._emitted_bursts.add(burst_key)
 
-    async def _detect_failure_cascade(
-        self, event: StreamEvent, context: PipelineContext, now: datetime, window_start: datetime
-    ) -> None:
+    async def _detect_failure_cascade(self, event: ReceivedEvent, now: datetime, window_start: datetime) -> None:
         """Repeated worker crashes on this computer's event stream: report the cascade."""
-        config = context.correlation_config
+        config = self._config
         if event.type != _WORKER_CRASHED_EVENT_TYPE:
             return
-        crash_count = await context.db.get_correlation_count(_WORKER_CRASHED_EVENT_TYPE, window_start)
+        crash_count = await self._db.get_correlation_count(
+            _WORKER_CRASHED_EVENT_TYPE, window_start, include_inherited=False
+        )
         if crash_count < config.crash_cascade_threshold:
             return
         computer = ComputerRef(_global_config.computer.name)
         cascade_home = home_token(EventHomeMarker.NONE)
         opened = await self._open_episode(
-            context, EpisodeDetection.FAILURE_CASCADE, computer.to_ref().to_token(), cascade_home, now, []
+            EpisodeDetection.FAILURE_CASCADE, computer.to_ref().to_token(), cascade_home, now, []
         )
-        entity = event.legacy.entity
         await self._emit(
             FailureCascadeDetected(
                 id=occurrence_id(
@@ -194,7 +201,7 @@ class CorrelationCartridge:
                 data=FailureCascadeData(
                     crash_count=crash_count,
                     window_start=window_start.isoformat(),
-                    workers=[entity] if entity else [],
+                    workers=[],
                 ),
                 causationid=event.id,
             ),
@@ -205,34 +212,29 @@ class CorrelationCartridge:
                 visibility=EventVisibility.CLUSTER,
                 human_action=_CASCADE_ACTION,
             ),
-            context,
             opened_episode=(EpisodeDetection.FAILURE_CASCADE, computer.to_ref().to_token(), cascade_home)
             if opened
             else None,
         )
 
-    async def _detect_degradation(
-        self, event: StreamEvent, context: PipelineContext, now: datetime, window_start: datetime
-    ) -> None:
-        """Repeated failures of one thing within one home: report the thing degraded, once per episode."""
-        config = context.correlation_config
+    async def _detect_degradation(self, event: ReceivedEvent, now: datetime, window_start: datetime) -> None:
+        """Repeated failures of one thing within one origin: report the thing degraded, once per episode."""
+        config = self._config
         if event.subject is None or not _is_failure_type(event.type):
             return
         home_key = home_token(event.home)
         subject_key = event.subject.to_token()
-        fail_count = await context.db.get_correlation_count(
-            event.type, window_start, home=home_key, subject=subject_key
+        fail_count = await self._db.get_correlation_count(
+            event.type, window_start, include_inherited=False, home=home_key, subject=subject_key
         )
         if fail_count < config.entity_failure_threshold:
             return
-        episode = await context.db.get_episode(EpisodeDetection.ENTITY_DEGRADATION, subject_key, home_key)
+        episode = await self._db.get_episode(EpisodeDetection.ENTITY_DEGRADATION, subject_key, home_key)
         if episode is not None:
             if event.type not in episode.failing_types:
-                await context.db.set_episode_failing_types(episode.id, [*episode.failing_types, event.type])
+                await self._db.set_episode_failing_types(episode.id, [*episode.failing_types, event.type])
             return
-        if not await self._open_episode(
-            context, EpisodeDetection.ENTITY_DEGRADATION, subject_key, home_key, now, [event.type]
-        ):
+        if not await self._open_episode(EpisodeDetection.ENTITY_DEGRADATION, subject_key, home_key, now, [event.type]):
             return
         await self._emit(
             EntityDegraded(
@@ -242,7 +244,7 @@ class CorrelationCartridge:
                 subject=event.subject,
                 home=event.home,
                 data=EntityDegradedData(
-                    entity=event.legacy.entity or subject_key,
+                    entity=subject_key,
                     failure_count=fail_count,
                     window_start=window_start.isoformat(),
                 ),
@@ -254,60 +256,60 @@ class CorrelationCartridge:
                 domain=_SYSTEM_DOMAIN,
                 visibility=EventVisibility.LOCAL,
             ),
-            context,
             opened_episode=(EpisodeDetection.ENTITY_DEGRADATION, subject_key, home_key),
         )
 
     async def _open_episode(
         self,
-        context: PipelineContext,
         detection: EpisodeDetection,
         subject: str,
         home: str,
         started_at: datetime,
         failing_types: list[str],
     ) -> bool:
-        """Open the episode for a detection, subject and home; log it when it is newly opened."""
-        opened = await context.db.open_episode(detection, subject, home, started_at, failing_types)
+        """Open the episode for a detection, subject and origin; log it when it is newly opened."""
+        opened = await self._db.open_episode(detection, subject, home, started_at, failing_types)
         if opened:
-            logger.info("correlation: episode opened", detection=detection.value, subject=subject, home=home)
+            logger.info(_EPISODE_OPENED_EVENT, detection=detection.value, subject=subject, home=home)
         return opened
 
-    async def _report_ended_episodes(self, context: PipelineContext, window_start: datetime) -> None:
+    async def _report_ended_episodes(self, window_start: datetime) -> None:
         """Close and report every open episode whose counted events no longer reach their threshold."""
-        for episode in await context.db.list_open_episodes():
-            if await self._episode_still_open(episode, context, window_start):
+        for episode in await self._db.list_open_episodes():
+            if await self._episode_still_open(episode, window_start):
                 continue
-            if await self._emit_ended(episode, context):
-                await context.db.close_episode(episode.id)
+            if await self._emit_ended(episode):
+                await self._db.close_episode(episode.id)
                 logger.info(
-                    "correlation: episode over",
+                    _EPISODE_OVER_EVENT,
                     detection=episode.detection.value,
                     subject=episode.subject,
                     home=episode.home,
                 )
 
-    async def _episode_still_open(
-        self, episode: CorrelationEpisode, context: PipelineContext, window_start: datetime
-    ) -> bool:
-        """Re-count what the episode's detection counts, with the existing window counts."""
-        config = context.correlation_config
+    async def _episode_still_open(self, episode: CorrelationEpisode, window_start: datetime) -> bool:
+        """Re-count what the episode's detection counts, inherited window rows included."""
+        config = self._config
         if episode.detection is EpisodeDetection.BURST:
             burst_type = EventRef.from_token(episode.subject).identity
-            count = await context.db.get_correlation_count(burst_type, window_start, home=episode.home)
+            count = await self._db.get_correlation_count(
+                burst_type, window_start, include_inherited=True, home=episode.home
+            )
             return count >= config.burst_threshold
         if episode.detection is EpisodeDetection.FAILURE_CASCADE:
-            count = await context.db.get_correlation_count(_WORKER_CRASHED_EVENT_TYPE, window_start)
+            count = await self._db.get_correlation_count(
+                _WORKER_CRASHED_EVENT_TYPE, window_start, include_inherited=True
+            )
             return count >= config.crash_cascade_threshold
         for failing_type in episode.failing_types:
-            count = await context.db.get_correlation_count(
-                failing_type, window_start, home=episode.home, subject=episode.subject
+            count = await self._db.get_correlation_count(
+                failing_type, window_start, include_inherited=True, home=episode.home, subject=episode.subject
             )
             if count >= config.entity_failure_threshold:
                 return True
         return False
 
-    async def _emit_ended(self, episode: CorrelationEpisode, context: PipelineContext) -> bool:
+    async def _emit_ended(self, episode: CorrelationEpisode) -> bool:
         """Report an episode over with the ok state of its family; the id derives from the episode."""
         computer = _global_config.computer.name
         started = episode.started_at.isoformat()
@@ -321,7 +323,6 @@ class CorrelationCartridge:
                     data=BurstSubsidedData(episode_start=started),
                 ),
                 _ended_facts(EventLevel.OPERATIONAL),
-                context,
             )
         if episode.detection is EpisodeDetection.FAILURE_CASCADE:
             return await self._emit(
@@ -332,7 +333,6 @@ class CorrelationCartridge:
                     data=FailureCascadeSubsidedData(episode_start=started),
                 ),
                 _ended_facts(EventLevel.BUSINESS),
-                context,
             )
         return await self._emit(
             EntityRecovered(
@@ -342,45 +342,40 @@ class CorrelationCartridge:
                 data=EntityRecoveredData(episode_start=started),
             ),
             _ended_facts(EventLevel.WORKFLOW),
-            context,
         )
 
     async def _emit(
         self,
         event: PlatformEvent[Any, Any],
         legacy: LegacyFacts,
-        context: PipelineContext,
         opened_episode: tuple[EpisodeDetection, str, str] | None = None,
     ) -> bool:
-        """Emit a synthetic correlation event through the configured producer.
+        """Emit a synthetic correlation event through the producer.
 
         An episode opened for this report is closed again when the report is not delivered, so a
         replay of the triggering event opens it and reports it again instead of finding it open.
         """
-        if context.producer is None:
-            logger.warning(
-                "correlation: no producer configured, cannot emit synthetic event",
-                event_type=event.type_name(),
-            )
-            await self._abandon_episode(context, opened_episode)
-            return False
         try:
-            await context.producer.emit(event, legacy)
+            await self._producer.emit(event, legacy)
         except Exception:
-            await self._abandon_episode(context, opened_episode)
+            await self._abandon_episode(opened_episode)
             raise
         return True
 
-    async def _abandon_episode(
-        self, context: PipelineContext, episode_key: tuple[EpisodeDetection, str, str] | None
-    ) -> None:
+    async def _abandon_episode(self, episode_key: tuple[EpisodeDetection, str, str] | None) -> None:
         """Close an episode whose opening report was not delivered."""
         if episode_key is None:
             return
-        episode = await context.db.get_episode(*episode_key)
+        episode = await self._db.get_episode(*episode_key)
         if episode is not None:
-            await context.db.close_episode(episode.id)
+            await self._db.close_episode(episode.id)
 
-    def identifier(self) -> str:
-        """Return the stable cartridge identifier."""
-        return self.name
+
+def build_correlation_consumer(db: EventDB, producer: EventProducer, config: CorrelationConfig) -> Consumer:
+    """The consumer that correlates this computer's events into burst, cascade and degradation reports."""
+    correlation = _Correlation(db, producer, config)
+    return Consumer(
+        name=CORRELATION_CONSUMER,
+        interest=Interest(types=(ANY_TYPE,), own_computer_only=True),
+        handler=correlation.handle,
+    )

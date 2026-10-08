@@ -77,6 +77,7 @@ _INTERNAL_ENTRY_CODEC = EntryCodec(
 INTERNAL_EVENT_NAMESPACE_PREFIX = "internal."
 _INTERNAL_CONSUMER_GROUP_PREFIX = "event-bus:"
 _INTERNAL_EVENT_SOURCE = "event-bus"
+_INTERNAL_PROCESSOR_NAME = "internal-event-bus"
 _CONTEXT_TYPE_KEY = "context_type"
 # Live-process redelivery cache cap. The cache drops entries on successful
 # deliver() so steady-state size tracks in-flight envelopes. The cap bounds
@@ -496,6 +497,7 @@ class EventBus:
             self._redis,
             _InternalEventPipeline(self),
             codec=_INTERNAL_ENTRY_CODEC,
+            declared_name=_INTERNAL_PROCESSOR_NAME,
             stream=INTERNAL_EVENT_STREAM,
             group=self._consumer_group(),
             consumer_name=self._consumer_name(),

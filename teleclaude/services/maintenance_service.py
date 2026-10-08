@@ -54,6 +54,7 @@ from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
+from teleclaude.events.consumers import HANDLED_RECORD_RETENTION
 from teleclaude.hooks.receiver._session import prune_session_map
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import is_project_checkout
@@ -482,6 +483,7 @@ class MaintenanceService:
                 try:
                     event_db = await get_event_db()
                     await event_db.cleanup_runtime_events(older_than=now - timedelta(days=7))
+                    await event_db.prune_handled_events(older_than=now - HANDLED_RECORD_RETENTION)
                 except Exception:
                     logger.warning("Event DB runtime cleanup skipped", exc_info=True)
                 try:

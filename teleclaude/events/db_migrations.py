@@ -37,6 +37,13 @@ _NOTIFICATION_COLUMN_BACKFILLS = (
     (_HOME_OWNER_COLUMN, EventHomeOwnerMarker.UNRESOLVED.value),
 )
 _CORRELATION_WINDOWS = "correlation_windows"
+#: Marks a window row counted before correlation acted only on its own computer's events.
+INHERITED_WINDOW_COLUMN = "inherited"
+_ADD_INHERITED_COLUMN_SQL = "ALTER TABLE {table} ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+_MARK_ALL_INHERITED_SQL = "UPDATE {table} SET {column} = 1"
+_TABLE_EXISTS_SQL = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+#: The table the consumer runtime records handled events in; `EventDB.initialize` creates it after `migrate_forward`.
+HANDLED_EVENTS_TABLE = "handled_events"
 _EARLIER_WINDOW_INDEXES = ("idx_correlation_windows", "idx_correlation_windows_subject")
 _DROP_INDEX_SQL = "DROP INDEX IF EXISTS {index}"
 _DROP_COLUMN_SQL = "ALTER TABLE {table} DROP COLUMN {column}"
@@ -92,6 +99,26 @@ async def _bring_correlation_windows_forward(conn: aiosqlite.Connection) -> None
         await conn.execute(_DROP_COLUMN_SQL.format(table=_CORRELATION_WINDOWS, column=_EARLIER_WINDOW_ENTITY_COLUMN))
 
 
+async def _table_exists(conn: aiosqlite.Connection, table: str) -> bool:
+    cursor = await conn.execute(_TABLE_EXISTS_SQL, (table,))
+    return (await cursor.fetchone()) is not None
+
+
+async def _mark_inherited_correlation_windows(conn: aiosqlite.Connection) -> None:
+    """Mark the window rows counted before consumers existed, once, on the first start that has them.
+
+    Until then every computer counted every computer's events, and a row records no origin, so a
+    retained foreign count cannot be told from a local one. The handled-events table is created
+    after this step runs, so its absence is the one moment consumers first start; the marked rows
+    leave through the windows' ordinary pruning, and nothing is deleted here.
+    """
+    columns = await _columns(conn, _CORRELATION_WINDOWS)
+    if INHERITED_WINDOW_COLUMN not in columns:
+        await conn.execute(_ADD_INHERITED_COLUMN_SQL.format(table=_CORRELATION_WINDOWS, column=INHERITED_WINDOW_COLUMN))
+    if not await _table_exists(conn, HANDLED_EVENTS_TABLE):
+        await conn.execute(_MARK_ALL_INHERITED_SQL.format(table=_CORRELATION_WINDOWS, column=INHERITED_WINDOW_COLUMN))
+
+
 async def _rename_stored_event_types(conn: aiosqlite.Connection) -> None:
     """Rewrite every stored earlier type name to its current name."""
     for table in _TYPED_EVENT_TABLES:
@@ -120,5 +147,6 @@ async def migrate_forward(conn: aiosqlite.Connection) -> None:
     """Bring every stored event shape forward to the current model, in dependency order."""
     await _bring_notification_homes_forward(conn)
     await _bring_correlation_windows_forward(conn)
+    await _mark_inherited_correlation_windows(conn)
     await _rename_stored_event_types(conn)
     await _rewrite_quarantined_bodies(conn)

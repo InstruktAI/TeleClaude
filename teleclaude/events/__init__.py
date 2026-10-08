@@ -8,13 +8,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from teleclaude.events.catalog import EventCatalog, EventDeclaration, PlatformEvent
     from teleclaude.events.catalog import build_default_catalog as build_default_catalog
+    from teleclaude.events.consumers import Consumer, ConsumerRuntime, Interest
     from teleclaude.events.db import EventDB, get_event_db
     from teleclaude.events.envelope import EventLevel, EventVisibility, ReceivedEvent
     from teleclaude.events.pipeline import Pipeline, PipelineContext
     from teleclaude.events.processor import EventProcessor
     from teleclaude.events.producer import EventProducer, configure_producer, ensure_event_producer, publish_event
+    from teleclaude.events.type_pattern import TypePattern
 
 _EXPORTS = {
+    "Consumer": ("teleclaude.events.consumers", "Consumer"),
+    "ConsumerRuntime": ("teleclaude.events.consumers", "ConsumerRuntime"),
+    "Interest": ("teleclaude.events.consumers", "Interest"),
+    "TypePattern": ("teleclaude.events.type_pattern", "TypePattern"),
     "EventCatalog": ("teleclaude.events.catalog", "EventCatalog"),
     "EventDB": ("teleclaude.events.db", "EventDB"),
     "EventLevel": ("teleclaude.events.envelope", "EventLevel"),
@@ -46,6 +52,8 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "Consumer",
+    "ConsumerRuntime",
     "EventCatalog",
     "EventDB",
     "EventDeclaration",
@@ -53,10 +61,12 @@ __all__ = [
     "EventProcessor",
     "EventProducer",
     "EventVisibility",
+    "Interest",
     "Pipeline",
     "PipelineContext",
     "PlatformEvent",
     "ReceivedEvent",
+    "TypePattern",
     "build_default_catalog",
     "configure_producer",
     "ensure_event_producer",

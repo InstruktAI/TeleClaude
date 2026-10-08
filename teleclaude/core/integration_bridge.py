@@ -2,7 +2,7 @@
 
 Provides typed emission helpers that construct typed events and publish
 them through the configured EventProducer. Also provides the integrator
-session spawn helper used by the integration trigger cartridge.
+session spawn helper used by the integration trigger consumer.
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ async def spawn_integrator_session(
 
     Returns session info dict on spawn, or None if an integrator is already open
     for this project.
-    Raises on spawn failure — the caller (cartridge) is responsible for handling.
+    Raises on spawn failure — the caller (the integration trigger consumer) is responsible for handling.
     """
     try:
         sessions = await db.list_sessions()
