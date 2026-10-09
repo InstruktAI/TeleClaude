@@ -130,6 +130,8 @@ symlink. Replacing it with a symlink to the global config breaks validation beca
 
 Valid in both project and global configs.
 
+<!-- planned-change:retire-outbound-hook-subscriptions -->
+
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
@@ -150,6 +152,30 @@ hooks:
   subscriptions: list[SubscriptionConfig]
 channel_subscriptions: list[ChannelSubscription]
 ```
+
+<!-- change:retire-outbound-hook-subscriptions -->
+
+```yaml
+project_slug: string # canonical machine identity; required in project configs
+project_name: string # human-readable display name
+env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
+frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
+description: string
+business:
+  publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
+    - slug: string # required: the published domain
+      trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
+jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (local/projects/teleclaude/spec/feature/config/job-declaration-model)
+hooks:
+  inbound: # this project's own inbound sources, at most one per protocol
+    native:
+      secret: string # declared as a ${NAME} reference resolved from this project's .env
+    github:
+      secret: string # declared as a ${NAME} reference resolved from this project's .env
+channel_subscriptions: list[ChannelSubscription]
+```
+
+<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own

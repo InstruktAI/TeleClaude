@@ -180,6 +180,8 @@ And the last-summary timestamp is updated
 
 ### Cross-context references
 
+<!-- planned-change:retire-outbound-hook-subscriptions -->
+
 - Consumes from `hook-event-outbox` (this context, v1 in-context;
   `agent_runtime` in v2).
 - Emits in-process event-bus events that domain contexts subscribe to:
@@ -191,6 +193,21 @@ And the last-summary timestamp is updated
   the sessions store.
 - Routes mutation entries to `session-state-mutation-via-outbox`
   handlers.
+
+<!-- change:retire-outbound-hook-subscriptions -->
+
+- Consumes from `hook-event-outbox` (this context, v1 in-context;
+  `agent_runtime` in v2).
+- Emits in-process event-bus events that domain contexts subscribe to:
+  agent-event, agent-activity, session-started, session-updated,
+  session-closed, error.
+- Invokes `headless-session-bootstrap-from-hook` when an
+  agent-session-start arrives for a session that does not yet exist in
+  the sessions store.
+- Routes mutation entries to `session-state-mutation-via-outbox`
+  handlers.
+
+<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 ## Known caveats
 

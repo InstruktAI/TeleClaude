@@ -117,6 +117,8 @@ And "deployment fanout consumer stopped" is logged
 
 ### Cross-context references
 
+<!-- planned-change:retire-outbound-hook-subscriptions -->
+
 - Cluster-scoped delivery — every integration service in the
   deployment runs its own consumer. The mechanism is the v1
   expression of the v2 domain spec's cluster-visibility posture for
@@ -129,6 +131,24 @@ And "deployment fanout consumer stopped" is logged
 - The deployment update handler lives outside `integration`
   (in the deployment subsystem); this snippet documents the
   integration-side transport, not the deployment business logic.
+
+<!-- change:retire-outbound-hook-subscriptions -->
+
+- Cluster-scoped delivery — every integration service in the
+  deployment runs its own consumer. The mechanism is the v1
+  expression of the v2 domain spec's cluster-visibility posture for
+  cross-context events.
+- Initial trigger sources include `github-webhook-normalization`
+  (push / release events) and any other path that emits a
+  deployment / version-available event through the local dispatcher.
+- The consumer dispatches through the hook dispatcher
+  (`local/projects/teleclaude/design/architecture/hook-service`), sharing
+  its contract matcher and handler registry.
+- The deployment update handler lives outside `integration`
+  (in the deployment subsystem); this snippet documents the
+  integration-side transport, not the deployment business logic.
+
+<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 ## Known caveats
 

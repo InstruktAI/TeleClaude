@@ -240,6 +240,8 @@ And the person the message comes from is resolved by the handler from the phone 
 
 ### Cross-context references
 
+<!-- planned-change:retire-outbound-hook-subscriptions -->
+
 - Inbound side of `outbound-messaging-providers`: the same provider
   (WhatsApp) is supported in both directions, but the inbound handler
   belongs to `integration` and the outbound send capability also
@@ -250,6 +252,22 @@ And the person the message comes from is resolved by the handler from the phone 
   the platform API).
 - Touches `identity` indirectly through origin metadata, which the
   identity context reads to resolve principal-from-origin.
+
+<!-- change:retire-outbound-hook-subscriptions -->
+
+- Inbound side of `outbound-messaging-providers`: the same provider
+  (WhatsApp) is supported in both directions, but the inbound handler
+  belongs to `integration` and the outbound send capability also
+  belongs to `integration`. The session-creation step calls into
+  `agent_runtime` via the platform's session-create API.
+- Uses the hook dispatcher and its contract matcher
+  (`local/projects/teleclaude/design/architecture/hook-service`).
+- Touches `agent_runtime` to create sessions (cross-context call via
+  the platform API).
+- Touches `identity` indirectly through origin metadata, which the
+  identity context reads to resolve principal-from-origin.
+
+<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 ## Known caveats
 

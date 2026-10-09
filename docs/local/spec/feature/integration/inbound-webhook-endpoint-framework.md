@@ -64,6 +64,8 @@ source in the global configuration.
 
 ### Native request
 
+<!-- planned-change:retire-outbound-hook-subscriptions -->
+
 - The body is a JSON object with exactly three members: `domain`, a single
   name segment; `name`, one or more name segments joined by dots; and
   `payload`, a JSON object.
@@ -76,6 +78,22 @@ source in the global configuration.
 
 - The relayed event is named `<domain>.<name>` and carries `payload` as its
   data.
+
+<!-- change:retire-outbound-hook-subscriptions -->
+
+- The body is a JSON object with exactly three members: `domain`, a single
+  name segment; `name`, one or more name segments joined by dots; and
+  `payload`, a JSON object.
+- A name segment starts with a lowercase letter and holds only lowercase
+  letters, digits and underscores.
+- The request is signed with the platform's webhook signature: an
+  HMAC-SHA256 digest of the raw body under the declaring home's secret,
+  presented as `sha256=<hex digest>` in the `X-Hook-Signature` header.
+
+- The relayed event is named `<domain>.<name>` and carries `payload` as its
+  data.
+
+<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 ### Provider requests
 
