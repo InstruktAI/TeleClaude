@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -18,6 +20,9 @@ from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_scope import HOME_SCOPES, RESERVED_HOME_IDENTITY_PREFIXES, home_identity_prefix
 from teleclaude.snippet_scope import SnippetScope as SnippetScope
+
+_PROJECT_SLUG_CONTEXT_NAME = "validation_project_slugs"
+_PROJECT_SLUGS: ContextVar[dict[Path, str] | None] = ContextVar(_PROJECT_SLUG_CONTEXT_NAME, default=None)
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 #: The generated bundle the documentation pipeline writes into each published
@@ -205,7 +210,30 @@ def is_companion(path: Path) -> bool:
     return companion_slug(path) is not None
 
 
+@contextmanager
+def project_slug_resolution() -> Iterator[None]:
+    """Reuse successful declared identities within one validation pass only."""
+    token = _PROJECT_SLUGS.set({})
+    try:
+        yield
+    finally:
+        _PROJECT_SLUGS.reset(token)
+
+
 def read_declared_project_slug(project_root: Path) -> str:
+    """Read a declared identity, reusing it only inside a validation pass."""
+    slugs = _PROJECT_SLUGS.get()
+    if slugs is not None:
+        cached = slugs.get(project_root)
+        if cached is not None:
+            return cached
+    slug = _read_declared_project_slug(project_root)
+    if slugs is not None:
+        slugs[project_root] = slug
+    return slug
+
+
+def _read_declared_project_slug(project_root: Path) -> str:
     """Return the slug a project declares, for minting its local snippet identities.
 
     Reads ``project_slug``, else the normalized ``project_name``, from the root's

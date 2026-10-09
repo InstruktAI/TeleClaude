@@ -56,6 +56,7 @@ from teleclaude.snippet_validation import (
     is_generated_domain_artifact_source,
     is_retirement_companion,
     load_domains,
+    project_slug_resolution,
     validate_inline_ref_format,
 )
 
@@ -900,6 +901,18 @@ def validate_all_snippets(
     lint; every other repository's run passes none, so a malformed or
     uncommitted home tier file never reaches an unrelated repository's run.
     """
+    with project_slug_resolution():
+        _validate_all_snippets(project_root, paths=paths, tier_home=tier_home, full_run=full_run)
+
+
+def _validate_all_snippets(
+    project_root: Path,
+    *,
+    paths: list[Path] | None,
+    tier_home: Path | None,
+    full_run: bool,
+) -> None:
+    """Run the unchanged checks within the caller's declared-identity scope."""
     domains = load_domains(project_root)
     tier_roots = [root for root, _kind in iter_tier_snippet_roots(tier_home)] if tier_home is not None else []
 
