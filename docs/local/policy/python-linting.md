@@ -17,6 +17,9 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
   - `teleclaude/core/adapter_client/_client.py`
 - Every local-import suppression in those files includes the same-line reason
   `startup boundary` and names the suppressed import-placement rule.
+- Entry seams (`sdlc/policy/python/core`) are named here too:
+  `teleclaude/cli/telec/__main__.py` loads the telec gate only for a command it clears.
+  Its suppression states the `entry seam` reason.
 - The command-boundary local imports in `teleclaude/cli/telec/handlers/todo.py`
   are transitional debt under the entry-seam rule of `sdlc/policy/python/core`:
   they defer loads inside command functions instead of at one entry seam. They do
@@ -109,4 +112,4 @@ an author with no stake in the result.
 
 ## Exceptions
 
-- Only the explicitly named startup boundaries and the todo-router debt above.
+- Only the explicitly named startup boundaries, entry seams and the todo-router debt above.
