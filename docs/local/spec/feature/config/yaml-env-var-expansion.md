@@ -81,9 +81,10 @@ And non-string values retain their types
 
 ```gherkin
 Given machine configuration contains an environment reference
-And the machine runtime environment was established at process startup
-When machine configuration is loaded
-Then the reference resolves from that runtime environment
+And the TeleClaude checkout's `.env` holds a value for it
+When machine configuration is loaded, validated or written
+Then the reference resolves from the machine runtime environment with that `.env` applied
+And a shell-provided value for the same name takes precedence
 And user-facing overlay environment files do not participate
 ```
 
