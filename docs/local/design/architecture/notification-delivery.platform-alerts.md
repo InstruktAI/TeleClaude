@@ -41,9 +41,9 @@ consumer that tells people.
   interests, read through config's published interests contract
   (`local/projects/teleclaude/spec/feature/config/notification-interests`): a
   person's interests answer whether they select an event type.
-- The consumer's incident record: per lifecycle family and thing, the time the
-  thing became broken, and which selected recipients still await the message
-  of the transition in progress.
+- The consumer's incident record: per lifecycle family and thing, its current
+  state with the type and time of the event that brought it there, the time the
+  thing became broken, and the state each selected recipient was last told.
 
 **Outputs:**
 
@@ -82,9 +82,13 @@ consumer that tells people.
   computer emitted; each computer keeps its own incident records, and no
   computer tells another computer's events.
 - **The record is the only state.** Messages are not stored, listed or pushed to
-  any shared surface. The record of an open matter holds its current state, the
-  time it became broken, and, per selected recipient, the state that recipient
-  was last told. It survives a restart and is removed once every selected
+  any shared surface. The record of an open matter holds its current state with
+  the type and time of the event that brought it there, the time it became
+  broken, and, per selected recipient, the state that recipient was last told.
+  A message states the matter's current state from the record, so a message
+  sent on a later event or after a restart says what the event that brought the
+  state said, and a recovery states how long the thing was broken until that
+  event. The record survives a restart and is removed once every selected
   recipient was last told the matter is ok.
 - **A recipient is outstanding while their last-told state differs from the
   matter's.** Each event of a transition sends the matter's current state only
