@@ -40,6 +40,7 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 - Only `${NAME}` tokens participate. Substituted values are strings; the typed schema owns any later coercion.
 - A missing sibling `.env` is equivalent to an empty local environment: every whole-value reference is then absent.
 - Loading and resolving an overlay does not mutate the process environment.
+- A configuration file read from a committed snapshot rather than the working tree resolves from the environment file beside the live file on this computer, so commit-time and publication checks judge the same values the running computer does.
 - An unresolved reference embedded in a longer value fails with the variable name and owning configuration path, without exposing any resolved value.
 - Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced, including references whose value is absent on the saving computer. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML.
 - Arbitrary `.env` entries are not injected as model fields. Consumers that need an unreferenced credential use the config context's scope-owned credential-store interface.

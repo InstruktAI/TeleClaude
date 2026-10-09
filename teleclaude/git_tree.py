@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import uuid
 from collections.abc import Callable, Iterator, Mapping
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 from teleclaude.git import GIT_EXECUTABLE, Repo, hook_free_environment
+from teleclaude.paths import ConfigFileName
 
 _GIT_LIST_INDEX_PATHS_ARGUMENTS = ("ls-files", "-z")
 _GIT_LIST_COMMIT_PATHS_ARGUMENTS = ("ls-tree", "-r", "--name-only", "-z")
@@ -29,6 +31,7 @@ _GIT_PATHSPEC_SEPARATOR = "--"
 _SNAPSHOT_DIRECTORY_PREFIX = "teleclaude-tree-"
 _SNAPSHOT_SOURCE_DIRECTORY = "source"
 _SNAPSHOT_VENV_NAME = ".venv"
+_SNAPSHOT_ENVIRONMENT_MODE = 0o600
 _ORPHAN_BRANCH_PREFIX = "teleclaude-index-snapshot-"
 _INDEX_PATH_PREFIX = ":"
 _TREE_PATH_SEPARATOR = ":"
@@ -138,6 +141,7 @@ def materialize_tree(source: TreeSource) -> Iterator[Path]:
             canonical_venv = source.repository_root / _SNAPSHOT_VENV_NAME
             if canonical_venv.exists():
                 (snapshot_root / _SNAPSHOT_VENV_NAME).symlink_to(canonical_venv, target_is_directory=True)
+            _copy_declaration_environments(source, snapshot_root)
             yield snapshot_root
         finally:
             _git_execute(
@@ -146,6 +150,25 @@ def materialize_tree(source: TreeSource) -> Iterator[Path]:
                 hook_free_environment(source.repository_root),
                 check=False,
             )
+
+
+def _copy_declaration_environments(source: TreeSource, snapshot_root: Path) -> None:
+    """Give each committed configuration declaration this computer's environment file beside it.
+
+    Git never carries a ``.env``, so without this a snapshot's declarations would be judged as if
+    no value resolved on this computer. Copies, not links: owner-only environments must stay
+    regular files. The snapshot's owner-only temporary directory removes them with it.
+    """
+    for relative_path in list_tree_paths(source):
+        declaration = Path(relative_path)
+        if declaration.name != ConfigFileName.OVERLAY:
+            continue
+        live_environment = source.repository_root / declaration.parent / ConfigFileName.ENV
+        snapshot_environment = snapshot_root / declaration.parent / ConfigFileName.ENV
+        if not live_environment.is_file() or snapshot_environment.exists():
+            continue
+        shutil.copyfile(live_environment, snapshot_environment)
+        snapshot_environment.chmod(_SNAPSHOT_ENVIRONMENT_MODE)
 
 
 def _add_recorded_worktree(repository_root: Path, snapshot_root: Path, commit: str) -> None:
