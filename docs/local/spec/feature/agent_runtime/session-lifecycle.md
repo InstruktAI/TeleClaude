@@ -303,19 +303,6 @@ Examples:
   | agent_turn_failed     | stalled | turn_failed                   |
 ```
 
-<!-- planned-change:revived-agent-keeps-its-status -->
-
-#### UC-SL42: Every agent (re)start begins at unknown
-
-```
-Given an agent session whose agent process starts, restarts, is handed off, or is revived
-When that start is dispatched
-Then the session's agent status becomes `unknown`
-And it leaves `unknown` only on the first normalized agent event of that run
-```
-
-<!-- change:revived-agent-keeps-its-status -->
-
 #### UC-SL42: Every agent (re)start begins at unknown
 
 ```
@@ -325,8 +312,6 @@ Then the session's agent status becomes `unknown`
 And it leaves `unknown` only on the first normalized agent event of that run
 And a restart or a revival is not such a start: each keeps the agent status the session's record holds (`local/projects/teleclaude/spec/feature/agent_runtime/agent-restart`, `local/projects/teleclaude/spec/feature/agent_runtime/session-revival`)
 ```
-
-<!-- /planned-change:revived-agent-keeps-its-status -->
 
 #### UC-SL43: A start that never proves liveness becomes stalled
 

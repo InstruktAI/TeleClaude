@@ -175,21 +175,6 @@ Then it iterates discovered transcripts for that agent and matches by extracted 
 And returns true on first hit, false if no transcript matches
 ```
 
-<!-- planned-change:revived-agent-keeps-its-status -->
-
-#### UC-SR9: Revival completes through the restart flow
-
-```gherkin
-Given a TeleClaude session id has been resolved (reused or freshly created)
-When the service hands off to the restart-agent flow
-Then the agent CLI is launched with resume-from-transcript semantics (the agent CLI replays its own transcript)
-And if the session was closed (closed-at marker set), revival clears the marker and sets lifecycle status to headless before launch
-And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
-And the response payload reports a successful create with session id, host-pane reference, and agent
-```
-
-<!-- change:revived-agent-keeps-its-status -->
-
 #### UC-SR9: Revival completes through the restart flow
 
 ```gherkin
@@ -202,10 +187,6 @@ And the revived session's lifecycle status and the first input after revival fol
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
-<!-- /planned-change:revived-agent-keeps-its-status -->
-
-<!-- planned:revived-agent-keeps-its-status -->
-
 #### UC-SR10: A revived agent keeps its status until it acts
 
 ```gherkin
@@ -216,8 +197,6 @@ And revival delivers no input to the agent, starts no turn and starts no `no_sta
 And a freshly-minted revival row, which has no status before revival, stays `unknown` with no entered moment until its first normalized agent event and is never marked `stalled` with reason `no_start`
 And otherwise the status moves as for a session that was never closed: on a normalized agent event, such as the one the first input delivered to the revived agent produces, and by the liveness rules in `local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`: UC-SL43 for an `unknown` kept from an earlier start that never reported, and UC-SL29 for a kept `active`
 ```
-
-<!-- /planned:revived-agent-keeps-its-status -->
 
 #### UC-SR7 — Revival preserves generation and delivery identity across native-session replacement
 
@@ -261,11 +240,7 @@ And the resumed agent receives the resulting turn in the restored conversation
 - **`--attach` is a client-side affordance only.** The agent_runtime service never attaches the caller's terminal to a host pane; the CLI handler attaches locally after a successful revive response.
 - **No completion-event guarantees on the response.** Unlike agent restart, revive awaits the restart-agent flow synchronously and returns when the relaunch has been dispatched; agent readiness is observed downstream (e.g., via the session-ready signal on the event bus), not in the response.
 
-<!-- planned:revived-agent-keeps-its-status -->
-
 - **A kept agent status is not evidence that the revived agent is running.** Revival keeps the status whether or not the relaunched process comes up, and no `no_start` stall flags a relaunch that never came up.
-
-<!-- /planned:revived-agent-keeps-its-status -->
 
 ## See Also
 
