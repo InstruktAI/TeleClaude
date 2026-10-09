@@ -178,8 +178,9 @@ the dispatcher reads it to decide local execution versus forwarding.
 - **A daemon-backed CLI command is accepted or not accepted.** Accepted is a zero exit
   carrying the `IMMEDIATE` result or the receipt; a command never exits zero on a
   failure. Not accepted is a non-zero exit carrying an error, and nothing was done. A
-  request that times out and a command refused partway through several requests are the
-  two cases where a non-zero exit does not settle acceptance (Failure modes).
+  request whose connection fails after it was sent and a command that sends several
+  requests are the cases where a non-zero exit does not settle acceptance (Failure
+  modes).
 
 <!-- /planned:cli-accept-or-retry -->
 
@@ -275,16 +276,25 @@ sequenceDiagram
 
 <!-- planned:cli-accept-or-retry -->
 
-- **A request times out before the daemon answers.** The CLI exits non-zero without
-  knowing whether the daemon accepted the work, so the accepted-or-not-accepted split
-  does not decide it. The error names the timeout and carries no instruction to run
-  the command again.
-- **A command that sends several requests is refused partway.** Targetless
-  `telec sessions end` closes children one request at a time. A refusal or lost daemon
-  after earlier closures were accepted exits non-zero with those closures done; the error
-  names the children not yet confirmed closed, which can include some it closed in that
-  pass, and, for a draining or unreachable daemon, carries the
-  same wait-and-run-again instruction, which is safe because the command is idempotent.
+- **A request's connection fails after it was sent.** A request that times out, or
+  whose connection breaks mid-request, exits non-zero without the CLI knowing whether
+  the daemon accepted the work, so the accepted-or-not-accepted split does not decide
+  it. The error names the timeout or the broken connection and carries no instruction
+  to run the command again.
+- **A command that sends several requests fails for some of them.** Each request is
+  accepted or not on its own; the command reports what it knows per request, exits
+  non-zero, and, when a draining or unreachable daemon refused any of them, carries the
+  same wait-and-run-again instruction without stating that nothing was accepted:
+  - Targetless `telec sessions end` closes children one request at a time. A refusal
+    after earlier closures were accepted leaves those closures done; the error names
+    the children not yet confirmed closed, which can include some it closed in that
+    pass. Running it again is safe because the command is idempotent.
+  - `telec history search` across several computers prints the results of every
+    target that answered beside the failure of each target that did not. When no
+    target answered and every failure was a draining or unreachable daemon, the
+    command is not accepted and gives the full not-accepted message. Failures that
+    come only from peer computers, beside answered targets, are reported with the
+    results and exit zero, because the command produced its result.
 
 <!-- /planned:cli-accept-or-retry -->
 
