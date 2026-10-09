@@ -14,26 +14,12 @@ desk and refused from anywhere else. Admins are its target and never escalate.
 
 An escalation reaches the **admins of the home that owns the desk**:
 
-<!-- planned-change:help-desk-master-routing -->
-
 | Desk                        | Notified                    |
 | --------------------------- | --------------------------- |
 | Company desk                | that company's admins       |
 | Project desk, company-owned | the owning company's admins |
 | Project desk, person-owned  | the owning person           |
 | Project desk, ownerless     | the platform's admins       |
-| Platform desk               | the platform's admins       |
-
-<!-- change:help-desk-master-routing -->
-
-| Desk                        | Notified                    |
-| --------------------------- | --------------------------- |
-| Company desk                | that company's admins       |
-| Project desk, company-owned | the owning company's admins |
-| Project desk, person-owned  | the owning person           |
-| Project desk, ownerless     | the platform's admins       |
-
-<!-- /planned-change:help-desk-master-routing -->
 
 When none of a desk's owning admins can be reached, the platform's admins are
 notified instead. Each notified admin receives the escalation in their own
@@ -50,17 +36,7 @@ tags the agent hands the conversation back: the exchange since the relay started
 is delivered to the same help-desk session, the relay ends, and the visitor's
 next messages reach the agent again.
 
-<!-- planned-change:help-desk-master-routing -->
-
-A company or project desk's escalation appears on no shared surface. A platform
-desk's escalation also opens a thread in the shared Discord guild's escalation
-forum, where platform admins can follow and answer it.
-
-<!-- change:help-desk-master-routing -->
-
 A desk's escalation appears on no shared surface.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 ## Canonical fields
 
@@ -110,22 +86,7 @@ Then the platform's admins receive the escalation
 And it still names the company desk as its origin
 ```
 
-<!-- planned-change:help-desk-master-routing -->
-
 #### UC-HDX4: A platform desk visitor below member can be escalated
-
-```gherkin
-Given a registered contributor in a platform help-desk session
-When the desk agent escalates
-Then the escalation is accepted
-And the platform's admins receive it
-```
-
-<!-- change:help-desk-master-routing -->
-
-#### UC-HDX4: A platform desk visitor below member can be escalated
-
-<!-- /planned-change:help-desk-master-routing -->
 
 #### UC-HDX5: Escalation outside a help desk is refused
 
@@ -187,24 +148,7 @@ Then the command fails and the agent is told the escalation did not happen
 And the visitor's messages keep reaching the agent
 ```
 
-<!-- planned-change:help-desk-master-routing -->
-
 #### UC-HDX10: A platform desk escalation is also followed in the shared escalation forum
-
-```gherkin
-Given a contributor's session at the platform help desk
-When the desk agent escalates
-Then the platform's admins are notified in their own conversations
-And a thread for the escalation opens in the shared Discord guild's escalation forum
-And an answer posted there reaches the contributor like a reply from a notified admin
-And tagging the agent in that thread hands the conversation back
-```
-
-<!-- change:help-desk-master-routing -->
-
-#### UC-HDX10: A platform desk escalation is also followed in the shared escalation forum
-
-<!-- /planned-change:help-desk-master-routing -->
 
 ### Cross-context references
 
@@ -218,18 +162,8 @@ And tagging the agent in that thread hands the conversation back
   (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`); the
   hand-back arrives through the normal message pipeline.
 
-<!-- planned-change:help-desk-master-routing -->
-
-- **integration** — targeted per-person delivery to each admin's preferred
-  channel, delivery of a relayed reply through the visitor's adapter, and the
-  shared escalation forum for the platform desk.
-
-<!-- change:help-desk-master-routing -->
-
 - **integration** — targeted per-person delivery to each admin's preferred
   channel, and delivery of a relayed reply through the visitor's adapter.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 ## Known caveats
 
@@ -238,24 +172,9 @@ And tagging the agent in that thread hands the conversation back
 - An admin whose preferred channel cannot carry a reply, such as email, is
   notified but cannot answer through the relay.
 
-<!-- planned-change:help-desk-master-routing -->
-
-- While any live computer does not yet run this relay, a company or project
-  desk's escalation is refused as not available for that desk yet, and a
-  platform desk's escalation reaches the platform's admins only through the
-  shared escalation thread. Once every live computer runs it, escalation
-  behaves as described above.
-- A platform desk escalation whose shared thread cannot be opened is still
-  accepted when admins were notified in their own conversations, and its
-  result tells the agent that the thread is missing.
-
-<!-- change:help-desk-master-routing -->
-
 - While any live computer does not yet run this relay, a desk's escalation is
   refused as not available for that desk yet. Once every live computer runs
   it, escalation behaves as described above.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 - A visitor message that no notified admin could receive is refused back to
   the visitor's adapter rather than dropped or handed to the agent; an admin

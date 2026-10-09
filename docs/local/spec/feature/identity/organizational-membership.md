@@ -62,15 +62,7 @@ assignment. Absence resolves to nothing, never to a default company.
 
 **Company role**
 
-<!-- planned-change:help-desk-master-routing -->
-
-: The person role held at one company's scope, drawn from the one person-role vocabulary (`admin`, `member`, `contributor`, `newcomer`). `admin` is the company administrative role; the others reach only the company projects the person is assigned to.
-
-<!-- change:help-desk-master-routing -->
-
 : The person role held at one company's scope, drawn from the one person-role vocabulary (`admin`, `member`). `admin` is the company administrative role; `member` reaches only the company projects the person is assigned to.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 **Project assignment**
 : A person's assignment to work in one registered project. Never inferred from company membership.

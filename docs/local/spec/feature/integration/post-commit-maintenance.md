@@ -320,22 +320,6 @@ And after every owed action succeeds, a log read whose window covers the activat
 But a read whose window misses that interval does not close it
 ```
 
-<!-- planned-change:help-desk-master-routing -->
-
-#### UC-PCM18: A master commit in the platform home owes publication
-
-```gherkin
-Given the platform home carries the installed maintenance hook
-And the home's retained set admits the fixed home master set: the platform home's root AGENTS.master.md, the platform help desk's help-desk/AGENTS.master.md, each declared person's and company's root AGENTS.master.md, and each declared company's help-desk/AGENTS.master.md
-When a commit on the platform home's canonical main records a change to one of those masters
-Then committed-state publication is included in the maintenance owed by that activation range
-And an agent reading the structured records observes the immutable range and the publication action's terminal outcome
-And no generated AGENTS.md beside those masters enters the commit, because the retained set does not admit it
-But the same path shape in an ordinary project does not acquire a home-only maintenance binding
-```
-
-<!-- change:help-desk-master-routing -->
-
 #### UC-PCM18: A master commit in the platform home owes publication
 
 ```gherkin
@@ -347,8 +331,6 @@ And an agent reading the structured records observes the immutable range and the
 And no generated AGENTS.md beside those masters enters the commit, because the retained set does not admit it
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
-
-<!-- /planned-change:help-desk-master-routing -->
 
 ## See Also
 

@@ -57,20 +57,6 @@ When a terminal caller POSTs to /sessions
 Then the session record's human_role is admin, taken from the caller identity the request carries, not by a model default
 ```
 
-<!-- planned-change:help-desk-master-routing -->
-
-#### UC-SL21: A restricted role runs only inside an enabled help desk
-
-```
-Given the session's human_role for the requested project is neither admin nor member
-And the request carries no system_role
-When the session is created
-Then the session's project_path is an enabled help desk: the endpoint its entry resolved to, the desk of a returning customer's latest session, or the platform help desk for a registered person below member who entered through none
-And a request that names no enabled help desk is refused and creates no session
-```
-
-<!-- change:help-desk-master-routing -->
-
 #### UC-SL21: A restricted role runs only inside an enabled help desk
 
 ```
@@ -81,10 +67,6 @@ Then the session's project_path is the enabled help desk its request names on th
 And a request that names no enabled help desk is refused and creates no session
 ```
 
-<!-- /planned-change:help-desk-master-routing -->
-
-<!-- planned:help-desk-master-routing -->
-
 #### UC-SL57: A request that names no project and no desk is refused
 
 ```
@@ -93,8 +75,6 @@ When the session is created
 Then the request is refused and creates no session
 And no default folder is chosen for it
 ```
-
-<!-- /planned:help-desk-master-routing -->
 
 #### UC-SL48: A help-desk session below member is confined to its desk
 
@@ -571,16 +551,8 @@ And a later initial message remains governed by its readiness and draft-preserva
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
 - **Listing reveals what the caller's reach admits.** A platform administrator and a system principal see every session; a person, and a session acting for one, sees the sessions whose recorded subject their reach admits and the sessions recorded under their own principal (`local/projects/teleclaude/spec/feature/identity/data-visibility`). A platform role below administrator admits no session of its own. Sessions other computers share with this one are admitted by the same reach over the subject and owner they carry; a listing that names another computer is answered by that computer (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The caller-session-id header then trims a tool-client's default view to caller-scoped — `?all=true` opts out of that trim, never out of reach.
 
-<!-- planned-change:help-desk-master-routing -->
-
-- **Sessions below member without a system role run only inside an enabled help desk.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path must be an enabled help desk (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`): a customer's is the desk its entry resolved to, or for a returning customer the desk of their latest session, and a registered person below member who entered through no desk gets the platform help desk. `subfolder` / `working_slug` are cleared. A request naming no enabled help desk is refused and creates no session; nothing is silently redirected.
-
-<!-- change:help-desk-master-routing -->
-
 - **Sessions below member without a system role run only inside an enabled help desk.** When the request has no system role and the session's human_role — the person's effective role for the requested project — is neither admin nor member, the project_path must be an enabled help desk on the master (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`): the desk a conversation entered, or the desk of the conversation's session. `subfolder` / `working_slug` are cleared. A request naming no enabled help desk is refused and creates no session; nothing is silently redirected.
 - **No session runs in a default folder.** A request that names neither a help-desk endpoint nor a project_path is refused (UC-SL57); the platform keeps no fallback folder for it.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and the session-ended event payload.
 

@@ -20,15 +20,7 @@ Let AI agents answer the people a home does not otherwise serve, through the pub
 
 The platform operates on two planes.
 
-<!-- planned-change:help-desk-master-routing -->
-
-**Visitor plane.** A visitor reaches a help desk through a conversation adapter. A company or project desk is entered with its entry identifier; the platform desk is reached by role. The desk's agent answers from the documentation the visitor may read.
-
-<!-- change:help-desk-master-routing -->
-
 **Visitor plane.** A visitor reaches a help desk through a conversation adapter by entering with the desk's entry identifier. Desks run only on the mesh master. The desk's agent answers from the documentation the visitor may read.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 <!-- planned-change:help-desk-escalation-in-desk -->
 
@@ -94,22 +86,6 @@ The platform operates on two planes.
 
 #### Help desks
 
-<!-- planned-change:help-desk-master-routing -->
-
-Three kinds exist:
-
-| Kind     | Home                | Serves                            | Entry                  |
-| -------- | ------------------- | --------------------------------- | ---------------------- |
-| Platform | the TeleClaude home | contributors and newcomers        | by role; no identifier |
-| Company  | a company home      | that company's external customers | `hd-company-<slug>`    |
-| Project  | a project           | that project's external customers | `hd-project-<slug>`    |
-
-A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`local/projects/teleclaude/spec/teleclaude-config`); enabling and scaffolding are described under Help Desk Scaffolding below. A project's enabled desk also requires the `agents` capability on that project (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`). The concepts are `general/concept/help-desk/overview` and its per-kind siblings.
-
-The help desk is a folder of the home that owns it, never a repository of its own: the platform help desk is `help-desk/` in the TeleClaude home, a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain, which its home's history records, and no documentation of its own; a desk session writes nothing into it.
-
-<!-- change:help-desk-master-routing -->
-
 Two kinds exist:
 
 | Kind    | Home           | Serves                            | Entry               |
@@ -123,8 +99,6 @@ Desks run only on the mesh master, which hosts every enabled desk whose home it 
 
 The help desk is a folder of the home that owns it, never a repository of its own: a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain, which its home's history records, and no documentation of its own; a desk session writes nothing into it.
 
-<!-- /planned-change:help-desk-master-routing -->
-
 ```
 <home>/help-desk/
 ├── AGENTS.master.md                      # operator brain, seeded from its kind's help-desk template, then the home's own
@@ -134,32 +108,6 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 #### Entry and routing
 
 Entry is owned by the core, in `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
-
-<!-- planned-change:help-desk-master-routing -->
-
-- An **endpoint** is a routable destination: a person's assistant in their home, or a home's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder and hosting computer; the platform desk has no identifier.
-- A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) the session is the binding; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, because a session lives only on its host. Adapters only recognise and carry the identifier; they keep no routing rules.
-- An **entry** creates a new session at the resolved endpoint and supersedes the conversation's earlier sessions: a superseded desk session ends, a superseded assistant session keeps running without the conversation. A miss supersedes nothing. A message without an identifier goes to the conversation's latest session — the most recently created one not superseded, open in any state — found through the conversation's binding, so the latest entry wins. For customers the binding outlives closed sessions, so a returning customer lands at the desk they last used; a registered member or admin without an open session reaches their own assistant, a contributor or newcomer the platform desk.
-- A **miss** — an identifier that resolves to nothing here, or an unregistered person without any session — gets one fixed neutral reply and no session, identical in every case, naming no organisation, at most once per conversation per cooldown window.
-- **Hosting**: where every computer receives inbound messages (Discord, WhatsApp), the mesh master decides every entry and supersession, creates the session on the endpoint's hosting computer and forwards later messages, files and voice to it. A company or project desk is hosted by a computer announcing it to the cluster; assistants and the platform desk reached there are hosted by the master, which sends the neutral reply. With the master down nothing routes on these adapters: every inbound message gets a temporarily-unavailable reply, at most once per conversation within a cooldown window, from the lowest-named live computer running the adapter, no session starts, and conversations resume from the master's durable record when it returns. A session the master cannot create on its host in time makes no binding: the neutral reply, and the earlier binding stays. A per-computer bot (Telegram) decides alone, and its link names the hosting computer's bot.
-- The per-adapter entry links come from `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>`, run on a hosting computer.
-
-```mermaid
-flowchart TD
-    MSG[Inbound private message] --> ID{Exactly an entry identifier?}
-    ID -->|Yes| RES[Core resolver]
-    RES -->|Endpoint hosted here| NEW[New session at the endpoint]
-    RES -->|Unknown, disabled, or hosted elsewhere| NEUTRAL[Neutral reply, no session]
-    ID -->|No| LATEST{Latest session for this conversation?}
-    LATEST -->|Found| SESSION[Deliver to that session]
-    LATEST -->|Customer's closed session| AGAIN[New session at that session's endpoint]
-    LATEST -->|None| WHO{Registered sender?}
-    WHO -->|admin or member| PA[Own assistant]
-    WHO -->|contributor or newcomer| PLAT[Platform desk, or neutral reply when it is off]
-    WHO -->|No| NEUTRAL
-```
-
-<!-- change:help-desk-master-routing -->
 
 - An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
 - A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) that computer decides alone, and a desk identifier reaches a desk only on the master's bot; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, and no other computer handles those messages. Adapters only recognise and carry the identifier; they keep no routing rules.
@@ -181,19 +129,9 @@ flowchart TD
     WHO -->|No| NEUTRAL
 ```
 
-<!-- /planned-change:help-desk-master-routing -->
-
 #### Session placement
 
-<!-- planned-change:help-desk-master-routing -->
-
-A session whose role is below member and that carries no system role runs only inside an enabled help desk: a customer's at the desk its entry resolved to, or for a returning customer the desk of their latest session; a contributor's or newcomer's in the platform desk. A request naming no enabled desk is refused; nothing is silently redirected (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`local/projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
-
-<!-- change:help-desk-master-routing -->
-
 A session whose role is below member and that carries no system role runs only inside an enabled help desk on the master: a customer's at the desk the conversation's session belongs to. A request naming no enabled desk is refused; nothing is silently redirected (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`local/projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
 
@@ -220,15 +158,7 @@ A desk agent reads documentation at its visitor's depth (`local/projects/telecla
 
 ### Help Desk Scaffolding
 
-<!-- planned-change:help-desk-master-routing -->
-
-A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The company and project kinds each have a template in the TeleClaude repository — `templates/help-desk-company/` and `templates/help-desk-project/` — carrying that kind's operator brain, seeded once, and the desk's ignore declaration. The platform help desk has no template: its operator brain is authored in the TeleClaude home.
-
-<!-- change:help-desk-master-routing -->
-
 A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The company and project kinds each have a template in the TeleClaude repository — `templates/help-desk-company/` and `templates/help-desk-project/` — carrying that kind's operator brain, seeded once, and the desk's ignore declaration.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 - A company help desk is a folder inside the TeleClaude home. The platform home's configuration-aware convergence seeds it at commit-boundary maintenance and through `telec sync` while its company enables it; machine installation seeds no desk (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`, `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 - A project help desk lives in the project's repository. The project's own convergence seeds it at commit-boundary maintenance and through `telec sync` whenever the project's declaration enables it.
@@ -600,15 +530,7 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
-<!-- planned-change:help-desk-master-routing -->
-
-**Session resumption.** When a customer returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), the adapter routes to the conversation's latest session, or starts a new one at that session's desk when it has closed. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the customer's depth.
-
-<!-- change:help-desk-master-routing -->
-
 **Session resumption.** When a visitor returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
 
@@ -902,15 +824,7 @@ This job:
 
 ### Desk master (`AGENTS.master.md`)
 
-<!-- planned-change:help-desk-master-routing -->
-
-Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's help-desk template where one exists, and compiles into `AGENTS.md` through the standard artifact pipeline. It stays a thin wrapper:
-
-<!-- change:help-desk-master-routing -->
-
 Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's help-desk template, and compiles into `AGENTS.md` through the standard artifact pipeline. It stays a thin wrapper:
-
-<!-- /planned-change:help-desk-master-routing -->
 
 1. **Identity**: the help-desk agent of this desk, not a generic assistant.
 2. **Required reads**: the desk kind's concept (`general/concept/help-desk/<kind>`) and the help-desk procedure (`general/procedure/help-desk/overview`, which requires the escalation procedure). A company or project desk's master requires none of its home's internal documentation, so nothing internal reaches a customer-facing agent's context.
@@ -984,25 +898,9 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
-<!-- planned-change:help-desk-master-routing -->
-
-16. **One binding per conversation**: a conversation reaches its latest session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; each entry creates a new session at its endpoint, so the latest entry wins.
-
-<!-- change:help-desk-master-routing -->
-
 16. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
 
-<!-- /planned-change:help-desk-master-routing -->
-
-<!-- planned-change:help-desk-master-routing -->
-
-17. **One authority per conversation**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides, and the session runs on its endpoint's host. Without the master nothing routes there; the only answer is the temporarily-unavailable reply.
-
-<!-- change:help-desk-master-routing -->
-
 17. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 <!-- planned-change:help-desk-discord-categories -->
 
@@ -1019,34 +917,6 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 ## Primary Flows
 
 ### Customer Returns to a Desk
-
-<!-- planned-change:help-desk-master-routing -->
-
-```mermaid
-sequenceDiagram
-    participant Customer as Alice (WhatsApp)
-    participant Adapter as WhatsApp handler
-    participant Master as Mesh master
-    participant CMD as Host command handlers
-    participant Hook as Hook Receiver
-    participant Memory as Memory Store
-    participant Agent as Desk agent
-
-    Customer->>Adapter: Message (no identifier)
-    Adapter->>Master: Route the conversation
-    Master->>Master: Binding: acme-shop's project desk; latest session closed
-    Master->>CMD: Remote session start (origin=whatsapp, endpoint=acme-shop project desk)
-    CMD->>CMD: Place the session in that desk's folder, endpoint stamped
-
-    Note over Hook: SessionStart fires
-    Hook->>Memory: generate_context(identity_key=whatsapp:31612345678)
-    Memory->>Hook: Desk memories + Alice's personal memories
-    Hook->>Agent: Inject context into session
-
-    Agent->>Customer: Personalized response from the project's public docs
-```
-
-<!-- change:help-desk-master-routing -->
 
 ```mermaid
 sequenceDiagram
@@ -1069,8 +939,6 @@ sequenceDiagram
 
     Agent->>Customer: Personalized response from the project's public docs
 ```
-
-<!-- /planned-change:help-desk-master-routing -->
 
 ### Escalation and Admin Relay
 
@@ -1212,26 +1080,6 @@ sequenceDiagram
 
 ## Failure Modes
 
-<!-- planned-change:help-desk-master-routing -->
-
-| Scenario                                                                                    | Behavior                                             | Recovery                                                                             |
-| ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                    |
-| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                        | The visitor uses a working desk link                                                 |
-| Identifier for a desk this bot's computer does not host                                     | Neutral reply                                        | Links are rendered on a hosting computer, naming its bot                             |
-| No computer hosts the entered desk                                                          | Neutral reply, no session                            | Enable the desk on a computer holding its home                                       |
-| A restricted session names no enabled desk                                                  | Session creation is refused                          | The core resolves an endpoint first or sends the neutral reply                       |
-| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated               | Next idle trigger or cron sweep reprocesses from last marker                         |
-| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first       | Daemon enforces sequencing; if extraction fails, compaction is skipped               |
-| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                     |
-| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                    |
-| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                          |
-| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
-| Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
-| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
-
-<!-- change:help-desk-master-routing -->
-
 | Scenario                                                                                    | Behavior                                             | Recovery                                                                             |
 | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                    |
@@ -1247,8 +1095,6 @@ sequenceDiagram
 | Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
 | Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
 | Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
-
-<!-- /planned-change:help-desk-master-routing -->
 
 **Escalation failure modes:**
 
@@ -1281,15 +1127,7 @@ sequenceDiagram
 - docs/local/design/architecture/jobs-runner.md — Scheduled job runner architecture
 - docs/local/spec/teleclaude-config.md — Configuration schema
 
-<!-- planned-change:help-desk-master-routing -->
-
-- docs/local/spec/feature/agent_runtime/conversation-entry.md — Endpoints, entry identifiers, latest-session routing, neutral reply, hosting computer
-
-<!-- change:help-desk-master-routing -->
-
 - docs/local/spec/feature/agent_runtime/conversation-entry.md — Endpoints, entry identifiers, routing by what a person sent, neutral reply, master hosting
-
-<!-- /planned-change:help-desk-master-routing -->
 
 - docs/local/spec/feature/agent_runtime/help-desk-escalation.md — Escalation recipients and relay
 - docs/global/general/spec/tools/telec-cli.md — Telec command surface for session and orchestration flows

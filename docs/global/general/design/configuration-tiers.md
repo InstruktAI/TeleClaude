@@ -116,22 +116,10 @@ one index entry, listed on demand — rather than autoloaded into every session.
 
 <!-- /planned:cross-tier-native-emission -->
 
-<!-- planned-change:help-desk-master-routing -->
-
-- **Belonging is binary for reading a company.** A company role carries business
-  authority; it does not grade documentation access. Anyone with a declared
-  relationship to a company — member, contributor, whatever the role — reads that
-  company's documentation in full. There are no levels of allowance inside a
-  company.
-
-<!-- change:help-desk-master-routing -->
-
 - **Belonging is binary for reading a company.** A company role carries business
   authority; it does not grade documentation access. Anyone with a declared
   relationship to a company, whatever its role, reads that company's
   documentation in full. There are no levels of allowance inside a company.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 - **Company membership does not carry that company's projects.** Belonging opens
   the company's own documentation. A project's documentation opens through the

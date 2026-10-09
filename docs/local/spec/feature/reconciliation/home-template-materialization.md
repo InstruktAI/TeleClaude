@@ -24,21 +24,6 @@ of material with two renderers.
   decides that through the create-once marker in
   `local/projects/teleclaude/spec/feature/reconciliation/template-installation`.
 
-<!-- planned-change:help-desk-master-routing -->
-
-- **Seeded masters.** Each declared person and company home's master and each
-  enabled company help desk are seeded from their kind's template. Seeding
-  writes a master only while it is absent; an existing master is never
-  rewritten, whatever its content, and the home's history records it like any
-  other source the home owns. Machine installation seeds none of them. The
-  configuration-aware convergence seeds them at the commit boundary and through
-  `telec sync`
-  (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
-  The TeleClaude home's root master and the platform help desk have no
-  template: they are authored in the home and recorded by its history.
-
-<!-- change:help-desk-master-routing -->
-
 - **Seeded masters.** Each declared person and company home's master and each
   enabled company help desk are seeded from their kind's template. Seeding
   writes a master only while it is absent; an existing master is never
@@ -49,8 +34,6 @@ of material with two renderers.
   (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
   The TeleClaude home's root master has no template: it is authored in the
   home and recorded by its history.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 Materialization writes each template's rendered content rather than linking it,
 so an installed home remains valid when the canonical checkout moves and every

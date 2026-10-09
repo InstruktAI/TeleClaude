@@ -9,39 +9,6 @@ visibility: public
 
 ## What
 
-<!-- planned-change:help-desk-master-routing -->
-
-A help desk is a folder inside a home where an agent answers questions from
-people the home does not otherwise serve. A home runs one only when its
-configuration enables it, and the folder's location follows from the home.
-There are three kinds, each described in its own concept:
-
-- **Platform desk** (`general/concept/help-desk/platform`) — the TeleClaude
-  home's desk for internal users who have no personal assistant.
-- **Company desk** (`general/concept/help-desk/company`) — a company's desk for
-  its external customers.
-- **Project desk** (`general/concept/help-desk/project`) — a project's desk for
-  its external customers.
-
-A desk is one kind of endpoint a conversation can reach; a person's own
-assistant is the other. A customer reaches a company or project desk through
-that desk's entry link, which carries the desk's entry identifier: its kind and
-slug, and nothing else. Entering creates a session at the desk, and the
-conversation's next messages go to its latest session, so the latest entry
-decides where a conversation goes. A returning customer lands at the desk they
-last used. A registered person who follows a desk link is served by that desk
-until they use their own assistant's link again. The platform desk has no entry
-identifier: its visitors reach it by the role they hold.
-
-An identifier that names no existing or enabled desk, and a message from an
-unregistered person whose conversation has no session, receive one fixed
-neutral reply and no session. The reply is the same in every case and names no
-organisation. Any other message without an identifier goes to the
-conversation's latest session, or, for a registered person without one, to the
-endpoint their role reaches.
-
-<!-- change:help-desk-master-routing -->
-
 A help desk is a folder inside a home where an agent answers questions from
 people the home does not otherwise serve. A home runs one only when its
 configuration enables it, and the folder's location follows from the home.
@@ -69,8 +36,6 @@ identifier from a person who is not registered and whose conversation has no
 session, receive one fixed neutral reply and no session. The reply is the same
 in every case and names no organisation. No other route exists: a person is
 never sent somewhere by their role or by where they were before.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 A desk agent reads documentation at the depth its visitor holds. A customer
 holds no relationship to the home, so the agent reads that desk's public
@@ -101,13 +66,6 @@ until they hand the conversation back to the agent.
 - Naming a desk by kind and slug keeps entry deterministic: a link reaches an
   enabled desk or gets the neutral reply, never a guess.
 
-<!-- planned-change:help-desk-master-routing -->
-
-- Letting the latest entry decide gives every person one simple rule on every
-  channel: they are where they last chose to go.
-
-<!-- change:help-desk-master-routing -->
-
 - Letting the latest entry decide gives every person one simple rule on every
   channel: they are where they last chose to go.
 - Continuing a person's own session at a desk keeps their conversation whole
@@ -117,8 +75,6 @@ until they hand the conversation back to the agent.
 - One computer hosting every desk gives each desk exactly one host: a desk
   declared in a repository checked out on several computers never competes
   with itself.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 - A reply that is identical for every miss and names no organisation tells a
   stranger nothing about who the platform serves.

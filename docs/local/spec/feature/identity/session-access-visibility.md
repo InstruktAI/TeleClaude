@@ -91,14 +91,6 @@ Then the check raises a session-not-found error
 
 - The "no identity signals = TUI/tool client" branch is correct only because the trust boundary upstream prevents arbitrary callers from supplying the signals. If the trust boundary regresses, this check silently degrades to "anyone who omits the signal gets through."
 
-<!-- planned-change:help-desk-master-routing -->
-
-- A web user with the `contributor` or `newcomer` role gets neither the admin bypass nor the member+shared unlock — only ownership grants access. v1 has no documented use case for these roles on the web interface; they fall through to a forbidden response.
-
-<!-- change:help-desk-master-routing -->
-
-<!-- /planned-change:help-desk-master-routing -->
-
 - The `visibility` attribute is read defensively — a session record missing the attribute is treated as `private`. This is fail-closed.
 - The owner check uses exact string equality on `human_email`. Email casing is not normalized at this layer; the column value is whatever was stamped at session-creation time. If the same human is registered with one casing and a session was stamped with another, the check would deny access. In practice all stamping paths normalize, but this is not enforced at the access-check layer.
 - The not-found path leaks session-existence information through the error type: an unauthorized caller can distinguish "session does not exist" from "session exists but you cannot access it." v1 accepts this trade-off; v2 may collapse both to not-found.

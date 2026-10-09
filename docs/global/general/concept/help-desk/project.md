@@ -13,23 +13,11 @@ visibility: public
 
 ## What
 
-<!-- planned-change:help-desk-master-routing -->
-
-A project help desk sits in the project and serves that project's external
-customers. They arrive through the project desk's entry link. Internal users
-are normally served elsewhere — members and admins by their own assistants,
-contributors and newcomers by the platform help desk — but anyone who follows
-this desk's entry link is served here until they enter elsewhere.
-
-<!-- change:help-desk-master-routing -->
-
 A project help desk sits in the project and serves that project's external
 customers. They arrive through the project desk's entry link. Registered people
 are normally served by their own assistants, but anyone who follows this desk's
 entry link is served here until they enter elsewhere. The TeleClaude project's
 desk is an ordinary project desk.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 The agent answers from the project's public documentation and the public
 help-desk documentation. Nothing internal to the project is available to it on

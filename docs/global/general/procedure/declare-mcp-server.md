@@ -26,21 +26,10 @@ Deliver a requested MCP server at the scope the need dictates. Both scopes serve
    - A project-specific or personal integration belongs in the owning project's registry files. Project declarations are visible only to invocations from their project; there is no project-to-global promotion path — a server that outgrows its project graduates into the machine-wide registry instead.
    - When the request arrives in a side project and the need could be machine-wide, ask the human one direct question: should this server serve every project on this machine, or only this one?
 
-<!-- planned-change:help-desk-master-routing -->
-
-2. **Route machine-wide declarations by who asks and from where.** The machine-wide registry is admin territory.
-   - In the TeleClaude project, admin asking: author the declaration directly there — this is in-context work.
-   - In a side project, admin asking: never write to the TeleClaude repository from this session. File a todo in the TeleClaude project instead (`telec todo create <slug> <content> --kind change --project-root <teleclaude-project-path>` with the requested declaration in the content); the TeleClaude lifecycle prepares and delivers it automatically, and admins have visibility of it there.
-   - Requester is not an admin (member, contributor, customer): machine-wide registration is not theirs to file. Offer the project-local path instead — "I'll set this up for this project" — and continue with it.
-
-<!-- change:help-desk-master-routing -->
-
 2. **Route machine-wide declarations by who asks and from where.** The machine-wide registry is admin territory.
    - In the TeleClaude project, admin asking: author the declaration directly there — this is in-context work.
    - In a side project, admin asking: never write to the TeleClaude repository from this session. File a todo in the TeleClaude project instead (`telec todo create <slug> <content> --kind change --project-root <teleclaude-project-path>` with the requested declaration in the content); the TeleClaude lifecycle prepares and delivers it automatically, and admins have visibility of it there.
    - Requester is not an admin (member, customer): machine-wide registration is not theirs to file. Offer the project-local path instead — "I'll set this up for this project" — and continue with it.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 3. **Author the declaration in the scope's registry file.**
    - Machine-wide: `teleclaude-mcp.jsonc` in the TeleClaude repository; machine-local overrides go in `teleclaude-mcp.local.jsonc` beside it.

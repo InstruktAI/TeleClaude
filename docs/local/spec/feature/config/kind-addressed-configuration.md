@@ -57,26 +57,12 @@ under the same clearance as every other field of it. A person has no help desk.
 Seeding writes a desk's master only while it is absent; an existing master is
 its home's own source, recorded by the home's history and never rewritten.
 
-<!-- planned-change:help-desk-master-routing -->
-
-A company help desk is seeded from the company help-desk template in the
-company home's `help-desk/` by that company's `init` and by the platform home's
-configuration-aware convergence at commit-boundary maintenance and through
-`telec sync`, while its declaration enables it. The platform help desk has no
-template: its master is authored in the TeleClaude home's `help-desk/`. Machine
-installation seeds no desk
-(`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
-
-<!-- change:help-desk-master-routing -->
-
 A company help desk is seeded from the company help-desk template in the
 company home's `help-desk/` by that company's `init` and by the platform home's
 configuration-aware convergence at commit-boundary maintenance and through
 `telec sync`, while its declaration enables it. Machine
 installation seeds no desk
 (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`).
-
-<!-- /planned-change:help-desk-master-routing -->
 
 For a project, the project's own convergence seeds the help desk in the
 project's `help-desk/` at commit-boundary maintenance and through `telec sync`

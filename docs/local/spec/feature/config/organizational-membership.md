@@ -51,15 +51,7 @@ with a valid one.
 
 **Company role**
 
-<!-- planned-change:help-desk-master-routing -->
-
-: The role a person holds in the business, drawn from the person-role vocabulary the platform role also uses: `admin`, `member`, `contributor`, `newcomer`. `admin` is the company's own administrator and owner. Every membership declaration carries one; a declaration naming any other value is invalid.
-
-<!-- change:help-desk-master-routing -->
-
 : The role a person holds in the business, drawn from the person-role vocabulary the platform role also uses: `admin`, `member`. `admin` is the company's own administrator and owner. Every membership declaration carries one; a declaration naming any other value is invalid.
-
-<!-- /planned-change:help-desk-master-routing -->
 
 **Maintenance surface**
 : The ordinary administrator-facing configuration surface through which declarations are written and withdrawn, so no declaration requires editing a file by hand.
