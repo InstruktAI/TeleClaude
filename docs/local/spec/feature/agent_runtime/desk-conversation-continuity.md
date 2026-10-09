@@ -155,5 +155,9 @@ Then the idle cycle neither extracts, compacts nor closes it
 - **A session whose extraction keeps failing stays open.** Memories are never
   traded for resources; the session remains until an extraction succeeds or
   someone closes it.
+- **Extraction is an agent session of its own.** The daemon starts an
+  extraction worker for each stretch of conversation and waits for its pass
+  across later passes of the cycle, so a session closes some passes after it
+  became due; a cap on concurrently running workers can delay it further.
 - **Compaction is the agent's own.** Only agents that can serve a desk run the
   cycle, and those are the agents with a verified desk confinement.

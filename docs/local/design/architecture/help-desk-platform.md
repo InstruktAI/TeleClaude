@@ -573,7 +573,7 @@ sequenceDiagram
 
 **Idle cycle.** The daemon's idle cycle visits the desk sessions periodically, well within the 30-minute threshold. A desk session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
 
-1. Memory extraction of the conversation since the last extraction (Post-Session Memory Extraction)
+1. Memory extraction of the conversation since the last extraction by an extraction worker, awaited across passes until its pass is recorded (Post-Session Memory Extraction)
 2. Compaction of the agent's context through the agent's own compaction command, once extraction completed, awaited until the agent reports it finished
 3. Closing the session, once compaction completed and no input arrived since the cycle began
 4. None of it is recorded as a message sent into the session — it is invisible to the visitor
@@ -583,16 +583,15 @@ A step that fails or does not finish leaves the session open and is retried on t
 ```mermaid
 sequenceDiagram
     participant Daemon as Idle cycle
-    participant Extract as Memory extraction
+    participant Extract as Extraction worker
     participant Tmux as Agent Session (tmux)
     participant DB as Session DB
 
     Note over Daemon: No input for 30m, agent idle, no relay
-    Daemon->>DB: Read last_memory_extraction_at
-    Daemon->>Extract: The conversation after the marker (pass key)
-    Extract->>Extract: Model judges; memories recorded with the pass receipt
-    Extract->>Daemon: Pass receipt
-    Daemon->>DB: Advance last_memory_extraction_at
+    Daemon->>Extract: Start the extraction worker (pass key = session + marker)
+    Extract->>Extract: Judge, discard what docs cover, record the pass
+    Note over Daemon: Later passes until the receipt exists
+    Daemon->>DB: Advance last_memory_extraction_at to the receipt
     Daemon->>Tmux: Agent's compaction command
     Tmux->>Daemon: Compaction finished
     Daemon->>DB: Close the session
@@ -794,41 +793,51 @@ jobs:
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-Memory extraction is a step of the idle cycle (Customer Session Lifecycle). The cycle decides when a session's conversation is extracted and hands it over; memory owns the extraction, and a model, never daemon code, judges what in the conversation is worth remembering. No separate scheduled job extracts desk sessions; the idle cycle is the one caller, so no two passes extract the same session at once.
+Memory extraction is a step of the idle cycle (Customer Session Lifecycle). The cycle decides when a session's conversation is extracted; the extraction itself is done by an extraction worker — an agent session the daemon starts, with no person anywhere in its lineage, as memory's writer rule requires (`docs/local/adr/0005-scraper-only-memory-writer.md`). No separate scheduled job extracts desk sessions.
 
-Each pass of the idle cycle extracts:
+Each pass of the idle cycle looks for:
 
-- **An open desk session that is due for its idle close**, as the first step of that close. Extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
+- **An open desk session that is due for its idle close.** Its extraction is the first step of that close. Extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
 - **A closed desk session whose conversation has entries after its marker** — one closed by a person or by recovery rather than by the idle cycle. It is extracted and stays closed.
 
-The cycle reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — from the `last_memory_extraction_at` marker onward, and hands memory the conversation together with who the visitor is and which desk and home it belongs to. Memory asks the model for the memories through a dual lens and records them:
+The cycle never blocks on a worker; it reads state on every pass. For a session due for extraction, the pass key is the session and its current `last_memory_extraction_at` marker:
+
+- no receipt for the pass key and no worker running for it → start the worker, within a cap on concurrently running extraction workers;
+- a worker still running → leave the session for the next pass;
+- a receipt for the pass key → advance the marker from it and continue with compaction and close.
+
+The worker reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — after the marker, and judges what is worth remembering through a dual lens. It discards candidates the desk home's documentation already covers (`docs/local/adr/0006-mandatory-dedup-against-doc-snippets.md`) and hands the survivors to memory as one pass, which memory records whole and once with a receipt (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). The worker follows `local/projects/teleclaude/procedure/desk-memory-extraction`.
 
 ```mermaid
 sequenceDiagram
     participant Cycle as Idle cycle
     participant DB as Session DB
+    participant Worker as Extraction worker
     participant Transcript as Session transcript chain
-    participant Identity as Identity
-    participant Memory as Memory extraction
-    participant Model as Summarizer model
+    participant Docs as Desk home docs
+    participant Memory as Memory
 
-    Cycle->>DB: Read last_memory_extraction_at
-    Cycle->>Transcript: Read the conversation after the marker
-    Cycle->>Identity: Visitor's identity key and principal
-    Cycle->>Memory: Extract (pass key = session + marker, conversation, scope)
-    Memory->>Model: What is worth remembering, through the dual lens
-    Model->>Memory: Personal and business memories
-    Memory->>Memory: Record the pass's memories and its pass receipt together
-    Memory->>Cycle: Pass receipt (extracted through)
+    Cycle->>DB: Read last_memory_extraction_at (pass key = session + marker)
+    Cycle->>Memory: Receipt for the pass key?
+    Memory->>Cycle: None
+    Cycle->>Worker: Start (session, pass key, visitor, desk, home)
+    Worker->>Transcript: Read the conversation after the marker
+    Worker->>Worker: Judge personal + business memories
+    Worker->>Docs: Discard what documentation already covers
+    Worker->>Memory: Record the pass (pass key, observations)
+    Memory->>Worker: Receipt
+    Note over Cycle: A later pass
+    Cycle->>Memory: Receipt for the pass key?
+    Memory->>Cycle: Receipt (extracted through)
     Cycle->>DB: Advance last_memory_extraction_at to the receipt
 ```
 
-**Dual extraction lens** (the model's judgment, briefed by memory's extraction prompts):
+**Dual extraction lens** (the worker's judgment):
 
 1. **Personal memories** (the desk's namespace, keyed to the visitor) — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
 2. **Business memories** (the namespace of the home that owns the desk, the one the home's own sessions read) — what is interesting for US: feature requests, complaints, confusion patterns, sentiment, competitive mentions
 
-Namespaces, keys and subjects follow Identity-Scoped Memory. A pass is identified by its session and the marker it starts from. Memory records a pass's memories and its receipt in one transaction, so a pass is either recorded whole or not at all; a pass repeated with the same key records nothing again and returns the receipt it already holds. A conversation with nothing worth remembering records an empty pass and still advances the marker.
+Namespaces, keys and subjects follow Identity-Scoped Memory. A worker that fails, stops without recording its pass, or runs past its time is ended by the cycle; the pass key has no receipt, so a later pass starts a new worker for the same stretch.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -935,7 +944,7 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-9. **Extraction is idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed, and memory records each pass — identified by its session and starting marker — whole or not at all, together with its receipt. Premature agent death, glitches, daemon restarts or repeated passes never produce duplicate memories. Durable state lives in the database, not in the agent.
+9. **Extraction is idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed, and each pass, keyed by its session and starting marker, is recorded once (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). Premature agent death, glitches, daemon restarts or repeated passes never produce duplicate memories. Durable state lives in the database, not in the agent.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -1163,14 +1172,14 @@ sequenceDiagram
     participant Daemon as Idle cycle
     participant Agent as Desk Session (tmux)
     participant DB as Session DB
-    participant Memory as Memory store
+    participant Memory as Extraction worker and memory
 
     Note over Daemon: No input for 30m, agent idle, no relay, no input waiting
     Daemon->>DB: Read last_memory_extraction_at
     Daemon->>Daemon: Read the transcript chain after the marker
-    Daemon->>Memory: Extract the conversation (pass key, visitor, desk, home)
-    Memory->>Memory: Model judges; personal + business memories recorded with the pass receipt
-    Memory->>Daemon: Pass receipt
+    Daemon->>Memory: Start the extraction worker (pass key, visitor, desk, home)
+    Memory->>Memory: Worker judges; its pass recorded with a receipt
+    Note over Daemon: Later passes until the receipt exists
     Daemon->>DB: Advance last_memory_extraction_at to the receipt
     Daemon->>Agent: Agent's compaction command
     Agent->>Daemon: Compaction finished
