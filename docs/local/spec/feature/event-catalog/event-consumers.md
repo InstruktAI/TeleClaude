@@ -56,10 +56,20 @@ progress when it runs again, for as long as the stream retains those events. A
 consumer that runs for the first time starts with the events emitted from then
 on; it does not replay the stream's history.
 
+<!-- planned-change:platform-alerts -->
+
 The platform's own reactions outside notification — waking the lifecycle runner,
 spawning the integrator, and correlating failures into degradation events — are
 consumers. Each acts only on events its own computer emitted, so a failure is
 correlated, and a degradation announced, once, by the computer it happened on.
+<!-- change:platform-alerts -->
+
+The platform's own reactions — waking the lifecycle runner, spawning the
+integrator, correlating failures into degradation events, and telling people
+about events — are consumers. Each acts only on events its own computer emitted,
+so a failure is correlated, a degradation announced, and a person told, once, by
+the computer it happened on.
+<!-- /planned-change:platform-alerts -->
 
 ## Canonical fields
 
@@ -209,14 +219,25 @@ And no other computer emits a degradation event for those failures
   contract, and neither consumer decides which todo is dispatched or
   integrated.
 
+<!-- planned-change:platform-alerts -->
+
 - **integration** — owns the notification path that runs as the system
   pipeline, and procedure activation, which is a consumer under its own
   contract.
+
+<!-- change:platform-alerts -->
+
+- **integration** — owns the consumers that tell people and procedure
+  activation, each a consumer under its own contract.
+
+<!-- /planned-change:platform-alerts -->
 
 - **context** and **identity** — a context that lets authors select events by
   type pattern owns that declaration and matches it with this matcher.
 
 ## Known caveats
+
+<!-- planned-change:platform-alerts -->
 
 - Duplicate protection lasts while the platform retains a consumer's record of
   handled events; a repeat arriving after that is handed again.
@@ -224,6 +245,15 @@ And no other computer emits a degradation event for those failures
   per consumer.
 - Until the notification path is itself a set of consumers, it runs as the
   system pipeline beside them.
+
+<!-- change:platform-alerts -->
+
+- Duplicate protection lasts while the platform retains a consumer's record of
+  handled events; a repeat arriving after that is handed again.
+- Every consumer reads every event on its computer, so the stream is read once
+  per consumer.
+
+<!-- /planned-change:platform-alerts -->
 
 ## See Also
 
