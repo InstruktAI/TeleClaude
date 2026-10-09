@@ -40,6 +40,7 @@ class _MaintenanceRecordPayload(BaseModel):
     state: str
     exit_code: int | None
     finished_at: str | None
+    output_tail: str | None = None
 
 
 class MaintenanceRecordState(StrEnum):
@@ -61,6 +62,7 @@ class MaintenanceActionRecord:
     state: MaintenanceRecordState
     exit_code: int | None = None
     finished_at: str | None = None
+    output_tail: str | None = None
 
 
 def maintenance_directory(project_root: str | Path) -> Path:
@@ -112,6 +114,7 @@ def read_record(path: Path) -> MaintenanceActionRecord:
         state=MaintenanceRecordState(payload.state),
         exit_code=payload.exit_code,
         finished_at=payload.finished_at,
+        output_tail=payload.output_tail,
     )
 
 

@@ -250,7 +250,7 @@ def retry_failed_action(project_root: Path, after_sha: str, action_id: str) -> b
             return False
         write_record(
             path,
-            replace(record, state=MaintenanceRecordState.PENDING, exit_code=None, finished_at=None),
+            replace(record, state=MaintenanceRecordState.PENDING, exit_code=None, finished_at=None, output_tail=None),
         )
         logger.info(
             _MAINTENANCE_ACTION_RETRIED_EVENT,
@@ -401,7 +401,7 @@ def run_maintenance_waves(
             _log_action_finished(activation_range, trigger, action_id, result, finished_at)
             completed.append((action_id, result))
 
-        run_process_group_commands(commands, root, child_env, report)
+        run_process_group_commands(commands, root, child_env, report, capture_output=True)
     return tuple(completed)
 
 
@@ -431,6 +431,7 @@ def _settle_record(
                 state=MaintenanceRecordState.FAILED,
                 exit_code=result.exit_code,
                 finished_at=finished_at,
+                output_tail=result.output_tail,
             ),
         )
 
@@ -442,16 +443,29 @@ def _log_action_finished(
     result: CommandResult,
     finished_at: str,
 ) -> None:
-    """Record one action's terminal outcome for the run that performed it."""
-    logger.info(
+    """Record one action's terminal outcome for the run that performed it; a failure carries its output."""
+    if result.exit_code == 0:
+        logger.info(
+            _MAINTENANCE_ACTION_FINISHED_EVENT,
+            before_sha=activation_range.before_sha,
+            after_sha=activation_range.after_sha,
+            action_id=action_id,
+            exit_code=result.exit_code,
+            outcome=_SUCCESS_OUTCOME,
+            finished_at=finished_at,
+            trigger=trigger,
+        )
+        return
+    logger.error(
         _MAINTENANCE_ACTION_FINISHED_EVENT,
         before_sha=activation_range.before_sha,
         after_sha=activation_range.after_sha,
         action_id=action_id,
         exit_code=result.exit_code,
-        outcome=MaintenanceRecordState.FAILED if result.exit_code else _SUCCESS_OUTCOME,
+        outcome=MaintenanceRecordState.FAILED,
         finished_at=finished_at,
         trigger=trigger,
+        output_tail=result.output_tail,
     )
 
 

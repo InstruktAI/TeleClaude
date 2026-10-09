@@ -688,6 +688,17 @@ prepare_daemon_for_shutdown() {
     return 0
 }
 
+# Send SIGTERM to a prepared daemon. A delivery failure is reported with its reason; the
+# caller's wait for the process to exit still decides the outcome, because a process that
+# exited between preparation and this signal is already where the restart wants it.
+signal_prepared_daemon() {
+    local pid="$1"
+    local kill_error
+    if ! kill_error="$(kill -TERM "$pid" 2>&1)"; then
+        log_warn "SIGTERM to prepared daemon (pid $pid) was not delivered: $kill_error"
+    fi
+}
+
 # Stop daemon via service manager
 stop_daemon() {
     log_info "Stopping TeleClaude daemon..."
@@ -880,7 +891,7 @@ restart_daemon() {
 
     if [ "$prepare_rc" -eq 0 ]; then
         log_info "Terminating prepared daemon (pid $PREPARED_PID)..."
-        kill -TERM "$PREPARED_PID" 2>/dev/null || true
+        signal_prepared_daemon "$PREPARED_PID"
         if ! wait_for_daemon_death "$STOP_WAIT_SECONDS" "$SERVICE_LABEL:$PREPARED_PID"; then
             log_error "Prepared daemon did not exit within ${STOP_WAIT_SECONDS}s; not forcing it ('make kill' is the explicit forced path)"
             return 1

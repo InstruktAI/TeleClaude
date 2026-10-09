@@ -54,7 +54,9 @@ contract governs only what happens when maintenance runs.
 - **Reporting.** Every attempt and every outcome is emitted through the
   structured logging boundary, carrying the commit, the resolved action set,
   and each action's result. The record, not an inference over a transcript, is
-  what establishes whether maintenance ran.
+  what establishes whether maintenance ran. A failed action is reported at error
+  level with the tail of its own combined output, so the reason it gave travels
+  with its result; an action that succeeds keeps its output to itself.
 - **Failure posture.** The commit is already recorded before maintenance
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
@@ -87,7 +89,8 @@ contract governs only what happens when maintenance runs.
 - **Per-action state.** Each gitignored record is keyed by the activated tip
   and action id and retains the pre-activation revision and queued time. A
   confirmed success removes its record. A terminal failure remains marked
-  failed for structured-log and anomaly review, without an automatic retry loop.
+  failed, with its exit code and the tail of its output, for structured-log and
+  anomaly review, without an automatic retry loop.
   An interrupted attempt remains eligible for retry; each action converges
   safely when repeated after its effect preceded record removal.
 - **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
