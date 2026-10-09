@@ -69,9 +69,12 @@ Derivation rules:
   (`local/projects/teleclaude/spec/feature/config/tier-permissions`), and never as
   `code`.
 - Every staged `teleclaude.yml` is validated at the commit gate as that one
-  file, against its own declaration schema, in every home whose commit-gate
-  hooks are installed, whatever that home subscribes. Nothing beyond the staged
-  file is validated. In a home that enables neither `code` nor
+  file, through the same pipeline that loads it: migrated, its references
+  resolved from the environment file beside it on this computer, and its
+  schema and field relationships judged against this computer's machine
+  configuration (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`).
+  This holds in every home whose commit-gate hooks are installed, whatever that
+  home subscribes. No other configuration file is validated. In a home that enables neither `code` nor
   `docs`, declaration validation is the gate's only check, and that home still
   raises no commit obligation. A declaration that fails validation refuses the
   commit, so committed state, which every consumer derives from, never holds an

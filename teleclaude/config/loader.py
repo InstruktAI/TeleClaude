@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from teleclaude.config import config as machine_config
 from teleclaude.config._environment import (
@@ -238,11 +238,11 @@ def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T]
 
 
 def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
-    """Validate one staged declaration against its declared tier schema.
+    """Validate one staged declaration through the same pipeline that loads it.
 
-    This intentionally validates only the supplied Git-index bytes. It does
-    not load sibling environment files, migrate the document, or consult live
-    configuration and registry state.
+    The staged bytes are migrated, their secret declarations checked, their references resolved
+    from the environment file beside ``path`` on this computer, and their schema and field
+    relationships judged against this computer's machine configuration. No other file is validated.
     """
     try:
         raw = yaml.safe_load(content.decode(_UTF8))
@@ -256,8 +256,8 @@ def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
         return [_STAGED_DECLARATION_KIND_ERROR.format(path=path)]
 
     try:
-        TIER_DOCUMENT_MODELS[kind].model_validate(raw)
-    except ValidationError as exc:
+        _validated_model(path, raw, TIER_DOCUMENT_MODELS[kind], kind)
+    except ValueError as exc:
         return [_STAGED_DECLARATION_SCHEMA_ERROR.format(path=path, kind=kind.value, error=exc)]
     return []
 
