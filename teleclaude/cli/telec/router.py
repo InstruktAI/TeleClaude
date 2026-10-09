@@ -21,6 +21,7 @@ from teleclaude.cli.telec.surface import (
     CommandDef,
     TelecCommand,
 )
+from teleclaude.cli.telec.surface_types import admits_any_caller
 
 from . import flags as F
 
@@ -135,17 +136,18 @@ def _handle_cli_command(argv: list[str], clear: ClearanceGate) -> None:
     target_computer = parsed.value(F.FLAG_COMPUTER) if F.FLAG_COMPUTER in node.flags else None
     direct_conversation = any(flag in node.flags and parsed.has(flag) for flag in _DIRECT_CONVERSATION_FLAGS)
     auth = _effective_auth(node, parsed)
-    clear(
-        CommandClearance(
-            path=path,
-            node=node,
-            auth=auth,
-            parsed=parsed,
-            target_session_id=target_session_id,
-            target_computer=target_computer,
-            direct_conversation=direct_conversation,
+    if auth is None or not admits_any_caller(auth.caller_independent, node.desk):
+        clear(
+            CommandClearance(
+                path=path,
+                node=node,
+                auth=auth,
+                parsed=parsed,
+                target_session_id=target_session_id,
+                target_computer=target_computer,
+                direct_conversation=direct_conversation,
+            )
         )
-    )
 
     handler = _resolve_cli_handler(cmd_enum, args)
     if handler is None:

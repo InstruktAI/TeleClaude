@@ -76,6 +76,15 @@ class FlagConditionedAuth:
     scope_flag: str | None = None
 
 
+def admits_any_caller(caller_independent: bool, desk_command: bool) -> bool:
+    """Whether every caller is cleared for a command, so clearance need not resolve who calls.
+
+    A caller-independent command is still refused to an anonymous help-desk visitor unless the
+    surface declares it safe for a desk; only when both hold is the caller irrelevant.
+    """
+    return caller_independent and desk_command
+
+
 @dataclass(frozen=True)
 class CommandAuth:
     """Caller-independent declaration or role allow-list for a CLI command."""

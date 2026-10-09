@@ -97,7 +97,10 @@ design owns only the path that connects them.
 7. **The pre-dispatch path stays lean by composition.** It loads only the modules the
    gate's own job needs, composed per `sdlc/policy/python/core`; review keeps it that
    way, and no guardrail pins the set. Help, usage and completion are answered by the
-   router alone: the entry seam loads the gate only for a command it clears. A command whose own work is trivial completes in
+   router alone, and so is a command every caller is cleared for (caller-independent and
+   desk-safe): the entry seam loads the gate only for a command whose clearance depends on
+   who calls. A caller-independent command that is not desk-safe still resolves its caller,
+   because an anonymous help-desk visitor is refused it. A command whose own work is trivial completes in
    roughly 200 ms from the shell; the figure is the target that shows invariants 4–6
    hold, not a limit a change is graded against.
 

@@ -39,7 +39,11 @@ _SELF_DESCRIBING_CAUSES = (MissingEnvironmentReferenceError, CompanyCredentialsE
 
 def load_error_findings(error: ConfigLoadError) -> list[str]:
     """Where and why a document fails, without any input value, so the findings may travel beyond this computer."""
-    cause = error.__cause__
+    return cause_findings(error.__cause__ if error.__cause__ is not None else error)
+
+
+def cause_findings(cause: BaseException) -> list[str]:
+    """Where and why one read, parse or validation failure happened, without any input value."""
     if isinstance(cause, ValidationError):
         return [
             _FINDING.format(
@@ -57,7 +61,7 @@ def load_error_findings(error: ConfigLoadError) -> list[str]:
     if isinstance(cause, _SELF_DESCRIBING_CAUSES):
         return [str(cause)]
     # Any other cause's text may quote the document; only its kind travels.
-    return [type(cause if cause is not None else error).__name__]
+    return [type(cause).__name__]
 
 
 def describe_load_error(error: ConfigLoadError) -> str:

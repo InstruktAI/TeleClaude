@@ -61,6 +61,7 @@ TELEGRAM_MAX_MESSAGE_BYTES = 4096  # Telegram API hard limit for message text
 MAIN_MODULE = "__main__"
 LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
+TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
 INTEGRATOR_GITOP_ENV = "TELECLAUDE_INTEGRATOR_GITOP"
 # Marker prefixing a manual lifecycle operation's result text when the runner
 # was not dispatched (skipped, invalid kind, or a claim conflict). A completed

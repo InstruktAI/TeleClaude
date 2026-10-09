@@ -22,7 +22,7 @@ from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import declared_config_kind, load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
-from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.errors import ConfigLoadError, cause_findings, describe_load_error, load_error_findings
 from teleclaude.config.field_constraints import MACHINE_CONTEXT_KEY, UNRESOLVED_CONTEXT_KEY
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
@@ -72,6 +72,7 @@ _STAGED_DECLARATION_YAML_ERROR = "{path}: invalid YAML: {error}"
 _STAGED_DECLARATION_MAPPING_ERROR = "{path}: declaration must be a mapping"
 _STAGED_DECLARATION_KIND_ERROR = "{path}: declaration kind must be one of: global, project, person, company"
 _STAGED_DECLARATION_SCHEMA_ERROR = "{path}: invalid {kind} declaration: {error}"
+_FINDINGS_SEPARATOR = "; "
 
 
 @dataclass(frozen=True)
@@ -236,21 +237,14 @@ def load_config[T: BaseModel](
     if not path.exists():
         return model_class.model_validate(defaults)
 
-    try:
-        with open(path, encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
-    except Exception as e:
-        logger.error("Failed to read config file %s: %s", path, e)
-        raise ConfigLoadError(f"Failed to read config file {path}: {e}", document=path) from e
-
-    return _validated_model(path, raw, model_class, kind)
+    return _validated_model(path, _read_config_mapping(path), model_class, kind)
 
 
 def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T], kind: ConfigKind) -> T:
     """Validate one already-read declaration through the shared read pipeline."""
-    if not isinstance(raw, Mapping):
-        return model_class.model_validate(raw)
     try:
+        if not isinstance(raw, Mapping):
+            return model_class.model_validate(raw)
         raw = upcast_for_read(path, raw)
         require_inbound_secret_references(path, raw)
         expanded = expanded_overlay_input(path, raw, kind)
@@ -282,7 +276,7 @@ def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
     try:
         raw = yaml.safe_load(content.decode(_UTF8))
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
-        return [_STAGED_DECLARATION_YAML_ERROR.format(path=path, error=exc)]
+        return [_STAGED_DECLARATION_YAML_ERROR.format(path=path, error=_FINDINGS_SEPARATOR.join(cause_findings(exc)))]
     if not isinstance(raw, Mapping):
         return [_STAGED_DECLARATION_MAPPING_ERROR.format(path=path)]
     try:
@@ -292,8 +286,9 @@ def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
 
     try:
         _validated_model(path, raw, TIER_DOCUMENT_MODELS[kind], kind)
-    except ValueError as exc:
-        return [_STAGED_DECLARATION_SCHEMA_ERROR.format(path=path, kind=kind.value, error=exc)]
+    except ConfigLoadError as exc:
+        findings = _FINDINGS_SEPARATOR.join(load_error_findings(exc))
+        return [_STAGED_DECLARATION_SCHEMA_ERROR.format(path=path, kind=kind.value, error=findings)]
     return []
 
 
@@ -302,8 +297,10 @@ def _read_config_mapping(path: Path) -> object:
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except Exception as e:
-        logger.error("Failed to read config file %s: %s", path, e)
-        raise ValueError(f"Failed to read config file {path}: {e}") from e
+        error = ConfigLoadError(f"Failed to read config file {path}: {e}", document=path)
+        error.__cause__ = e
+        logger.error("%s", describe_load_error(error))
+        raise error from e
 
 
 def load_project_config(path: Path) -> ProjectConfig:

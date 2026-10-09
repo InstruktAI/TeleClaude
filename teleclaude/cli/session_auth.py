@@ -33,6 +33,7 @@ from teleclaude.caller_identity import (
     session_act_exception,
 )
 from teleclaude.cli import CommandScope
+from teleclaude.cli.telec.surface_types import admits_any_caller
 from teleclaude.config.loader import load_global_config
 from teleclaude.config.machine import config
 from teleclaude.constants import (
@@ -40,6 +41,7 @@ from teleclaude.constants import (
     LOCAL_COMPUTER,
     LOGIN_REQUIRED_DETAIL,
     SYSTEM_DAEMON_PRINCIPAL,
+    TUI_SESSION_ENV_KEY,
     MarkerState,
 )
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
@@ -49,7 +51,6 @@ from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.types.creation_record import EntryPoint
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
-TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
 _NO_TERMINAL_ERROR = "No terminal detected: telec auth login must run from an interactive terminal."
 _DEVICE_ALLOCATION_KEY = "device_allocation"
@@ -414,6 +415,8 @@ def cli_clearance(
     """
     if auth is None:
         return CliClearance(identity=identity, refusal=_CALLER_INDEPENDENT_COMMAND_REFUSAL)
+    if admits_any_caller(auth.caller_independent, desk_command):
+        return CliClearance(identity=None, refusal=None)
     if identity is not None and is_desk_visitor(identity.caller) and not desk_command:
         return CliClearance(identity=identity, refusal=_DESK_COMMAND_REFUSAL_TEMPLATE.format(command_path=command_path))
     if auth.caller_independent:
