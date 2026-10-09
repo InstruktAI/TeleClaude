@@ -15,7 +15,7 @@ Environment-backed YAML values are resolved at the configuration boundary before
 
 Overlay resolution never consults the process environment or another configuration tier. A value that is one whole `${NAME}` reference with no value in the owning `.env` is absent on that computer: its field takes the schema's declared default or stays unset, and a consumer that needs the value refuses, naming what it lacks. A field that a computer role needs declares so against the machine configuration (`local/projects/teleclaude/spec/teleclaude-config`, Tier declaration and editor schemas), and that computer's readiness judgment reports the declaration when the reference has no value there; the document itself still loads. A reference embedded in a longer value has no absent form, so it resolves or fails that overlay's load. Literal YAML values remain valid, and `.env` entries enter typed configuration only when a YAML value references them.
 
-The machine `config.yml` and its optional `experiments.yml` remain a separate runtime surface. They resolve references from the machine runtime environment established at process startup under the machine-config contract, by the same absent-value rule.
+The machine `config.yml` and its optional `experiments.yml` remain a separate runtime surface. They resolve references from the machine runtime environment: the process environment with the TeleClaude checkout's `.env` applied at every resolution, shell-provided variables taking precedence. Every reader of the machine configuration resolves from that one environment, whether it loads, validates or writes, by the same absent-value rule.
 
 ### Business value
 

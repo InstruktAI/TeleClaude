@@ -62,8 +62,8 @@ from teleclaude.config._models import (
 from teleclaude.config._summarizer import SummarizerConfig
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import find_person_config_path
-from teleclaude.config.machine import machine_runtime_environment
 from teleclaude.config.machine_config_mutation import inspect_machine_config
+from teleclaude.config.machine_environment import machine_runtime_environment
 from teleclaude.config.person_secrets import PersonSecretStorageError
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES

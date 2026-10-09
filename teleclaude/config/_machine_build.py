@@ -43,6 +43,7 @@ from teleclaude.config._unresolved import (
     is_unresolved,
 )
 from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.machine_environment import machine_runtime_environment
 from teleclaude.config.observation import credential_field_sources, credential_section_availability
 from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL,
@@ -477,7 +478,7 @@ def build_config_from_raw(
         field_sources_input = raw_document
         user_config: object = expand_environment_references(
             raw_document,
-            os.environ,
+            machine_runtime_environment(),
             preserve_unresolved=True,
         )
         if isinstance(user_config, Mapping):

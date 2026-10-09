@@ -4,12 +4,10 @@ Available as ``from teleclaude.config.machine import config``.
 """
 
 import os
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from dotenv import dotenv_values
 
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._machine_build import (
@@ -25,39 +23,8 @@ from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import PROJECT_ENV_PATH
 
-_dotenv_path = PROJECT_ENV_PATH
 _WORKING_DIR_VARIABLE = "WORKING_DIR"
 _READ_ERROR = "Failed to read config file {path}: {error}"
-
-# Variables present before any .env load are shell-provided and keep precedence;
-# .env-sourced variables are refreshed from the file on every (re)load.
-_PRE_DOTENV_ENV_KEYS = frozenset(os.environ)
-# Keys currently sourced from .env, so a reload can drop ones deleted from the file.
-_dotenv_managed_keys: set[str] = set()
-
-
-def _refresh_dotenv() -> None:
-    """Apply the .env file to os.environ so config reload observes out-of-process edits.
-
-    Shell-provided variables (captured before the first load) keep precedence over .env.
-    .env-sourced variables are refreshed each call, and ones removed from the file are
-    dropped from os.environ — so reload_config() reflects both edits and deletions of
-    the ${VAR}-backed values the TUI writes to .env (Redis creds, summarizer URL, keys).
-    """
-    values = dotenv_values(_dotenv_path)
-    current = {k for k, v in values.items() if v is not None and k not in _PRE_DOTENV_ENV_KEYS}
-    for key in _dotenv_managed_keys - current:
-        os.environ.pop(key, None)
-    for key in current:
-        os.environ[key] = str(values[key])
-    _dotenv_managed_keys.clear()
-    _dotenv_managed_keys.update(current)
-
-
-def machine_runtime_environment() -> Mapping[str, str]:
-    """Expose the established machine runtime environment to config adapters."""
-    return os.environ
-
 
 # Sections whose consumers re-read config at call-time, so a reload applies live via
 # in-place singleton mutation (tts additionally needs TTSManager.reload()). This is a
@@ -73,7 +40,6 @@ def restart_required_sections(changed: list[str]) -> list[str]:
 
 def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
-    _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
     os.environ.setdefault(_WORKING_DIR_VARIABLE, WORKING_DIR)
     try:
         with open(path, encoding="utf-8") as f:
@@ -92,7 +58,7 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
 _config_path = resolve_runtime_config_path()
 _config: TeleclaudeConfig | None = None
 config_path = _config_path
-dotenv_path = _dotenv_path  # public alias; the config watcher watches config_path + dotenv_path
+dotenv_path = PROJECT_ENV_PATH  # public alias; the config watcher watches config_path + dotenv_path
 
 
 def _runtime_config() -> TeleclaudeConfig:
