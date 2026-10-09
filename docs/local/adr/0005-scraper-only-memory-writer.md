@@ -43,3 +43,7 @@ The `telec memories save` CLI surface is hidden from default help and its desc n
 - **Any agent writes; trust the discipline.** The previous status quo. Rejected because trust-the-discipline doesn't scale across heterogeneous agents.
 - **A write-time validator that enforces the dedup rule on every save regardless of caller.** Considered. Rejected because the dedup rule requires LLM judgment (substantive coverage in docs), not a structural check; a validator can't enforce it. The discipline lives in the procedure, not in the storage layer.
 - **Two-tier writers: scraper for batch, agents for ad-hoc.** Rejected because the two write paths would drift in discipline and the ad-hoc path would become a leak.
+
+## Status
+
+Deprecated

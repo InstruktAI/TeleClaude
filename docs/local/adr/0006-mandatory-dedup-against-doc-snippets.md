@@ -42,3 +42,7 @@ The reverse direction (dedup memory rows against each other) is explicitly NOT a
 - **No dedup discipline.** The previous status quo. Rejected because of the inevitable duplication-and-drift failure.
 - **Two-way dedup: memory→docs AND memory→memory at write time.** Considered. Rejected because memory→memory dedup destroys the salience signal that frequency provides (per ADR-0003). Only one direction (memory→docs) is enforced.
 - **Hard-link memory rows to doc snippets when overlap is detected.** Considered. Rejected as over-engineered: the simple rule is "discard if covered"; introducing a link would require schema changes and ongoing maintenance with no clear consumer.
+
+## Status
+
+Deprecated

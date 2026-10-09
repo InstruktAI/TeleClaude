@@ -23,6 +23,20 @@ describes the current appliance only.
 
 - **Owns:** durable preference observations, their retrieval and search, and
   rendering those observations as context.
+- **Holds observations about people.** Memory records who a person is and how
+  they work with the platform. It never records project knowledge — conventions,
+  architecture, operational gotchas — nor decisions: those are documentation,
+  shaped through the human-involved documentation process.
+
+<!-- planned:help-desk-idle-memory-cycle -->
+
+- **Holds business insights from help-desk conversations.** What visitors ask
+  for, complain about, or are confused by is recorded for the home that owns the
+  desk, beside the memories about each visitor
+  (`local/projects/teleclaude/spec/feature/agent_runtime/desk-conversation-continuity`).
+
+<!-- /planned:help-desk-idle-memory-cycle -->
+
 - **Does not own:** session transcripts, general project documentation, or
   decisions inferred from an observation by consuming domains.
 - **Published contracts:** observation records, search queries, and rendered

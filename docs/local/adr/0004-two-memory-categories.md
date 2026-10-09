@@ -46,3 +46,7 @@ The two categories have distinct predicate vocabularies (per the feature specs) 
 - **Three categories (human / project / general).** Considered. Rejected because no concrete general-tier use case survived scrutiny — every example collapsed into one of the other two or into future skill detection.
 - **One category, free-form subject.** Considered. Rejected because the downstream consumer needs to know whether a subject is a person or a project to render it correctly. Encoding that in a free-form string would push parsing burden onto every consumer.
 - **N categories, one per pillar.** Considered. Rejected as over-fragmented; most pillars don't accumulate observations the way memory does (the memory pillar IS the pillar that accumulates observations; other pillars own their own state).
+
+## Status
+
+Deprecated
