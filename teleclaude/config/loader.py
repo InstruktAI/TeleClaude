@@ -125,10 +125,15 @@ def resolve_overlay_references(
     )
 
 
-def validate_tier_document[T: BaseModel](
+def validate_tier_document[T: BaseModel](model_class: type[T], value: object) -> T:
+    """Validate a resolved tier document's shape and field relationships, the same on every computer."""
+    return model_class.model_validate(value)
+
+
+def validate_tier_readiness[T: BaseModel](
     model_class: type[T], value: object, unresolved: Mapping[tuple[str | int, ...], str]
 ) -> T:
-    """Validate a resolved tier document, judging the values this computer needs against its machine flags."""
+    """Validate a resolved tier document and judge that this computer holds every value its role needs."""
     return model_class.model_validate(
         value,
         context={MACHINE_CONTEXT_KEY: machine_config, UNRESOLVED_CONTEXT_KEY: unresolved},
@@ -186,7 +191,7 @@ def validate_tier_candidate(
         )
     environment.update(environment_updates or {})
     resolved = resolve_overlay_references(document, environment, kind, path)
-    return validate_tier_document(TIER_DOCUMENT_MODELS[kind], resolved.value, resolved.unresolved)
+    return validate_tier_document(TIER_DOCUMENT_MODELS[kind], resolved.value)
 
 
 class DeclaredMailAccountRefusal(StrEnum):
@@ -240,21 +245,31 @@ def load_config[T: BaseModel](
     return _validated_model(path, _read_config_mapping(path), model_class, kind)
 
 
-def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T], kind: ConfigKind) -> T:
-    """Validate one already-read declaration through the shared read pipeline."""
+def _validated_model[T: BaseModel](
+    path: Path, raw: object, model_class: type[T], kind: ConfigKind, *, readiness: bool = False
+) -> T:
+    """Validate one already-read declaration through the shared read pipeline.
+
+    Loading judges the document; ``readiness`` also judges that this computer holds the values its role needs.
+    """
     try:
         if not isinstance(raw, Mapping):
             return model_class.model_validate(raw)
         raw = upcast_for_read(path, raw)
         require_inbound_secret_references(path, raw)
         expanded = expanded_overlay_input(path, raw, kind)
-        return validate_tier_document(model_class, expanded.value, expanded.unresolved)
+        if readiness:
+            return validate_tier_readiness(model_class, expanded.value, expanded.unresolved)
+        return validate_tier_document(model_class, expanded.value)
     except Exception as exc:
         raise ConfigLoadError(f"Failed to validate config file {path}: {exc}", document=path) from exc
 
 
 def validate_declaration_file(path: Path) -> None:
-    """Validate one tier declaration on disk exactly as loading it does; raise ``ConfigLoadError`` when it fails."""
+    """Judge one live tier declaration's readiness on this computer; raise ``ConfigLoadError`` when it fails.
+
+    The document is validated as loading does, and every value this computer's role needs must resolve.
+    """
     try:
         raw: object = yaml.safe_load(path.read_text(encoding=_UTF8)) or {}
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -263,15 +278,15 @@ def validate_declaration_file(path: Path) -> None:
         kind = declared_config_kind(path, raw)
     except ValueError as exc:
         raise ConfigLoadError(str(exc), document=path) from exc
-    _validated_model(path, raw, TIER_DOCUMENT_MODELS[kind], kind)
+    _validated_model(path, raw, TIER_DOCUMENT_MODELS[kind], kind, readiness=True)
 
 
 def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
     """Validate one staged declaration through the same pipeline that loads it.
 
     The staged bytes are migrated, their secret declarations checked, their references resolved
-    from the environment file beside ``path`` on this computer, and their schema and field
-    relationships judged against this computer's machine configuration. No other file is validated.
+    from the environment file beside ``path`` on this computer, and their schema and declared field
+    relationships judged. This computer's readiness is not judged at commit. No other file is validated.
     """
     try:
         raw = yaml.safe_load(content.decode(_UTF8))

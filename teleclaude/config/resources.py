@@ -172,7 +172,7 @@ def _validate_global_candidate(candidate: Mapping[str, object]) -> None:  # guar
         # `kind` is a required discriminator field on the typed model but is never part of
         # the writable candidate — `render_declared_config` injects it at render time, the
         # same way every other overlay writer does. Supply it here for validation only.
-        validate_tier_document(GlobalConfig, {**expanded, _KIND_KEY: ConfigKind.GLOBAL.value}, resolved.unresolved)
+        validate_tier_document(GlobalConfig, {**expanded, _KIND_KEY: ConfigKind.GLOBAL.value})
     except Exception as exc:
         raise InvalidCandidate(str(exc)) from exc
 

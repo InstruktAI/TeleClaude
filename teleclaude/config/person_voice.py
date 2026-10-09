@@ -71,7 +71,7 @@ def configure_person_discord_voice_bot(
         )
         environment[_CANONICAL_DISCORD_TOKEN_ENV] = resolved_machine_token
         resolved = resolve_overlay_references(candidate, environment, ConfigKind.PERSON, overlay_path)
-        validate_tier_document(PersonConfig, resolved.value, resolved.unresolved)
+        validate_tier_document(PersonConfig, resolved.value)
         carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         environment_secured = secure_person_secret_store(person_slug, people_dir=people_dir)
         replace_person_mcp_secret(

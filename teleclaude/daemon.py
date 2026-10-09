@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
@@ -91,6 +91,7 @@ from teleclaude.config._machine_build import WORKING_DIR
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.loader import validate_declaration_file
 from teleclaude.config.machine import config, config_path, dotenv_path, reload_config, restart_required_sections
+from teleclaude.config.registered_homes import live_tier_declarations
 from teleclaude.core.config_validation_reports import ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 
@@ -913,6 +914,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
             await self.lifecycle.startup()
+            # Report every live declaration this computer cannot run on; a refusal never blocks startup.
+            await self._judge_declaration_readiness(live_tier_declarations())
 
             startup_elapsed = time.perf_counter() - daemon_start_started_at
             if startup_elapsed >= SLOW_STARTUP_WARNING_S:
@@ -1236,15 +1239,19 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         """Refresh the local project cache after an external registry edit."""
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
 
-    async def _on_identity_declarations_changed(self) -> None:
-        """Judge the changed declarations, then refresh config-owned project facts and invalidate identity reach."""
-        for document in _identity_declaration_documents():
+    async def _judge_declaration_readiness(self, documents: Iterable[Path]) -> None:
+        """Judge each live declaration's readiness on this computer and report every change of verdict."""
+        for document in documents:
             try:
                 await asyncio.to_thread(validate_declaration_file, document)
             except ConfigLoadError as error:
                 await self._config_validation_reports.refused(str(document), document, error)
                 continue
             await self._config_validation_reports.accepted(str(document), document)
+
+    async def _on_identity_declarations_changed(self) -> None:
+        """Judge the changed declarations, then refresh config-owned project facts and invalidate identity reach."""
+        await self._judge_declaration_readiness(_identity_declaration_documents())
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
         publish_declaration_changes()
 

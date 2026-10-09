@@ -21,6 +21,7 @@ from teleclaude.config._environment import write_environment_value
 from teleclaude.config._machine_build import build_config_from_raw
 from teleclaude.config._models import TeleclaudeConfig
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
+from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import (
     find_person_config_path,
@@ -29,6 +30,7 @@ from teleclaude.config.loader import (
     load_declared_project_config,
     load_global_config,
     load_person_config,
+    validate_declaration_file,
 )
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
@@ -41,6 +43,7 @@ from teleclaude.config.person_secrets import (
     list_person_mcp_secret_statuses,
     replace_person_mcp_secret,
 )
+from teleclaude.config.registered_homes import live_tier_declarations
 from teleclaude.config.schema import GlobalConfig, PersonConfig
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
@@ -55,6 +58,8 @@ _PEOPLE_DIR = TELECLAUDE_HOME / "people"
 _PERSON_MCP_SECRET_MANAGEMENT_FAILED = "Personal MCP secret management failed"
 _INTEREST_FAULT_SUGGESTION = "Check the notifications block in {path}"
 _ADOPT_UNDECLARED_PROJECT = "Run from {path}: telec config project adopt"
+_READINESS_AREA = "computer readiness"
+_READINESS_SUGGESTION = "Set each named value in the environment file beside its declaration on this computer."
 
 
 class PersonMcpSecretManagementError(ValueError):
@@ -266,6 +271,8 @@ def validate_all() -> list[ValidationResult]:
         else:
             results.append(ValidationResult(area=project_area, passed=True))
 
+    results.append(_readiness_result())
+
     missing_sections: dict[str, list[str]] = {}
     if app_config is not None:
         for section_name in ("telegram", "discord", "whatsapp", "email"):
@@ -288,6 +295,19 @@ def validate_all() -> list[ValidationResult]:
         results.append(ValidationResult(area="config credentials", passed=True))
 
     return results
+
+
+def _readiness_result() -> ValidationResult:
+    """Judge whether this computer holds every value its role needs in each live declaration."""
+    errors: list[str] = []
+    for declaration in live_tier_declarations():
+        try:
+            validate_declaration_file(declaration)
+        except ConfigLoadError as error:
+            errors.append(describe_load_error(error))
+    if not errors:
+        return ValidationResult(area=_READINESS_AREA, passed=True)
+    return ValidationResult(area=_READINESS_AREA, passed=False, errors=errors, suggestions=[_READINESS_SUGGESTION])
 
 
 # --- Environment ---

@@ -12,15 +12,33 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.config.loader import find_company_config_path
+from teleclaude.config.loader import find_company_config_path, list_company_config_paths
 from teleclaude.config_subjects import ConfigSubjectKind
-from teleclaude.paths import PEOPLE_DIR, ConfigFileName
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.slug import derive_project_slug, validate_slug
 
 _UTF8 = "utf-8"
 _PROJECT_SLUG_FIELD = "project_slug"
 _PROJECT_NAME_FIELD = "project_name"
+
+
+def live_tier_declarations() -> tuple[Path, ...]:
+    """Every tier declaration present on this computer: the global one, each person's and company's, each project's."""
+    candidates = [GLOBAL_CONFIG_PATH]
+    if PEOPLE_DIR.is_dir():
+        candidates.extend(sorted(PEOPLE_DIR.glob(f"*/{ConfigFileName.OVERLAY}")))
+    candidates.extend(list_company_config_paths())
+    candidates.extend(root.path / ConfigFileName.OVERLAY for root in load_registered_roots() if root.is_present)
+    seen: set[Path] = set()
+    declarations: list[Path] = []
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        declarations.append(candidate)
+    return tuple(declarations)
 
 
 def registered_home_folder(kind: ConfigSubjectKind, slug: str) -> Path | None:

@@ -71,8 +71,9 @@ Derivation rules:
 - Every staged `teleclaude.yml` is validated at the commit gate as that one
   file, through the same pipeline that loads it: migrated, its references
   resolved from the environment file beside it on this computer, and its
-  schema and field relationships judged against this computer's machine
-  configuration (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`).
+  schema and declared field relationships judged. Whether this computer holds
+  the values its role needs is its readiness, which the commit gate does not
+  judge (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`).
   This holds in every home whose commit-gate hooks are installed, whatever that
   home subscribes. No other configuration file is validated. In a home that enables neither `code` nor
   `docs`, declaration validation is the gate's only check, and that home still

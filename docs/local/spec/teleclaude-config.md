@@ -63,9 +63,14 @@ not declared this way.
 A field whose value only some computers need declares that need against the
 machine configuration: on a computer where the named machine flag is set, a
 `${NAME}` declared for the field must have a value in the declaring home's
-`.env`, and every validation of the document there refuses it otherwise, naming
-the field, the flag and the reference. Elsewhere the value may be absent, and a
-field with nothing declared is not judged. Inbound source secrets are needed
+`.env`. That need is a fact about one computer, not about the document, so it
+is judged only as that computer's readiness: at daemon startup, when a watched
+declaration changes, and by `telec config validate`, each over the live
+declarations on that computer. A declaration that is not ready is reported,
+naming the field, the flag and the reference; it still loads, and a consumer
+that needs the absent value refuses when it is used. Loading, writing, commit
+and publication validate the document alone. Elsewhere the value may be
+absent, and a field with nothing declared is not judged. Inbound source secrets are needed
 where `computer.is_ingress_node` is set, and a person's voice-bot token where
 `computer.is_master` is set. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
