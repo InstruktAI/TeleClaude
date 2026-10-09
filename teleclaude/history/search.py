@@ -6,14 +6,26 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from typing import Final
 
-from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.session_auth import no_identity_refusal, resolve_cli_identity
+from teleclaude.cli.tool_client import (
+    NotAcceptedCause,
+    exit_not_accepted,
+    not_accepted_cause_text,
+    print_run_again_when_not_accepted,
+)
 from teleclaude.config.machine import config
 from teleclaude.core.agents import AgentName
-from teleclaude.core.command_dispatch import is_remote_target
+from teleclaude.core.command_dispatch import is_relay_failure_detail, is_remote_target
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
-from teleclaude.history.service import build_history_search_payload, resolve_history_reach
+from teleclaude.history.service import HistoryRelayCommand, build_history_search_payload, resolve_history_reach
+
+_TARGET_FAILURE_TEMPLATE: Final = "[{target}] History search failed: {failure}"
+_LOCAL_TARGET: Final = "local"
+
+type _SearchFailure = tuple[BaseException, str | None]
 
 
 def _print_results(
@@ -100,7 +112,6 @@ def display_combined_history(
     local_targets = [computer for computer in targets if not is_remote_target(computer, config.computer.name)]
     remote_targets = [computer for computer in targets if is_remote_target(computer, config.computer.name)]
     responses: list[tuple[HistorySearchPayload | BaseException, str | None]] = []
-    excluded_workers = 0
 
     if local_targets:
         resolved_caller = resolve_cli_identity()
@@ -139,14 +150,83 @@ def display_combined_history(
         )
         responses.extend(zip(remote_responses, remote_targets, strict=True))
 
-    results: list[HistorySearchRow] = []
+    answered: list[HistorySearchPayload] = []
+    failures: list[_SearchFailure] = []
     for response, computer in responses:
         if isinstance(response, BaseException):
-            target = computer or "local"
-            print(f"[{target}] History search failed: {response}", file=sys.stderr)
-            continue
-        results.extend(response["rows"])
-        excluded_workers += response["excluded_workers"]
+            failures.append((response, computer))
+        else:
+            answered.append(response)
+
+    refusal_cause = _first_not_accepted_cause(failures)
+    if not answered and refusal_cause is not None and _every_failure_not_accepted(failures):
+        exit_not_accepted(refusal_cause)
+
+    for failure, computer in failures:
+        print(
+            _TARGET_FAILURE_TEMPLATE.format(target=computer or _LOCAL_TARGET, failure=_failure_text(failure)),
+            file=sys.stderr,
+        )
+    if answered:
+        _print_answers(
+            answered,
+            search_term=search_term,
+            computers=computers,
+            agents=agents,
+            limit=limit,
+            json_output=json_output,
+        )
+    if failures:
+        print_run_again_when_not_accepted(refusal_cause)
+        if not (answered and all(_is_peer_failure(failure, computer) for failure, computer in failures)):
+            raise SystemExit(1)
+
+
+def _not_accepted_cause(failure: BaseException) -> NotAcceptedCause | None:
+    """Why this target's request was not accepted by the daemon, or ``None`` for any other failure."""
+    return failure.not_accepted_cause if isinstance(failure, APIError) else None
+
+
+def _first_not_accepted_cause(failures: list[_SearchFailure]) -> NotAcceptedCause | None:
+    """The cause of the first request a draining or unreachable daemon did not accept."""
+    return next((cause for failure, _ in failures if (cause := _not_accepted_cause(failure)) is not None), None)
+
+
+def _every_failure_not_accepted(failures: list[_SearchFailure]) -> bool:
+    """Whether the daemon accepted none of the failed requests."""
+    return all(_not_accepted_cause(failure) is not None for failure, _ in failures)
+
+
+def _failure_text(failure: BaseException) -> str:
+    """The failure in words; a refusal or an unreachable daemon is described without its response body."""
+    cause = _not_accepted_cause(failure)
+    return str(failure) if cause is None else not_accepted_cause_text(cause)
+
+
+def _is_peer_failure(failure: BaseException, computer: str | None) -> bool:
+    """Whether the failure is the relay's own report that a read on the named peer computer failed."""
+    return (
+        isinstance(failure, APIError)
+        and computer is not None
+        and is_relay_failure_detail(failure.detail, command=HistoryRelayCommand.SEARCH.value, computer=computer)
+    )
+
+
+def _print_answers(
+    answered: list[HistorySearchPayload],
+    *,
+    search_term: str,
+    computers: Sequence[str] | None,
+    agents: Sequence[AgentName],
+    limit: int,
+    json_output: bool,
+) -> None:
+    """Print the rows every answering target returned, merged newest first."""
+    results: list[HistorySearchRow] = []
+    excluded_workers = 0
+    for payload in answered:
+        results.extend(payload["rows"])
+        excluded_workers += payload["excluded_workers"]
     if not results:
         if json_output:
             print(json.dumps([]))

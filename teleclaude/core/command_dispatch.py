@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 from redis.exceptions import RedisError
 
 from teleclaude.config.machine import config
+from teleclaude.constants import SHUTDOWN_REFUSAL_KIND
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
     AgentDispatchOutcome,
@@ -73,11 +74,11 @@ PEER_VERSION_SKEW_DIAGNOSTIC_TEMPLATE = (
 )
 NO_VERSION_CONTEXT = ""
 _RELAY_FAILURE_DETAIL_TEMPLATE = "Remote {command} on {computer} failed: {detail}"
+_RELAY_FAILURE_ENVELOPE_DETAIL = ""
 _ERROR_KIND_FIELD = "kind"
 _ERROR_DETAIL_FIELD = "detail"
 _NOT_FOUND_ERROR_KIND = "not_found"
 _REFUSED_ERROR_KIND = "refused_by_target"
-SHUTDOWN_REFUSAL_ERROR_KIND = "shutdown_refusal"
 _RETRY_AFTER_FIELD = "retry_after_seconds"
 _READ_TIMEOUT_DETAIL = "target did not answer before the read timed out"
 _PEER_REQUEST_DETAIL = "peer request failed"
@@ -102,7 +103,7 @@ class RemoteDispatchReason(StrEnum):
 _RELAY_ERROR_KIND_REASONS: dict[str, RemoteDispatchReason] = {
     _NOT_FOUND_ERROR_KIND: RemoteDispatchReason.NOT_FOUND,
     _REFUSED_ERROR_KIND: RemoteDispatchReason.REFUSED_BY_TARGET,
-    SHUTDOWN_REFUSAL_ERROR_KIND: RemoteDispatchReason.PEER_DRAINING,
+    SHUTDOWN_REFUSAL_KIND: RemoteDispatchReason.PEER_DRAINING,
 }
 
 
@@ -143,6 +144,14 @@ class RelayFailure(RemoteDispatchError):
             _RELAY_FAILURE_DETAIL_TEMPLATE.format(command=command, computer=computer, detail=detail),
             reason=reason,
         )
+
+
+def is_relay_failure_detail(detail: object, *, command: str, computer: str) -> bool:
+    """Whether a failure detail is the envelope ``RelayFailure`` writes for a failed read on ``computer``."""
+    envelope_prefix = _RELAY_FAILURE_DETAIL_TEMPLATE.format(
+        command=command, computer=computer, detail=_RELAY_FAILURE_ENVELOPE_DETAIL
+    )
+    return isinstance(detail, str) and detail.startswith(envelope_prefix)
 
 
 def is_remote_target(computer: str | None, local_computer: str) -> bool:
@@ -362,7 +371,7 @@ def shutdown_refusal_envelope(refusal: ShutdownRefusal) -> JsonDict:
     return {
         "status": "error",
         "error": {
-            _ERROR_KIND_FIELD: SHUTDOWN_REFUSAL_ERROR_KIND,
+            _ERROR_KIND_FIELD: SHUTDOWN_REFUSAL_KIND,
             _ERROR_DETAIL_FIELD: str(refusal),
             _RETRY_AFTER_FIELD: refusal.retry_after_seconds,
         },

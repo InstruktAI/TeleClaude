@@ -20,16 +20,12 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
 from teleclaude.api_models import (
-    ChiptunesCommandReceiptDTO,
-    ChiptunesStatusDTO,
     ComputerDTO,
     CreateSessionResponseDTO,
     JobDTO,
     ProjectDTO,
     RunSessionRequest,
     SessionDTO,
-    SettingsDTO,
-    SettingsPatchDTO,
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
@@ -37,10 +33,13 @@ from teleclaude.api_session_actions_models import AgentRestartResponseDTO
 from teleclaude.caller_identity import CarriedIdentity
 from teleclaude.cli.api_client_health import TelecHealthAPI
 from teleclaude.cli.api_client_identity import TelecIdentityAPI
+from teleclaude.cli.api_client_request import JsonBody, RequestOptions
+from teleclaude.cli.api_client_runtime import TelecRuntimeAPI
 from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
 from teleclaude.cli.session_auth import ResolvedCliIdentity
+from teleclaude.cli.tool_client import NotAcceptedCause, exit_not_accepted, is_shutdown_refusal
 from teleclaude.cli.tui_clearance import clear_tui_bootstrap_pillars
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.command_input import CommandInputMode
@@ -84,19 +83,9 @@ API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 __all__ = ["APIError", "TelecAPIClient"]
 
 type WsPayload = dict[str, dict[str, str | list[str] | bool]]
-type JsonBody = dict[str, object]  # guard: loose-dict - JSON API response
 
 WS_OPERATION_ERRORS = (OSError, RuntimeError, WebSocketException)
 REQUEST_WRAP_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
-
-
-@dataclass(frozen=True)
-class RequestOptions:
-    """Optional HTTP request inputs."""
-
-    params: dict[str, str] | list[tuple[str, str]] | None = None
-    json_body: JsonBody | None = None
-    clearance_scope: ClearanceScope = field(default_factory=ClearanceScope.ungoverned)
 
 
 @dataclass
@@ -126,10 +115,23 @@ class _WebSocketState:
 class APIError(Exception):
     """API request failed with structured error info."""
 
-    def __init__(self, message: str, status_code: int | None = None, detail: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        detail: str | None = None,
+        *,
+        not_accepted_cause: NotAcceptedCause | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.detail = detail or message  # Fallback to full message if no detail
+        self.not_accepted_cause = not_accepted_cause
+
+    def exit_if_not_accepted(self) -> None:
+        """Exit with the not-accepted message when this failure was a refusal or an unreachable daemon."""
+        if self.not_accepted_cause is not None:
+            exit_not_accepted(self.not_accepted_cause)
 
 
 class _TelecConnectionClient:
@@ -478,7 +480,10 @@ class _TelecConnectionClient:
                     self._log_connect_error(method, url, request_timeout, error)
                     await self._wait_for_socket()
                     if attempt >= len(retry_delays):
-                        raise APIError("Cannot connect to API server. Socket may be missing.") from error
+                        raise APIError(
+                            "Cannot connect to API server. Socket may be missing.",
+                            not_accepted_cause=NotAcceptedCause.UNREACHABLE,
+                        ) from error
         except httpx.HTTPStatusError as error:
             # Parse JSON response to extract human-friendly detail
             status_code = error.response.status_code
@@ -492,6 +497,7 @@ class _TelecConnectionClient:
                 f"API request failed: {status_code} {detail or error.response.text}",
                 status_code=status_code,
                 detail=detail,
+                not_accepted_cause=NotAcceptedCause.DRAINING if is_shutdown_refusal(status_code, detail) else None,
             ) from error
         except httpx.TimeoutException as error:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from error
@@ -500,7 +506,10 @@ class _TelecConnectionClient:
         except REQUEST_WRAP_ERRORS as error:
             raise APIError(f"Unexpected error: {error}") from error
 
-        raise APIError("Cannot connect to API server. Socket may be missing.")
+        raise APIError(
+            "Cannot connect to API server. Socket may be missing.",
+            not_accepted_cause=NotAcceptedCause.UNREACHABLE,
+        )
 
     def _now_monotonic(self) -> float:
         """Return a monotonic timestamp for debounce logic."""
@@ -842,159 +851,5 @@ class _TelecSessionAPI:
         return TypeAdapter(AgentRestartResponseDTO).validate_json(resp.text)
 
 
-class _TelecRuntimeAPI:
-    """Settings, chiptunes, revive, and memory operations."""
-
-    _request: Callable[..., Awaitable[httpx.Response]]
-
-    async def patch_settings(self, updates: SettingsPatchDTO) -> SettingsDTO:
-        """Apply partial updates to runtime settings."""
-        resp = await self._request(
-            "PATCH",
-            "/settings",
-            request_options=RequestOptions(json_body=updates.model_dump(exclude_none=True)),
-        )
-        return TypeAdapter(SettingsDTO).validate_json(resp.text)
-
-    async def deprovision_tts(self) -> SettingsDTO:
-        """Force TTS off and remove the TTS-exclusive optional dependencies."""
-        resp = await self._request(
-            "POST",
-            "/settings/tts/deprovision",
-            request_options=RequestOptions(clearance_scope=ClearanceScope.verb("config tts deprovision")),
-        )
-        return TypeAdapter(SettingsDTO).validate_json(resp.text)
-
-    async def chiptunes_next(self) -> ChiptunesCommandReceiptDTO:
-        """Queue skip-to-next chiptunes command."""
-        resp = await self._request("POST", "/api/chiptunes/next")
-        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
-
-    async def chiptunes_prev(self) -> ChiptunesCommandReceiptDTO:
-        """Queue previous-track chiptunes command."""
-        resp = await self._request("POST", "/api/chiptunes/prev")
-        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
-
-    async def chiptunes_pause(self) -> ChiptunesCommandReceiptDTO:
-        """Queue pause command for chiptunes playback."""
-        resp = await self._request("POST", "/api/chiptunes/pause")
-        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
-
-    async def chiptunes_resume(self) -> ChiptunesCommandReceiptDTO:
-        """Queue resume command for chiptunes playback."""
-        resp = await self._request("POST", "/api/chiptunes/resume")
-        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
-
-    async def chiptunes_stop(self) -> None:
-        """Stop chiptunes playback and kill the worker process."""
-        await self._request("POST", "/api/chiptunes/stop")
-
-    async def get_chiptunes_status(self) -> ChiptunesStatusDTO:
-        """Fetch current chiptunes playback state."""
-        resp = await self._request("GET", "/api/chiptunes/status")
-        return TypeAdapter(ChiptunesStatusDTO).validate_json(resp.text)
-
-    async def revive_session(
-        self, session_id: str, *, agent: str | None = None, project: str | None = None, computer: str | None = None
-    ) -> CreateSessionResponseDTO:
-        """Revive a session by TeleClaude or native session ID.
-
-        Without agent, session_id is a TeleClaude session ID.
-        With agent, session_id is a native agent session ID resolved server-side.
-        """
-        params: dict[str, str] = {}
-        if agent:
-            params["agent"] = agent
-        if project:
-            params["project"] = project
-        if computer:
-            params["computer"] = computer
-        resp = await self._request(
-            "POST",
-            f"/sessions/{session_id}/revive",
-            timeout=30.0,
-            request_options=RequestOptions(
-                params=params,
-                clearance_scope=ClearanceScope.session_verb("sessions revive", session_id, computer=computer),
-            ),
-        )
-        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
-
-    async def memory_search(
-        self,
-        query: str,
-        limit: int = 20,
-        obs_type: str | None = None,
-        project: str | None = None,
-    ) -> list[dict[str, object]]:  # guard: loose-dict - JSON response from daemon memory API
-        """Search memory observations."""
-        params: dict[str, str] = {"query": query, "limit": str(limit)}
-        if obs_type:
-            params["type"] = obs_type
-        if project:
-            params["project"] = project
-        resp = await self._request(
-            "GET",
-            "/api/memory/search",
-            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("memories search")),
-        )
-        return resp.json()
-
-    async def memory_save(
-        self,
-        text: str,
-        title: str | None = None,
-        obs_type: str | None = None,
-        project: str | None = None,
-    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
-        """Save a memory observation."""
-        body: JsonBody = {"text": text}
-        if title:
-            body["title"] = title
-        if obs_type:
-            body["type"] = obs_type
-        if project:
-            body["project"] = project
-        resp = await self._request(
-            "POST",
-            "/api/memory/save",
-            request_options=RequestOptions(json_body=body, clearance_scope=ClearanceScope.ungoverned()),
-        )
-        return resp.json()
-
-    async def memory_delete(
-        self, observation_id: int
-    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
-        """Delete a memory observation by ID."""
-        resp = await self._request(
-            "DELETE",
-            f"/api/memory/{observation_id}",
-            request_options=RequestOptions(clearance_scope=ClearanceScope.verb("memories delete")),
-        )
-        return resp.json()
-
-    async def memory_timeline(
-        self,
-        anchor: int,
-        before: int = 3,
-        after: int = 3,
-        project: str | None = None,
-    ) -> list[dict[str, object]]:  # guard: loose-dict - JSON response from daemon memory API
-        """Get observations around an anchor ID."""
-        params: dict[str, str] = {
-            "anchor": str(anchor),
-            "depth_before": str(before),
-            "depth_after": str(after),
-        }
-        if project:
-            params["project"] = project
-        resp = await self._request(
-            "GET",
-            "/api/memory/timeline",
-            request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("memories timeline")),
-        )
-        return resp.json()
-
-
-class TelecAPIClient(_TelecConnectionClient, _TelecSessionAPI, _TelecRuntimeAPI, TelecIdentityAPI, TelecHealthAPI):
+class TelecAPIClient(_TelecConnectionClient, _TelecSessionAPI, TelecRuntimeAPI, TelecIdentityAPI, TelecHealthAPI):
     """Public telec API client."""

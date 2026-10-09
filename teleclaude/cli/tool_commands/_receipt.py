@@ -1,76 +1,41 @@
-"""Shared receipt polling for durable operations."""
+"""Shared receipt rendering for durable operations.
+
+A receipt-backed command prints its receipt and returns. The operation's outcome is
+delivered to the calling session, and `telec operations get` reads the record.
+"""
 
 from __future__ import annotations
 
 import sys
-import time
+from typing import Final
 
-from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.cli.tool_client import print_json
 
-_TERMINAL_STATES = {"completed", "failed", "stale", "cancelled"}
+_OPERATION_ID_FIELD: Final = "operation_id"
+_RECOVERY_COMMAND_FIELD: Final = "recovery_command"
+_OPERATION_READ_COMMAND_TEMPLATE: Final = "telec operations get {operation_id}"
+_OUTCOME_DELIVERY_LINE_TEMPLATE: Final = (
+    "Operation {operation_id}: the outcome is delivered to the calling session. Read it with: {read_command}"
+)
 
 
-def poll_operation(
-    receipt: dict[str, object],  # guard: loose-dict - JSON-deserialized API response
-    *,
-    estimated_timeout_ms: int = 600_000,
-) -> dict[str, object]:  # guard: loose-dict - JSON-deserialized API response
-    """Poll a durable operation until it reaches a terminal state or times out.
+def render_receipt(response: object) -> None:
+    """Print the daemon's response as JSON, then name how a receipt's outcome is read.
 
-    Args:
-        receipt: Initial receipt dict from the API (must contain operation_id).
-        estimated_timeout_ms: Maximum time to wait before giving up.
-
-    Returns:
-        Final operation status dict.
+    The JSON goes to stdout. A response that carries an operation receipt adds one line to
+    stderr saying the outcome is delivered to the calling session and which command reads
+    it; any other response prints as JSON only.
     """
-    operation_id = receipt.get("operation_id")
-    if not isinstance(operation_id, str) or not operation_id:
-        print_json(receipt)
-        return receipt
-
-    status = receipt
-    start = time.monotonic()
-    timeout_s = estimated_timeout_ms / 1000.0
-
-    try:
-        while status.get("state") not in _TERMINAL_STATES:
-            elapsed = time.monotonic() - start
-            if elapsed > timeout_s:
-                print(
-                    f"Timeout after {elapsed:.0f}s waiting for operation {operation_id}",
-                    file=sys.stderr,
-                )
-                _print_recovery(status)
-                return status
-
-            poll_after_ms = status.get("poll_after_ms")
-            delay_s = 0.25
-            if isinstance(poll_after_ms, int) and poll_after_ms > 0:
-                delay_s = poll_after_ms / 1000.0
-            time.sleep(delay_s)
-
-            polled = tool_api_call("GET", f"/operations/{operation_id}")
-            if not isinstance(polled, dict):
-                print_json(polled)
-                return status
-            status = polled
-    except KeyboardInterrupt as exc:
-        _print_recovery(status)
-        raise SystemExit(130) from exc
-    except SystemExit:
-        _print_recovery(status)
-        raise
-
-    return status
-
-
-def _print_recovery(status: dict[str, object]) -> None:  # guard: loose-dict
-    """Print recovery command for interrupted operations."""
-    operation_id = status.get("operation_id")
-    recovery_command = status.get("recovery_command")
-    if isinstance(recovery_command, str) and recovery_command:
-        print(f"Recovery: {recovery_command}", file=sys.stderr)
+    print_json(response)
+    if not isinstance(response, dict):
         return
-    if isinstance(operation_id, str) and operation_id:
-        print(f"Recovery: telec operations get {operation_id}", file=sys.stderr)
+    operation_id = response.get(_OPERATION_ID_FIELD)
+    if not isinstance(operation_id, str) or not operation_id:
+        return
+    read_command = response.get(_RECOVERY_COMMAND_FIELD)
+    if not isinstance(read_command, str) or not read_command:
+        read_command = _OPERATION_READ_COMMAND_TEMPLATE.format(operation_id=operation_id)
+    print(
+        _OUTCOME_DELIVERY_LINE_TEMPLATE.format(operation_id=operation_id, read_command=read_command),
+        file=sys.stderr,
+    )
