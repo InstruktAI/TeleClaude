@@ -15,6 +15,11 @@ visibility: 'public'
 
 Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: a Todo whose build has not started is branched from the latest `origin/main` and its branch opens with an empty commit of its own. Every later commit of the Todo descends from that opening commit, so the commit recorded when its build starts belongs to this Todo alone. A branch carrying the Todo's name that an earlier Todo left behind — when its delivery or removal cleanup did not complete — is never adopted and never discarded while it holds work: on `origin` it stays untouched, and locally it stops the ensure until an agent resolves it; a local leftover holding no work gives way to the new branch. A Todo whose build has started resumes from its branch on `origin` when that branch contains its build-start commit and the commit is not on `origin/main`, so work continues from its last published commit on whichever computer holds the Todo. and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
 
+<!-- planned:fix-stale-build-start-residue-blocks-worktree-creation -->
+
+A prepared Todo whose earlier build started from a commit on `origin/main` and left no branch under its name, locally or on `origin`, starts over the way a Todo whose build has not started does: its worktree is branched from the latest `origin/main` and opens with a commit of its own, and its next build start records a commit that belongs to it alone.
+<!-- /planned:fix-stale-build-start-residue-blocks-worktree-creation -->
+
 ## Canonical fields
 
 ### Use cases
@@ -167,6 +172,8 @@ Then the worktree's branch starts with an empty commit that is neither on origin
 And the commit recorded when the Todo's build starts descends from it
 ```
 
+<!-- planned-change:fix-stale-build-start-residue-blocks-worktree-creation -->
+
 #### UC-WPL9: A started Todo whose build-start commit is on origin/main never adopts a remote branch
 
 ```
@@ -177,6 +184,21 @@ Then no branch on origin is adopted as the Todo's work
 And a local branch carrying the Todo's name is attached when one exists
 And otherwise no worktree is created and the work state machine reports that the Todo's work cannot be located
 ```
+
+<!-- change:fix-stale-build-start-residue-blocks-worktree-creation -->
+
+#### UC-WPL9: A started Todo whose build-start commit is on origin/main never adopts a remote branch
+
+```
+Given a Todo whose build has started has no worktree at "trees/<slug>/"
+And the commit recorded when the Todo's build started is on origin/main
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then no branch on origin is adopted as the Todo's work
+And a local branch carrying the Todo's name is attached when one exists
+And otherwise, when the Todo is past lifecycle_phase=prepared or origin holds a branch under its name, no worktree is created and the work state machine reports that the Todo's work cannot be located
+```
+
+<!-- /planned-change:fix-stale-build-start-residue-blocks-worktree-creation -->
 
 #### UC-WPL7: A same-named local branch holding no work gives way to the Todo's own branch
 
@@ -198,6 +220,8 @@ Then the worktree is branched from origin/main
 And the branch on origin is unchanged
 ```
 
+<!-- planned-change:fix-stale-build-start-residue-blocks-worktree-creation -->
+
 #### UC-WPL6: A started Todo whose work is on no branch stops the ensure
 
 ```
@@ -208,6 +232,21 @@ Then no worktree is created
 And the work state machine reports a worktree setup failure stating that the Todo's work is not on origin
 ```
 
+<!-- change:fix-stale-build-start-residue-blocks-worktree-creation -->
+
+#### UC-WPL6: A started Todo whose work is on no branch stops the ensure
+
+```
+Given a Todo whose build has started has no worktree at "trees/<slug>/" and no local branch carries its name
+And no branch on origin under the Todo's name contains the commit recorded when the Todo's build started, or that commit is on origin/main
+And the Todo is past lifecycle_phase=prepared, or that commit is not on origin/main, or origin holds a branch under the Todo's name
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then no worktree is created
+And the work state machine reports a worktree setup failure stating that the Todo's work is not on origin
+```
+
+<!-- /planned-change:fix-stale-build-start-residue-blocks-worktree-creation -->
+
 #### UC-WPL11: Reclamation preserves a worktree that reuses a released slug
 
 ```gherkin
@@ -217,6 +256,21 @@ When background maintenance reclaims the detached worktree
 Then the newly active worktree remains intact
 And reclamation runs off the daemon's event loop
 ```
+
+<!-- planned:fix-stale-build-start-residue-blocks-worktree-creation -->
+
+#### UC-WPL12: A prepared Todo whose earlier build left no branch starts over on a branch of its own
+
+```
+Given a Todo at lifecycle_phase=prepared whose earlier build started from a commit that is on origin/main
+And no worktree exists at "trees/<slug>/", no local branch carries its name, and origin holds no branch under its name
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the worktree is branched from origin/main under the Todo's name
+And the branch opens with the Todo's own commit, neither on origin/main nor on any other Todo's branch
+And the commit recorded when the Todo's build starts again descends from that opening commit
+```
+
+<!-- /planned:fix-stale-build-start-residue-blocks-worktree-creation -->
 
 ### Cross-context references
 
@@ -234,6 +288,13 @@ And reclamation runs off the daemon's event loop
 - A worktree-local `.venv` is a symlink to a directory, which means `test -d` and a bare `ls` of the path both report it as an ordinary directory. `ls -l` on the worktree, `ls -ld`, or `readlink` show what it is. An existence probe answers whether something is there, never what it is — read this section rather than inferring the shape from a probe.
 - A future prep marker schema bump must reject older marker files and force re-prep with reason `prep_state_missing`.
 - A new worktree branch is created from the Todo's own branch on `origin` when its build has started, otherwise from `origin/main` — never from local main. A branch on `origin` counts as the Todo's own only when it contains the commit recorded at the Todo's build start and that commit is not on `origin/main`: only then is the commit unique to the Todo, through the opening commit its first worktree made. A build-start commit that is on `origin/main` is shared with every branch cut from it — including a same-named branch an earlier Todo left on `origin` — so such a Todo never adopts a remote branch. Any artifact a worker expects to see in the worktree (todo scaffolding, prior commits) must already be reachable on one of those before the worktree is created; otherwise the branch is missing it until a manual merge. Commits that exist only on another computer's local branch are invisible here.
+
+<!-- planned:fix-stale-build-start-residue-blocks-worktree-creation -->
+
+- A prepared Todo that starts over because its build-start commit is on `origin/main` and no branch carries its name cannot see a branch that holds its earlier work only on another computer. That branch is left untouched, and its work is not reconciled with the new branch.
+
+<!-- /planned:fix-stale-build-start-residue-blocks-worktree-creation -->
+
 - The peer convention is `trees/<slug>` for per-todo worktrees and `trees/_integration/` for the integration worktree. Scanners skip subdirectories whose names start with `_`.
 - The inputs digest hashes input file _existence_, _executable bit_, and _contents_ — so adding a previously absent dependency manifest (e.g., introducing `pyproject.toml`) triggers re-prep on the next entry even if the worktree itself is unchanged.
 - The fallback installer policy is intentional: when `tools/worktree-prepare.sh` is absent, the script-less path tries `make install`, then pnpm, then npm. A repo with none of these gets a silent no-op prep — and the marker is still written, so the policy never re-runs unless inputs change.
