@@ -250,6 +250,8 @@ And the owner deletes the thread when no open local session row maps to it, unle
 And another computer does not mutate the thread
 ```
 
+<!-- planned-change:help-desk-discord-categories -->
+
 #### UC-SCR-6: Shared Help Desk threads converge through durable child ownership
 
 ```
@@ -280,6 +282,34 @@ And every foreign computer leaves the claimed relay thread unchanged
 And the master deletes an unclaimed relay thread only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
 And incomplete ownership evidence produces no provider deletion
 ```
+
+<!-- change:help-desk-discord-categories -->
+
+#### UC-SCR-6: A desk's customer-sessions threads reflect its open sessions
+
+```
+Given an operator has a Discord thread in a help desk's customer-sessions forum
+When the master runs the adapter stale-resource sweep
+Then the master is the thread's only destructive owner
+And the master leaves the thread in place while an open session row of that desk maps to it
+And the master deletes the thread when no open session row maps to it
+And no other computer mutates the thread
+And when Discord cannot conclusively list the forum's threads, the sweep deletes nothing in that pass
+```
+
+#### UC-SCR-7: Escalation relay threads reflect active relays
+
+```
+Given an operator has a Discord thread in a help desk's escalations forum
+When the master runs the adapter stale-resource sweep
+Then the master is the thread's only destructive owner
+And the master leaves the thread in place while the relay it carries is active
+And the master deletes the thread after that relay is no longer active
+And no other computer mutates the thread
+And when Discord cannot conclusively list the forum's threads, the sweep deletes nothing in that pass
+```
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 ### Cross-context references
 
