@@ -7,6 +7,7 @@ the step-function module stays focused on phase logic. No imports from
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -19,6 +20,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV, WORKTREE_DIR
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_env
 from teleclaude.git_lock import main_branch_lock
+from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
 
@@ -36,6 +38,9 @@ _REPO_ROOT_SYNC_CLASSIFIED_LOG = "integration.repo_root_sync.classified"
 _REPO_ROOT_PUBLICATION_FINISHED_EVENT = "integration.repo_root_publication.finished"
 _REPO_ROOT_PUBLICATION_FINISHED_LOG = "Repo-root publication finished"
 _REPO_ROOT_PUBLICATION_SOURCE_HEAD_UNAVAILABLE = "repo-root HEAD is unavailable"
+_INTEGRATION_ENV_LINKED_EVENT = "integration.worktree_environment.linked"
+_INTEGRATION_ENV_LINKED_LOG = "Integration worktree environment linked"
+_INTEGRATION_ENV_LINK_FAILED = "environment link {link} could not be created in integration worktree: {error}"
 _REPO_ROOT_PUBLICATION_SUBJECT_MISMATCH = (
     "repo-root HEAD {source_head} does not match validated subject {expected_source_head}"
 )
@@ -444,7 +449,28 @@ def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
     if rc != 0:
         return integration_wt, f"git reset to origin/main failed in integration worktree:\n{stderr.strip()}"
 
-    return integration_wt, ""
+    return integration_wt, _link_checkout_environment(Path(cwd), integration_wt)
+
+
+def _link_checkout_environment(checkout: Path, worktree: Path) -> str:
+    """Give the worktree the checkout's environment beside its declaration.
+
+    Links ``.env`` to the checkout's own file with a relative target so the
+    checkout stays the single source of the values. Creates nothing when the
+    checkout holds no ``.env`` and leaves any existing worktree entry untouched.
+    Returns an error message, empty on success.
+    """
+    source = checkout / ConfigFileName.ENV
+    link = worktree / ConfigFileName.ENV
+    if not source.exists() or link.is_symlink() or link.exists():
+        return ""
+    target = os.path.relpath(source.resolve(), link.parent.resolve())
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        return _INTEGRATION_ENV_LINK_FAILED.format(link=link, error=exc)
+    logger.info(_INTEGRATION_ENV_LINKED_LOG, event=_INTEGRATION_ENV_LINKED_EVENT, worktree=str(worktree), target=target)
+    return ""
 
 
 def _run_git(
