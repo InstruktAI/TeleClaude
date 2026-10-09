@@ -12,6 +12,7 @@ class RuntimeMutationInProgress(RuntimeError):
 
 
 _runtime_locks: dict[str, asyncio.Lock] = {}
+_relaunches_awaiting_readiness: set[str] = set()
 
 
 class SessionRuntimeLease:
@@ -54,3 +55,18 @@ async def acquire_session_runtime_lease(session_id: str, *, wait: bool = False) 
         raise RuntimeMutationInProgress("runtime_mutation_in_progress")
     await lock.acquire()
     return SessionRuntimeLease(lock)
+
+
+def mark_relaunch_awaiting_readiness(session_id: str) -> None:
+    """Record that a relaunched agent has not yet shown it can accept input."""
+    _relaunches_awaiting_readiness.add(session_id)
+
+
+def relaunch_awaiting_readiness(session_id: str) -> bool:
+    """Return whether a relaunched agent is still awaiting input readiness."""
+    return session_id in _relaunches_awaiting_readiness
+
+
+def clear_relaunch_awaiting_readiness(session_id: str) -> None:
+    """Forget a relaunch's readiness wait; idempotent."""
+    _relaunches_awaiting_readiness.discard(session_id)

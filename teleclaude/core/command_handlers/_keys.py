@@ -53,18 +53,15 @@ async def _execute_control_key(
     return await tmux_action(session, *tmux_args)
 
 
-async def _ensure_tmux_for_headless(
-    session: Session,
-    client: "AdapterClient",
-    start_polling: StartPollingFunc | None,
-    *,
-    resume_native: bool,
-) -> Session | None:
-    """Ensure a headless session has a tmux pane before handling input."""
+async def _bind_host_pane(session: Session, client: "AdapterClient") -> tuple[Session, str] | None:
+    """Ensure the session's host pane exists and is recorded on the row.
+
+    Performs no lifecycle transition; callers own what the binding means for
+    the session's lifecycle. Returns the session and its working directory, or
+    ``None`` after reporting why no pane could be bound.
+    """
     if session.lifecycle_status == SessionLifecycleStatus.INITIALIZING and not session.tmux_session_name:
         raise RuntimeError(_PANE_BOOTSTRAP_PENDING)
-    if session.tmux_session_name and session.lifecycle_status != "headless":
-        return session
 
     tmux_name = session.tmux_session_name
     if not tmux_name:
@@ -115,6 +112,32 @@ async def _ensure_tmux_for_headless(
 
     if not session.tmux_session_name:
         await db.update_session(session.session_id, tmux_session_name=tmux_name)
+        refreshed = await db.get_session(session.session_id)
+        if refreshed:
+            return refreshed, working_dir
+        session.tmux_session_name = tmux_name
+    return session, working_dir
+
+
+async def _ensure_tmux_for_headless(
+    session: Session,
+    client: "AdapterClient",
+    start_polling: StartPollingFunc | None,
+    *,
+    resume_native: bool,
+) -> Session | None:
+    """Ensure a headless session has a tmux pane before handling input."""
+    if session.tmux_session_name and session.lifecycle_status != "headless":
+        return session
+
+    had_pane = bool(session.tmux_session_name)
+    bound = await _bind_host_pane(session, client)
+    if bound is None:
+        return None
+    session, working_dir = bound
+    tmux_name = session.tmux_session_name
+
+    if not had_pane:
         await transition_session(
             db,
             session.session_id,
@@ -123,8 +146,6 @@ async def _ensure_tmux_for_headless(
         refreshed = await db.get_session(session.session_id)
         if refreshed:
             session = refreshed
-        else:
-            session.tmux_session_name = tmux_name
 
     if resume_native and session.active_agent and session.native_session_id:
         launch = (

@@ -18,8 +18,8 @@ class LifecycleTransitionReason(StrEnum):
 
     CREATED = "created"
     RUNTIME_SESSION_START = "runtime_session_start"
-    RESTART_INITIALIZED = "restart_initialized"
     ADOPTION_INITIALIZED = "adoption_initialized"
+    RELAUNCH_REOPENED = "relaunch_reopened"
     HEADLESS_RESTORED = "headless_restored"
     ESCALATED = "escalated"
     HANDBACK = "handback"
@@ -62,10 +62,10 @@ _ALLOWED_SOURCES: dict[LifecycleTransitionReason, frozenset[SessionLifecycleStat
     LifecycleTransitionReason.RUNTIME_SESSION_START: frozenset(
         {SessionLifecycleStatus.INITIALIZING, SessionLifecycleStatus.ACTIVE}
     ),
-    LifecycleTransitionReason.RESTART_INITIALIZED: frozenset(
-        {SessionLifecycleStatus.ACTIVE, SessionLifecycleStatus.HEADLESS, SessionLifecycleStatus.CLOSED}
-    ),
     LifecycleTransitionReason.ADOPTION_INITIALIZED: frozenset({SessionLifecycleStatus.HEADLESS}),
+    LifecycleTransitionReason.RELAUNCH_REOPENED: frozenset(
+        {SessionLifecycleStatus.CLOSED, SessionLifecycleStatus.HEADLESS}
+    ),
     LifecycleTransitionReason.HEADLESS_RESTORED: frozenset(
         {SessionLifecycleStatus.INITIALIZING, SessionLifecycleStatus.ACTIVE}
     ),
@@ -108,6 +108,9 @@ async def transition_session(store: LifecycleStore, session_id: str, transition:
     if transition.reason is LifecycleTransitionReason.RUNTIME_SESSION_START:
         if transition.target is not SessionLifecycleStatus.ACTIVE or transition.runtime_start_observed is not True:
             raise ValueError("Runtime session start requires observed start evidence and active target")
+    if transition.reason is LifecycleTransitionReason.RELAUNCH_REOPENED:
+        if transition.target is not SessionLifecycleStatus.ACTIVE:
+            raise ValueError("Relaunch reopening requires an active target")
     await store.persist_lifecycle_transition(
         session_id,
         target=transition.target.value,
