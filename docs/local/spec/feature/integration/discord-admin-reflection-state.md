@@ -465,3 +465,12 @@ And the bot neither answers nor routes the message anywhere
   may clear or replace a database reflection record.
 - A launcher view reattachment is process-local runtime wiring. The durable
   artifact remains the Discord message plus the database reflection record.
+
+<!-- planned:help-desk-discord-categories -->
+
+- Discord shows every channel to the guild owner and to holders of the
+  Administrator permission, and lets them post there, whatever a desk's
+  per-person grants say. A desk's category reaches only its scope while those
+  powers rest with platform admins.
+
+<!-- /planned:help-desk-discord-categories -->
