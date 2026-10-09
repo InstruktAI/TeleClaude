@@ -4,9 +4,6 @@
 !config.yml
 !projects.yaml
 !/AGENTS.master.md
-!/help-desk/
-/help-desk/*
-!/help-desk/AGENTS.master.md
 !people/
 people/*
 !people/*/

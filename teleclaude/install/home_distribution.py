@@ -156,7 +156,7 @@ def distribute_tier_homes(
 def home_master_candidates(home_snapshot: Path, kind: ConfigKind) -> list[tuple[Path, Path]]:
     """Return the fixed set of masters a home of this kind can own with their read roots, present or not."""
     candidates = [(home_snapshot / PROJECT_MASTER_FILENAME, home_snapshot)]
-    if kind in (ConfigKind.GLOBAL, ConfigKind.COMPANY):
+    if kind is ConfigKind.COMPANY:
         candidates.append((home_snapshot / HELP_DESK_DIRNAME / PROJECT_MASTER_FILENAME, home_snapshot))
     return candidates
 

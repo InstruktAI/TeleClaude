@@ -21,12 +21,10 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.caller_identity import NoIdentityCliCaller, caller_from_principal
-from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import shutdown_refusal_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
-from teleclaude.core.endpoints import LIVE_ROOTS
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentAttentionObservation,
@@ -36,11 +34,8 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.help_desk_relay import RELAY_REPLY_OWNER_COMMAND, answer_owner_query
-from teleclaude.core.inbound.adoption import EXPORT_CONVERSATION_SESSIONS_COMMAND, export_local_conversation_sessions
-from teleclaude.core.inbound.models import ConversationRef
 from teleclaude.core.models import JsonDict, RedisInboundMessage
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
-from teleclaude.core.origins import InputOrigin
 from teleclaude.core.relayed_intake import (
     RelayedReadNotFound,
     RelayRead,
@@ -84,15 +79,12 @@ _ERROR_FIELD = "error"
 _DATA_FIELD = "data"
 _SUCCESS_STATUS = "success"
 _ERROR_STATUS = "error"
-_EXPORT_REFUSED_EVENT = "conversation_export_refused"
-_EXPORT_REFUSED_DETAIL = "conversation sessions are exported only to another computer's daemon"
 _LIST_PROJECTS_COMMAND = "list_projects"
 _LIST_PROJECTS_WITH_TODOS_COMMAND = "list_projects_with_todos"
 _GET_SESSION_FINAL_OUTPUT_COMMAND = "get_session_final_output"
 _LAST_OUTPUT_RAW_FIELD = "last_output_raw"
 _LAST_OUTPUT_STOP_AT_FIELD = "last_output_stop_at"
 _SESSION_ID_FIELD = "session_id"
-_EXPORT_CONVERSATION_ARGUMENT_COUNT = 3
 _RELAYED_READ_COMMANDS = frozenset(
     {
         RelayRead.SESSION_MESSAGES.value,
@@ -407,34 +399,6 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: str(exc)},
                     }
                 await self.send_response(message_id, json.dumps(response_envelope))
-                return
-
-            if cmd_name == EXPORT_CONVERSATION_SESSIONS_COMMAND:
-                # Conversation keys, session ids and endpoints are this computer's private
-                # records: only another daemon, forwarding on its own account, may read them.
-                if parsed.caller_principal != SYSTEM_DAEMON_PRINCIPAL:
-                    logger.warning(_EXPORT_REFUSED_EVENT, caller_principal=parsed.caller_principal)
-                    refusal: JsonDict = {
-                        _STATUS_FIELD: _ERROR_STATUS,
-                        _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: _EXPORT_REFUSED_DETAIL},
-                    }
-                    await self.send_response(message_id, json.dumps(refusal))
-                    return
-                conversation = (
-                    ConversationRef(
-                        origin=InputOrigin(cmd_args[0]),
-                        key_field=cmd_args[1],
-                        key=cmd_args[2],
-                        reaches_every_computer=True,
-                    )
-                    if len(cmd_args) == _EXPORT_CONVERSATION_ARGUMENT_COUNT
-                    else None
-                )
-                exported = await export_local_conversation_sessions(db, LIVE_ROOTS, conversation)
-                await self.send_response(
-                    message_id,
-                    json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: [item.to_dict() for item in exported]}),
-                )
                 return
 
             if cmd_name == RELAY_REPLY_OWNER_COMMAND:

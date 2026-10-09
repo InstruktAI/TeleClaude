@@ -32,7 +32,6 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
-from teleclaude.core.endpoints import platform_help_desk_folder
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound import InboundSessionPolicy, resolve_binding_key, resolve_or_create_bound_session
 from teleclaude.core.models import (
@@ -82,6 +81,7 @@ _EMPTY_VALUE = ""
 _HELP_DESK_FORUM = "help_desk"
 _UNKNOWN_FORUM = "unknown"
 _HELP_DESK_FORUM_NOT_ENTRY_EVENT = "help_desk_forum_thread_not_entry"
+_NO_SESSION_PROJECT_EVENT = "discord_session_creation_no_project"
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,33 +236,26 @@ class InputHandlersMixin:
         self,
         message: object,
         context: _SessionCreationContext,
-    ) -> tuple[str, str | None]:
-        """Resolve the effective project path and human_role override for a new session."""
+    ) -> str | None:
+        """Resolve the project path a new session is created in; ``None`` when the message names no project."""
         if context.forum_type == "team":
             user_id = str(getattr(getattr(message, "author", None), "id", ""))
             identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
 
-            human_role = None if identity.person_slug else identity.person_role
-
-            project_path = context.project_path or str(platform_help_desk_folder())
-
             if identity.person_name:
                 person_slug = identity.person_slug or normalize_slug(identity.person_name)
-                project_path = str(scaffold_personal_workspace(person_slug))
-            else:
-                # Ensure a deterministic workspace path exists for legacy team channels.
-                if project_path:
-                    workspace_path = Path(project_path)
-                    if not workspace_path.exists():
-                        workspace_path.mkdir(parents=True, exist_ok=True)
-            return project_path, human_role
+                return str(scaffold_personal_workspace(person_slug))
+            if context.project_path is None:
+                return None
+            # Ensure a deterministic workspace path exists for legacy team channels.
+            workspace_path = Path(context.project_path)
+            if not workspace_path.exists():
+                workspace_path.mkdir(parents=True, exist_ok=True)
+            return context.project_path
 
         forum_id, _ = self._extract_channel_ids(message)
         forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
-        return (
-            forum_project_path or context.project_path or str(platform_help_desk_folder()),
-            None,
-        )
+        return forum_project_path or context.project_path
 
     # =========================================================================
     # Attachment Extraction
@@ -751,7 +744,10 @@ class InputHandlersMixin:
             "platform": "discord",
         }
 
-        effective_path, _human_role = self._resolve_session_creation_target(message, context)
+        effective_path = self._resolve_session_creation_target(message, context)
+        if effective_path is None:
+            logger.info(_NO_SESSION_PROJECT_EVENT, forum_type=context.forum_type)
+            return None
         launch_intent = self._build_launch_intent(context.first_message)
 
         create_cmd = CreateSessionCommand(

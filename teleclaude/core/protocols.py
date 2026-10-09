@@ -13,32 +13,6 @@ from teleclaude.core.models import (
 
 
 @runtime_checkable
-class AdminReflectionAdapter(Protocol):
-    """Protocol for the adapter that hosts the shared escalation forum.
-
-    Satisfied structurally by Discord's AdminReflectionMixin — no import of
-    this Protocol is needed on the adapter side. Non-admin adapters (Telegram,
-    WhatsApp) do not implement it, so resolution over the adapter registry
-    naturally targets only the single admin adapter without a platform string.
-    The relay itself lives in the core; the adapter is only the thread transport.
-    """
-
-    async def create_escalation_thread(
-        self, *, customer_name: str, reason: str, context_summary: str, session_id: str
-    ) -> int:
-        """Open a thread for an escalation in the shared escalation forum.
-
-        Returns:
-            The platform thread id for the created escalation thread.
-        """
-        ...
-
-    async def forward_to_escalation_thread(self, thread_id: str, sender_label: str, text: str) -> None:
-        """Post one visitor message into an escalation thread."""
-        ...
-
-
-@runtime_checkable
 class RemoteExecutionProtocol(Protocol):
     """Protocol for adapters supporting request/response pattern.
 

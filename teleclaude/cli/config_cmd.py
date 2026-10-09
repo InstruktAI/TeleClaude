@@ -139,6 +139,7 @@ _INLINE_SENSITIVE_VALUE = "<withheld: inline sensitive value>"
 _HELP_DESK_LINKS_VERB = "help-desk-links"
 _DESK_NOT_ENABLED_ERROR = "Error: help desk of {kind} {slug} is not enabled{request}"
 _DESK_NOT_HOSTED_ERROR = "Error: this computer does not host the help desk of {kind} {slug}{request}"
+_DESK_NOT_ON_MASTER_ERROR = "Error: help desks run on the mesh master, and this computer is not the master{request}"
 _FLEET_UNOBSERVABLE_ERROR = "Error: cannot observe the fleet: {error}{request}"
 # The keys of the help-desk links JSON answer.
 _LINKS_IDENTIFIER_KEY = "identifier"
@@ -764,7 +765,10 @@ def _handle_help_desk_links(kind: str, subject_kind: ConfigSubjectKind, args: li
     )
     request = _REQUEST_SUFFIX.format(request_id=request_id)
     identifier = DeskIdentifier(_DESK_KIND_BY_SUBJECT[subject_kind], slug)
-    if local_desk_endpoint(identifier, config.computer.name) is None:
+    if not config.computer.is_master:
+        print(_DESK_NOT_ON_MASTER_ERROR.format(kind=kind, slug=slug, request=request))
+        raise SystemExit(1)
+    if local_desk_endpoint(identifier, config.computer.name, True) is None:
         template = _DESK_NOT_ENABLED_ERROR if desk_home_present(identifier) else _DESK_NOT_HOSTED_ERROR
         print(template.format(kind=kind, slug=slug, request=request))
         raise SystemExit(1)

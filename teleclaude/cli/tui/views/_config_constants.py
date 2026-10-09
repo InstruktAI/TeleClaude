@@ -54,7 +54,6 @@ _SUBTABS = tuple(Subtab)
 
 
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")
-_VALID_ROLES = ("admin", "member", "contributor", "newcomer")
 
 
 class AdapterTab(StrEnum):
@@ -210,7 +209,6 @@ __all__ = [
     "_SUBTABS",
     "_TAB_ACTIVE",
     "_TAB_INACTIVE",
-    "_VALID_ROLES",
     "_WARN",
     "AdapterSectionProjection",
     "AdapterStatus",

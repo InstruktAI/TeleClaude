@@ -953,7 +953,6 @@ async def escalate_session(
             status_code=200,
             content={
                 "status": "success",
-                "thread_id": result.get("thread_id") if isinstance(result, dict) else None,  # type: ignore[union-attr]
                 _ESCALATE_NOTIFIED_KEY: result.get(_ESCALATE_NOTIFIED_KEY) if isinstance(result, dict) else None,  # type: ignore[union-attr]
                 _ESCALATE_WARNING_KEY: result.get(_ESCALATE_WARNING_KEY) if isinstance(result, dict) else None,  # type: ignore[union-attr]
             },

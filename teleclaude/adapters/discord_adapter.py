@@ -14,9 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord import (
-    AdminReflectionMixin,
     ChannelOperationsMixin,
-    DirectMessagesBeforeCutoverMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
     InputHandlersMixin,
@@ -91,11 +89,9 @@ class DiscordClientLike(Protocol):
 class DiscordAdapter(
     ChannelOperationsMixin,
     GatewayHandlersMixin,
-    DirectMessagesBeforeCutoverMixin,
     InfrastructureMixin,
     InputHandlersMixin,
     MessageOperationsMixin,
-    AdminReflectionMixin,
     EditableUiAdapter,
 ):
     """Discord bot adapter using discord.py."""

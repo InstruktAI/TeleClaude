@@ -261,7 +261,7 @@ class PersonDTO(BaseModel):
 
     name: str
     email: str | None = None
-    role: Literal["admin", "member", "contributor", "newcomer"] = "member"
+    role: Literal["admin", "member"] = "member"
     expertise: dict[str, str | dict[str, str]] | None = None
 
 
