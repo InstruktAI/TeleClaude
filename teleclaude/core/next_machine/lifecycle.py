@@ -807,6 +807,11 @@ def adopt_prepare_handoff_phase(
     ``prepared_withheld`` is consulted only when the derivation would move the
     stored phase into ``PREPARED``. When it answers True the transition does not
     happen: the current phase is returned and no ``PREPARED`` provenance is stamped.
+
+    A todo already in the work lane keeps its phase when the derivation reaches
+    ``PREPARED``: still-valid preparation evidence never returns work in flight
+    to the start of the work lane. Invalidated preparation still derives its
+    earlier prepare phase.
     """
     if model.kind == KIND_TASK:
         target = _task_phase(model, artifact_presence=artifact_presence)
@@ -838,6 +843,8 @@ def adopt_prepare_handoff_phase(
             report_digests=report_digests,
             artifact_write_timestamps=artifact_write_timestamps,
         )
+    if target is LifecyclePhase.PREPARED and is_work_lifecycle_phase(model.lifecycle_phase):
+        return model.lifecycle_phase
     if target is LifecyclePhase.PREPARED and model.lifecycle_phase is not LifecyclePhase.PREPARED:
         if prepared_withheld is not None and prepared_withheld():
             return model.lifecycle_phase

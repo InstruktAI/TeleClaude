@@ -322,6 +322,17 @@ And no preparation artifact is written on W's behalf
 And the refusal names the sanctioned path: a kickback stamp or a substantive work-entry drift verdict returns the Todo to preparation, and the lifecycle runner dispatches a fresh prepare orchestrator
 ```
 
+#### UC-WPS30: A prepare call leaves a work-lane Todo's phase in place while its preparation stays valid
+
+```gherkin
+Given my-feature is in a work-lane lifecycle phase such as finalize_ready
+And its preparation evidence is still valid, so the derivation reaches prepared
+When any session calls "telec todo prepare my-feature"
+Then lifecycle_phase stays finalize_ready, and its build review and finalize records are unchanged
+And the lifecycle runner dispatches no new work orchestrator for my-feature
+And when a kickback stamp or a substantive drift verdict invalidates the plan, the next prepare call still derives plan_drafting
+```
+
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
