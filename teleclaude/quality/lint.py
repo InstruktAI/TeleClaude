@@ -9,14 +9,18 @@ explicit files bypass scoping.
 
 from __future__ import annotations
 
-import logging
 import os
 import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
+from time import perf_counter
 from typing import Protocol
+from uuid import uuid4
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config.tree_homes import group_paths_by_owning_home
 from teleclaude.git import hook_free_environment
@@ -47,7 +51,9 @@ __all__ = [
     "validate_scoped_paths",
 ]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+_GUARDRAIL_STAGE_STARTED_EVENT = "quality_guardrail_stage_started"
+_GUARDRAIL_STAGE_FINISHED_EVENT = "quality_guardrail_stage_finished"
 _CONTENT_ROOT_FLAG = "--content-root"
 _PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
 _SKIP_SNIPPETS_FLAG = "--skip-snippets"
@@ -56,6 +62,13 @@ _FULL_RUN_FLAG = "--full-run"
 _CONTENT_ROOT_FULL_RUN_ERROR = "A content-root validation must be path-scoped."
 _CONTENT_ROOT_GRADING_ROOT_MISSING_ERROR = "Candidate validation has no readable repository grading root."
 _EMPTY_STRING = ""
+
+
+class _GuardrailStageOutcome(StrEnum):
+    """Completion outcomes observed without changing a stage's control flow."""
+
+    PASSED = "passed"
+    FAILED = "failed"
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +462,36 @@ def run_pipeline(
         child_env=child_env,
         check_families=check_families,
     )
+    run_id = uuid4().hex
+    pid = os.getpid()
     for step in pipeline.steps:
-        step.run(targets)
+        started = perf_counter()
+        outcome = _GuardrailStageOutcome.FAILED
+        logger.trace(
+            _GUARDRAIL_STAGE_STARTED_EVENT,
+            stage=step.name,
+            run_id=run_id,
+            pid=pid,
+            execution_root=str(project_root),
+        )
+        try:
+            step.run(targets)
+            outcome = _GuardrailStageOutcome.PASSED
+        except SystemExit as exc:
+            if exc.code is None or exc.code == 0:
+                outcome = _GuardrailStageOutcome.PASSED
+            raise
+        finally:
+            log = logger.debug if outcome is _GuardrailStageOutcome.PASSED else logger.error
+            log(
+                _GUARDRAIL_STAGE_FINISHED_EVENT,
+                stage=step.name,
+                outcome=outcome,
+                duration_ms=round((perf_counter() - started) * 1000),
+                run_id=run_id,
+                pid=pid,
+                execution_root=str(project_root),
+            )
 
 
 # ---------------------------------------------------------------------------

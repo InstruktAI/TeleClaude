@@ -288,12 +288,13 @@ def _selected_artifacts(
     selected: dict[Path, tuple[ArtifactKind, Path]] = {}
     findings: list[str] = []
     reach_facts = agent_artifacts.ReachFacts(project_root)
+    classifier = agent_artifacts.ArtifactClassifier(project_root)
     for raw_path in paths:
         path = Path(raw_path)
         if not path.is_absolute():
             path = project_root / path
         try:
-            source = agent_artifacts.classify_candidate(project_root, path)
+            source = classifier.classify(path)
         except agent_artifacts.UnclassifiedSourceError as exc:
             findings.append(str(exc))
             continue

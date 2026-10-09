@@ -35,6 +35,7 @@ __all__ = [
     "AGENT_ARTIFACT_ROOT_DIRNAME",
     "AGENT_ARTIFACT_SOURCE_GLOBS",
     "ArtifactAuthorship",
+    "ArtifactClassifier",
     "ArtifactReach",
     "ArtifactSource",
     "ArtifactTier",
@@ -462,6 +463,69 @@ def _boundary_violation(project_root: Path, resolved: Path) -> str | None:
     return f"{resolved} is directly under agents/ but is not a recognized master, addendum, or tier root"
 
 
+@dataclass(frozen=True)
+class ArtifactClassifier:
+    """Resolve source layout once for one root's candidate-classification pass."""
+
+    project_root: Path
+
+    @cached_property
+    def _root(self) -> Path:
+        return self.project_root.resolve()
+
+    @cached_property
+    def _flat_home(self) -> bool:
+        return _is_flat_home(self._root)
+
+    @cached_property
+    def _sources(self) -> tuple[tuple[ArtifactSource, Path], ...]:
+        sources = (
+            [*_iter_root_files(self._root), *_iter_flat_home_sources(self._root)]
+            if self._flat_home
+            else all_sources(self._root)
+        )
+        return tuple((source, source.entrypoint.resolve(strict=False)) for source in sources)
+
+    @cached_property
+    def _command_roots(self) -> tuple[Path, ...]:
+        return (project_commands_root(self._root), *_global_command_directories(self._root))
+
+    def classify(self, candidate: Path) -> ArtifactSource | None:
+        """Classify a candidate without rebuilding the pass's source catalogue."""
+        resolved = candidate if candidate.is_absolute() else self._root / candidate
+        resolved = resolved.resolve(strict=False)
+        flat_home = self._flat_home
+        shape = companion_shape(resolved)
+        if shape is not None and resolved.parent in self._command_roots:
+            source_path = resolved.parent / (shape[0] + _MARKDOWN_SUFFIX)
+            source = next(
+                (
+                    item
+                    for item, entrypoint in self._sources
+                    if item.kind is ArtifactKind.COMMAND and entrypoint == source_path
+                ),
+                None,
+            )
+            if source is not None and is_retirement_companion(resolved):
+                return source
+            raise UnclassifiedSourceError(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=resolved))
+        for source, entrypoint in self._sources:
+            if source.kind is ArtifactKind.SKILL:
+                if resolved == entrypoint or entrypoint.parent in resolved.parents or resolved == entrypoint.parent:
+                    return source
+                continue
+            if resolved == entrypoint:
+                return source
+        violation = (
+            _flat_home_boundary_violation(self._root, resolved)
+            if flat_home
+            else _boundary_violation(self._root, resolved)
+        )
+        if violation is not None:
+            raise UnclassifiedSourceError(violation)
+        return None
+
+
 def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | None:
     """Classify one concrete path against ``project_root``'s declared sources.
 
@@ -474,40 +538,7 @@ def classify_candidate(project_root: Path, candidate: Path) -> ArtifactSource | 
     unrecognized kind directory or a stray top-level entry — rather than
     silently treating it as absent.
     """
-    root = project_root.resolve()
-    resolved = candidate if candidate.is_absolute() else root / candidate
-    resolved = resolved.resolve(strict=False)
-    flat_home = _is_flat_home(root)
-    sources = [*_iter_root_files(root), *_iter_flat_home_sources(root)] if flat_home else all_sources(root)
-    shape = companion_shape(resolved)
-    if shape is not None and resolved.parent in (
-        project_commands_root(root),
-        *_global_command_directories(root),
-    ):
-        source_path = resolved.parent / (shape[0] + _MARKDOWN_SUFFIX)
-        source = next(
-            (
-                item
-                for item in sources
-                if item.kind is ArtifactKind.COMMAND and item.entrypoint.resolve(strict=False) == source_path
-            ),
-            None,
-        )
-        if source is not None and is_retirement_companion(resolved):
-            return source
-        raise UnclassifiedSourceError(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=resolved))
-    for source in sources:
-        entrypoint = source.entrypoint.resolve(strict=False)
-        if source.kind is ArtifactKind.SKILL:
-            if resolved == entrypoint or entrypoint.parent in resolved.parents or resolved == entrypoint.parent:
-                return source
-            continue
-        if resolved == entrypoint:
-            return source
-    violation = _flat_home_boundary_violation(root, resolved) if flat_home else _boundary_violation(root, resolved)
-    if violation is not None:
-        raise UnclassifiedSourceError(violation)
-    return None
+    return ArtifactClassifier(project_root).classify(candidate)
 
 
 def boundary_violations(project_root: Path) -> list[str]:

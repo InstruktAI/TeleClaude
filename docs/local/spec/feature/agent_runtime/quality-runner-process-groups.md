@@ -52,6 +52,25 @@ When the guardrails lane runs
 Then it does not start CLI commands solely to validate their help behavior
 ```
 
+#### UC-CQD4: Guardrail stage durations distinguish subprocess checks from source validation
+
+```gherkin
+Given a quality gate runs the guardrail lane
+When a stage returns or raises an exception
+Then a completion record names the stage, outcome, monotonic elapsed milliseconds, execution root, process id, and lane-run id
+And successful completion is logged at DEBUG and unsuccessful completion at ERROR
+And stage entry is available at TRACE, including in-process source validation
+And the original return or exception still determines the gate outcome
+And records are emitted per stage rather than per candidate file
+```
+
+## Known caveats
+
+- Abrupt process termination can prevent a stage's completion record. TRACE
+  entry records identify which stage was entered when diagnosing that case.
+- Guardrail stage durations do not include earlier hook startup or Git-tree
+  materialization, and do not time the separate native toolchain.
+
 ## See also
 
 - docs/local/adr/0064-runner-reaps-process-group-on-normal-exit.md
