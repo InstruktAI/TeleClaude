@@ -111,56 +111,27 @@ dispatcher (`local/projects/teleclaude/spec/feature/integration/deployment-versi
 
 ### 3. Built-in contracts
 
-The daemon registers these contracts at startup, each with the handler it
-registers alongside:
-
-| Contract                   | Source criterion | Type criterion            | Handler             |
-| -------------------------- | ---------------- | ------------------------- | ------------------- |
-| `builtin-whatsapp-inbound` | `whatsapp`       | pattern `message.*`       | `whatsapp_inbound`  |
-| `deployment-github`        | `github`         | match `push` or `release` | `deployment_update` |
-| `deployment-fanout`        | `deployment`     | match `version_available` | `deployment_update` |
-
-**Contract structure:**
-
-```
-Contract
-  ├─ id: str                    # unique identifier
-  ├─ target: Target
-  │   └─ handler: str           # internal handler key
-  ├─ source_criterion: PropertyCriterion | None
-  ├─ type_criterion: PropertyCriterion | None
-  └─ properties: dict[str, PropertyCriterion]
-```
+The daemon's startup wiring of the hook service owns the built-in contracts:
+one routes relayed WhatsApp messages to the WhatsApp conversation handler, and
+two route GitHub push and release deliveries and deployment fan-out signals to
+the deployment update handler. A contract holds its identity, the criteria an
+event must meet, and the handler it names; the contract model in the hook
+package owns that shape.
 
 **Matching:** The matcher evaluates an event against a contract's criteria using
-AND logic — all criteria must pass. Each `PropertyCriterion` supports:
-
-- **Exact match:** `match: "value"` or `match: ["val1", "val2"]`
-- **Wildcard pattern:** `pattern: "message.*"` (fnmatch)
-- **Presence check:** `required: true` with no match/pattern (value must not be None)
-- **Documentation-only:** `required: false` (always passes)
+AND logic — all criteria must pass. A criterion matches a value exactly or
+against one of several values, matches a wildcard pattern, requires only that
+the value is present, or, when not required, declares interest without
+filtering.
 
 ### 4. Daemon initialization wiring
 
 At startup the daemon creates the handler registry and the contract registry,
 registers each built-in handler and its contract, creates the dispatcher over
 both registries, starts the deployment fan-out consumer, and starts the
-per-computer relay delivery that feeds the dispatcher.
-
-### Module layout
-
-```
-teleclaude/hooks/
-  ├─ webhook_models.py    # HookEvent, Contract, Target, PropertyCriterion
-  ├─ registry.py          # ContractRegistry (in-memory routing table)
-  ├─ dispatcher.py        # HookDispatcher (event → contract match → handler)
-  ├─ matcher.py           # Property-based matching engine (fnmatch, exact, multi-value)
-  ├─ handlers.py          # HandlerRegistry (key → async callable)
-  ├─ relay_delivery.py    # per-computer delivery of relayed events to the dispatcher
-  ├─ inbound.py           # ingress endpoints: declaration lookup, verification, translation, relay
-  └─ adapters/
-      └─ base.py          # HookAdapter protocol (agent CLI hook normalization)
-```
+per-computer relay delivery that feeds the dispatcher. The hook package
+(`teleclaude/hooks/`) holds the event and contract model, the registries, the
+matcher, the dispatcher, relay delivery and the ingress endpoints.
 
 ## Failure modes
 

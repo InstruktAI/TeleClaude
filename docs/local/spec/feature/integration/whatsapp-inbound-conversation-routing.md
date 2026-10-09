@@ -298,10 +298,16 @@ And the person the message comes from is resolved by the handler from the phone 
 
 <!-- /planned-change:help-desk-master-routing -->
 
+<!-- planned-change:retire-outbound-hook-subscriptions -->
+
 - The built-in contract uses source "programmatic" (not source
   "config"), distinguishing it from contracts loaded via the YAML
   subscriptions section. The management API also exposes this contract
   in list and properties responses.
+
+<!-- change:retire-outbound-hook-subscriptions -->
+
+<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 - The WhatsApp-command router dispatches inbound commands through the
   WhatsApp UI adapter's public dispatch path, injecting WhatsApp-specific
