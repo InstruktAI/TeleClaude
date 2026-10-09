@@ -55,6 +55,8 @@ And if the shell does not become ready, the handler aborts with "Agent did not e
 And the abort is emitted as an error event and as an in-session message
 ```
 
+<!-- planned-change:revived-agent-keeps-its-status -->
+
 #### UC-AR16: Restart relaunches in place with native transcript continuity
 
 ```
@@ -66,6 +68,24 @@ And the host pane, session_id, native session identifier, and transcript chain a
 And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
+
+<!-- change:revived-agent-keeps-its-status -->
+
+#### UC-AR16: Restart relaunches in place with native transcript continuity
+
+```
+Given the agent process has exited and the shell is ready
+When the handler relaunches the agent
+Then it constructs the agent command with resume-from-transcript semantics and the session's recorded thinking mode (defaulting to "slow")
+And it sends the command into the existing host pane
+And the host pane, session_id, native session identifier, and transcript chain are preserved
+And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
+And the session's agent status, its reason and the moment it was entered stay as recorded: a restart is not a run start (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL42)
+And the first input delivered after the relaunch waits for the resumed agent's input readiness, as the startup gate in `local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery` requires for resumed sessions
+And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
+```
+
+<!-- /planned-change:revived-agent-keeps-its-status -->
 
 #### UC-AR1: Self-restart wakes the resumed agent without foregrounding the continuation
 
@@ -112,6 +132,8 @@ And no continuation stimulus is injected
 And the resumed agent acts on whatever its replayed transcript dictates
 ```
 
+<!-- planned-change:revived-agent-keeps-its-status -->
+
 #### UC-AR17: Restart revives a closed session through headless state
 
 ```
@@ -120,6 +142,22 @@ When the restart runs
 Then it clears the closed marker, sets the lifecycle status to "headless", and re-reads the row before continuing
 And revival of a closed session is a side effect of restart, not a separate code path
 ```
+
+<!-- change:revived-agent-keeps-its-status -->
+
+#### UC-AR17: Restart revives a closed session as recorded
+
+```
+Given the target session row is marked closed
+When the restart runs
+Then it clears the closed marker and re-reads the row before continuing
+And the session's lifecycle status is the one its record supports: `active` when its runtime start was observed, otherwise `initializing`, never passing through `headless` or `initializing` on the way
+And revival of a closed session is a side effect of restart, not a separate code path
+```
+
+<!-- /planned-change:revived-agent-keeps-its-status -->
+
+<!-- planned-change:revived-agent-keeps-its-status -->
 
 #### UC-AR18: Restart adopts a replacement pane for a missing host pane
 
@@ -130,6 +168,20 @@ Then it clears the recorded host pane reference, sets the lifecycle status to "h
 And it adopts a fresh host pane in headless mode before relaunch
 And if adoption fails, the restart reports "Failed to adopt headless session."
 ```
+
+<!-- change:revived-agent-keeps-its-status -->
+
+#### UC-AR18: Restart binds a replacement pane for a missing host pane
+
+```
+Given the row's recorded host pane no longer exists
+When the restart runs
+Then it clears the recorded host pane reference and re-reads the row
+And it binds a fresh host pane before relaunch, leaving the session's lifecycle status the one its record supports
+And if binding the pane fails, the restart reports "Failed to adopt headless session."
+```
+
+<!-- /planned-change:revived-agent-keeps-its-status -->
 
 #### UC-AR19: Restart fails when the target agent is disabled
 
@@ -242,4 +294,13 @@ And no paired restart-continuation block appears in the foreground composer
 - **Continuation stimulus is fixed text.** The constant "Session restarted. Continue pending work or remain idle." is the only stimulus the platform supplies to control delivery on self-restart; there is no caller-supplied payload.
 - **`self` semantics are CLI-side only.** The agent_runtime service takes a concrete session id; the literal `self` is resolved in `telec sessions restart` by reading the local identity record, not by the service. A direct service caller must address a concrete session id.
 - **Self-restart is flag-shaped on the request.** A request that fails to carry the self-restart flag is silently treated as a non-self restart.
+
+<!-- planned-change:revived-agent-keeps-its-status -->
+
 - **Restart on a dead host pane quietly switches to adoption.** If the recorded host pane no longer exists, restart does not error — it adopts a fresh host pane in headless mode before relaunch, so callers may observe a different host-pane reference after the cycle than the one they passed in.
+
+<!-- change:revived-agent-keeps-its-status -->
+
+- **Restart on a dead host pane quietly binds a new one.** If the recorded host pane no longer exists, restart does not error — it binds a fresh host pane before relaunch, so callers may observe a different host-pane reference after the cycle than the one they passed in.
+
+<!-- /planned-change:revived-agent-keeps-its-status -->

@@ -290,11 +290,11 @@ And it leaves `unknown` only on the first normalized agent event of that run
 #### UC-SL42: Every agent (re)start begins at unknown
 
 ```
-Given an agent session whose agent process starts, restarts, or is handed off
+Given an agent session whose agent process starts or is handed off
 When that start is dispatched
 Then the session's agent status becomes `unknown`
 And it leaves `unknown` only on the first normalized agent event of that run
-And a revival is not such a start: it keeps the agent status the session already had (`local/projects/teleclaude/spec/feature/agent_runtime/session-revival`)
+And a restart or a revival is not such a start: each keeps the agent status the session's record holds (`local/projects/teleclaude/spec/feature/agent_runtime/agent-restart`, `local/projects/teleclaude/spec/feature/agent_runtime/session-revival`)
 ```
 
 <!-- /planned-change:revived-agent-keeps-its-status -->
