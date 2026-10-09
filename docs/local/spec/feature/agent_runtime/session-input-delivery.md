@@ -237,7 +237,7 @@ Given an authenticated caller sends a plain (non-direct) message that carries a 
 When the origin-wrapping step runs
 Then a caller whose session runs an agent has its message prepended with an identity header naming that agent as the author, qualified by the caller's job role when one exists, with the caller's session and computer
 And a caller whose session runs no agent has its message prepended with an identity header naming its machine-role label and session
-And a caller whose session does not resolve at all has the send refused with an explicit error, because no truthful identity can be composed for it
+And the header is composed from the caller's own session record on the computer that received the call, the carried caller session being taken as given
 And no fabricated role label, and no human identity, is ever substituted to force a header
 And every composed header additionally carries the send-moment occurrence time, truncated to the minute in UTC
 And that occurrence time is rendered once into the opening delimiter, with the paired closing derived from it
@@ -478,6 +478,18 @@ And occupied-composer and non-composer protections remain in force
 Graceful settlement is owned by
 `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`; abrupt-loss
 recovery continues to use this surface's durable accepted-input evidence.
+
+#### UC-SID22: A session-originated start message identifies its sender
+
+```gherkin
+Given a caller carrying a caller session id starts a new agent session with a startup message and without direct ignition
+And the startup message is not dispatched as a command
+When the new session's agent receives its startup message
+Then the message carries the same identity header a session-originated send composes for that caller
+And the header reaches the new session's agent whether it starts on the caller's computer or on another
+And a startup message dispatched as a command keeps its command form
+And a caller carrying no caller session id starts the session with its startup message as written
+```
 
 ### Cross-context references
 
