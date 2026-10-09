@@ -177,6 +177,7 @@ def validate_tier_candidate(
     writer is about to store there, and the result is judged against this computer's machine flags.
     """
     document = {**candidate, _KIND_FIELD: kind.value}
+    require_inbound_secret_references(path, document)
     environment: dict[str, str] = {}
     if find_environment_references(document):
         environment = read_environment_file(

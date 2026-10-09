@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import yaml
 from pydantic import ValidationError
 
 _LOCATION_SEPARATOR = "."
 _FINDING = "{location}: {message}"
+_YAML_FINDING = "line {line}, column {column}: {problem}"
+_INVALID_YAML = "invalid YAML"
 
 
 class ConfigLoadError(ValueError):
@@ -22,4 +25,12 @@ def load_error_findings(error: ConfigLoadError) -> list[str]:
             )
             for detail in cause.errors(include_input=False, include_url=False)
         ]
-    return [str(cause if cause is not None else error)]
+    if isinstance(cause, yaml.MarkedYAMLError) and cause.problem_mark is not None:
+        mark = cause.problem_mark
+        return [
+            _YAML_FINDING.format(line=mark.line + 1, column=mark.column + 1, problem=cause.problem or _INVALID_YAML)
+        ]
+    if isinstance(cause, yaml.YAMLError):
+        return [_INVALID_YAML]
+    # Any other cause's text may quote the document; only its kind travels.
+    return [type(cause if cause is not None else error).__name__]

@@ -20,11 +20,14 @@ from teleclaude.config._machine_build import (
 from teleclaude.config._models import (
     TeleclaudeConfig,
 )
+from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import PROJECT_ENV_PATH
 
 _dotenv_path = PROJECT_ENV_PATH
+_WORKING_DIR_VARIABLE = "WORKING_DIR"
+_READ_ERROR = "Failed to read config file {path}: {error}"
 
 # Variables present before any .env load are shell-provided and keep precedence;
 # .env-sourced variables are refreshed from the file on every (re)load.
@@ -56,10 +59,6 @@ def machine_runtime_environment() -> Mapping[str, str]:
     return os.environ
 
 
-_refresh_dotenv()
-os.environ.setdefault("WORKING_DIR", WORKING_DIR)
-
-
 # Sections whose consumers re-read config at call-time, so a reload applies live via
 # in-place singleton mutation (tts additionally needs TTSManager.reload()). This is a
 # safe allowlist: any changed section NOT listed requires a daemon restart, because its
@@ -75,8 +74,12 @@ def restart_required_sections(changed: list[str]) -> list[str]:
 def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
     _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
-    with open(path, encoding="utf-8") as f:
-        parsed: object = yaml.safe_load(f)
+    os.environ.setdefault(_WORKING_DIR_VARIABLE, WORKING_DIR)
+    try:
+        with open(path, encoding="utf-8") as f:
+            parsed: object = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError) as error:
+        raise ConfigLoadError(_READ_ERROR.format(path=path, error=error)) from error
     raw_user_config = parsed if isinstance(parsed, dict) else {}
     migrated = upcast_for_read(path, raw_user_config, subject=SubjectRef(ConfigSubjectKind.COMPUTER))
     return build_config_from_raw(migrated, path.parent, config_source=path)
@@ -120,7 +123,7 @@ config = cast(TeleclaudeConfig, _RuntimeConfigAccessor())
 def reload_config() -> list[str]:
     """Re-read config from disk and apply it to the live ``config`` singleton in place.
 
-    The singleton's identity is preserved, so every ``from teleclaude.config import config``
+    The singleton's identity is preserved, so every ``from teleclaude.config.machine import config``
     holder observes the new values without re-importing. Returns the names of the top-level
     sections that changed. Changed sections in ``HOT_RELOADABLE_SECTIONS`` take effect live;
     any other changed section needs a daemon restart (see ``restart_required_sections``).

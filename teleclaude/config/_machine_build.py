@@ -75,6 +75,7 @@ _EXTRA_FORBIDDEN_MESSAGE = "Extra inputs are not permitted."
 _SCALAR_INPUT_ADAPTER = TypeAdapter(SCALAR_INPUT)
 _EVENT_DLQ_DESTINATION = "teleclaude:events:dlq"
 _CONFIG_VALIDATION_ERROR = "Failed to validate config file {path}: {error}"
+_CONFIG_READ_ERROR = "Failed to read config file {path}: {error}"
 _KIND_MISMATCH_ERROR = "Machine configuration at {path} declares kind '{kind}', expected 'computer'"
 _REMOTE_ENTRY_MAPPING_ERROR = "Invalid remote_computers entry '{name}': expected a mapping, got {actual}."
 _SCALAR_INPUT_ERROR = "Expected a scalar configuration value."
@@ -549,6 +550,8 @@ def build_config_from_raw(
         )
         if isinstance(error, ValidationError):
             raise ConfigLoadError(_CONFIG_VALIDATION_ERROR.format(path=source, error=error)) from error
+        if isinstance(error, (OSError, yaml.YAMLError)):
+            raise ConfigLoadError(_CONFIG_READ_ERROR.format(path=experiments_path, error=error)) from error
         raise
 
     logger.info(
