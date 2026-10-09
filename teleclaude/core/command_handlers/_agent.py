@@ -61,6 +61,7 @@ from teleclaude.core.session_launch_profile import resolve_session_launch_profil
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import (
     acquire_session_runtime_lease,
+    mark_relaunch_awaiting_readiness,
     session_runtime_owner,
 )
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_slash_command
@@ -78,12 +79,13 @@ from teleclaude.types.commands import (
     RestartAgentCommand,
     RestartAgentResult,
     ResumeAgentCommand,
+    ReviveAgentCommand,
     RunAgentCommand,
     StartAgentCommand,
 )
 
 from ._handoff import execute_handoff
-from ._keys import _ensure_tmux_for_headless
+from ._keys import _bind_host_pane, _ensure_tmux_for_headless
 from ._utils import with_session
 
 if TYPE_CHECKING:
@@ -98,6 +100,7 @@ _AGENT_START_DEBUG_LOG = (
 )
 _AGENT_START_COMMAND_LOG = "Executing agent start command for %s: base_command=%s prompt_len=%s prompt_sha=%s"
 _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT = "agent_restart_readiness_opportunity"
+_RESTART_PANE_MISSING_EVENT = "agent_restart_pane_missing"
 _HANDOFF_CONTEXT_HEADER = "ADDITIONAL CONTEXT:"
 _HANDOFF_CONTEXT_WITH_TRANSCRIPT_TEMPLATE = (
     "This session was handed off from {predecessor}. Session: {session_id}. "
@@ -681,7 +684,7 @@ async def handoff_agent(
 
 async def _restart_agent(
     session: Session,
-    cmd: RestartAgentCommand,
+    cmd: RestartAgentCommand | ReviveAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> tuple[bool, str | None] | RestartAgentResult:
@@ -713,46 +716,41 @@ async def _restart_agent(
         return False, error
 
     session_updates: dict[str, str | None] = {}
-    restart_to_headless = False
     if session.closed_at is not None:
         session_updates["closed_at"] = None
-        restart_to_headless = True
         logger.info("Reviving closed session before agent restart (session=%s)", session.session_id)
 
-    tmux_exists = False
     if session.tmux_session_name:
         tmux_exists = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
         if not tmux_exists:
             session_updates["tmux_session_name"] = None
-            restart_to_headless = True
             logger.info(
-                "Session tmux missing; forcing headless adoption before restart (session=%s tmux=%s)",
-                session.session_id,
-                session.tmux_session_name,
+                _RESTART_PANE_MISSING_EVENT,
+                session_id=session.session_id,
+                tmux_session=session.tmux_session_name,
             )
 
     if session_updates:
         await db.update_session(session.session_id, **session_updates)
-        if restart_to_headless:
-            await transition_session(
-                db,
-                session.session_id,
-                LifecycleTransition(SessionLifecycleStatus.HEADLESS, LifecycleTransitionReason.RESTART_INITIALIZED),
-            )
         refreshed = await db.get_session(session.session_id)
         if refreshed:
             session = refreshed
 
     if session.lifecycle_status == "headless" or not session.tmux_session_name:
-        adopted = await _ensure_tmux_for_headless(
-            session,
-            client,
-            None,
-            resume_native=False,
-        )
-        if not adopted:
+        bound = await _bind_host_pane(session, client)
+        if bound is None:
             return False, "Failed to adopt headless session."
-        session = adopted
+        session, _ = bound
+
+    if session.lifecycle_status in {SessionLifecycleStatus.CLOSED, SessionLifecycleStatus.HEADLESS}:
+        await transition_session(
+            db,
+            session.session_id,
+            LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.RELAUNCH_REOPENED),
+        )
+        refreshed = await db.get_session(session.session_id)
+        if refreshed:
+            session = refreshed
 
     try:
         target_agent = assert_agent_enabled(target_agent)
@@ -844,8 +842,7 @@ async def _restart_agent(
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
 
-        run_started_at = datetime.now(UTC)
-        await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
+        mark_relaunch_awaiting_readiness(session.session_id)
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
         logger.info(
             _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT,
@@ -925,8 +922,7 @@ async def _restart_agent(
 
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")
     else:
-        run_started_at = datetime.now(UTC)
-        await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
+        mark_relaunch_awaiting_readiness(session.session_id)
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
     return True, None
@@ -935,7 +931,7 @@ async def _restart_agent(
 @with_session
 async def agent_restart(
     session: Session,
-    cmd: RestartAgentCommand,
+    cmd: RestartAgentCommand | ReviveAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> tuple[bool, str | None] | RestartAgentResult:

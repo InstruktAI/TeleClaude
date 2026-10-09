@@ -59,6 +59,7 @@ from teleclaude.core.session_listeners import (
     StopNotificationVariant,
 )
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
+from teleclaude.core.session_runtime_gate import clear_relaunch_awaiting_readiness
 from teleclaude.core.session_startup import uncertain_delivery_occurrence_key
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
@@ -513,6 +514,9 @@ class AgentCoordinator(
             context.session_id,
             str(native_session_id),
         )
+
+        # A relaunched agent announcing its start is ready for input.
+        clear_relaunch_awaiting_readiness(context.session_id)
 
         # Normalized runtime start is an observed lifecycle fact. Consumers with
         # native startup authority subscribe to AGENT_READY here.

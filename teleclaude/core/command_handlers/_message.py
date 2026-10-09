@@ -58,9 +58,13 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import is_legacy_restricted_session
-from teleclaude.core.session_runtime_gate import session_runtime_owner
+from teleclaude.core.session_runtime_gate import (
+    clear_relaunch_awaiting_readiness,
+    relaunch_awaiting_readiness,
+    session_runtime_owner,
+)
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
-from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
+from teleclaude.core.session_status import SessionLifecycleStatus, is_agent_turn_running, is_session_terminal
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
@@ -522,6 +526,17 @@ async def handle_file(
     )
 
 
+def _startup_pending(session: Session) -> bool:
+    """Return whether the session's agent has yet to show it can accept input.
+
+    A session is pending while it is initializing and while a relaunch of its
+    agent awaits readiness.
+    """
+    return session.lifecycle_status == SessionLifecycleStatus.INITIALIZING or relaunch_awaiting_readiness(
+        session.session_id
+    )
+
+
 async def _wait_for_session_ready(session_id: str) -> Session | None:
     """Wait for a current session binding to reach its delivery authority.
 
@@ -529,7 +544,16 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
     readiness wait that ends on a settled screen with no composer raises
     ``NoComposerReadinessTimeout``: the session is alive and showing something
     else, which callers hold input for rather than treat as a missing session.
+    A relaunch's readiness wait ends when this returns, however it ends.
     """
+    try:
+        return await _await_startup_readiness(session_id)
+    finally:
+        clear_relaunch_awaiting_readiness(session_id)
+
+
+async def _await_startup_readiness(session_id: str) -> Session | None:
+    """Poll the session until it is no longer startup-pending or the gate budget ends."""
     deadline = time.monotonic() + STARTUP_GATE_TIMEOUT_S
     while time.monotonic() < deadline:
         session = await db.get_session(session_id)
@@ -537,7 +561,7 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
             return None
         if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
             return None
-        if session.lifecycle_status != "initializing":
+        if not _startup_pending(session):
             return session
         if not session.active_agent or not session.tmux_session_name:
             await asyncio.sleep(STARTUP_GATE_POLL_INTERVAL_S)
@@ -564,7 +588,7 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
             refreshed = await db.get_session(session_id)
             if refreshed is None:
                 return None
-            if refreshed.lifecycle_status != "initializing" and not ready_future.done():
+            if not _startup_pending(refreshed) and not ready_future.done():
                 ready_future.set_result(None)
             remaining_s = deadline - time.monotonic()
             if remaining_s <= 0:
@@ -585,6 +609,17 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
         return await db.get_session(session_id)
     return None
+
+
+async def _hold_for_startup_readiness(session_id: str) -> Session:
+    """Wait for the startup gate, holding the input when the agent shows no composer."""
+    try:
+        session = await _wait_for_session_ready(session_id)
+    except NoComposerReadinessTimeout as exc:
+        raise InboundMessageHeldError(session_id=session_id, reason=InboundHoldReason.NO_COMPOSER) from exc
+    if not session:
+        raise RuntimeError(f"Startup gate timeout for session {session_id}")
+    return session
 
 
 async def deliver_inbound(
@@ -608,13 +643,8 @@ async def deliver_inbound(
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
 
-    if session.lifecycle_status == "initializing":
-        try:
-            session = await _wait_for_session_ready(session_id)
-        except NoComposerReadinessTimeout as exc:
-            raise InboundMessageHeldError(session_id=session_id, reason=InboundHoldReason.NO_COMPOSER) from exc
-        if not session:
-            raise RuntimeError(f"Startup gate timeout for session {session_id}")
+    if _startup_pending(session):
+        session = await _hold_for_startup_readiness(session_id)
 
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.UNAVAILABLE)
@@ -652,11 +682,19 @@ async def deliver_inbound(
             session_id=session_id,
             source_occurrence_id=row["occurrence_key"],
         )
-    async with session_runtime_owner(session_id, wait=True):
-        results = await asyncio.gather(
-            inject_inbound_text(session, message_text, active_agent=active_agent, authority=authority),
-            return_exceptions=True,
-        )
+    results: tuple[object, ...] | None = None
+    delivery_session = session
+    while results is None:
+        async with session_runtime_owner(session_id, wait=True):
+            # A relaunch can be marked between the readiness check above and
+            # ownership; the mark is read again now that no relaunch is mid-flight.
+            if not relaunch_awaiting_readiness(session_id):
+                results = await asyncio.gather(
+                    inject_inbound_text(delivery_session, message_text, active_agent=active_agent, authority=authority),
+                    return_exceptions=True,
+                )
+        if results is None:
+            delivery_session = await _hold_for_startup_readiness(session_id)
     tmux_result = results[0]
     if (
         isinstance(tmux_result, tmux_io.UserTurnDeliveryResult)
@@ -683,7 +721,7 @@ async def deliver_inbound(
         raise RuntimeError(f"tmux delivery failed for session {session_id}")
 
     await db.update_last_activity(session_id)
-    await start_polling(session_id, session.tmux_session_name)
+    await start_polling(session_id, delivery_session.tmux_session_name)
     logger.debug("Started polling for session %s", session_id)
 
 

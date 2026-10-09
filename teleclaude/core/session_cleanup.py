@@ -34,6 +34,7 @@ from teleclaude.core.models import RelayStatus, encode_relay_exchange, encode_re
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_links import cleanup_session_links
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
+from teleclaude.core.session_runtime_gate import clear_relaunch_awaiting_readiness
 from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 from teleclaude.events.envelope import EventVisibility
@@ -492,6 +493,7 @@ async def _terminate_session_inner(
         elif not already_closed:
             await db.close_session(session.session_id)
             logger.info("Closed session %s in database", session.session_id)
+        clear_relaunch_awaiting_readiness(session.session_id)
     return not already_closed or delete_db
 
 
