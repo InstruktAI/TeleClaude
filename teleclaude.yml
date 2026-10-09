@@ -253,4 +253,8 @@ docs:
   enabled: true
 agents:
   enabled: true
+hooks:
+  inbound:
+    github:
+      secret: ${GITHUB_WEBHOOK_SECRET}
 schema_version: 15
