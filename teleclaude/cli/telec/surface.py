@@ -1694,7 +1694,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "must be fully (re)staged so the pathspec commit does not silently sweep in "
                     "unstaged hunks. The partial-staging guard in `telec code commit` directs agents "
                     "here for recovery.",
-                    "Every successful call declares its paths to session-scoping. Modified-tracked files "
+                    "A successful call from inside the session's checkout declares its paths to "
+                    "session-scoping. Invoked from a different repository it stages as usual, declares "
+                    "nothing, and reports the paths as not declared. Modified-tracked files "
                     "that are NOT partial-staged don't need staging — pathspec commits them straight from "
                     "the working tree.",
                     "A clean tracked path or a path that does not exist yet is declared the same way — "

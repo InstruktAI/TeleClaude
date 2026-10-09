@@ -45,6 +45,8 @@ from teleclaude.commit_identity import (
 )
 from teleclaude.core.db import get_db
 from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
+from teleclaude.core.models import Session
+from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.project_root import (
@@ -64,6 +66,7 @@ from teleclaude.quality.scope import (
 from teleclaude.session_identity import get_session_id
 from teleclaude.session_scoping import clear as clear_session_paths
 from teleclaude.session_scoping import declare as declare_session_paths
+from teleclaude.session_scoping import resolve_workspace
 
 logger = get_logger(__name__)
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
@@ -91,6 +94,13 @@ _AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
     "remove these paths from the worktree commit and route the artifact change to that session."
 )
 _WORKTREE_REFUSAL_PATH_TEMPLATE = "  {path}"
+_ADD_SESSION_CHECKOUT_UNRESOLVED = (
+    "ERROR: telec code add could not resolve the checkout of session {session_id}; nothing was staged or declared."
+)
+_ADD_NOT_DECLARED_FOREIGN_CHECKOUT = (
+    "Not declared: the invocation repository {invocation} is not the session checkout {checkout}.\n"
+    "Staged as usual; the session's declarations carry only paths in its own checkout:"
+)
 
 
 class CodeSubcommand(StrEnum):
@@ -226,8 +236,10 @@ def handle_code_add(args: list[str]) -> None:
        running ``git add`` fully restages the file so the staged version
        matches the working tree, removing the ambiguity.
 
-    Every successful call declares its paths to session-scoping. Modified-tracked
-    files that are NOT partial-staged therefore succeed without index mutation.
+    A successful call invoked from inside the session's checkout declares its
+    paths to session-scoping; invoked from a different repository it stages as
+    usual and declares nothing. Modified-tracked files that are NOT
+    partial-staged therefore succeed without index mutation.
     A clean tracked path and a path that does not exist yet are declared the
     same way: declaring is bookkeeping for work about to start, not a claim
     about current git state, so declaring before the first touch or ahead of a
@@ -263,6 +275,12 @@ def handle_code_add(args: list[str]) -> None:
         print("ERROR: one or more paths were rejected outside the invocation context", file=sys.stderr)
         raise SystemExit(1)
     positionals = validated_positionals
+    session_id = get_session_id()
+    session_checkout = _resolve_session_checkout_root(session_id) if session_id else None
+    if session_id and session_checkout is None:
+        print(_ADD_SESSION_CHECKOUT_UNRESOLVED.format(session_id=session_id), file=sys.stderr)
+        raise SystemExit(1)
+    foreign_checkout = session_checkout is not None and session_checkout != project_root.resolve()
     untracked = set(get_untracked_files(project_root))
     unmerged = set(get_unmerged_files(project_root))
     dirty = dirty_paths(project_root)
@@ -291,7 +309,7 @@ def handle_code_add(args: list[str]) -> None:
         else:
             not_yet_dirty.append(path)
 
-    if already_tracked:
+    if already_tracked and not foreign_checkout:
         # Modified tracked paths are declarations; pathspec commit needs no index mutation.
         print(
             "Declared already tracked + modified path(s); no staging needed (the pathspec\n"
@@ -299,7 +317,7 @@ def handle_code_add(args: list[str]) -> None:
             file=sys.stderr,
         )
 
-    if not_yet_dirty:
+    if not_yet_dirty and not foreign_checkout:
         print(
             "Declared path(s) with nothing yet for git to stage (clean or not created yet):\n  "
             + "\n  ".join(not_yet_dirty),
@@ -316,9 +334,36 @@ def handle_code_add(args: list[str]) -> None:
         for path in stageable:
             print(f"  {path}")
 
-    session_id = get_session_id()
-    if session_id:
+    if session_id and not foreign_checkout:
         declare_session_paths(session_id, positionals)
+    elif foreign_checkout:
+        print(
+            _ADD_NOT_DECLARED_FOREIGN_CHECKOUT.format(invocation=project_root, checkout=session_checkout)
+            + "\n  "
+            + "\n  ".join(positionals),
+            file=sys.stderr,
+        )
+
+
+def _resolve_session_checkout_root(session_id: str) -> Path | None:
+    """Resolve the checkout root the session's record belongs to, or None when it cannot be established."""
+    try:
+        session = asyncio.run(_load_session_async(session_id))
+    except (OperationalError, OSError, RuntimeError):
+        return None
+    if session is None or not session.project_path:
+        return None
+    try:
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+    except ValueError:
+        return None
+    root = resolve_workspace(working_dir).root
+    return Path(root).resolve() if root else None
+
+
+async def _load_session_async(session_id: str) -> Session | None:
+    """Fetch the session row through the runtime database."""
+    return await (await get_db()).get_session(session_id)
 
 
 def handle_code_commit(args: list[str]) -> None:
