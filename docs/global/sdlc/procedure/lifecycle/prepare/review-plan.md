@@ -391,7 +391,11 @@ to pre-satisfy:
   logic an existing cited symbol already provides? A task that duplicates an
   existing symbol instead of extracting it once and reusing it is an Important
   finding (it ships a duplicate code path build-review would otherwise catch a
-  cycle later).
+  cycle later). For `simplify`, independently construct the smallest
+  alternative that reaches the plan's outcome through paths the system already
+  has, before reading the plan's own, so the planner's framing does not set the
+  baseline. A task, file, or mechanism beyond that alternative without a
+  grounded reason is an Important finding.
 - **Domain ownership** (`ownership`): map every changed rule to its domain spec
   and layer, name each cross-context contract, and reject any task that
   implements another context's rule locally. Pattern consistency in adjacent

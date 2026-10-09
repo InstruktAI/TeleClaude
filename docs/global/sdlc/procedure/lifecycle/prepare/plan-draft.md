@@ -427,7 +427,10 @@ omitted — silence is not coverage.
   of reusing it is a defect to fix before the plan is complete. When a diagnosis
   carries an implementation census, the verdict also accounts for every census
   entry; limiting the check to the paths the plan chose would make omission pass
-  as reuse.
+  as reuse. `simplify` is also ticked against the smallest alternative that
+  reaches the same outcome through the system's existing paths
+  (`sdlc/policy/substrate-anchoring`): name that alternative, and give a reason
+  for every task, file, or mechanism the plan carries beyond it.
 
 A plan that does not tick every lane will produce review findings that cost more
 to fix than they cost to prevent. Ticking a lane never means adding work: for a

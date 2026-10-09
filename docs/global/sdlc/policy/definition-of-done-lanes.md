@@ -211,7 +211,7 @@ may expose crossings, but no path-name or prose scanner determines ownership.
 
 #### Paradigm-fit assessment
 
-**Authority:** `design-fundamentals`, `backward-compatibility-hygiene`.
+**Authority:** `design-fundamentals`, `backward-compatibility-hygiene`, `substrate-anchoring`.
 
 Check whether the implementation follows existing codebase paradigms:
 
@@ -227,6 +227,13 @@ Check whether the implementation follows existing codebase paradigms:
    worsened violation. It may challenge a deferral only by disproving its
    stated reason, never by substituting the reviewer's preferred refactor.
    Untouched debt outside the change path is never a finding.
+
+6. **Existing path**: Before reading the change's own reasoning, establish how
+   this system already reaches the same kind of outcome for a comparable case.
+   Does the change take that path, or does it assemble a new mechanism beside
+   it, even one whose every part reuses an existing module
+   (`substrate-anchoring`)? An undeclared parallel is **Critical**. A declared
+   divergence whose reason does not hold is **Important**.
 
 Paradigm violations are **Important** at minimum. An introduced or worsened
 violation on the change path is Important. Where the reviewer establishes
