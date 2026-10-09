@@ -19,6 +19,7 @@ from teleclaude.checkpoint_model import (
     main_only_judgment_action_ids_for_files,
     main_only_maintenance_action_ids_for_files,
 )
+from teleclaude.config.secret_masking import environment_files, mask_environment_values
 from teleclaude.constants import LOG_CHECK_ACTION_ID, MaintenanceAction
 from teleclaude.core.integration._maintenance_records import (
     MaintenanceActionRecord,
@@ -359,6 +360,7 @@ def _run_activation(
         None,
         start_record,
         settle_record,
+        capture_output=True,
     )
 
 
@@ -372,6 +374,8 @@ def run_maintenance_waves(
     child_env: Mapping[str, str] | None,
     on_started: Callable[[str], None],
     on_finished: Callable[[str, CommandResult, str], None],
+    *,
+    capture_output: bool,
 ) -> tuple[tuple[str, CommandResult], ...]:
     """Run the actions in precedence waves and return each action's result in completion order.
 
@@ -396,12 +400,15 @@ def run_maintenance_waves(
 
         def report(index: int, result: CommandResult, wave_ids: tuple[str, ...] = wave) -> None:
             action_id = wave_ids[index]
+            if result.output_tail is not None:
+                masked = mask_environment_values(result.output_tail, environment_files(root))
+                result = replace(result, output_tail=masked)
             finished_at = datetime.now(UTC).isoformat()
             on_finished(action_id, result, finished_at)
             _log_action_finished(activation_range, trigger, action_id, result, finished_at)
             completed.append((action_id, result))
 
-        run_process_group_commands(commands, root, child_env, report, capture_output=True)
+        run_process_group_commands(commands, root, child_env, report, capture_output=capture_output)
     return tuple(completed)
 
 

@@ -199,6 +199,7 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
             child_env,
             start_step,
             finish_step,
+            capture_output=False,
         )
         _report_earlier_failures(root, emit)
         _report_owed(root, target, deferred, fill, child_env, emit)

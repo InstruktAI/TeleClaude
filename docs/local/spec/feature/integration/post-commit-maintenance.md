@@ -56,7 +56,11 @@ contract governs only what happens when maintenance runs.
   and each action's result. The record, not an inference over a transcript, is
   what establishes whether maintenance ran. A failed action is reported at error
   level with the tail of its own combined output, so the reason it gave travels
-  with its result; an action that succeeds keeps its output to itself.
+  with its result; an action that succeeds keeps its output to itself. Before
+  that tail is logged or kept, every value held in the machine, global-home and
+  project environment files is masked; a secret an action reads from anywhere
+  else is not known to be one and is not masked. On-demand maintenance captures
+  nothing: its actions write to the terminal of whoever ran it.
 - **Failure posture.** The commit is already recorded before maintenance
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.

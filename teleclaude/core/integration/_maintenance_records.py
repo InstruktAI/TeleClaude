@@ -26,6 +26,7 @@ _ACTIVATION_RECORD_GLOB = "*/*.json"
 _LOCK_MODE = "a+"
 _TEXT_ENCODING = "utf-8"
 _NEWLINE = "\n"
+_OUTPUT_TAIL_FIELD = "output_tail"
 
 
 class _MaintenanceRecordPayload(BaseModel):
@@ -40,7 +41,7 @@ class _MaintenanceRecordPayload(BaseModel):
     state: str
     exit_code: int | None
     finished_at: str | None
-    output_tail: str | None = None
+    output_tail: str | None
 
 
 class MaintenanceRecordState(StrEnum):
@@ -104,8 +105,27 @@ def write_record(path: Path, record: MaintenanceActionRecord) -> None:
 
 
 def read_record(path: Path) -> MaintenanceActionRecord:
-    """Read one typed record from its durable JSON form."""
-    payload = _MaintenanceRecordPayload.model_validate_json(path.read_text(encoding=_TEXT_ENCODING))
+    """Read one typed record from its durable JSON form, migrating an older record forward first."""
+    document = json.loads(path.read_text(encoding=_TEXT_ENCODING))
+    upcast = _upcast_record_document(document)
+    payload = _MaintenanceRecordPayload.model_validate(upcast)
+    record = _record_from_payload(payload)
+    if upcast is not document:
+        write_record(path, record)
+    return record
+
+
+def _upcast_record_document(document: object) -> object:
+    """Bring a record written before failures kept their output to the current shape.
+
+    Remove once no record that predates ``output_tail`` can remain on any computer.
+    """
+    if isinstance(document, dict) and _OUTPUT_TAIL_FIELD not in document:
+        return {**document, _OUTPUT_TAIL_FIELD: None}
+    return document
+
+
+def _record_from_payload(payload: _MaintenanceRecordPayload) -> MaintenanceActionRecord:
     return MaintenanceActionRecord(
         before_sha=payload.before_sha,
         after_sha=payload.after_sha,
