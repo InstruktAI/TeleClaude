@@ -174,12 +174,25 @@ agents:
   enabled: bool # the project holds agent artifacts
 ```
 
+<!-- planned-change:help-desk-master-routing -->
+
 A project, the global configuration, and a company each declare whether that
 home keeps a help desk. An omitted block, or one without an `enabled` value,
 keeps none. How the block is set and the help desk scaffolded is owned by
 `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The
 block's shape is owned by the `help_desk` field of the project, global and
 company declaration models (`HelpDeskConfig` in `teleclaude/config/schema.py`).
+
+<!-- change:help-desk-master-routing -->
+
+A project and a company each declare whether that home keeps a help desk. An
+omitted block, or one without an `enabled` value, keeps none. How the block is
+set and the help desk scaffolded is owned by
+`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The
+block's shape is owned by the `help_desk` field of the project and company
+declaration models (`HelpDeskConfig` in `teleclaude/config/schema.py`).
+
+<!-- /planned-change:help-desk-master-routing -->
 
 A project also declares its checkpoint maintenance overlay under `checkpoint`, holding two
 registries keyed by action id: `checkpoint.actions`, whose entries carry `run` and `evidence`

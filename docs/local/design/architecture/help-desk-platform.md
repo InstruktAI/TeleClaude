@@ -1,5 +1,5 @@
 ---
-description: "Help desks for platform, company and project homes: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the owning home's admins, admin relay, and internal channels."
+description: "Help desks: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the owning home's admins, admin relay, and internal channels."
 visibility: 'public'
 ---
 
@@ -212,7 +212,15 @@ A desk agent reads documentation at its visitor's depth (`local/projects/telecla
 
 ### Help Desk Scaffolding
 
+<!-- planned-change:help-desk-master-routing -->
+
 A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The company and project kinds each have a template in the TeleClaude repository — `templates/help-desk-company/` and `templates/help-desk-project/` — carrying that kind's operator brain, seeded once, and the desk's ignore declaration. The platform help desk has no template: its operator brain is authored in the TeleClaude home.
+
+<!-- change:help-desk-master-routing -->
+
+A home's declaration says whether it keeps a help desk, and how that field is set and the desk scaffolded is owned by `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`. The company and project kinds each have a template in the TeleClaude repository — `templates/help-desk-company/` and `templates/help-desk-project/` — carrying that kind's operator brain, seeded once, and the desk's ignore declaration.
+
+<!-- /planned-change:help-desk-master-routing -->
 
 - A company help desk is a folder inside the TeleClaude home. The platform home's configuration-aware convergence seeds it at commit-boundary maintenance and through `telec sync` while its company enables it; machine installation seeds no desk (`local/projects/teleclaude/spec/feature/reconciliation/home-template-materialization`, `local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
 - A project help desk lives in the project's repository. The project's own convergence seeds it at commit-boundary maintenance and through `telec sync` whenever the project's declaration enables it.
@@ -800,7 +808,15 @@ This job:
 
 ### Desk master (`AGENTS.master.md`)
 
+<!-- planned-change:help-desk-master-routing -->
+
 Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's help-desk template where one exists, and compiles into `AGENTS.md` through the standard artifact pipeline. It stays a thin wrapper:
+
+<!-- change:help-desk-master-routing -->
+
+Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's help-desk template, and compiles into `AGENTS.md` through the standard artifact pipeline. It stays a thin wrapper:
+
+<!-- /planned-change:help-desk-master-routing -->
 
 1. **Identity**: the help-desk agent of this desk, not a generic assistant.
 2. **Required reads**: the desk kind's concept (`general/concept/help-desk/<kind>`) and the help-desk procedure (`general/procedure/help-desk/overview`, which requires the escalation procedure). A company or project desk's master requires none of its home's internal documentation, so nothing internal reaches a customer-facing agent's context.
@@ -1163,6 +1179,16 @@ sequenceDiagram
 - docs/local/design/architecture/outbox.md — Durable outbox for hook event delivery
 - docs/local/design/architecture/jobs-runner.md — Scheduled job runner architecture
 - docs/local/spec/teleclaude-config.md — Configuration schema
+
+<!-- planned-change:help-desk-master-routing -->
+
 - docs/local/spec/feature/agent_runtime/conversation-entry.md — Endpoints, entry identifiers, latest-session routing, neutral reply, hosting computer
+
+<!-- change:help-desk-master-routing -->
+
+- docs/local/spec/feature/agent_runtime/conversation-entry.md — Endpoints, entry identifiers, routing by what a person sent, neutral reply, master hosting
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - docs/local/spec/feature/agent_runtime/help-desk-escalation.md — Escalation recipients and relay
 - docs/global/general/spec/tools/telec-cli.md — Telec command surface for session and orchestration flows

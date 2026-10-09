@@ -33,6 +33,9 @@ TeleClaudeNext repository.
 
 - **Owns:** live-session acceptance and input execution, supervised agent
   processes, runtime status, and session lifecycle transitions.
+
+<!-- planned-change:help-desk-master-routing -->
+
 - **Owns (endpoints and conversation entry):** the core's endpoint registry —
   each person's assistant and each enabled help desk — and the one resolver from
   an entry identifier to an endpoint's working folder and hosting computer;
@@ -45,6 +48,25 @@ TeleClaudeNext repository.
   `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
   Adapters carry identifiers, and per-computer adapters look up sessions by
   origin metadata; they hold no routing rules.
+
+<!-- change:help-desk-master-routing -->
+
+- **Owns (endpoints and conversation entry):** the core's endpoint registry —
+  each person's assistant and each help desk enabled on the master — and the one
+  resolver from an entry identifier to an endpoint's working folder; reaching the
+  person's session at the resolved endpoint, continued, revived or created with
+  the endpoint stamped beside its origin metadata; the mesh master's durable
+  conversation bindings for adapters whose messages reach every computer; the
+  rule that a conversation goes to its session, a registered person without one
+  to their own assistant, and every miss to the neutral reply; and the
+  help-desk escalation relay
+  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`,
+  `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
+  Adapters carry identifiers, and per-computer adapters look up sessions by
+  origin metadata; they hold no routing rules.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - **Does not own:** provider transport or presentation, caller-identity policy,
   todo workflow, or durable historical projections.
 - **Owns (voice focus):** the association between one identified human and the

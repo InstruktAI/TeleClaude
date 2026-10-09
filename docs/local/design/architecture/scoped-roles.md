@@ -42,9 +42,20 @@ session's role and its help-desk confinement in
 
 ## Invariants
 
+<!-- planned-change:help-desk-master-routing -->
+
 1. **One vocabulary.** `admin`, `member`, `contributor`, `newcomer`, `customer`,
    ranked in that order, mean the same at every scope. `customer` is the role
    of someone holding no role where they act.
+
+<!-- change:help-desk-master-routing -->
+
+1. **One vocabulary.** `admin`, `member`, `customer`, ranked in that order,
+   mean the same at every scope. `customer` is the role of someone holding no
+   role where they act.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 2. **A role is held at a scope.**
    - **Platform** — the person registry's role. It contains every object.
    - **Company** — a roster membership's role. It contains the company itself,

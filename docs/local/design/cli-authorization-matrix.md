@@ -22,7 +22,17 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 4. Among assigned system roles, only an orchestrator drives a todo state machine. The integrator alone holds integration and maintenance.
 5. The daemon's own `system` credential grants no role-based command reach. Caller-independent commands pass without resolving that credential.
 6. A command that does not depend on its caller admits a caller with no identity.
+
+<!-- planned-change:help-desk-master-routing -->
+
 7. Customers reach only the desk commands: `version`, `docs index`, `docs get`, `auth whoami` and `sessions escalate`. `sessions escalate` is admitted to every person band below admin, and it succeeds only from a session running in a help desk (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). The admins of the home that owns the desk are the escalation target, and admins do not escalate. Member, contributor and newcomer keep distinct reach.
+
+<!-- change:help-desk-master-routing -->
+
+7. Customers reach only the desk commands: `version`, `docs index`, `docs get`, `auth whoami` and `sessions escalate`. `sessions escalate` is admitted to every person band below admin, and it succeeds only from a session running in a help desk (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). The admins of the home that owns the desk are the escalation target, and admins do not escalate.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 8. Who may change machine, global, company or another person's configuration is decided by configuration target clearance (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`), by object and principal, never by a command's band.
 
 Bands keep an agent inside its brief; they are focus, not integrity (`general/principle/trust-and-guardrails`), which is why every non-worker agent role shares one band and object rules stay with the object's owner.
@@ -57,8 +67,16 @@ Each command keeps a person band of its own in the CLI surface schema, evaluated
 
 - **Admin** — the system owner: every command except `sessions escalate`, whose target they are.
 - **Member** — works on projects and manages sessions; no infrastructure acts such as reviving sessions, setting agent status, or reading and writing the machine environment.
+
+<!-- planned-change:help-desk-master-routing -->
+
 - **Contributor** — works on specific projects; starts, sends to and runs no sessions.
 - **Newcomer** — read-heavy, with very limited writes.
+
+<!-- change:help-desk-master-routing -->
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - **Customer** — reaches only the allow-list in invariant 7.
 
 `todo sync` has no agent-role grant (invariant 3) and has the admin person band: an admin at a terminal, or a session an admin started without an agent role, is admitted, while every session carrying an assigned system role is refused. A caller with the platform principal and no resolved system role is admitted by the roleless platform exception in `local/projects/teleclaude/spec/feature/identity/command-clearance`.

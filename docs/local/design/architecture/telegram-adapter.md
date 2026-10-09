@@ -242,6 +242,8 @@ sequenceDiagram
 
 ### 9. Private-Chat Entry
 
+<!-- planned-change:help-desk-master-routing -->
+
 A private chat is one person's conversation with this computer's bot. The adapter carries the entry identifier as the `/start` parameter (`third-party/telegram/deep-linking`); it recognises the identifier, hands it to the core, and otherwise finds the person's latest session by its origin metadata, as for every adapter (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). It holds no routing rules of its own.
 
 ```mermaid
@@ -253,6 +255,22 @@ flowchart TD
     ID -->|No| LOOKUP[Latest session by origin metadata]
     LOOKUP --> DECIDE[Core decides: that session, the role fallback, or the neutral reply]
 ```
+
+<!-- change:help-desk-master-routing -->
+
+A private chat is one person's conversation with this computer's bot. The adapter carries the entry identifier as the `/start` parameter (`third-party/telegram/deep-linking`); it recognises the identifier, hands it to the core, and otherwise finds the chat's session by its origin metadata, as for every adapter (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). It holds no routing rules of its own. A desk identifier reaches a desk only on the master's bot.
+
+```mermaid
+flowchart TD
+    IN[Private message or /start with parameter] --> ID{Carries an entry identifier?}
+    ID -->|Yes| CORE[Core resolves it to an endpoint]
+    CORE -->|Member's assistant, or a desk on the master| PERSON[The person's session there: continue, revive, or create]
+    CORE -->|Nothing servable here| NEUTRAL[Neutral reply, no session]
+    ID -->|No| LOOKUP[The chat's session by origin metadata]
+    LOOKUP --> DECIDE[Core decides: that session revived when closed, the person's own assistant, or the neutral reply]
+```
+
+<!-- /planned-change:help-desk-master-routing -->
 
 Voice messages and files in a private chat take the same path as text: a sender whose chat reaches no endpoint gets the neutral reply instead of a silent drop.
 
@@ -268,4 +286,13 @@ Voice messages and files in a private chat take the same path as text: a sender 
 - **Master Bot Conflict**: Multiple bots claim master role. Last one wins; command list overwritten. Coordinated config required.
 - **Output Message Deleted**: User manually deletes output message. Next edit fails; adapter creates new output message.
 - **Cleanup Failure**: pending_message_deletions row exists but message already deleted. Logged; row cleared on next cleanup.
+
+<!-- planned-change:help-desk-master-routing -->
+
 - **Entry Identifier for an Endpoint Hosted Elsewhere**: The identifier resolves to an endpoint this computer does not host. The sender gets the neutral reply; no session is created here or on the hosting computer, because this bot is the only one the sender reached.
+
+<!-- change:help-desk-master-routing -->
+
+- **Desk Identifier on a Bot That Is Not the Master's**: Help desks run only on the master, so a desk identifier sent to another computer's bot reaches nothing. The sender gets the neutral reply and no session is created on any computer, because this bot is the only one the sender reached.
+
+<!-- /planned-change:help-desk-master-routing -->

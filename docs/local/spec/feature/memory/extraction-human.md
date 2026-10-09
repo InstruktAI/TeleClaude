@@ -21,11 +21,22 @@ This feature is one of two extraction features under the memory pillar (the othe
 
 Subject is the human's durable identifier:
 
+<!-- planned-change:help-desk-master-routing -->
+
 - **Primary form: email.** Resolvable for most internal humans (admins, members, contributors) via the person config. The scraper reads the session record to determine the human's email when available.
+
+<!-- change:help-desk-master-routing -->
+
+- **Primary form: email.** Resolvable for most internal humans (admins, members) via the person config. The scraper reads the session record to determine the human's email when available.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - **Fallback form: identity-context string** (e.g., `whatsapp:31612345678`, `telegram:1234567`). Used when no email is resolvable — anonymous help-desk customers entering via platform connectors.
 - Both forms are opaque strings, matched by exact equality. A future session for the same human re-uses the same subject value, accumulating triples over time.
 
 ### Predicate vocabulary (closed)
+
+<!-- planned-change:help-desk-master-routing -->
 
 | Predicate      | Captures                                                |
 | -------------- | ------------------------------------------------------- |
@@ -39,6 +50,23 @@ Subject is the human's durable identifier:
 | `decided`      | Choices the human made (rationale baked into object)    |
 | `mentioned`    | Topics the human surfaced                               |
 | `relationship` | Other humans in the human's orbit                       |
+
+<!-- change:help-desk-master-routing -->
+
+| Predicate      | Captures                                             |
+| -------------- | ---------------------------------------------------- |
+| `role`         | The human's role (admin, member, customer)           |
+| `expertise`    | Domains and depth the human holds expertise in       |
+| `working-on`   | What the human is currently engaged with             |
+| `prefers`      | Positive preferences (style, format, approach)       |
+| `dislikes`     | Negative preferences                                 |
+| `goal`         | Articulated goals                                    |
+| `constraint`   | Hard constraints the human has stated                |
+| `decided`      | Choices the human made (rationale baked into object) |
+| `mentioned`    | Topics the human surfaced                            |
+| `relationship` | Other humans in the human's orbit                    |
+
+<!-- /planned-change:help-desk-master-routing -->
 
 Free-form predicates outside this list are rejected at save.
 

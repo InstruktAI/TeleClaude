@@ -98,11 +98,24 @@ and every enabled company help desk among them in two ways
   help desk from their templates while they are absent. A seeded master then
   belongs to its home, whose history records it
   (`general/policy/agent-artifact-governance`).
+
+<!-- planned-change:help-desk-master-routing -->
+
 - The home's root `AGENTS.master.md` and the platform help desk have no
   template; they are authored in the home.
 - The platform help desk is the home's `help-desk/`; a company's help desk is
   `companies/<slug>/help-desk/`. Each is a folder of its home, never a
   repository of its own.
+
+<!-- change:help-desk-master-routing -->
+
+- The home's root `AGENTS.master.md` has no template; it is authored in the
+  home.
+- A company's help desk is `companies/<slug>/help-desk/`, a folder of its home,
+  never a repository of its own.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - The home's `docs/` receives no template.
 
 ### The `/tmp` boundary
@@ -123,6 +136,8 @@ across boots belongs at the home root beside the pidfile.
 
 ### Home entrypoints
 
+<!-- planned-change:help-desk-master-routing -->
+
 The home masters are a fixed set: the home root's `AGENTS.master.md`, the
 platform help desk's `help-desk/AGENTS.master.md`, each declared person's and
 company's root master, and each declared company's
@@ -134,6 +149,21 @@ anywhere else in a home, including under a home's docs, is not compiled, so no
 generated entrypoint ever lands in a retained subtree. The `AGENTS.md` beside
 each master is generated: it is never retained, never edited, and never a
 placement target. The home holds no generated `CLAUDE.md`.
+
+<!-- change:help-desk-master-routing -->
+
+The home masters are a fixed set: the home root's `AGENTS.master.md`, each
+declared person's and company's root master, and each declared company's
+`companies/<slug>/help-desk/AGENTS.master.md`. The home's retained set admits
+every one of them, so an edit to a master is committed in the home's history
+and owes the publication that inflates it
+(`local/projects/teleclaude/spec/feature/context/agents-master-inflation`). A master
+anywhere else in a home, including under a home's docs, is not compiled, so no
+generated entrypoint ever lands in a retained subtree. The `AGENTS.md` beside
+each master is generated: it is never retained, never edited, and never a
+placement target. The home holds no generated `CLAUDE.md`.
+
+<!-- /planned-change:help-desk-master-routing -->
 
 ### Invariants
 

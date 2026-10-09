@@ -19,6 +19,8 @@ inline references inside the source, so the Deployed artifact is one
 self-contained document an agent CLI can read without resolving a tree of
 refs at runtime.
 
+<!-- planned-change:help-desk-master-routing -->
+
 Inflation runs as a Sync step. The Source authors hold the canonical content;
 inflation produces the Deployed `AGENTS.md` beside each master, and that
 `AGENTS.md` is the only file it writes there — no per-agent companion such as
@@ -38,6 +40,29 @@ ever lands in a retained subtree. A home entrypoint inlines only activated,
 deployed documentation — never a publisher's unpublished source — apart from
 the home's own recorded tier source. Every Deployed `AGENTS.md` is fully
 inlined: it carries no `@` import for an agent CLI to resolve.
+
+<!-- change:help-desk-master-routing -->
+
+Inflation runs as a Sync step. The Source authors hold the canonical content;
+inflation produces the Deployed `AGENTS.md` beside each master, and that
+`AGENTS.md` is the only file it writes there — no per-agent companion such as
+a `CLAUDE.md` pointer. A project's masters inflate during that project's sync.
+The home masters are a fixed set: the platform home's root `AGENTS.master.md`,
+each declared person's and company's root master, and each declared company's
+`help-desk/AGENTS.master.md`. They inflate when the platform home's recorded
+source is published, and again whenever the Mother's global publication
+replaces documentation they inline; a refresh that cannot recompile one
+reports the Mother's publication as failed, so a lagging home entrypoint is
+always a visible, replayable failure. That refresh recompiles only a home
+generation whose entrypoints the home's own publication compiled; an earlier
+generation is left to the home's next publication. A master anywhere else in a home,
+including under a home's docs, is not compiled, so no generated entrypoint
+ever lands in a retained subtree. A home entrypoint inlines only activated,
+deployed documentation — never a publisher's unpublished source — apart from
+the home's own recorded tier source. Every Deployed `AGENTS.md` is fully
+inlined: it carries no `@` import for an agent CLI to resolve.
+
+<!-- /planned-change:help-desk-master-routing -->
 
 Only the repository-root `AGENTS.master.md` is a project entrypoint. Its
 generated `AGENTS.md` receives the project-wide progressive baseline index and
@@ -181,6 +206,8 @@ Scenario: The roster lists every declared domain the global configuration does n
   And person and company tier entries contribute no line and fail nothing
 ```
 
+<!-- planned-change:help-desk-master-routing -->
+
 #### UC-AMI10: Every home master compiles into its home's entrypoint
 
 ```
@@ -204,6 +231,34 @@ Scenario: A master outside the fixed home master set is not compiled
   Then no AGENTS.md is written beside that master
   And no generated entrypoint lands in a retained subtree
 ```
+
+<!-- change:help-desk-master-routing -->
+
+#### UC-AMI10: Every home master compiles into its home's entrypoint
+
+```
+Scenario: Home publication inflates the fixed home master set
+  Given the platform home's recorded source holds its root AGENTS.master.md
+  And a declared person home and a declared company home each hold a root AGENTS.master.md, and the company home a help-desk/AGENTS.master.md
+  When committed-state publication activates that recorded source
+  Then an AGENTS.md is written beside each of those masters
+  And each AGENTS.md carries its master's expanded authored content and required reads, with no @ import left in it
+  And every documentation read it inlines comes from the deployed documentation, except the home's own recorded tier source
+  And no AGENTS.md written there carries a project baseline index or activatable-procedure catalog
+  And no CLAUDE.md is written beside any of them
+  And the home's working tree holds no change the home's history would record
+```
+
+```
+Scenario: A master outside the fixed home master set is not compiled
+  Given a home holds an AGENTS.master.md at a path other than the home root, a declared person's or company's root, or a declared company's help desk
+  And that path may lie under a home's docs
+  When committed-state publication activates the platform home's recorded source
+  Then no AGENTS.md is written beside that master
+  And no generated entrypoint lands in a retained subtree
+```
+
+<!-- /planned-change:help-desk-master-routing -->
 
 #### UC-AMI11: The Mother's global publication refreshes home entrypoints
 

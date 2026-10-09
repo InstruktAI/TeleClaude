@@ -119,12 +119,27 @@ publication.
   is, whatever its content; the desk's ignore file converges to its template.
   A project whose declaration does not enable one has nothing seeded, and a
   desk folder left from an earlier enabling stays in place, no longer hosted.
+
+<!-- planned-change:help-desk-master-routing -->
+
 - **Platform home masters.** The platform home's convergence seeds each
   declared person and company home's master and each enabled company desk the
   same way. The home's root master and the platform help desk have no template
   and are never written. It converges no plumbing of the home, which machine
   installation owns. A person or company home is declared when its folder
   holds its tier declaration.
+
+<!-- change:help-desk-master-routing -->
+
+- **Platform home masters.** The platform home's convergence seeds each
+  declared person and company home's master and each enabled company desk the
+  same way. The home's root master has no template and is never
+  written. It converges no plumbing of the home, which machine
+  installation owns. A person or company home is declared when its folder
+  holds its tier declaration.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - **No existing master is written.** Convergence writes untracked machine state,
   a desk's ignore file, and masters that are absent. A master that exists is
   never rewritten, so a recorded master never leaves its home's working tree

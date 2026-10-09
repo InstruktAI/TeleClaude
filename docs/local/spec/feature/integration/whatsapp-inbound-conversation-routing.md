@@ -29,6 +29,8 @@ built-in contract routes it to the handler) → **internal handler**
 owned by `inbound-webhook-endpoint-framework` and
 `single-ingress-webhook-termination`.
 
+<!-- planned-change:help-desk-master-routing -->
+
 Every computer receives each message, and the mesh master alone decides where
 it goes (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A message whose text is exactly an entry identifier is an
 entry: the core resolves it, the master records the number's binding, and a new
@@ -38,9 +40,24 @@ master decides between the role fallback and the neutral reply. Before the
 master-routing cutover in that spec, every computer instead handles the number
 on its own, as it did before master routing.
 
+<!-- change:help-desk-master-routing -->
+
+Every computer receives each message, and the mesh master alone decides where
+it goes (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`);
+no other computer handles it. A message whose text is exactly an entry
+identifier is an entry: the core resolves it, and the number's session at that
+endpoint on the master — continued, revived or created — becomes the session
+the number's binding names. Any other message goes to the session the binding
+names, revived when it was closed; with no binding, a registered person reaches
+their own assistant and anyone else gets the neutral reply.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 ## Canonical fields
 
 ### Use cases
+
+<!-- planned-change:help-desk-master-routing -->
 
 #### UC-WI1: Text message creates session and dispatches process-message
 
@@ -63,6 +80,32 @@ And the command is dispatched through the WhatsApp UI adapter's public dispatch 
 And the command service's process-message handler runs
 ```
 
+<!-- change:help-desk-master-routing -->
+
+#### UC-WI1: Text message reaches the number's session and dispatches process-message
+
+```gherkin
+Given the integration service has a built-in contract id="builtin-whatsapp-inbound" routing source=whatsapp, type pattern message.* to handler "whatsapp_inbound"
+And this computer is the mesh master
+And "31612345678" is bound to its session at an enabled help desk
+When WhatsApp delivers a webhook with a text message from "31612345678" with body "hello"
+And the inbound framework normalizes via the WhatsApp normalizer
+And produces a hook event(source="whatsapp", type="message.text", properties={phone_number, message_id, text})
+And the dispatcher matches the built-in contract
+And invokes the WhatsApp inbound handler
+Then phone-number normalization strips to digits
+And the handler hands the message to the core conversation seam with the phone number as the conversation key and origin metadata carrying the phone number
+And the seam reaches the session the number's binding names, reviving it when it was closed
+And the WhatsApp session metadata is recorded (phone number, last received message id, last customer message timestamp)
+And the text handler builds a process-message command(session id, text="hello", origin=WHATSAPP, actor id="whatsapp:31612345678", actor name="31612345678")
+And the command is dispatched through the WhatsApp UI adapter's public dispatch path with message metadata
+And the command service's process-message handler runs
+```
+
+<!-- /planned-change:help-desk-master-routing -->
+
+<!-- planned-change:help-desk-master-routing -->
+
 #### UC-WI2: Existing session is reused for the same phone number
 
 ```gherkin
@@ -74,6 +117,21 @@ And no new session is created
 And origin metadata is refreshed (last received message id, last customer message timestamp)
 And the command dispatches to the same session
 ```
+
+<!-- change:help-desk-master-routing -->
+
+#### UC-WI2: Existing session is reused for the same phone number
+
+```gherkin
+Given "31612345678" is bound to an open session on the mesh master
+When a new text message arrives from "31612345678"
+Then the message reaches the session the number's binding names
+And no new session is created
+And origin metadata is refreshed (last received message id, last customer message timestamp)
+And the command dispatches to the same session
+```
+
+<!-- /planned-change:help-desk-master-routing -->
 
 #### UC-WI3: Voice message downloads media as ogg into session voice/ directory
 
@@ -211,9 +269,17 @@ And the person the message comes from is resolved by the handler from the phone 
 - Phone numbers are normalized by stripping non-digits before lookup,
   storage, and outbound — `+31 6 1234 5678` and `0031612345678` map to
   the same `31612345678` identity (a known equivalence quirk).
+
+<!-- planned-change:help-desk-master-routing -->
+
 - The handler uses the first session returned by the by-origin-metadata
   lookup when multiple sessions share a phone number — selection is
   implicit and order-dependent.
+
+<!-- change:help-desk-master-routing -->
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - The built-in contract uses source "programmatic" (not source
   "config"), distinguishing it from contracts loaded via the YAML
   subscriptions section. The management API also exposes this contract

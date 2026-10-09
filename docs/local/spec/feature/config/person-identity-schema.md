@@ -14,9 +14,20 @@ visibility: 'public'
 A `PersonEntry` declares the identity of a human principal in the platform's
 global configuration. v1 keeps the schema deliberately narrow: a required
 `name`, a required and stripped-non-empty `email`, an optional Telegram-style
+
+<!-- planned-change:help-desk-master-routing -->
+
 `username`, an optional platform `role` chosen from a closed enum
 (`admin | member | contributor | newcomer`, absent when the person holds no
 platform role), and a nested
+
+<!-- change:help-desk-master-routing -->
+
+`username`, an optional platform `role` chosen from a closed enum
+(`admin | member`, absent when the person holds no platform role), and a nested
+
+<!-- /planned-change:help-desk-master-routing -->
+
 `expertise` map that captures domain proficiency at one or two levels. The
 single-level `proficiency` field is preserved on the model for backward
 compatibility but is deprecated in favor of `expertise`. Entries are collected
@@ -213,7 +224,17 @@ And the global overlay loader raises on the slug field before the app config is 
 - `name` — non-empty string. Required.
 - `email` — string, stripped, non-empty after strip. Required. `Field(min_length=1)` rejects an empty literal before the validator runs.
 - `username` — optional string. Default: `None`.
+
+<!-- planned-change:help-desk-master-routing -->
+
 - `role` — `"admin" | "member" | "contributor" | "newcomer"`, or `None` when the person holds no platform role. Default: `None`.
+
+<!-- change:help-desk-master-routing -->
+
+- `role` — `"admin" | "member"`, or `None` when the person holds no platform role. Default: `None`.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 - `expertise` — optional `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]`. Default: `None`.
 - `proficiency` — optional `ProficiencyLevel`. **Deprecated** — use `expertise` instead. Default: `None`.
 - `slug` — `None`, or a non-empty kebab-case string matching the shared slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$` after stripping. Empty, whitespace-only, or absent normalize to `None`. The canonical, stable reference key for the person; populated by `telec config person init`, and immutable thereafter.
