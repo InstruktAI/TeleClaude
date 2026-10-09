@@ -180,21 +180,6 @@ And the person the message comes from is resolved by the handler from the phone 
 
 ### Cross-context references
 
-<!-- planned-change:retire-outbound-hook-subscriptions -->
-
-- Inbound side of `outbound-messaging-providers`: the same provider
-  (WhatsApp) is supported in both directions, but the inbound handler
-  belongs to `integration` and the outbound send capability also
-  belongs to `integration`. The session-creation step calls into
-  `agent_runtime` via the platform's session-create API.
-- Uses `eventbus-hook-bridge`'s hook dispatcher and contract matcher.
-- Touches `agent_runtime` to create sessions (cross-context call via
-  the platform API).
-- Touches `identity` indirectly through origin metadata, which the
-  identity context reads to resolve principal-from-origin.
-
-<!-- change:retire-outbound-hook-subscriptions -->
-
 - Inbound side of `outbound-messaging-providers`: the same provider
   (WhatsApp) is supported in both directions, but the inbound handler
   belongs to `integration` and the outbound send capability also
@@ -206,8 +191,6 @@ And the person the message comes from is resolved by the handler from the phone 
   the platform API).
 - Touches `identity` indirectly through origin metadata, which the
   identity context reads to resolve principal-from-origin.
-
-<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 ## Known caveats
 
@@ -227,17 +210,6 @@ And the person the message comes from is resolved by the handler from the phone 
 - Phone numbers are normalized by stripping non-digits before lookup,
   storage, and outbound — `+31 6 1234 5678` and `0031612345678` map to
   the same `31612345678` identity (a known equivalence quirk).
-
-<!-- planned-change:retire-outbound-hook-subscriptions -->
-
-- The built-in contract uses source "programmatic" (not source
-  "config"), distinguishing it from contracts loaded via the YAML
-  subscriptions section. The management API also exposes this contract
-  in list and properties responses.
-
-<!-- change:retire-outbound-hook-subscriptions -->
-
-<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 - The WhatsApp-command router dispatches inbound commands through the
   WhatsApp UI adapter's public dispatch path, injecting WhatsApp-specific

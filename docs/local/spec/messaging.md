@@ -1,5 +1,5 @@
 ---
-description: 'Messaging tools for Telegram, Discord, and email delivery — hooks, files, and escalation.'
+description: 'Messaging tools for Telegram, Discord, and email delivery — results, files, person messages, and escalation.'
 visibility: 'public'
 ---
 
@@ -7,12 +7,11 @@ visibility: 'public'
 
 ## What it is
 
-TeleClaude exposes several messaging tools for agents to deliver content to users and external systems. These flows operate through the daemon's Unix socket API (`/tmp/teleclaude-api.sock`) and the `telec` CLI command surface.
+TeleClaude exposes several messaging tools for agents to deliver content to users. These flows operate through the daemon's Unix socket API (`/tmp/teleclaude-api.sock`) and the `telec` CLI command surface.
 
 Use this when you need to:
 
 - Send formatted text or files to a user session.
-- Create webhook contracts (including ephemeral/TTL) for external integrations.
 - Escalate a help-desk conversation to the admins of the home that owns the desk.
 - Understand which messaging surface to use for a given task.
 
@@ -82,85 +81,6 @@ origin that cannot be resolved to a Discord destination is recorded as a
 structured miss and the message is delivered without a backlink. Other
 channels render no backlink.
 
-### Hook contract API (FastAPI on Unix socket)
-
-Base URL: `http://localhost` via `/tmp/teleclaude-api.sock`
-
-**List active contracts:**
-
-```bash
-curl -s --unix-socket /tmp/teleclaude-api.sock \
-  "http://localhost/hooks/contracts"
-```
-
-Filter by property:
-
-```bash
-curl -s --unix-socket /tmp/teleclaude-api.sock \
-  "http://localhost/hooks/contracts?property=session_id&value=abc-123"
-```
-
-**Create a contract (permanent):**
-
-```bash
-curl -s --unix-socket /tmp/teleclaude-api.sock \
-  -X POST "http://localhost/hooks/contracts" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "id": "onboard-mo",
-    "target": {"url": "https://example.com/webhook"},
-    "source_criterion": {"exact": "teleclaude"},
-    "type_criterion": {"exact": "session_start"},
-    "properties": {
-      "session_id": {"exact": "abc-123"}
-    }
-  }'
-```
-
-**Create an ephemeral contract (TTL):**
-
-```bash
-curl -s --unix-socket /tmp/teleclaude-api.sock \
-  -X POST "http://localhost/hooks/contracts" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "id": "invite-link-xyz",
-    "target": {"handler": "onboarding_handler"},
-    "type_criterion": {"exact": "session_start"},
-    "ttl_seconds": 180
-  }'
-```
-
-The contract auto-expires after 180 seconds. Expired contracts are excluded from matching and swept every 60 seconds.
-
-**Deactivate a contract:**
-
-```bash
-curl -s --unix-socket /tmp/teleclaude-api.sock \
-  -X DELETE "http://localhost/hooks/contracts/onboard-mo"
-```
-
-**List property vocabulary:**
-
-```bash
-curl -s --unix-socket /tmp/teleclaude-api.sock \
-  "http://localhost/hooks/properties"
-```
-
-### Contract fields
-
-| Field              | Type   | Required  | Description                                                     |
-| ------------------ | ------ | --------- | --------------------------------------------------------------- |
-| `id`               | string | yes       | Unique contract identifier                                      |
-| `target`           | object | yes       | Exactly one of `handler` (internal) or `url` (external webhook) |
-| `source_criterion` | object | no        | Match event source (`exact`, `prefix`, `regex`)                 |
-| `type_criterion`   | object | no        | Match event type                                                |
-| `properties`       | object | no        | Match event properties (key-value criteria)                     |
-| `ttl_seconds`      | int    | no        | Time-to-live; `null` = permanent                                |
-| `expires_at`       | string | read-only | ISO 8601 UTC expiry (computed from `ttl_seconds`)               |
-| `active`           | bool   | read-only | Whether the contract is active                                  |
-| `source`           | string | read-only | Origin: `config`, `api`, `programmatic`                         |
-
 ### Transcript normalization (outbound rendering)
 
 Before adapter rendering, transcript entries are normalized into a canonical assistant/user message shape:
@@ -183,29 +103,7 @@ Adapter policy:
 - Core owns normalization; adapters own presentation.
 - Session message APIs expose canonical block types (`text`, `thinking`, `pre_tool_use`, `tool_result`) without server-side filtering; clients/adapters decide what to render.
 
-## Allowed values
-
-Target types:
-
-- `handler`: internal Python callable name (e.g., `"onboarding_handler"`)
-- `url`: external HTTPS webhook URL (delivery uses HMAC-SHA256 signing)
-
-Criterion operators (for `source_criterion`, `type_criterion`, property values):
-
-- `exact`: exact string match
-- `prefix`: prefix match
-- `regex`: regular expression match
-
-TTL behavior:
-
-- `ttl_seconds > 0`: contract expires after N seconds
-- `ttl_seconds = null` or omitted: contract never expires
-- `ttl_seconds <= 0`: rejected with HTTP 422
-
 ## Known caveats
 
-- Expired contracts are excluded from matching immediately but only deactivated in the database every 60 seconds by the sweep loop.
 - `send_result` and `send_file` require a valid `session_id` from `TMPDIR/teleclaude_session_id`.
 - `escalate` is accepted only from a session running in a help desk; the recipients, the relay and the hand-back are `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`.
-- Hook contract delivery to external URLs uses HMAC-SHA256 with the contract's `secret` field for authentication.
-- The hook API is on the internal Unix socket only; it is not exposed publicly.

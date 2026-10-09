@@ -364,21 +364,6 @@ lets recovery verify the captured audio still exists before resubmitting.
 
 ### 5. Runtime maintenance
 
-<!-- planned-change:retire-outbound-hook-subscriptions -->
-
-1. Closed sessions older than the runtime retention window are purged.
-2. Session TMPDIRs and session-owned workspace directories are reconciled against live DB session truth.
-3. `session_map.json` is pruned as a cache; mappings survive only when the matching DB row is open or recoverable.
-4. Operational DB tables prune terminal or orphan rows after the retention window:
-   `operations`, `inbound_queue`, `webhook_outbox`, `hook_outbox.db`,
-   `session_listeners`, `voice_assignments`, and `voice_transcriptions` (terminal
-   `succeeded`/`failed` rows; orphaned temp audio with no live row is swept alongside).
-5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
-6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
-7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
-
-<!-- change:retire-outbound-hook-subscriptions -->
-
 1. Closed sessions older than the runtime retention window are purged.
 2. Session TMPDIRs and session-owned workspace directories are reconciled against live DB session truth.
 3. `session_map.json` is pruned as a cache; mappings survive only when the matching DB row is open or recoverable.
@@ -389,8 +374,6 @@ lets recovery verify the captured audio still exists before resubmitting.
 5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
 6. Orphaned `/tmp/teleclaude_voice/voice_*` audio files are removed only when they are old enough and no recoverable `voice_transcriptions` row still references their path.
 7. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
-
-<!-- /planned-change:retire-outbound-hook-subscriptions -->
 
 ### 6. Native-entry generation and Discord-send durability
 

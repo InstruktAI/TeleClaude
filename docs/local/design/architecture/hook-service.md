@@ -1,5 +1,5 @@
 ---
-description: 'Contract-based pub/sub webhook service for event routing, inbound webhook reception, and durable external delivery.'
+description: 'Contract-based routing of relayed external events and the deployment fan-out to the in-process handlers the daemon registers.'
 visibility: 'public'
 ---
 
@@ -12,118 +12,68 @@ visibility: 'public'
 
 ## Purpose
 
-Provide a contract-based pub/sub system that:
+Route the external events every computer receives to the in-process handlers
+that react to them:
 
-1. Routes internal daemon events (session lifecycle, agent activity, errors) to
-   registered subscribers via declarative contracts.
-2. Delivers relayed GitHub and WhatsApp events, which the ingress publishes
-   on the platform event stream, into the same contract-matching pipeline on
-   every computer. The ingress endpoints themselves are owned by
+1. Relayed GitHub, WhatsApp and native events, which the ingress publishes on
+   the platform event stream, are rebuilt on every computer and dispatched
+   locally. The ingress endpoints themselves are owned by
    `local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`.
-3. Delivers matched events to internal async handlers or external URLs with
-   durable outbox semantics (retry, backoff, dead-lettering).
+2. Deployment `version_available` signals arriving on the cross-host fan-out
+   stream are dispatched the same way
+   (`local/projects/teleclaude/spec/feature/integration/deployment-version-fanout`).
 
-The hook service is a **monolith subsystem** — it lives inside the TeleClaude
-daemon, not as a separate service. It shares the daemon's DB, event bus, and
-FastAPI app.
+The hook service is a **monolith subsystem** inside the TeleClaude daemon. Its
+routing table is built in memory at startup from contracts the daemon registers
+itself; it keeps no table of its own and sends nothing out of the computer.
 
-### Two event systems in TeleClaude
+### Two hook systems in TeleClaude
 
-TeleClaude has two distinct event persistence systems. Understanding the
-boundary prevents confusion:
+| System                      | Storage       | Purpose                                       | Producer                                    | Consumer                    |
+| --------------------------- | ------------- | --------------------------------------------- | ------------------------------------------- | --------------------------- |
+| **Hook outbox** (agent CLI) | `hook_outbox` | Durable ingest of raw agent CLI hook events   | Agent hook receiver (`bin/hook-receiver`)   | Daemon outbox worker        |
+| **Hook service** (this doc) | in memory     | Route external events to in-process reactions | Relay delivery, deployment fan-out consumer | `HookDispatcher` → handlers |
 
-| System                         | Table(s)                              | Purpose                                      | Producer                                     | Consumer                                          |
-| ------------------------------ | ------------------------------------- | -------------------------------------------- | -------------------------------------------- | ------------------------------------------------- |
-| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)    | Daemon outbox worker (see outbox.md)              |
-| **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, relay delivery, programmatic | HookDispatcher → handlers / WebhookDeliveryWorker |
-
-The hook outbox is the **ingestion layer** — it captures raw agent CLI events
-and persists them until the daemon processes them. The webhook service is the
-**routing layer** — it takes normalized events (from the event bus or inbound
-endpoints) and fans them out to subscribers via contracts.
-
-The bridge between them: when the daemon processes a `hook_outbox` row, it emits
-domain events onto the internal event bus. The `EventBusBridge` picks those up,
-normalizes them to `HookEvent`, and dispatches them through the webhook service
-pipeline.
+The hook outbox is the ingestion layer for agent CLI events
+(`local/projects/teleclaude/design/architecture/outbox`). The hook service never
+sees those events: internal daemon events reach their consumers through the
+event bus and the platform event stream, not through this dispatcher.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- Internal domain events from the event bus (SESSION_STARTED, SESSION_CLOSED,
-  SESSION_UPDATED, AGENT_EVENT, AGENT_ACTIVITY, ERROR)
 - Relayed inbound events read from the platform event stream by each computer's
   relay delivery
-- Config-driven contracts from `teleclaude.yml` `hooks` section
-- API-created contracts via REST endpoints (`POST /hooks/contracts`)
-- Programmatic contracts registered by daemon subsystems
+- Deployment fan-out events read from the cross-host fan-out stream
+- The built-in contracts the daemon registers at startup
 
 **Outputs:**
 
 - Internal handler invocations (async callables called in-process)
-- External webhook deliveries via the `webhook_outbox` table (durable, retried)
-- Contract metadata queryable via REST API (`GET /hooks/contracts`,
-  `GET /hooks/properties`)
 
 ## Invariants
 
-- **Contract-first routing.** Events are only delivered to targets that have a
-  matching active contract. No contract = no delivery. This is intentional: the
-  system is subscriber-first, not publisher-first.
-- **Canonical event format.** All events — whether from the internal event bus or
-  inbound webhooks — are normalized to `HookEvent(source, type, timestamp,
-properties, payload)` before entering the dispatch pipeline.
-- **Dual delivery semantics.** Internal handlers are called synchronously
-  (in-process, fire-and-forget per handler). External URLs use durable outbox
-  delivery with retry. A contract targets exactly one: `handler` XOR `url`.
+- **Contract-first routing.** An event reaches a handler only through a
+  matching contract. No contract = no delivery.
+- **The daemon is the only contract author.** Every contract is registered
+  programmatically at startup and names a handler the daemon registered in the
+  same process. Nothing outside the daemon's own code declares, creates, or
+  removes a contract.
+- **Every contract names a handler.** A contract without a handler cannot be
+  constructed, so every match has a destination.
+- **Canonical event format.** Every event is normalized to
+  `HookEvent(source, type, timestamp, properties, payload)` before it enters
+  the dispatch pipeline.
 - **Handlers see their contract.** An internal handler receives the matched
   contract alongside the event, so a handler shared by several contracts knows
   which one matched.
-
-- **At-least-once external delivery.** External webhooks are enqueued in
-  `webhook_outbox` and delivered with exponential backoff. Dead-lettering after
-  max attempts prevents infinite retry.
-- **Contract TTL.** Contracts may have `expires_at`. A background sweep
-  deactivates expired contracts every 60 seconds.
-- **Outbound signing.** Outbound deliveries sign payloads with the platform's
-  webhook signature using the contract's target secret. Inbound verification
-  belongs to the ingress endpoints, which refuse every unsigned request.
 - **One delivery per computer.** A relayed inbound event is dispatched once on
   each computer, by that computer's relay delivery.
 
 ## Primary flows
 
-### 1. Internal event → contract match → delivery
-
-This is the most common flow. An internal daemon event reaches a subscriber.
-
-```
-EventBus                 EventBusBridge              HookDispatcher
-  │                           │                           │
-  ├─ emit(SESSION_STARTED) ──►│                           │
-  │                           ├─ normalize to HookEvent ─►│
-  │                           │   source="system"         ├─ match against
-  │                           │   type="session.started"  │  ContractRegistry
-  │                           │   properties={session_id}  │
-  │                           │                           ├─ for each match:
-  │                           │                           │   ├─ handler? → call
-  │                           │                           │   └─ url? → enqueue
-  │                           │                           │      in webhook_outbox
-```
-
-**EventBusBridge normalization rules:**
-
-| Internal event    | HookEvent source | HookEvent type                | Properties                                                          |
-| ----------------- | ---------------- | ----------------------------- | ------------------------------------------------------------------- |
-| `SESSION_STARTED` | `system`         | `session.started`             | `session_id`                                                        |
-| `SESSION_CLOSED`  | `system`         | `session.closed`              | `session_id`                                                        |
-| `SESSION_UPDATED` | `system`         | `session.updated`             | `session_id`                                                        |
-| `AGENT_EVENT`     | `agent`          | `agent.{event_type}`          | `session_id`, `agent_event_type`                                    |
-| `AGENT_ACTIVITY`  | `agent`          | `agent.activity.{event_type}` | `session_id`, `agent_event_type`, `tool_name` (if present)          |
-| `ERROR`           | `system`         | `error.{severity}`            | `session_id` (if present), `severity`, `error_source`, `error_code` |
-
-### 2. Relayed inbound event → dispatch
+### 1. Relayed inbound event → dispatch
 
 The ingress verifies an external request, translates it, and publishes it on
 the platform event stream at cluster scope
@@ -139,233 +89,63 @@ Ingress endpoint        Platform event stream        Relay delivery (each comput
   ├─ publish <domain>.<name> ─►│                              │                               │
   │                            ├─ per-computer read ─────────►│                               │
   │                            │                              ├─ rebuild HookEvent            │
-  │                            │                              ├─ dispatch(event) ────────────►│ (same as flow 1)
+  │                            │                              ├─ dispatch(event) ────────────►│
+  │                            │                              │                               ├─ match contracts
+  │                            │                              │                               └─ call each handler
 ```
 
 **Normalizer contract:** A normalizer turns one provider's payload into
 canonical `HookEvent` instances at the ingress. The GitHub and WhatsApp
 normalizers are built in; a native request needs none, because the producer
 already speaks the platform's event shape. A relayed event whose subject is a
-company carries that company as its `company` property.
+company carries that company as its `company` property. A native event matches
+no built-in contract; platform consumers read native events from the platform
+event stream.
 
-### 3. Outbound delivery (webhook_outbox)
+### 2. Deployment fan-out → dispatch
 
-When a contract targets an external URL, the dispatcher enqueues to `webhook_outbox`.
+The deployment handler publishes a `version_available` event on the cross-host
+fan-out stream. Each other computer's fan-out consumer reads it, skips the
+events its own computer published, and dispatches the rest through the same
+dispatcher (`local/projects/teleclaude/spec/feature/integration/deployment-version-fanout`).
 
-```
-webhook_outbox table        WebhookDeliveryWorker         External URL
-  │                              │                             │
-  │  ◄── INSERT (pending) ───── HookDispatcher                │
-  │                              │                             │
-  │  ── poll every 2s ──────────►│                             │
-  │                              ├─ claim row (locked_at)      │
-  │                              ├─ sign with HMAC if secret   │
-  │                              ├─ POST event_json ──────────►│
-  │                              │                             │
-  │                              │  ◄── HTTP response ────────┤
-  │                              │                             │
-  │                              ├─ <200: mark delivered       │
-  │                              ├─ 4xx: mark rejected (final) │
-  │                              └─ 5xx/timeout: retry+backoff │
-```
+### 3. Built-in contracts
 
-**Retry schedule:**
-
-| Attempt | Delay   |
-| ------- | ------- |
-| 1       | 1s      |
-| 2       | 2s      |
-| 3       | 4s      |
-| 4       | 8s      |
-| 5       | 16s     |
-| 6       | 32s     |
-| 7+      | 60s cap |
-
-After 10 attempts: dead-lettered (status=`dead_letter`).
-
-### 4. Contract lifecycle
-
-Contracts enter the system through three paths:
-
-| Source           | How                                                   | Persistence                                    |
-| ---------------- | ----------------------------------------------------- | ---------------------------------------------- |
-| **Config**       | `teleclaude.yml` `hooks.subscriptions` list           | Loaded at startup via `load_hooks_config` → DB |
-| **API**          | `POST /hooks/contracts`                               | DB + in-memory cache                           |
-| **Programmatic** | `contract_registry.register(contract)` in daemon code | DB + in-memory cache                           |
-
-Contracts are persisted in the `webhook_contracts` table and cached in-memory by
-`ContractRegistry`; the cache is the authoritative source for matching and the
-DB is the durable store that survives restarts.
-
-**Contract structure:**
-
-```
-Contract
-  ├─ id: str                    # unique identifier
-  ├─ target: Target
-  │   ├─ handler: str | None    # internal handler key (XOR with url)
-  │   └─ url: str | None        # external webhook URL
-  │   └─ secret: str | None     # HMAC signing key
-  ├─ source_criterion: PropertyCriterion | None
-  ├─ type_criterion: PropertyCriterion | None
-  ├─ properties: dict[str, PropertyCriterion]
-  ├─ active: bool
-  ├─ expires_at: str | None     # TTL support
-  └─ source: "config" | "api" | "programmatic"
-```
+The daemon's startup wiring of the hook service owns the built-in contracts:
+which events each selects and which handler it names. Every reaction the hook
+service performs — WhatsApp conversation handling and the deployment update —
+receives its events through a built-in contract. A contract holds its identity,
+the criteria an event must meet, and the handler it names; the contract model
+in the hook package owns that shape.
 
 **Matching:** The matcher evaluates an event against a contract's criteria using
-AND logic — all criteria must pass. Each `PropertyCriterion` supports:
+AND logic — all criteria must pass. A criterion matches a value exactly or
+against one of several values, matches a wildcard pattern, requires only that
+the value is present, or, when not required, declares interest without
+filtering.
 
-- **Exact match:** `match: "value"` or `match: ["val1", "val2"]`
-- **Wildcard pattern:** `pattern: "session.*"` (fnmatch)
-- **Presence check:** `required: true` with no match/pattern (value must not be None)
-- **Documentation-only:** `required: false` (always passes)
+### 4. Daemon initialization wiring
 
-### 5. Daemon initialization wiring
-
-`daemon.py:_init_webhook_service()` boots the entire subsystem:
-
-```python
-# 1. Create registries
-contract_registry = ContractRegistry()       # DB-backed, in-memory cache
-handler_registry  = HandlerRegistry()        # key → async callable
-
-# 2. Create dispatcher (routes events to targets)
-dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)
-
-# 3. Create bridge (event bus → dispatcher)
-bridge = EventBusBridge(dispatcher)
-
-# 4. Create delivery worker (webhook_outbox → HTTP)
-delivery_worker = WebhookDeliveryWorker()
-
-# 5. Load state
-await contract_registry.load_from_db()       # restore persisted contracts from DB
-await load_hooks_config(hooks_cfg, contract_registry)  # add config contracts
-
-# 6. Wire into daemon
-set_contract_registry(contract_registry)     # inject into API routes
-bridge.register(event_bus)                   # subscribe to event bus
-# Start background tasks
-asyncio.create_task(delivery_worker.run(shutdown_event))
-asyncio.create_task(contract_sweep_loop())   # TTL sweep every 60s
-```
-
-### Configuration
-
-The `hooks` section in `teleclaude.yml`:
-
-```yaml
-hooks:
-  # Inbound sources are declared per home; see the inbound endpoint framework
-
-  # Subscriptions: declare interest in events
-  subscriptions:
-    - id: notify-on-error
-      contract:
-        source:
-          match: system
-        type:
-          pattern: 'error.*'
-      target:
-        url: https://example.com/alerts
-        secret: ${ALERT_SECRET}
-
-    - id: log-sessions
-      contract:
-        type:
-          pattern: 'session.*'
-      target:
-        handler: session_logger
-```
-
-**Config schema classes:**
-
-- `HooksConfig`: top-level container with `inbound` and `subscriptions`; the
-  `inbound` declarations each tier admits are owned by
-  `local/projects/teleclaude/spec/teleclaude-config`
-- `SubscriptionConfig`: `id`, `contract` (dict), `target` (dict)
-
-### REST API
-
-| Method   | Path                    | Description                                                |
-| -------- | ----------------------- | ---------------------------------------------------------- |
-| `GET`    | `/hooks/contracts`      | List active contracts (filter by `?property=X&value=Y`)    |
-| `POST`   | `/hooks/contracts`      | Create contract (supports `ttl_seconds` for auto-expiry)   |
-| `DELETE` | `/hooks/contracts/{id}` | Deactivate a contract                                      |
-| `GET`    | `/hooks/properties`     | Union of all property names/values across active contracts |
-
-### Database tables
-
-**`webhook_contracts`** — Contract persistence:
-
-| Column          | Type    | Purpose                                 |
-| --------------- | ------- | --------------------------------------- |
-| `id`            | TEXT PK | Contract identifier                     |
-| `contract_json` | TEXT    | Full serialized contract                |
-| `active`        | INTEGER | 0/1 soft-delete flag                    |
-| `source`        | TEXT    | Origin: "config", "api", "programmatic" |
-| `created_at`    | TEXT    | ISO 8601                                |
-| `updated_at`    | TEXT    | ISO 8601                                |
-
-**`webhook_outbox`** — Durable external delivery queue:
-
-| Column            | Type       | Purpose                                |
-| ----------------- | ---------- | -------------------------------------- |
-| `id`              | INTEGER PK | Auto-increment row ID                  |
-| `contract_id`     | TEXT       | Which contract triggered delivery      |
-| `event_json`      | TEXT       | Serialized HookEvent                   |
-| `target_url`      | TEXT       | Delivery destination                   |
-| `target_secret`   | TEXT       | HMAC signing key (nullable)            |
-| `status`          | TEXT       | pending/delivered/rejected/dead_letter |
-| `attempt_count`   | INTEGER    | Delivery attempts so far               |
-| `next_attempt_at` | TEXT       | When to retry (ISO 8601)               |
-| `last_error`      | TEXT       | Most recent failure reason             |
-| `locked_at`       | TEXT       | Claim lock timestamp                   |
-
-### Module layout
-
-```
-teleclaude/hooks/
-  ├─ webhook_models.py    # HookEvent, Contract, Target, PropertyCriterion
-  ├─ registry.py          # ContractRegistry (DB + cache)
-  ├─ dispatcher.py        # HookDispatcher (event → contract match → deliver)
-  ├─ matcher.py           # Property-based matching engine (fnmatch, exact, multi-value)
-  ├─ handlers.py          # HandlerRegistry (key → async callable)
-  ├─ bridge.py            # EventBusBridge (internal event bus → HookEvent → dispatch)
-  ├─ delivery.py          # WebhookDeliveryWorker (outbox poller, HMAC, retry)
-  ├─ inbound.py           # ingress endpoints: declaration lookup, verification, translation, relay
-  ├─ config.py            # load_hooks_config (teleclaude.yml → contracts)
-  ├─ api_routes.py        # FastAPI router (/hooks/contracts, /hooks/properties)
-  └─ adapters/
-      └─ base.py          # HookAdapter protocol (agent CLI hook normalization)
-```
+At startup the daemon creates the handler registry and the contract registry,
+registers each built-in handler and its contract, creates the dispatcher over
+both registries, starts the deployment fan-out consumer, and starts the
+per-computer relay delivery that feeds the dispatcher. The hook package
+(`teleclaude/hooks/`) holds the event and contract model, the registries, the
+matcher, the dispatcher, relay delivery and the ingress endpoints.
 
 ## Failure modes
 
-- **Bridge dispatch error.** Caught and logged. Does not crash the event bus
-  subscriber. The internal event is consumed regardless — failed dispatch is
-  logged, not retried at the bridge level (the event bus is fire-and-forget).
-- **Internal handler exception.** Caught per-handler. Other matching contracts
+- **Internal handler exception.** Caught per handler. Other matching contracts
   still receive the event. No retry — internal handlers are expected to be
   idempotent and fast.
-- **External delivery failure (5xx/timeout).** Retried with exponential backoff
-  via `webhook_outbox`. After 10 attempts, dead-lettered.
-- **External delivery rejection (4xx).** Permanent failure. Marked `rejected`,
-  not retried. The receiver explicitly rejected the payload.
-- **Inbound normalization failure.** Returns HTTP 400 to the sending platform.
-  Event is not dispatched. The platform may retry per its own policy.
-- **Inbound dispatch failure.** Returns HTTP 200 to prevent platform retries
-  (many platforms retry on non-2xx). Logs the error. Event is lost for this
-  delivery attempt — the platform believes it was accepted.
-- **Contract sweep race.** If an event matches a contract that expires mid-dispatch,
-  the event is still delivered (the match happened before expiry). This is
-  acceptable: TTL is approximate, not transactional.
-- **Daemon restart.** Contracts reload from DB. Unclaimed `webhook_outbox` rows
-  with `status=pending` are picked up by the new delivery worker. Internal
-  handler events that were in-flight are lost (they were in-process, not
-  persisted).
-- **Delivery worker stops mid-delivery.** A row the worker had claimed stays
-  claimed: no lock expiry releases it, so it is neither delivered, retried, nor
-  dead-lettered.
+- **Handler key not registered.** The dispatcher logs that the handler was not
+  found and continues with the next matching contract. The daemon registers
+  every built-in handler before its contract, so this marks a defect in the
+  startup wiring.
+- **Event matching no contract.** Dispatched and dropped without a trace. A
+  relayed native event always takes this path on the dispatcher.
+- **Daemon restart.** The routing table is rebuilt from the daemon's own
+  registrations. Handler invocations that were in flight are lost; they were
+  in-process, not persisted. A relayed event the relay delivery had not yet
+  acknowledged is handed to the dispatcher again under the platform event
+  stream's redelivery.
