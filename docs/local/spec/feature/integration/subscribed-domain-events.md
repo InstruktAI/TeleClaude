@@ -105,21 +105,21 @@ Scenario Outline: Reach bounds what interests can select
     | does not admit | receives no message  |
 ```
 
-#### UC-SD9: A company's people hear about what they can see of it
+#### UC-SD9: A company's roster alone does not bring its projects' events
 
 ```gherkin
 Scenario Outline: A company project's events follow who can see the project
   Given a person on a company's roster whose "sdlc" notification interests are switched on with the pattern "*"
-  And who <relationship>
+  And whose only relationship to the company is that they <relationship>
   When an event of type "sdlc.review.approved" happens in <origin>
   Then the person <outcome>
 
   Examples:
-    | relationship                       | origin                         | outcome              |
-    | is a member                        | the company itself             | receives one message |
-    | is assigned to the project         | a project the company owns     | receives one message |
-    | administers the company            | a project the company owns     | receives one message |
-    | is a member not assigned to it     | a project the company owns     | receives no message  |
+    | relationship               | origin                     | outcome              |
+    | are a member               | the company itself         | receives one message |
+    | are assigned to a project  | that project               | receives one message |
+    | administer the company     | a project the company owns | receives one message |
+    | are a member               | a project the company owns | receives no message  |
 ```
 
 #### UC-SD4: Every domain event is its own message
