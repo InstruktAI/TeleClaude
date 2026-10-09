@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from teleclaude.caller_identity import CliCaller
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.utils.transcript_discovery import SessionId

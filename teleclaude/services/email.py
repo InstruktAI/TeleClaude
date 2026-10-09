@@ -15,7 +15,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.validation import is_section_available
 from teleclaude.services.provider_observation import (
     Provider,

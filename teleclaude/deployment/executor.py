@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.deployment.migration_runner import run_migrations
 
 if TYPE_CHECKING:

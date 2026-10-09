@@ -11,7 +11,7 @@ from pathlib import Path
 import psutil
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.utils import strip_ansi_codes
 
 from ._subprocess import (

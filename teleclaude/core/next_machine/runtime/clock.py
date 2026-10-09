@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.events import EventLevel, EventProducer, EventVisibility
 from teleclaude.events.envelope import EventHomeMarker, occurrence_id

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.session_status import is_session_terminal

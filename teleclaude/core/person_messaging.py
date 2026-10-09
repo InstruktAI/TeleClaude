@@ -14,9 +14,9 @@ import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import PersonCliCaller, SystemCliCaller, caller_from_principal
-from teleclaude.config import config
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
+from teleclaude.config.machine import config
 from teleclaude.config.schema import ConfigKind, MessagingChannel, PersonConfig
 from teleclaude.core.db import db
 from teleclaude.core.integration.session_address import (

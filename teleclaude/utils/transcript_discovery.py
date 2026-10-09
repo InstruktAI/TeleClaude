@@ -12,7 +12,7 @@ from uuid import UUID
 
 import zstandard
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import (

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from teleclaude.config import WorkflowRunnerMode, config
+from teleclaude.config._models import WorkflowRunnerMode
+from teleclaude.config.machine import config
 from teleclaude.core.next_machine.kinds import canonical_kind
 
 __all__ = ["autostart_active_for_kind", "autostart_enabled_for_kind"]

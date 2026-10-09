@@ -11,7 +11,8 @@ from teleclaude.capabilities import (
     TierPermissions,
     resolve_tier_permissions,
 )
-from teleclaude.config.context_root import group_paths_by_owning_home, resolve_context_root
+from teleclaude.config.context_root import resolve_context_root
+from teleclaude.config.tree_homes import group_paths_by_owning_home
 from teleclaude.git_tree import TreeSource, list_tree_paths
 from teleclaude.paths import ConfigFileName
 

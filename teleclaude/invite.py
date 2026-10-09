@@ -19,10 +19,10 @@ import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.config_handlers import get_global_config, get_person_config, save_person_config
-from teleclaude.config import config
 from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.invitations import issue_invite_token
 from teleclaude.config.loader import load_global_config
+from teleclaude.config.machine import config
 from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.schema import ConfigKind, DiscordCreds
 from teleclaude.core.identity import (

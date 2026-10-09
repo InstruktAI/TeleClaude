@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord.message_ops import reconcile_pending_discord_send_intents
 from teleclaude.api_server import APIServer
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
 from teleclaude.core.db import db

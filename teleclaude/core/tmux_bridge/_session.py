@@ -9,7 +9,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.paths import (
     BIN_DIR,
     DEFAULT_TELECLAUDE_HOME,

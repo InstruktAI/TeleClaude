@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_status import (
     INFERRED_STALL_RULES,

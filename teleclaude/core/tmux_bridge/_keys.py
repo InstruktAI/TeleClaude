@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 
 from ._input_effect import before_input_effect, settle_begun_effect
 from ._session import ensure_tmux_session

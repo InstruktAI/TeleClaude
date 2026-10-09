@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import REDIS_REFRESH_COOLDOWN_SECONDS
 from teleclaude.core.protocols import RemoteExecutionProtocol
 

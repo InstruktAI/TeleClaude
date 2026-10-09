@@ -20,7 +20,7 @@ from typing import TypedDict
 
 from instrukt_ai_logging import configure_logging, get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import MAIN_MODULE
 
 configure_logging("teleclaude")

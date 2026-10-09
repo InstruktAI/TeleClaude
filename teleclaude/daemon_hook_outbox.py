@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HeadlessBootstrapField
 from teleclaude.core import polling_coordinator
 from teleclaude.core.agent_status import AgentStatusIntegrityError

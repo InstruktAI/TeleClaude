@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from teleclaude.config.context_root import group_paths_by_owning_home
+from teleclaude.config.tree_homes import group_paths_by_owning_home
 from teleclaude.git import hook_free_environment
 from teleclaude.git_tree import TreeSource
 from teleclaude.paths import REPO_ROOT, ConfigFileName

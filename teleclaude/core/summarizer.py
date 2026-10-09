@@ -4,8 +4,8 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from teleclaude.config import config
 from teleclaude.config._summarizer import SummarizerProvider
+from teleclaude.config.machine import config
 from teleclaude.services.summarizer_backends import summarize_anthropic, summarize_openai_compatible
 
 # Dateless model aliases so summaries track each provider's latest without config churn.

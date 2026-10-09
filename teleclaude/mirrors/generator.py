@@ -11,7 +11,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import SystemCliCaller
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
 from teleclaude.identity_reach import resolve_reach

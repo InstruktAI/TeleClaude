@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.services.provider_observation import (
     Provider,
     ProviderOutcome,

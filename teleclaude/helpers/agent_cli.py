@@ -30,7 +30,7 @@ import tempfile
 from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_registry import AGENT_REGISTRY, OneShotSupport
-from teleclaude.config import config as app_config
+from teleclaude.config.machine import config as app_config
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled, render_mode_flags
 from teleclaude.core.db import read_agent_availability_sync
 from teleclaude.helpers.agent_cli_command_assembly import (

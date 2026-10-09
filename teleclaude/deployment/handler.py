@@ -13,7 +13,7 @@ from teleclaude.hooks.webhook_models import Contract, HookEvent
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 from teleclaude import __version__
-from teleclaude.config import config as _config
+from teleclaude.config.machine import config as _config
 from teleclaude.deployment import parse_version
 from teleclaude.deployment.executor import execute_update
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.next_machine.lifecycle_runner import (
     default_session_runner,
     project_path_from_event_payload,

@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.session_auth import no_identity_refusal, resolve_cli_identity
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow

@@ -13,8 +13,8 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import ResponseError
 
 from teleclaude.channels.worker import run_subscription_worker
-from teleclaude.config import config
 from teleclaude.config.loader import load_project_config
+from teleclaude.config.machine import config
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer

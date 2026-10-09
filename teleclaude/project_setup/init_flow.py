@@ -19,8 +19,10 @@ from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config, write_declared_config
 from teleclaude.config.identity_schema import ProjectOwnerKind
 from teleclaude.config.loader import registered_person_slugs, validate_tier_candidate
-from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
+from teleclaude.config.migrations._carry import carry_pending
+from teleclaude.config.migrations._chain import Destination, MigrationTrigger, upcast
 from teleclaude.config.migrations._registry import registered_subject
+from teleclaude.config.migrations._runner import migrate_document
 from teleclaude.config.project_home import HomeOwner, adoptable_home_owner, owning_home_owner
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef

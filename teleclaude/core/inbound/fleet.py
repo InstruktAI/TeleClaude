@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.endpoints import hosted_help_desks
 from teleclaude.core.models import PeerInfo
 from teleclaude.core.origins import InputOrigin

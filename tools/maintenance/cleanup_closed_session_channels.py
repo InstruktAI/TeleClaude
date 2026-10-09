@@ -22,7 +22,7 @@ from teleclaude.cli.api_client import (  # noqa: E402 -- imports must use this c
     APIError,
     TelecAPIClient,
 )
-from teleclaude.config import config  # noqa: E402 -- imports must use this checkout from any cwd
+from teleclaude.config.machine import config  # noqa: E402 -- imports must use this checkout from any cwd
 
 logger = get_logger(__name__)
 

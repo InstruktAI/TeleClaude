@@ -12,7 +12,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.api_session_args import RunSessionArgs
-from teleclaude.config import WorkflowRunnerMode, config
+from teleclaude.config._models import WorkflowRunnerMode
+from teleclaude.config.machine import config
 from teleclaude.constants import COMMAND_ROLE_MAP, JobRole, SlashCommand, TodoStatus
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db

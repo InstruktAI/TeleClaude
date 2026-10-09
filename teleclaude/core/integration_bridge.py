@@ -12,7 +12,7 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole, SlashCommand
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db

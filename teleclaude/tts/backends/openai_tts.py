@@ -8,7 +8,7 @@ from instrukt_ai_logging import get_logger
 from openai import OpenAI
 from openai._legacy_response import HttpxBinaryResponseContent
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.tts.backends._local_play import play_file
 
 logger = get_logger(__name__)

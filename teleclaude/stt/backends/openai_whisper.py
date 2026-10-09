@@ -5,7 +5,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 
 logger = get_logger(__name__)
 

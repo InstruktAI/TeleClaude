@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.schema import MessagingChannel, WhatsAppCreds
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db

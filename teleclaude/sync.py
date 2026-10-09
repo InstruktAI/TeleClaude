@@ -17,12 +17,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.agent_artifacts import is_mother_project
 from teleclaude.artifact_ownership import retired_pointer_candidate, retract_retired_pointers
 from teleclaude.capabilities import PermissionSurface, resolve_capabilities, resolve_tier_permissions
-from teleclaude.config.context_root import (
-    TreeHome,
-    group_paths_by_owning_home_tolerant,
-    homes_at_or_beneath,
-)
 from teleclaude.config.schema import ConfigKind
+from teleclaude.config.tree_homes import TreeHome, group_paths_by_owning_home_tolerant, homes_at_or_beneath
 from teleclaude.docs_index import build_all_indexes, build_tier_index, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root

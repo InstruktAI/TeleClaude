@@ -12,7 +12,7 @@ from typing import Any, Protocol
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility
 from teleclaude.events.pipeline import failing_stage_from_exception

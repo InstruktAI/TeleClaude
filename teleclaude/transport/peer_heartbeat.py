@@ -77,7 +77,9 @@ def decode_optional_announced_strings(value: object) -> list[str] | None:
 
 async def lookup_peer_address(computer_name: str) -> PeerAddress | PeerNotOnline:
     """Read and validate one peer's SSH address without requiring the daemon."""
-    from teleclaude.config import config  # noqa: PLC0415 - CLI-only lookup must not load config for daemon readers.
+    from teleclaude.config.machine import (  # noqa: PLC0415 - CLI-only lookup must not load config for daemon readers.
+        config,
+    )
     from teleclaude.core.shell_identity import (  # noqa: PLC0415 - keep shell validation lazy for daemon readers.
         require_shell_safe_identifier,
     )

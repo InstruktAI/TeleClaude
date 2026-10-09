@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import TTSConfig, config
+from teleclaude.config._models import TTSConfig
+from teleclaude.config.machine import config
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.origins import InputOrigin

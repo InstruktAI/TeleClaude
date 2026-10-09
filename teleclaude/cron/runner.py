@@ -40,9 +40,9 @@ from instrukt_ai_logging import get_logger
 
 from jobs.base import Job, JobResult, JobRunContext
 from teleclaude.cli.api_client import APIError, TelecAPIClient
-from teleclaude.config import config as global_config
 from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
 from teleclaude.config.loader import load_person_config
+from teleclaude.config.machine import config as global_config
 from teleclaude.config.schema import JobCategory, JobScheduleConfig, JobSubscription, JobWhenConfig, is_agent_job
 from teleclaude.constants import SlashCommand
 from teleclaude.core.models import HumanActionIntent

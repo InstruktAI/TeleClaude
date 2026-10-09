@@ -11,7 +11,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.inbound.fleet import contraction_answer_from_heartbeats
 from teleclaude.core.models import JsonDict
 from teleclaude.core.operation_caller_identity import get_caller_session_id

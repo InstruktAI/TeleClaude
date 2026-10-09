@@ -18,7 +18,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
 from teleclaude.caller_identity import CliCaller
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import RUNNER_NOT_DISPATCHED
 from teleclaude.core.command_dispatch import invoke_command_handler
 from teleclaude.core.dates import parse_iso_datetime

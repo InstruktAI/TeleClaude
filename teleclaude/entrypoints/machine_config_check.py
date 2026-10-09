@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import sys
 
-from teleclaude.config import config
 from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.machine import config
 
 _REFUSAL = "Machine configuration does not load; the daemon was not (re)started: {error}"
 _FAILURE_EXIT = 1

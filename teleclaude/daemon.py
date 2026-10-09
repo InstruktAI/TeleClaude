@@ -92,22 +92,16 @@ from teleclaude.chiptunes.types import ChiptunesState
 _record_import_timing("teleclaude.chiptunes.manager", _t)
 
 _t = time.perf_counter()
-from teleclaude.config import (  # config.py loads .env at import time
-    WORKING_DIR,
-    config,
-    config_path,
-    dotenv_path,
-    reload_config,
-    restart_required_sections,
-)
+from teleclaude.config._machine_build import WORKING_DIR
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.loader import validate_declaration_file
+from teleclaude.config.machine import config, config_path, dotenv_path, reload_config, restart_required_sections
 from teleclaude.core.config_validation_reports import ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.inbound.conversation_env import default_conversation_environment
 from teleclaude.core.inbound.cutover import run_conversation_upkeep
 
-_record_import_timing("teleclaude.config", _t)
+_record_import_timing("teleclaude.config.machine", _t)
 
 _t = time.perf_counter()
 from teleclaude.config.runtime_settings import RuntimeSettings

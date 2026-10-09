@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_registry import AgentName
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core import polling_coordinator, session_cleanup
 from teleclaude.core.agent_readiness import AGENT_START_STABILIZE_QUIET_S, await_agent_readiness
 from teleclaude.core.agent_startup_delivery import (

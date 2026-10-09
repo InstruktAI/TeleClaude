@@ -21,7 +21,7 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config as _global_config
+from teleclaude.config.machine import config as _global_config
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.events.catalog import PlatformEvent
 from teleclaude.events.consumers import Consumer, Interest

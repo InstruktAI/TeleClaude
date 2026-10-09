@@ -6,8 +6,8 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.config import config
 from teleclaude.config.loader import load_declared_project_config, load_global_config
+from teleclaude.config.machine import config
 from teleclaude.runtime.environment import filter_platform_session_environment
 
 

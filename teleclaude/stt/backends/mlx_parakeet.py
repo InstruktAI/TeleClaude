@@ -11,8 +11,8 @@ from threading import Lock
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
 from teleclaude.config._models import STTServiceConfig
+from teleclaude.config.machine import config
 from teleclaude.mlx_utils import is_local_path, resolve_model_ref
 
 load_stt_model = None

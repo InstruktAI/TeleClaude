@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
-    from teleclaude.config import TTSConfig, TTSServiceConfig
+    from teleclaude.config._models import TTSConfig, TTSServiceConfig
 
 logger = get_logger(__name__)
 

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import (
     VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS,
     VOICE_TRANSCRIPTION_STATE_FAILED,

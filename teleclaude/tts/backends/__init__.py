@@ -44,7 +44,7 @@ if sys.platform == "darwin":
 
     # Register MLX TTS backends for any config service that has a model field set
     try:
-        from teleclaude.config import config
+        from teleclaude.config.machine import config
         from teleclaude.tts.backends.mlx_tts import MLXTTSBackend
 
         if config.tts and config.tts.services:

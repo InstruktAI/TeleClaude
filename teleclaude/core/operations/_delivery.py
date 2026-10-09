@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db_models import Operation

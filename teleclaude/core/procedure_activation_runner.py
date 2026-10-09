@@ -20,7 +20,7 @@ from typing import Literal
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.registered_homes import registered_home_folder
 from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.constants import ROLE_TASKER, SlashCommand

@@ -11,7 +11,7 @@ import mimetypes
 from datetime import UTC, datetime
 from pathlib import Path
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
 from teleclaude.core.session_status import is_session_terminal

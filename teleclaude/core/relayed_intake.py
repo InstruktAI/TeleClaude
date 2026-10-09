@@ -25,7 +25,7 @@ from teleclaude.caller_identity import (
     caller_from_principal,
 )
 from teleclaude.cli.telec.auth import is_command_allowed
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL
 from teleclaude.core import command_handlers
 from teleclaude.core.agent_status_projection import project_peer_agent_status
