@@ -61,6 +61,7 @@ _WORKTREE_OPENED_EVENT = "worktree_opened"
 _WORKTREE_MATERIALIZED_EVENT = "worktree_materialized_from_remote"
 _WORKTREE_FAST_FORWARD_EVENT = "worktree_branch_fast_forwarded"
 _WORKTREE_EMPTY_LEFTOVER_EVENT = "worktree_empty_leftover_replaced"
+_WORKTREE_STARTED_WITHOUT_BRANCH_EVENT = "worktree_started_todo_branch_missing"
 _WORKTREE_CREATE_FAILED_LOG = "Failed to create worktree for slug=%s cwd=%s worktree_path=%s"
 _LEFTOVER_BRANCH_MESSAGE = (
     "Local branch {branch} contains file changes and cannot be assigned to this todo (tip {tip})."
@@ -259,7 +260,11 @@ def _opening_commit_args(slug: str) -> list[str]:
 
 
 def _create_started_todo_worktree(repo: Repo, worktree_path: Path, slug: str, build_start_sha: str) -> None:
-    """Attach or fast-forward the local branch only when its remote proves todo ownership."""
+    """Attach or fast-forward the local branch only when its remote proves todo ownership.
+
+    With no branch under the todo's name locally or on origin, there is no work to resume and the
+    todo gets a fresh branch from origin/main.
+    """
     fetch_ref = _FETCH_BRANCH_REFS_TEMPLATE.format(branch=slug)
     try:
         repo.git.fetch(_ORIGIN, fetch_ref)
@@ -280,6 +285,10 @@ def _create_started_todo_worktree(repo: Repo, worktree_path: Path, slug: str, bu
     if not own_remote_branch:
         if _has_local_branch(repo, slug):
             repo.git.worktree(_GIT_ADD, str(worktree_path), slug)
+            return
+        if not remote_branch_exists:
+            logger.warning(_WORKTREE_STARTED_WITHOUT_BRANCH_EVENT, slug=slug, build_start_sha=build_start_sha)
+            _create_new_todo_worktree(repo, worktree_path, slug)
             return
         raise TodoWorkNotLocated(build_start_sha)
 

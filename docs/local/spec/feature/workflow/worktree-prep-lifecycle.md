@@ -13,7 +13,7 @@ visibility: 'public'
 
 ## What it is
 
-Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: a Todo whose build has not started is branched from the latest `origin/main` and its branch opens with an empty commit of its own. Every later commit of the Todo descends from that opening commit, so the commit recorded when its build starts belongs to this Todo alone. A branch carrying the Todo's name that an earlier Todo left behind — when its delivery or removal cleanup did not complete — is never adopted and never discarded while it holds work: on `origin` it stays untouched, and locally it stops the ensure until an agent resolves it; a local leftover holding no work gives way to the new branch. A Todo whose build has started resumes from its branch on `origin` when that branch contains its build-start commit and the commit is not on `origin/main`, so work continues from its last published commit on whichever computer holds the Todo. and a JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
+Every Todo that enters Phase B work runs in its own isolated git worktree at `trees/<slug>/`. The worktree is created on demand whenever the work state machine asks for it and none exists: a Todo whose build has not started is branched from the latest `origin/main` and its branch opens with an empty commit of its own. Every later commit of the Todo descends from that opening commit, so the commit recorded when its build starts belongs to this Todo alone. A branch carrying the Todo's name that an earlier Todo left behind — when its delivery or removal cleanup did not complete — is never adopted and never discarded while it holds work: on `origin` it stays untouched, and locally it stops the ensure until an agent resolves it; a local leftover holding no work gives way to the new branch. A Todo whose build has started resumes from its branch on `origin` when that branch contains its build-start commit and the commit is not on `origin/main`, so work continues from its last published commit on whichever computer holds the Todo. A Todo whose build has started but has no branch under its name, locally or on `origin`, has no work to resume: it starts over like a Todo whose build has not started, and the ensure logs a warning. A JSON prep marker recorded inside the worktree at `.teleclaude/worktree-prep-state.json` tracks the digest of the inputs that affect dependency installation. On every subsequent entry the digest is recomputed and compared against the marker: unchanged digests skip preparation entirely, changed digests (or a missing or corrupt marker) trigger re-prep. Concurrent ensure-and-prep on the same `(project_root, slug)` pair is serialized through a single-flight lock so two work sessions never race the same worktree. When the Todo is delivered, cleanup archives binary artifact directories out of `workspace/<slug>/` into long-term storage, removes the worktree, deletes the local and remote branches, and clears the workspace symlink — every step idempotent so a re-run on already-cleaned state is a no-op.
 
 ## Canonical fields
 
@@ -175,7 +175,7 @@ And the commit recorded when the Todo's build started is on origin/main
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then no branch on origin is adopted as the Todo's work
 And a local branch carrying the Todo's name is attached when one exists
-And otherwise no worktree is created and the work state machine reports that the Todo's work cannot be located
+And otherwise, when origin holds a branch under the Todo's name, no worktree is created and the work state machine reports that the Todo's work cannot be located
 ```
 
 #### UC-WPL7: A same-named local branch holding no work gives way to the Todo's own branch
@@ -202,10 +202,21 @@ And the branch on origin is unchanged
 
 ```
 Given a Todo whose build has started has no worktree at "trees/<slug>/" and no local branch carries its name
-And no branch on origin under the Todo's name contains the commit recorded when the Todo's build started, or that commit is on origin/main
+And origin holds a branch under the Todo's name
+And that branch does not contain the commit recorded when the Todo's build started, or that commit is on origin/main
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then no worktree is created
 And the work state machine reports a worktree setup failure stating that the Todo's work is not on origin
+```
+
+#### UC-WPL12: A started Todo with no branch anywhere starts over
+
+```
+Given a Todo whose build has started has no worktree at "trees/<slug>/"
+And no branch carries the Todo's name, locally or on origin
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the worktree is branched from origin/main and opens with the Todo's own commit
+And the prep policy reports "worktree_created" and runs preparation
 ```
 
 #### UC-WPL11: Reclamation preserves a worktree that reuses a released slug
