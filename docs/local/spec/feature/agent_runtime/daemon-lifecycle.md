@@ -369,7 +369,8 @@ Given an agent runs a daemon-backed telec command while the daemon is draining o
 When the command receives a shutdown refusal or cannot connect to the daemon
 Then it exits non-zero with a message stating that nothing was accepted
 And the message tells the caller to wait a fixed delay that spans a typical daemon restart and run the same command again, repeating while it is still refused
-And the message tells the caller to report a blocker once the daemon has stayed unavailable for several minutes
+And the message states that no reminder can be set for the retry, because setting one is a request to the same daemon
+And the message tells the caller to stop retrying once the daemon has stayed unavailable for several minutes, and to end its turn stating which command was not run
 And the message names no machine fields from the refusal body
 And a command that fails for any other reason carries no instruction to run it again
 ```
