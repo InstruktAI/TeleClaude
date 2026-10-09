@@ -13,6 +13,7 @@ dispatches nothing itself.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import re
@@ -45,7 +46,6 @@ from teleclaude.events.envelope import (
 from teleclaude.events.producer import EventProducer, RelayedEvent
 from teleclaude.events.references import InboundSourceRef
 from teleclaude.events.wire import LegacyFacts
-from teleclaude.hooks.delivery import compute_signature
 from teleclaude.hooks.normalizers.github import github_event_type
 from teleclaude.hooks.normalizers.whatsapp import whatsapp_message_type, whatsapp_messages
 from teleclaude.hooks.relay_delivery import RelayProtocol, relayed_hook_event
@@ -149,6 +149,12 @@ def _refuse(refusal: _Refusal, protocol: RelayProtocol, home: str) -> HTTPExcept
     logger.warning(_INBOUND_WEBHOOK_REFUSED, reason=refusal.value, protocol=protocol.value, home=home)
     status, detail = _REFUSAL_RESPONSES[refusal]
     return HTTPException(status_code=status, detail=detail)
+
+
+def compute_signature(body: bytes, secret: str) -> str:
+    """Compute HMAC-SHA256 signature for webhook payload."""
+    mac = hmac.new(secret.encode(), body, hashlib.sha256)
+    return f"sha256={mac.hexdigest()}"
 
 
 def _verify_signature(body: bytes, presented: str | None, endpoint: _Endpoint) -> None:

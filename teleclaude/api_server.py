@@ -96,7 +96,6 @@ from teleclaude.core.operation_caller_identity import reset_caller_session_id, s
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
-from teleclaude.hooks.api_routes import router as hooks_router
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
 from teleclaude.mcp.runtime import McpRuntimePool
@@ -189,8 +188,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(memory_router)
 
         self.app.include_router(history_routes.router)
-
-        self.app.include_router(hooks_router)
 
         self.app.include_router(channels_router)
 

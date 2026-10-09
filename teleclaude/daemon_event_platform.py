@@ -15,8 +15,7 @@ from redis.exceptions import ResponseError
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.machine import config
-from teleclaude.core.db import get_db
-from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
+from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
@@ -49,10 +48,6 @@ from teleclaude.events.processor import STREAM_NAME as PLATFORM_STREAM_NAME
 from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
-from teleclaude.hooks.api_routes import set_contract_registry
-from teleclaude.hooks.bridge import EventBusBridge
-from teleclaude.hooks.config import load_hooks_config
-from teleclaude.hooks.delivery import WebhookDeliveryWorker
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.inbound import install_inbound_routes
@@ -121,12 +116,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _event_redis_client: object | None
         _event_platform_status: _EventPlatformStatus
         _deployment_fanout_task: asyncio.Task[object] | None
-        _contract_sweep_task: asyncio.Task[object] | None
         _event_consumers_task: asyncio.Task[object] | None
         _relay_delivery_task: asyncio.Task[object] | None
         _internal_event_bus_task: asyncio.Task[object] | None
         _task_schedule_clock_task: asyncio.Task[object] | None
-        webhook_delivery_task: asyncio.Task[object] | None
         channel_subscription_worker_task: asyncio.Task[object] | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
@@ -329,29 +322,22 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._start_task_schedule_clock(event_producer)
 
     async def _init_webhook_service(self) -> None:
-        """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
+        """Initialize the hook service: register the built-in handlers and contracts and start the dispatcher's feeds."""
 
-        db = await get_db()
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
-        dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)  # type: ignore[arg-type]
+        dispatcher = HookDispatcher(contract_registry, handler_registry)
         self._hook_dispatcher = dispatcher
-        bridge = EventBusBridge(dispatcher)
-        delivery_worker = WebhookDeliveryWorker()
         project_config = load_project_config(daemon_project_config_path())
-
-        # Load contracts from DB
-        await contract_registry.load_from_db()
 
         # Built-in inbound WhatsApp handling (global subscription handler).
         handler_registry.register("whatsapp_inbound", handle_whatsapp_event)
-        await contract_registry.register(
+        contract_registry.register(
             Contract(
                 id="builtin-whatsapp-inbound",
                 target=Target(handler="whatsapp_inbound"),
                 source_criterion=PropertyCriterion(match="whatsapp"),
                 type_criterion=PropertyCriterion(pattern="message.*"),
-                source="programmatic",
             )
         )
 
@@ -360,22 +346,20 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
         configure_deployment_handler(_get_redis_fn)
         handler_registry.register("deployment_update", handle_deployment_event)
-        await contract_registry.register(
+        contract_registry.register(
             Contract(
                 id="deployment-github",
                 source_criterion=PropertyCriterion(match="github"),
                 type_criterion=PropertyCriterion(match=["push", "release"]),
                 target=Target(handler="deployment_update"),
-                source="programmatic",
             )
         )
-        await contract_registry.register(
+        contract_registry.register(
             Contract(
                 id="deployment-fanout",
                 source_criterion=PropertyCriterion(match="deployment"),
                 type_criterion=PropertyCriterion(match="version_available"),
                 target=Target(handler="deployment_update"),
-                source="programmatic",
             )
         )
         if isinstance(redis_transport, RedisTransport):
@@ -385,8 +369,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
             self._deployment_fanout_task.add_done_callback(self._log_background_task_exception("deployment_fanout"))
 
-        # Load config-driven contracts. Contracts load regardless of API server availability.
-        await load_hooks_config(project_config.hooks.model_dump(), contract_registry)
         self._start_relay_delivery_consumer(dispatcher)
         self._install_inbound_routes()
 
@@ -416,25 +398,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             else:
                 logger.warning("Redis adapter unavailable; skipping channel subscription worker")
 
-        # Wire contract registry into API routes
-        set_contract_registry(contract_registry)
-
-        # Subscribe bridge to event bus
-        bridge.register(event_bus)
-
-        # Start delivery worker
-        self.webhook_delivery_task = asyncio.create_task(
-            delivery_worker.run(self.shutdown_event), name="webhook-delivery"
-        )
-        self.webhook_delivery_task.add_done_callback(self._log_background_task_exception("webhook_delivery"))
-        self._webhook_delivery_worker = delivery_worker
-        self._contract_registry = contract_registry
-
-        # Start contract TTL sweep (every 60s)
-        self._contract_sweep_task = asyncio.create_task(self._contract_sweep_loop(), name="contract-sweep")
-        self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
-
-        logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+        logger.info("Webhook service initialized")
 
     def _install_inbound_routes(self) -> None:
         """Mount the inbound endpoints on the API app, on the ingress computer only."""
@@ -488,15 +452,3 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 logger.warning("Deployment fanout consumer error: %s", exc)
                 await asyncio.sleep(5)
         logger.info("Deployment fanout consumer stopped")
-
-    async def _contract_sweep_loop(self) -> None:
-        """Periodically deactivate expired contracts."""
-        while not self.shutdown_event.is_set():
-            try:
-                await asyncio.sleep(60)
-                if hasattr(self, "_contract_registry") and self._contract_registry:
-                    await self._contract_registry.sweep_expired()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.error("Contract sweep failed", exc_info=True)

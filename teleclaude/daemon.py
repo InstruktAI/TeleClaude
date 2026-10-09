@@ -505,7 +505,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._event_consumers_task: asyncio.Task[object] | None = None
         self._relay_delivery_task: asyncio.Task[object] | None = None
         self._internal_event_bus_task: asyncio.Task[object] | None = None
-        self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
         self._task_schedule_clock_task: asyncio.Task[object] | None = None
         self._workflow_bridge_task: asyncio.Task[object] | None = None
@@ -1094,7 +1093,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await cluster_bridge.stop()
         await self._await_task_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
-        await self._await_task_attr("webhook_delivery_task", "Webhook delivery worker stopped", timeout=5.0)
         await self._await_task_attr(
             "channel_subscription_worker_task",
             "Channel subscription worker stopped",
@@ -1114,7 +1112,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("process_janitor_task", "Process janitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
-            ("_contract_sweep_task", "Contract sweep stopped"),
         ):
             await self._cancel_task_attr(attr_name, log_message)
 

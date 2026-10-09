@@ -465,5 +465,3 @@ class DbOperationsMixin:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return result.rowcount or 0
-
-    # ── Webhook contracts CRUD ──────────────────────────────────────────

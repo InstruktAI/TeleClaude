@@ -632,40 +632,6 @@ class MemorySummary(SQLModel, table=True):
     created_at_epoch: int
 
 
-class WebhookContract(SQLModel, table=True):
-    """webhook_contracts table."""
-
-    __tablename__ = "webhook_contracts"
-    __table_args__ = {"extend_existing": True}
-
-    id: str = Field(primary_key=True)
-    contract_json: str
-    active: int | None = 1
-    source: str | None = "api"
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class WebhookOutbox(SQLModel, table=True):
-    """webhook_outbox table."""
-
-    __tablename__ = "webhook_outbox"
-    __table_args__ = {"extend_existing": True}
-
-    id: int | None = Field(default=None, primary_key=True)
-    contract_id: str
-    event_json: str
-    target_url: str
-    target_secret: str | None = None
-    status: str | None = "pending"
-    created_at: str | None = None
-    delivered_at: str | None = None
-    attempt_count: int | None = 0
-    next_attempt_at: str | None = None
-    last_error: str | None = None
-    locked_at: str | None = None
-
-
 class SessionListenerRow(SQLModel, table=True):
     """session_listeners table — durable PUB-SUB for stop notifications."""
 

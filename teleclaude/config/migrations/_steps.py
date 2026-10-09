@@ -23,6 +23,7 @@ from teleclaude.config.migrations import (
     v016_declare_notification_interests,
     v017_retire_global_help_desk,
     v018_retire_contributor_newcomer,
+    v019_retire_hook_subscriptions,
 )
 
 STEPS: Final = (
@@ -44,4 +45,5 @@ STEPS: Final = (
     v016_declare_notification_interests,
     v017_retire_global_help_desk,
     v018_retire_contributor_newcomer,
+    v019_retire_hook_subscriptions,
 )

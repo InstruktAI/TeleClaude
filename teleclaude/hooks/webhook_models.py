@@ -69,138 +69,17 @@ class PropertyCriterion:
 
 @dataclass(frozen=True)
 class Target:
-    """Delivery target for a contract."""
+    """Delivery target for a contract: the key of a registered in-process handler."""
 
-    handler: str | None = None  # internal handler key (registered callable)
-    url: str | None = None  # external webhook URL
-    secret: str | None = None  # HMAC signing key for external targets
+    handler: str
 
 
 @dataclass(frozen=True)
-class ContractMetadata:
-    """Lifecycle metadata for a webhook contract."""
-
-    active: bool = True
-    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
-    expires_at: str | None = None  # ISO 8601 UTC; None = never expires
-    source: str = "api"  # "config", "api", "programmatic"
-
-
-@dataclass(init=False)
 class Contract:
-    """A subscriber's published declaration of need."""
+    """A declaration of which events a registered handler receives."""
 
     id: str
     target: Target
-    source_criterion: PropertyCriterion | None
-    type_criterion: PropertyCriterion | None
-    properties: dict[str, PropertyCriterion]
-    _metadata: ContractMetadata = field(init=False, repr=False)
-
-    def __init__(
-        self,
-        *,
-        target: Target,
-        contract_id: str | None = None,
-        properties: dict[str, PropertyCriterion] | None = None,
-        **kwargs: object,
-    ) -> None:
-        resolved_id = kwargs.pop("id", contract_id)
-        if not isinstance(resolved_id, str):
-            raise TypeError("Contract requires id")
-
-        source_criterion = kwargs.pop("source_criterion", None)
-        type_criterion = kwargs.pop("type_criterion", None)
-        active = kwargs.pop("active", True)
-        created_at = kwargs.pop("created_at", None)
-        expires_at = kwargs.pop("expires_at", None)
-        source = kwargs.pop("source", "api")
-        if kwargs:
-            unexpected = ", ".join(sorted(kwargs))
-            raise TypeError(f"Unexpected Contract keyword(s): {unexpected}")
-
-        self.id = resolved_id
-        self.target = target
-        if source_criterion is not None and not isinstance(source_criterion, PropertyCriterion):
-            raise TypeError("source_criterion must be a PropertyCriterion or None")
-        if type_criterion is not None and not isinstance(type_criterion, PropertyCriterion):
-            raise TypeError("type_criterion must be a PropertyCriterion or None")
-        if not isinstance(active, bool):
-            raise TypeError("active must be a bool")
-        if created_at is not None and not isinstance(created_at, str):
-            raise TypeError("created_at must be a str or None")
-        if expires_at is not None and not isinstance(expires_at, str):
-            raise TypeError("expires_at must be a str or None")
-        if not isinstance(source, str):
-            raise TypeError("source must be a str")
-        self.source_criterion = source_criterion
-        self.type_criterion = type_criterion
-        self.properties = {} if properties is None else dict(properties)
-        self._metadata = ContractMetadata(
-            active=active,
-            created_at=datetime.now(UTC).isoformat() if created_at is None else created_at,
-            expires_at=expires_at,
-            source=source,
-        )
-
-    @property
-    def active(self) -> bool:
-        """Return whether the contract is active."""
-        return self._metadata.active
-
-    @property
-    def created_at(self) -> str:
-        """Return when the contract was created."""
-        return self._metadata.created_at
-
-    @property
-    def expires_at(self) -> str | None:
-        """Return the contract expiry time, if any."""
-        return self._metadata.expires_at
-
-    @property
-    def source(self) -> str:
-        """Return where the contract was created from."""
-        return self._metadata.source
-
-    @property
-    def is_expired(self) -> bool:
-        """Return True when the contract expiry time has passed."""
-        if self.expires_at is None:
-            return False
-        return datetime.now(UTC) >= datetime.fromisoformat(self.expires_at)
-
-    def to_json(self) -> str:
-        """Serialize to JSON for DB storage."""
-        d = {
-            "id": self.id,
-            "target": {"handler": self.target.handler, "url": self.target.url, "secret": self.target.secret},
-            "source_criterion": asdict(self.source_criterion) if self.source_criterion else None,
-            "type_criterion": asdict(self.type_criterion) if self.type_criterion else None,
-            "properties": {k: asdict(v) for k, v in self.properties.items()},
-            "active": self.active,
-            "created_at": self.created_at,
-            "expires_at": self.expires_at,
-            "source": self.source,
-        }
-        return json.dumps(d)
-
-    @classmethod
-    def from_json(cls, data: str) -> Contract:
-        """Deserialize from JSON."""
-        d = json.loads(data)
-        target = Target(**d["target"])
-        source_criterion = PropertyCriterion(**d["source_criterion"]) if d.get("source_criterion") else None
-        type_criterion = PropertyCriterion(**d["type_criterion"]) if d.get("type_criterion") else None
-        properties = {k: PropertyCriterion(**v) for k, v in d.get("properties", {}).items()}
-        return cls(
-            id=d["id"],
-            target=target,
-            source_criterion=source_criterion,
-            type_criterion=type_criterion,
-            properties=properties,
-            active=d.get("active", True),
-            created_at=d.get("created_at", ""),
-            expires_at=d.get("expires_at"),
-            source=d.get("source", "api"),
-        )
+    source_criterion: PropertyCriterion | None = None
+    type_criterion: PropertyCriterion | None = None
+    properties: dict[str, PropertyCriterion] = field(default_factory=dict)

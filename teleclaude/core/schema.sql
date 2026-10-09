@@ -345,36 +345,6 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_status ON notification_outbox(status);
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_next_attempt_at ON notification_outbox(next_attempt_at);
 
--- Webhook contracts and outbox
-CREATE TABLE IF NOT EXISTS webhook_contracts (
-    id TEXT PRIMARY KEY,
-    contract_json TEXT NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1,
-    source TEXT NOT NULL DEFAULT 'api',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_webhook_contracts_active ON webhook_contracts(active);
-
-CREATE TABLE IF NOT EXISTS webhook_outbox (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    contract_id TEXT NOT NULL,
-    event_json TEXT NOT NULL,
-    target_url TEXT NOT NULL,
-    target_secret TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
-    created_at TEXT NOT NULL,
-    delivered_at TEXT,
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at TEXT,
-    last_error TEXT,
-    locked_at TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_webhook_outbox_status ON webhook_outbox(status);
-CREATE INDEX IF NOT EXISTS idx_webhook_outbox_next_attempt ON webhook_outbox(next_attempt_at);
-
 -- REST and terminal outboxes
 CREATE TABLE IF NOT EXISTS rest_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -27,7 +27,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 18
+CURRENT_SCHEMA_VERSION = 19
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
@@ -444,30 +444,6 @@ class GlobalInboundSources(ClosedModel):
     whatsapp: WhatsAppInboundSource | None = None
 
 
-class SubscriptionContractConfig(ClosedModel):
-    """Subscription matching contract."""
-
-    source: dict[str, Any] | None = None
-    type: dict[str, Any] | None = None
-    # Additional property criteria as extra fields
-
-
-class SubscriptionTargetConfig(ClosedModel):
-    """Subscription delivery target."""
-
-    handler: str | None = None
-    url: str | None = None
-    secret: Annotated[str | None, SENSITIVE] = None
-
-
-class SubscriptionConfig(ClosedModel):
-    """Hook subscription configuration."""
-
-    id: str
-    contract: dict[str, Any] = {}  # guard: loose-dict - Config YAML contract is unstructured
-    target: dict[str, Any] = {}  # guard: loose-dict - Config YAML target is unstructured
-
-
 class ChannelSubscription(ClosedModel):
     """A subscription that routes messages from a Redis Stream channel to a target."""
 
@@ -477,10 +453,9 @@ class ChannelSubscription(ClosedModel):
 
 
 class HooksConfig(ClosedModel):
-    """A project's hook subscriptions and its own inbound sources."""
+    """A project's own inbound sources."""
 
     inbound: ProjectInboundSources = ProjectInboundSources()
-    subscriptions: list[SubscriptionConfig] = []
 
 
 class HomeHooksConfig(ClosedModel):
