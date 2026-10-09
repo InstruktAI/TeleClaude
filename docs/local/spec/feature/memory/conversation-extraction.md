@@ -16,9 +16,9 @@ An extraction worker reads a stretch of conversation, judges what is worth
 remembering, and hands memory the result as one **pass**. Memory records the
 pass and answers with a **receipt**. The worker's judgment — which observations
 to keep, and which are already covered by documentation — is the worker's
-(`docs/local/adr/0005-scraper-only-memory-writer.md`,
-`docs/local/adr/0006-mandatory-dedup-against-doc-snippets.md`); memory owns
-recording what it was handed.
+(`local/projects/teleclaude/adr/0006-mandatory-dedup-against-doc-snippets` — codified knowledge is not
+re-encoded as memory); memory owns recording what it was handed, and who may
+record it (`local/projects/teleclaude/adr/0005-scraper-only-memory-writer` — only extraction workers write memory).
 
 A pass carries:
 
@@ -99,9 +99,10 @@ And it learns that no receipt exists when it was not
 - **agent_runtime** — the desk idle cycle starts the extraction worker, chooses
   the pass key, and advances its marker from the receipt
   (`local/projects/teleclaude/spec/feature/agent_runtime/desk-conversation-continuity`).
-- **identity** — decides who qualifies as a sanctioned extraction worker by the
-  session's lineage, and supplies the visitor's identity key and principal that
-  memory records as handed over
+- **identity** — resolves the facts memory's writer rule reads: whether the
+  calling session was started by the daemon, carries the worker role, and has a
+  person anywhere in its lineage. It also supplies the visitor's identity key
+  and principal that memory records as handed over
   (`local/projects/teleclaude/spec/feature/memory/identity-key-ownership`).
 
 ## Known caveats

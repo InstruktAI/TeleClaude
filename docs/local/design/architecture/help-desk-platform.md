@@ -793,7 +793,7 @@ jobs:
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-Memory extraction is a step of the idle cycle (Customer Session Lifecycle). The cycle decides when a session's conversation is extracted; the extraction itself is done by an extraction worker — an agent session the daemon starts, with no person anywhere in its lineage, as memory's writer rule requires (`docs/local/adr/0005-scraper-only-memory-writer.md`). No separate scheduled job extracts desk sessions.
+Memory extraction is a step of the idle cycle (Customer Session Lifecycle). The cycle decides when a session's conversation is extracted; the extraction itself is done by an extraction worker — an agent session the daemon starts, with no person anywhere in its lineage, as memory's writer rule requires (`local/projects/teleclaude/adr/0005-scraper-only-memory-writer` — only extraction workers write memory). No separate scheduled job extracts desk sessions.
 
 Each pass of the idle cycle looks for:
 
@@ -806,7 +806,7 @@ The cycle never blocks on a worker; it reads state on every pass. For a session 
 - a worker still running → leave the session for the next pass;
 - a receipt for the pass key → advance the marker from it and continue with compaction and close.
 
-The worker reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — after the marker, and judges what is worth remembering through a dual lens. It discards candidates the desk home's documentation already covers (`docs/local/adr/0006-mandatory-dedup-against-doc-snippets.md`) and hands the survivors to memory as one pass, which memory records whole and once with a receipt (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). The worker follows `local/projects/teleclaude/procedure/desk-memory-extraction`.
+The worker reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — after the marker, and judges what is worth remembering through a dual lens. It discards candidates the desk home's documentation already covers (`local/projects/teleclaude/adr/0006-mandatory-dedup-against-doc-snippets` — codified knowledge is not re-encoded as memory) and hands the survivors to memory as one pass, which memory records whole and once with a receipt (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). The worker follows `local/projects/teleclaude/procedure/desk-memory-extraction`.
 
 ```mermaid
 sequenceDiagram
