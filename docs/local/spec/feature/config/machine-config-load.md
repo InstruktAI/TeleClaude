@@ -207,6 +207,18 @@ And the value held by an undeclared key is masked
 And every other rejected value is shown as written
 ```
 
+#### UC-CFG-LOAD-18: A machine configuration change that does not load is refused, not applied
+
+```gherkin
+Given TeleClaude is running on a machine configuration that loads
+When an operator or agent changes the machine configuration so that it no longer loads
+Then the running service keeps the configuration it was running on
+And the refusal is reported once as teleclaude.config.validation.failed, naming the file and where it fails without any value
+And starting or restarting the service is refused with the same finding, leaving a running service running
+When a later change makes the configuration load again
+Then the change is applied and teleclaude.config.validation.recovered is reported
+```
+
 ### Cross-context references
 
 - The config bounded context does not emit the effective-configuration-updated
@@ -258,7 +270,11 @@ And every other rejected value is shown as written
   the TTS context. Any other changed section triggers a graceful shutdown
   request; the process supervisor relaunches the runtime, which reads the
   fresh config at startup. The supervisor's file-watch entry is gone; the
-  in-process watcher owns the decision.
+  in-process watcher owns the decision. A change that does not load is never
+  applied and never triggers that restart: the running configuration stays in
+  force and the refusal is reported as UC-CFG-LOAD-18 states. The tier
+  declarations the service watches are judged the same way when they change, and
+  report the same events per document.
 - **Accepted keys are section-owned.** The closed section models reject
   undeclared keys, including a key whose value is an unresolved environment
   reference. Each section declares its accepted aliases, dynamic named

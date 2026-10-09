@@ -9,7 +9,8 @@ visibility: 'public'
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 
-- `make restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action: no wait, check, or other step runs after it inside the command, and `make restart` is the last action of any maintenance or recovery sequence that includes it. Its outcome records that acceptance, or the refused or incomplete preparation that withheld the service-manager action.
+- `make start` and `make restart` first establish that the machine configuration loads; when it does not, they refuse with its finding and leave a running daemon running, because the daemon cannot boot on it.
+- `make restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action: no wait, check, or other step runs after it inside the command, and `make restart` is the last action of any maintenance or recovery sequence that includes it. Its outcome records that acceptance, or the refused machine configuration or the refused or incomplete preparation that withheld the service-manager action.
 
 - After a canonical-main change needing a restart, commit-boundary maintenance invokes `make restart` as its final action; an agent does not repeat it. Agent-operated recovery invokes `make restart` the same way.
 - Daemon process-lifecycle observability is in-daemon: the janitor emits one process-reaped event per kill (queryable via `telec events`), and structured logs carry SIGTERM and shutdown attribution. Ad-hoc host probes (`dtrace`/`fs_usage`) installed outside `make` are not used.

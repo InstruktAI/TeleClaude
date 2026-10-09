@@ -263,6 +263,19 @@ def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T]
     return model
 
 
+def validate_declaration_file(path: Path) -> None:
+    """Validate one tier declaration on disk exactly as loading it does; raise ``ConfigLoadError`` when it fails."""
+    try:
+        raw: object = yaml.safe_load(path.read_text(encoding=_UTF8)) or {}
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ConfigLoadError(_CONTENT_READ_FAILURE.format(path=path, error=exc)) from exc
+    try:
+        kind = declared_config_kind(path, raw)
+    except ValueError as exc:
+        raise ConfigLoadError(str(exc)) from exc
+    _validated_model(path, raw, TIER_DOCUMENT_MODELS[kind], kind)
+
+
 def validate_staged_declaration(path: Path, content: bytes) -> list[str]:
     """Validate one staged declaration through the same pipeline that loads it.
 

@@ -56,6 +56,13 @@ def _emit_import_timing_logs() -> None:
             logger.warning("Slow daemon import: module=%s dt=%.3fs", label, dt)
 
 
+def _identity_declaration_documents() -> list[Path]:
+    """Return the watched configuration declarations that exist as files."""
+    return [
+        path for path in _identity_declaration_watch_paths() if path.name == ConfigFileName.OVERLAY and path.is_file()
+    ]
+
+
 def _identity_declaration_watch_paths() -> list[Path]:
     """Return config declarations whose changes can alter identity reach."""
     paths = {GLOBAL_CONFIG_PATH, PEOPLE_DIR, COMPANIES_ROOT, PROJECTS_MANIFEST_PATH}
@@ -93,6 +100,9 @@ from teleclaude.config import (  # config.py loads .env at import time
     reload_config,
     restart_required_sections,
 )
+from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.loader import validate_declaration_file
+from teleclaude.core.config_validation_reports import ConfigValidationReports
 from teleclaude.core.config_watcher import ConfigWatcher
 from teleclaude.core.inbound.conversation_env import default_conversation_environment
 from teleclaude.core.inbound.cutover import run_conversation_upkeep
@@ -359,6 +369,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         """
         # Load environment variables
         load_dotenv(env_path)
+        self._config_validation_reports = ConfigValidationReports()
         self._httpx_runtime_debug_module = _httpx_runtime_debug
 
         # Log experiment status if any are enabled
@@ -1248,7 +1259,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
 
     async def _on_identity_declarations_changed(self) -> None:
-        """Refresh config-owned project facts before invalidating identity reach."""
+        """Judge the changed declarations, then refresh config-owned project facts and invalidate identity reach."""
+        for document in _identity_declaration_documents():
+            try:
+                await asyncio.to_thread(validate_declaration_file, document)
+            except ConfigLoadError as error:
+                await self._config_validation_reports.refused(str(document), document, error)
+                continue
+            await self._config_validation_reports.accepted(str(document), document)
         await self.lifecycle.refresh_local_projects(ProjectRefreshTrigger.REGISTRY_CHANGE)
         publish_declaration_changes()
 
@@ -1261,7 +1279,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         the daemon after a clean exit it did not itself request, and the daemon reads the
         fresh config at startup.
         """
-        changed = reload_config()
+        try:
+            changed = reload_config()
+        except ConfigLoadError as error:
+            # The running configuration stays in force; restart and start refuse this file too.
+            await self._config_validation_reports.refused(_MACHINE_CONFIGURATION, config_path, error)
+            return
+        await self._config_validation_reports.accepted(_MACHINE_CONFIGURATION, config_path)
         if not changed:
             return
         try:

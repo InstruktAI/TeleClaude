@@ -19,6 +19,7 @@ _PROJECT_HOME = (EventHomeKind.PROJECT,)
 BURST_FAMILY = "teleclaude.system.burst"
 FAILURE_CASCADE_FAMILY = "teleclaude.system.failure_cascade"
 ENTITY_FAMILY = "teleclaude.system.entity"
+CONFIG_VALIDATION_FAMILY = "teleclaude.config.validation"
 
 
 class SessionEndedData(EventData):
@@ -45,6 +46,13 @@ class EffectiveConfigUpdatedData(EventData):
     changed_sections: list[str]
     project_path: str
     updated_at: str
+
+
+class ConfigValidationData(EventData):
+    """One configuration document and where it fails; findings carry locations and messages, never values."""
+
+    document: str
+    findings: list[str]
 
 
 class DaemonRestartedData(EventData):
@@ -130,6 +138,18 @@ class EffectiveConfigUpdated(PlatformEvent[ConfigurationRef, EffectiveConfigUpda
     HOME_KINDS = _PROJECT_HOME
 
 
+class ConfigValidationFailed(PlatformEvent[ConfigurationRef, ConfigValidationData]):
+    FAMILY = CONFIG_VALIDATION_FAMILY
+    STATE = LifecycleState.FAILED
+    DESCRIPTION = "A configuration document on this computer does not validate and was not applied; it needs correcting"
+
+
+class ConfigValidationRecovered(PlatformEvent[ConfigurationRef, ConfigValidationData]):
+    FAMILY = CONFIG_VALIDATION_FAMILY
+    STATE = LifecycleState.RECOVERED
+    DESCRIPTION = "A configuration document that did not validate on this computer validates again"
+
+
 class DaemonRestarted(PlatformEvent[ComputerRef, DaemonRestartedData]):
     NAME = "teleclaude.system.daemon.restarted"
     DESCRIPTION = "Daemon process restarted on a computer"
@@ -195,6 +215,8 @@ DECLARED: tuple[DeclaredEvent, ...] = (
     SessionRestartFailed,
     SessionBootstrapFailed,
     EffectiveConfigUpdated,
+    ConfigValidationFailed,
+    ConfigValidationRecovered,
     DaemonRestarted,
     ProcessReaped,
     WorkerCrashed,

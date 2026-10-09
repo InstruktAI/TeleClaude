@@ -119,6 +119,11 @@ require_config_files() {
     fi
 }
 
+# The daemon cannot boot on a machine configuration that does not load; refuse before touching it.
+require_loadable_machine_config() {
+    PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.entrypoints.machine_config_check
+}
+
 extract_log_message() {
     printf '%s\n' "$1" | sed -n 's/.*msg="\([^"]*\)".*/\1/p'
 }
@@ -535,6 +540,7 @@ wait_for_redis_ready() {
 # Start daemon via service manager
 start_daemon() {
     require_config_files
+    require_loadable_machine_config || return 1
 
     log_info "Starting TeleClaude daemon via $PLATFORM service manager..."
 
@@ -860,6 +866,10 @@ PY
 # Restart daemon via service manager
 restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
+    if ! require_loadable_machine_config; then
+        log_error "Restart withheld: the daemon was left running"
+        return 1
+    fi
 
     local prepare_rc=0
     prepare_daemon_for_shutdown || prepare_rc=$?
