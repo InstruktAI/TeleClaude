@@ -176,8 +176,10 @@ the dispatcher reads it to decide local execution versus forwarding.
   outcome takes back to an agent; a caller-less invocation reads the record with the same
   command.
 - **A daemon-backed CLI command is accepted or not accepted.** Accepted is a zero exit
-  carrying the `IMMEDIATE` result or the receipt. Not accepted is a non-zero exit carrying
-  an error, and nothing was done. No outcome lies between them.
+  carrying the `IMMEDIATE` result or the receipt; a command never exits zero on a
+  failure. Not accepted is a non-zero exit carrying an error, and nothing was done. A
+  request that times out and a command refused partway through several requests are the
+  two cases where a non-zero exit does not settle acceptance (Failure modes).
 
 <!-- /planned:cli-accept-or-retry -->
 
@@ -270,6 +272,20 @@ sequenceDiagram
   raises. The invalid command never reaches the dispatcher.
 - **Caller mismatch on read.** Non-admin callers attempting to inspect another session's
   operation receive a 404 rather than a 403, to avoid operation and session enumeration.
+
+<!-- planned:cli-accept-or-retry -->
+
+- **A request times out before the daemon answers.** The CLI exits non-zero without
+  knowing whether the daemon accepted the work, so the accepted-or-not-accepted split
+  does not decide it. The error names the timeout and carries no instruction to run
+  the command again.
+- **A command that sends several requests is refused partway.** Targetless
+  `telec sessions end` closes children one request at a time. A refusal or lost daemon
+  after earlier closures were accepted exits non-zero with those closures done; the error
+  names the children that remain and, for a draining or unreachable daemon, carries the
+  same wait-and-run-again instruction, which is safe because the command is idempotent.
+
+<!-- /planned:cli-accept-or-retry -->
 
 ## See Also
 
