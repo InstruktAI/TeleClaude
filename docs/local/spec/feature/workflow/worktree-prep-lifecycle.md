@@ -195,7 +195,7 @@ And the commit recorded when the Todo's build started is on origin/main
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then no branch on origin is adopted as the Todo's work
 And a local branch carrying the Todo's name is attached when one exists
-And otherwise, when the Todo is past lifecycle_phase=prepared or origin holds a branch under its name, no worktree is created and the work state machine reports that the Todo's work cannot be located
+And otherwise, when the Todo's build is under way or origin holds a branch under its name, no worktree is created and the work state machine reports that the Todo's work cannot be located
 ```
 
 <!-- /planned-change:fix-stale-build-start-residue-blocks-worktree-creation -->
@@ -239,7 +239,7 @@ And the work state machine reports a worktree setup failure stating that the Tod
 ```
 Given a Todo whose build has started has no worktree at "trees/<slug>/" and no local branch carries its name
 And no branch on origin under the Todo's name contains the commit recorded when the Todo's build started, or that commit is on origin/main
-And the Todo is past lifecycle_phase=prepared, or that commit is not on origin/main, or origin holds a branch under the Todo's name
+And the Todo's build is under way, or that commit is not on origin/main, or origin holds a branch under the Todo's name
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then no worktree is created
 And the work state machine reports a worktree setup failure stating that the Todo's work is not on origin
@@ -262,11 +262,11 @@ And reclamation runs off the daemon's event loop
 #### UC-WPL12: A prepared Todo whose earlier build left no branch starts over on a branch of its own
 
 ```
-Given a Todo at lifecycle_phase=prepared whose earlier build started from a commit that is on origin/main
-And no worktree exists at "trees/<slug>/", no local branch carries its name, and origin holds no branch under its name
-When the work state machine asks the workflow service to ensure the worktree is ready
-Then the worktree is branched from origin/main under the Todo's name
-And the branch opens with the Todo's own commit, neither on origin/main nor on any other Todo's branch
+Given a Todo is prepared for its next build and the commit recorded when its earlier build started is on origin/main
+And no worktree exists at "trees/<slug>/", no local branch carries the Todo's name, and origin holds no branch under its name
+When a work orchestrator agent enters work for the Todo
+Then the agent receives the Todo's next build step rather than a worktree setup failure
+And the Todo's worktree is on a branch under its name that starts from origin/main and opens with an empty commit of the Todo's own, on neither origin/main nor any other Todo's branch
 And the commit recorded when the Todo's build starts again descends from that opening commit
 ```
 
