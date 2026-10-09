@@ -105,8 +105,8 @@ stateDiagram-v2
 - **Unique Session ID**: Each session has a globally unique UUID that never changes.
 - **Stable Tmux Mapping**: Session ID maps to exactly one tmux session name `tc_{session_id[:8]}`.
 - **Single Owner**: Each session is owned by the adapter that created it; ownership never transfers.
-- **State Progression**: Sessions move forward through states only (no rollback from Closed to Active).
-- **Cleanup Finality**: Once marked Closed, session metadata is immutable and tmux resources are released.
+- **State Progression**: Sessions move forward through states. The one way back from Closed is revival, which reopens the session as headless and resumes its agent from its transcript (`local/projects/teleclaude/spec/feature/agent_runtime/session-revival`).
+- **Cleanup Finality**: Once marked Closed, tmux resources are released; a closed session runs again only through revival.
 - **Native Transcript File Is Never Platform-Written**: The daemon's session
   metadata, channel state, and summary artifacts above are its own durable
   records, separate from the agent CLI's native transcript file. That file is
