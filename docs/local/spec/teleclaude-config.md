@@ -73,6 +73,16 @@ only validates: it never sets or changes a value, and a document that sets both
 fields is accepted. A relationship that needs data outside the one document is
 not declared this way.
 
+A field whose value only some computers need declares that need against the
+machine configuration: on a computer where the named machine flag is set, a
+`${NAME}` declared for the field must have a value in the declaring home's
+`.env`, and every validation of the document there refuses it otherwise, naming
+the field, the flag and the reference. Elsewhere the value may be absent, and a
+field with nothing declared is not judged. Inbound source secrets are needed
+where `computer.is_ingress_node` is set, and a person's voice-bot token where
+`computer.is_master` is set. The per-file published schema cannot express a
+condition on the machine configuration, so it does not carry these needs.
+
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline. The reference is relative and fixed by the file's tier alone, derived
 in one place by the configuration writer (`teleclaude/config/declaration.py`),
