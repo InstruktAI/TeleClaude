@@ -218,9 +218,15 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         )
         chunks, chunk_metadata = self._split_for_sending(output, metadata)
         version = delivery_ts.isoformat()
-        sent, last_message_id = self._final_output_progress(session, version)
-        destination = resolve_destination(session, self.ADAPTER_KEY, metadata=chunk_metadata)
         async with self._get_output_delivery_lock(session.session_id):
+            fresh = await db.get_session(session.session_id)
+            if fresh:
+                session.origin_metadata = fresh.origin_metadata
+            sent, last_message_id = self._final_output_progress(session, version)
+            receipt = self.get_last_delivered_at(session)
+            if receipt is not None and receipt >= delivery_ts:
+                return last_message_id
+            destination = resolve_destination(session, self.ADAPTER_KEY, metadata=chunk_metadata)
             for index in range(sent, len(chunks)):
                 message_id = await self.send_message(
                     destination, chunks[index], metadata=chunk_metadata, multi_message=multi_message
@@ -232,15 +238,16 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                     final_output_chunks_sent=index + 1,
                     final_output_message_id=last_message_id,
                 )
-        if not last_message_id:
-            return None
-        await self.set_last_delivered_at(session, delivery_ts)
-        return last_message_id
+            if not last_message_id:
+                return None
+            await self.set_last_delivered_at(session, delivery_ts)
+            return last_message_id
 
     def _final_output_progress(self, session: Session, version: str) -> tuple[int, str | None]:
         """Chunks already sent for this final-output version, and the last message id.
 
         A retried final pass resumes after the chunks a failed attempt delivered.
+        Read under the session's output lock, from fresh session state.
         """
         if self._origin_field(session, _FINAL_OUTPUT_VERSION_FIELD) != version:
             return 0, None
