@@ -193,6 +193,9 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   flag path and consumes no active preparation effort; its next claimant must
   apply the Step 0a entry audit before deriving from it. Creation lineage is
   audit evidence, not a guarantee that the creator is still reachable.
+
+<!-- planned-change:cli-accept-or-retry -->
+
 - **The claimant pauses preparation immediately.** It advances no phase,
   dispatches no new child, and does not act on child output produced for the
   challenged premise until it has analyzed the concern and chosen one of the
@@ -224,6 +227,45 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
     marker-only edits uncommitted. Automation-only marker removal requires no
     snippet review. Then depart under the departure discipline in
     `general/policy/reminder`.
+
+<!-- change:cli-accept-or-retry -->
+
+- **The claimant pauses preparation immediately.** It advances no phase,
+  dispatches no new child, and does not act on child output produced for the
+  challenged premise until it has analyzed the concern and chosen one of the
+  following exits. A child already mid-turn may finish; end it only when the
+  challenge plainly makes its current work unusable.
+  - **Defend.** Point to the grounded creation check and landscape evidence.
+    A defense is not a request for the flagger's permission: after sending the
+    grounded basis, the claimant resumes preparation. A permitted follow-up
+    reopens the pause once.
+  - **Hold.** Run `telec todo update <slug> --hold --reason "<why this waits, or the gate or owner it waits on>"`
+    to set the todo's automatic dispatch brake, then write the flag's source
+    address and the reason the premise may become valid later to the todo's
+    `log` artifact. The hold audit carries why the current hold exists; the log
+    retains the reconciliation breadcrumb.
+  - **Stand down.** End the claimant's preparation children. Before releasing
+    the claim, make the todo tell the truth by either holding it with the log
+    entry above or amending `input` to carry the reconciliation. Only then run
+    `telec todo update <slug> --unclaim`. A bare release is forbidden: it
+    returns the suspect premise to the runner with less context and recreates
+    the same preparation waste.
+  - **Retract.** For work that is truly invalid — including doc-only work,
+    process work defensible from neither authorized intent nor applicable
+    principles, or a confirmed duplicate — end the claimant's children, run
+    `telec todo remove <slug>`. The command returns a receipt; once the
+    removal's outcome wakes this session, read it with `telec operations get
+<operation_id>`, act on a refusal it carries, and leave the final result.
+    `telec todo remove` snapshots the cleanliness
+    of every documentation file carrying that slug's planned markers, clears
+    only those markers, and commits the marker-only result automatically only
+    when every affected file was clean before removal. Otherwise it leaves the
+    marker-only edits uncommitted. Automation-only marker removal requires no
+    snippet review. Then depart under the departure discipline in
+    `general/policy/reminder`.
+
+<!-- /planned-change:cli-accept-or-retry -->
+
 - **External hold is the unreachable-claimant fallback.** Only a proven delivery
   failure or other authoritative evidence that the claimant cannot answer —
   never silence or impatience — permits the observer to set `hold` with the
