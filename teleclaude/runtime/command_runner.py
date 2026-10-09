@@ -18,6 +18,11 @@ from typing import IO, Any
 _PROCESS_GROUP_TERM_GRACE_SECONDS = 2.0
 _PROCESS_GROUP_KILL_GRACE_SECONDS = 2.0
 _PROCESS_POLL_INTERVAL_SECONDS = 0.05
+# A deadline's SIGTERM must outlast one nested runner's whole escalation, so a child that runs this
+# runner reaps its own process groups before the outer SIGKILL is due.
+_PROCESS_GROUP_DEADLINE_TERM_GRACE_SECONDS = (
+    _PROCESS_GROUP_TERM_GRACE_SECONDS + _PROCESS_GROUP_KILL_GRACE_SECONDS + _PROCESS_POLL_INTERVAL_SECONDS
+)
 _COMMAND_START_FAILURE_EXIT_CODE = 127
 _OUTPUT_TAIL_CHARACTERS = 4096
 _OUTPUT_ENCODING = "utf-8"
@@ -79,17 +84,27 @@ class CommandResult:
 
     ``output_tail`` holds the end of the command's combined output when the caller asked
     for it to be captured, so a failure can be reported with the command's own reason.
+    ``timed_out`` is set when the command's process group was reaped because it outlived
+    the caller's deadline.
     """
 
     exit_code: int
     output_tail: str | None = None
+    timed_out: bool = False
 
 
 def run_process_group_command(
-    command: list[str], cwd: Path, child_env: Mapping[str, str] | None = None
+    command: list[str],
+    cwd: Path,
+    child_env: Mapping[str, str] | None = None,
+    *,
+    timeout_seconds: float | None = None,
+    capture_output: Callable[[str], str] | None = None,
 ) -> CommandResult:
     """Run one external command and reap its entire process group on exit."""
-    return run_process_group_commands((command,), cwd, child_env)[0]
+    return run_process_group_commands(
+        (command,), cwd, child_env, timeout_seconds=timeout_seconds, capture_output=capture_output
+    )[0]
 
 
 def run_process_group_commands(
@@ -99,6 +114,7 @@ def run_process_group_commands(
     on_result: Callable[[int, CommandResult], None] | None = None,
     *,
     capture_output: Callable[[str], str] | None = None,
+    timeout_seconds: float | None = None,
 ) -> tuple[CommandResult, ...]:
     """Run argument vectors concurrently and reap every process group on exit.
 
@@ -108,8 +124,14 @@ def run_process_group_commands(
     the caller's streams; the whole output is passed through that function, and the tail of
     what it returns comes back with the result. A caller with no terminal of its own uses it
     so a failure keeps its reason, and masks what must not travel before anything is cut.
+
+    ``timeout_seconds`` bounds each command from its start. A command still running past it
+    has its process group terminated with a grace long enough for a nested runner to finish
+    reaping its own groups, then killed, and its result is marked ``timed_out``. Without it
+    a command runs until it exits.
     """
     processes: list[subprocess.Popen[bytes] | None] = []
+    started_at: list[float] = []
     outputs: list[IO[bytes] | None] = []
     results: list[CommandResult | None] = []
     previous: dict[int, Any] = {}
@@ -140,6 +162,7 @@ def run_process_group_commands(
                     )
                 except OSError as exc:
                     processes.append(None)
+                    started_at.append(time.monotonic())
                     start_failure = CommandResult(
                         _COMMAND_START_FAILURE_EXIT_CODE,
                         _START_FAILURE_OUTPUT.format(kind=type(exc).__name__, error=exc)
@@ -151,6 +174,7 @@ def run_process_group_commands(
                         on_result(len(results) - 1, start_failure)
                     continue
                 processes.append(process)
+                started_at.append(time.monotonic())
                 results.append(None)
             while any(result is None for result in results):
                 _raise_if_cancelled(cancellation)
@@ -159,6 +183,14 @@ def run_process_group_commands(
                         continue
                     exit_code = process.poll()
                     if exit_code is None:
+                        if timeout_seconds is not None and time.monotonic() - started_at[index] >= timeout_seconds:
+                            _kill_process_group(process, _PROCESS_GROUP_DEADLINE_TERM_GRACE_SECONDS)
+                            expired = CommandResult(
+                                _reaped_exit_code(process), _output_tail(outputs[index], capture_output), True
+                            )
+                            results[index] = expired
+                            if on_result is not None:
+                                on_result(index, expired)
                         continue
                     _kill_process_group(process)
                     finished = CommandResult(exit_code, _output_tail(outputs[index], capture_output))
@@ -206,7 +238,15 @@ def _raise_if_cancelled(cancellation: ProcessGroupCancellation | None) -> None:
         raise ProcessGroupCancellationRequested
 
 
-def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
+def _reaped_exit_code(process: subprocess.Popen[bytes]) -> int:
+    """Return a reaped command's exit code; SIGKILL was the last signal sent when it is still unreaped."""
+    exit_code = process.poll()
+    return -signal.SIGKILL if exit_code is None else exit_code
+
+
+def _kill_process_group(
+    process: subprocess.Popen[bytes], term_grace: float = _PROCESS_GROUP_TERM_GRACE_SECONDS
+) -> None:
     process_group = process.pid
     try:
         process_group = os.getpgid(process.pid)
@@ -218,7 +258,7 @@ def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
         os.killpg(process_group, signal.SIGTERM)
     except OSError:
         return
-    if not _wait_process_group(process, process_group, _PROCESS_GROUP_TERM_GRACE_SECONDS):
+    if not _wait_process_group(process, process_group, term_grace):
         try:
             os.killpg(process_group, signal.SIGKILL)
         except OSError:

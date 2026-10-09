@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import stat
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
@@ -13,7 +12,22 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.next_machine.delivery import _run_git_cmd, git_name_set, parse_git_porcelain_paths
+from teleclaude.core.next_machine.delivery import (
+    GIT_COMMAND_TIMEOUT_SECONDS,
+    GIT_TIMEOUT_ERROR_TEMPLATE,
+    _run_git_cmd,
+    git_name_set,
+    parse_git_porcelain_paths,
+)
+from teleclaude.core.next_machine.marker_fold_evidence import (
+    DEFAULT_FILE_MODE,
+    GIT_PATH_OPTION_TEMPLATE,
+    FoldResidue,
+    GitTreeEntry,
+    expected_blob_id,
+    residue_is_intact,
+    tree_entry_at_commit,
+)
 from teleclaude.docs_reconcile import (
     ReconciliationFault,
     ReconciliationMode,
@@ -25,7 +39,10 @@ from teleclaude.docs_reconcile import (
     restore_reconciliation_plan,
     reverse_reconciliation_plan,
 )
+from teleclaude.git import GIT_EXECUTABLE
+from teleclaude.git_lock import wait_for_index_lock_clear
 from teleclaude.quality.gate import FormatGateOutcome, format_paths_for_commit_gate
+from teleclaude.runtime.command_runner import run_process_group_command
 
 logger = get_logger(__name__)
 
@@ -35,31 +52,19 @@ GIT_STATUS_ARGS = ("status", "--porcelain", "--")
 GIT_SNIPPET_STATUS_ARGS = ("status", "--porcelain", "--untracked-files=all", "--no-renames", "--")
 GIT_ADD_ARGS = ("add", "--")
 GIT_CACHED_NAME_ARGS = ("diff", "--cached", "--name-only", "--no-renames")
-GIT_RESTORE_STAGED_ARGS = ("restore", "--staged", "--")
+GIT_UNSTAGE_PATHS_ARGS = ("reset", "-q", "--")
 GIT_COMMIT_ARGS = ("commit", "-m")
 GIT_HEAD_ARGS = ("rev-parse", "--verify", "HEAD")
 GIT_REV_LIST_ARGS = ("rev-list", "--reverse")
 GIT_COMMIT_MESSAGE_ARGS = ("show", "-s", "--format=%B")
-GIT_HASH_OBJECT_ARGS = ("hash-object",)
-GIT_LS_TREE_ARGS = ("ls-tree", "-z")
-GIT_LS_FILES_STAGE_ARGS = ("ls-files", "--stage", "--")
 GIT_CAT_FILE_FILTERS_ARGS = ("cat-file", "--filters")
 GIT_FILE_MODE_CONFIG_ARGS = ("config", "--bool", "--get", "core.fileMode")
 GIT_HEAD = "HEAD"
 GIT_REVISION_RANGE_TEMPLATE = "{previous_head}..HEAD"
-GIT_PATH_OPTION_TEMPLATE = "--path={relative_path}"
 GIT_HEAD_PATH_TEMPLATE = "HEAD:{relative_path}"
-GIT_TREE_FIELD_SEPARATOR = "\t"
-GIT_TREE_RECORD_SEPARATOR = "\0"
-GIT_INDEX_STAGE_SEPARATOR = "\t"
-GIT_BLOB_OBJECT_TYPE = "blob"
 UTF8_ENCODING = "utf-8"
 EMPTY_ERROR = ""
 EMPTY_PATH = ""
-DEFAULT_FILE_MODE = "100644"
-EXECUTABLE_FILE_MODE = "100755"
-SYMLINK_FILE_MODE = "120000"
-INDEX_STAGE_ZERO = "0"
 GIT_FALSE_VALUE = "false"
 COMMITTED_VIEW_REASON = "committed_view_unavailable"
 COMMITTED_VIEW_ERROR_TEMPLATE = "{reason}: {error}"
@@ -70,8 +75,6 @@ TRANSITION_TRAILER_TEMPLATE = "{key}: {transition_id}"
 COMMIT_RESOLUTION_EVENT = "workflow.marker_reconciliation.commit_resolution"
 COMMIT_FAILURE_LOG_MESSAGE = "Marker reconciliation commit command reported failure"
 MULTIPLE_TRANSITION_COMMITS_REASON = "multiple commits carry the transition id"
-COMMIT_PATH_NOT_BLOB_REASON = "commit path did not resolve to a blob"
-COMMIT_PATH_MULTIPLE_ENTRIES_REASON = "commit path resolved to multiple tree entries"
 COMMIT_TREE_MISMATCH_TEMPLATE = "recorded tree differs from rendered path {relative_path}"
 FORMAT_FAILURE_REASON_TEMPLATE = "native format target failed for grading home(s): {homes}"
 FORMAT_SNAPSHOT_FAILURE_TEMPLATE = "formatted content could not be identified for {relative_path}: {error}"
@@ -83,6 +86,7 @@ STAGED_SET_REASON = "staged_set_mismatch"
 COMMIT_REASON = "commit_failed"
 UNRESOLVED_COMMIT_REASON = "commit_outcome_unresolved_sources_restored"
 UNIDENTIFIED_COMMIT_REASON = "recorded_commit_could_not_be_identified"
+INDEX_RESTORE_REASON_TEMPLATE = "index_restore_failed: {error}"
 
 
 class MarkerMoment(StrEnum):
@@ -132,6 +136,18 @@ class MarkerReceipt:
         return self.outcome in (MarkerOutcome.APPLIED, MarkerOutcome.NOOP)
 
 
+class _IndexRestoreFault(ReconciliationFault):
+    """The index rollback failed; the applied sources stay in place so the staged state is not split from them."""
+
+
+@dataclass(frozen=True)
+class _IndexRestore:
+    """Outcome of one index rollback: whether the pathset was unstaged, and git's error when it was not."""
+
+    restored: bool
+    error: str = EMPTY_ERROR
+
+
 @dataclass(frozen=True)
 class _CommitResolution:
     """Read-only resolution of one attempt's commit in its reachable range."""
@@ -151,26 +167,6 @@ class _CommitPlanResult:
 
 
 @dataclass(frozen=True)
-class _GitTreeEntry:
-    """One regular Git tree entry's mode and blob identity."""
-
-    mode: str
-    blob: str
-
-
-@dataclass(frozen=True)
-class _FoldResidue:
-    """Evidence that one dirty path contains only its own uncommitted fold."""
-
-    write: ReconciliationWrite
-    head_entry: _GitTreeEntry | None
-    fold_blob: str | None
-    expected_mode: str
-    file_mode_enabled: bool
-    formatted_blob: str | None = None
-
-
-@dataclass(frozen=True)
 class _ApplyCommitOutcome:
     """The normalized commit plan, commit id, and formatter path count."""
 
@@ -185,7 +181,7 @@ class _FormatAttempt:
 
     plan: ReconciliationPlan
     apply_plan: ReconciliationPlan
-    residue: tuple[_FoldResidue, ...]
+    residue: tuple[FoldResidue, ...]
     normalized_path_count: int
     outcome: FormatGateOutcome
     snapshot_error: str
@@ -243,10 +239,39 @@ def _fault_receipt(
     return MarkerReceipt(transition_id, slug, moment, MarkerOutcome.FAULTED, None, None, reason)
 
 
-def _restore_index(project_root: Path, paths: tuple[str, ...]) -> None:
-    """Unstage only the reconciliation pathset during transactional compensation."""
-    if paths:
-        _run_git_cmd([*GIT_RESTORE_STAGED_ARGS, *paths], cwd=str(project_root))
+def _unmodified_output(output: str) -> str:
+    return output
+
+
+def _run_commit(project_root: Path, args: list[str]) -> tuple[int, str]:
+    """Run the hook-bearing commit under the git command bound; return its exit code and failure evidence.
+
+    On expiry the runner terminates git's process group so git releases its own index lock.
+    """
+    result = run_process_group_command(
+        [GIT_EXECUTABLE, *args],
+        project_root,
+        timeout_seconds=GIT_COMMAND_TIMEOUT_SECONDS,
+        capture_output=_unmodified_output,
+    )
+    if result.timed_out:
+        return 1, GIT_TIMEOUT_ERROR_TEMPLATE.format(timeout=GIT_COMMAND_TIMEOUT_SECONDS)
+    return result.exit_code, result.output_tail or EMPTY_ERROR
+
+
+def _restore_index(project_root: Path, paths: tuple[str, ...]) -> _IndexRestore:
+    """Unstage only the reconciliation pathset; a refused unstage clears a holder-less index lock and retries once.
+
+    A path git does not know has nothing to unstage, so it never refuses the rest of the set.
+    """
+    if not paths:
+        return _IndexRestore(True)
+    args = [*GIT_UNSTAGE_PATHS_ARGS, *paths]
+    code, _output, error = _run_git_cmd(args, cwd=str(project_root))
+    if code != 0:
+        wait_for_index_lock_clear(project_root)
+        code, _output, error = _run_git_cmd(args, cwd=str(project_root))
+    return _IndexRestore(code == 0, error)
 
 
 def _preflight_plan(
@@ -272,70 +297,6 @@ def _preflight_plan(
     return staged_before
 
 
-def _expected_blob_id(
-    project_root: Path,
-    relative_path: str,
-    content: str,
-    temporary_root: Path,
-    index: int,
-) -> tuple[str | None, str]:
-    """Hash rendered bytes using the clean filter selected for their Git path."""
-    temporary_file = temporary_root / str(index)
-    try:
-        temporary_file.write_bytes(content.encode(UTF8_ENCODING))
-    except OSError as write_error:
-        return None, str(write_error)
-    code, output, error = _run_git_cmd(
-        [*GIT_HASH_OBJECT_ARGS, GIT_PATH_OPTION_TEMPLATE.format(relative_path=relative_path), str(temporary_file)],
-        cwd=str(project_root),
-    )
-    if code != 0:
-        return None, error
-    return output.strip(), ""
-
-
-def _tree_entry_at_commit(
-    project_root: Path,
-    commit: str,
-    relative_path: str,
-) -> tuple[_GitTreeEntry | None, str]:
-    """Read one exact path's mode and blob identity from a commit tree."""
-    code, output, error = _run_git_cmd([*GIT_LS_TREE_ARGS, commit, "--", relative_path], cwd=str(project_root))
-    if code != 0:
-        return None, error
-    entries: list[_GitTreeEntry] = []
-    for record in output.split(GIT_TREE_RECORD_SEPARATOR):
-        metadata, separator, path = record.partition(GIT_TREE_FIELD_SEPARATOR)
-        if not separator or path != relative_path:
-            continue
-        fields = metadata.split()
-        if len(fields) != 3 or fields[1] != GIT_BLOB_OBJECT_TYPE:
-            return None, COMMIT_PATH_NOT_BLOB_REASON
-        entries.append(_GitTreeEntry(mode=fields[0], blob=fields[2]))
-    if len(entries) > 1:
-        return None, COMMIT_PATH_MULTIPLE_ENTRIES_REASON
-    return (entries[0] if entries else None), EMPTY_ERROR
-
-
-def _index_entries(project_root: Path, relative_path: str) -> tuple[list[tuple[str, str, str]] | None, str]:
-    """Read every index stage for one exact path."""
-    code, output, error = _run_git_cmd(
-        [*GIT_LS_FILES_STAGE_ARGS, relative_path], cwd=str(project_root), preserve_stdout_newlines=True
-    )
-    if code != 0:
-        return None, error
-    entries: list[tuple[str, str, str]] = []
-    for line in output.splitlines():
-        metadata, separator, path = line.partition(GIT_INDEX_STAGE_SEPARATOR)
-        if not separator or path != relative_path:
-            continue
-        fields = metadata.split()
-        if len(fields) != 3:
-            return None, STAGE_REASON
-        entries.append((fields[0], fields[1], fields[2]))
-    return entries, EMPTY_ERROR
-
-
 def _file_mode_enabled(project_root: Path, slug: str) -> bool:
     """Resolve the repository's effective executable-bit tracking setting."""
     code, output, error = _run_git_cmd(list(GIT_FILE_MODE_CONFIG_ARGS), cwd=str(project_root))
@@ -348,48 +309,6 @@ def _file_mode_enabled(project_root: Path, slug: str) -> bool:
         )
         raise ReconciliationFault(slug, EMPTY_PATH, 0, reason)
     return output.strip() != GIT_FALSE_VALUE
-
-
-def _working_file_mode(path: Path, expected_mode: str, file_mode_enabled: bool) -> str:
-    """Return the mode Git would stage for a working-tree path."""
-    if path.is_symlink():
-        return SYMLINK_FILE_MODE
-    if not file_mode_enabled:
-        return expected_mode
-    file_mode = path.stat().st_mode
-    return EXECUTABLE_FILE_MODE if file_mode & stat.S_IXUSR else DEFAULT_FILE_MODE
-
-
-def _residue_is_intact(project_root: Path, residue: _FoldResidue) -> bool:
-    """Check that working bytes, mode, and every index stage still identify this fold."""
-    write = residue.write
-    path = project_root / write.relative_path
-    if write.rendered_content is None:
-        if path.exists() or path.is_symlink():
-            return False
-    else:
-        try:
-            if path.read_bytes() != write.rendered_content.encode(UTF8_ENCODING):
-                return False
-            if _working_file_mode(path, residue.expected_mode, residue.file_mode_enabled) != residue.expected_mode:
-                return False
-        except OSError:
-            return False
-
-    entries, error = _index_entries(project_root, write.relative_path)
-    if error or entries is None:
-        return False
-    head_index_entry = (
-        [(residue.head_entry.mode, residue.head_entry.blob, INDEX_STAGE_ZERO)] if residue.head_entry is not None else []
-    )
-    allowed_entries = [head_index_entry]
-    if residue.fold_blob is not None:
-        allowed_entries.append([(residue.expected_mode, residue.fold_blob, INDEX_STAGE_ZERO)])
-    if residue.formatted_blob is not None and residue.formatted_blob != residue.fold_blob:
-        allowed_entries.append([(residue.expected_mode, residue.formatted_blob, INDEX_STAGE_ZERO)])
-    if residue.fold_blob is None and not head_index_entry:
-        allowed_entries.append([])
-    return entries in allowed_entries
 
 
 def _raise_dirty_path(slug: str, write: ReconciliationWrite) -> None:
@@ -417,7 +336,7 @@ def _reconciliation_transaction_plans(
     mode: ReconciliationMode,
     new_slug: str | None,
     working_plan: ReconciliationPlan,
-) -> tuple[ReconciliationPlan, ReconciliationPlan, tuple[_FoldResidue, ...]]:
+) -> tuple[ReconciliationPlan, ReconciliationPlan, tuple[FoldResidue, ...]]:
     """Separate safe working-tree writes from this slug's committed-view residue."""
     reconciliation_roots = iter_reconciliation_roots(project_root)
     reconciliation_root_paths = tuple(str(root.relative_to(project_root)) for root in reconciliation_roots)
@@ -436,7 +355,7 @@ def _reconciliation_transaction_plans(
 
     working_writes = {write.relative_path: write for write in working_plan.writes}
     apply_writes: list[ReconciliationWrite] = []
-    residue: list[_FoldResidue] = []
+    residue: list[FoldResidue] = []
     transaction_writes: list[ReconciliationWrite] = []
     try:
         with TemporaryDirectory() as temporary_directory:
@@ -453,9 +372,9 @@ def _reconciliation_transaction_plans(
                 )
             _remove_temporary_symlinks(temporary_root)
 
-            head_entries: dict[str, _GitTreeEntry | None] = {}
+            head_entries: dict[str, GitTreeEntry | None] = {}
             for relative_path in sorted(dirty_paths):
-                head_entry, tree_error = _tree_entry_at_commit(project_root, GIT_HEAD, relative_path)
+                head_entry, tree_error = tree_entry_at_commit(project_root, GIT_HEAD, relative_path)
                 if tree_error:
                     reason = COMMITTED_VIEW_ERROR_TEMPLATE.format(reason=COMMITTED_VIEW_REASON, error=tree_error)
                     raise ReconciliationFault(slug, relative_path, 0, reason)
@@ -518,7 +437,7 @@ def _reconciliation_transaction_plans(
                     _raise_dirty_path(slug, write)
                 fold_blob: str | None = None
                 if write.rendered_content is not None:
-                    fold_blob, hash_error = _expected_blob_id(
+                    fold_blob, hash_error = expected_blob_id(
                         project_root,
                         write.relative_path,
                         write.rendered_content,
@@ -533,14 +452,14 @@ def _reconciliation_transaction_plans(
                         raise ReconciliationFault(slug, write.relative_path, write.line, reason)
                 head_entry = head_entries.get(write.relative_path)
                 expected_mode = head_entry.mode if head_entry is not None else DEFAULT_FILE_MODE
-                evidence = _FoldResidue(
+                evidence = FoldResidue(
                     write=write,
                     head_entry=head_entry,
                     fold_blob=fold_blob,
                     expected_mode=expected_mode,
                     file_mode_enabled=file_mode_enabled,
                 )
-                if not _residue_is_intact(project_root, evidence):
+                if not residue_is_intact(project_root, evidence):
                     _raise_dirty_path(slug, write)
                 residue.append(evidence)
                 transaction_writes.append(write)
@@ -606,7 +525,7 @@ def _resolve_commit(
             for index, write in enumerate(plan.writes):
                 expected_blob: str | None = None
                 if write.rendered_content is not None:
-                    expected_blob, hash_error = _expected_blob_id(
+                    expected_blob, hash_error = expected_blob_id(
                         project_root,
                         write.relative_path,
                         write.rendered_content,
@@ -615,7 +534,7 @@ def _resolve_commit(
                     )
                     if hash_error:
                         return _CommitResolution(CommitResolution.UNRESOLVED, error=hash_error)
-                actual_entry, tree_error = _tree_entry_at_commit(project_root, commit_id, write.relative_path)
+                actual_entry, tree_error = tree_entry_at_commit(project_root, commit_id, write.relative_path)
                 if tree_error:
                     return _CommitResolution(CommitResolution.UNRESOLVED, error=tree_error)
                 actual_blob = actual_entry.blob if actual_entry is not None else None
@@ -631,28 +550,37 @@ def _resolve_commit(
 
 def _restore_failed_index(
     project_root: Path,
+    slug: str,
     paths: tuple[str, ...],
-    residue: tuple[_FoldResidue, ...],
+    residue: tuple[FoldResidue, ...],
 ) -> None:
-    """Restore ordinary paths and only still-owned fold residue in the index."""
+    """Restore ordinary paths and only still-owned fold residue in the index.
+
+    Raises ``_IndexRestoreFault`` when a restore is still refused after lock recovery.
+    """
     residue_by_path = {evidence.write.relative_path: evidence for evidence in residue}
     ordinary_paths = tuple(path for path in paths if path not in residue_by_path)
-    _restore_index(project_root, ordinary_paths)
+    _require_index_restored(slug, _restore_index(project_root, ordinary_paths))
     safe_residue_paths = tuple(
-        path for path in paths if path in residue_by_path and _residue_is_intact(project_root, residue_by_path[path])
+        path for path in paths if path in residue_by_path and residue_is_intact(project_root, residue_by_path[path])
     )
-    _restore_index(project_root, safe_residue_paths)
+    _require_index_restored(slug, _restore_index(project_root, safe_residue_paths))
+
+
+def _require_index_restored(slug: str, outcome: _IndexRestore) -> None:
+    if not outcome.restored:
+        raise _IndexRestoreFault(slug, EMPTY_PATH, 0, INDEX_RESTORE_REASON_TEMPLATE.format(error=outcome.error))
 
 
 def _restore_transaction_sources(
     project_root: Path,
     slug: str,
     apply_plan: ReconciliationPlan,
-    residue: tuple[_FoldResidue, ...],
+    residue: tuple[FoldResidue, ...],
 ) -> None:
     """Undo applied writes and restore only residue that still matches its transaction evidence."""
     restore_reconciliation_plan(apply_plan)
-    safe_writes = tuple(evidence.write for evidence in residue if _residue_is_intact(project_root, evidence))
+    safe_writes = tuple(evidence.write for evidence in residue if residue_is_intact(project_root, evidence))
     if safe_writes:
         residue_plan = ReconciliationPlan(
             slug=slug,
@@ -668,32 +596,32 @@ def _commit_plan(
     plan: ReconciliationPlan,
     staged_before: set[str],
     transition_id: str,
-    residue: tuple[_FoldResidue, ...] = (),
+    residue: tuple[FoldResidue, ...] = (),
 ) -> _CommitPlanResult:
     """Stage and commit the exact pathset, resolving uncertain command results."""
     paths = _relative_paths(plan)
     if not paths:
         return _CommitPlanResult(None)
     for evidence in residue:
-        if not _residue_is_intact(project_root, evidence):
+        if not residue_is_intact(project_root, evidence):
             _raise_dirty_path(slug, evidence.write)
     add_code, _add_output, add_error = _run_git_cmd([*GIT_ADD_ARGS, *paths], cwd=str(project_root))
     if add_code != 0:
-        _restore_failed_index(project_root, paths, residue)
+        _restore_failed_index(project_root, slug, paths, residue)
         raise ReconciliationFault(slug, "", 0, add_error or STAGE_REASON)
     staged_after = git_name_set(project_root, list(GIT_CACHED_NAME_ARGS))
     if staged_after != staged_before | set(paths):
-        _restore_failed_index(project_root, paths, residue)
+        _restore_failed_index(project_root, slug, paths, residue)
         raise ReconciliationFault(slug, "", 0, STAGED_SET_REASON)
     previous_head_code, previous_head_output, previous_head_error = _run_git_cmd(
         list(GIT_HEAD_ARGS), cwd=str(project_root)
     )
     if previous_head_code != 0:
-        _restore_failed_index(project_root, paths, residue)
+        _restore_failed_index(project_root, slug, paths, residue)
         raise ReconciliationFault(slug, "", 0, previous_head_error or COMMIT_REASON)
     previous_head = previous_head_output.strip()
     if not previous_head:
-        _restore_failed_index(project_root, paths, residue)
+        _restore_failed_index(project_root, slug, paths, residue)
         raise ReconciliationFault(slug, "", 0, COMMIT_REASON)
     message = COMMIT_MESSAGE_WITH_TRANSITION_TEMPLATE.format(
         subject=COMMIT_MESSAGE_TEMPLATE.format(slug=slug),
@@ -702,9 +630,7 @@ def _commit_plan(
             transition_id=transition_id,
         ),
     )
-    commit_code, _commit_output, commit_error = _run_git_cmd(
-        [*GIT_COMMIT_ARGS, message, "--", *paths], cwd=str(project_root)
-    )
+    commit_code, commit_error = _run_commit(project_root, [*GIT_COMMIT_ARGS, message, "--", *paths])
     resolution = _resolve_commit(project_root, plan, transition_id, previous_head)
     if commit_code != 0:
         logger.warning(
@@ -718,7 +644,7 @@ def _commit_plan(
         )
         if resolution.outcome is CommitResolution.LANDED:
             return _CommitPlanResult(resolution.commit)
-        _restore_failed_index(project_root, paths, residue)
+        _restore_failed_index(project_root, slug, paths, residue)
         if resolution.outcome is CommitResolution.NOT_LANDED:
             return _CommitPlanResult(
                 None,
@@ -787,7 +713,7 @@ def _format_reconciliation_writes(
                         formatted_write = formatted_writes.get(evidence.write.relative_path)
                         if formatted_write is None or formatted_write.rendered_content is None:
                             continue
-                        formatted_blob, hash_error = _expected_blob_id(
+                        formatted_blob, hash_error = expected_blob_id(
                             project_root,
                             formatted_write.relative_path,
                             formatted_write.rendered_content,
@@ -817,7 +743,7 @@ def _apply_commit_with_compensation(
     transition_id: str,
     *,
     apply_plan: ReconciliationPlan | None = None,
-    residue: tuple[_FoldResidue, ...] = (),
+    residue: tuple[FoldResidue, ...] = (),
 ) -> _ApplyCommitOutcome:
     """Apply one plan and restore its sources if its commit step faults."""
     writes_to_apply = apply_plan or plan
@@ -852,6 +778,8 @@ def _apply_commit_with_compensation(
             _restore_transaction_sources(project_root, slug, writes_to_apply, residue)
     try:
         result = _commit_plan(project_root, slug, plan, staged_before, transition_id, residue)
+    except _IndexRestoreFault:
+        raise
     except ReconciliationFault:
         _restore_transaction_sources(project_root, slug, writes_to_apply, residue)
         raise

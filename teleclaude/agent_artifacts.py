@@ -18,6 +18,7 @@ import os
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import cached_property
 from pathlib import Path
 from tempfile import TemporaryFile
 
@@ -38,6 +39,7 @@ __all__ = [
     "ArtifactSource",
     "ArtifactTier",
     "CommandRetirementCompanion",
+    "ReachFacts",
     "UnclassifiedSourceError",
     "all_sources",
     "boundary_violations",
@@ -143,18 +145,44 @@ def is_mother_project(project_root: Path) -> bool:
     return git_common_root(project_root).resolve() == git_common_root(REPO_ROOT).resolve()
 
 
-def reach_ok(project_root: Path, source: ArtifactSource) -> bool:
-    """Return whether ``project_root`` may publish ``source``."""
+@dataclass(frozen=True)
+class ReachFacts:
+    """The inputs of the reach rule that stay fixed for one project root.
+
+    Each fact is read on first use and kept, so a pass that checks many sources asks the
+    repository and the root's declaration once.
+    """
+
+    project_root: Path
+
+    @cached_property
+    def is_mother(self) -> bool:
+        """Whether the root is (or shares a checkout with) Mother."""
+        return is_mother_project(self.project_root)
+
+    @cached_property
+    def publishes(self) -> frozenset[str]:
+        """The domain slugs the root declares in ``business.publishes``."""
+        return frozenset(publishes_for_root(self.project_root))
+
+
+def reach_ok(project_root: Path, source: ArtifactSource, facts: ReachFacts | None = None) -> bool:
+    """Return whether ``project_root`` may publish ``source``.
+
+    A caller checking many sources passes one ``ReachFacts`` for the root; without it the
+    facts are read for this call alone.
+    """
     if source.reach is ArtifactReach.SELF:
         return True
+    reach_facts = facts or ReachFacts(project_root)
     if source.reach is ArtifactReach.MOTHER_ONLY:
-        return is_mother_project(project_root)
-    return source.domain in publishes_for_root(project_root)
+        return reach_facts.is_mother
+    return source.domain in reach_facts.publishes
 
 
-def reach_violation(project_root: Path, source: ArtifactSource) -> str | None:
+def reach_violation(project_root: Path, source: ArtifactSource, facts: ReachFacts | None = None) -> str | None:
     """Return a human-readable reach-violation message, or ``None`` when in reach."""
-    if reach_ok(project_root, source):
+    if reach_ok(project_root, source, facts):
         return None
     if source.reach is ArtifactReach.MOTHER_ONLY:
         return f"{source.entrypoint} is a Mother-only agent-artifact source; this project may not publish it"

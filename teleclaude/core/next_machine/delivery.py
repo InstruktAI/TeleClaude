@@ -30,6 +30,9 @@ logger = get_logger(__name__)
 
 GitNameSetFailureHandler = Callable[[list[str], str], None]
 
+GIT_COMMAND_TIMEOUT_SECONDS = 30
+GIT_TIMEOUT_ERROR_TEMPLATE = "timeout after {timeout}s"
+
 _WORKTREE_DETACH_FAILED = "worktree detachment failed for %s: %s"
 _WORKTREE_TRASH_DIR = ".trash"
 _WORKTREE_TRASH_ENTRY_TEMPLATE = "{slug}-{nonce}"
@@ -41,7 +44,7 @@ def _run_git_cmd(
     args: list[str],
     *,
     cwd: str,
-    timeout: float | None = 30,
+    timeout: float | None = GIT_COMMAND_TIMEOUT_SECONDS,
     preserve_stdout_newlines: bool = False,
 ) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
@@ -62,7 +65,7 @@ def _run_git_cmd(
     except GitCommandError as exc:
         if timeout is not None and "timeout" in str(exc).lower():
             logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
-            return 1, "", f"timeout after {timeout}s"
+            return 1, "", GIT_TIMEOUT_ERROR_TEMPLATE.format(timeout=timeout)
         rc = exc.status if isinstance(exc.status, int) else 1
         return rc, exc.stdout or "", exc.stderr or ""
 

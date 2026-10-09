@@ -9,6 +9,7 @@ import frontmatter
 
 from teleclaude import agent_artifacts
 from teleclaude.constants import ArtifactKind
+from teleclaude.docs_publishers import publisher_resolution
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     _as_str_list,
@@ -286,6 +287,7 @@ def _selected_artifacts(
     """
     selected: dict[Path, tuple[ArtifactKind, Path]] = {}
     findings: list[str] = []
+    reach_facts = agent_artifacts.ReachFacts(project_root)
     for raw_path in paths:
         path = Path(raw_path)
         if not path.is_absolute():
@@ -297,7 +299,7 @@ def _selected_artifacts(
             continue
         if source is None:
             continue
-        violation = agent_artifacts.reach_violation(project_root, source)
+        violation = agent_artifacts.reach_violation(project_root, source, reach_facts)
         if violation is not None:
             findings.append(violation)
             continue
@@ -315,8 +317,9 @@ def _all_artifacts(project_root: Path) -> tuple[list[tuple[Path, ArtifactKind, P
     """
     artifacts: dict[Path, tuple[ArtifactKind, Path]] = {}
     findings: list[str] = list(agent_artifacts.boundary_violations(project_root))
+    reach_facts = agent_artifacts.ReachFacts(project_root)
     for source in agent_artifacts.all_sources(project_root):
-        violation = agent_artifacts.reach_violation(project_root, source)
+        violation = agent_artifacts.reach_violation(project_root, source, reach_facts)
         if violation is not None:
             findings.append(violation)
             continue
@@ -326,11 +329,19 @@ def _all_artifacts(project_root: Path) -> tuple[list[tuple[Path, ArtifactKind, P
 
 
 def validate_all_artifacts(project_root: Path, *, paths: Sequence[Path | str] | None = None) -> list[str]:
-    """Validate all artifacts, or only artifacts selected by ``paths``."""
+    """Validate all artifacts, or only artifacts selected by ``paths``.
+
+    The pass reads publisher ownership once, so every reference it resolves shares one registry.
+    """
     try:
-        artifacts, errors = _all_artifacts(project_root) if paths is None else _selected_artifacts(project_root, paths)
+        with publisher_resolution(project_root):
+            return _validate_artifacts(project_root, paths)
     except ValueError as exc:
         return [str(exc)]
+
+
+def _validate_artifacts(project_root: Path, paths: Sequence[Path | str] | None) -> list[str]:
+    artifacts, errors = _all_artifacts(project_root) if paths is None else _selected_artifacts(project_root, paths)
     for entrypoint, kind, owner_root in artifacts:
         if not entrypoint.is_file():
             continue
