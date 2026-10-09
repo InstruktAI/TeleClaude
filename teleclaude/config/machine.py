@@ -81,7 +81,10 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     except (OSError, yaml.YAMLError) as error:
         raise ConfigLoadError(_READ_ERROR.format(path=path, error=error), document=path) from error
     raw_user_config = parsed if isinstance(parsed, dict) else {}
-    migrated = upcast_for_read(path, raw_user_config, subject=SubjectRef(ConfigSubjectKind.COMPUTER))
+    try:
+        migrated = upcast_for_read(path, raw_user_config, subject=SubjectRef(ConfigSubjectKind.COMPUTER))
+    except ValueError as error:
+        raise ConfigLoadError(_READ_ERROR.format(path=path, error=error), document=path) from error
     return build_config_from_raw(migrated, path.parent, config_source=path)
 
 

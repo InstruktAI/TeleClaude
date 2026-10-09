@@ -64,6 +64,7 @@ _MAINTENANCE_DRAIN_STARTED_EVENT = "post_commit_maintenance_drain_started"
 _MAINTENANCE_DRAIN_FINISHED_EVENT = "post_commit_maintenance_drain_finished"
 _MAINTENANCE_ACTION_STARTED_EVENT = "post_commit_maintenance_action_started"
 _MAINTENANCE_ACTION_FINISHED_EVENT = "post_commit_maintenance_action_finished"
+_SECRET_DISCOVERY_FAILED_EVENT = "post_commit_maintenance_secret_discovery_failed"
 _OUTPUT_WITHHELD = "output withheld: the configuration that declares its secrets does not load ({reason})"
 _MAINTENANCE_ACTION_INTERRUPTED_EVENT = "post_commit_maintenance_action_interrupted"
 _MAINTENANCE_ACTION_RETRIED_EVENT = "post_commit_maintenance_action_retried"
@@ -425,6 +426,11 @@ def _secret_masker(root: Path) -> Callable[[str], str]:
                 secrets = declared_secret_values(root)
             except ConfigLoadError as error:
                 unknown = describe_load_error(error)
+            # Fail closed: an unforeseen discovery failure withholds the output, and reporting a
+            # failure never aborts the drain.
+            except Exception as error:
+                unknown = type(error).__name__
+                logger.error(_SECRET_DISCOVERY_FAILED_EVENT, project_root=str(root), error_kind=unknown)
         if secrets is None:
             return _OUTPUT_WITHHELD.format(reason=unknown)
         return mask_secret_values(output, secrets)

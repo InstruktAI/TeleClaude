@@ -311,9 +311,14 @@ def load_project_config(path: Path) -> ProjectConfig:
     """
     config = load_config(path, ProjectConfig, ConfigKind.PROJECT, path.parent)
     if path.exists():
-        require_home_owner(
-            path.parent, company=config.company, person=config.person, person_slugs=registered_person_slugs()
-        )
+        try:
+            require_home_owner(
+                path.parent, company=config.company, person=config.person, person_slugs=registered_person_slugs()
+            )
+        except ValueError as exc:
+            if isinstance(exc, ConfigLoadError):
+                raise
+            raise ConfigLoadError(str(exc), document=path) from exc
     return config
 
 
