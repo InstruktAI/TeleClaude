@@ -282,7 +282,8 @@ sequenceDiagram
 - **A command that sends several requests is refused partway.** Targetless
   `telec sessions end` closes children one request at a time. A refusal or lost daemon
   after earlier closures were accepted exits non-zero with those closures done; the error
-  names the children that remain and, for a draining or unreachable daemon, carries the
+  names the children not yet confirmed closed, which can include some it closed in that
+  pass, and, for a draining or unreachable daemon, carries the
   same wait-and-run-again instruction, which is safe because the command is idempotent.
 
 <!-- /planned:cli-accept-or-retry -->
