@@ -13,9 +13,7 @@ from types import UnionType
 from typing import Final, Union, get_args, get_origin
 
 from teleclaude.closed_model import ClosedModel
-
-_PLACEHOLDER_PREFIX: Final = "${"
-_PLACEHOLDER_SUFFIX: Final = "}"
+from teleclaude.config._environment import whole_reference_name
 
 DROP: Final = object()
 """Returned by a cleaner for a value that is absent and must be left out of its container."""
@@ -28,7 +26,7 @@ NO_OVERRIDES: Final[FieldOverrides] = {}
 
 def is_unresolved(value: object) -> bool:
     """Whether a value is a whole-value reference that resolved to nothing on this computer."""
-    return isinstance(value, str) and value.startswith(_PLACEHOLDER_PREFIX) and value.endswith(_PLACEHOLDER_SUFFIX)
+    return isinstance(value, str) and whole_reference_name(value) is not None
 
 
 def drop_unresolved_fields(value: object, model_type: type[ClosedModel], overrides: FieldOverrides) -> object:

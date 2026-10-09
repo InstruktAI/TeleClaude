@@ -67,7 +67,7 @@ def environment_reference_at_path(value: object, path: tuple[str, ...]) -> str |
             current = current[int(part)]
         else:
             return None
-    return _placeholder_name(current) if isinstance(current, str) else None
+    return whole_reference_name(current) if isinstance(current, str) else None
 
 
 def expand_environment_references(
@@ -118,7 +118,7 @@ def _expand_environment_references(
         return value
     # Only a value that is one whole reference can be absent; a reference embedded in a longer
     # value has no absent form, so it resolves or fails.
-    preserve_whole_value = preserve_unresolved and _placeholder_name(value) is not None
+    preserve_whole_value = preserve_unresolved and whole_reference_name(value) is not None
     return _ENV_REFERENCE_PATTERN.sub(
         lambda match: _resolve_reference(match.group(1), environment, config_path, preserve_whole_value, path), value
     )
@@ -253,7 +253,7 @@ def _reconcile(
     references = _reference_names(raw)
     if not references:
         return effective if effective is not None else raw
-    name = _placeholder_name(raw)
+    name = whole_reference_name(raw)
     if name is None:
         if effective is not None and str(effective) == _expand_embedded_reference_value(raw, environment):
             return raw
@@ -269,11 +269,10 @@ def _reconcile(
     return raw
 
 
-def _placeholder_name(value: str) -> str | None:
-    if value.startswith(_ENV_REFERENCE_PREFIX) and value.endswith(_ENV_REFERENCE_SUFFIX):
-        name = value[len(_ENV_REFERENCE_PREFIX) : -len(_ENV_REFERENCE_SUFFIX)]
-        return name or None
-    return None
+def whole_reference_name(value: str) -> str | None:
+    """Return the name when the whole value is exactly one ``${NAME}`` reference, else ``None``."""
+    match = _ENV_REFERENCE_PATTERN.fullmatch(value)
+    return match.group(1) if match is not None else None
 
 
 def _reference_names(value: str) -> list[str]:
@@ -344,7 +343,7 @@ def _matching_raw_list_item(
 
 def _matches_effective_value(raw: object, effective: object, environment: Mapping[str, str]) -> bool:
     """Match a raw item by its non-placeholder structure while treating references as values."""
-    if isinstance(raw, str) and _placeholder_name(raw) is not None:
+    if isinstance(raw, str) and whole_reference_name(raw) is not None:
         return True
     if isinstance(raw, str) and isinstance(effective, str) and _reference_names(raw):
         return _expand_embedded_reference_value(raw, environment) == effective
