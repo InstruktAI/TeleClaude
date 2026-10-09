@@ -36,6 +36,7 @@ from teleclaude.config.machine_config_mutation import (
 )
 from teleclaude.config.migrations import upcast
 from teleclaude.config.migrations._runner import upcast_for_read
+from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.person_registry import without_person
 from teleclaude.config.person_resource import (
     append_person_candidate,
@@ -433,7 +434,7 @@ def register_first_person(name: str, email: str, *, request_id: str | None = Non
                             CommitEntry(
                                 person_txn,
                                 person_txn.read_text(),
-                                render_declared_config(ConfigKind.PERSON, {_SLUG_KEY: slug}),
+                                render_declared_config(ConfigKind.PERSON, new_person_document(slug, HUMAN_ROLE_ADMIN)),
                             ),
                         ]
                     )

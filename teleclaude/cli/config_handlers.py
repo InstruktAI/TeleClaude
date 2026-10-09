@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 import teleclaude.config as _tc_config_module
 from teleclaude.config._environment import write_environment_value
@@ -31,15 +31,17 @@ from teleclaude.config.loader import (
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
 from teleclaude.config.machine_config_mutation import inspect_machine_config
+from teleclaude.config.notification_interests import interest_faults
 from teleclaude.config.person_secrets import (
     PersonMcpSecretStatus,
     clear_person_mcp_secret,
     list_person_mcp_secret_statuses,
     replace_person_mcp_secret,
 )
-from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
+from teleclaude.config.schema import GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
+from teleclaude.domains import valid_domains
 from teleclaude.mcp.registry import load_effective_registry
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_manifest import load_registered_roots
@@ -48,6 +50,7 @@ logger = get_logger(__name__)
 
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
 _PERSON_MCP_SECRET_MANAGEMENT_FAILED = "Personal MCP secret management failed"
+_INTEREST_FAULT_SUGGESTION = "Check the notifications block in {path}"
 _ADOPT_UNDECLARED_PROJECT = "Run from {path}: telec config project adopt"
 
 
@@ -56,17 +59,6 @@ class PersonMcpSecretManagementError(ValueError):
 
 
 # --- Data classes ---
-
-
-@dataclass
-class ConfigArea:
-    """A discoverable config section for the interactive menu."""
-
-    name: str  # e.g. "adapters.telegram"
-    label: str  # e.g. "Telegram"
-    category: Literal["adapter", "people", "notifications", "environment"]  # e.g. "adapter"
-    configured: bool
-    model_class: type[BaseModel] | None
 
 
 @dataclass
@@ -181,6 +173,7 @@ def validate_all() -> list[ValidationResult]:
     # Validate each person config. Resolve the on-disk path by slug (the canonical
     # person-overlay location, people/{slug}/teleclaude.yml), with the resolver's
     # legacy name/username fallback for folders not yet renamed.
+    published_domains = valid_domains()
     for person in config.people:
         person_path = find_person_config_path(person, _PEOPLE_DIR)
         if person_path is None:
@@ -195,8 +188,16 @@ def validate_all() -> list[ValidationResult]:
             )
             continue
         try:
-            load_person_config(person_path)
-            results.append(ValidationResult(area=f"person:{person.name}", passed=True))
+            person_config = load_person_config(person_path)
+            faults = interest_faults(person_config.notifications, published_domains)
+            results.append(
+                ValidationResult(
+                    area=f"person:{person.name}",
+                    passed=not faults,
+                    errors=[fault.describe() for fault in faults],
+                    suggestions=[_INTEREST_FAULT_SUGGESTION.format(path=person_path)] if faults else [],
+                )
+            )
         except (ValueError, ValidationError) as e:
             results.append(
                 ValidationResult(
@@ -372,106 +373,3 @@ def clear_person_mcp_secret_value(person_slug: str, name: str) -> None:
         clear_person_mcp_secret(person_slug, name)
     except (OSError, ValueError) as exc:
         raise PersonMcpSecretManagementError(_PERSON_MCP_SECRET_MANAGEMENT_FAILED) from exc
-
-
-# --- Schema discovery ---
-
-
-def _get_adapter_names() -> list[str]:
-    """Discover adapter names from CredsConfig fields."""
-    names: list[str] = []
-    for field_name, field_info in CredsConfig.model_fields.items():
-        if field_info.annotation is not None:
-            names.append(field_name)
-    return sorted(names)
-
-
-def discover_config_areas() -> list[ConfigArea]:
-    """Inspect schema models to find available config areas.
-
-    Returns areas for: adapters (from CredsConfig), people, notifications, environment.
-    """
-    areas: list[ConfigArea] = []
-
-    try:
-        config = get_global_config()
-    except (ValueError, ValidationError):
-        config = GlobalConfig(kind=ConfigKind.GLOBAL)
-
-    # Adapter areas from CredsConfig fields
-    for adapter_name in _get_adapter_names():
-        configured = False
-        for person in config.people:
-            try:
-                pc = get_person_config(person.name)
-                if getattr(pc.creds, adapter_name, None) is not None:
-                    configured = True
-                    break
-            except (ValueError, ValidationError):
-                continue
-
-        field_info = CredsConfig.model_fields[adapter_name]
-        model_class = field_info.annotation
-        # Unwrap Optional
-        if hasattr(model_class, "__args__"):
-            model_class = next(
-                (a for a in model_class.__args__ if a is not type(None)),
-                model_class,
-            )
-
-        areas.append(
-            ConfigArea(
-                name=f"adapters.{adapter_name}",
-                label=adapter_name.capitalize(),
-                category="adapter",
-                configured=configured,
-                model_class=model_class,
-            )
-        )
-
-    # People area
-    areas.append(
-        ConfigArea(
-            name="people",
-            label="People",
-            category="people",
-            configured=len(config.people) > 0,
-            model_class=PersonEntry,
-        )
-    )
-
-    # Notifications area
-    has_notifications = False
-    for person in config.people:
-        try:
-            pc = get_person_config(person.name)
-            if pc.subscriptions:
-                has_notifications = True
-                break
-        except (ValueError, ValidationError):
-            continue
-
-    areas.append(
-        ConfigArea(
-            name="notifications",
-            label="Notifications",
-            category="notifications",
-            configured=has_notifications,
-            model_class=PersonConfig,
-        )
-    )
-
-    # Environment area
-    env_status = check_env_vars()
-    all_set = all(s.is_set for s in env_status) if env_status else True
-    areas.append(
-        ConfigArea(
-            name="environment",
-            label="Environment",
-            category="environment",
-            configured=all_set,
-            model_class=None,
-        )
-    )
-
-    return areas

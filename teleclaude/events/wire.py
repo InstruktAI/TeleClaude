@@ -19,11 +19,9 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field
 
-from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.models import HumanActionIntent, JsonDict
 from teleclaude.events.envelope import (
     EventHome,
@@ -91,7 +89,8 @@ class LegacyFacts(BaseModel):
     """The notification-path facts older computers read, stated by the producer at emission.
 
     They are not event facts: no typed event, received attribute or declaration
-    carries them. The notification projector is their only reader.
+    carries them. Only an older computer's notification projector reads them, and they leave the
+    wire once the fleet answers that no live computer does.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -118,10 +117,14 @@ def _legacy_payload_fields(event_type: str) -> frozenset[str]:
     return LEGACY_ONLY_PAYLOAD_FIELDS.get(event_type, frozenset())
 
 
-def encode(event: ReceivedEvent, legacy: LegacyFacts) -> dict[str, str]:
-    """Serialize one event for the platform stream: its attributes, and every key older computers read."""
+def encode(event: ReceivedEvent, legacy: LegacyFacts, *, omit_notification_facts: bool = False) -> dict[str, str]:
+    """Serialize one event for the platform stream: its attributes, and every key older computers read.
+
+    With `omit_notification_facts` the keys only an older computer's notification path reads — the
+    visibility, the human action and the legacy-only data fields — are left out; readers default them.
+    """
     session_ids = [reference.identity for reference in event.related if reference.is_kind(ReferenceKind.SESSION)]
-    return {
+    entry = {
         _KEY_TYPE: event.type,
         _KEY_SOURCE: event.source,
         _KEY_SUBJECT: event.subject.to_token() if event.subject is not None else _EMPTY,
@@ -131,7 +134,7 @@ def encode(event: ReceivedEvent, legacy: LegacyFacts) -> dict[str, str]:
         _KEY_CAUSATIONID: event.causationid or _EMPTY,
         _KEY_ID: event.id,
         _KEY_TIME: event.time.isoformat(),
-        _KEY_DATA: json.dumps({**event.data, **legacy.payload_extras}),
+        _KEY_DATA: json.dumps(event.data if omit_notification_facts else {**event.data, **legacy.payload_extras}),
         _KEY_VERSION: str(PLATFORM_STREAM_VERSION),
         _KEY_EVENT: earlier_type_name(event.type),
         _KEY_PRODUCER: legacy.producer,
@@ -151,6 +154,10 @@ def encode(event: ReceivedEvent, legacy: LegacyFacts) -> dict[str, str]:
         _KEY_TERMINAL_WHEN: _EMPTY,
         _KEY_RESOLUTION_SHAPE: _EMPTY,
     }
+    if omit_notification_facts:
+        del entry[_KEY_VISIBILITY]
+        del entry[_KEY_HUMAN_ACTION]
+    return entry
 
 
 def _text(value: bytes | str) -> str:
@@ -250,42 +257,6 @@ def decode(data: StreamEntry, entry_id: str = _EMPTY) -> StreamEvent:
         causationid=attributes.causationid,
         legacy=legacy,
     )
-
-
-def _dumped_token(value: JsonValue, default: str) -> str:
-    """Return the token of a home or owner as the earlier envelope's JSON dump stored it."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict) and isinstance(value.get("kind"), str) and isinstance(value.get("instance"), str):
-        return SubjectRef(ConfigSubjectKind(str(value["kind"])), str(value["instance"])).to_token()
-    return default
-
-
-def stream_event_from_envelope_dump(dump: JsonDict) -> StreamEvent:
-    """Bring a stored JSON dump of the earlier envelope model forward to a stream event.
-
-    The dump's fields are the earlier stream keys; it is upcast exactly like an older
-    computer's stream entry, so one stored shape remains for a single reader.
-    """
-    human_action = dump.get(_KEY_HUMAN_ACTION)
-    entry = {
-        _KEY_EVENT: str(dump[_KEY_EVENT]),
-        _KEY_ID: str(dump.get(_KEY_ID) or uuid4()),
-        _KEY_PRODUCER: str(dump[_KEY_PRODUCER]),
-        _KEY_ORIGINATING_COMPUTER: str(dump.get(_KEY_ORIGINATING_COMPUTER) or _EMPTY),
-        _KEY_LEGACY_HOME: _dumped_token(dump.get(_KEY_LEGACY_HOME), EventHomeMarker.UNKNOWN.value),
-        _KEY_LEGACY_HOME_OWNER: _dumped_token(dump.get(_KEY_LEGACY_HOME_OWNER), _DEFAULT_HOME_OWNER),
-        _KEY_TIME: str(dump[_KEY_TIME]),
-        _KEY_IDEMPOTENCY: str(dump.get(_KEY_IDEMPOTENCY) or _EMPTY),
-        _KEY_LEVEL: str(dump[_KEY_LEVEL]),
-        _KEY_DOMAIN: str(dump.get(_KEY_DOMAIN) or _EMPTY),
-        _KEY_ENTITY: str(dump.get(_KEY_ENTITY) or _EMPTY),
-        _KEY_DESCRIPTION: str(dump.get(_KEY_DESCRIPTION) or _EMPTY),
-        _KEY_VISIBILITY: str(dump.get(_KEY_VISIBILITY) or EventVisibility.LOCAL.value),
-        _KEY_DATA: json.dumps(dump.get(_KEY_DATA) or {}),
-        _KEY_HUMAN_ACTION: json.dumps(human_action) if human_action else _EMPTY,
-    }
-    return decode(entry)
 
 
 #: The platform stream's codec.

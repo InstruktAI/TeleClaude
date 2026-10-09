@@ -1,29 +1,19 @@
-"""Pipeline runtime — the sequential executor of the notification path's stages."""
+"""Pipeline context — the shared services a pipeline cartridge is invoked with."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from importlib import import_module
-from typing import TYPE_CHECKING, Any, Protocol
-
-from instrukt_ai_logging import get_logger
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
 
 from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.wire import StreamEvent
 
 if TYPE_CHECKING:
-    from teleclaude.events.cartridges.trust import TrustConfig
     from teleclaude.events.db import EventDB
     from teleclaude.events.producer import EventProducer
 
-logger = get_logger(__name__)
 _FAILING_STAGE_NOTE_PREFIX = "teleclaude_failing_stage="
-
-
-def _default_trust_config() -> Any:
-    """Build the default trust configuration lazily to avoid import cycles."""
-    return import_module("teleclaude.events.cartridges.trust").TrustConfig()
 
 
 @dataclass
@@ -32,8 +22,6 @@ class PipelineContext:
 
     catalog: EventCatalog
     db: EventDB
-    push_callbacks: list[Callable[..., object]] = field(default_factory=list)
-    trust_config: TrustConfig = field(default_factory=_default_trust_config)
     producer: EventProducer | None = None
     ai_client: object = None
     emit: Callable[..., Awaitable[object]] | None = None
@@ -61,29 +49,3 @@ def failing_stage_from_exception(exc: BaseException) -> str | None:
         if isinstance(note, str) and note.startswith(_FAILING_STAGE_NOTE_PREFIX):
             return note.removeprefix(_FAILING_STAGE_NOTE_PREFIX)
     return None
-
-
-class Pipeline:
-    """Execute the system pipeline: the notification path from trust to the notification projector."""
-
-    def __init__(self, cartridges: list[Cartridge], context: PipelineContext) -> None:
-        self._cartridges = cartridges
-        self._context = context
-
-    def register(self, cartridge: Cartridge) -> None:
-        """Append a cartridge to the end of the processing chain."""
-        self._cartridges.append(cartridge)
-
-    async def execute(self, event: StreamEvent, /) -> StreamEvent | None:
-        """Run an event through the system pipeline."""
-        current: StreamEvent | None = event
-        for cartridge in self._cartridges:
-            if current is None:
-                return None
-            try:
-                current = await cartridge.process(current, self._context)
-            except Exception as exc:
-                exc.add_note(f"{_FAILING_STAGE_NOTE_PREFIX}{cartridge.name}")
-                raise
-
-        return current

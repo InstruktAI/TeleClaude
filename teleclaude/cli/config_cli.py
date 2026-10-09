@@ -2,7 +2,6 @@
 
 Provides subcommands for AI agents and scripts to manage config:
   telec config env list|set
-  telec config notify NAME --telegram on|off
   telec config validate
 
 All subcommands support --json for machine-readable output.
@@ -19,7 +18,7 @@ from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help
-from teleclaude.cli.telec.surface import CONFIG_ENV_LIST, CONFIG_ENV_SET, CONFIG_NOTIFY, CONFIG_VALIDATE
+from teleclaude.cli.telec.surface import CONFIG_ENV_LIST, CONFIG_ENV_SET, CONFIG_VALIDATE
 from teleclaude.config._environment import write_environment_value
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.identity import get_identity_resolver
@@ -51,7 +50,6 @@ def handle_config_cli(args: list[str]) -> None:
 
     handlers = {
         "env": _handle_env,
-        "notify": _handle_notify,
         "validate": handle_validate,
     }
 
@@ -133,24 +131,6 @@ def _env_set(pairs: list[str], use_json: bool) -> None:
 def _write_env_var(env_file: Path, name: str, value: str) -> None:
     """Set or update a variable in the .env file."""
     write_environment_value(env_file, name, value)
-
-
-# --- Notify ---
-
-
-def _handle_notify(args: list[str]) -> None:
-    _check_customer_guard()
-    parsed = parse_command_args(CONFIG_NOTIFY, args)
-    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
-    msg = (
-        "Notification toggling has been replaced by per-subscription settings. "
-        "Edit subscriptions in person config instead."
-    )
-    if use_json:
-        print(json.dumps({"error": msg}))
-    else:
-        print(msg)
-    raise SystemExit(1)
 
 
 # --- Validate ---

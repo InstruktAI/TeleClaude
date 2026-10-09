@@ -12,8 +12,10 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.config import config
+from teleclaude.core.inbound.fleet import contraction_answer_from_heartbeats
 from teleclaude.core.models import JsonDict
 from teleclaude.core.operation_caller_identity import get_caller_session_id
+from teleclaude.core.reconciliation import INCIDENT_ALERTS_FEATURE_ID, ContractionAnswer
 from teleclaude.events.catalog import PlatformEvent
 from teleclaude.events.envelope import (
     EventHome,
@@ -57,11 +59,13 @@ class EventProducer:
         self,
         redis_client: Any,
         fact_resolver: EnvelopeFactResolver,
+        contraction_answer: ContractionAnswer | None = None,
         stream: str = "teleclaude:events",
         maxlen: int = 10000,
     ) -> None:
         self._redis = redis_client
         self._fact_resolver = fact_resolver
+        self._contraction_answer = contraction_answer
         self._stream = stream
         self._maxlen = maxlen
 
@@ -73,7 +77,15 @@ class EventProducer:
         of the facts the producer stated.
         """
         received = self._received_event(event)
-        return await self._append(received.type, encode(received, legacy), received.subject)
+        omit_notification_facts = await self._notification_facts_unread()
+        entry = encode(received, legacy, omit_notification_facts=omit_notification_facts)
+        return await self._append(received.type, entry, received.subject)
+
+    async def _notification_facts_unread(self) -> bool:
+        """Whether the fleet answers, now, that no live computer reads an event's notification facts."""
+        if self._contraction_answer is None:
+            return False
+        return await self._contraction_answer(INCIDENT_ALERTS_FEATURE_ID)
 
     def _received_event(self, event: PlatformEvent[Any, Any] | RelayedEvent) -> ReceivedEvent:
         """Add the facts only the boundary knows: source, time, caller session, project owner, and an id."""
@@ -152,7 +164,7 @@ def _build_producer_from_config() -> EventProducer:
         max_connections=redis_cfg.max_connections,
         socket_timeout=redis_cfg.socket_timeout,
     )
-    return EventProducer(client, cli_envelope_fact_resolver())
+    return EventProducer(client, cli_envelope_fact_resolver(), contraction_answer_from_heartbeats)
 
 
 def ensure_event_producer() -> EventProducer:

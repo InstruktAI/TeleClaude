@@ -1495,11 +1495,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 },
             ),
-            "notify": CommandDef(
-                desc="Toggle notification settings",
-                flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
-            ),
             "tts": CommandDef(
                 desc="Manage TTS dependency provisioning",
                 subcommands={
@@ -1936,7 +1931,6 @@ CODE_MAINTENANCE_RETRY = CLI_SURFACE["code"].subcommands["maintenance"].subcomma
 
 CONFIG_TTS_DEPROVISION = CLI_SURFACE["config"].subcommands["tts"].subcommands["deprovision"]
 CONFIG_VALIDATE = CLI_SURFACE["config"].subcommands["validate"]
-CONFIG_NOTIFY = CLI_SURFACE["config"].subcommands["notify"]
 CONFIG_ENV_LIST = CLI_SURFACE["config"].subcommands["env"].subcommands["list"]
 CONFIG_ENV_SET = CLI_SURFACE["config"].subcommands["env"].subcommands["set"]
 

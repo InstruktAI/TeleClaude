@@ -20,6 +20,7 @@ from teleclaude.config.migrations import (
     v013_declare_inbound_sources,
     v014_declare_maintenance_on_demand,
     v015_retire_event_domains,
+    v016_declare_notification_interests,
 )
 
 STEPS: Final = (
@@ -38,4 +39,5 @@ STEPS: Final = (
     v013_declare_inbound_sources,
     v014_declare_maintenance_on_demand,
     v015_retire_event_domains,
+    v016_declare_notification_interests,
 )

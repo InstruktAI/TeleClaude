@@ -37,8 +37,6 @@ from teleclaude.config import config
 from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.core.session_listing import snapshot_reached_by_reach
-from teleclaude.events.cartridges.notification import PushNotificationChange
-from teleclaude.events.delivery.message import format_notification_message
 from teleclaude.identity_reach import Reach, ReachCache, ReachResolutionError
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -46,7 +44,6 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
-    from teleclaude.events.db import EventDB
 
 logger = get_logger(__name__)
 
@@ -60,8 +57,6 @@ _REFRESH_COMPUTER_FIELD = "computer"
 _REFRESH_PROJECT_PATH_FIELD = "project_path"
 _REFRESH_SUBJECT_FIELD = "subject"
 _REFRESH_OWNER_FIELD = "owner"
-_NOTIFICATION_HOME_FIELD = "home"
-_NOTIFICATION_HOME_OWNER_FIELD = "home_owner"
 _REFRESH_PROJECTS_UPDATED_EVENT = "projects_updated"
 _REFRESH_COMPUTER_UPDATED_EVENT = "computer_updated"
 _REFRESH_PUSH_EVENT = "refresh"
@@ -92,11 +87,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         @property
         def cache(self) -> DaemonCache | None:
             """Expose the daemon cache for websocket helpers."""
-            raise NotImplementedError
-
-        @property
-        def _event_db(self) -> EventDB | None:
-            """Expose the event database for websocket helpers."""
             raise NotImplementedError
 
     async def _handle_websocket(
@@ -363,17 +353,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
                     await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
-            elif data_type == "notifications":
-                if self._event_db is not None:
-                    reach_cache = self._ws_reach_caches.get(websocket)
-                    if reach_cache is None:
-                        return
-                    rows = await self._event_db.list_notifications(reach_cache.get(), limit=50)
-                    await self._send_or_enqueue_payload(
-                        websocket,
-                        "notifications_initial",
-                        {"type": "notifications_initial", "notifications": rows},  # type: ignore[dict-item]
-                    )
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
@@ -850,65 +829,3 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             self._update_cache_interest()
 
         logger.debug("WebSocket client removed", extra={"client_id": id(websocket), "reason": reason})
-
-    async def _notification_push(
-        self,
-        change: PushNotificationChange,
-    ) -> None:
-        """Push a notification event to subscribed WebSocket clients when actionable and meaningful.
-
-        Debounce is an external-channel concern; the in-app WebSocket surface
-        always pushes immediately, so the trailing debounce fields are
-        accepted (for callback-signature parity) and ignored. An addressed
-        recipient is delivered through its own resolved channel instead of the
-        shared WebSocket broadcast, so an addressed row is skipped here.
-        """
-        if change.recipient is not None:
-            return
-        if self._event_db is None:
-            return
-        row = await self._event_db.get_notification(change.notification_id)
-        if row is None:
-            return
-        payload: dict[str, object] = {  # guard: loose-dict - WS payload
-            "type": "notification_created" if change.was_created else "notification_updated",
-            "event_type": change.event_type,
-            "notification": row,
-            "action_card": format_notification_message(change),
-            "metadata": {
-                "event_id": change.event_id,
-                "notification_id": change.notification_id,
-                "occurred_at": change.occurred_at,
-                "action_revision": change.human_action.action_revision if change.human_action else None,
-                "recipient": change.recipient,
-                "origin_session_id": change.human_action.origin_session_id if change.human_action else None,
-            },
-        }
-        # Collect clients subscribed to the "notifications" topic; send only to them.
-        # Using _broadcast_payload directly (not _schedule_refresh_broadcast) avoids the
-        # 250ms debounce that would coalesce back-to-back notification payloads.
-        subscribed: list[WebSocket] = []
-        seen: set[int] = set()
-        for ws, computer_subs in self._client_subscriptions.items():
-            if id(ws) in seen:
-                continue
-            for data_types in computer_subs.values():
-                if "notifications" in data_types:
-                    reach_cache = self._ws_reach_caches.get(ws)
-                    if reach_cache is None:
-                        break
-                    try:
-                        visible = reach_cache.get().admits(
-                            row.get(_NOTIFICATION_HOME_FIELD),
-                            row.get(_NOTIFICATION_HOME_OWNER_FIELD),
-                            None,
-                        )
-                    except ReachResolutionError as exc:
-                        asyncio.create_task(self._close_ws_for_reach_failure(ws, str(exc)))
-                        break
-                    if visible:
-                        subscribed.append(ws)
-                        seen.add(id(ws))
-                    break
-        if subscribed:
-            self._broadcast_payload("notification", payload, targets=subscribed)

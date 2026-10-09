@@ -111,7 +111,6 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.reminders import ReminderService
     from teleclaude.core.task_registry import TaskRegistry
-    from teleclaude.events.db import EventDB
 
 logger = get_logger(__name__)
 
@@ -144,7 +143,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._cache: DaemonCache | None = None  # Initialize private variable
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
-        self._event_db: EventDB | None = None
         self.mcp_runtimes = McpRuntimePool(
             repo_root=resolve_project_root(Path.cwd()),
             person_secret_resolver=resolve_person_mcp_secret_values,

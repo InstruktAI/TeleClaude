@@ -18,11 +18,11 @@ from teleclaude.config import config
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
 from teleclaude.config.schema import ConfigKind, MessagingChannel, PersonConfig, PersonEntry
 from teleclaude.core.db import db
-from teleclaude.core.organization import platform_admin_roster
-from teleclaude.events.delivery.session_address import (
+from teleclaude.core.integration.session_address import (
     SessionAddressMissed,
     resolve_session_conversation_url,
 )
+from teleclaude.core.organization import platform_admin_roster
 from teleclaude.paths import PEOPLE_DIR
 from teleclaude.services.discord import (
     DISCORD_MAX_MESSAGE_LENGTH,

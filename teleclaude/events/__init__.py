@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from teleclaude.events.consumers import Consumer, ConsumerRuntime, Interest
     from teleclaude.events.db import EventDB, get_event_db
     from teleclaude.events.envelope import EventLevel, EventVisibility, ReceivedEvent
-    from teleclaude.events.pipeline import Pipeline, PipelineContext
+    from teleclaude.events.pipeline import PipelineContext
     from teleclaude.events.processor import EventProcessor
     from teleclaude.events.producer import EventProducer, configure_producer, ensure_event_producer, publish_event
     from teleclaude.events.type_pattern import TypePattern
@@ -29,7 +29,6 @@ _EXPORTS = {
     "EventDeclaration": ("teleclaude.events.catalog", "EventDeclaration"),
     "EventVisibility": ("teleclaude.events.envelope", "EventVisibility"),
     "PlatformEvent": ("teleclaude.events.catalog", "PlatformEvent"),
-    "Pipeline": ("teleclaude.events.pipeline", "Pipeline"),
     "PipelineContext": ("teleclaude.events.pipeline", "PipelineContext"),
     "build_default_catalog": ("teleclaude.events.catalog", "build_default_catalog"),
     "configure_producer": ("teleclaude.events.producer", "configure_producer"),
@@ -62,7 +61,6 @@ __all__ = [
     "EventProducer",
     "EventVisibility",
     "Interest",
-    "Pipeline",
     "PipelineContext",
     "PlatformEvent",
     "ReceivedEvent",

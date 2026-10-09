@@ -131,7 +131,6 @@ class EnvelopeName(StrEnum):
     PEER = "peer"
     CALLER_IDENTITY = "caller_identity"
     REMINDER = "reminder"
-    ACTION = "action"
 
 
 class EnvelopeClosure(StrEnum):
@@ -156,7 +155,6 @@ class EnvelopeField(StrEnum):
     ROLE = "role"
     SESSION_ID = "session_id"
     SLUG = "slug"
-    TOPIC = "topic"
 
 
 class MachineRoleLabel(StrEnum):
@@ -183,7 +181,6 @@ class EnvelopeDefinition:
     xml_tag: str
     opening_pattern: re.Pattern[str] | None
     required_fields: frozenset[EnvelopeField] = frozenset()
-    output_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -210,7 +207,6 @@ _HANDOFF_ENVELOPE = EnvelopeName.HANDOFF
 _PEER_ENVELOPE = EnvelopeName.PEER
 _CALLER_IDENTITY_ENVELOPE = EnvelopeName.CALLER_IDENTITY
 _REMINDER_ENVELOPE = EnvelopeName.REMINDER
-_ACTION_ENVELOPE = EnvelopeName.ACTION
 _EMPTY_BRACKET_CLOSING = ""
 _CHECKPOINT_BRACKET_OPENING = "[TeleClaude Checkpoint]"
 _NOTIFICATION_BRACKET_OPENING = "[TeleClaude Notification]"
@@ -221,7 +217,6 @@ _PEER_BRACKET_OPENING = "[Peer ({session_id} · {author_token} · {occurred_at})
 _CALLER_IDENTITY_BRACKET_OPENING = "[{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _CALLER_IDENTITY_KEYED_SUFFIX = " · {occurrence_key}]"
 _REMINDER_BRACKET_OPENING = "[Reminder {slug} {occurrence_key}]"
-_ACTION_BRACKET_OPENING = "[Action ({topic} · {occurred_at})]"
 _CHECKPOINT_BRACKET_CLOSING = "[/TeleClaude Checkpoint]"
 _NOTIFICATION_BRACKET_CLOSING = "[/TeleClaude Notification]"
 _RESTART_CONTINUATION_BRACKET_CLOSING = "[/TeleClaude Restart Continuation]"
@@ -229,7 +224,6 @@ _HANDOFF_BRACKET_CLOSING = "[/TeleClaude Handoff]"
 _PEER_BRACKET_CLOSING = "[/TeleClaude - Peer]"
 _CALLER_IDENTITY_BRACKET_CLOSING = "[/{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _REMINDER_BRACKET_CLOSING = "[/Reminder {slug} {occurrence_key}]"
-_ACTION_BRACKET_CLOSING = "[/Action]"
 _CHECKPOINT_XML_TAG = "teleclaude-checkpoint"
 _NOTIFICATION_XML_TAG = "teleclaude-notification"
 _WAKE_XML_TAG = "teleclaude-wake"
@@ -238,7 +232,6 @@ _HANDOFF_XML_TAG = "teleclaude-handoff"
 _PEER_XML_TAG = "teleclaude-peer"
 _CALLER_IDENTITY_XML_TAG = "teleclaude-caller"
 _REMINDER_XML_TAG = "teleclaude-reminder"
-_ACTION_XML_TAG = "teleclaude-action"
 _CHECKPOINT_OPENING_RE = re.compile(re.escape(_CHECKPOINT_BRACKET_OPENING))
 _NOTIFICATION_OPENING_RE = re.compile(re.escape(_NOTIFICATION_BRACKET_OPENING))
 _WAKE_OPENING_RE = re.compile(re.escape(_WAKE_BRACKET_OPENING))
@@ -255,7 +248,6 @@ _IDENTITY_FIELDS = frozenset(
 )
 _PEER_FIELDS = frozenset({EnvelopeField.SESSION_ID, EnvelopeField.AUTHOR_TOKEN, EnvelopeField.OCCURRED_AT})
 _REMINDER_FIELDS = frozenset({EnvelopeField.SLUG, EnvelopeField.OCCURRENCE_KEY})
-_ACTION_FIELDS = frozenset({EnvelopeField.TOPIC, EnvelopeField.OCCURRED_AT})
 _EMPTY_ENVELOPE_FIELDS: Mapping[EnvelopeField, str] = MappingProxyType({})
 _PLATFORM_LABEL_ENVELOPES: Mapping[PlatformTextLabel, EnvelopeName] = MappingProxyType(
     {
@@ -349,17 +341,6 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _REMINDER_OPENING_RE,
             _REMINDER_FIELDS,
         ),
-        _ACTION_ENVELOPE: EnvelopeDefinition(
-            _ACTION_ENVELOPE,
-            TranscriptEntryKind.IDENTITY_CONTENT,
-            EnvelopeClosure.PAIRED,
-            _ACTION_BRACKET_OPENING,
-            _ACTION_BRACKET_CLOSING,
-            _ACTION_XML_TAG,
-            None,
-            _ACTION_FIELDS,
-            output_only=True,
-        ),
     }
 )
 
@@ -367,16 +348,12 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
 _SCANNED_PAIRED_OPENINGS: tuple[tuple[re.Pattern[str], EnvelopeDefinition], ...] = tuple(
     (definition.opening_pattern, definition)
     for definition in ENVELOPE_REGISTRY.values()
-    if definition.opening_pattern is not None
-    and not definition.output_only
-    and definition.closure is EnvelopeClosure.PAIRED
+    if definition.opening_pattern is not None and definition.closure is EnvelopeClosure.PAIRED
 )
 _SCANNED_AUTO_CLOSED_OPENINGS: tuple[tuple[re.Pattern[str], EnvelopeDefinition], ...] = tuple(
     (definition.opening_pattern, definition)
     for definition in ENVELOPE_REGISTRY.values()
-    if definition.opening_pattern is not None
-    and not definition.output_only
-    and definition.closure is EnvelopeClosure.AUTO_CLOSED
+    if definition.opening_pattern is not None and definition.closure is EnvelopeClosure.AUTO_CLOSED
 )
 
 
