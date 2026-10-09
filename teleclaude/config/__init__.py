@@ -61,9 +61,6 @@ from teleclaude.config._machine_build import (
 from teleclaude.config._machine_build import (
     prune_defaults as prune_defaults,
 )
-from teleclaude.config._machine_build import (
-    strip_unset_placeholders as strip_unset_placeholders,
-)
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import BackupConfig as BackupConfig
 from teleclaude.config._models import ComputerConfig as ComputerConfig

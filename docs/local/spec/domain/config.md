@@ -45,8 +45,9 @@ TeleClaudeNext.
   reference. The semantic `telec config person discord-voice-bot`
   operation copies the currently resolved machine Discord credential into the
   person's owner-only environment under the canonical `DISCORD_TOKEN` name and
-  persists only `${DISCORD_TOKEN}` in the overlay. Missing references fail full
-  configuration validation. The live private voice channel is provider-returned
+  persists only `${DISCORD_TOKEN}` in the overlay. On a computer whose person
+  environment holds no value for it, the token is absent and the voice bot does
+  not run there. The live private voice channel is provider-returned
   state resolved by integration from the identified person's voice-state event,
   not a configuration field or fallback. Which computer acts on the declaration
   is not a person setting: the machine configuration's existing

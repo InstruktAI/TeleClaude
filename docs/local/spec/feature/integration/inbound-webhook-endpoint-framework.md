@@ -51,9 +51,11 @@ source in the global configuration.
 
 ### Declaration and resolution
 
-- Every source carries a secret. A declaration without one does not validate.
-  The WhatsApp source additionally carries the token Meta's subscription
-  handshake presents.
+- Every source declares its secret as a `${NAME}` reference into the declaring
+  home's `.env`. A declaration without one does not validate. The WhatsApp source
+  additionally declares the token Meta's subscription handshake presents. The
+  values are absent on a computer whose `.env` lacks them; only the ingress needs
+  them, and it refuses a request it cannot verify.
 - The ingress reads the declaring home's configuration when a request arrives,
   so a declaration added, changed or removed takes effect on the next request
   without a restart.
@@ -242,13 +244,13 @@ Then the ingress responds with a transient failure status
 And the sender may deliver the request again
 ```
 
-#### UC-IF24: An unreadable declaring home is a server error
+#### UC-IF24: A declared source whose secret is absent on the ingress is unavailable
 
 ```gherkin
-Given the project "web" declares a GitHub source whose secret references a name missing from its .env
+Given the project "web" declares a GitHub source whose secret references a name missing from its .env on the ingress
 When a delivery arrives at /hooks/inbound/github/project/web
-Then the ingress responds with a server error
-And the error record names the project and the unresolved reference, never a secret
+Then the ingress responds with a service-unavailable status
+And the error record names the project, the protocol and the absent field, never a secret
 ```
 
 ### Cross-context references

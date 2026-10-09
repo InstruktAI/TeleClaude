@@ -18,6 +18,7 @@ from teleclaude.config._environment import (
     reconcile_environment_references,
     write_environment_values,
 )
+from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import declared_config_kind, load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
@@ -50,6 +51,7 @@ from teleclaude.slug import validate_slug
 
 logger = get_logger(__name__)
 _PERSON_SLUG_FIELD = "slug"
+_UNRESOLVED_REFERENCES_EVENT = "config_references_unresolved_here"
 _PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save target '{target}'"
 _UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
 _UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
@@ -87,9 +89,22 @@ def expanded_overlay_input(path: Path, document: object, kind: ConfigKind) -> Ex
     environment_path = path.with_name(ConfigFileName.ENV)
     environment = read_environment_file(environment_path, owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON))
     return ExpandedOverlayInput(
-        value=expand_environment_references(document, environment, config_path=path),
+        value=resolve_overlay_references(document, environment, kind, path),
         environment_path=environment_path,
     )
+
+
+def resolve_overlay_references(
+    document: object, environment: Mapping[str, str], kind: ConfigKind, path: Path
+) -> object:
+    """Expand a tier document's references from ``environment``; one with no value here leaves its field absent."""
+    expanded = expand_environment_references(document, environment, config_path=path, preserve_unresolved=True)
+    unresolved = sorted(
+        {reference.name for reference in find_environment_references(document) if reference.name not in environment}
+    )
+    if unresolved:
+        logger.debug(_UNRESOLVED_REFERENCES_EVENT, path=str(path), names=unresolved)
+    return drop_unresolved_fields(expanded, TIER_DOCUMENT_MODELS[kind], NO_OVERRIDES)
 
 
 def _read_locked_overlay(

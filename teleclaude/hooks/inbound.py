@@ -58,6 +58,9 @@ _INBOUND_WEBHOOK_EVENT_ACCEPTED = "inbound_webhook_event_accepted"
 _INBOUND_WEBHOOK_REFUSED = "inbound_webhook_refused"
 _INBOUND_WEBHOOK_RELAY_FAILED = "inbound_webhook_relay_failed"
 _INBOUND_DECLARATION_UNREADABLE = "inbound_declaration_unreadable"
+_INBOUND_SECRET_UNSET = "inbound_secret_unset"
+_SECRET_FIELD = "secret"
+_VERIFY_TOKEN_FIELD = "verify_token"
 _ROUTE_TAG = "hooks-inbound"
 _HOME_DESCRIPTION = "{kind}/{slug}"
 _SOURCE_IDENTITY = "{protocol}:{home}"
@@ -88,6 +91,7 @@ _DETAIL_INVALID_SIGNATURE = "Invalid signature"
 _DETAIL_INVALID_PAYLOAD = "Invalid payload"
 _DETAIL_VERIFICATION_FAILED = "Verification failed"
 _DETAIL_RELAY_ERROR = "Relay error"
+_DETAIL_SECRET_UNSET = "Inbound secret not set on this computer"
 
 _STATUS_NOT_FOUND = 404
 _STATUS_UNAUTHORIZED = 401
@@ -95,6 +99,7 @@ _STATUS_FORBIDDEN = 403
 _STATUS_BAD_REQUEST = 400
 _STATUS_SERVER_ERROR = 500
 _STATUS_BAD_GATEWAY = 502
+_STATUS_SERVICE_UNAVAILABLE = 503
 
 
 class _Refusal(StrEnum):
@@ -106,6 +111,7 @@ class _Refusal(StrEnum):
     INVALID_SIGNATURE = "invalid_signature"
     INVALID_BODY = "invalid_body"
     VERIFICATION_FAILED = "verification_failed"
+    SECRET_UNSET = "secret_unset"
 
 
 _REFUSAL_RESPONSES: Final[Mapping[_Refusal, tuple[int, str]]] = {
@@ -115,6 +121,7 @@ _REFUSAL_RESPONSES: Final[Mapping[_Refusal, tuple[int, str]]] = {
     _Refusal.INVALID_SIGNATURE: (_STATUS_UNAUTHORIZED, _DETAIL_INVALID_SIGNATURE),
     _Refusal.INVALID_BODY: (_STATUS_BAD_REQUEST, _DETAIL_INVALID_PAYLOAD),
     _Refusal.VERIFICATION_FAILED: (_STATUS_FORBIDDEN, _DETAIL_VERIFICATION_FAILED),
+    _Refusal.SECRET_UNSET: (_STATUS_SERVICE_UNAVAILABLE, _DETAIL_SECRET_UNSET),
 }
 
 
@@ -219,6 +226,14 @@ def _declaration_failure(home: str, protocol: RelayProtocol, error: InboundDecla
     return _refuse(_Refusal.DECLARATION_UNREADABLE, protocol, home)
 
 
+def _present_secret(value: str | None, field: str, protocol: RelayProtocol, home: str) -> str:
+    """Return a declared source's secret, or refuse when this computer's `.env` holds no value for it."""
+    if value is None:
+        logger.error(_INBOUND_SECRET_UNSET, home=home, protocol=protocol.value, field=field)
+        raise _refuse(_Refusal.SECRET_UNSET, protocol, home)
+    return value
+
+
 def _home_kind(kind: str) -> EventHomeKind | None:
     try:
         return EventHomeKind(kind)
@@ -240,7 +255,7 @@ async def _resolve_native(kind: str, slug: str) -> _Endpoint:
     return _Endpoint(
         protocol=RelayProtocol.NATIVE,
         home=home,
-        secret=sources.native.secret,
+        secret=_present_secret(sources.native.secret, _SECRET_FIELD, RelayProtocol.NATIVE, home),
         signature_header=_NATIVE_SIGNATURE_HEADER,
         declaring_home=EventHomeRef(home_kind, slug),
     )
@@ -257,7 +272,7 @@ async def _resolve_github(slug: str) -> _Endpoint:
     return _Endpoint(
         protocol=RelayProtocol.GITHUB,
         home=home,
-        secret=sources.github.secret,
+        secret=_present_secret(sources.github.secret, _SECRET_FIELD, RelayProtocol.GITHUB, home),
         signature_header=_HUB_SIGNATURE_HEADER,
         declaring_home=EventHomeRef(EventHomeKind.PROJECT, slug),
     )
@@ -278,7 +293,7 @@ async def _resolve_whatsapp() -> _Endpoint:
     return _Endpoint(
         protocol=RelayProtocol.WHATSAPP,
         home=_NO_HOME,
-        secret=source.secret,
+        secret=_present_secret(source.secret, _SECRET_FIELD, RelayProtocol.WHATSAPP, _NO_HOME),
         signature_header=_HUB_SIGNATURE_HEADER,
         declaring_home=EventHomeMarker.NONE,
     )
@@ -355,13 +370,14 @@ def install_inbound_routes(app: FastAPI, producer: EventProducer) -> None:
     async def whatsapp_handshake(request: Request) -> Response:
         """Answer Meta's subscription handshake against the declared verify token."""
         source = await _load_whatsapp_source()
+        verify_token = _present_secret(source.verify_token, _VERIFY_TOKEN_FIELD, RelayProtocol.WHATSAPP, _NO_HOME)
         params = request.query_params
         token = params.get(_HANDSHAKE_TOKEN_PARAM)
         challenge = params.get(_HANDSHAKE_CHALLENGE_PARAM)
         if (
             params.get(_HANDSHAKE_MODE_PARAM) != _HANDSHAKE_MODE
             or token is None
-            or not hmac.compare_digest(token, source.verify_token)
+            or not hmac.compare_digest(token, verify_token)
             or not challenge
         ):
             raise _refuse(_Refusal.VERIFICATION_FAILED, RelayProtocol.WHATSAPP, _NO_HOME)

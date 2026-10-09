@@ -116,8 +116,11 @@ def _expand_environment_references(
     references = _reference_names(value)
     if not references:
         return value
+    # Only a value that is one whole reference can be absent; a reference embedded in a longer
+    # value has no absent form, so it resolves or fails.
+    preserve_whole_value = preserve_unresolved and _placeholder_name(value) is not None
     return _ENV_REFERENCE_PATTERN.sub(
-        lambda match: _resolve_reference(match.group(1), environment, config_path, preserve_unresolved, path), value
+        lambda match: _resolve_reference(match.group(1), environment, config_path, preserve_whole_value, path), value
     )
 
 

@@ -9,8 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from types import UnionType
-from typing import Union, cast, get_args, get_origin
+from typing import cast
 from uuid import uuid4
 
 import yaml
@@ -25,6 +24,7 @@ from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._environment import expand_environment_references
 from teleclaude.config._models import (
     AgentConfig,
+    ComputerConfig,
     ConfigValidationIssue,
     EventReliabilityConfig,
     ExperimentConfig,
@@ -34,6 +34,14 @@ from teleclaude.config._models import (
     TTSServiceVoiceConfig,
 )
 from teleclaude.config._remote_computers import RemoteComputerConfig
+from teleclaude.config._unresolved import (
+    DROP,
+    FieldOverrides,
+    drop_unresolved,
+    drop_unresolved_fields,
+    drop_unresolved_untyped,
+    is_unresolved,
+)
 from teleclaude.config.observation import credential_field_sources, credential_section_availability
 from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL,
@@ -61,12 +69,9 @@ CONFIG_LOAD_SECTION_AVAILABILITY = "section_availability"
 _KIND_FIELD = "kind"
 _SCHEMA_VERSION_FIELD = "schema_version"
 
-_UNSET_PREFIX = "${"
-_UNSET_SUFFIX = "}"
 _EXTRA_FORBIDDEN = "extra_forbidden"
 _EXTRA_FORBIDDEN_MESSAGE = "Extra inputs are not permitted."
 _SCALAR_INPUT_ADAPTER = TypeAdapter(SCALAR_INPUT)
-_DROP_VALUE = object()
 _EVENT_DLQ_DESTINATION = "teleclaude:events:dlq"
 _CONFIG_VALIDATION_ERROR = "Failed to validate config file {path}: {error}"
 _KIND_MISMATCH_ERROR = "Machine configuration at {path} declares kind '{kind}', expected 'computer'"
@@ -146,15 +151,6 @@ def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str
     return result
 
 
-def strip_unset_placeholders(data: object) -> object:
-    """Drop mapping entries holding unresolved environment-reference placeholders."""
-    if isinstance(data, dict):
-        return {key: strip_unset_placeholders(value) for key, value in data.items() if not _is_unset_placeholder(value)}
-    if isinstance(data, list):
-        return [strip_unset_placeholders(item) for item in data]
-    return data
-
-
 # guard: loose-dict-func - Recursive comparison of raw YAML configuration trees.
 def prune_defaults(data: dict[str, object], defaults: dict[str, object]) -> dict[str, object]:
     """Return ``data`` with every leaf equal to its default removed."""
@@ -170,131 +166,18 @@ def prune_defaults(data: dict[str, object], defaults: dict[str, object]) -> dict
     return pruned
 
 
-def _is_unset_placeholder(value: object) -> bool:
-    return isinstance(value, str) and value.startswith(_UNSET_PREFIX) and value.endswith(_UNSET_SUFFIX)
-
-
-def _annotation_options(annotation: object) -> tuple[object, ...]:
-    if get_origin(annotation) in (Union, UnionType):
-        return tuple(item for item in get_args(annotation) if item is not type(None))
-    return (annotation,)
-
-
-def _model_annotation(annotation: object) -> type[ClosedModel] | None:
-    for candidate in _annotation_options(annotation):
-        if isinstance(candidate, type) and issubclass(candidate, ClosedModel):
-            return candidate
-    return None
-
-
-def _clean_dynamic_unset_values(value: object) -> object:
-    if _is_unset_placeholder(value):
-        return _DROP_VALUE
-    if isinstance(value, Mapping):
-        cleaned: dict[object, object] = {}
-        for key, item in value.items():
-            result = _clean_dynamic_unset_values(item)
-            if result is not _DROP_VALUE:
-                cleaned[key] = result
-        return cleaned
-    if isinstance(value, list):
-        return [_clean_dynamic_list_item(item) for item in value]
-    return value
-
-
-def _clean_dynamic_list_item(value: object) -> object:
-    if isinstance(value, Mapping):
-        return _clean_dynamic_unset_values(value)
-    if isinstance(value, list):
-        return [_clean_dynamic_list_item(item) for item in value]
-    return value
-
-
-def _clean_typed_unset_values(value: object, annotation: object) -> object:
-    if _is_unset_placeholder(value):
-        return _DROP_VALUE
-    if annotation is object:
-        return _clean_dynamic_unset_values(value)
-    model_type = _model_annotation(annotation)
-    if model_type is not None:
-        return _clean_model_input(value, model_type)
-    for candidate in _annotation_options(annotation):
-        origin = get_origin(candidate)
-        arguments = get_args(candidate)
-        if origin is dict and isinstance(value, Mapping) and len(arguments) == 2:
-            value_type = arguments[1]
-            cleaned: dict[object, object] = {}
-            for key, item in value.items():
-                result = _clean_typed_unset_values(item, value_type)
-                if result is not _DROP_VALUE:
-                    cleaned[key] = result
-            return cleaned
-        if origin is list and isinstance(value, list) and arguments:
-            return [_clean_typed_list_item(item, arguments[0]) for item in value]
-    return value
-
-
-def _clean_typed_list_item(value: object, annotation: object) -> object:
-    if isinstance(value, (Mapping, list)):
-        result = _clean_typed_unset_values(value, annotation)
-        return value if result is _DROP_VALUE else result
-    return value
-
-
-def _clean_model_input(value: object, model_type: type[ClosedModel]) -> object:
-    if not isinstance(value, Mapping):
-        return value
-    cleaned: dict[object, object] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            cleaned[key] = item
-            continue
-        if model_type is TeleclaudeConfig and key in _DERIVED_ROOT_FIELDS:
-            cleaned[key] = item
-            continue
-        if model_type is TeleclaudeConfig and key == _MachineField.AGENTS:
-            cleaned[key] = _clean_agent_input(item)
-            continue
-        if model_type is TeleclaudeConfig and key == _MachineField.REMOTE_COMPUTERS:
-            cleaned[key] = _clean_remote_input(item)
-            continue
-        if model_type is TeleclaudeConfig and key == _MachineField.COMPUTER:
-            cleaned[key] = _clean_computer_input(item)
-            continue
-        if model_type is TTSEventConfig and key == _MachineField.MESSAGE:
-            if not _is_unset_placeholder(item):
-                cleaned[key] = item
-            continue
-        if model_type is TTSServiceVoiceConfig and key == _MachineField.PARAMS:
-            result = _clean_dynamic_unset_values(item)
-            if result is not _DROP_VALUE:
-                cleaned[key] = result
-            continue
-        field_info = model_type.model_fields.get(key)
-        if field_info is None:
-            cleaned[key] = item
-            continue
-        result = _clean_typed_unset_values(item, field_info.annotation)
-        if result is not _DROP_VALUE:
-            cleaned[key] = result
-    return cleaned
-
-
 def _clean_computer_input(value: object) -> object:
     if not isinstance(value, Mapping):
         return value
-    model = TeleclaudeConfig.model_fields[_MachineField.COMPUTER].annotation
-    model_type = _model_annotation(model)
-    if model_type is None:
-        return value
+    model_type = ComputerConfig
     cleaned: dict[object, object] = {}
     for key, item in value.items():
         if key == _MachineField.TMUX_BINARY:
             cleaned[key] = item
             continue
         if isinstance(key, str) and key in model_type.model_fields:
-            result = _clean_typed_unset_values(item, model_type.model_fields[key].annotation)
-            if result is not _DROP_VALUE:
+            result = drop_unresolved_machine(item, model_type.model_fields[key].annotation)
+            if result is not DROP:
                 cleaned[key] = result
         else:
             cleaned[key] = item
@@ -309,10 +192,10 @@ def _clean_agent_input(value: object) -> object:
     for agent_key, agent_value in value.items():
         agent_name = str(agent_key)
         if agent_name == _MachineField.DEFAULT:
-            if not _is_unset_placeholder(agent_value):
+            if not is_unresolved(agent_value):
                 cleaned[agent_key] = agent_value
             continue
-        if agent_name in _KNOWN_AGENT_IDS and _is_unset_placeholder(agent_value):
+        if agent_name in _KNOWN_AGENT_IDS and is_unresolved(agent_value):
             continue
         if agent_name not in _KNOWN_AGENT_IDS or not isinstance(agent_value, Mapping):
             cleaned[agent_key] = agent_value
@@ -322,8 +205,8 @@ def _clean_agent_input(value: object) -> object:
             key_text = str(key)
             if key_text in allowed:
                 field_info = AgentConfig.model_fields[key_text]
-                result = _clean_typed_unset_values(item, field_info.annotation)
-                if result is not _DROP_VALUE:
+                result = drop_unresolved_machine(item, field_info.annotation)
+                if result is not DROP:
                     settings[key] = result
             else:
                 settings[key] = item
@@ -337,7 +220,7 @@ def _clean_remote_input(value: object) -> object:
     field_model = RemoteComputerConfig
     cleaned: dict[object, object] = {}
     for name, properties in value.items():
-        if _is_unset_placeholder(properties):
+        if is_unresolved(properties):
             continue
         if not isinstance(properties, Mapping):
             cleaned[name] = properties
@@ -347,13 +230,42 @@ def _clean_remote_input(value: object) -> object:
             if key == _MachineField.NAME:
                 entry[key] = item
             elif isinstance(key, str) and key in field_model.model_fields:
-                result = _clean_typed_unset_values(item, field_model.model_fields[key].annotation)
-                if result is not _DROP_VALUE:
+                result = drop_unresolved_machine(item, field_model.model_fields[key].annotation)
+                if result is not DROP:
                     entry[key] = result
             else:
                 entry[key] = item
         cleaned[name] = entry
     return cleaned
+
+
+def _keep_unless_unresolved(value: object) -> object:
+    return DROP if is_unresolved(value) else value
+
+
+def _keep(value: object) -> object:
+    return value
+
+
+# Fields whose shape the model annotations cannot describe, cleaned by their own rules.
+_MACHINE_OVERRIDES: FieldOverrides = {
+    **{(TeleclaudeConfig, field): _keep for field in _DERIVED_ROOT_FIELDS},
+    (TeleclaudeConfig, _MachineField.AGENTS): _clean_agent_input,
+    (TeleclaudeConfig, _MachineField.REMOTE_COMPUTERS): _clean_remote_input,
+    (TeleclaudeConfig, _MachineField.COMPUTER): _clean_computer_input,
+    (TTSEventConfig, _MachineField.MESSAGE): _keep_unless_unresolved,
+    (TTSServiceVoiceConfig, _MachineField.PARAMS): drop_unresolved_untyped,
+}
+
+
+def drop_unresolved_machine(value: object, annotation: object) -> object:
+    """Remove unresolved leaves from a machine-document value destined for ``annotation``."""
+    return drop_unresolved(value, annotation, _MACHINE_OVERRIDES)
+
+
+def drop_unresolved_machine_fields(value: object, model_type: type[ClosedModel]) -> object:
+    """Remove unresolved leaves from a machine-document mapping destined for ``model_type``."""
+    return drop_unresolved_fields(value, model_type, _MACHINE_OVERRIDES)
 
 
 def _scalar_input_issue(value: object, path: tuple[str | int, ...], issues: list[ConfigValidationIssue]) -> None:
@@ -567,7 +479,7 @@ def build_config_from_raw(
             preserve_unresolved=True,
         )
         if isinstance(user_config, Mapping):
-            user_config = _clean_model_input(user_config, TeleclaudeConfig)
+            user_config = drop_unresolved_machine_fields(user_config, TeleclaudeConfig)
     else:
         initial_issues = []
         user_config = raw_user_config
@@ -590,7 +502,7 @@ def build_config_from_raw(
                 preserve_unresolved=True,
             )
             if isinstance(expanded_experiments, Mapping):
-                expanded_experiments = _clean_model_input(expanded_experiments, _ExperimentsFileInput)
+                expanded_experiments = drop_unresolved_machine_fields(expanded_experiments, _ExperimentsFileInput)
             try:
                 experiments_input = _ExperimentsFileInput.model_validate(expanded_experiments)
             except ValidationError as error:

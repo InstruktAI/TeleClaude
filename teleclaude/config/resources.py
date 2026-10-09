@@ -21,13 +21,12 @@ from typing import cast
 import teleclaude.config as _tc_config_module
 from teleclaude.company_setup.onboard_flow import scaffold_company
 from teleclaude.config._environment import (
-    expand_environment_references,
     find_environment_references,
     read_environment_file,
 )
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
-from teleclaude.config.loader import list_company_config_paths
+from teleclaude.config.loader import list_company_config_paths, resolve_overlay_references
 from teleclaude.config.machine_config_mutation import (
     MachineConfigInspection,
     MachineConfigMutationResult,
@@ -157,7 +156,7 @@ def _validate_global_candidate(candidate: Mapping[str, object]) -> None:  # guar
     references = find_environment_references(candidate)
     environment_path = GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV)
     environment = read_environment_file(environment_path, owner_only=False) if references else {}
-    expanded = expand_environment_references(candidate, environment, config_path=GLOBAL_CONFIG_PATH)
+    expanded = resolve_overlay_references(candidate, environment, ConfigKind.GLOBAL, GLOBAL_CONFIG_PATH)
     if not isinstance(expanded, dict):
         raise InvalidCandidate(_DOCUMENT_MAPPING_ERROR.format(path=GLOBAL_CONFIG_PATH))
     try:

@@ -144,9 +144,9 @@ jobs: list[JobScheduleConfig] # local job declarations and subscriptions to publ
 hooks:
   inbound: # this project's own inbound sources, at most one per protocol
     native:
-      secret: string # required; a ${NAME} reference resolved from this project's .env
+      secret: string # declared as a ${NAME} reference resolved from this project's .env
     github:
-      secret: string # required; a ${NAME} reference resolved from this project's .env
+      secret: string # declared as a ${NAME} reference resolved from this project's .env
   subscriptions: list[SubscriptionConfig]
 channel_subscriptions: list[ChannelSubscription]
 ```
@@ -155,8 +155,9 @@ Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own
 protocols: a project declares `native` and `github`; a company and a person
 declare `native`; the global configuration declares `whatsapp`, which carries a
-`verify_token` beside its `secret`. Every source requires its `secret`, and an
-unknown protocol key fails validation. The endpoints these declarations open
+`verify_token` beside its `secret`. Every source declares its `secret` as a
+`${NAME}` reference, whose value is absent on a computer whose `.env` lacks it,
+and an unknown protocol key fails validation. The endpoints these declarations open
 are owned by
 `local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`.
 

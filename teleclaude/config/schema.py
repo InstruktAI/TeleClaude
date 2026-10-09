@@ -387,15 +387,19 @@ SubscriptionEntry = Annotated[
 
 
 class SignedInboundSource(ClosedModel):
-    """One inbound source whose requests are verified under the declaring home's secret."""
+    """One inbound source whose requests are verified under the declaring home's secret.
 
-    secret: Annotated[str, SENSITIVE]
+    The secret is absent on a computer whose `.env` holds no value for its reference; only the
+    ingress verifies requests, and it refuses a request it cannot verify.
+    """
+
+    secret: Annotated[str | None, SENSITIVE] = None
 
     @field_validator("secret")
     @classmethod
-    def require_nonblank_secret(cls, value: str) -> str:
-        """Refuse a blank secret: every inbound request is verified, so a source cannot omit one."""
-        if not value.strip():
+    def require_nonblank_secret(cls, value: str | None) -> str | None:
+        """Refuse a blank secret: a present secret must be usable for verification."""
+        if value is not None and not value.strip():
             raise ValueError(_BLANK_INBOUND_SECRET_ERROR)
         return value
 
@@ -403,13 +407,13 @@ class SignedInboundSource(ClosedModel):
 class WhatsAppInboundSource(SignedInboundSource):
     """The WhatsApp Cloud API source: Meta's signature secret and its subscription handshake token."""
 
-    verify_token: Annotated[str, SENSITIVE]
+    verify_token: Annotated[str | None, SENSITIVE] = None
 
     @field_validator("verify_token")
     @classmethod
-    def require_nonblank_verify_token(cls, value: str) -> str:
+    def require_nonblank_verify_token(cls, value: str | None) -> str | None:
         """Refuse a blank handshake token."""
-        if not value.strip():
+        if value is not None and not value.strip():
             raise ValueError(_BLANK_INBOUND_VERIFY_TOKEN_ERROR)
         return value
 
