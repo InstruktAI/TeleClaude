@@ -18,11 +18,11 @@ from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config, write_declared_config
 from teleclaude.config.identity_schema import ProjectOwnerKind
-from teleclaude.config.loader import registered_person_slugs
+from teleclaude.config.loader import registered_person_slugs, validate_tier_candidate
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
 from teleclaude.config.project_home import HomeOwner, adoptable_home_owner, owning_home_owner
-from teleclaude.config.schema import ConfigKind, ProjectConfig
+from teleclaude.config.schema import ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.home_convergence import project_targets
 from teleclaude.core.reconciliation.template_installation import materialize_template_targets
@@ -182,7 +182,7 @@ def _update_project_declaration(project_root: Path, mutate: _DeclarationMutation
             raise ValueError(_PROJECT_DECLARATION_NOT_MAPPING.format(path=manifest_path))
         raw = dict(upcast(stored, subject))
         if mutate(raw):
-            ProjectConfig.model_validate({**raw, _KIND_KEY: ConfigKind.PROJECT.value})
+            validate_tier_candidate(manifest_path, ConfigKind.PROJECT, raw)
             carry_pending(stored, subject, delivered=_ignore_migration_delivery)
             transaction.replace_text(render_declared_config(ConfigKind.PROJECT, raw))
 

@@ -46,6 +46,7 @@ from teleclaude.config.schema import (
     OutputVisibilitySettings,
     PersonConfig,
     ProjectConfig,
+    TierDocument,
 )
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
@@ -155,16 +156,39 @@ def _ignore_migration_delivery(_destination: Destination) -> None:
 
 
 def _validate_overlay_candidate(
+    path: Path,
     kind: ConfigKind,
     document: Mapping[str, object],
     subject: SubjectRef,
+    environment_updates: Mapping[str, str],
 ) -> None:  # guard: loose-dict - pydantic input from arbitrary YAML
     """Validate the complete current document before a writer delivers migrations."""
     candidate = dict(document)
-    candidate[_KIND_FIELD] = kind.value
     if kind is ConfigKind.PERSON and subject.instance is not None:
         candidate.setdefault(_PERSON_SLUG_FIELD, subject.instance)
-    TIER_DOCUMENT_MODELS[kind].model_validate(candidate)
+    validate_tier_candidate(path, kind, candidate, environment_updates)
+
+
+def validate_tier_candidate(
+    path: Path,
+    kind: ConfigKind,
+    candidate: Mapping[str, object],
+    environment_updates: Mapping[str, str] | None = None,
+) -> TierDocument:  # guard: loose-dict - pydantic input from arbitrary YAML
+    """Validate a tier document a writer is about to persist at ``path``, exactly as loading it will.
+
+    References resolve from the environment file beside ``path`` together with the values the
+    writer is about to store there, and the result is judged against this computer's machine flags.
+    """
+    document = {**candidate, _KIND_FIELD: kind.value}
+    environment: dict[str, str] = {}
+    if find_environment_references(document):
+        environment = read_environment_file(
+            path.with_name(ConfigFileName.ENV), owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON)
+        )
+    environment.update(environment_updates or {})
+    resolved = resolve_overlay_references(document, environment, kind, path)
+    return validate_tier_document(TIER_DOCUMENT_MODELS[kind], resolved.value, resolved.unresolved)
 
 
 class DeclaredMailAccountRefusal(StrEnum):
@@ -376,7 +400,7 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
         reconciled, environment_updates = _reconcile_overlay_document(
             target, ConfigKind.GLOBAL, merged, existing_document=current
         )
-        _validate_overlay_candidate(ConfigKind.GLOBAL, reconciled, subject)
+        _validate_overlay_candidate(target, ConfigKind.GLOBAL, reconciled, subject, environment_updates)
         carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, reconciled))
     _write_overlay_environment(target, ConfigKind.GLOBAL, environment_updates)
@@ -546,7 +570,7 @@ def _write_overlay_config(
         stored = _read_locked_overlay(transaction, path)
         current = dict(upcast(stored, subject))
         reconciled, environment_updates = _reconcile_overlay_document(path, kind, document, existing_document=current)
-        _validate_overlay_candidate(kind, reconciled, subject)
+        _validate_overlay_candidate(path, kind, reconciled, subject, environment_updates)
         carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         transaction.replace_text(render_declared_config(kind, reconciled))
     _write_overlay_environment(path, kind, environment_updates)
@@ -582,7 +606,7 @@ def carry_adopted_metadata(
             candidate,
             existing_document=current,
         )
-        _validate_overlay_candidate(kind, reconciled, subject)
+        _validate_overlay_candidate(path, kind, reconciled, subject, environment_updates)
         carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         transaction.replace_text(render_declared_config(kind, reconciled))
     _write_overlay_environment(path, kind, environment_updates)
