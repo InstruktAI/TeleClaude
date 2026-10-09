@@ -44,14 +44,10 @@ the incoming event re-enters the session through its normal input path. Never
 reimplement reminders with detached processes, transport messages, or
 runtime-specific timers.
 
-<!-- planned:cli-accept-or-retry -->
-
 The platform's own restart is the one exception. When a `telec` command reports
 that the daemon refused it while draining or could not be reached, nothing was
 accepted and no reminder can be armed. Follow the command's instruction: wait
 the delay it names in the terminal, then run the same command again.
-
-<!-- /planned:cli-accept-or-retry -->
 
 ### Identity and lifecycle
 
@@ -126,14 +122,10 @@ out of it would retire reminders the agent still wanted.
 Yielding keeps the session receptive to the human. A terminal is an execution
 surface, not a scheduler.
 
-<!-- planned:cli-accept-or-retry -->
-
 The reminder service is part of the daemon, so arming a reminder is itself a
 request to it, and a restarting daemon refuses it too. A refused command did
 nothing, so a bounded wait followed by the same command is the only way back to
 the step, and it holds the session no longer than the restart does.
-
-<!-- /planned:cli-accept-or-retry -->
 
 Answering non-human input mid-work leaves the interrupted work with no owner of
 its next move once the answer turn ends. The stop that ends that turn is the one

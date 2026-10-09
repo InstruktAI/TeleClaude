@@ -15,13 +15,7 @@ visibility: 'public'
 
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately while its retained artifacts stay readable until purge, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
 
-<!-- planned-change:cli-accept-or-retry -->
-
-The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The worktree is detached from its active location into a uniquely named entry in the project's worktree trash area on the same filesystem; removal completion does not wait for that entry's recursive deletion. The daemon's existing maintenance pass reclaims detached entries at startup and periodically, off the event loop. The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
-<!-- change:cli-accept-or-retry -->
-
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The worktree is detached from its active location into a uniquely named entry in the project's worktree trash area on the same filesystem; removal completion does not wait for that entry's recursive deletion. The daemon's existing maintenance pass reclaims detached entries at startup and periodically, off the event loop. The removal is dispatched as a receipt-backed durable operation: the CLI prints the receipt and exits without waiting, and the operation's outcome reaches the calling session through its wake. Structured removal refusals are persisted on the failed operation, so the outcome carries the affected snippet paths and holding sessions without recomputing state.
-<!-- /planned-change:cli-accept-or-retry -->
 
 Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded. A caller whose session is bound to the removed slug is released from that binding by the removal, so it can go on to drive another Todo. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
 
@@ -30,22 +24,6 @@ A retained removed entry can be reactivated by durable identity before purge, un
 ## Canonical fields
 
 ### Use cases
-
-<!-- planned-change:cli-accept-or-retry -->
-
-```
-Given a Todo "feature-x" exists with state, multiple artifact versions, an entry, and another Todo "feature-y" that depends on it
-When the operator runs "telec todo remove feature-x"
-Then the workflow service submits a receipt-backed operation and returns immediately
-And inside the operation handler, the shared soft-remove primitive marks the live entry status=removed
-And the entry records removed_at, prev_status, and the outgoing dependency snapshot
-And every artifact plus its full version history remains retained by the Todo's durable identity
-And "feature-y"'s after-list no longer references "feature-x"
-And default reads no longer return "feature-x" by slug
-And the CLI reports "Removed todo: feature-x" after polling the receipt to state="completed"
-```
-
-<!-- change:cli-accept-or-retry -->
 
 ```
 Given a Todo "feature-x" exists with state, multiple artifact versions, an entry, and another Todo "feature-y" that depends on it
@@ -60,20 +38,6 @@ And default reads no longer return "feature-x" by slug
 And the calling session is woken with the operation's completed outcome
 ```
 
-<!-- /planned-change:cli-accept-or-retry -->
-
-<!-- planned-change:cli-accept-or-retry -->
-
-```
-Given a Todo "feature-x" is the only live deliverer listed in a snippet's delivered_by frontmatter
-When the operator runs "telec todo remove feature-x"
-Then the shared soft-remove primitive refuses removal before any workflow state mutation
-And the receipt-backed operation stores a structured "remove_refused_orphan" payload
-And the CLI renders the affected snippet path, slug role, and live-deliverer count from that structured payload
-```
-
-<!-- change:cli-accept-or-retry -->
-
 ```
 Given a Todo "feature-x" is the only live deliverer listed in a snippet's delivered_by frontmatter
 When the operator runs "telec todo remove feature-x"
@@ -81,8 +45,6 @@ Then the shared soft-remove primitive refuses removal before any workflow state 
 And the receipt-backed operation fails with a structured "remove_refused_orphan" payload
 And the calling session is woken with that failed outcome, whose operation record names the affected snippet path, slug role, and live-deliverer count
 ```
-
-<!-- /planned-change:cli-accept-or-retry -->
 
 ```
 Given a Todo that has not yet received a worktree or feature branch
@@ -196,18 +158,6 @@ And project entries that are project checkouts are still swept
 
 #### UC-TR-REFUSES-LIVE-WORK: Removal refuses while live work holds the slug
 
-<!-- planned-change:cli-accept-or-retry -->
-
-```
-Given a Todo whose claim names a live session other than the caller, or with an open bound session other than the caller, or with a non-terminal operation bound to it
-When the operator runs "telec todo remove <slug>" without the override flag
-Then the removal is refused before any todo-list, state, dependency, or filesystem mutation
-And the receipt-backed operation stores a structured refusal payload naming each holding session and operation
-And the CLI renders the holders from that structured payload and exits non-zero
-```
-
-<!-- change:cli-accept-or-retry -->
-
 ```
 Given a Todo whose claim names a live session other than the caller, or with an open bound session other than the caller, or with a non-terminal operation bound to it
 When the operator runs "telec todo remove <slug>" without the override flag
@@ -215,8 +165,6 @@ Then the removal is refused before any todo-list, state, dependency, or filesyst
 And the receipt-backed operation fails with a structured refusal payload naming each holding session and operation
 And the calling session is woken with that failed outcome, whose operation record names the holders
 ```
-
-<!-- /planned-change:cli-accept-or-retry -->
 
 #### UC-TR-OVERRIDE-RECORDED: A deliberate override removes anyway and is recorded
 
@@ -284,15 +232,7 @@ And removal completion does not wait for that recursive deletion
 
 ### Cross-context references
 
-<!-- planned-change:cli-accept-or-retry -->
-
-- `operations` — removal is submitted as a receipt-backed durable operation; the CLI polls the receipt rather than blocking on the call, and structured refusal payloads survive the operation boundary.
-
-<!-- change:cli-accept-or-retry -->
-
 - `operations` — removal is submitted as a receipt-backed durable operation; the CLI returns the receipt without waiting, the outcome reaches the calling session through its wake, and structured refusal payloads survive the operation boundary.
-
-<!-- /planned-change:cli-accept-or-retry -->
 
 - `agent_runtime` — the delivered-slug cleanup cascade invokes the host `git` toolchain to tear down worktree and branches; remote branch deletion uses a short timeout and tolerates network failure.
 
@@ -312,12 +252,4 @@ And removal completion does not wait for that recursive deletion
 
 - The remote branch delete uses a short timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.
 
-<!-- planned-change:cli-accept-or-retry -->
-
-- The receipt-backed dispatch means the removal returns before the cascade has executed; callers that need a synchronous outcome must poll the receipt (the CLI does this automatically).
-
-<!-- change:cli-accept-or-retry -->
-
 - The receipt-backed dispatch means the removal returns before the cascade has executed. The outcome, including a refusal raised inside the operation, arrives through the calling session's wake or a read of the operation record.
-
-<!-- /planned-change:cli-accept-or-retry -->

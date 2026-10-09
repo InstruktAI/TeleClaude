@@ -360,8 +360,6 @@ Then completion is accepted only from that same process instance
 And an unsupported capability or replacement process produces a visible refusal before a preparation signal or service-manager replacement
 ```
 
-<!-- planned:cli-accept-or-retry -->
-
 #### UC-DL14: A command refused by a restarting daemon tells its caller to run it again
 
 ```gherkin
@@ -374,8 +372,6 @@ And the message tells the caller to stop retrying once the daemon has stayed una
 And the message names no machine fields from the refusal body
 And a command that fails for any other reason carries no instruction to run it again
 ```
-
-<!-- /planned:cli-accept-or-retry -->
 
 ### Graceful admission and settlement
 

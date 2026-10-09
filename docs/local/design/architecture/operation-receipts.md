@@ -106,18 +106,9 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
    A caller on another computer is reached by forwarding the notification to that
    computer, which delivers it locally.
 
-<!-- planned-change:cli-accept-or-retry -->
-
-6. The caller reads `GET /operations/{operation_id}` for the full record. A caller that
-   chose to wait instead polls the same endpoint and observes the same terminal payload.
-
-<!-- change:cli-accept-or-retry -->
-
 6. The caller reads `GET /operations/{operation_id}` for the full record. The command
    line never waits for the terminal state; it returns the receipt, and the wake is how
    the caller learns the operation has finished.
-
-<!-- /planned-change:cli-accept-or-retry -->
 
 ```mermaid
 sequenceDiagram

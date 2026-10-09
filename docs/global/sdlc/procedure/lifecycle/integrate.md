@@ -60,17 +60,9 @@ each decision point until the queue is drained.
    integrator; never cancel it. It is the integrator's standing way back to the
    state machine, and a session that ends removes it.
 
-<!-- planned-change:cli-accept-or-retry -->
-
-2. Read the returned instruction block and execute it verbatim.
-
-<!-- change:cli-accept-or-retry -->
-
 2. The call returns an operation receipt and does not wait for the machine. Yield;
    when the operation's outcome wakes this session, read the instruction block
    with `telec operations get <operation_id>` and execute it verbatim.
-
-<!-- /planned-change:cli-accept-or-retry -->
 
 3. After executing, call `telec todo integrate` again to advance.
    3a. After a canonical-main advancement, inspect the maintenance actions recorded

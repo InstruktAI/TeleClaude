@@ -167,8 +167,6 @@ the dispatcher reads it to decide local execution versus forwarding.
   row and emits its outcome events. Neither the row nor the receipt is replicated; only the
   outcome notification crosses a machine boundary.
 
-<!-- planned:cli-accept-or-retry -->
-
 - **The CLI never waits on a receipt.** A `telec` command backed by a `RECEIPT` command
   prints the receipt and exits as soon as the daemon answers. Its output names the
   operation, states that the outcome is delivered to the calling session, and gives
@@ -181,8 +179,6 @@ the dispatcher reads it to decide local execution versus forwarding.
   request whose connection fails after it was sent and a command that sends several
   requests are the cases where a non-zero exit does not settle acceptance (Failure
   modes).
-
-<!-- /planned:cli-accept-or-retry -->
 
 ## Primary flows
 
@@ -274,8 +270,6 @@ sequenceDiagram
 - **Caller mismatch on read.** Non-admin callers attempting to inspect another session's
   operation receive a 404 rather than a 403, to avoid operation and session enumeration.
 
-<!-- planned:cli-accept-or-retry -->
-
 - **A request's connection fails after it was sent.** A request that times out, or
   whose connection breaks mid-request, exits non-zero without the CLI knowing whether
   the daemon accepted the work, so the accepted-or-not-accepted split does not decide
@@ -295,8 +289,6 @@ sequenceDiagram
     command is not accepted and gives the full not-accepted message. Failures that
     come only from peer computers, beside answered targets, are reported with the
     results and exit zero, because the command produced its result.
-
-<!-- /planned:cli-accept-or-retry -->
 
 ## See Also
 

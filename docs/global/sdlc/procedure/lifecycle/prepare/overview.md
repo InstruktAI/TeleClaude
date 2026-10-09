@@ -328,19 +328,6 @@ phase boundaries. A session that holds the slug in the work lane is refused:
 work returns to preparation only through a fresh prepare orchestrator the
 lifecycle runner dispatches.
 
-<!-- planned-change:cli-accept-or-retry -->
-
-After successful entry, apply the input repairs and pending process-contract
-changes identified during preflight, then perform the preparation work.
-
-The machine returns a verbatim execution script for the current phase. The script
-describes either a procedure load (load
-the next phase's procedure and do its work), a reviewer dispatch (dispatch a
-separate reviewer session and tail it), an approval pause (present to the real
-human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
-
-<!-- change:cli-accept-or-retry -->
-
 The call returns an operation receipt and does not wait for the machine; the
 outcome reaches this session through its wake and is read with
 `telec operations get <operation_id>` (`general/procedure/orchestration`).
@@ -354,8 +341,6 @@ describes either a procedure load (load
 the next phase's procedure and do its work), a reviewer dispatch (dispatch a
 separate reviewer session and tail it), an approval pause (present to the real
 human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
-
-<!-- /planned-change:cli-accept-or-retry -->
 
 Complete the entry obligations above before executing the script verbatim.
 The script's flexibility belongs to
