@@ -588,10 +588,11 @@ sequenceDiagram
     participant DB as Session DB
 
     Note over Daemon: No input for 30m, agent idle, no relay
-    Daemon->>Extract: Extract the session's conversation
-    Extract->>DB: Read last_memory_extraction_at
-    Extract->>Extract: Personal + business memories
-    Extract->>DB: Advance last_memory_extraction_at
+    Daemon->>DB: Read last_memory_extraction_at
+    Daemon->>Extract: The conversation after the marker (pass key)
+    Extract->>Extract: Model judges; memories recorded with the pass receipt
+    Extract->>Daemon: Pass receipt
+    Daemon->>DB: Advance last_memory_extraction_at
     Daemon->>Tmux: Agent's compaction command
     Tmux->>Daemon: Compaction finished
     Daemon->>DB: Close the session
@@ -616,7 +617,7 @@ sequenceDiagram
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark: the moment of the last conversation entry an extraction saved. Extraction processes only the conversation after this marker and advances it only after every memory of that pass was saved, so a repeated, failed or interrupted pass never extracts the same part of the conversation twice.
+**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark: the moment of the last conversation entry a recorded pass covered. Extraction processes only the conversation after this marker. The marker advances from the pass receipt memory returns, and a pass that was recorded but whose marker was never advanced (an interrupted cycle) is not recorded again: its repetition returns the same receipt.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -793,14 +794,14 @@ jobs:
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-Memory extraction is a step of the idle cycle (Customer Session Lifecycle), run inside the daemon. No separate scheduled job extracts desk sessions; the idle cycle is the one extractor, so no two passes extract the same session at once.
+Memory extraction is a step of the idle cycle (Customer Session Lifecycle). The cycle decides when a session's conversation is extracted and hands it over; memory owns the extraction, and a model, never daemon code, judges what in the conversation is worth remembering. No separate scheduled job extracts desk sessions; the idle cycle is the one caller, so no two passes extract the same session at once.
 
 Each pass of the idle cycle extracts:
 
 - **An open desk session that is due for its idle close**, as the first step of that close. Extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
 - **A closed desk session whose conversation has entries after its marker** — one closed by a person or by recovery rather than by the idle cycle. It is extracted and stays closed.
 
-Extraction reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — from the `last_memory_extraction_at` marker onward, and extracts through a dual lens:
+The cycle reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — from the `last_memory_extraction_at` marker onward, and hands memory the conversation together with who the visitor is and which desk and home it belongs to. Memory asks the model for the memories through a dual lens and records them:
 
 ```mermaid
 sequenceDiagram
@@ -808,26 +809,26 @@ sequenceDiagram
     participant DB as Session DB
     participant Transcript as Session transcript chain
     participant Identity as Identity
-    participant Memory as Memory store
+    participant Memory as Memory extraction
+    participant Model as Summarizer model
 
     Cycle->>DB: Read last_memory_extraction_at
     Cycle->>Transcript: Read the conversation after the marker
     Cycle->>Identity: Visitor's identity key and principal
-    Cycle->>Cycle: Extract with dual lens
-    par Personal memories
-        Cycle->>Memory: save(desk namespace, identity_key=person:alice)
-    and Business memories
-        Cycle->>Memory: save(home namespace, identity_key=NULL)
-    end
-    Cycle->>DB: Advance last_memory_extraction_at
+    Cycle->>Memory: Extract (pass key = session + marker, conversation, scope)
+    Memory->>Model: What is worth remembering, through the dual lens
+    Model->>Memory: Personal and business memories
+    Memory->>Memory: Record the pass's memories and its pass receipt together
+    Memory->>Cycle: Pass receipt (extracted through)
+    Cycle->>DB: Advance last_memory_extraction_at to the receipt
 ```
 
-**Dual extraction lens:**
+**Dual extraction lens** (the model's judgment, briefed by memory's extraction prompts):
 
 1. **Personal memories** (the desk's namespace, keyed to the visitor) — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
 2. **Business memories** (the namespace of the home that owns the desk, the one the home's own sessions read) — what is interesting for US: feature requests, complaints, confusion patterns, sentiment, competitive mentions
 
-Namespaces, keys and subjects follow Identity-Scoped Memory. A conversation with nothing worth remembering saves nothing and still advances the marker.
+Namespaces, keys and subjects follow Identity-Scoped Memory. A pass is identified by its session and the marker it starts from. Memory records a pass's memories and its receipt in one transaction, so a pass is either recorded whole or not at all; a pass repeated with the same key records nothing again and returns the receipt it already holds. A conversation with nothing worth remembering records an empty pass and still advances the marker.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -934,7 +935,7 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-9. **Extraction is idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed. Premature agent death, glitches, daemon restarts or repeated passes never produce duplicate memories. Durable state lives in the database, not in the agent.
+9. **Extraction is idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed, and memory records each pass — identified by its session and starting marker — whole or not at all, together with its receipt. Premature agent death, glitches, daemon restarts or repeated passes never produce duplicate memories. Durable state lives in the database, not in the agent.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -1167,9 +1168,10 @@ sequenceDiagram
     Note over Daemon: No input for 30m, agent idle, no relay, no input waiting
     Daemon->>DB: Read last_memory_extraction_at
     Daemon->>Daemon: Read the transcript chain after the marker
-    Daemon->>Memory: Save personal memories (desk namespace, visitor's key)
-    Daemon->>Memory: Save business memories (home namespace)
-    Daemon->>DB: Advance last_memory_extraction_at
+    Daemon->>Memory: Extract the conversation (pass key, visitor, desk, home)
+    Memory->>Memory: Model judges; personal + business memories recorded with the pass receipt
+    Memory->>Daemon: Pass receipt
+    Daemon->>DB: Advance last_memory_extraction_at to the receipt
     Daemon->>Agent: Agent's compaction command
     Agent->>Daemon: Compaction finished
     Daemon->>DB: Close the session (no input since the cycle began)

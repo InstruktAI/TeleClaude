@@ -317,9 +317,10 @@ And a member of that company below administrator receives only the shared snippe
 Given a help-desk visitor the platform does not know as a registered person
 And memories were recorded from that visitor's conversations under the platform identity they write from
 When an agent session serving that visitor at a desk receives memories
-Then the memories recorded under that platform identity are admitted
-And memories recorded under any other identity, and records about any subject, are not
-And the people whose reach admits the desk's home see those memories as records about that home
+Then the memories recorded under that platform identity are admitted to that session
+And no memory recorded under any other identity is admitted to it
+And no record is admitted to it for being about the desk's home
+And the people whose reach admits the desk's home see those same memories, as records about that home
 ```
 
 <!-- /planned:help-desk-idle-memory-cycle -->
