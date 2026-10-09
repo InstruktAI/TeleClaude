@@ -22,7 +22,9 @@ endpoints and is the only party that resolves an identifier. Resolution yields
 the endpoint's working folder. An invitation token also binds the person's
 platform account the first time it is used (owned by
 `local/projects/teleclaude/procedure/member-onboarding`); a help-desk identifier
-binds no identity. A registered person is a member or an admin, and every
+binds no identity. A registered person is someone the person registry holds
+who has the member or admin role at the platform or in a company
+(`local/projects/teleclaude/design/architecture/scoped-roles`), and every
 registered person has their own assistant.
 
 **Hosting.** Help desks run only on the mesh master. The master hosts every
@@ -172,9 +174,16 @@ And their next messages reach it
 #### UC-CE6: A registered person without a session reaches their own assistant
 
 ```gherkin
-Given a registered person whose conversation has no session
-When they send a message that carries no identifier
-Then the message reaches their own assistant
+Scenario Outline: <person>
+  Given <person> whose conversation has no session
+  When they send a message that carries no identifier
+  Then <outcome>
+
+  Examples:
+    | person                                                         | outcome                                  |
+    | a person holding the member role at the platform               | the message reaches their own assistant  |
+    | a person holding the admin role in a company and no platform role | the message reaches their own assistant  |
+    | a person the registry holds with no role at the platform or in any company | they receive the neutral reply and no session is created |
 ```
 
 #### UC-CE7: Every miss gets the same neutral reply and no session
