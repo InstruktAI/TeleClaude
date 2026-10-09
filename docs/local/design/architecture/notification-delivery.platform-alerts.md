@@ -1,5 +1,5 @@
 ---
-description: How the platform tells people about events — consumers that tell people select by each person's notification interests, compose readable messages from event facts, and send them through person-addressed messaging; incident alerts open and close one matter per lifecycle family and thing, keeping only which things are broken.
+description: How the platform tells people about events — consumers that tell people select by each person's notification interests, compose readable messages from event facts, and send them through person-addressed messaging; incident alerts open and close one matter per lifecycle family and thing, keeping only which things are broken and which recipients still await their latest state.
 ---
 
 # Notification Delivery — Design
@@ -61,11 +61,14 @@ consumer that tells people.
 - **A matter is one lifecycle family's state of one thing.** The thing is the
   event's subject within its origin; two families that report on the same
   subject are two matters, and the same subject from two origins is two things.
-- **The type decides the transition.** A failing state with no open record
-  opens one and tells; a failing state with an open record tells nothing; an ok
-  state with an open record tells the recovery with how long the thing was
-  broken and then removes the record; an ok state with no open record, and an
-  event with no state, tell nothing. The consumer knows no producer and no type name:
+- **The type decides the matter's state.** A failing state with no open record
+  opens one, failing and broken since that event; a failing state while the
+  matter is failing changes nothing; an ok state while the matter is failing
+  makes it ok; a failing state while the matter is ok and its record is still
+  open makes it failing again, broken since that event; an ok state with no open
+  record, and an event with no state, change nothing. Who is told what follows
+  from the matter's state and each recipient's last-told state (below); a
+  recovery states how long the thing was broken. The consumer knows no producer and no type name:
   a family that follows the convention takes part without a change here.
 - **The audience is narrowed, never widened.** Incident alerts tell platform
   administrators only, and of those only the ones whose interests select the
