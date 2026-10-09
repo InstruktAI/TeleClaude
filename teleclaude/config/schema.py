@@ -8,14 +8,16 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Any, Final, Literal, Self
 
-from pydantic import ConfigDict, Field, ModelWrapValidatorHandler, field_validator, model_validator
+from pydantic import ConfigDict, Field, ModelWrapValidatorHandler, ValidationInfo, field_validator, model_validator
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.closed_model import SENSITIVE, ClosedModel
 from teleclaude.config.field_constraints import (
+    RequiredWhen,
     Requires,
     append_constraint_rules,
     declared_constraints,
+    refuse_unmet_requirements,
     refuse_violations,
 )
 from teleclaude.config.tiers import Tier
@@ -252,6 +254,9 @@ OUTPUT_VISIBILITY_BOTH: Final = "both"
 OUTPUT_VISIBILITY_OFF: Final = "off"
 OutputVisibilityValue = Literal["mobile", "full", "both", "off"]
 _PROJECT_OWNER_CONFLICT = "Project configuration cannot declare both company and person owners"
+# Only the ingress verifies inbound requests; voice ownership follows the master.
+_INGRESS_FLAG: Final = "computer.is_ingress_node"
+_MASTER_FLAG: Final = "computer.is_master"
 
 
 class MailConnector(StrEnum):
@@ -333,7 +338,7 @@ class DiscordCreds(ClosedModel):
     user_id: str  # Discord user IDs are snowflakes (strings)
     nick: str | None = None
     avatar_url: str | None = None
-    voice_bot_token: Annotated[str | None, SENSITIVE] = None
+    voice_bot_token: Annotated[str | None, SENSITIVE, RequiredWhen(_MASTER_FLAG)] = None
 
 
 class WhatsAppCreds(ClosedModel):
@@ -393,7 +398,7 @@ class SignedInboundSource(ClosedModel):
     ingress verifies requests, and it refuses a request it cannot verify.
     """
 
-    secret: Annotated[str | None, SENSITIVE] = None
+    secret: Annotated[str | None, SENSITIVE, RequiredWhen(_INGRESS_FLAG)] = None
 
     @field_validator("secret")
     @classmethod
@@ -407,7 +412,7 @@ class SignedInboundSource(ClosedModel):
 class WhatsAppInboundSource(SignedInboundSource):
     """The WhatsApp Cloud API source: Meta's signature secret and its subscription handshake token."""
 
-    verify_token: Annotated[str | None, SENSITIVE] = None
+    verify_token: Annotated[str | None, SENSITIVE, RequiredWhen(_INGRESS_FLAG)] = None
 
     @field_validator("verify_token")
     @classmethod
@@ -666,9 +671,12 @@ class TierDocument(ClosedModel):
 
     @model_validator(mode="wrap")
     @classmethod
-    def _enforce_field_constraints(cls, data: object, handler: ModelWrapValidatorHandler[Self]) -> Self:
+    def _enforce_field_constraints(
+        cls, data: object, handler: ModelWrapValidatorHandler[Self], info: ValidationInfo
+    ) -> Self:
         instance = handler(data)
         refuse_violations(cls, instance)
+        refuse_unmet_requirements(cls, info.context)
         return instance
 
 

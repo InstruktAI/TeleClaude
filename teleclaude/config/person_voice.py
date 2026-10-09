@@ -10,7 +10,7 @@ from typing import cast
 from teleclaude.config._environment import read_environment_file
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config
-from teleclaude.config.loader import resolve_overlay_references
+from teleclaude.config.loader import resolve_overlay_references, validate_tier_document
 from teleclaude.config.migrations import Destination, carry_pending, upcast
 from teleclaude.config.person_secrets import (
     clear_person_mcp_secret,
@@ -69,8 +69,8 @@ def configure_person_discord_voice_bot(
             owner_only=True,
         )
         environment[_CANONICAL_DISCORD_TOKEN_ENV] = resolved_machine_token
-        expanded = resolve_overlay_references(candidate, environment, ConfigKind.PERSON, overlay_path)
-        PersonConfig.model_validate(expanded)
+        resolved = resolve_overlay_references(candidate, environment, ConfigKind.PERSON, overlay_path)
+        validate_tier_document(PersonConfig, resolved.value, resolved.unresolved)
         carry_pending(stored, subject, delivered=_ignore_migration_delivery)
         environment_secured = secure_person_secret_store(person_slug, people_dir=people_dir)
         replace_person_mcp_secret(

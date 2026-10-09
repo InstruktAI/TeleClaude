@@ -26,7 +26,7 @@ from teleclaude.config._environment import (
 )
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
-from teleclaude.config.loader import list_company_config_paths, resolve_overlay_references
+from teleclaude.config.loader import list_company_config_paths, resolve_overlay_references, validate_tier_document
 from teleclaude.config.machine_config_mutation import (
     MachineConfigInspection,
     MachineConfigMutationResult,
@@ -156,14 +156,15 @@ def _validate_global_candidate(candidate: Mapping[str, object]) -> None:  # guar
     references = find_environment_references(candidate)
     environment_path = GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV)
     environment = read_environment_file(environment_path, owner_only=False) if references else {}
-    expanded = resolve_overlay_references(candidate, environment, ConfigKind.GLOBAL, GLOBAL_CONFIG_PATH)
+    resolved = resolve_overlay_references(candidate, environment, ConfigKind.GLOBAL, GLOBAL_CONFIG_PATH)
+    expanded = resolved.value
     if not isinstance(expanded, dict):
         raise InvalidCandidate(_DOCUMENT_MAPPING_ERROR.format(path=GLOBAL_CONFIG_PATH))
     try:
         # `kind` is a required discriminator field on the typed model but is never part of
         # the writable candidate — `render_declared_config` injects it at render time, the
         # same way every other overlay writer does. Supply it here for validation only.
-        GlobalConfig.model_validate({**expanded, _KIND_KEY: ConfigKind.GLOBAL.value})
+        validate_tier_document(GlobalConfig, {**expanded, _KIND_KEY: ConfigKind.GLOBAL.value}, resolved.unresolved)
     except Exception as exc:
         raise InvalidCandidate(str(exc)) from exc
 

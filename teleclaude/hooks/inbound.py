@@ -58,7 +58,6 @@ _INBOUND_WEBHOOK_EVENT_ACCEPTED = "inbound_webhook_event_accepted"
 _INBOUND_WEBHOOK_REFUSED = "inbound_webhook_refused"
 _INBOUND_WEBHOOK_RELAY_FAILED = "inbound_webhook_relay_failed"
 _INBOUND_DECLARATION_UNREADABLE = "inbound_declaration_unreadable"
-_INBOUND_SECRET_UNSET = "inbound_secret_unset"
 _SECRET_FIELD = "secret"
 _VERIFY_TOKEN_FIELD = "verify_token"
 _ROUTE_TAG = "hooks-inbound"
@@ -91,7 +90,6 @@ _DETAIL_INVALID_SIGNATURE = "Invalid signature"
 _DETAIL_INVALID_PAYLOAD = "Invalid payload"
 _DETAIL_VERIFICATION_FAILED = "Verification failed"
 _DETAIL_RELAY_ERROR = "Relay error"
-_DETAIL_SECRET_UNSET = "Inbound secret not set on this computer"
 
 _STATUS_NOT_FOUND = 404
 _STATUS_UNAUTHORIZED = 401
@@ -99,7 +97,6 @@ _STATUS_FORBIDDEN = 403
 _STATUS_BAD_REQUEST = 400
 _STATUS_SERVER_ERROR = 500
 _STATUS_BAD_GATEWAY = 502
-_STATUS_SERVICE_UNAVAILABLE = 503
 
 
 class _Refusal(StrEnum):
@@ -111,7 +108,6 @@ class _Refusal(StrEnum):
     INVALID_SIGNATURE = "invalid_signature"
     INVALID_BODY = "invalid_body"
     VERIFICATION_FAILED = "verification_failed"
-    SECRET_UNSET = "secret_unset"
 
 
 _REFUSAL_RESPONSES: Final[Mapping[_Refusal, tuple[int, str]]] = {
@@ -121,7 +117,6 @@ _REFUSAL_RESPONSES: Final[Mapping[_Refusal, tuple[int, str]]] = {
     _Refusal.INVALID_SIGNATURE: (_STATUS_UNAUTHORIZED, _DETAIL_INVALID_SIGNATURE),
     _Refusal.INVALID_BODY: (_STATUS_BAD_REQUEST, _DETAIL_INVALID_PAYLOAD),
     _Refusal.VERIFICATION_FAILED: (_STATUS_FORBIDDEN, _DETAIL_VERIFICATION_FAILED),
-    _Refusal.SECRET_UNSET: (_STATUS_SERVICE_UNAVAILABLE, _DETAIL_SECRET_UNSET),
 }
 
 
@@ -227,10 +222,13 @@ def _declaration_failure(home: str, protocol: RelayProtocol, error: InboundDecla
 
 
 def _present_secret(value: str | None, field: str, protocol: RelayProtocol, home: str) -> str:
-    """Return a declared source's secret, or refuse when this computer's `.env` holds no value for it."""
+    """Return a declared source's secret; one with no value on the ingress leaves the declaration unreadable.
+
+    Validation on the ingress already refuses such a declaration, so this only narrows the type.
+    """
     if value is None:
-        logger.error(_INBOUND_SECRET_UNSET, home=home, protocol=protocol.value, field=field)
-        raise _refuse(_Refusal.SECRET_UNSET, protocol, home)
+        logger.error(_INBOUND_DECLARATION_UNREADABLE, home=home, protocol=protocol.value, cause=field)
+        raise _refuse(_Refusal.DECLARATION_UNREADABLE, protocol, home)
     return value
 
 

@@ -1,7 +1,7 @@
 """Configuration file loading and validation."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -10,6 +10,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ValidationError
 
+from teleclaude.config import config as machine_config
 from teleclaude.config._environment import (
     company_environment_creation_mode,
     expand_environment_references,
@@ -22,6 +23,7 @@ from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import declared_config_kind, load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.field_constraints import MACHINE_CONTEXT_KEY, UNRESOLVED_CONTEXT_KEY
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
 from teleclaude.config.migrations import (
     Destination,
@@ -79,6 +81,15 @@ class ExpandedOverlayInput:
 
     value: object
     environment_path: Path | None
+    unresolved: Mapping[tuple[str | int, ...], str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ResolvedOverlay:
+    """A tier document after reference resolution, with the references that have no value here."""
+
+    value: object
+    unresolved: Mapping[tuple[str | int, ...], str]
 
 
 def expanded_overlay_input(path: Path, document: object, kind: ConfigKind) -> ExpandedOverlayInput:
@@ -88,23 +99,40 @@ def expanded_overlay_input(path: Path, document: object, kind: ConfigKind) -> Ex
         return ExpandedOverlayInput(value=document, environment_path=None)
     environment_path = path.with_name(ConfigFileName.ENV)
     environment = read_environment_file(environment_path, owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON))
+    resolved = resolve_overlay_references(document, environment, kind, path)
     return ExpandedOverlayInput(
-        value=resolve_overlay_references(document, environment, kind, path),
+        value=resolved.value,
         environment_path=environment_path,
+        unresolved=resolved.unresolved,
     )
 
 
 def resolve_overlay_references(
     document: object, environment: Mapping[str, str], kind: ConfigKind, path: Path
-) -> object:
+) -> ResolvedOverlay:
     """Expand a tier document's references from ``environment``; one with no value here leaves its field absent."""
     expanded = expand_environment_references(document, environment, config_path=path, preserve_unresolved=True)
-    unresolved = sorted(
-        {reference.name for reference in find_environment_references(document) if reference.name not in environment}
-    )
+    unresolved = {
+        reference.path: reference.name
+        for reference in find_environment_references(document)
+        if reference.name not in environment
+    }
     if unresolved:
-        logger.debug(_UNRESOLVED_REFERENCES_EVENT, path=str(path), names=unresolved)
-    return drop_unresolved_fields(expanded, TIER_DOCUMENT_MODELS[kind], NO_OVERRIDES)
+        logger.debug(_UNRESOLVED_REFERENCES_EVENT, path=str(path), names=sorted(set(unresolved.values())))
+    return ResolvedOverlay(
+        value=drop_unresolved_fields(expanded, TIER_DOCUMENT_MODELS[kind], NO_OVERRIDES),
+        unresolved=unresolved,
+    )
+
+
+def validate_tier_document[T: BaseModel](
+    model_class: type[T], value: object, unresolved: Mapping[tuple[str | int, ...], str]
+) -> T:
+    """Validate a resolved tier document, judging the values this computer needs against its machine flags."""
+    return model_class.model_validate(
+        value,
+        context={MACHINE_CONTEXT_KEY: machine_config, UNRESOLVED_CONTEXT_KEY: unresolved},
+    )
 
 
 def _read_locked_overlay(
@@ -201,9 +229,9 @@ def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T]
         return model_class.model_validate(raw)
     raw = upcast_for_read(path, raw)
     require_inbound_secret_references(path, raw)
-    expanded = expanded_overlay_input(path, raw, kind).value
+    expanded = expanded_overlay_input(path, raw, kind)
     try:
-        model = model_class.model_validate(expanded)
+        model = validate_tier_document(model_class, expanded.value, expanded.unresolved)
     except Exception as exc:
         raise ValueError(f"Failed to validate config file {path}: {exc}") from exc
     return model

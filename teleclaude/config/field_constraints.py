@@ -5,6 +5,10 @@ true, the field at that path from the document root must hold that value. The de
 only validates; it never assigns a value. One collected inventory, one evaluator and one
 message feed the published schema rule, model validation and the persistence refusal, so
 every surface judges the same document the same way.
+
+A field whose value only some computers need declares ``Annotated[..., RequiredWhen("flag.path")]``
+against the machine configuration instead. It is judged by validations that resolved the
+document's references on this computer and carry that computer's machine configuration.
 """
 
 from __future__ import annotations
@@ -40,6 +44,16 @@ _CONTAINER_MEMBER: Final = (
     "no document path addresses it"
 )
 _VIOLATION_CODE: Final = "field_constraint"
+_REQUIREMENT_CODE: Final = "field_requirement"
+_REQUIREMENT_MESSAGE: Final = (
+    "{field} is needed on a computer where {flag} is set, but ${{{name}}} has no value in its home's .env"
+)
+_UNKNOWN_MACHINE_FLAG: Final = "Field requirement on `{field}`: `{flag}` is not a field of the machine configuration"
+
+MACHINE_CONTEXT_KEY: Final = "machine"
+"""Validation-context key carrying this computer's machine configuration."""
+UNRESOLVED_CONTEXT_KEY: Final = "unresolved"
+"""Validation-context key carrying the document's references that have no value here, by path."""
 _REFUSED_INPUT: Final = True
 
 
@@ -72,6 +86,26 @@ class Requires:
 
     target: str
     value: object
+
+
+@dataclass(frozen=True, slots=True)
+class RequiredWhen:
+    """Annotation marker: a value declared for this field is needed on a computer whose machine flag holds.
+
+    ``machine`` is the dotted path of a boolean field of the machine configuration. On a computer
+    where it is true, a ``${NAME}`` declared for this field must have a value in its home's
+    ``.env``; elsewhere the value may be absent. A field with nothing declared is not judged.
+    """
+
+    machine: str
+
+
+@dataclass(frozen=True, slots=True)
+class FieldRequirement:
+    """One resolved ``RequiredWhen`` declaration: the field's document path and the machine flag's path."""
+
+    path: tuple[str, ...]
+    machine_path: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +172,48 @@ def refuse_violations(model: type[ClosedModel], instance: BaseModel) -> None:
                 for violation in violations
             ],
         )
+
+
+@cache
+def declared_requirements(model: type[ClosedModel]) -> tuple[FieldRequirement, ...]:
+    """Collect every ``RequiredWhen`` declaration reachable from a tier document's root."""
+    requirements: list[FieldRequirement] = []
+    _collect_requirements(model, (), requirements)
+    return tuple(requirements)
+
+
+def refuse_unmet_requirements(model: type[ClosedModel], context: object) -> None:
+    """Refuse declared values this computer needs but cannot resolve, one located line per field.
+
+    Judged only when the validation carries this computer's machine configuration; a validation of a
+    document whose references were not resolved here has nothing to judge.
+    """
+    if not isinstance(context, Mapping) or MACHINE_CONTEXT_KEY not in context:
+        return
+    machine = context[MACHINE_CONTEXT_KEY]
+    unresolved = context.get(UNRESOLVED_CONTEXT_KEY)
+    if not isinstance(unresolved, Mapping):
+        return
+    details: list[InitErrorDetails] = []
+    for requirement in declared_requirements(model):
+        name = unresolved.get(requirement.path)
+        if name is None or _machine_flag(machine, requirement) is not True:
+            continue
+        message = _REQUIREMENT_MESSAGE.format(
+            field=_PATH_SEPARATOR.join(requirement.path),
+            flag=_PATH_SEPARATOR.join(requirement.machine_path),
+            name=name,
+        )
+        details.append(
+            InitErrorDetails(
+                # The message is a runtime string, which the LiteralString parameter cannot express.
+                type=PydanticCustomError(_REQUIREMENT_CODE, message),  # pyright: ignore[reportArgumentType]
+                loc=requirement.path,
+                input=_REFUSED_INPUT,
+            )
+        )
+    if details:
+        raise ValidationError.from_exception_data(model.__name__, details)
 
 
 def refuse_document(model: type[ClosedModel], document: Mapping[str, object]) -> None:
@@ -232,6 +308,34 @@ def _resolve(root: type[ClosedModel], path: tuple[str, ...], field: FieldInfo, m
     )
 
 
+def _collect_requirements(current: type[ClosedModel], prefix: tuple[str, ...], found: list[FieldRequirement]) -> None:
+    for name, field in current.model_fields.items():
+        path = (*prefix, name)
+        found.extend(
+            FieldRequirement(path=path, machine_path=tuple(marker.machine.split(_PATH_SEPARATOR)))
+            for marker in field.metadata
+            if isinstance(marker, RequiredWhen)
+        )
+        nested = nested_model(field.annotation)
+        if nested is not None:
+            _collect_requirements(nested, path, found)
+
+
+def _machine_flag(machine: object, requirement: FieldRequirement) -> object:
+    current = machine
+    for name in requirement.machine_path:
+        try:
+            current = getattr(current, name)
+        except AttributeError as error:
+            raise TypeError(
+                _UNKNOWN_MACHINE_FLAG.format(
+                    field=_PATH_SEPARATOR.join(requirement.path),
+                    flag=_PATH_SEPARATOR.join(requirement.machine_path),
+                )
+            ) from error
+    return current
+
+
 def _walk_target(
     root: type[ClosedModel], target_path: tuple[str, ...]
 ) -> tuple[list[type[ClosedModel]] | None, FieldInfo | None]:
@@ -296,7 +400,7 @@ def _carries_declaration(model: type[ClosedModel], visited: set[type[ClosedModel
         return False
     visited.add(model)
     for field in model.model_fields.values():
-        if any(isinstance(marker, Requires) for marker in field.metadata):
+        if any(isinstance(marker, (Requires, RequiredWhen)) for marker in field.metadata):
             return True
         nested = nested_model(field.annotation)
         members = [nested] if nested is not None else list(_container_members(field.annotation))
