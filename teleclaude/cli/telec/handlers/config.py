@@ -65,6 +65,7 @@ def _handle_config_tts(args: list[str]) -> None:
     try:
         asyncio.run(_deprovision_tts())
     except APIError as exc:
+        exc.exit_if_not_accepted()
         print(f"Error: {exc.detail}")
         raise SystemExit(1) from exc
     print(TTS_DEPROVISION_CONFIRM)

@@ -109,12 +109,13 @@ def _revive_session(
     try:
         result = asyncio.run(_revive_session_via_api(session_id, agent=agent, computer=computer))
     except APIError as e:
+        e.exit_if_not_accepted()
         print(f"Error: {e}")
-        return
+        raise SystemExit(1) from e
 
     if result.status != "success":
         print(result.error or "Revive failed")
-        return
+        raise SystemExit(1)
 
     print(f"Revived session {result.session_id}")
     try:

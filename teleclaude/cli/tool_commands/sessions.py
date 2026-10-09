@@ -30,7 +30,16 @@ from teleclaude.cli.telec.surface import (
     SESSIONS_TAIL,
     SESSIONS_UNSUBSCRIBE,
 )
-from teleclaude.cli.tool_client import ToolAPIError, print_json, tool_api_call, tool_api_request
+from teleclaude.cli.tool_client import (
+    NotAcceptedCause,
+    ToolAPIError,
+    not_accepted_cause_text,
+    print_json,
+    print_run_again_when_not_accepted,
+    tool_api_call,
+    tool_api_request,
+)
+from teleclaude.cli.tool_commands._receipt import render_receipt
 from teleclaude.constants import SessionTarget
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
@@ -53,6 +62,9 @@ _SESSIONS_SHOW_COMPUTER_PARAM: Final[str] = "computer"
 _QUERY_TRUE: Final[str] = "true"
 _UNEXPECTED_ARGUMENT_ERROR_TEMPLATE: Final[str] = "Error: unexpected argument: {argument}"
 _BULK_END_TIMEOUT_S = 30.0
+_CLOSE_FAILURE_TEMPLATE: Final = "failed to close child session {session_id}: {failure}"
+_LIST_FAILURE_TEMPLATE: Final = "Error: failed to list caller child sessions: {failure}"
+_BULK_END_FAILURE_TEMPLATE: Final = "Error: caller child cleanup failed: {reason}; residual session IDs: {residuals}"
 _BULK_END_POLL_INTERVAL_S = 0.25
 _SESSION_END_DUPLICATE_TARGET_ERROR = "Error: do not specify more than one session_id"
 
@@ -472,6 +484,8 @@ def handle_sessions_end(args: list[str]) -> None:
 
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
+    Ending a named session prints an operation receipt; the outcome is delivered
+    to the calling session.
 
     Examples:
       telec sessions end
@@ -509,8 +523,7 @@ def handle_sessions_end(args: list[str]) -> None:
             print("Error: could not resolve 'self' — $TMPDIR/teleclaude_identity.json not found", file=sys.stderr)
             raise SystemExit(1)
 
-    data = tool_api_call("DELETE", f"/sessions/{session_id}", params={"computer": computer})
-    print_json(data)
+    render_receipt(tool_api_call("DELETE", f"/sessions/{session_id}", params={"computer": computer}))
 
 
 def _end_caller_child_sessions() -> None:
@@ -539,8 +552,9 @@ def _end_caller_child_sessions() -> None:
                 )
             except ToolAPIError as exc:
                 _fail_bulk_end(
-                    f"failed to close child session {child.session_id}: {exc.message}",
+                    _CLOSE_FAILURE_TEMPLATE.format(session_id=child.session_id, failure=_failure_text(exc)),
                     residual_session_ids,
+                    cause=exc.not_accepted_cause,
                 )
             ended_session_ids.add(child.session_id)
 
@@ -559,8 +573,12 @@ def _list_caller_child_sessions() -> list[SessionDTO]:
     try:
         data = tool_api_request("GET", "/sessions")
         sessions = adapter.validate_python(data)
-    except (ToolAPIError, ValidationError) as exc:
-        print(f"Error: failed to list caller child sessions: {exc}", file=sys.stderr)
+    except ToolAPIError as exc:
+        print(_LIST_FAILURE_TEMPLATE.format(failure=_failure_text(exc)), file=sys.stderr)
+        print_run_again_when_not_accepted(exc.not_accepted_cause)
+        raise SystemExit(1) from exc
+    except ValidationError as exc:
+        print(_LIST_FAILURE_TEMPLATE.format(failure=exc), file=sys.stderr)
         raise SystemExit(1) from exc
 
     session_computers: dict[str, str] = {}
@@ -575,10 +593,17 @@ def _list_caller_child_sessions() -> list[SessionDTO]:
     return sessions
 
 
-def _fail_bulk_end(reason: str, residual_session_ids: list[str]) -> None:
+def _failure_text(exc: ToolAPIError) -> str:
+    """The failure in words; a refusal or an unreachable daemon is described without its response body."""
+    cause = exc.not_accepted_cause
+    return exc.message if cause is None else not_accepted_cause_text(cause)
+
+
+def _fail_bulk_end(reason: str, residual_session_ids: list[str], *, cause: NotAcceptedCause | None = None) -> None:
     """Report an incomplete caller-scoped cleanup as a terminal command failure."""
     residuals = ", ".join(sorted(set(residual_session_ids)))
-    print(f"Error: caller child cleanup failed: {reason}; residual session IDs: {residuals}", file=sys.stderr)
+    print(_BULK_END_FAILURE_TEMPLATE.format(reason=reason, residuals=residuals), file=sys.stderr)
+    print_run_again_when_not_accepted(cause)
     raise SystemExit(1)
 
 
@@ -588,8 +613,9 @@ def handle_sessions_restart(args: list[str]) -> None:
     Usage: telec sessions restart <session_id>
            telec sessions restart self
 
-    Triggers an agent restart for the target session. When 'self' is given,
-    restarts the caller's own session (resolved from
+    Triggers an agent restart for the target session and prints an operation
+    receipt; the outcome is delivered to the calling session. When 'self' is
+    given, restarts the caller's own session (resolved from
     $TMPDIR/teleclaude_identity.json).
 
     Examples:
@@ -634,7 +660,7 @@ def handle_sessions_restart(args: list[str]) -> None:
     _emit_tmux_feedback(f"{action} ({session_id})..." if ok else f"Restart failed ({session_id})")
     if not ok:
         raise SystemExit(1)
-    print_json(data)
+    render_receipt(data)
 
 
 def _emit_tmux_feedback(message: str) -> None:

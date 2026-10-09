@@ -105,6 +105,13 @@ _JOBS_READ_AUTH = CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEM
 _JOBS_CONFIG_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 _JOBS_RUN_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 
+_RECEIPT_OUTCOME_DELIVERY = (
+    "without waiting; the outcome is delivered to the calling session and read with "
+    "`telec operations get <operation_id>`."
+)
+_RECEIPT_RETURN_NOTE = f"Returns an operation receipt {_RECEIPT_OUTCOME_DELIVERY}"
+_RECEIPT_RETURN_SLUG_FORM_NOTE = f"The --slug form returns an operation receipt {_RECEIPT_OUTCOME_DELIVERY}"
+
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
         desc="Manage agent sessions",
@@ -720,6 +727,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 args="<slug> [--force]",
                 flags=[F.FLAG_HELP, F.FLAG_TODO_REMOVE_FORCE],
+                notes=[_RECEIPT_RETURN_NOTE],
                 auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
             ),
             "freeze": CommandDef(
@@ -766,6 +774,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--unclaim clears the caller-owned runner claim; --release only clears the dispatch brake.",
                     "--force only applies to kind orphan handling.",
                     "Combining --slug with other legs is staged, not a single atomic patch.",
+                    _RECEIPT_RETURN_SLUG_FORM_NOTE,
                 ],
                 auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
             ),
@@ -773,18 +782,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run the Phase A (prepare) state machine",
                 args="<slug>",
                 flags=[F.FLAG_HELP],
+                notes=[_RECEIPT_RETURN_NOTE],
                 auth=CommandAuth(system=_ORCHESTRATOR_RESERVATION, human=_HR_MEMBER),
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
                 flags=[F.FLAG_HELP],
+                notes=[_RECEIPT_RETURN_NOTE],
                 auth=CommandAuth(system=_ORCHESTRATOR_RESERVATION, human=_HR_MEMBER),
             ),
             "integrate": CommandDef(
                 desc="Run the Phase C (integrate) state machine",
                 args="[<slug>] [--abandon]",
                 flags=[F.FLAG_HELP, F.FLAG_TODO_INTEGRATE_ABANDON],
+                notes=[_RECEIPT_RETURN_NOTE],
                 auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=_HR_MEMBER),
             ),
             "artifacts": CommandDef(

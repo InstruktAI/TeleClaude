@@ -14,12 +14,14 @@ import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
+from enum import StrEnum
+from http import HTTPStatus
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, NoReturn
 
 import httpx
 
-from teleclaude.constants import API_SOCKET_PATH, LOGIN_REQUIRED_DETAIL
+from teleclaude.constants import API_SOCKET_PATH, LOGIN_REQUIRED_DETAIL, SHUTDOWN_REFUSAL_KIND
 
 if TYPE_CHECKING:
     from teleclaude.cli.clearance import ClearanceScope
@@ -27,12 +29,79 @@ if TYPE_CHECKING:
 
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
 _PROJECT_ROOT_HEADER = "x-teleclaude-project-root"
+_REFUSAL_KIND_FIELD: Final = "kind"
+
+# How long a caller waits before running a refused command again, and how long it keeps
+# trying. The delay spans the typical daemon restart gap; the stop bound covers nearly
+# every restart observed in the daemon-log sample.
+NOT_ACCEPTED_RETRY_DELAY_S: Final = 30
+NOT_ACCEPTED_STOP_AFTER_MINUTES: Final = 5
 type QueryParamValue = str | int | float | bool | None
 type ToolQueryParams = (
     Mapping[str, QueryParamValue | Sequence[QueryParamValue]]
     | list[tuple[str, QueryParamValue]]
     | tuple[tuple[str, QueryParamValue], ...]
 )
+
+
+class NotAcceptedCause(StrEnum):
+    """Why the daemon did not accept a command: it was refused while draining, or never reached."""
+
+    DRAINING = "draining"
+    UNREACHABLE = "unreachable"
+
+
+_NOT_ACCEPTED_CAUSE_TEXT: Final[dict[NotAcceptedCause, str]] = {
+    NotAcceptedCause.DRAINING: "the daemon is restarting and refused the request",
+    NotAcceptedCause.UNREACHABLE: "the daemon is not reachable",
+}
+_NOT_ACCEPTED_HEADLINE_TEMPLATE: Final = "Error: nothing was accepted — {cause}."
+_RUN_AGAIN_INSTRUCTION: Final = (
+    "Wait {delay} seconds, then run the same command again, and repeat while it is still refused. "
+    "Do not set a reminder for the retry: setting one is a request to the same daemon. "
+    "If it is still refused after {minutes} minutes, stop retrying and end your turn "
+    "stating which command was not run."
+)
+
+
+def not_accepted_cause_text(cause: NotAcceptedCause) -> str:
+    """The cause of a non-acceptance in words, naming nothing from the refusal body."""
+    return _NOT_ACCEPTED_CAUSE_TEXT[cause]
+
+
+def run_again_instruction() -> str:
+    """The instruction for a caller whose command a draining or unreachable daemon did not accept."""
+    return _RUN_AGAIN_INSTRUCTION.format(
+        delay=NOT_ACCEPTED_RETRY_DELAY_S,
+        minutes=NOT_ACCEPTED_STOP_AFTER_MINUTES,
+    )
+
+
+def print_run_again_when_not_accepted(cause: NotAcceptedCause | None) -> None:
+    """Add the run-again instruction to a report of a command that sent several requests.
+
+    Such a command may have had earlier requests accepted, so it never claims that nothing was
+    accepted; it only tells the caller how to run the command again when a daemon that did not
+    accept a request caused the failure.
+    """
+    if cause is not None:
+        print(run_again_instruction(), file=sys.stderr)
+
+
+def exit_not_accepted(cause: NotAcceptedCause) -> NoReturn:
+    """Report that nothing was accepted, say how to run the command again, and exit non-zero."""
+    print(_NOT_ACCEPTED_HEADLINE_TEMPLATE.format(cause=not_accepted_cause_text(cause)), file=sys.stderr)
+    print(run_again_instruction(), file=sys.stderr)
+    raise SystemExit(1)
+
+
+def is_shutdown_refusal(status_code: int | None, detail: object) -> bool:
+    """Whether an HTTP failure is the draining daemon's published refusal: a 503 whose detail carries its kind."""
+    return (
+        status_code == HTTPStatus.SERVICE_UNAVAILABLE
+        and isinstance(detail, Mapping)
+        and detail.get(_REFUSAL_KIND_FIELD) == SHUTDOWN_REFUSAL_KIND
+    )
 
 
 class ToolAPIError(Exception):
@@ -45,12 +114,29 @@ class ToolAPIError(Exception):
         status_code: int | None = None,
         is_timeout: bool = False,
         is_unavailable: bool = False,
+        is_shutdown_refusal: bool = False,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.is_timeout = is_timeout
         self.is_unavailable = is_unavailable
+        self.is_shutdown_refusal = is_shutdown_refusal
+
+    @property
+    def not_accepted_cause(self) -> NotAcceptedCause | None:
+        """Why this request was not accepted, or ``None`` when it failed for any other reason."""
+        if self.is_shutdown_refusal:
+            return NotAcceptedCause.DRAINING
+        if self.is_unavailable:
+            return NotAcceptedCause.UNREACHABLE
+        return None
+
+    def exit_if_not_accepted(self) -> None:
+        """Exit with the not-accepted message when this failure was a refusal or an unreachable daemon."""
+        cause = self.not_accepted_cause
+        if cause is not None:
+            exit_not_accepted(cause)
 
 
 def tool_api_request(
@@ -157,8 +243,12 @@ def tool_api_request(
         detail = _extract_detail(resp)
         raise ToolAPIError(f"permission denied — {detail}", status_code=403)
     if resp.status_code >= 400:
-        detail = _extract_detail(resp)
-        raise ToolAPIError(f"{resp.status_code} — {detail}", status_code=resp.status_code)
+        detail_value = _detail_value(resp)
+        raise ToolAPIError(
+            f"{resp.status_code} — {detail_value}",
+            status_code=resp.status_code,
+            is_shutdown_refusal=is_shutdown_refusal(resp.status_code, detail_value),
+        )
 
     try:
         return resp.json()
@@ -191,19 +281,25 @@ def tool_api_call(
             clearance_identity=clearance_identity,
         )
     except ToolAPIError as exc:
+        exc.exit_if_not_accepted()
         print(f"Error: {exc.message}", file=sys.stderr)
         raise SystemExit(1) from exc
 
 
-def _extract_detail(resp: httpx.Response) -> str:
-    """Extract error detail from response body."""
+def _detail_value(resp: httpx.Response) -> object:
+    """Extract the error detail from the response body, structured when the daemon sent it so."""
     try:
         data = resp.json()
         if isinstance(data, dict):
-            return str(data.get("detail", resp.text))
+            return data.get("detail", resp.text)
     except Exception:
         pass
     return resp.text
+
+
+def _extract_detail(resp: httpx.Response) -> str:
+    """Extract error detail from response body as text."""
+    return str(_detail_value(resp))
 
 
 def print_json(data: object) -> None:

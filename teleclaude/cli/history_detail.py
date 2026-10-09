@@ -168,6 +168,7 @@ def _show_peer_history_detail(
             )
         )
     except APIError as exc:
+        exc.exit_if_not_accepted()
         if exc.status_code == HTTPStatus.NOT_FOUND:
             print(_TRANSCRIPT_NOT_FOUND.format(session_id=session_id))
         else:

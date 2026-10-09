@@ -5,6 +5,7 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 from teleclaude.cli import CommandScope
 from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, ParsedArgs, parse_command_args
@@ -24,6 +25,12 @@ from teleclaude.cli.telec.surface import (
 from teleclaude.cli.telec.surface_types import admits_any_caller
 
 from . import flags as F
+
+if TYPE_CHECKING:
+    from teleclaude.cli.tool_client import ToolAPIError
+
+# The alias value is evaluated lazily, so naming the type here loads nothing at startup.
+type _ToolAPIError = ToolAPIError
 
 _INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
 _DIRECT_CONVERSATION_FLAGS = (F.FLAG_DIRECT_SEND, F.FLAG_CLOSE_LINK, F.FLAG_CLOSE_LINK_ALIAS)
@@ -187,6 +194,7 @@ def _dispatch_handler(handler: Callable[[], None]) -> None:
         handler()
     except Exception as exc:
         if _is_loaded_exception(exc, "teleclaude.cli.tool_client", "ToolAPIError"):
+            cast(_ToolAPIError, exc).exit_if_not_accepted()
             print(f"Error: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
         if _is_loaded_exception(exc, "pydantic", "ValidationError"):

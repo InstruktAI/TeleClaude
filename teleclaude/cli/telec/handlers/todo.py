@@ -500,17 +500,12 @@ def _handle_todo_work(args: list[str]) -> None:
 def _handle_todo_remove(args: list[str]) -> None:
     """Handle telec todo remove — delete state, artifacts, and todo entry from todos.db.
 
-    Also cleans up worktree and branch if they exist.
+    Also cleans up worktree and branch if they exist. Prints an operation receipt; the
+    removal's outcome, including a refusal, is delivered to the calling session.
     """
-    from teleclaude.cli.telec.handlers.todo_remove import (  # noqa: PLC0415 - command boundary: remove refusal view.
-        render_remove_refusal,
-    )
-    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - command boundary: daemon API client.
-        print_json,
-        tool_api_call,
-    )
-    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt polling.
-        poll_operation,
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt rendering.
+        render_receipt,
     )
 
     if not args:
@@ -537,22 +532,7 @@ def _handle_todo_remove(args: list[str]) -> None:
         "cwd": str(invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
-    receipt: object = tool_api_call("POST", "/todos/remove", json_body=body)
-    if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-        print_json(receipt)
-        raise SystemExit(1)
-
-    status: object = poll_operation(receipt, estimated_timeout_ms=30_000)
-    if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
-        print(f"Removed todo: {slug}")
-    elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
-        if render_remove_refusal(status, slug):
-            raise SystemExit(1)
-        print(f"Error: {status['error']}", file=sys.stderr)
-        raise SystemExit(1)
-    else:
-        print_json(status)
-        raise SystemExit(1)
+    render_receipt(tool_api_call("POST", "/todos/remove", json_body=body))
 
 
 def _normalize_after_values(raw_values: list[str]) -> list[str]:
@@ -587,12 +567,9 @@ def _handle_todo_update(args: list[str]) -> None:
     from teleclaude.cli.telec.handlers.todo_update_args import (  # noqa: PLC0415 - command boundary: update arguments.
         _parse_todo_update_args,
     )
-    from teleclaude.cli.tool_client import (  # noqa: PLC0415 - command boundary: daemon API client.
-        print_json,
-        tool_api_call,
-    )
-    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt polling.
-        poll_operation,
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.cli.tool_commands._receipt import (  # noqa: PLC0415 - command boundary: receipt rendering.
+        render_receipt,
     )
     from teleclaude.types.todo_kind import (  # noqa: PLC0415 - command boundary: kind vocabulary.
         ALL_DUMP_KINDS,
@@ -651,28 +628,7 @@ def _handle_todo_update(args: list[str]) -> None:
     if unclaim:
         body["unclaim"] = True
 
-    receipt: object = tool_api_call("POST", "/todos/update", json_body=body)
-    if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-        print_json(receipt)
-        raise SystemExit(1)
-
-    if "operation_id" not in receipt:
-        print_json(receipt)
-        return
-
-    status: object = poll_operation(receipt, estimated_timeout_ms=30_000)
-    if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
-        result = status.get("result")
-        if isinstance(result, str) and result:
-            print(result)
-        else:
-            print_json(status)
-    elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
-        print(f"Error: {status['error']}", file=sys.stderr)
-        raise SystemExit(1)
-    else:
-        print_json(status)
-        raise SystemExit(1)
+    render_receipt(tool_api_call("POST", "/todos/update", json_body=body))
 
 
 # Artifact and stamp handlers (consolidated back from _todo_extra.py)

@@ -50,8 +50,9 @@ _REPO_ROOT_DIRTY_PATH_INSTRUCTION = (
     "Run each stranded-path commit with the tool working directory set to `{project_root}` "
     "and the exact-path `--only <path>` selection specified by that procedure; never use "
     "additive workspace-scope `--include`. On each clearance beat, re-enter "
-    "`telec todo integrate`, which re-runs synchronization and returns the current decision; "
-    "take that beat's blocking set as the decision identifies it."
+    "`telec todo integrate`, which re-runs synchronization; the current decision is the operation's "
+    "outcome, read with `telec operations get <operation_id>` when the wake arrives. "
+    "Take that beat's blocking set as the decision identifies it."
 )
 _REPO_ROOT_SPLIT_HISTORY_TEMPLATE = """INTEGRATION DECISION: REPO ROOT SPLIT HISTORY
 

@@ -140,6 +140,10 @@ HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CUSTOMER)
 # the fix without string-matching arbitrary server text.
 LOGIN_REQUIRED_DETAIL = "login required in multi-user mode"
 
+# The wire kind of a draining daemon's refusal. The daemon's HTTP and relay
+# refusals produce it and the CLI recognizes it, so neither side spells it twice.
+SHUTDOWN_REFUSAL_KIND = "shutdown_refusal"
+
 SNIPPET_VISIBILITY_PUBLIC = "public"
 SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)

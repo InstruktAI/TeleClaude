@@ -27,7 +27,15 @@ __all__ = [
     "_handle_memories_timeline",
 ]
 
+_REQUEST_FAILURE_TEMPLATE = "Error: {detail}"
 _VALID_OBS_TYPES = {"preference", "decision", "discovery", "gotcha", "pattern", "friction", "context"}
+
+
+def _fail_memories_request(exc: APIError) -> NoReturn:
+    """Exit non-zero on a failed memories request; a daemon that did not accept it says how to run it again."""
+    exc.exit_if_not_accepted()
+    print(_REQUEST_FAILURE_TEMPLATE.format(detail=exc.detail))
+    raise SystemExit(1) from exc
 
 
 def _memories_usage_error(subcommand: str, message: str) -> NoReturn:
@@ -237,8 +245,7 @@ def _handle_memories_list(args: list[str]) -> None:
     try:
         results = asyncio.run(_memory_search("", limit, obs_type, project))
     except APIError as exc:
-        print(f"Error: {exc.detail}")
-        raise SystemExit(1) from exc
+        _fail_memories_request(exc)
 
     if not results:
         print("No memories found.")
@@ -254,8 +261,7 @@ def _handle_memories_search(args: list[str]) -> None:
     try:
         results = asyncio.run(_memory_search(query, limit, obs_type, project))
     except APIError as exc:
-        print(f"Error: {exc.detail}")
-        raise SystemExit(1) from exc
+        _fail_memories_request(exc)
 
     if not results:
         print(f"No memories found for '{query}'")
@@ -271,8 +277,7 @@ def _handle_memories_save(args: list[str]) -> None:
     try:
         result = asyncio.run(_memory_save(text, title, obs_type, project))
     except APIError as exc:
-        print(f"Error: {exc.detail}")
-        raise SystemExit(1) from exc
+        _fail_memories_request(exc)
 
     print(f"Saved observation #{result.get('id')} — {result.get('title')} (project: {result.get('project')})")
 
@@ -284,8 +289,7 @@ def _handle_memories_delete(args: list[str]) -> None:
     try:
         asyncio.run(_memory_delete(numeric_id))
     except APIError as exc:
-        print(f"Error: {exc.detail}")
-        raise SystemExit(1) from exc
+        _fail_memories_request(exc)
 
     print(f"Deleted observation #{numeric_id}")
 
@@ -297,8 +301,7 @@ def _handle_memories_timeline(args: list[str]) -> None:
     try:
         results = asyncio.run(_memory_timeline(numeric_anchor, before, after, project))
     except APIError as exc:
-        print(f"Error: {exc.detail}")
-        raise SystemExit(1) from exc
+        _fail_memories_request(exc)
 
     if not results:
         print(f"No observations found around #{numeric_anchor}")

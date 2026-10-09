@@ -6,7 +6,6 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 
 from __future__ import annotations
 
-import json
 import sys
 import uuid
 
@@ -14,7 +13,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.surface import OPERATIONS_GET, TODO_DESIGN, TODO_INTEGRATE, TODO_PREPARE, TODO_WORK
 from teleclaude.cli.tool_client import ToolQueryParams, print_json, tool_api_call
-from teleclaude.cli.tool_commands._receipt import poll_operation
+from teleclaude.cli.tool_commands._receipt import render_receipt
 from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
@@ -42,9 +41,10 @@ def handle_todo_design(args: list[str]) -> None:
 
     Usage: telec todo design [<slug>]
 
-    Checks creative state for the given slug and returns instructions for
-    the next action: design discovery, art generation, visual drafting,
-    or human gate signals.
+    Checks creative state for the given slug and prints an operation receipt;
+    the instruction for the next action (design discovery, art generation,
+    visual drafting, or human gate signals) is the operation's outcome,
+    delivered to the calling session.
 
     When called without a slug, selects the next work item that needs
     creative work from the todo list.
@@ -62,8 +62,7 @@ def handle_todo_design(args: list[str]) -> None:
     if slug is not None:
         body["slug"] = slug
 
-    data = tool_api_call("POST", "/todos/create", json_body=body)
-    print_json(data)
+    render_receipt(tool_api_call("POST", "/todos/create", json_body=body))
 
 
 def handle_todo_create(args: list[str]) -> None:
@@ -76,9 +75,10 @@ def handle_todo_prepare(args: list[str]) -> None:
 
     Usage: telec todo prepare <slug>
 
-    Checks preparation state for the given slug and returns instructions for
-    the next action: draft artifacts (if not started), gate review (if draft
-    complete), or signal already prepared (if gate passed).
+    Checks preparation state for the given slug and prints an operation receipt;
+    the instruction for the next action (draft artifacts if not started, gate
+    review if draft complete, or already prepared if the gate passed) is the
+    operation's outcome, delivered to the calling session.
 
     A slug is required; invoking prepare without one is rejected. Requires
     orchestrator clearance (not available to workers).
@@ -95,19 +95,7 @@ def handle_todo_prepare(args: list[str]) -> None:
     if slug is not None:
         body["slug"] = slug
 
-    receipt = tool_api_call("POST", "/todos/prepare", json_body=body)
-    if not isinstance(receipt, dict):
-        print_json(receipt)
-        return
-
-    status = poll_operation(receipt, estimated_timeout_ms=300_000)
-    result = status.get("result")
-    if isinstance(result, str):
-        try:
-            status["result"] = json.loads(result)
-        except json.JSONDecodeError:
-            pass
-    print_json(status)
+    render_receipt(tool_api_call("POST", "/todos/prepare", json_body=body))
 
 
 def handle_todo_work(args: list[str]) -> None:
@@ -117,9 +105,10 @@ def handle_todo_work(args: list[str]) -> None:
 
     Executes the build/review/fix cycle for the provided work item slug.
     Dispatches worker agents for build, review, or fix-review phases as
-    determined by the current state of the slug. Without a slug, the command
-    emits a terminal self-end script; daemon-runner pickup owns selecting
-    future work.
+    determined by the current state of the slug. The command prints an
+    operation receipt; the operation's outcome is delivered to the calling
+    session. Without a slug, the outcome is a terminal self-end script;
+    daemon-runner pickup owns selecting future work.
 
     Requires orchestrator clearance — workers cannot invoke this on themselves.
     Uses the current working directory as the project root.
@@ -139,13 +128,7 @@ def handle_todo_work(args: list[str]) -> None:
     if slug is not None:
         body["slug"] = slug
 
-    receipt = tool_api_call("POST", "/todos/work", json_body=body)
-    if not isinstance(receipt, dict):
-        print_json(receipt)
-        return
-
-    status = poll_operation(receipt, estimated_timeout_ms=600_000)
-    print_json(status)
+    render_receipt(tool_api_call("POST", "/todos/work", json_body=body))
 
 
 def handle_todo_integrate(args: list[str]) -> None:
@@ -155,8 +138,10 @@ def handle_todo_integrate(args: list[str]) -> None:
 
     Executes the next deterministic integration step: acquires the integration
     lease, pops the next candidate from the queue, merges, pushes, and cleans
-    up. Returns structured instructions at decision points where agent
-    intelligence is required (squash commit, conflict resolution, push recovery).
+    up. The command prints an operation receipt; the operation's outcome is
+    delivered to the calling session, with structured instructions at decision
+    points where agent intelligence is required (squash commit, conflict
+    resolution, push recovery).
 
     Requires integrator clearance. The queue is FIFO; if a slug is provided,
     it must match the next item or an error is returned.
@@ -184,13 +169,7 @@ def handle_todo_integrate(args: list[str]) -> None:
     if parsed.has(F.FLAG_TODO_INTEGRATE_ABANDON):
         body["abandon"] = True
 
-    receipt = tool_api_call("POST", "/todos/integrate", json_body=body)
-    if not isinstance(receipt, dict):
-        print_json(receipt)
-        return
-
-    status = poll_operation(receipt, estimated_timeout_ms=300_000)
-    print_json(status)
+    render_receipt(tool_api_call("POST", "/todos/integrate", json_body=body))
 
 
 def handle_operations(args: list[str]) -> None:
