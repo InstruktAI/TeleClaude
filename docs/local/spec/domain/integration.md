@@ -15,9 +15,20 @@ implementation remain the current appliance contract.
 ## Canonical fields
 
 - **Current behavior:** `docs/local/spec/feature/integration/`.
+
+<!-- planned-change:platform-alerts -->
+
 - **Implementation roots:** `teleclaude/adapters/`,
   `teleclaude/core/integration/`, `teleclaude/core/inbound/`, and
   `teleclaude/events/delivery/`.
+
+<!-- change:platform-alerts -->
+
+- **Implementation roots:** `teleclaude/adapters/`,
+  `teleclaude/core/integration/`, and `teleclaude/core/inbound/`.
+
+<!-- /planned-change:platform-alerts -->
+
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement transport design is
   authored here.
 
