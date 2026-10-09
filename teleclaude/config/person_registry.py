@@ -9,7 +9,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from teleclaude.config.schema import PersonEntry
+from teleclaude.config.identity_schema import PersonEntry
 
 _PEOPLE_KEY = "people"
 _SLUG_KEY = "slug"

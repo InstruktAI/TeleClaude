@@ -9,10 +9,11 @@ no consumer re-derives it. Outside every home a declaration is free.
 
 from __future__ import annotations
 
+from collections.abc import Set
 from dataclasses import dataclass
 from pathlib import Path
 
-from teleclaude.config_roster import ProjectOwnerKind, load_people_roster
+from teleclaude.config.identity_schema import ProjectOwnerKind
 from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, ConfigFileName
 
 _NO_OWNER = "no owner"
@@ -45,17 +46,17 @@ def _slug_under(path: Path, root: Path) -> str | None:
     return parts[0] if len(parts) > 1 else None
 
 
-def owning_home_owner(path: Path) -> HomeOwner | None:
+def owning_home_owner(path: Path, person_slugs: Set[str]) -> HomeOwner | None:
     """Return the owner of the person or company home containing ``path``, if any.
 
-    A person home is ``PEOPLE_DIR/<slug>`` for a slug in the people roster; a
+    A person home is ``PEOPLE_DIR/<slug>`` for a slug in ``person_slugs``, the registered people; a
     company home is ``COMPANIES_ROOT/<slug>`` for a company whose declaration
     exists. The home folder itself is not a project, so only a path strictly
     inside one matches.
     """
     resolved = path.expanduser().resolve()
     person_slug = _slug_under(resolved, PEOPLE_DIR)
-    if person_slug is not None and person_slug in {entry.slug for entry in load_people_roster()}:
+    if person_slug is not None and person_slug in person_slugs:
         return HomeOwner(ProjectOwnerKind.PERSON, person_slug, PEOPLE_DIR.resolve() / person_slug)
     company_slug = _slug_under(resolved, COMPANIES_ROOT)
     if company_slug is not None and (COMPANIES_ROOT / company_slug / ConfigFileName.OVERLAY).is_file():
@@ -63,13 +64,13 @@ def owning_home_owner(path: Path) -> HomeOwner | None:
     return None
 
 
-def require_home_owner(project_root: Path, *, company: str | None, person: str | None) -> None:
+def require_home_owner(project_root: Path, *, company: str | None, person: str | None, person_slugs: Set[str]) -> None:
     """Refuse a project inside a home whose declared owner is not that home's.
 
     Inside a home any other owner, or none, is refused. Outside every home any
     declaration is accepted.
     """
-    home = owning_home_owner(project_root)
+    home = owning_home_owner(project_root, person_slugs)
     if home is None:
         return
     declared_slug = company if home.kind is ProjectOwnerKind.COMPANY else person
@@ -92,16 +93,18 @@ def require_home_owner(project_root: Path, *, company: str | None, person: str |
     )
 
 
-def adoptable_home_owner(project_root: Path, *, company: str | None, person: str | None) -> HomeOwner | None:
+def adoptable_home_owner(
+    project_root: Path, *, company: str | None, person: str | None, person_slugs: Set[str]
+) -> HomeOwner | None:
     """Return the home owner an adopted project inside a home must record, or ``None`` outside every home.
 
     A declaration that names no owner, or the home's own, is adoptable and takes
     the home's owner; any other declared owner is refused.
     """
-    home = owning_home_owner(project_root)
+    home = owning_home_owner(project_root, person_slugs)
     if home is None:
         return None
     if company is None and person is None:
         return home
-    require_home_owner(project_root, company=company, person=person)
+    require_home_owner(project_root, company=company, person=person, person_slugs=person_slugs)
     return home

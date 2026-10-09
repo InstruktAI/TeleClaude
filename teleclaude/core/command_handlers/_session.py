@@ -13,7 +13,6 @@ from teleclaude.agent_registry import LaunchProfile
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, SlashCommand
 from teleclaude.core import tmux_bridge
@@ -64,9 +63,11 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
-from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker, EventVisibility
+from teleclaude.events.envelope import EventHomeMarker, EventVisibility
+from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.project_root import is_project_checkout
 from teleclaude.services.project_catalog import get_project_catalog_service
+from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 from teleclaude.types.creation_record import Lineage

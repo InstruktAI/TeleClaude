@@ -20,6 +20,7 @@ from pydantic import BaseModel, ValidationError
 import teleclaude.config as _tc_config_module
 from teleclaude.config._environment import write_environment_value
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
+from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import (
     find_person_config_path,
     list_company_config_paths,
@@ -37,7 +38,7 @@ from teleclaude.config.person_secrets import (
     list_person_mcp_secret_statuses,
     replace_person_mcp_secret,
 )
-from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
+from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
 from teleclaude.mcp.registry import load_effective_registry

@@ -42,6 +42,7 @@ from teleclaude.config._unresolved import (
     drop_unresolved_untyped,
     is_unresolved,
 )
+from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.observation import credential_field_sources, credential_section_availability
 from teleclaude.constants import (
     DIRECTORY_CHECK_INTERVAL,
@@ -459,7 +460,7 @@ def build_config_from_raw(
         raw_document = dict(raw_user_config)
         declared_kind = raw_document.get(_KIND_FIELD)
         if declared_kind is not None and declared_kind != "computer":
-            raise ValueError(_KIND_MISMATCH_ERROR.format(path=source, kind=declared_kind))
+            raise ConfigLoadError(_KIND_MISMATCH_ERROR.format(path=source, kind=declared_kind))
         initial_issues: list[ConfigValidationIssue] = []
         schema_version = raw_document.get(_SCHEMA_VERSION_FIELD)
         if isinstance(schema_version, (Mapping, list)):
@@ -506,7 +507,7 @@ def build_config_from_raw(
             try:
                 experiments_input = _ExperimentsFileInput.model_validate(expanded_experiments)
             except ValidationError as error:
-                raise ValueError(_CONFIG_VALIDATION_ERROR.format(path=experiments_path, error=error)) from error
+                raise ConfigLoadError(_CONFIG_VALIDATION_ERROR.format(path=experiments_path, error=error)) from error
             if _MachineField.EXPERIMENTS in experiments_input.model_fields_set and isinstance(user_config, Mapping):
                 merged_experiments = dict(user_config)
                 current = merged_experiments.get(_MachineField.EXPERIMENTS, [])
@@ -547,7 +548,7 @@ def build_config_from_raw(
             },
         )
         if isinstance(error, ValidationError):
-            raise ValueError(_CONFIG_VALIDATION_ERROR.format(path=source, error=error)) from error
+            raise ConfigLoadError(_CONFIG_VALIDATION_ERROR.format(path=source, error=error)) from error
         raise
 
     logger.info(

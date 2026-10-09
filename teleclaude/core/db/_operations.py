@@ -10,9 +10,10 @@ from sqlalchemy import and_, delete, or_, update
 from sqlmodel import select
 
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
-from teleclaude.config_roster import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker
+from teleclaude.events.envelope import EventHomeMarker
+from teleclaude.events.home_owner import EventHomeOwnerMarker
+from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex, load_project_ownership_index
 
 from .. import db_models
 

@@ -14,7 +14,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config
 from teleclaude.config.loader import load_project_config
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
@@ -72,6 +71,7 @@ from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, RelayProtocol
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.paths import ConfigFileName
+from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:

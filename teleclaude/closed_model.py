@@ -1,9 +1,4 @@
-"""The closed validation posture shared by configuration models.
-
-Hosted as a leaf module, not inside ``teleclaude.config``, because
-``teleclaude.config_roster`` must inherit it without creating a reverse
-import edge back into the config package.
-"""
+"""The closed validation posture shared by configuration models and the models that reuse it."""
 
 from __future__ import annotations
 

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from teleclaude.config_roster import CompanyRole
+from teleclaude.config.identity_schema import CompanyRole
 
 if TYPE_CHECKING:
     from .__main__ import BootstrapHarness, GuestTerminal

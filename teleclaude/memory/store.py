@@ -12,14 +12,19 @@ from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
-from teleclaude.config_roster import ProjectOwnership, ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core import db_models
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
-from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker
+from teleclaude.events.envelope import EventHomeMarker
+from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.types import ObservationInput, ObservationResult
+from teleclaude.services.project_catalog.ownership import (
+    ProjectOwnership,
+    ProjectOwnershipIndex,
+    load_project_ownership_index,
+)
 
 logger = get_logger(__name__)
 

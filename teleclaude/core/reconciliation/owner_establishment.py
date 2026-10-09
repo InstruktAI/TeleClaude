@@ -14,11 +14,11 @@ from pydantic import ValidationError
 from ruamel.yaml.error import YAMLError
 
 from teleclaude.caller_identity import entries_for_email
+from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.migrations import upcast
 from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import InvalidCandidate, PartialCommitFailure
 from teleclaude.config.resources import register_first_person
-from teleclaude.config.schema import PersonEntry
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.logging_config import setup_logging

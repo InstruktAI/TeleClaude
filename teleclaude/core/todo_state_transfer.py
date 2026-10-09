@@ -16,7 +16,7 @@ from typing import Final, cast
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
-from teleclaude.config_roster import read_local_computer_name
+from teleclaude.config import config
 from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.slug import validate_slug
@@ -49,7 +49,6 @@ _OK_VALUE: Final[str] = "ok"
 _INVALID_PROJECT_SLUG: Final[str] = "project slug must be an unpadded lowercase kebab-case value"
 _TRANSFERRED_DETAIL: Final[str] = "copy verified intact"
 _SELF_TARGET_DETAIL: Final[str] = "target is this computer"
-_LOCAL_NAME_MISSING: Final[str] = "local computer name is unavailable"
 _LOCAL_TOOL_MISSING: Final[str] = "sqlite3_rsync is missing; run make install on this computer"
 _LOCAL_PROJECT_MISSING: Final[str] = "project is not registered on this computer"
 _LOCAL_DATABASE_MISSING: Final[str] = "project todo database is missing on this computer"
@@ -136,9 +135,7 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
     if not tool_path.is_file() or not os.access(tool_path, os.X_OK):
         raise RuntimeError(_LOCAL_TOOL_MISSING)
 
-    local_computer = read_local_computer_name()
-    if local_computer is None:
-        raise RuntimeError(_LOCAL_NAME_MISSING)
+    local_computer = config.computer.name
 
     catalog = get_project_catalog_service()
     local_databases: dict[str, tuple[Path | None, str | None]] = {}
@@ -175,7 +172,7 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
                 transferable_slugs.append(project_slug)
         if not transferable_slugs:
             continue
-        if computer == local_computer.value:
+        if computer == local_computer:
             outcomes.extend(
                 _outcome(project_slug, computer, TransferStatus.FAILED, _SELF_TARGET_DETAIL)
                 for project_slug in transferable_slugs

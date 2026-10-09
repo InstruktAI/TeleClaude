@@ -6,11 +6,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.person_registry import with_person
 from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import SubjectNotFound, SubjectView
 from teleclaude.config.revision import view_revision
-from teleclaude.config.schema import PersonEntry
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName

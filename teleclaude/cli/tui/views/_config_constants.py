@@ -12,7 +12,7 @@ from rich.style import Style
 
 from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
-from teleclaude.config.schema import PersonEntry
+from teleclaude.config.identity_schema import PersonEntry
 
 logger = get_logger(__name__)
 

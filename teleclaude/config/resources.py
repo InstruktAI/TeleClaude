@@ -26,7 +26,13 @@ from teleclaude.config._environment import (
 )
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.generation import ensure_machine_config
-from teleclaude.config.loader import list_company_config_paths, resolve_overlay_references, validate_tier_document
+from teleclaude.config.identity_schema import PersonEntry
+from teleclaude.config.loader import (
+    list_company_config_paths,
+    registered_person_slugs,
+    resolve_overlay_references,
+    validate_tier_document,
+)
 from teleclaude.config.machine_config_mutation import (
     MachineConfigInspection,
     MachineConfigMutationResult,
@@ -92,7 +98,7 @@ from teleclaude.config.roster import (
     rosters_without_person,
     validate_roster_candidate,
 )
-from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, PersonEntry, ProjectConfig
+from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, ProjectConfig
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.file_transaction import file_transaction
@@ -768,7 +774,12 @@ def _patch_project(
         candidate_section = apply_merge_patch(current_section, patch)
         try:
             candidate = ProjectConfig.model_validate({**candidate_section, _KIND_KEY: ConfigKind.PROJECT.value})
-            require_home_owner(path.parent, company=candidate.company, person=candidate.person)
+            require_home_owner(
+                path.parent,
+                company=candidate.company,
+                person=candidate.person,
+                person_slugs=registered_person_slugs(),
+            )
         except Exception as exc:
             raise InvalidCandidate(str(exc)) from exc
         # Written only — the project's own commit/review boundary governs afterward; this

@@ -98,7 +98,8 @@ from teleclaude.utils.transcript import (
 )
 
 if TYPE_CHECKING:
-    from teleclaude.config.schema import CompanyConfig, PersonEntry
+    from teleclaude.config.identity_schema import PersonEntry
+    from teleclaude.config.schema import CompanyConfig
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")

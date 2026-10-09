@@ -12,17 +12,14 @@ from teleclaude.config.declaration_changes import (
     subscribe_declaration_changes,
     unsubscribe_declaration_changes,
 )
-from teleclaude.config_roster import (
-    CompanyRole,
-    load_people_roster,
-    load_person_memberships,
-    load_project_ownership_index,
-)
+from teleclaude.config.identity_schema import CompanyRole
+from teleclaude.config.loader import company_memberships, load_global_config
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.organization import resolve_organization
 from teleclaude.project_manifest import ConfigKind
 from teleclaude.services.project_catalog import get_project_catalog_service
+from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 
 logger = get_logger(__name__)
 
@@ -206,7 +203,7 @@ def resolve_reach(caller: CliCaller | None) -> Reach:
     if not isinstance(caller, PersonCliCaller) or caller.person_slug is None:
         return Reach(False, frozenset(), frozenset(), frozenset(), frozenset(), None, False, None)
     try:
-        person = next((entry for entry in load_people_roster() if entry.slug == caller.person_slug), None)
+        person = next((entry for entry in load_global_config().people if entry.slug == caller.person_slug), None)
         email = caller.email or (person.email if person is not None else None)
         if email is not None:
             principal = human_principal_for_email(email)
@@ -224,7 +221,7 @@ def resolve_reach(caller: CliCaller | None) -> Reach:
             )
 
         organization = resolve_organization(caller.person_slug)
-        memberships = load_person_memberships(caller.person_slug)
+        memberships = company_memberships(caller.person_slug)
         administered_companies = frozenset(
             membership.company_slug for membership in organization.memberships if membership.role is CompanyRole.ADMIN
         )

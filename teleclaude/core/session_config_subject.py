@@ -6,11 +6,11 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.subject_resolution import ConfigSubjectResolver, SubjectResolutionError
-from teleclaude.config_roster import load_project_ownership_index
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.db import db
 from teleclaude.core.session_utils import resolve_working_dir
-from teleclaude.events.envelope import EventHomeOwnerMarker
+from teleclaude.events.home_owner import EventHomeOwnerMarker
+from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 
 logger = get_logger(__name__)
 

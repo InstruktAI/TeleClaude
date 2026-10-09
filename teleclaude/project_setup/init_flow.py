@@ -17,11 +17,12 @@ from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabi
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.declaration import render_declared_config, write_declared_config
+from teleclaude.config.identity_schema import ProjectOwnerKind
+from teleclaude.config.loader import registered_person_slugs
 from teleclaude.config.migrations import Destination, MigrationTrigger, carry_pending, migrate_document, upcast
 from teleclaude.config.migrations._registry import registered_subject
 from teleclaude.config.project_home import HomeOwner, adoptable_home_owner, owning_home_owner
 from teleclaude.config.schema import ConfigKind, ProjectConfig
-from teleclaude.config_roster import ProjectOwnerKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.reconciliation.home_convergence import project_targets
 from teleclaude.core.reconciliation.template_installation import materialize_template_targets
@@ -500,6 +501,7 @@ def _adopt_locked(project_root: Path, trigger: ProjectInitializationTrigger) -> 
         project_root,
         company=_declared_owner_slug(declaration, ProjectOwnerKind.COMPANY.value),
         person=_declared_owner_slug(declaration, ProjectOwnerKind.PERSON.value),
+        person_slugs=registered_person_slugs(),
     )
     registered_root = (
         resolve_project_root(project_root)
@@ -537,7 +539,7 @@ def _destination_root(name: str, destination: ProjectDestination) -> tuple[Path,
     """Resolve where a created project lives and the owner that place implies, refusing a place that cannot hold it."""
     if isinstance(destination, PlatformPathDestination):
         root = destination.path.expanduser().resolve()
-        if owning_home_owner(root) is not None or _inside_platform_home(root):
+        if owning_home_owner(root, registered_person_slugs()) is not None or _inside_platform_home(root):
             raise ValueError(_PLATFORM_PATH_INSIDE_HOME.format(path=root))
         return root, {}
     if isinstance(destination, PersonHomeDestination):
@@ -545,7 +547,7 @@ def _destination_root(name: str, destination: ProjectDestination) -> tuple[Path,
     else:
         kind, slug, homes_root = ProjectOwnerKind.COMPANY, destination.company_slug, COMPANIES_ROOT
     root = homes_root.resolve() / slug / _PROJECTS_FOLDER / name
-    home = owning_home_owner(root)
+    home = owning_home_owner(root, registered_person_slugs())
     if home is None or home.kind is not kind or home.slug != slug or not (home.home / ConfigFileName.OVERLAY).is_file():
         raise ValueError(_HOME_MISSING.format(kind=kind.value, slug=slug))
     return root, home.declaration()

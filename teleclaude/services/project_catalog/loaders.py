@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
+from teleclaude.config.identity_schema import PersonEntry, project_owner_identity
 from teleclaude.config.loader import load_company_config, load_person_config, load_project_config
-from teleclaude.config.schema import CompanyConfig, ConfigKind, PersonEntry
-from teleclaude.config_roster import project_owner_identity
+from teleclaude.config.schema import CompanyConfig, ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.events.envelope import EventHomeOwnerMarker
+from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import RegisteredProjectEntry
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry, ProjectNode

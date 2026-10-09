@@ -60,7 +60,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "legacy_gemini_root": "~/.gemini/tmp",
     },
     "computer": {
-        "name": "unknown",
+        # No name default: a computer without a configured name fails its load instead of joining as "unknown".
         # Empty/None sentinels mark fields the loader derives at runtime.
         "user": "",
         "role": "general",

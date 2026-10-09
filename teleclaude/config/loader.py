@@ -23,7 +23,9 @@ from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import declared_config_kind, load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.field_constraints import MACHINE_CONTEXT_KEY, UNRESOLVED_CONTEXT_KEY
+from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
 from teleclaude.config.migrations import (
     Destination,
@@ -43,7 +45,6 @@ from teleclaude.config.schema import (
     MailAccount,
     OutputVisibilitySettings,
     PersonConfig,
-    PersonEntry,
     ProjectConfig,
 )
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
@@ -54,6 +55,7 @@ from teleclaude.slug import validate_slug
 logger = get_logger(__name__)
 _PERSON_SLUG_FIELD = "slug"
 _UNRESOLVED_REFERENCES_EVENT = "config_references_unresolved_here"
+_COMPANY_UNREADABLE_EVENT = "company_declaration_unreadable"
 _PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save target '{target}'"
 _UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
 _UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
@@ -218,7 +220,7 @@ def load_config[T: BaseModel](
             raw = yaml.safe_load(f) or {}
     except Exception as e:
         logger.error("Failed to read config file %s: %s", path, e)
-        raise ValueError(f"Failed to read config file {path}: {e}") from e
+        raise ConfigLoadError(f"Failed to read config file {path}: {e}") from e
 
     return _validated_model(path, raw, model_class, kind)
 
@@ -233,7 +235,7 @@ def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T]
     try:
         model = validate_tier_document(model_class, expanded.value, expanded.unresolved)
     except Exception as exc:
-        raise ValueError(f"Failed to validate config file {path}: {exc}") from exc
+        raise ConfigLoadError(f"Failed to validate config file {path}: {exc}") from exc
     return model
 
 
@@ -279,7 +281,9 @@ def load_project_config(path: Path) -> ProjectConfig:
     """
     config = load_config(path, ProjectConfig, ConfigKind.PROJECT, path.parent)
     if path.exists():
-        require_home_owner(path.parent, company=config.company, person=config.person)
+        require_home_owner(
+            path.parent, company=config.company, person=config.person, person_slugs=registered_person_slugs()
+        )
     return config
 
 
@@ -313,7 +317,9 @@ def load_declared_project_config_from_content(path: Path, content: bytes) -> Pro
     if declared_config_kind(path, raw) is not ConfigKind.PROJECT:
         return None
     config = _validated_model(path, raw, ProjectConfig, ConfigKind.PROJECT)
-    require_home_owner(path.parent, company=config.company, person=config.person)
+    require_home_owner(
+        path.parent, company=config.company, person=config.person, person_slugs=registered_person_slugs()
+    )
     return config
 
 
@@ -413,6 +419,31 @@ def load_person_config(path: Path, *, registered_slug: str | None = None) -> Per
 def load_company_config(path: Path) -> CompanyConfig:
     """Load company-tier configuration."""
     return load_config(path, CompanyConfig, ConfigKind.COMPANY, path.parent)
+
+
+def registered_person_slugs() -> frozenset[str]:
+    """Answer the slugs of the people the global configuration registers."""
+    return frozenset(person.slug for person in load_global_config().people if person.slug)
+
+
+def company_memberships(person_slug: str, companies_root: Path | None = None) -> dict[str, CompanyMember]:
+    """Answer one person's declared membership in each company, keyed by company slug.
+
+    A company whose declaration does not load is logged and contributes no membership, so it
+    grants nothing; the person's memberships in readable companies are still answered.
+    """
+    memberships: dict[str, CompanyMember] = {}
+    for config_path in list_company_config_paths(companies_root):
+        company_slug = config_path.parent.name
+        try:
+            company = load_company_config(config_path)
+        except ValueError as exc:
+            logger.warning(_COMPANY_UNREADABLE_EVENT, company=company_slug, path=str(config_path), error=str(exc))
+            continue
+        member = company.members.get(person_slug)
+        if member is not None:
+            memberships[company_slug] = member
+    return memberships
 
 
 def _company_dir(slug: str, companies_root: Path | None) -> Path:

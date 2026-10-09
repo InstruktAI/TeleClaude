@@ -65,15 +65,20 @@ design owns only the path that connects them.
 4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
    command surface to identify the command and passes the caller through one gate.
    Nothing else runs, loads, or validates first.
-5. **The gate is cheap and narrow.** It reads the auth the command surface declares for
+5. **The gate is narrow.** It reads the auth the command surface declares for
    the command, and resolves the caller from the session identity marker, one session
    row, the people roster, and the organization facts the command's scope needs — the
    person's company memberships and the ownership declaration of the registered
-   project the command acts on, read narrowly as the roster is. A session row is
-   admitted by the marker that names it. The gate loads neither the machine
-   configuration nor the ORM, and never validates a configuration document beyond
-   those identity facts, so an invalid document unrelated to identity does not lock
-   callers out. The gate completes person-band clearance when the acted-on object is
+   project the command acts on. It reads them through the configuration loader every
+   other consumer uses, so they are migrated, resolved and validated the same way
+   (`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`). A value
+   whose reference has no value on this computer is absent rather than invalid, so
+   only a genuinely invalid document refuses: when the global configuration does not
+   load, a command that resolves a caller is refused naming that document, and a
+   company or project declaration that does not load contributes no membership or
+   ownership. A session row is admitted by the marker that names it. The gate reads
+   the machine configuration only to decide whether a computer the command names is
+   this one, and loads no ORM. The gate completes person-band clearance when the acted-on object is
    known from the command or an identity record. When a command names a project by
    its machine-configured trusted-directory name, the gate resolves the caller and
    enforces any agent band without loading machine configuration. The handler
@@ -157,14 +162,14 @@ A command-local dependency is validated when its selected handler loads. An
 import failure faults the command when that dependency loads; a successful sibling or
 help invocation does not establish the deferred leaf's importability.
 
-| Condition                              | Effect                                                                                                                               |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Machine configuration is invalid       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
-| People roster cannot be read           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
-| Session marker names no admissible row | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
-| Worktree code started                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                   |
-| The worktree's home is missing         | Refused at startup, naming the home; nothing is created.                                                                             |
-| Daemon unreachable                     | Only commands that act through the daemon fail; everything else runs.                                                                |
+| Condition                              | Effect                                                                                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine configuration is invalid       | Commands that name a computer, and handlers that need it, fail naming the document; caller resolution, validation and repair commands keep working. |
+| Global configuration does not load     | A command that resolves a caller is refused, naming the document; commands needing no caller still run.                                             |
+| Session marker names no admissible row | The caller resolves to no identity inside the session; it is never widened to another identity.                                                     |
+| Worktree code started                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                                  |
+| The worktree's home is missing         | Refused at startup, naming the home; nothing is created.                                                                                            |
+| Daemon unreachable                     | Only commands that act through the daemon fail; everything else runs.                                                                               |
 
 ## See Also
 

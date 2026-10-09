@@ -61,10 +61,10 @@ from teleclaude.config import (
     deep_merge,
     machine_runtime_environment,
 )
+from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import find_person_config_path
 from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.person_secrets import PersonSecretStorageError
-from teleclaude.config.schema import PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName

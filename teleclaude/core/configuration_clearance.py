@@ -23,7 +23,7 @@ from teleclaude.caller_identity import (
     person_entries_for_email,
 )
 from teleclaude.cli.session_auth import ResolvedCliIdentity
-from teleclaude.config_roster import load_person_memberships
+from teleclaude.config.loader import company_memberships
 from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.constants import HUMAN_ROLE_MEMBER
 
@@ -249,7 +249,7 @@ def _decide_create_in_company(standing: ConfigurationStanding, target: Configura
     """A member of the company, any role, may create there; the platform role stands in for nothing."""
     if standing.person_slug is None:
         return _refuse_no_person(RequiredStanding.COMPANY_MEMBER)
-    if target.instance is not None and target.instance in load_person_memberships(standing.person_slug):
+    if target.instance is not None and target.instance in company_memberships(standing.person_slug):
         return ClearanceDecision(True, RequiredStanding.COMPANY_MEMBER, ClearanceReason.VERB_BAND_ONLY)
     return ClearanceDecision(False, RequiredStanding.COMPANY_MEMBER, ClearanceReason.COMPANY_MEMBERSHIP_REQUIRED)
 

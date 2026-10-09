@@ -13,7 +13,8 @@ import aiosqlite
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import JsonDict
-from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker
+from teleclaude.events.envelope import EventHomeMarker
+from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.events.renames import TYPE_RENAMES
 from teleclaude.events.wire import stream_event_from_envelope_dump
 

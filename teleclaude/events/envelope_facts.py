@@ -10,18 +10,18 @@ from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
-from teleclaude.config_roster import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.config_subjects import SubjectRef
 from teleclaude.events.envelope import (
     EventHome,
     EventHomeKind,
     EventHomeMarker,
     EventHomeOwner,
-    EventHomeOwnerMarker,
     EventHomeRef,
     EventOwnerKind,
     EventOwnerRef,
 )
+from teleclaude.events.home_owner import EventHomeOwnerMarker
+from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.session_identity import get_session_id
 
 _LOGGER = get_logger(__name__)

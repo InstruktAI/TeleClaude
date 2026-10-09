@@ -9,15 +9,8 @@ from pathlib import Path
 from typing import Literal, Protocol, assert_never
 
 from teleclaude.agent_registry import LaunchProfile
-from teleclaude.config_roster import (
-    CompanyMember,
-    CompanyRole,
-    PersonEntry,
-    ProjectOwnershipIndex,
-    load_people_roster,
-    load_person_memberships,
-    load_project_ownership_index,
-)
+from teleclaude.config.identity_schema import CompanyMember, CompanyRole, PersonEntry
+from teleclaude.config.loader import company_memberships, load_global_config
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CUSTOMER,
@@ -33,6 +26,7 @@ from teleclaude.constants import (
     JobRole,
     SystemRole,
 )
+from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.snippet_scope import SnippetScope
 from teleclaude.types.creation_record import EntryPoint
 
@@ -262,7 +256,7 @@ def load_person_role_facts(person_slug: str, platform_role: str | None) -> Perso
     return PersonRoleFacts(
         person_slug=person_slug,
         platform_role=platform_role,
-        memberships=load_person_memberships(person_slug),
+        memberships=company_memberships(person_slug),
     )
 
 
@@ -693,7 +687,7 @@ def person_entry_for_email(email: str) -> PersonEntry | None:
 
 def person_entries_for_email(email: str) -> list[PersonEntry]:
     """Return every valid roster entry matching an email, preserving roster order."""
-    return entries_for_email(load_people_roster(), email)
+    return entries_for_email(load_global_config().people, email)
 
 
 def entries_for_email(entries: Sequence[PersonEntry], email: str) -> list[PersonEntry]:

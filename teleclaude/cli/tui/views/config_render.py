@@ -24,7 +24,7 @@ from teleclaude.cli.tui.views._config_constants import (
 from teleclaude.cli.tui.views.reflection import ReflectedField
 
 if TYPE_CHECKING:
-    from teleclaude.config.schema import PersonEntry
+    from teleclaude.config.identity_schema import PersonEntry
 
 # Placeholder shown in place of an env-sourced (sensitive) value when not editing.
 _MASKED_VALUE = "••••••"

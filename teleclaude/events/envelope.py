@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 from teleclaude.core.models import JsonDict
+from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.events.references import EventRef
 from teleclaude.slug import validate_slug
 
@@ -32,14 +33,6 @@ class EventHomeMarker(StrEnum):
 
     NONE = "none"
     UNKNOWN = "unknown"
-
-
-class EventHomeOwnerMarker(StrEnum):
-    """Explicit project-owner states that are not registry references."""
-
-    NONE = "none"
-    OWNERLESS = "ownerless"
-    UNRESOLVED = "unresolved"
 
 
 class EventHomeKind(StrEnum):

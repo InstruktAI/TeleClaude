@@ -33,7 +33,8 @@ from teleclaude.caller_identity import (
     session_act_exception,
 )
 from teleclaude.cli import CommandScope
-from teleclaude.config_roster import load_people_roster, read_local_computer_name
+from teleclaude.config import config
+from teleclaude.config.loader import load_global_config
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     LOCAL_COMPUTER,
@@ -55,9 +56,6 @@ _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
 _INODE_ALLOCATION_PREFIX = "ino:"
 _CTIME_ALLOCATION_PREFIX = "ctime:"
-_LOCAL_COMPUTER_UNRESOLVED_TEMPLATE = (
-    "Cannot authorize computer target {computer}: local computer identity is unavailable."
-)
 
 
 class ComputerTargetDisposition(StrEnum):
@@ -65,17 +63,13 @@ class ComputerTargetDisposition(StrEnum):
 
     LOCAL = "local"
     REMOTE = "remote"
-    UNRESOLVED = "unresolved"
 
 
 def classify_computer_target(target_computer: str | None) -> ComputerTargetDisposition:
-    """Classify an explicit target against the local sentinel and validated machine identity."""
+    """Classify an explicit target against the local sentinel and this computer's configured name."""
     if not target_computer or target_computer == LOCAL_COMPUTER:
         return ComputerTargetDisposition.LOCAL
-    local_computer = read_local_computer_name()
-    if local_computer is None:
-        return ComputerTargetDisposition.UNRESOLVED
-    if target_computer == local_computer.value:
+    if target_computer == config.computer.name:
         return ComputerTargetDisposition.LOCAL
     return ComputerTargetDisposition.REMOTE
 
@@ -294,7 +288,7 @@ def read_current_session_email() -> str | None:
     email = _read_live_document(context.auth_path, context.tty)
     if email:
         return email
-    people = load_people_roster()
+    people = load_global_config().people
     return people[0].email.strip().lower() if len(people) == 1 else None
 
 
@@ -430,11 +424,6 @@ def cli_clearance(
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
     target_disposition = classify_computer_target(target_computer)
-    if target_disposition is ComputerTargetDisposition.UNRESOLVED:
-        return CliClearance(
-            identity=identity,
-            refusal=_LOCAL_COMPUTER_UNRESOLVED_TEMPLATE.format(computer=target_computer),
-        )
 
     if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.system_role is None:
         return CliClearance(identity=identity, refusal=None)

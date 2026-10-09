@@ -27,6 +27,7 @@ from teleclaude.cli.telec.surface import (
     CommandDef,
     TelecCommand,
 )
+from teleclaude.config.errors import ConfigLoadError
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.paths import invocation_cwd
 from teleclaude.slug import normalize_slug
@@ -34,6 +35,7 @@ from teleclaude.slug import normalize_slug
 from . import flags as F
 
 _INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
+_CONFIGURATION_UNREADABLE_ERROR = "Error: {error}"
 _RELAYED_ACT_PATHS = frozenset(act.value.removeprefix("telec ") for act in RelayedAct)
 _DIRECT_CONVERSATION_FLAGS = (F.FLAG_DIRECT_SEND, F.FLAG_CLOSE_LINK, F.FLAG_CLOSE_LINK_ALIAS)
 
@@ -196,16 +198,20 @@ def _handle_cli_command(argv: list[str]) -> None:
     target_computer = parsed.value(F.FLAG_COMPUTER) if F.FLAG_COMPUTER in node.flags else None
     direct_conversation = any(flag in node.flags and parsed.has(flag) for flag in _DIRECT_CONVERSATION_FLAGS)
     auth = _effective_auth(node, parsed)
-    role_target = _role_target_for_command(path, node, auth, parsed, target_computer, direct_conversation)
-    require_cli_clearance(
-        command_path,
-        target_session_id,
-        auth,
-        role_target=role_target,
-        target_computer=target_computer,
-        direct_conversation=direct_conversation,
-        desk_command=node.desk,
-    )
+    try:
+        role_target = _role_target_for_command(path, node, auth, parsed, target_computer, direct_conversation)
+        require_cli_clearance(
+            command_path,
+            target_session_id,
+            auth,
+            role_target=role_target,
+            target_computer=target_computer,
+            direct_conversation=direct_conversation,
+            desk_command=node.desk,
+        )
+    except ConfigLoadError as exc:
+        print(_CONFIGURATION_UNREADABLE_ERROR.format(error=exc), file=sys.stderr)
+        raise SystemExit(1) from exc
 
     handler = _resolve_cli_handler(cmd_enum, args)
     if handler is None:

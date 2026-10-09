@@ -10,15 +10,15 @@ from typing import TYPE_CHECKING, TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import resolve_session_principal
+from teleclaude.config.identity_schema import CompanyRole, PersonEntry
 from teleclaude.config.loader import (
+    company_memberships,
     find_company_config_path,
-    list_company_config_paths,
     load_company_config,
     load_global_config,
     load_person_config_for_entry,
 )
-from teleclaude.config.schema import CompanyRole, PersonConfig, PersonEntry
-from teleclaude.config_roster import load_people_roster
+from teleclaude.config.schema import PersonConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.paths import PEOPLE_DIR
 from teleclaude.services.project_catalog import get_project_catalog_service
@@ -31,7 +31,6 @@ logger = get_logger(__name__)
 _ORGANIZATION_RESOLVED_EVENT = "organization_resolved"
 _ORGANIZATION_STALE_ASSIGNMENT_EVENT = "organization_stale_assignment"
 _PLATFORM_ADMIN_UNREADABLE_EVENT = "platform_admin_config_unreadable"
-_COMPANY_DECLARATION_UNREADABLE_EVENT = "organization_company_declaration_unreadable"
 
 
 @dataclass(frozen=True)
@@ -85,18 +84,7 @@ def resolve_organization(person_slug: str) -> OrganizationalMembership:
     assignments: list[ProjectRef] = []
     covered: list[ProjectRef] = []
     stale: list[StaleAssignment] = []
-    for config_path in list_company_config_paths():
-        company_slug = config_path.parent.name
-        try:
-            company = load_company_config(config_path)
-        except ValueError as exc:
-            logger.warning(
-                _COMPANY_DECLARATION_UNREADABLE_EVENT, company=company_slug, path=str(config_path), error=str(exc)
-            )
-            continue
-        member = company.members.get(person_slug)
-        if member is None:
-            continue
+    for company_slug, member in company_memberships(person_slug).items():
         memberships.append(CompanyMembership(company_slug=company_slug, role=member.role))
         if member.role is CompanyRole.ADMIN:
             covered.extend(
@@ -196,7 +184,7 @@ def company_role(person_slug: str, company_slug: str) -> str | None:
 
 def person_roles(person_slug: str) -> list[PersonRoleEntry]:
     """Project a person's declared platform and company roles for read-only config views."""
-    person = next((entry for entry in load_people_roster() if entry.slug == person_slug), None)
+    person = next((entry for entry in load_global_config().people if entry.slug == person_slug), None)
     roles: list[PersonRoleEntry] = []
     if person is not None and person.role is not None:
         roles.append({"platform": person.role})

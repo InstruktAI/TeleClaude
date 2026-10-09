@@ -45,9 +45,9 @@ from teleclaude.caller_identity import (
 from teleclaude.caller_identity import (
     human_principal_for_email as human_principal_for_email,
 )
+from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor
-from teleclaude.config_roster import PersonEntry
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,

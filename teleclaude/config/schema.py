@@ -20,10 +20,8 @@ from teleclaude.config.field_constraints import (
     refuse_unmet_requirements,
     refuse_violations,
 )
+from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.tiers import Tier
-from teleclaude.config_roster import CompanyMember as CompanyMember
-from teleclaude.config_roster import CompanyRole as CompanyRole
-from teleclaude.config_roster import PersonEntry as PersonEntry
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE, OnDemandDisposition
 from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
