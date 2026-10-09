@@ -18,14 +18,33 @@ visibility: 'public'
 
 Let AI agents answer the people a home does not otherwise serve, through the public-facing adapters (Telegram, Discord, WhatsApp), with per-visitor memory continuity, escalation to the people accountable for that home, and extraction of business intelligence from the interactions — all within a help-desk folder of the home that owns it, scaffolded from TeleClaude's help-desk templates.
 
-The platform operates on two planes:
+The platform operates on two planes.
 
-1. **Visitor plane**: A visitor reaches a help desk through a conversation adapter. A company or project desk is entered with its entry identifier; the platform desk is reached by role. The desk's agent answers from the documentation the visitor may read.
-2. **Operator plane**: Escalations reach the admins of the owning home in their own conversations with the platform, and their replies relay back to the visitor. The shared Discord guild is the platform desk's admin surface only.
+<!-- planned-change:help-desk-master-routing -->
+
+**Visitor plane.** A visitor reaches a help desk through a conversation adapter. A company or project desk is entered with its entry identifier; the platform desk is reached by role. The desk's agent answers from the documentation the visitor may read.
+
+<!-- change:help-desk-master-routing -->
+
+**Visitor plane.** A visitor reaches a help desk through a conversation adapter by entering with the desk's entry identifier. Desks run only on the mesh master. The desk's agent answers from the documentation the visitor may read.
+
+<!-- /planned-change:help-desk-master-routing -->
+
+<!-- planned-change:help-desk-escalation-in-desk -->
+
+**Operator plane.** Escalations reach the admins of the owning home in their own conversations with the platform, and their replies relay back to the visitor. The shared Discord guild is the platform desk's admin surface only.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+**Operator plane.** Each desk has its own Discord category, visible only to the desk's scope. An escalation notifies everyone in that scope and opens a thread in the desk's escalations forum, where the person who answers talks to the visitor through the relay.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Inputs/Outputs
 
 **Inputs:**
+
+<!-- planned-change:help-desk-escalation-in-desk -->
 
 - Visitor messages via conversation adapters (Telegram private chats, Discord direct messages, WhatsApp)
 - An entry identifier: a desk's `hd-<kind>-<slug>`, naming the desk by kind and slug
@@ -35,7 +54,21 @@ The platform operates on two planes:
 - Documentation via `telec docs index` + `telec docs get`, at the visitor's depth
 - Admin replies to an escalation, in the admin's own conversation (during a relay)
 
+<!-- change:help-desk-escalation-in-desk -->
+
+- Visitor messages via conversation adapters (Telegram private chats, Discord direct messages, WhatsApp)
+- An entry identifier: a desk's `hd-<kind>-<slug>`, naming the desk by kind and slug
+- Each home's help-desk declaration (`help_desk.enabled`) in its `teleclaude.yml`
+- Identity from the person registry and per-person credential bindings, or the customer fallback for an unregistered sender
+- The desk's `AGENTS.master.md`, its home's own source, compiled into the desk's `AGENTS.md`
+- Documentation via `telec docs index` + `telec docs get`, at the visitor's depth
+- Replies in a desk's escalation thread from people in the desk's scope (during a relay)
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
 **Outputs:**
+
+<!-- planned-change:help-desk-escalation-in-desk -->
 
 - AI-handled help-desk conversations with memory continuity
 - Identity-scoped personal memories (per-visitor observation history)
@@ -45,9 +78,23 @@ The platform operates on two planes:
 - Escalation notifications to the admins of the home that owns the desk
 - Relayed admin replies delivered to the visitor on their own adapter
 
+<!-- change:help-desk-escalation-in-desk -->
+
+- AI-handled help-desk conversations with memory continuity
+- Identity-scoped personal memories (per-visitor observation history)
+- Project-scoped business memories (aggregate patterns, complaints, insights)
+- Actionable items published to internal channels (follow-ups, escalations, feature requests)
+- The fixed neutral reply for a conversation that reaches no desk
+- Escalation threads in the desk's escalations forum, and notifications linking them to everyone in the desk's scope
+- Relayed replies delivered to the visitor on their own adapter
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
 ### Architecture
 
 #### Help desks
+
+<!-- planned-change:help-desk-master-routing -->
 
 Three kinds exist:
 
@@ -61,6 +108,23 @@ A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`loc
 
 The help desk is a folder of the home that owns it, never a repository of its own: the platform help desk is `help-desk/` in the TeleClaude home, a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain, which its home's history records, and no documentation of its own; a desk session writes nothing into it.
 
+<!-- change:help-desk-master-routing -->
+
+Two kinds exist:
+
+| Kind    | Home           | Serves                            | Entry               |
+| ------- | -------------- | --------------------------------- | ------------------- |
+| Company | a company home | that company's external customers | `hd-company-<slug>` |
+| Project | a project      | that project's external customers | `hd-project-<slug>` |
+
+The TeleClaude project's desk is an ordinary project desk. A home runs a desk only when its `teleclaude.yml` sets `help_desk.enabled` (`local/projects/teleclaude/spec/teleclaude-config`); enabling and scaffolding are described under Help Desk Scaffolding below. A project's enabled desk also requires the `agents` capability on that project (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`). The concepts are `general/concept/help-desk/overview` and its per-kind siblings.
+
+Desks run only on the mesh master, which hosts every enabled desk whose home it holds. A repository is often checked out on several computers, so its declaration is the same everywhere; hosting on one computer gives each desk exactly one host. A desk whose home is not on the master is not hosted.
+
+The help desk is a folder of the home that owns it, never a repository of its own: a company's is `help-desk/` in its company home, and a project's is `help-desk/` in the project's repository. The folder holds the operator brain, which its home's history records, and no documentation of its own; a desk session writes nothing into it.
+
+<!-- /planned-change:help-desk-master-routing -->
+
 ```
 <home>/help-desk/
 ├── AGENTS.master.md                      # operator brain, seeded from its kind's help-desk template, then the home's own
@@ -70,6 +134,8 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 #### Entry and routing
 
 Entry is owned by the core, in `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
+
+<!-- planned-change:help-desk-master-routing -->
 
 - An **endpoint** is a routable destination: a person's assistant in their home, or a home's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder and hosting computer; the platform desk has no identifier.
 - A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) the session is the binding; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, because a session lives only on its host. Adapters only recognise and carry the identifier; they keep no routing rules.
@@ -93,9 +159,41 @@ flowchart TD
     WHO -->|No| NEUTRAL
 ```
 
+<!-- change:help-desk-master-routing -->
+
+- An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
+- A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) that computer decides alone, and a desk identifier reaches a desk only on the master's bot; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, and no other computer handles those messages. Adapters only recognise and carry the identifier; they keep no routing rules.
+- **Routing** is by what the person sent, and nothing else. A desk identifier reaches that person's latest session at the desk — an open one continues, a closed one is revived, none means a new one — and it becomes the conversation's session; an invitation token binds the account and reaches the person's own assistant the same way. A message without an identifier goes to the conversation's session, revived when closed; with no session, a registered person reaches their own assistant. Entering elsewhere leaves the earlier session as it is, and a later entry at its endpoint continues it. No role detour, no last-desk lookup and no default endpoint exist.
+- A **miss** — an identifier that resolves to nothing, or a person who is not registered and has no session — gets one fixed neutral reply and no session, identical in every case, naming no organisation, at most once per conversation per cooldown window.
+- **Unavailability**: with the master down nothing routes on the adapters that reach every computer: every inbound message gets a temporarily-unavailable reply, at most once per conversation within a cooldown window, from the lowest-named live computer running the adapter, and conversations resume from the master's durable record when it returns. A session the master cannot start or revive in time leaves the binding unchanged and gets the neutral reply.
+- The per-adapter entry links come from `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>`, run on the master.
+
+```mermaid
+flowchart TD
+    MSG[Inbound private message] --> ID{Exactly an entry identifier?}
+    ID -->|Yes| RES[Core resolver on the master]
+    RES -->|Enabled desk or member's assistant| PERSON[That person's latest session there: continue, revive, or create]
+    RES -->|Unknown or disabled| NEUTRAL[Neutral reply, no session]
+    ID -->|No| CONV{Conversation has a session?}
+    CONV -->|Yes| SESSION[Deliver to it, revived when closed]
+    CONV -->|No| WHO{Registered sender?}
+    WHO -->|Yes| PA[Own assistant]
+    WHO -->|No| NEUTRAL
+```
+
+<!-- /planned-change:help-desk-master-routing -->
+
 #### Session placement
 
+<!-- planned-change:help-desk-master-routing -->
+
 A session whose role is below member and that carries no system role runs only inside an enabled help desk: a customer's at the desk its entry resolved to, or for a returning customer the desk of their latest session; a contributor's or newcomer's in the platform desk. A request naming no enabled desk is refused; nothing is silently redirected (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`local/projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
+
+<!-- change:help-desk-master-routing -->
+
+A session whose role is below member and that carries no system role runs only inside an enabled help desk on the master: a customer's at the desk the conversation's session belongs to. A request naming no enabled desk is refused; nothing is silently redirected (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`local/projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
+
+<!-- /planned-change:help-desk-master-routing -->
 
 **Identity key format:** `{platform}:{platform_user_id}` — e.g., `discord:999001`, `telegram:12345678`, `whatsapp:31612345678`. It is derived from the session's origin metadata at query time, not stored as a denormalized column on the session, and the memory system receives it as an opaque string.
 
@@ -142,7 +240,15 @@ The command reads the doc-snippet-authoring procedure and snippet-authoring-sche
 
 ### Escalation Tool
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 `telec sessions escalate` is how a desk agent asks for a person (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). It is accepted from a session running in a help desk and refused elsewhere; admins are its target and never escalate.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+`telec sessions escalate` is how a desk agent asks for a person (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). It is accepted from a session running in a help desk and refused elsewhere.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 **Parameters:**
 
@@ -152,15 +258,29 @@ The command reads the doc-snippet-authoring procedure and snippet-authoring-sche
 
 **Behavior:**
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 1. Resolves the admins of the home that owns the desk: a company desk's company admins; a project desk's owning company admins, or its owning person; the platform's admins for the platform desk, for an ownerless project, or when no owning admin is reachable.
 2. Sends each resolved admin the escalation in their own conversation with the platform, on their preferred channel, naming the desk, the visitor and the channel they wrote from, the reason and the summary.
 3. For the platform desk only, also opens a thread in the shared Discord guild's escalation forum.
 4. Sets the session's relay state.
 5. Returns confirmation to the agent.
 
+<!-- change:help-desk-escalation-in-desk -->
+
+1. Resolves the desk's scope: a company desk's company members and admins; a project desk's owning company members and admins, or its owning person; and the platform's admins for every desk.
+2. Opens a thread named after the visitor in the desk's escalations forum, whose first message is the agent's brief: the desk, the visitor and the channel they wrote from, the reason, the summary, and a link to the visitor's thread in the desk's customer-sessions forum.
+3. Notifies each person in scope on their preferred channel with a link to that thread.
+4. Sets the session's relay state.
+5. Returns confirmation to the agent.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
 The desk agent follows `general/procedure/help-desk/escalation`, which its master requires through `general/procedure/help-desk/overview`.
 
 ### Admin Relay
+
+<!-- planned-change:help-desk-escalation-in-desk -->
 
 When an agent escalates, the core relays between the visitor and the notified admins — bypassing the AI session.
 
@@ -201,11 +321,69 @@ sequenceDiagram
     end
 ```
 
+<!-- change:help-desk-escalation-in-desk -->
+
+When an agent escalates, the core relays between the visitor and the desk's escalation thread — bypassing the AI session.
+
+```mermaid
+sequenceDiagram
+    participant Visitor as Visitor (any adapter)
+    participant AI as Desk session
+    participant Core
+    participant Thread as Desk's escalation thread
+    participant Scope as People in the desk's scope
+
+    rect rgb(230,245,230)
+        Note over Visitor,AI: Act 1 — the agent handles the visitor
+        Visitor->>AI: Message
+        AI->>Visitor: Response
+    end
+
+    rect rgb(245,230,230)
+        Note over AI,Scope: Act 2 — a person takes over in the thread
+        AI->>Core: telec sessions escalate(customer, reason)
+        Core->>Thread: Open a thread named after the visitor, with the brief
+        Core->>Scope: Notify on each person's preferred channel, linking the thread
+        Core->>Core: Set relay state on the session
+
+        loop Relay active
+            Scope->>Thread: Reply in the thread
+            Thread->>Core: Reply relayed
+            Core->>Visitor: Delivered where they wrote from
+            Visitor->>Core: Reply on their adapter
+            Core->>Thread: Posted in the thread
+        end
+    end
+
+    rect rgb(230,230,245)
+        Note over Thread,AI: Act 3 — Handback
+        Scope->>Thread: Reply tagging the agent
+        Core->>Core: Collect the relay exchange since the relay started
+        Core->>AI: Inject it into the same desk session
+        Core->>Core: Clear relay state
+        AI->>Visitor: Continues from the exchange
+    end
+```
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
 **Session state fields:**
+
+<!-- planned-change:help-desk-escalation-in-desk -->
 
 - `relay_status` — `NULL` (normal) or `"active"` (relay mode)
 - the relay's admin side — where each notified admin's part of the relay lives
 - `relay_started_at` — timestamp of relay activation (message collection boundary)
+
+<!-- change:help-desk-escalation-in-desk -->
+
+- `relay_status` — `NULL` (normal) or `"active"` (relay mode)
+- the relay's thread — the desk's escalation thread for this relay
+- `relay_started_at` — timestamp of relay activation (message collection boundary)
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
+<!-- planned-change:help-desk-discord-categories -->
 
 **Discord configuration (platform desk only):**
 
@@ -214,7 +392,15 @@ sequenceDiagram
 
 Company and project desk sessions and their escalations appear in no forum of the shared guild, the forum of the project that holds a desk included, so no tenant's customer conversation is visible to another.
 
+<!-- change:help-desk-discord-categories -->
+
+**Discord surface (per desk):** every hosted desk has its own category, `Help Desk - <kind>-<slug>`, with a `customer-sessions` forum mirroring each of its sessions, an `escalations` forum holding its escalation threads, and a `team-chat` channel, all visible only to the desk's scope through per-person permission overwrites (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). No desk session or escalation appears in any other forum of the guild.
+
+<!-- /planned-change:help-desk-discord-categories -->
+
 **Message routing diversion:**
+
+<!-- planned-change:help-desk-escalation-in-desk -->
 
 The diversion runs in the core inbound path, for every adapter:
 
@@ -227,6 +413,22 @@ The diversion runs in the core inbound path, for every adapter:
 An admin answers by replying to any relay message they received; the reply is delivered to the visitor through the visitor's originating adapter and never enters the agent session. An admin whose preferred channel cannot carry a reply, such as email, is notified but cannot answer through the relay.
 
 **Handback:** an admin hands the conversation back by tagging the agent in a reply (or in the platform desk's forum thread). The core collects the exchange since `relay_started_at` (or since the previous handback) into a structured context block naming the admin and the visitor for each message, injects it into the same desk session through the normal message pipeline (`process_message`), which validates session liveness and enqueues durable delivery, and clears the relay state. The visitor's messages resume routing to the agent, and its first response continues from the admin exchange.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+The diversion runs in the core inbound path, for every adapter:
+
+1. The visitor sends a message on any adapter
+2. The session is found through the conversation's binding
+3. With the relay active, the core does not deliver the message to the agent
+4. It posts the message in the desk's escalation thread
+5. The agent session is paused for the duration of the relay
+
+A person in the desk's scope answers by replying in the thread; the reply is delivered to the visitor through the visitor's originating adapter and never enters the agent session. Only the escalating agent and the people answering speak in the thread.
+
+**Handback:** a person hands the conversation back by tagging the agent in a reply in the thread. The core collects the exchange since `relay_started_at` (or since the previous handback) into a structured context block naming the person and the visitor for each message, injects it into the same desk session through the normal message pipeline (`process_message`), which validates session liveness and enqueues durable delivery, and clears the relay state. The visitor's messages resume routing to the agent, and its first response continues from the exchange.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 **Relay lifecycle:**
 
@@ -295,7 +497,17 @@ The hook receiver resolves the session's identity (from adapter metadata via the
 
 ### Customer Session Lifecycle
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 Customer sessions have a distinct lifecycle from admin sessions. They stay alive indefinitely — there is no idle timeout that kills a customer session. The 7d inactivity sweep is the only natural death.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+A desk session is closed only to spare resources while its visitor is away, never to end the conversation. After 30 minutes without visitor input, the daemon extracts the session's memories, compacts its context and closes it. The visitor's next message, or their re-entry at the desk, revives the same session with its memories injected.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
+
+<!-- planned-change:help-desk-idle-memory-cycle -->
 
 **Idle compaction sequence.** After a configurable idle threshold (e.g., 30 minutes of no customer input), the daemon:
 
@@ -323,7 +535,44 @@ sequenceDiagram
     Note over Daemon: Do NOT update last_message_sent
 ```
 
+<!-- change:help-desk-idle-memory-cycle -->
+
+**Idle cycle.** After 30 minutes without visitor input, the daemon:
+
+1. Runs memory extraction on the conversation since the last extraction (same job as post-session processing)
+2. Injects `/compact` into the agent session once extraction completed
+3. Closes the session
+4. Does NOT update `last_message_sent` — this is invisible to the visitor
+
+```mermaid
+sequenceDiagram
+    participant Daemon
+    participant Job as Memory Extraction Job
+    participant Tmux as Agent Session (tmux)
+    participant DB as Session DB
+
+    Note over Daemon: Idle threshold reached (30m)
+    Daemon->>Job: Spawn extraction (session_id)
+    Job->>DB: Read transcript since last_memory_extraction_at
+    Job->>Job: Extract personal + business memories
+    Job->>DB: Update last_memory_extraction_at
+    Job->>Daemon: Extraction complete
+    Daemon->>Tmux: Inject /compact
+    Daemon->>DB: Close the session
+    Note over Daemon: Do NOT update last_message_sent
+```
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
+
+<!-- planned-change:help-desk-master-routing -->
+
 **Session resumption.** When a customer returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), the adapter routes to the conversation's latest session, or starts a new one at that session's desk when it has closed. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the customer's depth.
+
+<!-- change:help-desk-master-routing -->
+
+**Session resumption.** When a visitor returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
+
+<!-- /planned-change:help-desk-master-routing -->
 
 **Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark. The extraction job processes only new conversation since this marker. This makes both idle-triggered and cron-triggered extraction idempotent.
 
@@ -331,9 +580,20 @@ sequenceDiagram
 
 - `last_memory_extraction_at` — timestamp of last successful extraction (high-water mark)
 - `help_desk_processed_at` — timestamp of final post-mortem processing
+
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 - `relay_status` — `NULL` or `"active"` (admin relay mode)
 - the relay's admin side — where each notified admin's part of the relay lives
 - `relay_started_at` — timestamp of current relay activation
+
+<!-- change:help-desk-escalation-in-desk -->
+
+- `relay_status` — `NULL` or `"active"` (relay mode)
+- the relay's thread — the desk's escalation thread for this relay
+- `relay_started_at` — timestamp of current relay activation
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ### Internal Channels (Pub/Sub)
 
@@ -572,27 +832,77 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 10. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 11. **Customer sessions stay alive**: No idle timeout kills a customer session. Only the 7d inactivity sweep ends sessions. Idle compaction keeps sessions lean without terminating them.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+11. **Closing spares resources, never the conversation**: a desk session closes after 30 minutes without visitor input, only after its memories were extracted and its context compacted; any later message or re-entry revives the same session with those memories injected.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 12. **Relay is session-scoped**: The admin relay is a state of the session, not a separate entity. When the session dies (7d sweep), the relay state dies with it.
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 13. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the notified admins ONLY, not to both relay and agent, whichever adapter they use. The agent session is fully paused during relay.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+13. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the escalation thread ONLY, not to both thread and agent, whichever adapter they use. The agent session is fully paused during relay.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 14. **Handback collects incrementally**: Each handback collects messages since the previous handback (or since relay activation). Multiple escalation/handback cycles within one session each get a clean context window.
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 15. **Escalation is a help-desk act aimed at the owning home**: `telec sessions escalate` is accepted only from a session in a help desk, and it reaches the admins of the home that owns that desk, falling back to the platform's admins only when none of them is reachable.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+15. **Escalation is a help-desk act aimed at the desk's scope**: `telec sessions escalate` is accepted only from a session in a help desk; it opens a thread in that desk's escalations forum and notifies everyone in the desk's scope.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
+<!-- planned-change:help-desk-master-routing -->
 
 16. **One binding per conversation**: a conversation reaches its latest session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; each entry creates a new session at its endpoint, so the latest entry wins.
 
+<!-- change:help-desk-master-routing -->
+
+16. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
+
+<!-- /planned-change:help-desk-master-routing -->
+
+<!-- planned-change:help-desk-master-routing -->
+
 17. **One authority per conversation**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides, and the session runs on its endpoint's host. Without the master nothing routes there; the only answer is the temporarily-unavailable reply.
 
+<!-- change:help-desk-master-routing -->
+
+17. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
+
+<!-- /planned-change:help-desk-master-routing -->
+
+<!-- planned-change:help-desk-discord-categories -->
+
 18. **No cross-tenant surface**: company and project desk sessions and their escalations appear on no shared surface; the shared Discord guild serves the platform desk only.
+
+<!-- change:help-desk-discord-categories -->
+
+18. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 19. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
 
 ## Primary Flows
 
 ### Customer Returns to a Desk
+
+<!-- planned-change:help-desk-master-routing -->
 
 ```mermaid
 sequenceDiagram
@@ -618,7 +928,35 @@ sequenceDiagram
     Agent->>Customer: Personalized response from the project's public docs
 ```
 
+<!-- change:help-desk-master-routing -->
+
+```mermaid
+sequenceDiagram
+    participant Customer as Alice (WhatsApp)
+    participant Adapter as WhatsApp handler
+    participant Master as Mesh master
+    participant Hook as Hook Receiver
+    participant Memory as Memory Store
+    participant Agent as Desk agent
+
+    Customer->>Adapter: Message (no identifier)
+    Adapter->>Master: Route the conversation
+    Master->>Master: Binding: acme-shop's project desk; its session is closed
+    Master->>Master: Revive that session in the desk's folder
+
+    Note over Hook: SessionStart fires
+    Hook->>Memory: generate_context(identity_key=whatsapp:31612345678)
+    Memory->>Hook: Desk memories + Alice's personal memories
+    Hook->>Agent: Inject context into session
+
+    Agent->>Customer: Personalized response from the project's public docs
+```
+
+<!-- /planned-change:help-desk-master-routing -->
+
 ### Escalation and Admin Relay
+
+<!-- planned-change:help-desk-escalation-in-desk -->
 
 ```mermaid
 sequenceDiagram
@@ -648,7 +986,42 @@ sequenceDiagram
     AI->>Customer: "Your billing has been corrected to $29. Is there anything else?"
 ```
 
+<!-- change:help-desk-escalation-in-desk -->
+
+```mermaid
+sequenceDiagram
+    participant Customer as Alice (Telegram)
+    participant AI as Company desk session
+    participant Core
+    participant Thread as acme desk's escalation thread "Alice"
+    participant Member as Company member
+
+    Customer->>AI: "I need to dispute this charge"
+    AI->>AI: Needs a person's authority
+    AI->>Core: telec sessions escalate(customer="Alice", reason="Billing dispute")
+    Core->>Thread: Open thread "Alice" with the brief and a link to her session thread
+    Core->>Member: Notification on their preferred channel, linking the thread
+    Core->>Core: Set relay state on the session
+
+    Note over Customer,Member: Customer messages now posted in the thread
+    Customer->>Core: "The charge was $49 but should be $29"
+    Core->>Thread: Posted
+    Member->>Thread: "I see the issue, correcting now"
+    Core->>Customer: "I see the issue, correcting now" (via Telegram)
+
+    Member->>Thread: "Done, billing corrected" tagging the agent
+    Core->>Core: Collect relay messages → compile context
+    Core->>AI: Inject relay conversation
+    Core->>Core: Clear relay state
+
+    AI->>Customer: "Your billing has been corrected to $29. Is there anything else?"
+```
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
+
 ### Idle Compaction Cycle
+
+<!-- planned-change:help-desk-idle-memory-cycle -->
 
 ```mermaid
 sequenceDiagram
@@ -674,6 +1047,34 @@ sequenceDiagram
     Agent->>Agent: Has compacted history + injected memories + telec docs index/get
 ```
 
+<!-- change:help-desk-idle-memory-cycle -->
+
+```mermaid
+sequenceDiagram
+    participant Daemon
+    participant Job as Memory Extraction Job
+    participant Agent as Desk Session (tmux)
+    participant DB as Session DB
+    participant Memory as Memory API
+
+    Note over Daemon: 30m idle threshold reached
+    Daemon->>Job: Spawn extraction (session_id)
+    Job->>DB: Read last_memory_extraction_at
+    Job->>Agent: Read transcript since marker
+    Job->>Memory: Save personal memories (identity-scoped)
+    Job->>Memory: Save business memories (project-scoped)
+    Job->>DB: Update last_memory_extraction_at
+    Job->>Daemon: Extraction complete
+    Daemon->>Agent: Inject /compact
+    Daemon->>DB: Close the session
+    Note over Daemon: last_message_sent NOT updated
+
+    Note over Agent: Visitor returns later...
+    Daemon->>Agent: Revive the same session, memories injected
+```
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
+
 ### Help Desk Scaffolding
 
 ```mermaid
@@ -694,27 +1095,68 @@ sequenceDiagram
 
 ## Failure Modes
 
-| Scenario                                                                                    | Behavior                                                                 | Recovery                                                                                |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                           | Personal memories not injected; the agent handles without context                       |
-| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                                            | The visitor uses a working desk link                                                    |
-| Identifier for a desk this bot's computer does not host                                     | Neutral reply                                                            | Links are rendered on a hosting computer, naming its bot                                |
-| No computer hosts the entered desk                                                          | Neutral reply, no session                                                | Enable the desk on a computer holding its home                                          |
-| A restricted session names no enabled desk                                                  | Session creation is refused                                              | The core resolves an endpoint first or sends the neutral reply                          |
-| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated                                   | Next idle trigger or cron sweep reprocesses from last marker                            |
-| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first                           | Daemon enforces sequencing; if extraction fails, compaction is skipped                  |
-| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                                 | Most recent memories prioritized                                                        |
-| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                                       | Agent can retry or log locally; sweep job catches missed sessions                       |
-| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group                                 | Redis redelivers to next available consumer                                             |
-| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                                       | Normal; no action needed                                                                |
-| Session transcript unavailable at job time                                                  | Job skips session, logs warning                                          | Sweep re-run on next schedule; transcript may become available                          |
-| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite)                     | Local operations and memory continue; channel delivery resumes when Redis reconnects    |
-| No admin can be notified                                                                    | Tool returns error to the agent                                          | The agent tells the visitor the escalation failed and keeps helping                     |
-| No owning admin reachable                                                                   | The platform's admins are notified                                       | The escalation still names the desk it came from                                        |
-| Relay message delivery fails to the visitor's adapter                                       | The reply is not delivered; the failure is logged, the admin is not told | Operators find the session in the log; the admin can send the reply again               |
-| Handback missed                                                                             | Relay stays active, agent stays paused                                   | An admin replies again tagging the agent                                                |
-| Multiple admins reply                                                                       | All replies forwarded to the visitor                                     | A reply is not copied to the other admins' conversations, so admins coordinate directly |
-| Visitor messages during relay when their adapter is down                                    | Messages queued or lost depending on platform                            | The admin sees a gap and can ask the visitor to repeat                                  |
+<!-- planned-change:help-desk-master-routing -->
+
+| Scenario                                                                                    | Behavior                                             | Recovery                                                                             |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                    |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                        | The visitor uses a working desk link                                                 |
+| Identifier for a desk this bot's computer does not host                                     | Neutral reply                                        | Links are rendered on a hosting computer, naming its bot                             |
+| No computer hosts the entered desk                                                          | Neutral reply, no session                            | Enable the desk on a computer holding its home                                       |
+| A restricted session names no enabled desk                                                  | Session creation is refused                          | The core resolves an endpoint first or sends the neutral reply                       |
+| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated               | Next idle trigger or cron sweep reprocesses from last marker                         |
+| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first       | Daemon enforces sequencing; if extraction fails, compaction is skipped               |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                     |
+| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                    |
+| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                          |
+| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
+| Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
+| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
+
+<!-- change:help-desk-master-routing -->
+
+| Scenario                                                                                    | Behavior                                             | Recovery                                                                             |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                    |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                        | The visitor uses a working desk link                                                 |
+| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                        | Desk links are rendered on the master, naming its bot                                |
+| The entered desk's home is not on the master                                                | Neutral reply, no session                            | Make the desk's home present on the master                                           |
+| A restricted session names no enabled desk                                                  | Session creation is refused                          | The core resolves an endpoint first or sends the neutral reply                       |
+| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated               | Next idle trigger or cron sweep reprocesses from last marker                         |
+| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first       | Daemon enforces sequencing; if extraction fails, compaction is skipped               |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                     |
+| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                    |
+| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                          |
+| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
+| Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
+| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
+
+<!-- /planned-change:help-desk-master-routing -->
+
+**Escalation failure modes:**
+
+<!-- planned-change:help-desk-escalation-in-desk -->
+
+| Scenario                                                 | Behavior                                                                 | Recovery                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| No admin can be notified                                 | Tool returns error to the agent                                          | The agent tells the visitor the escalation failed and keeps helping                     |
+| No owning admin reachable                                | The platform's admins are notified                                       | The escalation still names the desk it came from                                        |
+| Relay message delivery fails to the visitor's adapter    | The reply is not delivered; the failure is logged, the admin is not told | Operators find the session in the log; the admin can send the reply again               |
+| Handback missed                                          | Relay stays active, agent stays paused                                   | An admin replies again tagging the agent                                                |
+| Multiple admins reply                                    | All replies forwarded to the visitor                                     | A reply is not copied to the other admins' conversations, so admins coordinate directly |
+| Visitor messages during relay when their adapter is down | Messages queued or lost depending on platform                            | The admin sees a gap and can ask the visitor to repeat                                  |
+
+<!-- change:help-desk-escalation-in-desk -->
+
+| Scenario                                                                              | Behavior                                                          | Recovery                                                            |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| No one in the desk's scope can be notified, or the escalation thread cannot be opened | Tool returns error to the agent                                   | The agent tells the visitor the escalation failed and keeps helping |
+| Relay message delivery fails to the visitor's adapter                                 | The reply is not delivered; the failure is reported in the thread | The person answering can send the reply again                       |
+| Handback missed                                                                       | Relay stays active, agent stays paused                            | A person replies again in the thread tagging the agent              |
+| Several people reply in the thread                                                    | All replies reach the visitor                                     | Everyone in scope reads the same thread, so they coordinate there   |
+| Visitor messages during relay when their adapter is down                              | Messages queued or lost depending on platform                     | The person answering sees a gap and can ask the visitor to repeat   |
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## See Also
 

@@ -22,7 +22,16 @@ owns, together with the public help-desk documentation. Nothing internal to the
 company or its projects is available to it on a customer's behalf, and it never
 speaks for another company.
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 An escalation from this desk reaches the company's admins.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+An escalation from this desk reaches everyone in its scope: the company's
+members and admins, and the platform's admins.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Why
 

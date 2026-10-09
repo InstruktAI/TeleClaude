@@ -22,12 +22,40 @@ that TeleClaude creates or adopts to reflect its operational structure: admin
 categories, shared channels, help-desk forums, per-machine project forums, team
 channels, and session-launcher forum threads/messages.
 
+<!-- planned-change:help-desk-discord-categories -->
+
 The shared guild reflects the platform help desk only. A session at a company's
 or a project's help desk, and its escalation, is reflected into no forum of the
 guild — not the help-desk forum, not the escalation forum, not the all-sessions
 forum, and not the forum of the project that holds the desk — so no tenant's
 customer conversation is visible to another
 (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+
+<!-- change:help-desk-discord-categories -->
+
+Every help desk the master hosts has its own category in the guild, named
+`Help Desk - <kind>-<slug>` after the desk's entry identifier, created and
+reconciled by the master alone. It holds three channels:
+
+| Channel                     | People in the desk's scope                | The bot                                               |
+| --------------------------- | ----------------------------------------- | ----------------------------------------------------- |
+| `customer-sessions` (forum) | read every thread; post nothing           | mirrors each session of that desk into its own thread |
+| `escalations` (forum)       | read threads and reply in them; open none | opens the threads the desk's escalations need         |
+| `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing         |
+
+A desk's category is visible only to the people in its scope, through
+per-person permission overwrites, never through Discord roles: for a company
+desk the company's members and admins, for a project desk the owning company's
+members and admins or the person who owns it, and for every desk the platform's
+admins. A person is in Discord scope only through a bound Discord account. The
+master keeps every overwrite in step with the desk's scope and re-syncs them
+when a roster, a role or a Discord binding changes. A desk that stops being
+hosted loses its category. No session at a desk is reflected into any other
+forum of the guild — not the all-sessions forum and not a project's own forum —
+so no desk's customer conversation is visible outside its scope, and the guild
+holds no shared help-desk category.
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 The desired operational shape comes from configuration and the project
 registry: machine identity, master/non-master role, enabled agents, every entry
@@ -67,9 +95,21 @@ change stored state.
 - `provider`: `discord`.
 - `artifact_kind`: the Discord artifact class in TeleClaude terms, such as
   `category`, `text_channel`, `forum`, `forum_thread`, or `message`.
+
+<!-- planned-change:help-desk-discord-categories -->
+
 - `logical_key`: stable TeleClaude identity for the artifact, such as
   `operations.category`, `help_desk.customer_sessions`, `project_forum:<project_slug>`,
   or `session_launcher:<forum_id>`.
+
+<!-- change:help-desk-discord-categories -->
+
+- `logical_key`: stable TeleClaude identity for the artifact, such as
+  `operations.category`, `help_desk:<entry_identifier>.customer_sessions`,
+  `project_forum:<project_slug>`, or `session_launcher:<forum_id>`.
+
+<!-- /planned-change:help-desk-discord-categories -->
+
 - `scope`: ownership scope, such as `shared`, `machine:<computer_name>`,
   `project:<project_slug>`, or `person:<person_slug>`.
 - `provider_id`: Discord's returned ID for the reflected artifact.
@@ -303,6 +343,8 @@ When the Discord reconciler runs
 Then an operator reading Discord still sees that folder's forum
 ```
 
+<!-- planned-change:help-desk-discord-categories -->
+
 #### UC-DARS-20: Company and project help-desk sessions stay out of the shared guild
 
 ```gherkin
@@ -311,6 +353,86 @@ When the Discord adapter reflects sessions and escalations into the shared guild
 Then the platform desk session and its escalation are reflected in the help-desk and escalation forums
 And the project desk session and its escalation appear in no forum of the guild, the project's own forum included
 ```
+
+<!-- change:help-desk-discord-categories -->
+
+#### UC-DARS-20: A desk's sessions are reflected only in its own category
+
+```gherkin
+Given a customer session at a project's help desk
+When the master reflects sessions into the guild
+Then the session has a thread in that desk's customer-sessions forum
+And it appears in no other forum of the guild, the all-sessions forum and the project's own forum included
+```
+
+<!-- /planned-change:help-desk-discord-categories -->
+
+<!-- planned:help-desk-discord-categories -->
+
+#### UC-DARS-21: Every hosted desk has its own category on the master
+
+```gherkin
+Given the master hosts a company desk and a project desk
+When the master reconciles the guild
+Then each desk has a category named after its entry identifier
+And each category holds a customer-sessions forum, an escalations forum and a team-chat channel
+And the guild holds no shared help-desk category
+And a computer that is not the master creates no desk category
+```
+
+#### UC-DARS-22: Only the people in a desk's scope see its category
+
+```gherkin
+Scenario Outline: <person>
+  Given a company desk and a project the company owns with its own desk
+  And <person> with a bound Discord account
+  When they look at the guild
+  Then <outcome>
+
+  Examples:
+    | person                                  | outcome                                              |
+    | a member of the company                 | they see both desks' categories                      |
+    | an admin of the company                 | they see both desks' categories                      |
+    | a platform admin                        | they see both desks' categories and every other desk |
+    | a member of another company             | they see neither category                            |
+    | the owner of a person-owned project     | they see that project's desk category only           |
+```
+
+#### UC-DARS-23: People in scope read customer sessions but cannot post there
+
+```gherkin
+Given a member in a desk's scope
+When they open the desk's customer-sessions forum
+Then they can read every session thread
+And they cannot post in any thread or open a new one
+```
+
+#### UC-DARS-24: Scope follows the roster
+
+```gherkin
+Scenario Outline: <change>
+  Given a desk whose category is visible to its scope
+  When <change>
+  Then <outcome>
+
+  Examples:
+    | change                                                | outcome                                         |
+    | a person becomes a member of the desk's company       | they see the desk's category                    |
+    | a person leaves the desk's company                    | they no longer see the desk's category          |
+    | a member in scope binds their Discord account         | they see the desk's category                    |
+    | a desk is no longer enabled                           | its category is removed                         |
+```
+
+#### UC-DARS-25: Team chat is for people only
+
+```gherkin
+Given a desk's team-chat channel
+When a person in scope posts there
+Then everyone in the desk's scope reads it
+And the bot neither answers nor routes the message anywhere
+```
+
+<!-- /planned:help-desk-discord-categories -->
 
 ### Cross-context references
 
