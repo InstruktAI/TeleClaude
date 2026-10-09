@@ -34,11 +34,11 @@ def declared_secret_values(project_root: Path) -> frozenset[str]:
     """Every secret the configuration a command in ``project_root`` runs under declares.
 
     Raises ``ConfigLoadError`` whenever the secrets cannot be known: a configuration that does
-    not load, a missing machine configuration, or company credentials that cannot be read safely.
+    not load, a missing or unreadable file, or company credentials that cannot be read safely.
     """
     try:
         return _declared_secret_values(project_root)
-    except (CompanyCredentialsError, FileNotFoundError) as error:
+    except (CompanyCredentialsError, OSError) as error:
         raise ConfigLoadError(_SECRETS_UNKNOWN.format(error=error)) from error
 
 

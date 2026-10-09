@@ -321,13 +321,17 @@ def load_declared_project_config(root: Path) -> ProjectConfig | None:
     """Load the project configuration for a root declaring `kind: project`.
 
     Returns `None` when `root` carries no configuration file, or carries one
-    declaring a tier other than project. Raises `ValueError` for a malformed
-    declaration, matching `load_project_config`'s existing contract.
+    declaring a tier other than project. Raises `ConfigLoadError` for a declaration
+    that cannot be read or does not validate.
     """
     marker = root / ConfigFileName.OVERLAY
     if not marker.is_file():
         return None
-    if load_declared_config_kind(marker) is not ConfigKind.PROJECT:
+    try:
+        kind = load_declared_config_kind(marker)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError, ValueError) as exc:
+        raise ConfigLoadError(_CONTENT_READ_FAILURE.format(path=marker, error=exc), document=marker) from exc
+    if kind is not ConfigKind.PROJECT:
         return None
     return load_project_config(marker)
 
@@ -703,7 +707,7 @@ def load_person_config_for_entry(person: PersonEntry, people_dir: Path = PEOPLE_
     if person_config_path is None:
         return None
     if person.slug is None:
-        raise ValueError(f"Person '{person.name}' has no registered slug")
+        raise ConfigLoadError(f"Person '{person.name}' has no registered slug", document=person_config_path)
     return load_person_config(person_config_path, registered_slug=person.slug)
 
 
