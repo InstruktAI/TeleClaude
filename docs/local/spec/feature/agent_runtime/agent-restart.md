@@ -76,7 +76,7 @@ And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER vis
 ```
 Given the agent process has exited and the shell is ready
 When the handler relaunches the agent
-Then it constructs the agent command with resume-from-transcript semantics and the session's recorded thinking mode (defaulting to "slow")
+Then it constructs the agent command with resume-from-transcript semantics and the session's recorded thinking mode
 And it sends the command into the existing host pane
 And the host pane, session_id, native session identifier, and transcript chain are preserved
 And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
@@ -151,7 +151,7 @@ And revival of a closed session is a side effect of restart, not a separate code
 Given the target session row is marked closed
 When the restart runs
 Then it clears the closed marker and re-reads the row before continuing
-And the session's lifecycle status is the one its record supports: `active` when its runtime start was observed, otherwise `initializing`, never passing through `headless` or `initializing` on the way
+And the session reopens directly in the lifecycle status its record supports, written once with no intermediate `headless` or `initializing`: `active` when its runtime start was observed, and `initializing` only for a session whose runtime start was never observed and is still pending
 And revival of a closed session is a side effect of restart, not a separate code path
 ```
 

@@ -198,8 +198,7 @@ When the service hands off to the restart-agent flow
 Then the agent CLI is launched with resume-from-transcript semantics (the agent CLI replays its own transcript)
 And if the session was closed (closed-at marker set), revival clears the marker
 And if no host pane exists for the row, the service binds a fresh host pane before launch
-And the revived session's lifecycle status is the one its record supports: `active` when its runtime start was observed, otherwise `initializing`, never passing through `headless` or `initializing` on the way
-And the first input delivered after revival still waits for the revived agent's input readiness, as the startup gate in `local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery` requires for resumed sessions
+And the revived session's lifecycle status and the first input after revival follow the restart flow (`local/projects/teleclaude/spec/feature/agent_runtime/agent-restart` UC-AR16, UC-AR17)
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
