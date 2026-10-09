@@ -180,7 +180,8 @@ def validate_tier_candidate(
     """Validate a tier document a writer is about to persist at ``path``, exactly as loading it will.
 
     References resolve from the environment file beside ``path`` together with the values the
-    writer is about to store there, and the result is judged against this computer's machine flags.
+    writer is about to store there, and the document is judged alone: whether this computer holds
+    the values its role needs is its readiness, which ``validate_declaration_file`` judges.
     """
     document = {**candidate, _KIND_FIELD: kind.value}
     require_inbound_secret_references(path, document)
