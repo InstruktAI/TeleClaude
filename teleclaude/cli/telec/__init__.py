@@ -27,7 +27,7 @@ from teleclaude.cli.telec.surface import (
     CommandDef,
     TelecCommand,
 )
-from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.paths import invocation_cwd
 from teleclaude.slug import normalize_slug
@@ -209,7 +209,10 @@ def _handle_cli_command(argv: list[str]) -> None:
             direct_conversation=direct_conversation,
             desk_command=node.desk,
         )
-    except (ConfigLoadError, FileNotFoundError) as exc:
+    except ConfigLoadError as exc:
+        print(_CONFIGURATION_UNREADABLE_ERROR.format(error=describe_load_error(exc)), file=sys.stderr)
+        raise SystemExit(1) from exc
+    except FileNotFoundError as exc:
         print(_CONFIGURATION_UNREADABLE_ERROR.format(error=exc), file=sys.stderr)
         raise SystemExit(1) from exc
 

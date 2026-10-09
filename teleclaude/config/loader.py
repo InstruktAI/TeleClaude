@@ -241,7 +241,7 @@ def load_config[T: BaseModel](
             raw = yaml.safe_load(f) or {}
     except Exception as e:
         logger.error("Failed to read config file %s: %s", path, e)
-        raise ConfigLoadError(f"Failed to read config file {path}: {e}") from e
+        raise ConfigLoadError(f"Failed to read config file {path}: {e}", document=path) from e
 
     return _validated_model(path, raw, model_class, kind)
 
@@ -250,14 +250,13 @@ def _validated_model[T: BaseModel](path: Path, raw: object, model_class: type[T]
     """Validate one already-read declaration through the shared read pipeline."""
     if not isinstance(raw, Mapping):
         return model_class.model_validate(raw)
-    raw = upcast_for_read(path, raw)
-    require_inbound_secret_references(path, raw)
-    expanded = expanded_overlay_input(path, raw, kind)
     try:
-        model = validate_tier_document(model_class, expanded.value, expanded.unresolved)
+        raw = upcast_for_read(path, raw)
+        require_inbound_secret_references(path, raw)
+        expanded = expanded_overlay_input(path, raw, kind)
+        return validate_tier_document(model_class, expanded.value, expanded.unresolved)
     except Exception as exc:
-        raise ConfigLoadError(f"Failed to validate config file {path}: {exc}") from exc
-    return model
+        raise ConfigLoadError(f"Failed to validate config file {path}: {exc}", document=path) from exc
 
 
 def validate_declaration_file(path: Path) -> None:
@@ -265,11 +264,11 @@ def validate_declaration_file(path: Path) -> None:
     try:
         raw: object = yaml.safe_load(path.read_text(encoding=_UTF8)) or {}
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
-        raise ConfigLoadError(_CONTENT_READ_FAILURE.format(path=path, error=exc)) from exc
+        raise ConfigLoadError(_CONTENT_READ_FAILURE.format(path=path, error=exc), document=path) from exc
     try:
         kind = declared_config_kind(path, raw)
     except ValueError as exc:
-        raise ConfigLoadError(str(exc)) from exc
+        raise ConfigLoadError(str(exc), document=path) from exc
     _validated_model(path, raw, TIER_DOCUMENT_MODELS[kind], kind)
 
 

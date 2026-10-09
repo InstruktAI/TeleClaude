@@ -2,17 +2,39 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import yaml
 from pydantic import ValidationError
+
+from teleclaude.config._environment import CompanyCredentialsError, MissingEnvironmentReferenceError
 
 _LOCATION_SEPARATOR = "."
 _FINDING = "{location}: {message}"
 _YAML_FINDING = "line {line}, column {column}: {problem}"
 _INVALID_YAML = "invalid YAML"
+_FINDINGS_SEPARATOR = "; "
+_DESCRIPTION = "Configuration {document} does not load: {findings}"
+_UNNAMED_DOCUMENT = "document"
 
 
 class ConfigLoadError(ValueError):
-    """A configuration document could not be read or validated; the message names the file and the cause."""
+    """A configuration document could not be read or validated; the message names the file and the cause.
+
+    The message may quote the document; ``describe_load_error`` is what is shown or sent anywhere else.
+    """
+
+    def __init__(self, message: str, *, document: Path | None = None) -> None:
+        super().__init__(message)
+        self.document = document
+
+
+class InboundSecretDeclarationError(ValueError):
+    """A declared inbound source does not declare its secret as a ``${NAME}`` reference; names, never values."""
+
+
+# Causes whose text is written by the config context and names variables and paths, never values.
+_SELF_DESCRIBING_CAUSES = (MissingEnvironmentReferenceError, CompanyCredentialsError, InboundSecretDeclarationError)
 
 
 def load_error_findings(error: ConfigLoadError) -> list[str]:
@@ -32,5 +54,13 @@ def load_error_findings(error: ConfigLoadError) -> list[str]:
         ]
     if isinstance(cause, yaml.YAMLError):
         return [_INVALID_YAML]
+    if isinstance(cause, _SELF_DESCRIBING_CAUSES):
+        return [str(cause)]
     # Any other cause's text may quote the document; only its kind travels.
     return [type(cause if cause is not None else error).__name__]
+
+
+def describe_load_error(error: ConfigLoadError) -> str:
+    """One line naming the document and where it fails, safe to print or send: it quotes no document content."""
+    document = str(error.document) if error.document is not None else _UNNAMED_DOCUMENT
+    return _DESCRIPTION.format(document=document, findings=_FINDINGS_SEPARATOR.join(load_error_findings(error)))

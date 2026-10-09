@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from teleclaude.config.errors import ConfigLoadError
+from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.machine import config
 
 _REFUSAL = "Machine configuration does not load; the daemon was not (re)started: {error}"
@@ -19,7 +19,10 @@ def main() -> None:
     """Exit zero when the machine configuration loads, otherwise print why and exit non-zero."""
     try:
         _ = config.computer.name
-    except (ConfigLoadError, FileNotFoundError) as error:
+    except ConfigLoadError as error:
+        print(_REFUSAL.format(error=describe_load_error(error)), file=sys.stderr)
+        raise SystemExit(_FAILURE_EXIT) from error
+    except FileNotFoundError as error:
         print(_REFUSAL.format(error=error), file=sys.stderr)
         raise SystemExit(_FAILURE_EXIT) from error
 

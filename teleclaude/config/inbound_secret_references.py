@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Final
 
 from teleclaude.config._environment import environment_reference_at_path
+from teleclaude.config.errors import InboundSecretDeclarationError
 from teleclaude.config.schema import GlobalInboundSources, ProjectInboundSources
 
 _HOOKS: Final = "hooks"
@@ -41,4 +42,4 @@ def require_inbound_secret_references(path: Path, document: Mapping[str, object]
         if not isinstance(source, Mapping):
             continue
         if environment_reference_at_path(document, (_HOOKS, _INBOUND, protocol, _SECRET)) is None:
-            raise ValueError(_LITERAL_SECRET_ERROR.format(path=path, protocol=protocol))
+            raise InboundSecretDeclarationError(_LITERAL_SECRET_ERROR.format(path=path, protocol=protocol))
