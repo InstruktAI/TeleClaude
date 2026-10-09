@@ -89,10 +89,11 @@ design owns only the path that connects them.
    at module scope that one of those commands does not need. The daemon API client is
    loaded only by commands that act through the daemon, and carries no history,
    summarizer or LLM dependency.
-7. **The pre-dispatch path is closed.** The set of modules the path before dispatch may
-   import is declared, and a guardrail rejects a change that widens it. A command whose
-   own work is trivial completes in roughly 200 ms from the shell; the figure is the
-   target that shows invariants 4–6 hold, not a limit a change is graded against.
+7. **The pre-dispatch path stays lean by composition.** It loads only the modules the
+   gate's own job needs, composed per `sdlc/policy/python/core`; review keeps it that
+   way, and no guardrail pins the set. A command whose own work is trivial completes in
+   roughly 200 ms from the shell; the figure is the target that shows invariants 4–6
+   hold, not a limit a change is graded against.
 
 ## Primary flows
 
@@ -154,18 +155,16 @@ one, whose code is delivered code; that behavior is verified after delivery
 
 A command-local dependency is validated when its selected handler loads. An
 import failure faults the command when that dependency loads; a successful sibling or
-help invocation does not establish the deferred leaf's importability. Validation
-covers the selected branch-to-leaf load paths, not just the shared router.
+help invocation does not establish the deferred leaf's importability.
 
-| Condition                                              | Effect                                                                                                                               |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Machine configuration is invalid                       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
-| People roster cannot be read                           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
-| Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
-| Worktree code started                                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                   |
-| The worktree's home is missing                         | Refused at startup, naming the home; nothing is created.                                                                             |
-| Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                |
-| A change imports a new module on the pre-dispatch path | The guardrail rejects it before it lands.                                                                                            |
+| Condition                              | Effect                                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Machine configuration is invalid       | Only commands whose handler needs it fail, each naming the document; caller resolution, validation and repair commands keep working. |
+| People roster cannot be read           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
+| Session marker names no admissible row | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
+| Worktree code started                  | Runs against the worktree's provisioned home whatever `TELECLAUDE_HOME` says; live home untouched.                                   |
+| The worktree's home is missing         | Refused at startup, naming the home; nothing is created.                                                                             |
+| Daemon unreachable                     | Only commands that act through the daemon fail; everything else runs.                                                                |
 
 ## See Also
 
