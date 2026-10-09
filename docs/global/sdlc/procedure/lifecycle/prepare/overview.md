@@ -341,9 +341,10 @@ human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
 
 <!-- change:cli-accept-or-retry -->
 
-The call returns an operation receipt and does not wait for the machine;
-receive the outcome as `general/procedure/orchestration` (Orchestration Loop,
-step 2) describes. Entry has succeeded once that outcome carries the phase's
+The call returns an operation receipt and does not wait for the machine; the
+outcome reaches this session through its wake and is read with
+`telec operations get <operation_id>` (`general/procedure/orchestration`).
+Entry has succeeded once that outcome carries the phase's
 execution script rather than a refusal. After successful entry, apply the input
 repairs and pending process-contract changes identified during preflight, then
 perform the preparation work.

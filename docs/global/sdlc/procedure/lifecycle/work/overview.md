@@ -71,8 +71,9 @@ not continue into unrelated work after the slug reaches a terminal handoff.
 
 <!-- change:cli-accept-or-retry -->
 
-Call `telec todo work {slug}` for the current slug. Receive the instruction block
-as `general/procedure/orchestration` (Orchestration Loop, step 2) describes and
+Call `telec todo work {slug}` for the current slug. The call returns an operation
+receipt; when the outcome wakes this session, read the instruction block with
+`telec operations get <operation_id>` (`general/procedure/orchestration`) and
 execute it. The work orchestrator is scoped to that slug only; it does not
 continue into unrelated work after the slug reaches a terminal handoff.
 
