@@ -112,11 +112,11 @@ dispatcher (`local/projects/teleclaude/spec/feature/integration/deployment-versi
 ### 3. Built-in contracts
 
 The daemon's startup wiring of the hook service owns the built-in contracts:
-one routes relayed WhatsApp messages to the WhatsApp conversation handler, and
-two route GitHub push and release deliveries and deployment fan-out signals to
-the deployment update handler. A contract holds its identity, the criteria an
-event must meet, and the handler it names; the contract model in the hook
-package owns that shape.
+which events each selects and which handler it names. Every reaction the hook
+service performs — WhatsApp conversation handling and the deployment update —
+receives its events through a built-in contract. A contract holds its identity,
+the criteria an event must meet, and the handler it names; the contract model
+in the hook package owns that shape.
 
 **Matching:** The matcher evaluates an event against a contract's criteria using
 AND logic — all criteria must pass. A criterion matches a value exactly or
