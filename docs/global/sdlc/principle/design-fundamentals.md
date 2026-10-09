@@ -41,6 +41,7 @@ Every piece of **knowledge** has a single, authoritative representation. When th
 - **Apply it:** Extract the shared knowledge to its single owner. Reference it from consumers.
 - **Anti-pattern: "Shotgun surgery"** — a single change requires editing many files because the same knowledge is scattered.
 - **Critical nuance:** DRY applies to **knowledge**, not to **code that looks similar**. Two functions with identical syntax but different _reasons to exist_ are not duplication — they serve different domains. Forcing them to share an abstraction couples those domains. **Duplication is cheaper than the wrong abstraction.**
+- **Never for performance:** cost is not a reason to restate knowledge. When the owner is expensive to import or call, the owner is fixed — its composition, its costly dependency — so every consumer keeps reading the one copy. A second copy built for speed drifts from the owner and fails the moment the owner changes in a way the copy does not know.
 
 ### KISS — Keep It Simple, Stupid
 

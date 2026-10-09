@@ -25,7 +25,9 @@ visibility: 'public'
 - Use generators for streaming or large data.
 - Use context managers for resource handling.
 - Avoid star imports or classes used for namespacing.
-- Keep package `__init__.py` files as import/export surfaces; move implementation into dedicated modules.
+- A package `__init__.py` holds at most a docstring: no imports, re-exports, implementation, or import-time side effects. Consumers import every symbol from the module that owns it.
+- A runnable package's entry point is its `__main__.py`. It is the one place a load may be deferred — to answer help or re-exec into the right interpreter before heavy imports — through a local import whose suppression names that reason.
+- Compose imports by job: a module imports only what its own job needs. When `-X importtime` shows a consumer paying for a job it does not use, split the owner along that job. Review enforces composition; no lint or guardrail pins an import closure.
 - Follow project formatter and linter rules exactly.
 - Keep all imports at module top level. A local import requires an explicit project-owned exception and a same-line suppression that states the reason.
 - Python linter suppressions use the narrowest same-line `noqa` form, name the suppressed rule, and state why the rule cannot apply. Broad file-level suppression is not permitted.
@@ -38,6 +40,8 @@ visibility: 'public'
 Use consistent Python practices for typing, structure, and error handling to keep behavior predictable for reviewers and agents.
 
 Dispatch that resolves through a runtime string is an edge no parser can traverse: the AST sees the emit site and the handler as unrelated statements, so import-graph and blast-radius tooling stops there. Declaring the edge keeps the code statically legible and keeps dependency tooling able to follow it.
+
+Python runs a package's `__init__.py` on every import of any module inside it, so whatever it holds is paid by every consumer of every part of the package, and a re-export gives one symbol a second address that hides its owner from readers and from the import graph. Keeping it empty makes each import path name its owner and each consumer's cost exactly the modules it names. A pinned import closure answers a performance question with a gate, and a gate on composition pushes the next author toward copying logic around it instead of fixing the owner (`sdlc/principle/design-fundamentals`).
 
 ## Scope
 

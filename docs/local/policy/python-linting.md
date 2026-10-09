@@ -17,16 +17,11 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
   - `teleclaude/core/adapter_client/_client.py`
 - Every local-import suppression in those files includes the same-line reason
   `startup boundary` and names the suppressed import-placement rule.
-- Command-boundary imports are a standing exception only in
-  `teleclaude/cli/telec/handlers/todo.py`. They load a selected command's handler
-  or dependencies after CLI clearance, inside that command's entrypoint or a
-  helper executed only by commands that need the dependency. A shared router
-  loads no command-specific dependency before selection
-  (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`).
-- Each command-boundary local import names the narrow import-placement rule in
-  its same-line suppression and states the `command boundary` reason. Imports
-  within the selected leaf modules remain at module top level unless an existing
-  separate exception applies.
+- The command-boundary local imports in `teleclaude/cli/telec/handlers/todo.py`
+  are transitional debt under the entry-seam rule of `sdlc/policy/python/core`:
+  they defer loads inside command functions instead of at one entry seam. They do
+  not expand to other modules, and each keeps naming the narrow import-placement
+  rule and the `command boundary` reason in its same-line suppression.
 - Other first-party local-import exceptions remain transitional debt and do not
   expand. Linter configuration, type-checker exemptions and general suppression
   surfaces retain their existing scope.
@@ -64,11 +59,11 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 
 ## Rationale
 
-A CLI router selects one action for one invocation. Loading every sibling's
-workflow and rendering dependencies before that selection charges an action for
-work it never performs. The bounded router exception makes the command's import
-owner coincide with its execution owner while keeping ordinary leaf modules and
-the rest of the Python source tree under the module-top rule.
+A CLI router selects one action for one invocation, and loading every sibling's
+dependencies before that selection charges an action for work it never performs.
+Deferring those loads inside individual command functions scatters the deferral
+across the router instead of composing it at one seam, which is why the todo
+router's imports are recorded as debt rather than as a pattern to extend.
 
 These exceptions name TeleClaude modules and guardrail configuration, so they cannot be universal Python rules. Keeping them in project scope prevents adopting repositories from inheriting mothership paths or exception mechanics while retaining one explicit owner for the exceptions here.
 
@@ -97,8 +92,8 @@ an author with no stake in the result.
 
 ## Enforcement
 
-- Reviewers apply the named startup and todo-command boundaries above and reject
-  new locations, unrelated eager dependency loading, or expansion of the remaining
+- Reviewers apply the named startup boundaries and the todo-router debt above and
+  reject new locations, unrelated eager dependency loading, or expansion of the
   transitional set. Independent deep review assesses any proposed widening of
   these standing exceptions before dependent work enters the lifecycle
   (`general/policy/agent-artifact-governance`).
@@ -114,4 +109,4 @@ an author with no stake in the result.
 
 ## Exceptions
 
-- Only the explicitly named startup and todo-command boundaries above.
+- Only the explicitly named startup boundaries and the todo-router debt above.
