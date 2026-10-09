@@ -195,7 +195,15 @@ A session whose role is below member and that carries no system role runs only i
 
 <!-- /planned-change:help-desk-master-routing -->
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 **Identity key format:** `{platform}:{platform_user_id}` — e.g., `discord:999001`, `telegram:12345678`, `whatsapp:31612345678`. It is derived from the session's origin metadata at query time, not stored as a denormalized column on the session, and the memory system receives it as an opaque string.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+**Identity key format:** a registered person is keyed as that person — `person:{slug}` — whichever adapter they write from; anyone else is keyed by the platform identity they write from — `{platform}:{platform_user_id}`, e.g. `discord:999001`, `telegram:12345678`, `whatsapp:31612345678`. Identity derives the key from the session at the moment it is needed, both when memories are saved and when they are injected; it is not stored as a denormalized column on the session, and the memory system receives it as an opaque string.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Tool access for help-desk visitors
 
@@ -461,6 +469,8 @@ The desk's master and the help-desk procedure (`general/procedure/help-desk/over
 
 ### Identity-Scoped Memory
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 The memory system gains a second scoping axis. The `project` field remains (operator-level namespace). A new `identity_key` field optionally scopes memories to a specific person.
 
 ```mermaid
@@ -496,6 +506,22 @@ LIMIT 50
 ```
 
 The hook receiver resolves the session's identity (from adapter metadata via the derivation path) and passes the `identity_key` to `generate_context_sync`. If no identity is available, only project-level memories are injected.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+The memory system gains a second scoping axis. The `project` field remains the namespace. The `identity_key` field optionally scopes memories to one visitor.
+
+Every desk has a memory namespace of its own, derived from the desk's identity (its kind and its home's slug), never from its folder name: every desk folder carries the same name, so a folder-derived namespace would merge every desk's memories into one.
+
+| Memory                              | Namespace (`project`)       | `identity_key`         | Subject                                                    | Reaches                                                             |
+| ----------------------------------- | --------------------------- | ---------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| About a registered visitor          | the desk's                  | `person:{slug}`        | that person                                                | that person's sessions at that desk; their own reach elsewhere      |
+| About an unregistered visitor       | the desk's                  | `{platform}:{user_id}` | the desk's home, recorded under the visitor's own identity | that visitor's sessions at that desk; the people who reach the home |
+| About the business (no one visitor) | the home that owns the desk | `NULL`                 | the desk's home                                            | the home's own sessions; never a visitor's session                  |
+
+**Context injection at SessionStart.** For a desk session, the hook receiver asks memory for the desk's namespace, narrowed to the visitor's identity key, under the reach identity resolves for the session's visitor (`local/projects/teleclaude/spec/feature/identity/data-visibility` UC-DV14 for an unregistered visitor). The session therefore starts with what was recorded about that visitor at that desk and with nothing recorded about anyone else or at any other desk. A session that is not at a desk keeps its namespace from its working folder.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 **API changes:**
 
@@ -545,29 +571,31 @@ sequenceDiagram
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-**Idle cycle.** After 30 minutes without visitor input, the daemon:
+**Idle cycle.** The daemon's idle cycle visits the desk sessions periodically, well within the 30-minute threshold. A desk session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
 
-1. Runs memory extraction on the conversation since the last extraction (same job as post-session processing)
-2. Injects `/compact` into the agent session once extraction completed
-3. Closes the session
-4. Does NOT update `last_message_sent` — this is invisible to the visitor
+1. Memory extraction of the conversation since the last extraction (Post-Session Memory Extraction)
+2. Compaction of the agent's context through the agent's own compaction command, once extraction completed, awaited until the agent reports it finished
+3. Closing the session, once compaction completed and no input arrived since the cycle began
+4. None of it is recorded as a message sent into the session — it is invisible to the visitor
+
+A step that fails or does not finish leaves the session open and is retried on the next pass; nothing is compacted without a completed extraction, and nothing is closed without a completed compaction.
 
 ```mermaid
 sequenceDiagram
-    participant Daemon
-    participant Job as Memory Extraction Job
+    participant Daemon as Idle cycle
+    participant Extract as Memory extraction
     participant Tmux as Agent Session (tmux)
     participant DB as Session DB
 
-    Note over Daemon: Idle threshold reached (30m)
-    Daemon->>Job: Spawn extraction (session_id)
-    Job->>DB: Read transcript since last_memory_extraction_at
-    Job->>Job: Extract personal + business memories
-    Job->>DB: Update last_memory_extraction_at
-    Job->>Daemon: Extraction complete
-    Daemon->>Tmux: Inject /compact
+    Note over Daemon: No input for 30m, agent idle, no relay
+    Daemon->>Extract: Extract the session's conversation
+    Extract->>DB: Read last_memory_extraction_at
+    Extract->>Extract: Personal + business memories
+    Extract->>DB: Advance last_memory_extraction_at
+    Daemon->>Tmux: Agent's compaction command
+    Tmux->>Daemon: Compaction finished
     Daemon->>DB: Close the session
-    Note over Daemon: Do NOT update last_message_sent
+    Note over Daemon: No message recorded as sent
 ```
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
@@ -582,12 +610,26 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-master-routing -->
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 **Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark. The extraction job processes only new conversation since this marker. This makes both idle-triggered and cron-triggered extraction idempotent.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark: the moment of the last conversation entry an extraction saved. Extraction processes only the conversation after this marker and advances it only after every memory of that pass was saved, so a repeated, failed or interrupted pass never extracts the same part of the conversation twice.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 **Session state fields (additions):**
 
 - `last_memory_extraction_at` — timestamp of last successful extraction (high-water mark)
+
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 - `help_desk_processed_at` — timestamp of final post-mortem processing
+
+<!-- change:help-desk-idle-memory-cycle -->
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 <!-- planned-change:help-desk-escalation-in-desk -->
 
@@ -696,6 +738,8 @@ The publish tool is available to all agents. Channel creation is implicit — pu
 
 ### Post-Session Memory Extraction
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 A single idempotent job extracts memories from help desk sessions. It is one job with two invocation paths:
 
 **Primary path (idle-triggered):** The daemon detects idle → spawns the extraction job → job processes the session transcript since `last_memory_extraction_at` → updates the marker → daemon injects `/compact`. Memory extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
@@ -746,6 +790,46 @@ jobs:
     thinking_mode: fast
     # Sweep: picks up unprocessed/stale sessions
 ```
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+Memory extraction is a step of the idle cycle (Customer Session Lifecycle), run inside the daemon. No separate scheduled job extracts desk sessions; the idle cycle is the one extractor, so no two passes extract the same session at once.
+
+Each pass of the idle cycle extracts:
+
+- **An open desk session that is due for its idle close**, as the first step of that close. Extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
+- **A closed desk session whose conversation has entries after its marker** — one closed by a person or by recovery rather than by the idle cycle. It is extracted and stays closed.
+
+Extraction reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — from the `last_memory_extraction_at` marker onward, and extracts through a dual lens:
+
+```mermaid
+sequenceDiagram
+    participant Cycle as Idle cycle
+    participant DB as Session DB
+    participant Transcript as Session transcript chain
+    participant Identity as Identity
+    participant Memory as Memory store
+
+    Cycle->>DB: Read last_memory_extraction_at
+    Cycle->>Transcript: Read the conversation after the marker
+    Cycle->>Identity: Visitor's identity key and principal
+    Cycle->>Cycle: Extract with dual lens
+    par Personal memories
+        Cycle->>Memory: save(desk namespace, identity_key=person:alice)
+    and Business memories
+        Cycle->>Memory: save(home namespace, identity_key=NULL)
+    end
+    Cycle->>DB: Advance last_memory_extraction_at
+```
+
+**Dual extraction lens:**
+
+1. **Personal memories** (the desk's namespace, keyed to the visitor) — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
+2. **Business memories** (the namespace of the home that owns the desk, the one the home's own sessions read) — what is interesting for US: feature requests, complaints, confusion patterns, sentiment, competitive mentions
+
+Namespaces, keys and subjects follow Identity-Scoped Memory. A conversation with nothing worth remembering saves nothing and still advances the marker.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 ### Action Taxonomy
 
@@ -844,7 +928,15 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 8. **A desk exists only where its home enables it**: no machine-wide desk location exists. A desk's folder follows from its home, and a home without `help_desk.enabled` has no desk.
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 9. **Jobs are idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed. Premature agent death, glitches, or periodic re-runs never produce duplicate actions or memories. The job runner treats agents as ephemeral — durable state lives in the database, not in the agent.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+9. **Extraction is idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed. Premature agent death, glitches, daemon restarts or repeated passes never produce duplicate memories. Durable state lives in the database, not in the agent.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 10. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
 
@@ -1067,26 +1159,24 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Daemon
-    participant Job as Memory Extraction Job
+    participant Daemon as Idle cycle
     participant Agent as Desk Session (tmux)
     participant DB as Session DB
-    participant Memory as Memory API
+    participant Memory as Memory store
 
-    Note over Daemon: 30m idle threshold reached
-    Daemon->>Job: Spawn extraction (session_id)
-    Job->>DB: Read last_memory_extraction_at
-    Job->>Agent: Read transcript since marker
-    Job->>Memory: Save personal memories (identity-scoped)
-    Job->>Memory: Save business memories (project-scoped)
-    Job->>DB: Update last_memory_extraction_at
-    Job->>Daemon: Extraction complete
-    Daemon->>Agent: Inject /compact
-    Daemon->>DB: Close the session
-    Note over Daemon: last_message_sent NOT updated
+    Note over Daemon: No input for 30m, agent idle, no relay, no input waiting
+    Daemon->>DB: Read last_memory_extraction_at
+    Daemon->>Daemon: Read the transcript chain after the marker
+    Daemon->>Memory: Save personal memories (desk namespace, visitor's key)
+    Daemon->>Memory: Save business memories (home namespace)
+    Daemon->>DB: Advance last_memory_extraction_at
+    Daemon->>Agent: Agent's compaction command
+    Agent->>Daemon: Compaction finished
+    Daemon->>DB: Close the session (no input since the cycle began)
+    Note over Daemon: No message recorded as sent
 
     Note over Agent: Visitor returns later...
-    Daemon->>Agent: Revive the same session, memories injected
+    Daemon->>Agent: Revive the same session, the visitor's memories injected
 ```
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->

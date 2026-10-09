@@ -309,6 +309,21 @@ Then every shared snippet is returned at full depth, internal ones included
 And a member of that company below administrator receives only the shared snippets published as public
 ```
 
+<!-- planned:help-desk-idle-memory-cycle -->
+
+#### UC-DV14: An unregistered desk visitor reaches what was recorded under their own platform identity
+
+```gherkin
+Given a help-desk visitor the platform does not know as a registered person
+And memories were recorded from that visitor's conversations under the platform identity they write from
+When an agent session serving that visitor at a desk receives memories
+Then the memories recorded under that platform identity are admitted
+And memories recorded under any other identity, and records about any subject, are not
+And the people whose reach admits the desk's home see those memories as records about that home
+```
+
+<!-- /planned:help-desk-idle-memory-cycle -->
+
 ## Known caveats
 
 - Access to data about the platform itself (no subject) stays with platform
