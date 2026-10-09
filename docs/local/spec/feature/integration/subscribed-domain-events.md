@@ -24,8 +24,10 @@ A domain event is told to a person when both hold:
 - the person's notification interests select it: the category named after the
   event's domain is switched on and one of its patterns matches the event's type
   (`local/projects/teleclaude/spec/feature/config/notification-interests`);
-- the person's reach admits the event's origin, by the platform's one reach rule
-  (`local/projects/teleclaude/spec/feature/identity/data-visibility`).
+- the person may hear the event's origin: a company's people hear the
+  company's domain events, whichever of the company's projects or computers
+  produced them, and beyond a person's companies the platform's one reach rule
+  decides (`local/projects/teleclaude/spec/feature/identity/data-visibility`).
 
 Each domain event is a fact of its own: domain events report no state of a thing
 under the platform lifecycle convention (`event-envelope`), so there is nothing
@@ -82,12 +84,13 @@ Scenario Outline: The interests decide which domain events reach the person
     | hold only the sdlc category, switched on with the pattern "*"   | receives no message  |
 ```
 
-#### UC-SD3: Only events the person's reach admits are told
+#### UC-SD3: Outside a person's companies, only events their reach admits are told
 
 ```gherkin
 Scenario Outline: Reach bounds what interests can select
   Given a person whose "erp" notification interests are switched on with the pattern "*"
-  And the person's reach <reach> the origin of an event
+  And an event whose origin belongs to no company on the person's roster
+  And the person's reach <reach> that origin
   When an event of type "erp.invoice.paid" with that origin occurs
   Then the person <outcome>
 
@@ -95,6 +98,21 @@ Scenario Outline: Reach bounds what interests can select
     | reach          | outcome              |
     | admits         | receives one message |
     | does not admit | receives no message  |
+```
+
+#### UC-SD9: A company's people hear its domain events from any of its projects
+
+```gherkin
+Scenario Outline: The company audience does not depend on the producing project
+  Given a person on a company's roster whose "sdlc" notification interests are switched on with the pattern "*"
+  When an event of type "sdlc.review.approved" happens in <origin>
+  Then the person receives one message about it
+
+  Examples:
+    | origin                                                  |
+    | the company itself                                      |
+    | a project the company owns that the person is assigned to |
+    | a project the company owns that the person is not assigned to |
 ```
 
 #### UC-SD4: Every domain event is its own message
