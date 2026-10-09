@@ -120,6 +120,11 @@ class _RuntimeConfigAccessor:
 config = cast(TeleclaudeConfig, _RuntimeConfigAccessor())
 
 
+def loaded_machine_config() -> TeleclaudeConfig:
+    """The validated machine configuration model this process runs on, loading it on first use."""
+    return _runtime_config()
+
+
 def reload_config() -> list[str]:
     """Re-read config from disk and apply it to the live ``config`` singleton in place.
 

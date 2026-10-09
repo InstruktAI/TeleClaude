@@ -19,7 +19,8 @@ from teleclaude.checkpoint_model import (
     main_only_judgment_action_ids_for_files,
     main_only_maintenance_action_ids_for_files,
 )
-from teleclaude.config.secret_masking import environment_files, mask_environment_values
+from teleclaude.config.errors import ConfigLoadError, describe_load_error
+from teleclaude.config.secret_masking import declared_secret_values, mask_secret_values
 from teleclaude.constants import LOG_CHECK_ACTION_ID, MaintenanceAction
 from teleclaude.core.integration._maintenance_records import (
     MaintenanceActionRecord,
@@ -63,6 +64,7 @@ _MAINTENANCE_DRAIN_STARTED_EVENT = "post_commit_maintenance_drain_started"
 _MAINTENANCE_DRAIN_FINISHED_EVENT = "post_commit_maintenance_drain_finished"
 _MAINTENANCE_ACTION_STARTED_EVENT = "post_commit_maintenance_action_started"
 _MAINTENANCE_ACTION_FINISHED_EVENT = "post_commit_maintenance_action_finished"
+_OUTPUT_WITHHELD = "output withheld: the configuration that declares its secrets does not load ({reason})"
 _MAINTENANCE_ACTION_INTERRUPTED_EVENT = "post_commit_maintenance_action_interrupted"
 _MAINTENANCE_ACTION_RETRIED_EVENT = "post_commit_maintenance_action_retried"
 _MAINTENANCE_RESOLVED_EVENT = "post_commit_maintenance_resolved"
@@ -400,16 +402,36 @@ def run_maintenance_waves(
 
         def report(index: int, result: CommandResult, wave_ids: tuple[str, ...] = wave) -> None:
             action_id = wave_ids[index]
-            if result.output_tail is not None:
-                masked = mask_environment_values(result.output_tail, environment_files(root))
-                result = replace(result, output_tail=masked)
             finished_at = datetime.now(UTC).isoformat()
             on_finished(action_id, result, finished_at)
             _log_action_finished(activation_range, trigger, action_id, result, finished_at)
             completed.append((action_id, result))
 
-        run_process_group_commands(commands, root, child_env, report, capture_output=capture_output)
+        run_process_group_commands(
+            commands, root, child_env, report, capture_output=_secret_masker(root) if capture_output else None
+        )
     return tuple(completed)
+
+
+def _secret_masker(root: Path) -> Callable[[str], str]:
+    """Mask the configuration's declared secrets in captured output; withhold it when they are unknown."""
+    secrets: frozenset[str] | None = None
+    unknown: str | None = None
+
+    def mask(output: str) -> str:
+        nonlocal secrets, unknown
+        if secrets is None and unknown is None:
+            try:
+                secrets = declared_secret_values(root)
+            except ConfigLoadError as error:
+                unknown = describe_load_error(error)
+            except FileNotFoundError as error:
+                unknown = str(error)
+        if secrets is None:
+            return _OUTPUT_WITHHELD.format(reason=unknown)
+        return mask_secret_values(output, secrets)
+
+    return mask
 
 
 def _activation_order(repository: Repo, record: MaintenanceActionRecord) -> tuple[int, str, str]:

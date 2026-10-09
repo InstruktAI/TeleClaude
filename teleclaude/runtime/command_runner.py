@@ -19,7 +19,7 @@ _PROCESS_GROUP_TERM_GRACE_SECONDS = 2.0
 _PROCESS_GROUP_KILL_GRACE_SECONDS = 2.0
 _PROCESS_POLL_INTERVAL_SECONDS = 0.05
 _COMMAND_START_FAILURE_EXIT_CODE = 127
-_OUTPUT_TAIL_BYTES = 4096
+_OUTPUT_TAIL_CHARACTERS = 4096
 _OUTPUT_ENCODING = "utf-8"
 _OUTPUT_DECODE_ERRORS = "replace"
 _START_FAILURE_OUTPUT = "{kind}: {error}"
@@ -98,15 +98,16 @@ def run_process_group_commands(
     child_env: Mapping[str, str] | None = None,
     on_result: Callable[[int, CommandResult], None] | None = None,
     *,
-    capture_output: bool = False,
+    capture_output: Callable[[str], str] | None = None,
 ) -> tuple[CommandResult, ...]:
     """Run argument vectors concurrently and reap every process group on exit.
 
     ``on_result`` is called with a command's index and result as soon as that command
     ends, so a caller can report each outcome while the others still run. With
     ``capture_output`` each command's combined output goes to a temporary file instead of
-    the caller's streams, and its tail is returned with the result; a caller with no
-    terminal of its own uses it so a failure keeps its reason.
+    the caller's streams; the whole output is passed through that function, and the tail of
+    what it returns comes back with the result. A caller with no terminal of its own uses it
+    so a failure keeps its reason, and masks what must not travel before anything is cut.
     """
     processes: list[subprocess.Popen[bytes] | None] = []
     outputs: list[IO[bytes] | None] = []
@@ -125,7 +126,7 @@ def run_process_group_commands(
         try:
             for command in commands:
                 _raise_if_cancelled(cancellation)
-                output = tempfile.TemporaryFile() if capture_output else None
+                output = tempfile.TemporaryFile() if capture_output is not None else None
                 outputs.append(output)
                 try:
                     # Declared arbitrary argv requires an external process; no Python-native API can perform the action.
@@ -141,7 +142,9 @@ def run_process_group_commands(
                     processes.append(None)
                     start_failure = CommandResult(
                         _COMMAND_START_FAILURE_EXIT_CODE,
-                        _START_FAILURE_OUTPUT.format(kind=type(exc).__name__, error=exc) if capture_output else None,
+                        _START_FAILURE_OUTPUT.format(kind=type(exc).__name__, error=exc)
+                        if capture_output is not None
+                        else None,
                     )
                     results.append(start_failure)
                     if on_result is not None:
@@ -158,7 +161,7 @@ def run_process_group_commands(
                     if exit_code is None:
                         continue
                     _kill_process_group(process)
-                    finished = CommandResult(exit_code, _output_tail(outputs[index]))
+                    finished = CommandResult(exit_code, _output_tail(outputs[index], capture_output))
                     results[index] = finished
                     if on_result is not None:
                         on_result(index, finished)
@@ -181,13 +184,13 @@ def run_process_group_commands(
                 captured.close()
 
 
-def _output_tail(output: IO[bytes] | None) -> str | None:
-    """Return the end of one command's captured output, or ``None`` when none was captured."""
-    if output is None:
+def _output_tail(output: IO[bytes] | None, transform: Callable[[str], str] | None) -> str | None:
+    """Return the end of one command's transformed output, or ``None`` when none was captured."""
+    if output is None or transform is None:
         return None
-    size = output.seek(0, os.SEEK_END)
-    output.seek(max(0, size - _OUTPUT_TAIL_BYTES))
-    return output.read().decode(_OUTPUT_ENCODING, errors=_OUTPUT_DECODE_ERRORS)
+    output.seek(0)
+    whole = output.read().decode(_OUTPUT_ENCODING, errors=_OUTPUT_DECODE_ERRORS)
+    return transform(whole)[-_OUTPUT_TAIL_CHARACTERS:]
 
 
 class _SignalReceived(BaseException):

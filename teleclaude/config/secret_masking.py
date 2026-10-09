@@ -1,34 +1,89 @@
-"""Mask the values this computer's environment files hold before text leaves the process that read it.
+"""Mask the platform's secrets in text before it leaves the process that produced it.
 
-Output a command printed is reported elsewhere only after every value from the machine, global-home
-and project environment files is replaced. A secret a command reads from anywhere else is not known
-here and is not masked.
+A secret is a value the configuration declares sensitive: a field annotated ``SENSITIVE`` in the
+machine, global, project, person or company configuration, or a company service credential.
+Every other value stays readable. A value a command obtains from anywhere else is not declared
+a secret and is not masked.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Final
 
-from teleclaude.config._environment import read_environment_file
-from teleclaude.paths import PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
+from pydantic import BaseModel
+
+from teleclaude.closed_model import field_is_sensitive
+from teleclaude.config.loader import (
+    list_company_configs,
+    load_company_credentials,
+    load_declared_project_config,
+    load_global_config,
+    load_person_config_for_entry,
+)
+from teleclaude.config.machine import loaded_machine_config
 
 _MASK: Final = "***"
-# Shorter values are flags and words ("1", "true"), whose masking would hide output without protecting anything.
-_MIN_MASKED_LENGTH: Final = 6
 
 
-def environment_files(project_root: Path) -> tuple[Path, ...]:
-    """The environment files whose values a command run in ``project_root`` can reach."""
-    return (PROJECT_ENV_PATH, TELECLAUDE_HOME / ConfigFileName.ENV, project_root / ConfigFileName.ENV)
+def declared_secret_values(project_root: Path) -> frozenset[str]:
+    """Every secret the configuration a command in ``project_root`` runs under declares.
+
+    Raises ``ConfigLoadError`` when a configuration does not load: its secrets are then unknown.
+    """
+    global_config = load_global_config()
+    models: list[BaseModel] = [loaded_machine_config(), global_config]
+    project = load_declared_project_config(project_root)
+    if project is not None:
+        models.append(project)
+    for person in global_config.people:
+        person_config = load_person_config_for_entry(person)
+        if person_config is not None:
+            models.append(person_config)
+    values: set[str] = set()
+    for slug, company in list_company_configs():
+        models.append(company)
+        values.update(load_company_credentials(slug).values())
+    for model in models:
+        values.update(sensitive_values(model))
+    return frozenset(value for value in values if value)
 
 
-def mask_environment_values(text: str, files: Iterable[Path]) -> str:
-    """Replace every sufficiently long value held in ``files`` with a mask, longest first."""
-    values = {
-        value for path in files for value in read_environment_file(path).values() if len(value) >= _MIN_MASKED_LENGTH
-    }
-    for value in sorted(values, key=len, reverse=True):
-        text = text.replace(value, _MASK)
+def sensitive_values(model: BaseModel) -> set[str]:
+    """The values of every field annotated ``SENSITIVE`` in a loaded model, at any depth."""
+    values: set[str] = set()
+    for name, field_info in type(model).model_fields.items():
+        value = getattr(model, name)
+        if field_is_sensitive(field_info):
+            values.update(_leaf_texts(value))
+        else:
+            values.update(_nested_sensitive_values(value))
+    return values
+
+
+def mask_secret_values(text: str, secrets: Iterable[str]) -> str:
+    """Replace every occurrence of every secret with a mask, longest first."""
+    for secret in sorted(set(secrets), key=len, reverse=True):
+        text = text.replace(secret, _MASK)
     return text
+
+
+def _nested_sensitive_values(value: object) -> set[str]:
+    if isinstance(value, BaseModel):
+        return sensitive_values(value)
+    if isinstance(value, Mapping):
+        return {found for item in value.values() for found in _nested_sensitive_values(item)}
+    if isinstance(value, (list, tuple)):
+        return {found for item in value for found in _nested_sensitive_values(item)}
+    return set()
+
+
+def _leaf_texts(value: object) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, Mapping):
+        return {text for item in value.values() for text in _leaf_texts(item)}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return {text for item in value for text in _leaf_texts(item)}
+    return {str(value)}
